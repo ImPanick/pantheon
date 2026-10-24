@@ -155,12 +155,12 @@ def is_sealed(tools) -> bool:
 
 
 def _person(owner: Optional[str]) -> str:
-    return owner or "the person who hired you"
+    return owner or "the person who summoned you"
 
 
 def system_prompt(manifest, hire, *, owner: Optional[str]) -> str:
     lines = [
-        f"You are {hire.name}, an agent {_person(owner)} hired in Pantheon to do one job: "
+        f"You are {hire.name}, an agent {_person(owner)} summoned in Pantheon to do one job: "
         f"{manifest.tagline}",
         "",
         "The job is the runbook below. Follow it in order. Use only the tools you are "
@@ -263,7 +263,7 @@ def plan_for_task(db, task, run_id: Optional[str] = None) -> Optional[RunPlan]:
     manifest = get_agent(hire.owner, hire.agent_id)
     if manifest is None:
         sentence = (f"{hire.name}'s agent file is gone or no longer passes its check, so it "
-                    f"stopped. Open Agents to fire it or put the file back.")
+                    f"stopped. Open Agents to dismiss it or put the file back.")
         H.needs_attention(db, hire, sentence)
         db.commit()
         raise AgentRunRefused(sentence)

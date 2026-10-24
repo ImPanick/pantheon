@@ -1643,6 +1643,8 @@ def setup_chat_routes(
         use_research = form_data.get("use_research")
         time_filter = form_data.get("time_filter")
         preset_id = form_data.get("preset_id")
+        # `P24-26`. An agent summoned from the composer's Agents menu.
+        summoned_agent = str(form_data.get("agent") or (body or {}).get("agent") or "").strip()
         selected_endpoint_id = str(
             form_data.get("selected_endpoint_id")
             or (body or {}).get("selected_endpoint_id")
@@ -2379,6 +2381,20 @@ def setup_chat_routes(
             disabled_tools=_withholds.names(),
             last_user_message=message,
         )
+        # `P24-26`. A summoned agent narrows the turn to its kit and its
+        # effects table (`src/agents/summon.py`); refused in a sentence before
+        # anything streams.
+        _summoned = None
+        if summoned_agent:
+            from src.agents.summon import SummonRefused, summon as _summon
+            _sdb = SessionLocal()
+            try:
+                _summoned = _summon(_user, summoned_agent, mode=chat_mode or "chat", db=_sdb)
+            except SummonRefused as _refused:
+                raise HTTPException(400, _refused.sentence)
+            finally:
+                _sdb.close()
+            tool_policy = _summoned.policy(tool_policy)
         # `B1399`. The names the **policy layer** added on top are the policy's,
         # not the caller's — a guide-only turn disables every tool in the
         # product — so `finish` attributes them and keeps the route's own
@@ -3265,7 +3281,7 @@ def setup_chat_routes(
                     async for chunk in stream_agent_loop(
                         sess.endpoint_url,
                         sess.model,
-                        messages,
+                        _summoned.into(messages) if _summoned else messages,
                         headers=sess.headers,
                         temperature=ctx.preset.temperature,
                         max_tokens=ctx.preset.max_tokens,
@@ -3306,7 +3322,9 @@ def setup_chat_routes(
                             if exact_tool_approval
                             and pending_tool_approval
                             and pending_tool_approval.selected_tools
-                            else None
+                            # `P24-26`. A summoned agent's tools are offered as
+                            # they are, not guessed from the message (`B1414`).
+                            else (set(_summoned.tools) if _summoned else None)
                         ),
                         forced_tools=_forced_tools,
                         uploaded_files=ctx.uploaded_files,

@@ -174,7 +174,7 @@ def check_grants(manifest: Manifest, raw: Any) -> Dict[str, str]:
         if rule == was:
             continue
         if _RULE_RANK[rule] < _RULE_RANK[was] and not (was == "ask" and rule == "allow"):
-            raise HireRefused(f"{manifest.name} says “{eff}” is {was}; a hire can make that "
+            raise HireRefused(f"{manifest.name} says “{eff}” is {was}; you can make that "
                               f"stricter, not looser.")
         out[eff] = rule
     return out
@@ -493,7 +493,7 @@ def hire_to_dict(db, hire, manifest: Optional[Manifest]) -> Dict[str, Any]:
 
 def task_belongs_to_agent(task_name: str, hire_name: str) -> str:
     """The Tasks window's sentence for a task an agent runs as."""
-    return (f"“{task_name}” is how the agent {hire_name} runs. Change, pause or fire it in "
+    return (f"“{task_name}” is how the agent {hire_name} runs. Change, pause or dismiss it in "
             f"Agents; Run now works here too.")
 
 

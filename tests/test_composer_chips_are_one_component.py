@@ -89,6 +89,8 @@ def _chips():
         # the four assertions below cover it; without the entry it is a chip
         # nothing in this file checks.
         "approval-mode-btn",
+        # `P24-26`, 2026-10-24: the summoned agent's chip.
+        "summon-indicator-btn",
     }
     return [(i, b) for i, b in _buttons() if i in wanted]
 
@@ -105,12 +107,15 @@ def test_the_strip_still_holds_the_nine_the_row_counted():
     row counted became **eleven** counting the plan chip that donated the
     geometry, because `D-2026-10-09-01` §2 put `#approval-mode-btn` in the
     strip. Discovered here rather than in a diff, which is what this case is
-    for."""
+    for.
+
+    And on 2026-10-24: **nine** and **twelve** — `P24-26` put the summoned
+    agent's chip (`#summon-indicator-btn`) beside the Workspace pill."""
     strip = _strip()
     assert strip.count('class="input-icon-btn tool-indicator"') \
-        + strip.count('class="input-icon-btn tool-indicator ') == 8, \
-        "the eight tool indicators are no longer eight"
-    assert len(_chips()) == 11, [i for i, _ in _chips()]
+        + strip.count('class="input-icon-btn tool-indicator ') == 9, \
+        "the nine tool indicators are no longer nine"
+    assert len(_chips()) == 12, [i for i, _ in _chips()]
 
 
 # ── One component ───────────────────────────────────────────────────────────

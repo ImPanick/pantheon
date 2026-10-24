@@ -550,11 +550,6 @@ async def run_case(manifest, case: Dict[str, Any], *, factory, data_dir: str,
         checks = contract + own
         passed = bool(own or contract) and all(c["ok"] for c in own) and (
             expects_failure or all(c["ok"] for c in contract))
-        if os.environ.get("PANTHEON_EVAL_DEBUG"):
-            print("RESULT", answer[:400], "STEPS", [(s.get("tool"), s.get("status"), (s.get("output") or s.get("detail") or "")[:160]) for s in json.loads(run.steps or "[]")] if run else "")
-            from core.database import TaskRunNode
-            from core.database import Document as _D
-            print("DOCS", [(d.owner, d.title, d.updated_at, d.created_at, (d.current_content or "")[:60]) for d in db.query(_D).all()], "RUN", run.started_at if run else None)
         return CaseResult(manifest.id, case["id"], passed, status, checks,
                           (time.monotonic() - started) / 60, [c["tool"] for c in world.calls], report,
                           None if run is None else run.error)

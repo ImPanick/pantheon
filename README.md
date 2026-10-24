@@ -248,16 +248,16 @@ proved it dead.
 
 ## Status
 
-**1470 tracked tasks, 1080 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**1472 tracked tasks, 1081 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
 above.
 
 **Read that number with the trend beside it.** Over the last ten waves, *done* went
-**73.3% → 73.5%** and *open* went **379 → 390**: 52 rows filed against 41 closed, a
-file-to-close ratio of **1.268** — and the rise is a phase's build list, not defects: opening `P24`, the Agents hall,
-filed its 25 rows at once, and its first waves have closed 17 of them, so the 8 still open are its plan. Before that wave
+**73.3% → 73.4%** and *open* went **379 → 391**: 53 rows filed against 41 closed, a
+file-to-close ratio of **1.293** — and the rise is a phase's build list, not defects: opening `P24`, the Agents hall,
+filed its 25 rows at once, and its first waves have closed 18 of its 27, so the 9 still open are its plan — one of them the owner's own audit of every runbook (`P24-27`). Before that wave
 the window read **0.917**, the first in this record where closing outran filing. Most of that is `P23`, the audits' fixes — built by eight lanes, driven by the owner's
 walk twice on the merged tree and closed on 2026-10-07 — and what came straight after it: the owner's rulings that
 evening, and then `v0.2.0` shipping and the owner running it on their own install. Their two reports of 2026-10-09

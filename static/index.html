@@ -1708,6 +1708,14 @@
                 <span>Workspace</span>
                 <span class="overflow-active-dot"></span>
               </button>
+              <!-- `P24-26`. Summon an agent into this chat (Agent mode only):
+                   its runbook, its tools and its effects table for the turns
+                   that follow, until the chip is cleared. static/js/summon.js -->
+              <button type="button" class="overflow-menu-item" id="overflow-agents-btn" aria-haspopup="dialog">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4"/><circle cx="12" cy="3" r="1"/><path d="M9 13h.01M15 13h.01M9.5 16.5h5"/></svg>
+                <span>Agents</span>
+                <span class="overflow-active-dot"></span>
+              </button>
               <!-- Inline "deep research mode" toggle removed (superseded by the
                    Deep Research sidebar / trigger_research). The hidden
                    #research-toggle checkbox is kept inert so existing JS refs
@@ -1771,6 +1779,12 @@
           <button type="button" class="input-icon-btn tool-indicator tool-chip" title="Workspace" id="workspace-indicator-btn" aria-label="Clear workspace" style="display:none;">
             <svg class="workspace-indicator-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
             <span class="tool-chip-label tool-chip-label-truncates" id="workspace-indicator-name"></span>
+            <svg class="tool-indicator-x" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+          </button>
+          <!-- `P24-26`. The summoned agent (hidden until one is summoned); a click dismisses it. -->
+          <button type="button" class="input-icon-btn tool-indicator tool-chip" title="Summoned agent" id="summon-indicator-btn" aria-label="Dismiss the summoned agent" style="display:none;">
+            <svg width="16" height="16" class="summon-indicator-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4"/><circle cx="12" cy="3" r="1"/><path d="M9 13h.01M15 13h.01M9.5 16.5h5"/></svg>
+            <span class="tool-chip-label tool-chip-label-truncates" id="summon-indicator-name"></span>
             <svg class="tool-indicator-x" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
           </button>
           <!-- Document indicator (hidden until the session has documents) -->

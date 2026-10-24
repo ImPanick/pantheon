@@ -6,6 +6,7 @@
 import Storage from './js/storage.js';
 import uiModule from './js/ui.js';
 import workspaceModule from './js/workspace.js';
+import summonModule from './js/summon.js';
 import fileHandlerModule from './js/fileHandler.js?v=20261009census';
 import modelsModule from './js/models.js?v=20260715startupcalm2';
 import ragModule from './js/rag.js';
@@ -2047,6 +2048,7 @@ function initializeEventListeners() {
       if (toggle) toggle.classList.toggle('mode-chat', mode === 'chat');
       // Workspace pill + overflow entry are agent-only - hide immediately (no flash).
       try { workspaceModule.applyMode(mode); } catch (_) {}
+      try { summonModule.applyMode(mode); } catch (_) {}
       // Delay tool glow-up for a staggered effect
       setTimeout(() => applyModeToToggles(mode), 500);
     }
@@ -2197,6 +2199,7 @@ function initializeEventListeners() {
   setupToggle('web-toggle-btn', 'web-toggle', 'web');
   setupToggle('bash-toggle-btn', 'bash-toggle', 'bash');
   try { workspaceModule.initWorkspace(); } catch (_) {}
+  try { summonModule.initSummon(); } catch (_) {}
 
   // Document editor toggle (special: uses module panel, not a checkbox)
   function bringOpenDocumentToFrontOnMobile() {

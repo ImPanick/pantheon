@@ -203,7 +203,7 @@ rows in one wave, and its first two waves have closed 15 of them. The direction 
 
 **Direction as of 2026-10-23: the open count is rising.**
 
-Re-measured 2026-10-24, at `P24`'s third wave: **52 filed, 41 closed**, open **379 → 390** — still rising, still `P24`'s plan (8 of its rows open) and nothing a stranger hits.
+Re-measured 2026-10-24, at `P24`'s third wave: **53 filed, 41 closed**, open **379 → 391** — still rising, still `P24`'s plan (9 of its rows open) and nothing a stranger hits.
 
 **Direction as of 2026-10-24: the open count is rising.**
 

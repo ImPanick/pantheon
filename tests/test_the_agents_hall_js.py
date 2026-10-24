@@ -201,7 +201,7 @@ def test_the_board_is_laid_out_as_the_server_says(sandbox):
         });
     """)
     assert out["inBody"] is True
-    assert out["strip"] == ["1 hired"], "the strip is this person's own hires"
+    assert out["strip"] == ["1 summoned"], "the strip is this person's own hires"
     assert out["search"] == "Search 3 agents…"
     assert out["chips"] == ["All 3", "Email & Inbox 2", "Research & Intelligence 1"]
     assert out["sections"] == ["email", "research"], "an empty section is not drawn"
@@ -268,7 +268,7 @@ def test_an_agents_page_says_what_it_may_do_and_the_form_hires_it(sandbox):
     assert out["post"] == {"url": "/api/agents/topic-watcher/hire", "method": "POST", "body": {
         "inputs": {"topics": ["solar", "wind", "tides"], "at": "07:00", "deep": True},
         "tz_name": "Australia/Sydney", "project": None}}
-    assert out["view"] == "hire" and out["note"].startswith("Topic Watcher is hired.")
+    assert out["view"] == "hire" and out["note"].startswith("Topic Watcher is summoned.")
 
 
 def test_a_refused_hire_shows_the_servers_sentence(sandbox):
@@ -296,19 +296,19 @@ def test_run_now_pause_and_fire(sandbox):
         await press(q('.agents-actions')[0].querySelectorAll('button').find((b) => b.textContent === 'Pause'));
         const afterPause = buttons();
         globalThis.__confirmAnswer = false;
-        await press(q('.agents-actions')[0].querySelectorAll('button').find((b) => b.textContent === 'Fire…'));
+        await press(q('.agents-actions')[0].querySelectorAll('button').find((b) => b.textContent === 'Dismiss…'));
         const keptOnNo = hall.hires.length;
         globalThis.__confirmAnswer = true;
-        await press(q('.agents-actions')[0].querySelectorAll('button').find((b) => b.textContent === 'Fire…'));
+        await press(q('.agents-actions')[0].querySelectorAll('button').find((b) => b.textContent === 'Dismiss…'));
         await settle(40);
         out({ first, afterPause, keptOnNo, left: hall.hires.length, view: mod._test.state().view,
               note: win().note.textContent,
               writes: server.calls.filter((c) => c.method !== 'GET').map((c) => [c.method, c.url, c.body]) });
     """)
-    assert out["first"] == ["Run now", "Pause", "Fire…"]
-    assert out["afterPause"] == ["Switch on", "Fire…"], "a paused hire's task does not run, so it is not offered"
+    assert out["first"] == ["Run now", "Pause", "Dismiss…"]
+    assert out["afterPause"] == ["Switch on", "Dismiss…"], "a paused hire's task does not run, so it is not offered"
     assert out["keptOnNo"] == 1 and out["left"] == 0 and out["view"] == "hall"
-    assert out["note"] == "Meeting Catcher is fired; 1 task removed."
+    assert out["note"] == "Meeting Catcher is dismissed; 1 task removed."
     assert out["writes"] == [
         ["POST", "/api/tasks/t-meeting-catcher/run", {}],
         ["POST", "/api/agents/hires/h-meeting-catcher/status", {"status": "paused"}],
@@ -329,7 +329,7 @@ def test_an_admin_sees_everyone_and_hired_stays_their_own(sandbox):
               hired: cards.filter((c) => c.querySelectorAll('.agents-hired').length).length,
               urls: server.calls.map((c) => c.url) });
     """)
-    assert out["heading"] == "Everyone's agents" and out["strip"] == ["1 hired"]
+    assert out["heading"] == "Everyone's agents" and out["strip"] == ["1 summoned"]
     assert out["owners"] == [True] and out["hired"] == 0
     assert out["urls"] == ["/api/agents", "/api/agents?everyone=1"]
 
@@ -362,7 +362,7 @@ def test_team_action_words(sandbox):
         const t = (hired, n) => ({ hired, members: Array.from({ length: n }, (_, i) => ({ id: String(i) })) });
         out([mod.teamAction(t(0, 3)), mod.teamAction(t(1, 3)), mod.teamAction(t(3, 3))]);
     """)
-    assert out == ["Hire all", "+2", "All hired"]
+    assert out == ["Summon all", "+2", "All summoned"]
 
 
 def test_a_team_is_hired_from_its_page_with_its_shared_inputs_and_a_project(sandbox):
@@ -380,12 +380,12 @@ def test_a_team_is_hired_from_its_page_with_its_shared_inputs_and_a_project(sand
               note: win().note.textContent, view: mod._test.state().view,
               action: texts(body(), 'agents-team-action') });
     """)
-    assert out["onCard"] == ["inbox-zero", "Hire all", 2]
+    assert out["onCard"] == ["inbox-zero", "Summon all", 2]
     assert out["members"] == ["inbox-triage", "meeting-catcher"]
     assert out["post"] == {"url": "/api/agents/teams/inbox-zero/hire", "method": "POST", "body": {
         "inputs": {"vip": ["ana@example.com"]}, "tz_name": "Australia/Sydney", "project": "shop"}}
-    assert out["note"] == "Inbox Zero: 2 agents hired." and out["view"] == "hall"
-    assert out["action"] == ["All hired"]
+    assert out["note"] == "Inbox Zero: 2 agents summoned." and out["view"] == "hall"
+    assert out["action"] == ["All summoned"]
 
 
 def test_try_it_once_makes_a_trial_whose_page_offers_hire_and_discard(sandbox):
@@ -399,7 +399,7 @@ def test_try_it_once_makes_a_trial_whose_page_offers_hire_and_discard(sandbox):
               status: texts(body(), 'agents-status'), note: win().note.textContent });
     """)
     assert out["post"]["url"] == "/api/agents/meeting-catcher/try"
-    assert out["buttons"] == ["Run now", "Hire", "Discard…"]
+    assert out["buttons"] == ["Run now", "Summon", "Discard…"]
     assert out["status"] == ["Trial"]
     assert out["note"].startswith("Trying Meeting Catcher once.")
 

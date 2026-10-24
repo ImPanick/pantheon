@@ -54,7 +54,7 @@ from src.agents.manifest import FAMILIES, SECTIONS
 logger = logging.getLogger(__name__)
 
 BODY_MAX_BYTES = 64 * 1024
-ONLY_A_PERSON = ("Only a person signed in to Pantheon can hire, change or fire an agent — "
+ONLY_A_PERSON = ("Only a person signed in to Pantheon can summon, change or dismiss an agent — "
                  "not an API token or the assistant.")
 NO_SUCH_AGENT = "There is no agent called that in the hall."
 NO_SUCH_HIRE = "There is no such hire."
@@ -247,12 +247,12 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
             if hire is None or hire.owner != user:
                 # Watching another person's hire is an admin's; changing it is not.
                 return _refused(NO_SUCH_HIRE if hire is None else
-                                "This hire is someone else's. You can pause or fire it, not change it.",
+                                "This agent was summoned by someone else. You can pause or dismiss it, not change it.",
                                 404 if hire is None else 403)
             m = get_agent(hire.owner, hire.agent_id)
             if m is None:
                 return _refused("This agent's file is gone or broken, so the hire cannot be changed. "
-                                "Fire it, or put the file back.", 409)
+                                "Dismiss it, or put the file back.", 409)
             H.update_hire(db, hire, m, inputs=body.get("inputs"), grants=body.get("grants"),
                           tz_name=body["tz_name"] if "tz_name" in body else ...,
                           project=body["project"] if "project" in body else ...,
@@ -286,12 +286,12 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
             # any other in a sentence; `1` or `yes` here is a refusal, not on.
             status = body.get("status")
             if status == "on" and hire.owner != user:
-                return _refused("Only the person who hired it can switch it back on.", 403)
+                return _refused("Only the person who summoned it can switch it back on.", 403)
             m = get_agent(hire.owner, hire.agent_id)
             if m is None:
                 if status == "on":
                     return _refused("This agent's file is gone or broken, so it cannot run. "
-                                    "Fire it, or put the file back.", 409)
+                                    "Dismiss it, or put the file back.", 409)
                 H.needs_attention(db, hire, "Paused by hand; its agent file is gone or broken.")
             else:
                 if status == "on" and m.version != hire.version:

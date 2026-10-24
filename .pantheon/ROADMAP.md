@@ -84,9 +84,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P21 | Documents, kept in order | 4 | 0 | 0 | **4** |
 | P22 | The Workbench | 25 | 0 | 0 | **25** |
 | P23 | Alignment — the audits, fixed | 9 | 0 | 0 | **9** |
-| P24 | Agents — the hall of hireable agents | 25 | 8 | 0 | **17** |
+| P24 | Agents — the hall of hireable agents | 27 | 9 | 0 | **18** |
 | Backlog | Bugs and hardening found in flight | 1014 | 350 | 0 | **662** |
-| **Total** | | **1470** | **383** | **5** | **1080** |
+| **Total** | | **1472** | **384** | **5** | **1081** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -248,6 +248,10 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P24: summon an agent into a chat, and the hall says *Summon*
+`60372cf`…(this commit). **1472 tracked, 1081 done. `P24-26` filed and closed; `P24-27` filed for later.**
+The owner asked for agents in the composer and for the mythology's word: the `^` menu's **Agents** summons one into the chat — its runbook, exactly its tools and its effects table for every turn until the chip is dismissed — and the hall summons and dismisses where it hired and fired. The owner also called the roster's runbooks thin, which they are: some are five lines for a job a person would brief in a page. That audit — substance for every agent, then the roster to full scope — is filed as `P24-27`, to be taken when the hall's build rows are done.
 
 ### P24 measured: the evaluation harness, the starred agents' sets, the fit badge, and two rulings
 `75d11b2`…`bfb15af`. **1470 tracked, 1080 done. `P24-16` and `P24-17` closed; `P24-18` in part. `B1433`, `B1434`, `B1435` and `B1435` filed and closed.**
@@ -11185,6 +11189,9 @@ waiting on a connector (wave 3) — laid out the way PandaOS lays out its board.
   evaluation set and sample report.
   **In part, 2026-10-23:** 155 of the 156 ship (`library/pantheon/agents/`), every one lint-clean, every effect of every tool it lists in its table, nothing that leaves the install or cannot be undone allowed without asking, and drafts — never sends — wherever the plan's *Asks before* says sending; the hall reads 173 agents across all 26 sections. *Audit Log Reviewer* waits: no tool reads Pantheon's audit log yet, and a runbook that cannot do its job is not shipped. Evaluation sets and sample reports wait on `P24-16`. `Verify:` `tests/test_the_roster_is_shipped.py`. 2026-10-24: the twelve ops and security agents that read machines over ssh now gather each step in one looping command (1.0.1) — after a shell's first answer every further command waits for a yes.
 - [ ] **P24-24** **Wave 3 of the roster**: 33 agents, each released when the connector in its *Needs* cell lands.
+- [x] **P24-26** **Summon an agent into a chat; *Summon* in the hall.** The owner, 2026-10-24: *"we need a way to attach agents in agent mode. The up arrow here should also have an agents option — and for the Agents menu as well — instead of hire agent we should say Summon — keep it with the mythology theme."*
+  — **done 2026-10-24** — the composer's `^` menu has **Agents** beside Workspace (Agent mode only): a picker over the hall, your own agents first, searchable; the one picked is a chip beside the Workspace pill, dismissed by a click, and every Agent-mode send carries it. The chat route narrows the turn to that agent — its runbook as the person's own context, exactly its tools (offered as they are, never guessed from the message), its effects table, the person's own tightening when they have summoned it before (`src/agents/summon.py`); the chat's own gate, Auto and cards are unchanged, and `D-2026-10-24-01`/`-02` are not applied with a person present. The hall says **Summon**, **Summon all**, **Summoned**, and **Dismiss** where it said *Fire*. `Verify:` `tests/test_an_agent_is_summoned_into_a_chat.py` (10); driven in Chromium: Agents → *brief* → Morning Brief, the chip, a send whose model was offered exactly its four tools, the chip dismissed.
+- [ ] **P24-27** **The agent audit: every runbook given real substance, then the roster to full scope.** The owner, 2026-10-24: *"Some of these agents only have like 2 lines of 'how to be {agent}' and it's ridiculously thin. There's no actual substance to it. Expand drastically, and then add even more (to full scope)."* For every one of the 173 (then every one of the plan's 207 and beyond): a runbook a small model can follow and a person would trust — what good output looks like, with an example; the judgement calls named and decided (what counts as urgent, when to stop, what never to do); the edge cases (nothing found, a tool refusing, a source that contradicts another); the exact headings of the deliverable; a skill where the job has a procedure worth keeping; an evaluation set of 5–10 cases through `P24-16`'s harness and a sample report. Then the roster to full scope: wave 3 as connectors land, and the agents the plan's sections still lack. `Depends:` `P24-16`. To be taken once the hall's build rows are done, as the owner asked.
 
 - [x] **B69** **There are two complete email-account forms and one of them is mounted nowhere.**
   Found by `P18-07` 2026-09-11, after `P18-01` and the first pass of `P18-07` were both written

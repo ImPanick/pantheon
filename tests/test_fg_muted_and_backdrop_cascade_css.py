@@ -535,11 +535,12 @@ def test_the_three_populations_hold_at_their_counts():
     # 128 -> 130 and 120 -> 122 bare: `P24-21`'s team card's `+N` and `P24-09`'s
     # passed delivery check, both text that is secondary on purpose.
     # 130 -> 131, 122 -> 123: `P24-18`'s *Not measured* badge.
-    assert len(uses) == 131, f"expected 131 uses of --fg-muted, found {len(uses)}"
+    # 131 -> 133, 123 -> 125: `P24-26`'s summon picker (a row's tagline, its note).
+    assert len(uses) == 133, f"expected 133 uses of --fg-muted, found {len(uses)}"
 
     bare = [expr for _, expr in uses if not _fallback(expr)]
-    assert len(bare) == 123, (
-        f"expected 123 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
+    assert len(bare) == 125, (
+        f"expected 125 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
         "was legitimately added or removed, move this number and say which in "
         "the commit — do not widen the assertion."
     )
@@ -591,7 +592,8 @@ def test_the_bare_uses_split_across_properties_as_measured():
     # `color` 107 -> 114: `P24-12`'s seven (see above), all text. 114 -> 116:
     # `P24-21`'s `+N` and `P24-09`'s passed check.
     # 116 -> 117: `P24-18`'s *Not measured* badge.
-    assert tally == {"color": 117, "border-color": 4, "background": 2}, tally
+    # 117 -> 119: `P24-26`'s summon picker.
+    assert tally == {"color": 119, "border-color": 4, "background": 2}, tally
 
 
 def test_the_javascript_uses_are_recorded_but_not_this_rows_work():

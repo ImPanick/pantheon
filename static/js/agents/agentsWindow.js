@@ -251,7 +251,7 @@ function _renderHall() {
   const head = _el('div', 'agents-strip-head');
   head.appendChild(_el('h5', 'agents-h', _everyone ? "Everyone's agents" : 'Your agents'));
   const right = _el('div', 'agents-strip-right');
-  right.appendChild(_el('span', 'agents-count', `${hires.length} hired`));
+  right.appendChild(_el('span', 'agents-count', `${hires.length} summoned`));
   if (hires.length > STRIP_PREVIEW) {
     right.appendChild(_button('agents-link', _stripAll ? 'Show less' : `Show more (${hires.length - STRIP_PREVIEW})`,
       () => { _stripAll = !_stripAll; _render(); }));
@@ -270,7 +270,7 @@ function _renderHall() {
   strip.appendChild(head);
   if (!hires.length) {
     strip.appendChild(_el('p', 'agents-empty',
-      'No agents hired yet. Pick one below — it works on its own schedule and reports back.'));
+      'No agents summoned yet. Pick one below — it works on its own schedule and reports back.'));
   } else {
     const grid = _el('div', 'agents-grid');
     (_stripAll ? hires : hires.slice(0, STRIP_PREVIEW)).forEach((h) => grid.appendChild(_hireCard(h)));
@@ -370,11 +370,11 @@ function _renderCatalogue() {
 function _agentCard(a, hired) {
   const card = _button('agents-card', '', () => _openAgent(a.id));
   card.dataset.agent = a.id;
-  card.setAttribute('aria-label', `${a.name}${hired ? ', hired' : ''}. ${a.tagline}`);
+  card.setAttribute('aria-label', `${a.name}${hired ? ', summoned' : ''}. ${a.tagline}`);
   const top = _el('div', 'agents-card-top');
   top.appendChild(_el('span', 'agents-avatar', _initial(a.name)));
   if (a.starred) top.appendChild(_el('span', 'agents-star', '★'));
-  if (hired) top.appendChild(_el('span', 'agents-hired', 'Hired'));
+  if (hired) top.appendChild(_el('span', 'agents-hired', 'Summoned'));
   card.appendChild(top);
   card.appendChild(_el('span', 'agents-card-name', a.name));
   card.appendChild(_el('span', 'agents-card-tag', a.tagline));
@@ -394,9 +394,9 @@ function _fitBadge(fit) {
 /** What a team card says it will do when pressed, in the board's words. */
 export function teamAction(team) {
   const total = (team.members || []).length;
-  if (team.hired >= total) return 'All hired';
+  if (team.hired >= total) return 'All summoned';
   if (team.hired > 0) return `+${total - team.hired}`;
-  return 'Hire all';
+  return 'Summon all';
 }
 
 function _teamCard(t) {
@@ -463,22 +463,22 @@ function _renderTeam(t) {
   });
   page.appendChild(list);
   page.appendChild(_el('p', 'agents-small',
-    'Hire all makes one hire per agent you have not hired, each with its own settings and reports. '
+    'Summon all calls up each agent you have not summoned, each with its own settings and reports. '
     + 'They do not hand work to each other.'));
   const left = (t.members || []).filter((m) => !m.hired).length;
   if (!left) {
-    page.appendChild(_el('p', 'agents-empty', 'You have hired every agent in this team.'));
+    page.appendChild(_el('p', 'agents-empty', 'You have summoned every agent in this team.'));
     body.appendChild(page);
     return;
   }
   const form = _el('form', 'agents-form');
-  form.appendChild(_el('h5', 'agents-h', `Hire ${left === (t.members || []).length ? 'all' : `the other ${left}`}`));
+  form.appendChild(_el('h5', 'agents-h', `Summon ${left === (t.members || []).length ? 'all' : `the other ${left}`}`));
   (t.inputs || []).forEach((spec) => form.appendChild(_inputField(spec)));
   const proj = _projectField();
   if (proj) form.appendChild(proj);
   const tz = _tz();
   if (tz) form.appendChild(_el('p', 'agents-small', `Times are in ${tz}.`));
-  const go = _el('button', 'agents-primary', 'Hire all');
+  const go = _el('button', 'agents-primary', 'Summon all');
   go.type = 'submit';
   form.appendChild(go);
   form.addEventListener('submit', async (e) => {
@@ -494,7 +494,7 @@ function _renderTeam(t) {
     if (!res.ok) { _say(res.refusal.sentence, { error: true }); return; }
     await _load();
     const n = (res.data.hired || []).length;
-    _say(`${t.name}: ${n} agent${n === 1 ? '' : 's'} hired.`);
+    _say(`${t.name}: ${n} agent${n === 1 ? '' : 's'} summoned.`);
     _view = { kind: 'hall' };
     _render();
   });
@@ -634,14 +634,14 @@ function _renderAgent(a) {
   }
 
   const form = _el('form', 'agents-form');
-  form.appendChild(_el('h5', 'agents-h', `Hire ${a.name}`));
+  form.appendChild(_el('h5', 'agents-h', `Summon ${a.name}`));
   (a.inputs || []).forEach((spec) => form.appendChild(_inputField(spec)));
   const proj = _projectField();
   if (proj) form.appendChild(proj);
   const tz = _tz();
   if (tz) form.appendChild(_el('p', 'agents-small', `Times are in ${tz}.`));
   const buttons = _el('div', 'agents-actions');
-  const go = _el('button', 'agents-primary', 'Hire');
+  const go = _el('button', 'agents-primary', 'Summon');
   go.type = 'submit';
   buttons.appendChild(go);
   // `P24-13`. Try it once: hired as a trial, run now, its schedule off until
@@ -658,7 +658,7 @@ function _renderAgent(a) {
     if (!res.ok) { _say(res.refusal.sentence, { error: true }); return; }
     await _load();
     _say(`Trying ${res.data.name} once. Its report appears below when it finishes; `
-      + 'nothing runs on a schedule until you choose Hire.');
+      + 'nothing runs on a schedule until you choose Summon.');
     _openHire(res.data.id, { keepNote: true });
   });
   buttons.appendChild(tryBtn);
@@ -675,7 +675,7 @@ function _renderAgent(a) {
     if (!_win) return;
     if (!res.ok) { _say(res.refusal.sentence, { error: true }); return; }
     await _load();
-    _say(`${res.data.name} is hired. ${res.data.starts_on ? `It starts on ${res.data.starts_on}.` : ''}`);
+    _say(`${res.data.name} is summoned. ${res.data.starts_on ? `It starts on ${res.data.starts_on}.` : ''}`);
     _openHire(res.data.id, { keepNote: true });
   });
   page.appendChild(form);
@@ -797,12 +797,12 @@ function _renderHire(h) {
   words.appendChild(name);
   words.appendChild(_el('p', 'agents-page-meta',
     [h.starts_on && `Starts on ${h.starts_on}`, h.next_run && `next ${_when(h.next_run)}`,
-      `version ${h.version}`, h.owner && _everyone ? `hired by ${h.owner}` : '']
+      `version ${h.version}`, h.owner && _everyone ? `summoned by ${h.owner}` : '']
       .filter(Boolean).join(' · ')));
   head.appendChild(words);
   page.appendChild(head);
   if (h.attention) page.appendChild(_el('p', 'agents-attention', h.attention));
-  if (h.missing) page.appendChild(_el('p', 'agents-attention', "This agent's file is gone or broken. Fire the hire, or put the file back."));
+  if (h.missing) page.appendChild(_el('p', 'agents-attention', "This agent's file is gone or broken. Dismiss it, or put the file back."));
 
   const bar = _el('div', 'agents-actions');
   const firstTask = (h.tasks || [])[0];
@@ -813,8 +813,8 @@ function _renderHire(h) {
       { sentence: `${h.name} is running. Its report appears below when it finishes.` })));
   }
   if (h.status === 'trial') {
-    bar.appendChild(_button('agents-btn', 'Hire', () => _act(() => Api.setHireStatus(h.id, 'on'),
-      { sentence: `${h.name} is hired. ${h.starts_on ? `It starts on ${h.starts_on}.` : ''}` })));
+    bar.appendChild(_button('agents-btn', 'Summon', () => _act(() => Api.setHireStatus(h.id, 'on'),
+      { sentence: `${h.name} is summoned. ${h.starts_on ? `It starts on ${h.starts_on}.` : ''}` })));
   }
   if (h.update_to) {
     bar.appendChild(_button('agents-btn', `Update to ${h.update_to}`, () => _act(
@@ -830,7 +830,7 @@ function _renderHire(h) {
       { sentence: `${h.name} is on.` })));
   }
   const trial = h.status === 'trial';
-  bar.appendChild(_button('agents-btn agents-danger', trial ? 'Discard…' : 'Fire…', async () => {
+  bar.appendChild(_button('agents-btn agents-danger', trial ? 'Discard…' : 'Dismiss…', async () => {
     // The app's own question (`ui.js`'s default export, as `workstation.js`
     // asks it); a page where it cannot load asks nothing and fires nothing.
     let ok = false;
@@ -839,8 +839,8 @@ function _renderHire(h) {
       const ui = uiMod.default || uiMod;
       ok = await ui.styledConfirm(trial
         ? `Discard the trial of ${h.name}? Its run and report go with it.`
-        : `Fire ${h.name}? Its tasks, runs and reports go with it.`,
-      { title: trial ? 'Discard this trial' : 'Fire this agent', confirmText: trial ? 'Discard' : 'Fire',
+        : `Dismiss ${h.name}? Its tasks, runs and reports go with it.`,
+      { title: trial ? 'Discard this trial' : 'Dismiss this agent', confirmText: trial ? 'Discard' : 'Dismiss',
         danger: true });
     } catch (_) { ok = false; }
     if (ok !== true) return;
@@ -848,7 +848,7 @@ function _renderHire(h) {
     if (!_win) return;
     if (!res.ok) { _say(res.refusal.sentence, { error: true }); return; }
     _say(trial ? `The trial of ${res.data.fired} is discarded.`
-      : `${res.data.fired} is fired; ${res.data.tasks_removed} task${res.data.tasks_removed === 1 ? '' : 's'} removed.`);
+      : `${res.data.fired} is dismissed; ${res.data.tasks_removed} task${res.data.tasks_removed === 1 ? '' : 's'} removed.`);
     await _load();
     _view = { kind: 'hall' };
     _render();

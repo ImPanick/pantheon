@@ -50108,3 +50108,60 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 @media (prefers-reduced-motion: no-preference) {
   .agents-card { transition: border-color 0.12s ease, background 0.12s ease; }
 }
+
+/* ── `P24-26` · summon an agent into a chat ─────────────────────────────────
+   The picker opens above the composer, inside `.chat-input-bar`. Tokens only;
+   no stacking number of its own beyond the composer's (`check-zindex.py`). */
+.summon-picker {
+  position: absolute;
+  left: 8px;
+  bottom: calc(100% + 6px);
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(60vh, 460px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border-control, var(--border));
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--bg) 60%, transparent);
+}
+.summon-picker-title { font-size: 12px; font-weight: 600; }
+.summon-picker-search {
+  font: inherit;
+  font-size: 13px;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border-control, var(--border));
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+.summon-picker-list { overflow-y: auto; display: flex; flex-direction: column; gap: 2px; min-height: 0; }
+.summon-picker-row {
+  height: auto;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  text-align: left;
+  font: inherit;
+  color: var(--fg);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+.summon-picker-row:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.summon-picker-name { font-size: 13px; font-weight: 600; }
+.summon-picker-mine { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+.summon-picker-tag {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.summon-picker-empty, .summon-picker-note { margin: 0; font-size: 12px; color: var(--fg-muted); }
+.chat-input-bar:has(> .summon-picker) { position: relative; }

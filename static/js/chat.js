@@ -58,6 +58,7 @@ import { createTerminalStreamError, isRecoverableStreamError, buildReplyError } 
 import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES, renderLimitsHint } from './agentMeter.js';   // P4-08 / P4-23 / P4-24 / P7-10
 import { loadPanel } from './panels.js';
 import planWindow from './planWindow.js';
+import summonModule from './summon.js';   // P24-26
 import * as contextUsage from './contextUsage.js';
 // `P10-06`. The context panel closes through the one popup registry, like
 // every other popup appended to <body> (see `_openContextPanel`).
@@ -3175,6 +3176,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       const _ws = (Storage.KEYS && Storage.get(Storage.KEYS.WORKSPACE, '')) || '';
       if (_ws) {
         fd.append('workspace', _ws);
+      }
+      // `P24-26`. The agent summoned into this chat, in Agent mode.
+      const _summoned = summonModule.getSummoned();
+      if (_summoned && fd.get('mode') === 'agent') {
+        fd.append('agent', _summoned.id);
       }
       if (presetsModule.getSelectedPreset()) {
         fd.append('preset_id', presetsModule.getSelectedPreset());

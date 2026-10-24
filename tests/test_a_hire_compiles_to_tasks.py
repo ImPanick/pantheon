@@ -210,7 +210,7 @@ def test_a_hire_is_its_persons_and_an_admin_watches_everyones(client, admins):
     assert call(client, "GET", "/api/agents?everyone=1", user="bob").json()["everyone"] is False
     assert call(client, "GET", f"/api/agents/hires/{mine['id']}", user="root").status_code == 200
     res = call(client, "PUT", f"/api/agents/hires/{mine['id']}", user="root", json={"name": "x"})
-    assert res.status_code == 403 and "someone else's" in res.json()["detail"]
+    assert res.status_code == 403 and "summoned by someone else" in res.json()["detail"]
     paused = call(client, "POST", f"/api/agents/hires/{mine['id']}/status", user="root",
                   json={"status": "paused"})
     assert paused.status_code == 200
@@ -246,7 +246,7 @@ def test_the_tasks_window_labels_an_agents_task_and_sends_its_changes_to_agents(
         res = call(client, method, url, json=body)
         assert res.status_code == 409, (method, url, res.text)
         assert res.json()["detail"] == ("“Morning Brief” is how the agent Morning Brief runs. Change, "
-                                        "pause or fire it in Agents; Run now works here too.")
+                                        "pause or dismiss it in Agents; Run now works here too.")
     res = call(client, "POST", f"/api/tasks/{task.id}/run", json={})
     assert res.status_code == 200, res.text
 
@@ -287,6 +287,6 @@ def test_a_file_that_says_never_cannot_be_loosened_by_a_hire(client, tmp_path):
         res = call(client, "POST", "/api/agents/careful-reader/hire",
                    json={"grants": {"network_egress": loosened}})
         assert res.status_code == 400, res.text
-        assert res.json()["detail"] == ("Careful Reader says “network_egress” is never; a hire can "
+        assert res.json()["detail"] == ("Careful Reader says “network_egress” is never; you can "
                                         "make that stricter, not looser.")
     assert call(client, "POST", "/api/agents/careful-reader/hire", json={}).status_code == 200

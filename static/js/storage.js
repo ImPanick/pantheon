@@ -26,7 +26,8 @@ export const KEYS = {
   ADMIN_LAST_TAB: 'admin-last-tab',
   DENSITY: 'pantheon-density',
   UI_SCALE: 'pantheon-ui-scale',
-  WORKSPACE: 'pantheon-workspace'
+  WORKSPACE: 'pantheon-workspace',
+  SUMMONED_AGENT: 'pantheon-summoned-agent'
 };
 
 /**

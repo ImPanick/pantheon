@@ -76,7 +76,7 @@ def test_a_run_is_told_its_runbook_and_offered_exactly_its_tools(world):
     run_id, answer = _run(sched, db, _task(db, h.id))
     assert answer.startswith("Today: done.")
     prompt = seen["system_prompt"]
-    assert prompt.startswith("You are Morning Brief, an agent alice hired in Pantheon")
+    assert prompt.startswith("You are Morning Brief, an agent alice summoned in Pantheon")
     assert m.runbook in prompt and "## Report" in prompt and "## Carry forward" in prompt
     assert seen["relevant_tools"] == set(m.tools)
     slot = seen["slot"]
