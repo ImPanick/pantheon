@@ -86,8 +86,10 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P23 | Alignment — the audits, fixed | 9 | 0 | 0 | **9** |
 | P24 | Agents — the hall of hireable agents | 27 | 8 | 0 | **19** |
 | P25 | The + menu, git per account, the agent browser | 10 | 1 | 0 | **9** |
+| P26 | Design — the studio, and notes on the live page | 10 | 10 | 0 | **0** |
+| P27 | Connections — the hub and the private vault | 11 | 11 | 0 | **0** |
 | Backlog | Bugs and hardening found in flight | 1014 | 350 | 0 | **662** |
-| **Total** | | **1482** | **384** | **5** | **1091** |
+| **Total** | | **1503** | **405** | **5** | **1091** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -249,6 +251,10 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P26 and P27 opened: Design, and Connections with a private vault
+`ee381ac`…`HEAD`. **1503 tracked, 1091 done. `P26-00`…`P26-09` and `P27-00`…`P27-10` filed, none closed.**
+A design studio per project — notes pinned to the live page and sent to the agent, design systems, designs as versioned files handed off as a branch, collaborators by invitation; and one Connections hub over the five registers that exist, with a per-account vault the agent logs in from by reference, never seeing the secret.
 
 ### P25: watch the agent's hand, build an agent by talking, an agent offered when it fits
 `c91adb7`…`HEAD`. **1482 tracked, 1091 done. `P25-07`…`P25-09` filed and closed.**
@@ -11304,6 +11310,169 @@ browser, and the person can take it over (`P20-05`'s rule, not a second one).
   — **done 2026-10-24** — *+ New agent* opens on **Talk it through** (beside *Describe it* and *Its file*): the model interviews one question at a time and answers data — `{reply, ready, agent?}` — so it can say it is ready only by handing over a whole agent, which `render` spells and the lint checks (one repair round); after six turns it is nudged to propose, and *Build it now* asks for one at once. The proposal is an **Agent construction** card: a name field (the person's choice becomes its name and id), what it starts on, asks for, uses and delivers, what it asks before and never does, and **Build it** / **Not yet** / *Open the file*. **Build one from this chat…** under *Agents ›* starts the talk from the chat on screen, handed to the model as context, not instructions. `POST /api/agents/interview`; `POST /api/agents/own` takes the name. `Verify:` `tests/test_an_agent_is_written_by_its_person.py` (+6), `tests/test_the_agents_hall_js.py` (+2); driven in Chromium.
 - [x] **P25-09** **An agent offered for the job a message describes.** The owner, 2026-10-24: *"If the user triggers key words or thought processes, such as 'I need optimization for X workflows' or 'I'm thinking of these products' the suggestion of 'load X agent' to enhance your experience in {whatever task is referenced}."*
   — **done 2026-10-24** — `src/agents/suggest.py`, no model: a message that describes a job (need, plan, habit: *I need…*, *I'm thinking of…*, *every morning…*, *keep track of…*) is matched, stemmed, against each agent's name and id, tagline and section; the best is offered only when it clears the bar and is not tied — a wrong offer is worse than none. Above the composer: *{Agent} could help with this*, its tagline, **Summon** (switching to Agent mode when needed) and **Not now** (that agent is not offered again on the page). Not while an agent is summoned, not in incognito. `POST /api/agents/suggest`. `Verify:` `tests/test_an_agent_is_written_by_its_person.py` (+9), `tests/test_the_plus_menu_nests.py` (+1, in Chromium).
+
+# P26 · Design — a studio for each person's projects, and notes pinned to the live page
+
+*Area: `ui`, `workstation`, `agents`, `tools` · Depends: P20, P22, P25 · Opened 2026-10-24 from the owner: **"The
+"Design" suite - where you can add real-time notes to the browser similar to how Claude has it as well as Codex... But
+there's also going to be an entire section/suite for design implementation for projects as a whole. See the "PandaOS"
+pages for inspiration - also web search good platform level agentic design "hub" UI/UX (the "prompting your vision" for
+the AI to make reality). These designs are to be user scoped, and may invite other users as collaborators. Eventually -
+we will implement whole-project DevOps as an additional layer beyond this platform being a generic agentic and chatbot
+area."** The two references the owner sent (PandaOS): a *Design* window beside the chat headed *What will you design?*
+with starting points as cards — *Document* (reports, briefs, print ready), *Mockup* (static high-fidelity screens),
+*Prototype* (clickable working UI), *Motion* (animated intros and reels), more below — and *Pick a starting point, or
+just describe it in the chat*; and its *Design systems* page — a name, *Project* or *Global*, a box to paste a style
+guide, brand notes, CSS or a tokens export or to drop a PDF/PPTX, *Extract from text* and *Upload a file*, and the
+saved list ("Palette, type & vibe. Reusable by you and the AI").*
+
+**What the field does (read 2026-10-24).** Comments that *stick to an element*, not to a pixel, and a *Send to the
+model* that turns the pinned set into one instruction; rough drawing over the page (arrows, circles) as direction;
+several variants side by side to choose between; a property panel that follows the selection (type for text, spacing
+for a grid) and model-made *tweaks* — sliders bound to the design's own values — that change a design without
+regenerating it ([Builder.io on Claude Design](https://www.builder.io/blog/claude-design)). Where those tools fall
+short is the part this phase is for: a design that is not connected to the running project has to be started again
+each time, and there is no way back to an earlier state; the tools that do better give each person a branch, a live
+preview, and a review before anything lands ([Progress, *Designing on the canvas, with agents*](https://www.progress.com/blogs/designing-on-the-canvas-with-agents)).
+
+**What it is.** Two halves, one store. **Notes on the page:** the agent browser (`P25-05`) and any preview it shows
+gain a note layer — pin a comment to an element, draw over the page, and send the set to the agent as one message the
+agent can act on, element by element. **The studio:** a *Design* window per project — starting points, design systems,
+designs that are files in the project (so they are versioned with it, previewed in the person's own workstation, and
+handed to the agent as a branch, not pasted into a chat). Everything is the person's own (`P11`), shared only by an
+invitation they make. **Not in this phase:** whole-project DevOps — builds, preview environments, deploys — is the
+layer after it; `P26-08`'s branch-and-preview is the seam it will build on, and nothing here decides its shape.
+
+- [ ] **P26-00** **Acceptance: a page changed from notes, and a design taken to a branch.** Open a project's dev server
+  in the browser, pin three notes and draw one arrow, *Send*; the agent changes the files and the page reloads with
+  each note marked done. Start a *Mockup* from the studio with the project's design system, compare two variants,
+  tweak one, hand it off; it lands as a branch with the notes and tokens beside it. A second account invited as a
+  commenter adds a note and cannot edit. `Depends:` `P26-01` … `P26-09`. `Verify:` driven at 1440×900 and 390×844,
+  dark and light, against a scripted model and a real workstation.
+- [ ] **P26-01** **Notes on the live page.** In the browser window a *Note* tool (and `N`): hover outlines an element,
+  a click pins a numbered note to it; the note keeps what finds it again — a selector, its text, its role and its
+  box — so it follows the element when the page reflows and says *lost* when the element is gone, never floating
+  over the wrong thing. Notes are listed beside the page, editable and removable. The daemon computes the anchor in the
+  page (`WHERE_FN`'s neighbour), not the client. `Verify:` notes survive a reload, a resize and a re-render; a
+  removed element's note is marked *lost*.
+- [ ] **P26-02** **Draw over the page.** Arrow, circle, box and free line over the page, kept with the frame they were
+  drawn on, removable one by one; a drawing near a note belongs to it. Pointer and touch. `Verify:` a drawing is
+  sent as part of the crop it was drawn on, not as coordinates the model must imagine.
+- [ ] **P26-03** **Send the notes to the agent.** *Send N notes* writes one message into the chat: per note the
+  element (role, text, selector), the person's words, and a crop of the page with the drawing on it; the agent's
+  answer marks each note *done* or says why not, and a done note greys on the page. One turn, not N. Notes not sent
+  stay as a draft for the page. `Verify:` a scripted model receives every note in order with its crop; a note the
+  turn did not address stays open.
+- [ ] **P26-04** **The Design window.** Beside the chat, for the project in view: *What will you design?* and
+  starting points as cards — *Document*, *Mockup*, *Prototype*, *Motion*, *Slides*, *Dashboard* — each opening a
+  short brief (who it is for, the screens, the design system) or *describe it in the chat*; below, the project's
+  designs and design systems. One registry of starting points (`Law 7`); the + menu's *Design ›* reads it. Personal
+  designs (no project) live under *Mine*. `Verify:` the cards and the + menu are one list.
+- [ ] **P26-05** **Design systems.** A name, *Project* or *Personal*; paste a style guide, brand notes, CSS or a tokens
+  export, or upload a file (PDF, PPTX, image, CSS, JSON), or point at the project's own stylesheets or a URL the
+  agent browser opens: the model extracts a palette, type scale, spacing, radii and a sentence of voice into one
+  tokens file, shown as swatches the person can correct before saving. The tokens are a file in the project
+  (`design/systems/<name>.tokens.json`), so the agent reads the same thing the person edited, and every design names
+  the system it uses. `Verify:` an extracted system round-trips; a contrast pair below AA is flagged, not saved silently.
+- [ ] **P26-06** **A design is files, with versions and variants.** `design/<slug>/` in the project: the page(s), a
+  brief, the system it uses, its notes. Every model or hand change is a version the person can step back to; *Try
+  variants* asks for 2–4 side by side, one is kept and the rest become versions. Previewed by the person's own
+  workstation, never by the server's process (`P20`'s rule). `Verify:` restore an earlier version; variants never
+  overwrite one another.
+- [ ] **P26-07** **The canvas: select, adjust, tweak.** Select an element in a design: a panel for what it is (type for
+  text, spacing and alignment for a container, fill and radius for a box) that writes to the design's file — tokens
+  first, a literal value only when the person picks one. *Tweaks*: the model proposes a few sliders and switches bound
+  to the design's own variables (density, corner, accent strength) that change it live without a new generation.
+  `Verify:` an adjustment edits the file, not only the view; a tweak is undoable.
+- [ ] **P26-08** **Hand off to a branch.** *Build it* turns a design into work on the project: a branch
+  `design/<slug>`, a brief the agent follows (screens, tokens, notes, acceptance), the agent's changes made there with
+  the git tools (`P25-03`) and previewed in the browser before anything is merged; merging asks the person. The seam
+  the DevOps layer will extend. `Verify:` nothing reaches the base branch without the person's yes.
+- [ ] **P26-09** **Collaborators.** A design or a design system is its owner's; the owner invites another account by
+  name as *viewer*, *commenter* or *editor*, and can revoke. Notes carry their author; a commenter's note is a note,
+  never an edit; presence shows who has it open. One sharing table for the studio, checked in one place, and the
+  invited person sees it under *Shared with me* — no other route reads another person's designs (`P11`). `Verify:`
+  a stranger's request for a design is 404; a commenter's write is refused by the server, not hidden by the client.
+
+# P27 · Connections — one hub for what an agent may reach, and a private vault for the logins it uses
+
+*Area: `security`, `tools`, `workstation`, `ui` · Depends: P11, P17, P20, P25 · Opened 2026-10-24 from the owner:
+**"Connections hub for the Agents to use. (Again see PandaOS's connections/integrations for this.) We should also
+include a per-user private vault for logins to be stored. So the user can map a URL on a local domain even, and
+configure a local account on that service (assign rbac etc) and then store the login details for the agent to login and
+automate (using shell or even the browser)."***
+
+**What is here today, measured 2026-10-24.** Five registers each hold a kind of connection, with no one place to see
+them: `src/integrations.py` (service presets — Miniflux, Gitea, Linkding, Home Assistant, ntfy, FreshRSS, Vaultwarden —
+in one JSON file, admin-only, keys encrypted with `secret_storage`), `McpServer`, `EmailAccount`, `ModelEndpoint` and
+`P25-02`'s `GitCredential`. The only "vault" is `routes/vault/` — the server's Bitwarden CLI session, admin-only. There
+is no per-person store of logins, and nothing lets an agent log in to a service without being handed the password.
+
+**What it is.** A *Connections* hub that is one view over those registers (`Law 14`: no sixth store), each row the
+person's own unless an admin shared it. A **vault** per account: logins for any address — a public site or
+`grafana.lan`, `10.0.0.5:3000` — encrypted, locked when idle, and **used by reference**: the agent asks to log in *as
+item X*; the daemon fills the form or sets the environment; the value never enters the model's context, a transcript,
+a screenshot, or a log. A guided *agent account*: the agent, with the person's admin login and the person's yes, creates
+a dedicated account on the service with the role the person picks, and its password goes straight into the vault.
+
+- [ ] **P27-00** **Acceptance: a local service, an agent account, a login by reference.** Map `grafana.lan` to an
+  address on the person's network; *Set up an agent account*: pick *Viewer*, approve; the agent creates the user
+  through Grafana's admin, the password lands in the vault unseen. Ask the agent to read a dashboard: it logs in
+  through the browser by reference, and with `curl` through the shell by reference; the transcript, the activity feed,
+  the screenshots and the logs contain no password. A second account cannot see or use the item. `Depends:`
+  `P27-01` … `P27-10`. `Verify:` driven against a real Grafana in the sandbox; a grep of every store for the password
+  finds only ciphertext.
+- [ ] **P27-01** **The Connections hub.** A window (and Settings → Connections) listing every connection the person
+  has, grouped — *Services*, *MCP servers*, *Mail*, *Git*, *Models*, *Logins* — each with its status, a *Test*, when it
+  was last used and by which agent, and *Add* from the presets (`INTEGRATION_PRESETS` is the one catalogue, with icons
+  and a hint each, as the + menu's rows). Reads the existing registers; no new store. `Verify:` a connection added from
+  its old page appears here and the reverse; `check-unreachable` does not rise.
+- [ ] **P27-02** **Service connections, per account.** Today's integrations file is one global list an admin edits.
+  Move it to the `Integration` table, which already has an `owner` column: each person's own, an admin's marked
+  *shared* and read-only to others; a one-time migration gives today's entries to the admin who made them, shared.
+  `Verify:` person A's key is never in person B's list or tools.
+- [ ] **P27-03** **The vault.** Per account, items of a kind — *login* (addresses, username, password, one-time-code
+  secret, notes), *key* (an API token), *note* (a secret text). Encrypted with a key of the person's own, wrapped by
+  the server's (`secret_storage`), so a database copy without the key file reads nothing; optionally a vault
+  passphrase the server never stores. Locked after an idle time the person sets; unlocking is the person's, in their
+  own session. *Reveal* and *copy* ask for the person's password again and are logged. Items are never returned to
+  the model, never written to a transcript. `Verify:` a dump of the database and the logs after use contains no
+  plaintext secret; another account's request for an item is 404.
+- [ ] **P27-04** **Map an address.** A login's addresses may be a name only the person's network knows: map
+  `grafana.lan` to an IP (and port) for that person's workstation — the browser and the shell both resolve it there,
+  nowhere else — with a reachability check and, per item and only when chosen, trust for that service's self-signed
+  certificate. Private addresses stay inside `P17`'s policy for the person: mapping a name never widens what the
+  workstation may reach. `Verify:` the mapping is the person's alone; a mapped name is refused when the policy
+  forbids its address.
+- [ ] **P27-05** **An agent account on the service.** *Set up an agent account* on a login: the person picks a role
+  from the service's own (read from it where it has an API, offered from a template where not) and approves; the agent
+  uses the person's admin item **by reference** to create a dedicated user with that role through the service's API
+  or, failing that, its admin page in the browser; the new password is generated by the daemon and saved straight
+  into a new vault item marked *agent account* — the agent never sees it either. Templates to start: Gitea/Forgejo,
+  Grafana, Home Assistant, Nextcloud, Portainer, Jellyfin, a generic *any site* that only stores. `Verify:` the role is
+  the one approved; nothing is created without the yes; the admin item is never filled anywhere but its own address.
+- [ ] **P27-06** **Log in by reference — the browser.** `agent_browser` gains `login {item}`: the daemon finds the
+  username and password fields on the open page and fills them itself, then submits; a one-time code is generated at
+  that moment. It refuses when the page's origin is not one of the item's addresses (a look-alike is not the
+  service). While a filled password field is on the page, the frame and the page text the agent reads mask it.
+  `Verify:` a page on another origin with the same form is refused; the model's tool result names the item, never its
+  value.
+- [ ] **P27-07** **Log in by reference — the shell.** `vault` inside a shell command: `git`, `curl`, `ssh`-style tools
+  get the item through the environment, a short-lived credential helper or a netrc file that exists only for that
+  command and is removed after; the command's output is scrubbed of the values before anyone sees it. `Verify:` the
+  secret is not in the command line, the shell history, the output, or the workstation's disk after.
+- [ ] **P27-08** **Which agent may use what.** Each connection and vault item says which agents may use it and how —
+  *ask each time* (the default), *ask once per chat*, *allowed* — enforced where the tool runs, not in the prompt.
+  Every use is a line in the agent's activity and the Audit Log: who, which item, which address, allowed by what.
+  `Verify:` an agent without the grant gets a refusal it can explain; the log names every use.
+- [ ] **P27-09** **Agents reach connections by name.** One tool, `connections` (list what this agent may use, and test
+  one), and the existing tools take a connection by its name — `agent_browser login`, the shell's `vault`, git's
+  credential, an MCP server — so the model never handles an address and a secret together. Registered in the nine
+  tool registers. `Verify:` `check-tool-surface` passes; a connection not granted is invisible to the agent.
+- [ ] **P27-10** **Bring logins in, take them out.** Import into the person's own vault from Bitwarden/Vaultwarden
+  JSON and CSV (and from the server's Bitwarden link when an admin set one), export the person's own, encrypted with
+  a passphrase they type. `Verify:` an import never reaches another account; an export is unreadable without the
+  passphrase.
 
 - [x] **B70** **Upstream shipped a security fix through a private advisory fork and we do not have
   it.** Found 2026-09-11 while measuring `P19-06`. Two of the twelve unmerged upstream commits are
