@@ -133,7 +133,10 @@ def routes(tool: Optional[str], owner: Optional[str]) -> bool:
 #: they may use and that their own `ls` would show. So it is lifted with the
 #: nine, for exactly the people they are lifted for, and nothing else is.
 WORKSPACE_TOOL = "get_workspace"
-LIFTED_TOOLS: FrozenSet[str] = WORKSTATION_TOOLS | {WORKSPACE_TOOL}
+#: `P25-03`. `git` runs where the shell runs (`git_tools._Place`): in the
+#: workstation home for exactly the people the nine are lifted for.
+GIT_TOOL = "git"
+LIFTED_TOOLS: FrozenSet[str] = WORKSTATION_TOOLS | {WORKSPACE_TOOL, GIT_TOOL}
 
 
 def lifted_tools(owner: Optional[str]) -> FrozenSet[str]:

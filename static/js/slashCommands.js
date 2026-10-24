@@ -21,6 +21,7 @@ import spinnerModule from './spinner.js';
 import themeModule from './theme.js';
 import documentModule from './document.js?v=20261009approvalcensus';
 import workspaceModule from './workspace.js';
+import composerMenuModule, { GIT_ACTIONS } from './composerMenu.js';
 import settingsModule from './settings.js?v=20261009census';
 import cookbookModule from './cookbook.js';
 import { EVAL_PROMPTS } from './compare/index.js?v=20261009census';
@@ -1306,6 +1307,32 @@ async function _cmdToggleDoc(args, ctx) {
 
 // Workspace: confine the agent's file/shell tools to a folder. Not a boolean -
 // show / set <path> / clear / pick (open the directory browser).
+// `P25-04`. `/git` is *+ → Git ›*: the menu, opened on Git; `/git <action>`
+// puts that action's request in the message box, as the menu's row does — the
+// one list (`composerMenu.GIT_ACTIONS`), so they cannot say different things.
+async function _cmdGit(args) {
+  const sub = (args[0] || '').toLowerCase();
+  const action = GIT_ACTIONS.find((a) => a.id === sub || a.label.toLowerCase().replace('…', '') === sub);
+  if (action) {
+    setTimeout(() => composerMenuModule.sayInComposer(action.say), 0);
+    return true;
+  }
+  if (sub) {
+    slashReply(`Usage: <code>/git</code> · ${GIT_ACTIONS.map((a) => `<code>${a.id}</code>`).join(' · ')}`);
+    return true;
+  }
+  setTimeout(() => { composerMenuModule.openGitMenu(); }, 0);
+  return true;
+}
+
+// `P25-06`. `/browser` opens the agent browser's window; `/browser <address>`
+// opens that address in it, as the person's own act.
+async function _cmdBrowser(args) {
+  const url = args.join(' ').trim();
+  import('./browserWindow.js').then((m) => m.openAgentBrowser({ url }));
+  return true;
+}
+
 async function _cmdWorkspace(args, ctx) {
   const sub = (args[0] || '').toLowerCase();
   const rest = args.slice(1).join(' ').trim();
@@ -5922,6 +5949,22 @@ const COMMANDS = {
     handler: _cmdWorkspace,
     noUserBubble: true,
     usage: '/workspace [set <path> | clear | pick]',
+  },
+  browser: {
+    alias: ['web-browser'],
+    category: 'Agent',
+    help: 'Open the agent browser — watch it, or use it yourself',
+    handler: _cmdBrowser,
+    noUserBubble: true,
+    usage: '/browser [address]',
+  },
+  git: {
+    alias: [],
+    category: 'Agent',
+    help: 'Your git: pick a repository, or ask for its status, a commit, a push…',
+    handler: _cmdGit,
+    noUserBubble: true,
+    usage: '/git [status | commit | pull | push | branch | clone]',
   },
   memory: {
     alias: ['m'],

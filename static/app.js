@@ -7,6 +7,7 @@ import Storage from './js/storage.js';
 import uiModule from './js/ui.js';
 import workspaceModule from './js/workspace.js';
 import summonModule from './js/summon.js';
+import composerMenuModule from './js/composerMenu.js';
 import fileHandlerModule from './js/fileHandler.js?v=20261009census';
 import modelsModule from './js/models.js?v=20260715startupcalm2';
 import ragModule from './js/rag.js';
@@ -49,6 +50,7 @@ import { initTurnSheet } from './js/turnSheet.js';
 // workstation tool card's *View screen*, Settings → Workstation's *Open the
 // screen*. It builds nothing until one is pressed.
 import './js/workstationScreen.js';
+import './js/browserWindow.js';   // `P25-06`: the agent browser's doors
 // Desktop window tiling — drag a modal near an edge/corner to snap.
 import './js/tileManager.js';
 import themeModule from './js/theme.js';
@@ -2049,6 +2051,7 @@ function initializeEventListeners() {
       // Workspace pill + overflow entry are agent-only - hide immediately (no flash).
       try { workspaceModule.applyMode(mode); } catch (_) {}
       try { summonModule.applyMode(mode); } catch (_) {}
+      try { composerMenuModule.applyMode(mode); } catch (_) {}
       // Delay tool glow-up for a staggered effect
       setTimeout(() => applyModeToToggles(mode), 500);
     }
@@ -2420,13 +2423,22 @@ function initializeEventListeners() {
     // Close menu when clicking any item inside it. preventDefault on pointerdown
     // so tapping an item (e.g. Attach files) doesn't steal focus from the message
     // box — keeps the mobile keyboard up.
+    // `P25-01`: a row with a submenu opens it instead (`composerMenu.js`),
+    // and a pick inside a submenu asks for the close with `composer-menu-close`.
     menu.querySelectorAll('.overflow-menu-item').forEach(item => {
       item.addEventListener('pointerdown', (e) => { e.preventDefault(); });
+      if (item.dataset.submenu) return;
       item.addEventListener('click', () => closeOverflowMenu());
     });
     document.addEventListener('click', (e) => {
+      if (e.target && e.target.closest && e.target.closest('.composer-submenu')) return;
+      // A script's click is not the person clicking away: *Modes ›* flips a
+      // chip with its own `click()` and the menu stays open to show it.
+      if (!e.isTrusted) return;
       if (!menu.contains(e.target) && e.target !== plusBtn) closeOverflowMenu();
     });
+    document.addEventListener('composer-menu-close', () => closeOverflowMenu());
+    try { composerMenuModule.initComposerMenu(); } catch (_) {}
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !menu.classList.contains('hidden')) closeOverflowMenu();
     });
@@ -2509,24 +2521,10 @@ function initializeEventListeners() {
     // Map of toolbar btn id → overflow mirror element (created dynamically)
     const overflowMirrors = new Map();
 
-    // Create overflow mirror items for each collapsible button
-    collapsibleBtns.forEach(btn => {
-      const mirror = document.createElement('button');
-      mirror.type = 'button';
-      mirror.className = 'overflow-menu-item toolbar-overflow-mirror';
-      mirror.dataset.mirrorOf = btn.id;
-      // `title` is state text for some buttons (syncPlanToggle rewrites plan
-      // mode's on every toggle), so a button can pin a stable menu label.
-      const title = btn.dataset.overflowLabel || btn.title || btn.id.replace(/-/g, ' ');
-      mirror.innerHTML = btn.querySelector('svg').outerHTML + '<span>' + title + '</span>' +
-        '<span class="overflow-active-dot"></span>';
-      mirror.style.display = 'none';
-      mirror.addEventListener('click', () => btn.click());
-      // Insert at top of overflow menu (before existing items)
-      overflowMenu.insertBefore(mirror, overflowMenu.firstChild);
-      overflowMirrors.set(btn.id, mirror);
-    });
-
+    // `P25-01`: a collapsed chip is reached through *Modes ›* in the + menu
+    // (`composerMenu.js`), which lists every mode with its state — so no
+    // mirror is made here any more, and the Modes row's dot says a collapsed
+    // mode is on.
     function syncMirrorStates() {
       overflowMirrors.forEach((mirror, btnId) => {
         const btn = el(btnId);

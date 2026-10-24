@@ -106,6 +106,8 @@ def running_workstation(tmp_path: Path, *, token: str = TEST_TOKEN, with_screen:
         yield RunningWorkstation(url=f"http://{host}:{port}", token=token, root=root,
                                  system=system, server=server)
     finally:
+        # `P25-05`: a browser the daemon started goes with it.
+        server.station.browsers.stop_all()
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)

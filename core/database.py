@@ -1682,6 +1682,33 @@ class AgentHireTask(Base):
     trigger = Column(Integer, nullable=False, default=0)
 
 
+class GitIdentity(TimestampMixin, Base):
+    """`P25-02`. Who a person's commits say they are. One row per account
+    (`workstation_access.account_of`: one person, one spelling)."""
+    __tablename__ = "git_identities"
+
+    account = Column(String, primary_key=True)
+    name    = Column(String, nullable=False)
+    email   = Column(String, nullable=False)
+
+
+class GitCredential(TimestampMixin, Base):
+    """`P25-02`. A person's token for one git host, encrypted
+    (`src/secret_storage.py`). Never sent back: the routes say only that one
+    is set, for which host, as whom and since when."""
+    __tablename__ = "git_credentials"
+
+    id       = Column(String, primary_key=True)
+    account  = Column(String, nullable=False, index=True)
+    host     = Column(String, nullable=False)
+    username = Column(String, nullable=False)
+    token    = Column(Text, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint('account', 'host', name='uq_git_credentials_account_host'),
+    )
+
+
 class AgentRunReport(Base):
     """`P24-06`. What one finished run of a hire left behind."""
     __tablename__ = "agent_run_reports"

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/summon.js
 //
-// `P24-26`. Summon an agent into a chat. The composer's `^` menu has *Agents*
-// (Agent mode only, like Workspace); it opens a picker over the hall — the
-// agents this person has summoned to work for them first, then every agent,
-// searchable — and the one picked shows as a chip beside the Workspace pill.
+// `P24-26`. Summon an agent into a chat. The composer's + menu has *Agents ›*
+// (Agent mode only, like Workspace); its submenu lists the hall — the agents
+// this person has summoned to work for them first, then every agent,
+// searchable (`composerMenu.js`, `P25-01`) — and the one picked shows as a
+// chip beside the Workspace pill.
 // While the chip is there each Agent-mode send carries `agent=<id>`, and the
 // server narrows the turn to that agent's runbook, tools and effects table
 // (`src/agents/summon.py`). A click on the chip dismisses it.
@@ -13,8 +14,6 @@
 // decides what an agent may do. Text from a manifest is drawn as letters.
 
 import Storage, { KEYS } from './storage.js';
-
-let _picker = null;
 
 function _isChatMode() {
   const b = document.getElementById('mode-chat-btn');
@@ -65,18 +64,6 @@ export function applyMode(_mode) {
   sync();
 }
 
-function _el(tag, cls, text) {
-  const n = document.createElement(tag);
-  if (cls) n.className = cls;
-  if (text != null) n.textContent = text;
-  return n;
-}
-
-function _close() {
-  if (_picker && _picker.parentNode) _picker.parentNode.removeChild(_picker);
-  _picker = null;
-}
-
 /** The picker's rows for `agents`, those `mine` names first, filtered by `query`. */
 export function pickerRows(agents, mine, query) {
   const q = String(query || '').trim().toLowerCase();
@@ -86,73 +73,12 @@ export function pickerRows(agents, mine, query) {
   return hits.filter((a) => own.has(a.id)).concat(hits.filter((a) => !own.has(a.id)));
 }
 
-export async function openPicker() {
-  _close();
-  const box = _el('div', 'summon-picker');
-  box.setAttribute('role', 'dialog');
-  box.setAttribute('aria-label', 'Summon an agent');
-  box.appendChild(_el('div', 'summon-picker-title', 'Summon an agent into this chat'));
-  const search = document.createElement('input');
-  search.type = 'search';
-  search.className = 'summon-picker-search';
-  search.placeholder = 'Search agents…';
-  search.setAttribute('aria-label', 'Search agents');
-  box.appendChild(search);
-  const list = _el('div', 'summon-picker-list');
-  box.appendChild(list);
-  const note = _el('p', 'summon-picker-note',
-    'Its runbook guides the chat and only its tools are offered, until you dismiss it.');
-  box.appendChild(note);
-  const bar = document.querySelector('.chat-input-bar') || document.body;
-  bar.appendChild(box);
-  _picker = box;
-
-  let data = null;
-  try {
-    const res = await fetch('/api/agents', { credentials: 'same-origin' });
-    data = res.ok ? await res.json() : null;
-  } catch (_) { data = null; }
-  if (_picker !== box) return;
-  if (!data) {
-    list.appendChild(_el('p', 'summon-picker-empty', "The Agents hall could not be read. Try again in a moment."));
-    return;
-  }
-  const mine = (data.hires || []).filter((h) => h.owner === data.me).map((h) => h.agent_id);
-  const draw = () => {
-    list.textContent = '';
-    const rows = pickerRows(data.agents, mine, search.value).slice(0, 60);
-    if (!rows.length) {
-      list.appendChild(_el('p', 'summon-picker-empty', 'No agent matches that.'));
-      return;
-    }
-    rows.forEach((a) => {
-      const row = _el('button', 'summon-picker-row');
-      row.type = 'button';
-      row.dataset.agent = a.id;
-      row.appendChild(_el('span', 'summon-picker-name', a.name));
-      if (mine.includes(a.id)) row.appendChild(_el('span', 'summon-picker-mine', 'Yours'));
-      row.appendChild(_el('span', 'summon-picker-tag', a.tagline));
-      row.addEventListener('click', () => { summon(a); _close(); });
-      list.appendChild(row);
-    });
-  };
-  search.addEventListener('input', draw);
-  search.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); _close(); } });
-  draw();
-  try { search.focus(); } catch (_) {}
-}
-
+/** The *Agents ›* row is a submenu (`composerMenu.js`, `P25-01`) — the
+ *  list it shows is `pickerRows`, and a pick is `summon`. */
 export function initSummon() {
-  const item = document.getElementById('overflow-agents-btn');
-  if (item) item.addEventListener('click', () => { openPicker(); });
   const chip = document.getElementById('summon-indicator-btn');
   if (chip) chip.addEventListener('click', dismiss);
-  document.addEventListener('click', (e) => {
-    if (_picker && !_picker.contains(e.target) && !(item && item.contains(e.target))) _close();
-  });
   sync();
 }
 
-export const _test = { picker: () => _picker, close: _close };
-
-export default { initSummon, openPicker, getSummoned, summon, dismiss, applyMode, sync, pickerRows };
+export default { initSummon, getSummoned, summon, dismiss, applyMode, sync, pickerRows };

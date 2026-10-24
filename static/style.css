@@ -50132,59 +50132,217 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   .agents-card { transition: border-color 0.12s ease, background 0.12s ease; }
 }
 
-/* ── `P24-26` · summon an agent into a chat ─────────────────────────────────
-   The picker opens above the composer, inside `.chat-input-bar`. Tokens only;
-   no stacking number of its own beyond the composer's (`check-zindex.py`). */
-.summon-picker {
-  position: absolute;
-  left: 8px;
-  bottom: calc(100% + 6px);
-  width: min(420px, calc(100vw - 32px));
-  max-height: min(60vh, 460px);
+/* ── `P25-01` · the + menu, nested ────────────────────────────────────────────
+   A row with a › opens its submenu beside the menu (`composerMenu.js`); on a
+   phone the submenu covers the menu as a page with a back row. The submenu
+   is the menu's own child, so it is drawn on the menu's tier without a
+   stacking number of its own (`check-zindex.py`), and stays `visible` while
+   the menu under it is hidden on a phone. */
+.overflow-menu { min-width: 230px; }
+.overflow-menu-sep {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--border);
+}
+.overflow-hint {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+.overflow-chevron {
+  margin-left: auto;
+  padding-left: 10px;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--fg-muted);
+}
+.overflow-menu-item.active .overflow-active-dot + .overflow-chevron { margin-left: 8px; }
+.overflow-menu-item.submenu-open {
+  opacity: 1;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+.overflow-menu-item.composer-menu-folded { display: none; }
+.overflow-menu.composer-menu-under { visibility: hidden; }
+.overflow-plus-btn svg { transition: transform 0.16s var(--ease-signature); }
+.overflow-plus-btn.expanded svg { transform: rotate(45deg); }
+.composer-submenu {
+  position: fixed;
+  visibility: visible;
+  width: 300px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px;
-  border: 1px solid var(--border-control, var(--border));
-  border-radius: 12px;
+  gap: 2px;
+  padding: 4px;
+  overflow: hidden;
   background: var(--panel);
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--bg) 60%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px var(--shadow-ink-3);
 }
-.summon-picker-title { font-size: 12px; font-weight: 600; }
-.summon-picker-search {
+.composer-submenu-search {
+  margin: 2px 2px 4px;
   font: inherit;
   font-size: 13px;
   color: var(--fg);
   background: var(--bg);
   border: 1px solid var(--border-control, var(--border));
-  border-radius: 8px;
+  border-radius: 7px;
   padding: 6px 8px;
 }
-.summon-picker-list { overflow-y: auto; display: flex; flex-direction: column; gap: 2px; min-height: 0; }
-.summon-picker-row {
-  height: auto;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 2px 8px;
+.composer-submenu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 0;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.composer-submenu-page .composer-submenu-list { max-height: none; flex: 1 1 auto; }
+.composer-submenu-row, .composer-submenu-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
   text-align: left;
   font: inherit;
+  font-size: 13px;
   color: var(--fg);
   background: none;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 10px;
   cursor: pointer;
 }
-.summon-picker-row:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
-.summon-picker-name { font-size: 13px; font-weight: 600; }
-.summon-picker-mine { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
-.summon-picker-tag {
-  grid-column: 1 / -1;
-  font-size: 12px;
+.composer-submenu-row:hover, .composer-submenu-back:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+.composer-submenu-back { font-weight: 600; color: var(--fg-muted); }
+.composer-submenu-words { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.composer-submenu-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-submenu-hint {
+  font-size: 11.5px;
   color: var(--fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.summon-picker-empty, .summon-picker-note { margin: 0; font-size: 12px; color: var(--fg-muted); }
-.chat-input-bar:has(> .summon-picker) { position: relative; }
+.composer-submenu-badge {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+.composer-submenu-check { flex: 0 0 auto; color: var(--fg); }
+.composer-submenu-switch {
+  flex: 0 0 auto;
+  position: relative;
+  width: 26px;
+  height: 15px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fg) 22%, transparent);
+}
+.composer-submenu-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--panel);
+  transition: transform 0.14s ease;
+}
+.composer-submenu-switch.on { background: var(--green); }
+.composer-submenu-switch.on::after { transform: translateX(11px); }
+.composer-submenu-foot { color: var(--fg-muted); }
+.composer-submenu-sep { height: 1px; margin: 3px 6px; background: var(--border); }
+.composer-submenu-empty { margin: 6px 10px; font-size: 12px; color: var(--fg-muted); }
+
+/* ── `P25-06` · the agent browser's window ───────────────────────────────── */
+#agent-browser-modal .abw-content {
+  width: min(1040px, 95vw);
+  height: min(780px, 90vh);
+  max-height: 90vh;
+  overflow: hidden;
+  gap: 6px;
+}
+.abw-heading { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.abw-icon { display: inline-flex; opacity: 0.7; }
+.abw-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.abw-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: thin; }
+.abw-tab {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 180px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px 7px 0 0;
+}
+.abw-tab-current { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.abw-tab .memory-toolbar-btn { border: none; background: none; }
+.abw-tab-pick { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.abw-tab-close { flex: 0 0 auto; padding: 0 6px; }
+.abw-tab-new { flex: 0 0 auto; }
+.abw-bar { display: flex; align-items: center; gap: 4px; }
+.abw-nav { flex: 0 0 auto; min-width: 30px; }
+.abw-address {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border-control, var(--border));
+  border-radius: 7px;
+  padding: 6px 10px;
+}
+.abw-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.abw-status { flex: 1 1 240px; min-width: 0; }
+.abw-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 160px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fg) 6%, var(--panel));
+  overflow: hidden;
+}
+.abw-stage.abw-held { border-color: var(--green); box-shadow: 0 0 0 1px var(--green); }
+.abw-page {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+}
+.abw-page.abw-holding { cursor: pointer; }
+.abw-frame { display: block; max-width: 100%; max-height: 100%; user-select: none; -webkit-user-drag: none; }
+.abw-frame[hidden], .abw-empty[hidden], .abw-hint[hidden] { display: none; }
+.abw-empty { padding: 24px; font-size: 13px; text-align: center; }
+.abw-hint { margin: 0; font-size: 12px; line-height: 1.45; }
+
+/* ── `P25-02` · Settings → Git ──────────────────────────────────────────── */
+.git-settings-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin: 10px 0 6px; }
+.git-settings-field { display: flex; flex-direction: column; gap: 3px; flex: 1 1 160px; min-width: 0; font-size: 11px; color: var(--fg-muted); }
+.git-settings-field em { font-style: normal; opacity: 0.8; }
+.git-settings-field input {
+  font: inherit;
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border-control, var(--border));
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+.git-hosts-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.git-host-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; padding: 6px 8px;
+  border: 1px solid var(--border); border-radius: 6px; }
+.git-host-name { font-weight: 600; }
+.git-host-user, .git-host-since { color: var(--fg-muted); }
+.git-host-replace { margin-left: auto; }
+.git-hosts-empty { margin: 0; font-size: 12px; color: var(--fg-muted); }
+#git-settings-result.git-settings-error { color: var(--red); }

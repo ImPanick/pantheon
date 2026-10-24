@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 from .host_tools import HostShellTool
 from .computer_tools import ComputerTool
+from .git_tools import GitTool
+from .browser_tools import BrowserTool
 from .subprocess_tools import BashTool, PythonTool
 from .web_tools import WebSearchTool, WebFetchTool
 from .filesystem_tools import ReadFileTool, WriteFileTool, EditFileTool, ApplyPatchTool, LsTool, GlobTool, GrepTool, GetWorkspaceTool
@@ -71,6 +73,12 @@ TOOL_HANDLERS = {
     # in `tool_execution` (it needs the owner, which the registry fallback does
     # not pass), offered only when the workstation would answer this person.
     "computer": ComputerTool().execute,
+    # `P25-03`. The person's own git. Dispatched by name in `tool_execution`
+    # (it needs the owner and the turn's workspace).
+    "git": GitTool().execute,
+    # `P25-05`. The person's own browser in their workstation. Dispatched by
+    # name in `tool_execution`, as `computer` is (it needs the owner).
+    "agent_browser": BrowserTool().execute,
 }
 # Config/integration admin tools (manage_endpoints/mcp/webhooks/tokens/settings).
 TOOL_HANDLERS.update(ADMIN_TOOL_HANDLERS)
@@ -125,6 +133,10 @@ TOOL_TAGS = {"bash", "python", "web_search", "web_fetch", "read_file", "write_fi
              "resolve_contact", "manage_contact",
              # `P20-04`. Computer use on the workstation (`D-2026-09-30-03`).
              "computer",
+             # `P25-03`. The person's own git, as them, where their shell runs.
+             "git",
+             # `P25-05`. The agent browser: Firefox in the person's workstation.
+             "agent_browser",
              # Email tool names come from BUILTIN_EMAIL_TOOLS (unioned below)
              # so the fence regex, dispatch, and non-admin blocklist all cover
              # the same set.

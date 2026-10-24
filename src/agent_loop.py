@@ -270,7 +270,7 @@ def _runs_in(tool_name: Any, owner: Any) -> Optional[str]:
     pick. Anything else, or a question that cannot be answered, is "here": the
     phrase that was always shown.
     """
-    if tool_name == "computer":
+    if tool_name in ("computer", "agent_browser"):
         return RUNS_IN_WORKSTATION
     try:
         from src.agent_tools import workstation_tools
@@ -1676,6 +1676,29 @@ Body for POST/PUT/PATCH goes in `body` (object). Query params in `query` (object
 
 Blocked paths/routes (refused for safety): /api/auth/, /api/users/, /api/tokens/, /api/admin/, /api/shell/, /api/backup/restore, /api/email/accounts, POST /api/cookbook/packages/install, POST /api/cookbook/rebuild-engine, POST /api/cookbook/kill-pid.""",
 
+    # `P25-05`. The fenced form of the `agent_browser` schema.
+    "agent_browser": (
+        "```agent_browser\n"
+        '{"action": "open", "url": "https://example.org"}\n'
+        "```\n"
+        "A real browser in the person's workstation, which they watch in the app — one action "
+        "per block: open (url), read (the page's text and its elements numbered [1], [2]…), "
+        "click (ref), type (ref, text, submit), press (keys), scroll (dy), back, forward, "
+        "reload, tabs, tab_new (url), tab_switch (tab), tab_close (tab), screenshot. Read again "
+        "after anything that changes the page."
+    ),
+    # `P25-03`. The fenced form of the `git` schema, for a model with no
+    # native tool channel.
+    "git": (
+        "```git\n"
+        '{"action": "commit", "repo": "my-project", "message": "Fix the footer link"}\n'
+        "```\n"
+        "The person's own git, as them, where their shell runs — one action per block: "
+        "status, diff (staged, path), log (limit), branch (name, create), commit (message, "
+        "files), pull (remote, branch), push (remote, branch, set_upstream; never forced), "
+        "clone (url, https only; into). repo is the repository's folder relative to the "
+        "workspace; leave it out for the one attached to the chat. Prefer it to git in bash."
+    ),
     # `P20-04`. The fenced form of the `computer` schema, for a model with no
     # native tool channel. The actions and the screen size are read from the
     # workstation protocol (`Law 7`), as the schema's are.
@@ -6717,6 +6740,11 @@ async def stream_agent_loop(
     # otherwise, through the same denylist every other per-turn rule feeds, so
     # the schema, the prompt and the dispatcher agree (`Law 14`). A token-driven
     # run is not offered it either (`B70`; `unavailable_reason` says why).
+    # `P25-05`. The agent browser lives on the same workstation: the same
+    # question, so the two are offered to exactly the same people.
+    if disabled_tools.allows("agent_browser") and _computer_unavailable_reason(
+            owner, delegated_credential=bool(delegated_credential)):
+        disabled_tools.withhold({"agent_browser"}, because=WITHHELD_BY_WORKSTATION)
     if disabled_tools.allows("computer") and _computer_unavailable_reason(
             owner, delegated_credential=bool(delegated_credential)):
         disabled_tools.withhold({"computer"}, because=WITHHELD_BY_WORKSTATION)

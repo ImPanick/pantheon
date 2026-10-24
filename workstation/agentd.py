@@ -435,6 +435,9 @@ class Workstation:
         # `B974`: per account, the last frame taken — its mark, when, its
         # format and its digest.
         self._frames: Dict[str, Dict] = {}
+        # `P25-05`: each account's browser, started on first use.
+        from workstation.browser import Browsers
+        self.browsers = Browsers(system)
 
     # -- auth and accounts ------------------------------------------------------
 
@@ -516,6 +519,7 @@ class Workstation:
                 "projects": str(projects[0]) if projects else None}
 
     def reset(self, account: str) -> Dict:
+        self.browsers.stop(account)   # `P25-05`: its profile goes with the home
         self.system.reset(account)
         with self._lock:
             self._holders.pop(account, None)
@@ -835,6 +839,31 @@ class Workstation:
         return out
 
 
+    def browser(self, account: str, body: Dict) -> Optional[Dict]:
+        """`P25-05`. One action on the account's browser (`ROUTES["browser"]`);
+        None for a `frame` the caller already has (a `304`)."""
+        from workstation.browser import BrowserError
+        action = body.get("action")
+        if action not in P.BROWSER_ACTIONS:
+            raise WorkstationError("bad_request",
+                                   f"“action” is one of {', '.join(P.BROWSER_ACTIONS)}.")
+        who = body.get("holder") or "agent"
+        if who not in P.HOLDERS:
+            raise WorkstationError("bad_request", "“holder” is “agent” or “person”.")
+        if who == "agent" and action != "frame" and self.holder(account)["holder"] == "person":
+            raise WorkstationError(
+                "busy", "A person has taken over this workstation's screen and its browser. Wait "
+                        "for them to hand it back, or ask them what they need.")
+        try:
+            b = self.browsers.get(account)
+            if action == "frame":
+                return b.frame(str(body.get("if_none_match") or ""))
+            return b.act(action, body)
+        except BrowserError as e:
+            code = e.code if e.code in P.ERRORS else ("bad_request" if e.code in ("gone", "refused") else "unavailable")
+            raise WorkstationError(code, e.message)
+
+
 def _int(value, default: int, name: str) -> int:
     if value is None:
         return default
@@ -1041,8 +1070,13 @@ class Handler(BaseHTTPRequestHandler):
                        "read": lambda: self.station.read(account, body),
                        "write": lambda: self.station.write(account, body),
                        "list": lambda: self.station.list(account, body),
-                       "input": lambda: self.station.input(account, body)}[name]
-            self._send(200, handler())
+                       "input": lambda: self.station.input(account, body),
+                       "browser": lambda: self.station.browser(account, body)}[name]
+            answer = handler()
+            if answer is None:          # `P25-05`: a browser frame the caller has
+                self._send(304, None)
+                return
+            self._send(200, answer)
         except WorkstationError as e:
             self._fail(e)
         except ConnectionError:

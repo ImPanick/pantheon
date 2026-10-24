@@ -59,6 +59,19 @@ tools ask them, with the same sentence when one says no:
                                  While a person holds it, the agent's input is
                                  `busy` with the daemon's sentence (`P20-04`).
 
+`P25-06` — the agent browser's window. Two more, the caller's own browser only,
+through `_mine` like the input route:
+
+  GET  /api/workstation/browser  one frame of the page (not the desktop) with
+                                 its address, title and tabs; `?if_none_match`
+                                 and an unchanged page is `304`.
+  POST /api/workstation/browser  the person's own action — open an address, a
+                                 click or a wheel at a point on the frame, typed
+                                 text, a key, back, forward, reload, a tab —
+                                 sent with `holder: "person"`. Taking the
+                                 browser over is the screen's own `control`: it
+                                 is on that screen, so there is one holder.
+
 **Why a person's input carries `holder: "person"` and nothing else can.** The
 body's own `holder` is dropped: this route speaks for the person at the
 keyboard, which is the one thing the daemon cannot tell from the wire. The
@@ -304,7 +317,50 @@ def setup_workstation_routes() -> APIRouter:
         return {**_holder_answer(answer.get("holder"), changed=True),
                 "since": answer.get("since")}
 
+    # ── `P25-06`: the agent browser's window ───────────────────────────────────
+
+    @router.get("/browser")
+    async def workstation_browser(request: Request, if_none_match: str = ""):
+        """The caller's own browser: one frame of the page, its address, title
+        and tabs; `304` when the page has not changed."""
+        client, account = _mine(request)
+        try:
+            shot = await client.browser(account, "frame", if_none_match=if_none_match or None)
+            if shot is None:
+                return Response(status_code=304, headers=_NO_STORE)
+            frame = _frame(shot)
+        except WorkstationError as e:
+            raise _http_error(e)
+        tabs = [{"tab": n, "url": str(t.get("url") or "")[:2000], "current": bool(t.get("current"))}
+                for n, t in enumerate(shot.get("tabs") or [], start=1) if isinstance(t, dict)]
+        return JSONResponse({**frame, "url": str(shot.get("url") or "")[:4000],
+                             "title": str(shot.get("title") or "")[:300], "tabs": tabs},
+                            headers=_NO_STORE)
+
+    @router.post("/browser")
+    async def workstation_browser_act(request: Request):
+        """The person's own hand on their browser."""
+        client, account = _mine(request)
+        body = await _body(request)
+        action = body.get("action")
+        if action not in _BROWSER_PERSON_ACTIONS:
+            raise HTTPException(400, f"“action” is one of {', '.join(_BROWSER_PERSON_ACTIONS)}.")
+        fields = {k: body[k] for k in _BROWSER_FIELDS if k in body}
+        try:
+            answer = await client.browser(account, action, holder="person", **fields) or {}
+        except WorkstationError as e:
+            raise _http_error(e)
+        return {"ok": bool(answer.get("ok")), "action": action,
+                "url": str(answer.get("url") or "")[:4000], "title": str(answer.get("title") or "")[:300]}
+
     return router
+
+
+# `P25-06`. What a person's window may ask of their browser, and the fields it
+# may carry; the daemon validates every one (`workstation/browser.py`).
+_BROWSER_PERSON_ACTIONS = ("open", "click", "type", "press", "scroll", "back", "forward",
+                           "reload", "tab_new", "tab_switch", "tab_close")
+_BROWSER_FIELDS = ("url", "x", "y", "text", "submit", "keys", "dx", "dy", "tab", "double")
 
 
 __all__ = ["setup_workstation_routes"]

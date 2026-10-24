@@ -1388,6 +1388,10 @@ class VmStation(Workstation):
         return self.system.forward(account, "input", body,
                                    timeout=P.MAX_WAIT_MS / 1000 + 120.0)
 
+    def browser(self, account: str, body: Dict) -> Optional[Dict]:
+        """`P25-05`: the browser is the machine's; its `304` comes back as None."""
+        return self.system.forward(account, "browser", body, timeout=180.0, allow_304=True)
+
 
 # ── the command line ──────────────────────────────────────────────────────────
 

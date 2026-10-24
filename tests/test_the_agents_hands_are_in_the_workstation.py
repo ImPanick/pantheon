@@ -671,7 +671,7 @@ def test_the_lifted_set_is_the_nine_for_whoever_may_use_the_workstation(ws, sett
     assert lifted_tools("ann") == frozenset()          # off
     _on(settings, ws)
     # `B985`: and `get_workspace`, which then answers about the same home.
-    assert lifted_tools("ann") == WORKSTATION_TOOLS | {"get_workspace"} == lifted_tools("boss")
+    assert lifted_tools("ann") == WORKSTATION_TOOLS | {"get_workspace", "git"} == lifted_tools("boss")
     assert lifted_tools("bob") == frozenset()
     settings["workstation_route_tools"] = False
     assert lifted_tools("ann") == frozenset()

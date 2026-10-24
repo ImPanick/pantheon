@@ -180,7 +180,7 @@ def _welcome_script() -> str:
 
 @pytest.mark.parametrize("phone, line", [
     (False, "Drop files here to attach them."),
-    (True, "Tap ^ beside the message box to attach files."),
+    (True, "Tap + beside the message box to attach files."),
 ])
 def test_the_welcome_says_one_true_line(tmp_path, phone, line):
     script = """

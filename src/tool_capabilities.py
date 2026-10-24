@@ -186,6 +186,28 @@ _register(
     result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED,
 )
 _register(
+    # `P25-05`. The agent browser: everything any of its actions can do (what an
+    # agent's effects table lists), each call classified by its action below.
+    {"agent_browser"},
+    ToolEffect.READ_PUBLIC,
+    ToolEffect.NETWORK_EGRESS,
+    ToolEffect.EXTERNAL_SIDE_EFFECT,
+    result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED,
+)
+_register(
+    # `P25-03`. The person's own git. The tool as a whole carries every effect
+    # one of its actions has — what an agent's effects table lists for it
+    # (`src/agents/hires.manifest_effects`) — and each call is classified by
+    # its action (`_ACTION_CAPABILITIES` below), so a status never asks and a
+    # push is what it is: something sent out under the person's name.
+    {"git"},
+    ToolEffect.READ_WORKSPACE,
+    ToolEffect.WRITE_WORKSPACE,
+    ToolEffect.NETWORK_EGRESS,
+    ToolEffect.EXTERNAL_SIDE_EFFECT,
+    result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED,
+)
+_register(
     {"apply_patch", "edit_file", "write_file"},
     ToolEffect.WRITE_WORKSPACE,
     # Successful writes include unified diffs that can echo arbitrary existing
@@ -632,6 +654,17 @@ _ACTION_ALIASES: Mapping[str, Mapping[str, str]] = MappingProxyType(
                 "list": "list_events",
             }
         ),
+        # `P25-03`. The spellings `git` accepts; `git_tools` reads them from
+        # here (`Law 7`), so the action classified is the action run.
+        # `P25-05`. `agent_browser`'s spellings, read by the tool from here.
+        "agent_browser": MappingProxyType({"navigate": "open", "goto": "open", "visit": "open",
+                                           "get_text": "read", "snapshot": "read", "fill": "type",
+                                           "key": "press", "new_tab": "tab_new",
+                                           "switch_tab": "tab_switch", "close_tab": "tab_close",
+                                           "refresh": "reload", "go_back": "back"}),
+        "git": MappingProxyType({"st": "status", "show": "diff", "history": "log",
+                                 "checkout": "branch", "switch": "branch", "ci": "commit",
+                                 "fetch": "pull", "publish": "push"}),
         "manage_notes": MappingProxyType(
             {
                 "create": "add",
@@ -772,6 +805,46 @@ _OBSERVE_ONLY_CAPABILITIES = _capabilities(
 )
 
 
+# `P25-03`. A multiplexed tool whose actions differ in kind, not only in
+# whether they look: each action's own effects. An action the table does not
+# name keeps the tool's whole registration (fail high). Results that only
+# show the repository are `WORKSPACE_UNTRUSTED` — its files are whoever wrote
+# them — and what a pull or clone brings from a host is `EXTERNAL_UNTRUSTED`.
+_LOOK = _capabilities(ToolEffect.READ_PUBLIC, result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED)
+_REACH = _capabilities(ToolEffect.NETWORK_EGRESS, result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED)
+_SEND = _capabilities(ToolEffect.NETWORK_EGRESS, ToolEffect.EXTERNAL_SIDE_EFFECT,
+                      result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED)
+_ACTION_CAPABILITIES: Mapping[str, Mapping[str, ToolCapabilities]] = MappingProxyType({
+    # `P25-05`. Looking at what is open never asks; going somewhere reaches the
+    # web; a click, typing and a key press can send a form, a message or an
+    # order, so they are what a push is — outward, under the person's name.
+    "agent_browser": MappingProxyType({
+        "read": _LOOK, "screenshot": _LOOK, "tabs": _LOOK, "tab_switch": _LOOK,
+        "tab_close": _LOOK, "scroll": _LOOK,
+        "open": _REACH, "back": _REACH, "forward": _REACH, "reload": _REACH, "tab_new": _REACH,
+        "click": _SEND, "type": _SEND, "press": _SEND,
+    }),
+    "git": MappingProxyType({
+        "status": _capabilities(ToolEffect.READ_WORKSPACE,
+                                result_integrity=ResultIntegrity.WORKSPACE_UNTRUSTED),
+        "diff": _capabilities(ToolEffect.READ_WORKSPACE,
+                              result_integrity=ResultIntegrity.WORKSPACE_UNTRUSTED),
+        "log": _capabilities(ToolEffect.READ_WORKSPACE,
+                             result_integrity=ResultIntegrity.WORKSPACE_UNTRUSTED),
+        "branch": _capabilities(ToolEffect.WRITE_WORKSPACE,
+                                result_integrity=ResultIntegrity.WORKSPACE_UNTRUSTED),
+        "commit": _capabilities(ToolEffect.WRITE_WORKSPACE,
+                                result_integrity=ResultIntegrity.WORKSPACE_UNTRUSTED),
+        "pull": _capabilities(ToolEffect.NETWORK_EGRESS, ToolEffect.WRITE_WORKSPACE,
+                              result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED),
+        "clone": _capabilities(ToolEffect.NETWORK_EGRESS, ToolEffect.WRITE_WORKSPACE,
+                               result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED),
+        "push": _capabilities(ToolEffect.NETWORK_EGRESS, ToolEffect.EXTERNAL_SIDE_EFFECT,
+                              result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED),
+    }),
+})
+
+
 # ── `B930` · a step-limit reply is Pantheon's own words ─────────────────────
 #
 # `manage_settings` is registered `EXTERNAL_UNTRUSTED` above because the admin
@@ -905,6 +978,8 @@ def capabilities_for_action(tool_name: Any, content: Any) -> ToolCapabilities:
         return _UNKNOWN_CAPABILITIES
     if action in _OBSERVE_ONLY_ACTIONS.get(tool_name, ()):
         return _OBSERVE_ONLY_CAPABILITIES
+    if tool_name in _ACTION_CAPABILITIES:
+        return _ACTION_CAPABILITIES[tool_name].get(action, base)
     destructive = action in _ACTION_DESTRUCTIVE.get(tool_name, ())
     if tool_name not in _PRIVATE_ACTION_READS:
         if not destructive:

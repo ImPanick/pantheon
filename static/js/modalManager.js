@@ -173,6 +173,8 @@ const _LABELS = {
   // `P22-02`. The Workbench — the workflow glyph from the shared table, the
   // same picture as its two doors and ⋮ → Workflow on a task card.
   'workbench-modal':   { label: 'Workbench', icon: iconSvg(WORKFLOW_GLYPH, { outline: true }) },
+  // `P25-06`. The agent browser — a globe, the doors' glyph (`browserWindow.js`).
+  'agent-browser-modal': { label: 'Agent browser', icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z' },
   // `P24-12`. The Agents hall — its glyph is the doors' (`agents/agentsWindow.js:AGENT_ICON`).
   'agents-modal':      { label: 'Agents', icon: 'M7 8h10a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3zM12 4v4M9 13h.01M15 13h.01M9.5 16.5h5' },
 };
@@ -1933,6 +1935,9 @@ const _AUTO_WIRE = {
   'workbench-modal':      { rail: 'rail-workbench', sidebar: 'tool-workbench-btn' },
   // `P24-12`. Built by `agents/agentsWindow.js:openAgents`, which registers it.
   'agents-modal':         { rail: 'rail-agents',    sidebar: 'tool-agents-btn' },
+  // `P25-06`. Opened from the + menu's *Browser*, `/browser` and a browser tool
+  // card, through `browserWindow.js:openAgentBrowser`; no rail button of its own.
+  'agent-browser-modal':  { rail: null,             sidebar: null },
 };
 
 function _autoRegister(id) {

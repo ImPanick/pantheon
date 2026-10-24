@@ -97,6 +97,8 @@ BUILTIN_TOOL_DESCRIPTIONS: Dict[str, str] = {
     # Desktop (the schema's comment in `tool_schemas.py` has the measurement).
     "host_shell": "Run a shell command on the HOST machine, outside the Docker container, through the network agent the operator installed there. Use for anything that must act on the real computer itself — its files beyond what is mounted into the container, its processes and services, its own network configuration (addresses, routes, neighbour table) — which `bash` cannot do because it runs inside the container. Connecting to a service over the network, `bash` can often do itself (on Docker Desktop a container reaches the host and the LAN). Requires the host agent to be configured and shell to be enabled.",
     "computer": "Use the workstation's desktop (an Ubuntu machine with a browser) by looking at its screen and working its mouse and keyboard: take a screenshot, click, double/right/middle click, move, drag, scroll, type text, press keys, wait. Every action returns a screenshot of the result. Use for GUI work — clicking through a web page or an app on the workstation, filling a form, checking what something looks like. Not for running commands or editing files; bash, python and the file tools do that.",
+    "git": "The person's own git, as them, where their shell runs: status, diff, log, branch, commit, pull, push (never forced) and clone from https, one action per call, with their commit identity and their token for the host a command reaches. Use for version control instead of git through bash.",
+    "agent_browser": "A real web browser in the person's workstation, which they can watch and take over in the app: open a page, read its text and numbered elements, click, type, press keys, scroll, go back, manage tabs, take a screenshot. For sites that need clicking, logging in or forms.",
     "manage_rag": "RAG document index: list indexed files, add or remove a directory, store arbitrary text (add_text), or search the vector store (search). Use add_text to offload a large tool result you must retain and search to get it back, instead of holding it all in context. NOT for durable facts about the user — those go in manage_memory.",
     "manage_skills": "Skill management: add, update, publish, or search reusable skills/presets.",
     "manage_tasks": "Scheduled task management: list, create, edit, delete, pause, resume, or run cron tasks — or dry_run one to say what a run would do without running it, or draft_workflow to draft a workflow of several steps that run one after another.",
@@ -638,6 +640,14 @@ class ToolIndex:
         frozenset({"workstation", "the desktop", "on the desktop", "computer use",
                    "use the computer", "on the screen", "take a screenshot", "gui"}):
             {"computer"},
+        # `P25-05`. The agent browser.
+        frozenset({"browser", "website", "web page", "log in to", "fill in the form",
+                   "click on", "open the site", "on the site"}):
+            {"agent_browser"},
+        # `P25-03`. The person's own git.
+        frozenset({"git", "commit my", "pull request", "repository", "repo", "git clone",
+                   "github", "gitlab"}):
+            {"git"},
         # Theme / UI control intent
         frozenset({"theme", "color scheme", "colors of the ui", "make it dark",
                    "make it light", "make the ui", "switch theme", "change theme",

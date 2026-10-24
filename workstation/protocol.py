@@ -201,6 +201,17 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # that is not a finite number of seconds within MAX_CLOCK_STEP_S is
     # `bad_request`.
     "clock": ("POST", "/v1/clock"),
+    # `P25-05`, added: the person's own browser — Firefox in this account,
+    # driven over WebDriver BiDi (`workstation/browser.py`).
+    #   {"action": one of BROWSER_ACTIONS, ...its fields, "holder": "agent"|"person"="agent"}
+    #   -> {"ok": true, "action", "url", "title", "tabs": [{"tab", "url", "current"}]}
+    #      `read` adds {"text", "cut", "elements": [{"ref", "tag", "label", "type"?, "href"?}]};
+    #      `frame` is {"mime", "data_b64", "digest", "width", "height", "url", "title", "tabs"},
+    #      or `304` with "if_none_match" naming the frame the caller has.
+    # While a person holds the screen, the agent's actions are `409 busy`
+    # (`input`'s rule: the browser is on that screen). A daemon older than
+    # this answers `404 not_found`.
+    "browser": ("POST", "/v1/users/{account}/browser"),
 }
 
 # ── what the fields may hold ──────────────────────────────────────────────────
@@ -225,6 +236,13 @@ INPUT_ACTIONS = (
     "key",            # keys, xdotool syntax: "ctrl+l", "Return", "alt+Tab"
     "wait",           # ms
 )
+# `P25-05`. What the browser route does (`ROUTES["browser"]`): open a url,
+# read the page (its text and numbered elements), click an element by its
+# number or a point, type (into an element, and Enter with "submit"), press
+# keys, scroll, go back, forward or reload, list tabs, open, switch to or close
+# one, and a frame of the page for the person's window.
+BROWSER_ACTIONS = ("open", "read", "click", "type", "press", "scroll", "back", "forward",
+                   "reload", "tabs", "tab_new", "tab_switch", "tab_close", "frame")
 BACKENDS = ("container", "vm", "remote")
 # ── what the machine is (`P20-07`, added) ─────────────────────────────────────
 # `health`, for a caller with the token, also answers
@@ -346,6 +364,10 @@ MAX_TYPE_CHARS = 20_000
 # literal in the daemon, so the tool's schema could not state it).
 MAX_SCROLL_CLICKS = 50
 MAX_WAIT_MS = 30_000
+# `P25-05`. The agent browser's page, in CSS pixels: the screen's size, so a
+# frame and a screenshot read the same.
+BROWSER_WIDTH = SCREEN_WIDTH
+BROWSER_HEIGHT = SCREEN_HEIGHT
 # `P20-07`, added. How much longer than its own bound a per-account route may
 # take when the backend has to start that person's machine before it can
 # answer — the VM backend boots one on first use and after a reset

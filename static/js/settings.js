@@ -145,6 +145,13 @@ function onSettingsPanelActivated(tab) {
       .catch((e) => console.error('Networks panel failed to load', e));
   }
 
+  // `P25-02`. Same shape: the person's git identity and hosts, read on activation.
+  if (tab === 'git') {
+    import('./gitSettings.js')
+      .then((mod) => mod.open())
+      .catch((e) => console.error('Git panel failed to load', e));
+  }
+
   // `P24-15`. Same shape: two settings read on activation.
   if (tab === 'agents') {
     import('./agentsSettings.js')

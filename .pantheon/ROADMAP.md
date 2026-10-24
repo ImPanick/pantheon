@@ -85,9 +85,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P22 | The Workbench | 25 | 0 | 0 | **25** |
 | P23 | Alignment — the audits, fixed | 9 | 0 | 0 | **9** |
 | P24 | Agents — the hall of hireable agents | 27 | 8 | 0 | **19** |
-| P25 | The + menu, git per account, the agent browser | 7 | 7 | 0 | **0** |
+| P25 | The + menu, git per account, the agent browser | 7 | 1 | 0 | **6** |
 | Backlog | Bugs and hardening found in flight | 1014 | 350 | 0 | **662** |
-| **Total** | | **1479** | **390** | **5** | **1082** |
+| **Total** | | **1479** | **384** | **5** | **1088** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -251,8 +251,8 @@ they are for.*
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
 ### P25 opened: the + menu nested, git for every account, the agent browser
-`6f1b3a3`…`HEAD`. **1479 tracked, 1082 done. `P25-00`…`P25-06` filed.**
-The owner asked for git per account and a way to call it, a + menu with the breadth of one reference and the nesting of the other, and a browser the agent drives inside the app. Filed as one phase: the menu first, because git and the browser are called from it.
+`6f1b3a3`…`HEAD`. **1479 tracked, 1088 done. `P25-00`…`P25-06` filed; `P25-01`…`P25-06` closed, `P25-00` (acceptance) open.**
+The owner asked for git per account and a way to call it, a + menu with the breadth of one reference and the nesting of the other, and a browser the agent drives inside the app. Filed as one phase, the menu first because git and the browser are called from it: the + menu now nests — *Agents ›*, *Skills ›*, *Git ›*, *Modes ›* open beside it, a page with a back row on a phone — and git is each person's own: their identity and per-host tokens in Settings → Git, a `git` tool that runs where their shell runs and pushes as them, and *Git ›* to attach a repository and ask for a status, a commit or a push. The agent browser is each person's own Firefox in their workstation, driven over WebDriver BiDi by the daemon (one session, held, so no other account can attach), offered as `agent_browser`, and shown in a window with tabs and an address bar that the person can take over.
 
 ### P24: write your own agent — *New agent*, *Describe it*, *Customise*
 `d38a68a`…`HEAD`. **1472 tracked, 1082 done. `P24-20` closed.**
@@ -11226,33 +11226,38 @@ browser, and the person can take it over (`P20-05`'s rule, not a second one).
   ask for its status and a commit; the push asks first and goes out as the person's own identity. Open *Browser*,
   ask the agent to find a page; watch it in the window, take it over, hand it back. On a phone the same menu drills in.
   `Depends:` `P25-01` … `P25-06`. `Verify:` driven at 1440×900 and 390×844, dark and light, against a scripted model.
-- [ ] **P25-01** **The + menu, nested.** The top level: *Add files*, *Documents*, *Workspace*; then *Agents ›*,
+- [x] **P25-01** **The + menu, nested.** The top level: *Add files*, *Documents*, *Workspace*; then *Agents ›*,
   *Skills ›*, *Prompts ›*, *Git ›*, *Browser*, and *Modes ›* (Plan, Web, Shell, RAG — the chips' own toggles, their
   state shown). A submenu opens beside its row on hover, Right or Enter, closes with Left or Escape, filters as you type,
   and ends with its *Manage …* door (the hall, the skills library, Settings → Git). On a phone a submenu is a page with
   a back row. Built from one list in `static/js/composerMenu.js`; every existing item keeps its id and its handler.
-- [ ] **P25-02** **Git, per account: an identity and credentials.** Settings → Git: name and email for commits, and
+  — **done 2026-10-24** — `static/js/composerMenu.js`. The top level is *Add files*, *Documents*, *Workspace* | *Agents ›*, *Skills ›*, *Modes ›* | *Prompt*, every plain row with its hint; the button is a + that turns to × while open. *Agents ›* is the hall's list (yours first, searchable, *Dismiss* when one is summoned) with *New agent…* and *Open the hall* at its foot — the dialog picker it replaces is gone; *Skills ›* is the slash catalogue, a pick writes `/name ` into the composer, *Manage skills* at its foot; *Modes ›* flips Plan, Web, Shell and RAG by their own chips' clicks and stays open, a switch per row — RAG moved under it, and the mirror rows the menu grew for collapsed chips are gone, the Modes row lighting instead when a mode that is on is out of sight. Opens on hover or a click beside the menu, over it with a back row on a phone; ↑/↓, → and ← or Escape walk it. `Verify:` `tests/test_the_plus_menu_nests.py` (10, 8 of them driven in Chromium at 1440×900 and 390×844). *Git ›* and *Browser* join it with `P25-04` and `P25-06`.
+- [x] **P25-02** **Git, per account: an identity and credentials.** Settings → Git: name and email for commits, and
   hosts with a token each (GitHub, GitLab, Gitea, or any https host), encrypted with `secret_storage`, never sent back —
   only *set*, the host and when. Each person's own; an admin can switch git off for everyone. A token is handed to a
   git command for that command only (an askpass that reads it from the environment of that one process), never written
   to the person's home or a remote URL.
-- [ ] **P25-03** **Git tools.** `git_status`, `git_diff`, `git_log`, `git_branch`, `git_commit`, `git_pull`,
+  — **done 2026-10-24** — `src/git_accounts.py`, `routes/git_routes.py` (`GET`/`PUT /api/git`), Settings → Git (`static/js/gitSettings.js`, in the Account group, everyone's own). One identity and up to twenty hosts per account (`account_of`, the one spelling of a person); a token is encrypted with the install's key, answered back only as *host, user, since*, and read in plain by one function, for the host a command is about to reach. A person changes them; a token or the assistant is refused. The admin's switch is the one every tool has (`disable_tool git`), not a second one. `Verify:` `tests/test_git_is_each_persons_own.py` (the account half).
+- [x] **P25-03** **Git tools.** `git_status`, `git_diff`, `git_log`, `git_branch`, `git_commit`, `git_pull`,
   `git_push`, `git_clone` — run where the person's shell runs (`P20-03`), in their projects, as their identity. Reads are
   `read_workspace`; a commit is `write_workspace`; clone and pull reach a host (`network_egress`); a push is also an
   `external_side_effect` and asks. A repository outside the person's projects is refused in a sentence.
-- [ ] **P25-04** **Calling git.** *Git ›* lists the repositories in the person's projects with branch and changes; one
+  — **done 2026-10-24** — one `git` tool, one action a call (`src/agent_tools/git_tools.py`), registered in all nine registers (`check-tool-surface.py`). Runs where the person's shell runs: their workstation home, or this machine for those allowed its shell — `git` is beside `bash` in the non-admin blocklist and lifted with it. Each action is classified by what it does (`tool_capabilities._ACTION_CAPABILITIES`, a new table any multiplexed tool can use): status, diff, log read; branch and commit write; pull and clone reach a host; push is an outward side effect and asks. Every command carries the person's name and email; a reaching one gets their token for that host only, through an inline credential helper in that process's environment — never a file or a URL; output that repeats a token has it replaced. Hooks and the fs-monitor are off, a clone is https-only and carries no credentials in its URL, a push never forces. `Verify:` `tests/test_git_is_each_persons_own.py` (30, among them a real push over https to a `git http-backend` behind basic auth: no token sent with none set, another host's never offered, the right one accepted, nothing written to the repository).
+- [x] **P25-04** **Calling git.** *Git ›* lists the repositories in the person's projects with branch and changes; one
   picked is a chip beside Workspace and the turn's git tools default to it. Its rows: *Status*, *Commit…*, *Pull*,
   *Push*, *New branch…*, *Clone a repository…*, then *Git settings*. `/git` in the composer does the same.
-- [ ] **P25-05** **The agent browser.** Firefox in the person's workstation, driven over WebDriver BiDi by the daemon;
+  — **done 2026-10-24** — *+ → Git ›* lists the repositories four folders deep where the person's shell starts (`GET /api/git/repos`: branch, how many changes); picking one makes it the chat's workspace — the existing pill, vetted as a picked folder is — so `git`, `bash` and the file tools all work there and nothing new carries it (`Law 14`). With one attached the submenu leads with *Status*, *Commit…*, *Pull*, *Push*, *New branch…*, *Clone a repository…*, each putting its request in the message box for the person to send; *Git settings* at its foot. `/git` opens the same submenu and `/git <action>` writes the same request — one list, `composerMenu.GIT_ACTIONS`. Agent mode only, as Workspace. `Verify:` `tests/test_git_is_each_persons_own.py`; driven in Chromium (Settings → Git, the submenu, a repository attached, *Status*, `/git push`, `/git`).
+- [x] **P25-05** **The agent browser.** Firefox in the person's workstation, driven over WebDriver BiDi by the daemon;
   tools `browser_open`, `browser_read` (the page's text with numbered elements), `browser_click`, `browser_type`,
   `browser_press`, `browser_scroll`, `browser_back`, `browser_tabs`, `browser_screenshot`. Reading a page is
   `network_egress` with untrusted results; typing into a page and pressing Enter in a form ask (`external_side_effect`).
   Without a workstation the tools are not offered and the window says why.
-- [ ] **P25-06** **The browser window.** A tool window: tabs, the address bar, back, forward, reload, and the page live
+  — **done 2026-10-24** — `workstation/browser.py` and `workstation/bidi.py` (WebDriver BiDi and its WebSocket client, standard library only — the daemon has no dependencies): the person's Firefox is started **as their account** on first use (their network mode holds for it), on their display or headless without one, with a profile that turns every remote protocol but BiDi off. **Nobody else can drive it:** BiDi allows one session — measured, a second `session.new` is *Maximum number of active sessions* — and the daemon opens it the moment Firefox listens and holds it while Firefox lives. One route, `browser`, with the actions in `protocol.BROWSER_ACTIONS`; `read` marks the page's visible elements `data-pantheon-ref` and answers them numbered, and `click`/`type` land in an element's middle with real pointer and key input. While the person holds the screen the agent's browser calls are `busy`. The tool is `agent_browser` — not `browser`, which `disable_tool` already means for the built-in Playwright server — registered in all nine registers, offered to exactly whom `computer` is offered, each action classified by what it does: reading looks, opening reaches, a click, typing or a key press is an outward side effect and asks. A reset stops the browser with the home. `Verify:` `tests/test_the_agent_browser_is_the_persons_own.py` (27, against a real Firefox and a page served on this machine).
+- [x] **P25-06** **The browser window.** A tool window: tabs, the address bar, back, forward, reload, and the page live
   (frames of the page itself, not the desktop); *Take over* gives the person the page, *Hand back* returns it — the
   agent's calls are refused while the person holds it. Opened from *+ → Browser*, from *Open in the agent browser* on a
   link in an answer, and from any browser tool's card.
-
+  — **done 2026-10-24** — `static/js/browserWindow.js`: a tool window with the page's frames (the page, not the desktop), its tabs, back, forward, reload and an address bar; `GET`/`POST /api/workstation/browser`, the caller's own browser only. The address bar, the buttons and the tabs are the person's own acts at any time; a click or a key on the page only after *Take over*, which is the screen's own (`/control`) — one holder. A bare name opens as https, a machine on the network (an IP, `localhost`, `.local`, `.lan`) as http, and words that are not an address are refused with a sentence: Pantheon picks no search engine for anyone. Doors: *+ → Browser*, `/browser [address]`, *View browser* on every `agent_browser` card, and the palette. Closing the window while holding it hands it back. `Verify:` `tests/test_the_agent_browser_window_js.py` (19); driven in Chromium against a real daemon and Firefox: the window opens a local shop, the agent opens and reads it from a chat, *View browser* on its card, *Take over*, *Hand back*.
 - [x] **B69** **There are two complete email-account forms and one of them is mounted nowhere.**
   Found by `P18-07` 2026-09-11, after `P18-01` and the first pass of `P18-07` were both written
   against the wrong one. `static/js/settings.js` carries an `eaf-` form (~line 3060) rendering into

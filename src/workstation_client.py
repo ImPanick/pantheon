@@ -677,6 +677,18 @@ class WorkstationClient:
                 **{k: v for k, v in fields.items() if v is not None}}
         return await self._call("input", account, body, timeout=P.MAX_WAIT_MS / 1000 + _TIMEOUT)
 
+    async def browser(self, account: str, action: str, *, holder: str = "agent",
+                      **fields: Any) -> Optional[Dict]:
+        """`P25-05`. One action on the account's browser; a `frame` the caller
+        already holds (`if_none_match`) answers None."""
+        if action not in P.BROWSER_ACTIONS:
+            raise WorkstationError("bad_request",
+                                   f"“{action}” is not one of {', '.join(P.BROWSER_ACTIONS)}.")
+        body = {"action": action, "holder": holder, **{k: v for k, v in fields.items() if v is not None}}
+        # The first call starts the browser (up to half a minute), and a page
+        # may take its own time to load on top.
+        return await self._call("browser", account, body, timeout=120.0 + _TIMEOUT, allow_304=True)
+
 
 # ── the network gate (`P20-06`) ───────────────────────────────────────────────
 #

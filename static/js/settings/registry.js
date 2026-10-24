@@ -164,6 +164,17 @@ export const SETTINGS_PANELS = Object.freeze([
     group: 'account',
     keywords: ['account', 'password', 'logout'],
   }),
+  definePanel({
+    id: 'git',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="9" r="2"/><path d="M6 7v10"/><path d="M18 11c0 4-6 3-11.4 6.4"/></svg>',
+    label: 'Git',
+    group: 'account',
+    // `P25-02`. Everyone's own: who their commits say they are, and a token
+    // per host for their pushes and pulls. `controller` stays 'settings':
+    // `settings.js` activates it and lazy-imports `gitSettings.js`.
+    keywords: ['git', 'github', 'gitlab', 'token', 'commit', 'push', 'pull',
+               'repository', 'repo', 'version control', 'credentials'],
+  }),
 
   definePanel({
     id: 'tools',

@@ -1186,6 +1186,12 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
                 # bare name `computer` needs no alias.
                 "desktop": ["computer"],
                 "computer_use": ["computer"],
+                # `P25-03`: the bare name `git` needs no alias.
+                "version_control": ["git"],
+                # `P25-05`. Not "browser": that word already means the built-in
+                # Playwright server above.
+                "agent_browser": ["agent_browser"],
+                "workstation_browser": ["agent_browser"],
                 "terminal": ["bash"],
                 "search": ["web_search", "web_fetch"],
                 "web": ["web_search", "web_fetch"],

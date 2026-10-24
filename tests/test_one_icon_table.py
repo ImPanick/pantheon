@@ -886,7 +886,9 @@ def test_the_shell_cannot_spell_a_chevron_the_table_does_not():
     """
     table = _h("chevrons", "[]")["points"]
     found = _shell_chevrons()
-    assert len(found) == 13, [(l, p) for l, p, _ in found]
+    # Twelve since 2026-10-24: `P25-01` drew the + menu's button as a plus
+    # (the owner's references), so its up chevron is gone.
+    assert len(found) == 12, [(l, p) for l, p, _ in found]
     by_direction = collections.Counter()
     for line, points, attrs in found:
         matches = [d for d, p in table.items() if p == points]
@@ -903,7 +905,8 @@ def test_the_shell_cannot_spell_a_chevron_the_table_does_not():
         )
     # Re-measured 2026-10-09: `+1 up` (`#turn-chip`'s caret) and `+3 right`
     # (the three turn-sheet rows that open another control).
-    assert by_direction == {"down": 4, "up": 4, "left": 1, "right": 4}, by_direction
+    # 2026-10-24: `up` 4 -> 3, the + menu's button (above).
+    assert by_direction == {"down": 4, "up": 3, "left": 1, "right": 4}, by_direction
 
 
 def test_the_shell_is_the_only_place_left_that_spells_one():
@@ -912,12 +915,12 @@ def test_the_shell_is_the_only_place_left_that_spells_one():
     `B230` moved 57 sites and left the shell, and said so. If a module grows a
     literal again this fails in `test_the_tree_holds_exactly_one_chevron`; if
     the shell's count moves, it fails here — so "thirteen, in one file, and
-    that file is markup" stays a fact rather than a note somebody wrote once.
+    that file is markup" stays a fact (twelve since `P25-01`) rather than a note somebody wrote once.
     It was nine until 2026-10-09 and the count is re-measured, not carried
     (`Law 6`): what moved it is recorded above `_shell_chevrons`.
     """
     assert _census(_chevron_polylines) == []
-    assert len(_shell_chevrons()) == 13
+    assert len(_shell_chevrons()) == 12
     login = ROOT / "static" / "login.html"
     assert _chevron_polylines(login.read_text(encoding="utf-8")) == [], (
         "the login page has grown a chevron; it is a third place to keep in step"

@@ -1062,6 +1062,9 @@ app.include_router(setup_workflow_routes(task_scheduler))
 # `P24-03`. The Agents hall: the catalogue, hires, and their reports.
 from routes.agent_routes import setup_agent_routes
 app.include_router(setup_agent_routes(task_scheduler))
+# `P25-02`. Git, per account.
+from routes.git_routes import setup_git_routes
+app.include_router(setup_git_routes())
 
 from routes.assistant_routes import setup_assistant_routes
 app.include_router(setup_assistant_routes(task_scheduler))

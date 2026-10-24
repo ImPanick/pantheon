@@ -508,6 +508,12 @@ export function whereBadgeHtml(ranIn, ranAs) {
  * listener (`[data-open-workstation-screen]`), never by one of its own (`B56`).
  */
 export function workstationDoorHtml(tool, ranIn) {
+  // `P25-06`. A browser call's door is the browser's window, not the desktop.
+  if (tool === 'agent_browser') {
+    return '<button type="button" class="agent-thread-ws-door" data-open-agent-browser '
+      + 'title="Watch the agent browser, or take it over">'
+      + WORKSTATION_ICON + 'View browser</button>';
+  }
   if (ranIn !== 'workstation' && tool !== 'computer') return '';
   return '<button type="button" class="agent-thread-ws-door" data-open-workstation-screen '
     + 'title="Watch the workstation screen, or take it over">'

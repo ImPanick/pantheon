@@ -1443,6 +1443,18 @@ async def _execute_tool_block_impl(
         desc = f"computer: {command_line(content)}"
         result = await _direct_fallback(tool, content, session_id=session_id, owner=owner) \
             or {"error": "computer: execution failed", "exit_code": 1}
+    elif tool == "agent_browser":
+        # `P25-05`. By name, with the owner: whose browser is the question.
+        from src.agent_tools.browser_tools import command_line as _browser_line
+        desc = f"agent_browser: {_browser_line(content)}"
+        result = await _direct_fallback(tool, content, session_id=session_id, owner=owner) \
+            or {"error": "agent_browser: execution failed", "exit_code": 1}
+    elif tool == "git":
+        # `P25-03`. By name, with the owner and the turn's workspace: whose git,
+        # as whom, and in which folder are the whole question.
+        from src.agent_tools.git_tools import command_line as _git_line, run_git
+        desc = f"git: {_git_line(content)}"
+        result = await run_git(content, owner=owner, station_workspace=station_workspace)
     elif tool == "manage_bg_jobs":
         # Inspect/kill detached `bash` jobs; needs session_id to scope to chat.
         desc = f"manage_bg_jobs: {content.split(chr(10))[0][:80]}"

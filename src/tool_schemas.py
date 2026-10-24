@@ -511,6 +511,89 @@ FUNCTION_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            # `P25-05`. The agent browser (`src/agent_tools/browser_tools.py`).
+            "name": "agent_browser",
+            "description": (
+                "A real web browser — Firefox in the person's workstation — that the person can "
+                "watch and take over in the app. One call is one action. open a url; read the "
+                "page to get its text and its clickable and typable elements numbered [1], [2]…; "
+                "click an element by ref; type text into one (ref), with submit to press Enter "
+                "after; press keys such as Enter, Tab or ctrl+a; scroll (dy, positive is down); "
+                "back, forward, reload; tabs lists them, tab_new opens one (url), tab_switch and "
+                "tab_close take its number; screenshot shows the page. Read the page again after "
+                "anything that changes it: numbers belong to one reading. Use it for sites that "
+                "need clicking, logging in or forms; for plain reading, web_fetch is quicker. If "
+                "the person has taken over the browser, ask them or wait."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string",
+                               "enum": ["open", "read", "click", "type", "press", "scroll", "back",
+                                        "forward", "reload", "tabs", "tab_new", "tab_switch",
+                                        "tab_close", "screenshot"],
+                               "description": "What to do."},
+                    "url": {"type": "string", "description": "open, tab_new: the address."},
+                    "ref": {"type": "integer", "description": "click, type: the element's number from read."},
+                    "text": {"type": "string", "description": "type: what to type."},
+                    "submit": {"type": "boolean", "description": "type: press Enter after."},
+                    "keys": {"type": "string",
+                             "description": "press: keys, such as \"Enter\" or \"ctrl+a\"; several separated by spaces."},
+                    "dy": {"type": "integer", "description": "scroll: steps, positive is down."},
+                    "tab": {"type": "integer", "description": "tab_switch, tab_close: the tab's number."},
+                },
+                "required": ["action"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            # `P25-03`. The person's own git (`src/agent_tools/git_tools.py`).
+            "name": "git",
+            "description": (
+                "The person's own git, run where their shell runs and as them: their name "
+                "and email on every commit, their token for the host a pull, push or clone "
+                "reaches. One call is one action on one repository. status, diff and log "
+                "read it; branch lists, switches or creates one (name, create); commit "
+                "stages everything, or only files, and commits with message; pull "
+                "fast-forwards from remote (default origin); push sends the current branch "
+                "or branch to remote, never forced; clone copies an https:// url into a "
+                "folder (into). repo is the repository's folder, relative to the "
+                "workspace; leave it out for the one attached to the chat. Prefer this "
+                "tool to git through bash."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string",
+                               "enum": ["status", "diff", "log", "branch", "commit", "pull",
+                                        "push", "clone"],
+                               "description": "What to do."},
+                    "repo": {"type": "string",
+                             "description": "The repository's folder, relative to the workspace."},
+                    "message": {"type": "string", "description": "commit: what changed and why."},
+                    "files": {"type": "array", "items": {"type": "string"},
+                              "description": "commit: only these paths (default: every change)."},
+                    "staged": {"type": "boolean", "description": "diff: what is staged, not what is not."},
+                    "path": {"type": "string", "description": "diff: only this path."},
+                    "limit": {"type": "integer", "description": "log: how many commits, 1 to 50."},
+                    "name": {"type": "string", "description": "branch: the branch to switch to."},
+                    "create": {"type": "boolean", "description": "branch: make it first."},
+                    "remote": {"type": "string", "description": "pull, push: the remote (default origin)."},
+                    "branch": {"type": "string", "description": "pull, push: the branch."},
+                    "set_upstream": {"type": "boolean",
+                                     "description": "push: remember remote/branch as the upstream."},
+                    "url": {"type": "string", "description": "clone: the https:// address."},
+                    "into": {"type": "string", "description": "clone: the folder to make."},
+                },
+                "required": ["action"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             # `P20-04`. The action list and every `{…}` below are filled in from
             # the workstation protocol after this literal
             # (`_install_computer_bounds`), which states them once (`Law 7`):
