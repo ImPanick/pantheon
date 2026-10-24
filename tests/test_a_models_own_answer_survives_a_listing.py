@@ -68,3 +68,25 @@ def test_with_no_answer_of_its_own_the_listing_still_speaks(monkeypatch):
     _base(monkeypatch)
     text, _ = _drive(monkeypatch, [[("manage_calendar", {"action": "list_events"})], ""])
     assert CALENDAR in text
+
+
+NOTES = "Found 1 notes:\n- [n1] **Renew passport** (due today)"
+TASKS = "Found 1 tasks:\n1. Morning Brief (ed93) — active, cron, next 2026-10-24T07:00:00Z"
+
+
+def test_a_notes_or_tasks_listing_is_not_put_into_the_answer(monkeypatch):
+    """`B1435`, found by the agents' evaluation harness: the loop also wrote a
+    notes listing ("Here are your notes (1): …") and a tasks listing ("Found 1
+    tasks: 1. Morning Brief (<id>) …") into the answer as text, mid-turn, for
+    every model — so a hired Morning Brief's report began with them."""
+    _base(monkeypatch)
+    answer = "**Today**\n- nothing\n\n**Due**\n- Renew passport"
+    for tool, out in (("manage_notes", NOTES), ("manage_tasks", TASKS)):
+        text, _ = _drive(monkeypatch, [[(tool, {"action": "list"})], answer], tool_output=out)
+        assert text == answer, tool
+
+
+def test_a_notes_listing_with_no_answer_still_speaks(monkeypatch):
+    _base(monkeypatch)
+    text, _ = _drive(monkeypatch, [[("manage_notes", {"action": "list"})], ""], tool_output=NOTES)
+    assert "Renew passport" in text

@@ -379,7 +379,16 @@ function _agentCard(a, hired) {
   card.appendChild(_el('span', 'agents-card-name', a.name));
   card.appendChild(_el('span', 'agents-card-tag', a.tagline));
   card.appendChild(_el('span', 'agents-card-when', a.starts_on));
+  if (a.fit) card.appendChild(_fitBadge(a.fit));
   return card;
+}
+
+/** `P24-18`. What was measured on the model this person's hires run on —
+ *  or that nothing was. Never a claim. */
+function _fitBadge(fit) {
+  const b = _el('span', `agents-fit agents-fit-${fit.badge}`, fit.words);
+  if (fit.model) b.title = `Measured on ${fit.model}`;
+  return b;
 }
 
 /** What a team card says it will do when pressed, in the board's words. */
@@ -417,7 +426,7 @@ function _projectField(value) {
   sel.dataset.project = '1';
   const none = document.createElement('option');
   none.value = '';
-  none.textContent = 'None — a folder of its own';
+  none.textContent = 'None — your whole projects folder';
   sel.appendChild(none);
   projects.forEach((p) => {
     const o = document.createElement('option');
@@ -603,6 +612,26 @@ function _renderAgent(a) {
   rb.appendChild(_el('summary', '', 'Read its runbook — every word the model is told'));
   rb.appendChild(_el('pre', 'agents-pre', a.runbook));
   page.appendChild(rb);
+
+  // `P24-18` / `P24-17`. How it measures, and what a run leaves.
+  if (a.fit) {
+    const fitLine = _el('p', 'agents-small agents-fit-line');
+    fitLine.appendChild(_fitBadge(a.fit));
+    const row = a.fit.row;
+    fitLine.appendChild(document.createTextNode(row
+      ? ` on ${row.model}: ${Math.round((row.pass_rate || 0) * 100)}% of ${row.runs} runs passed, median ${row.median_minutes} min.`
+      : (a.eval_cases ? ` on this model yet. Its ${a.eval_cases} evaluation cases run with a proof run.`
+        : ' on this model yet.')));
+    page.appendChild(fitLine);
+  }
+  if (a.sample) {
+    const sd = _el('details', 'agents-sample');
+    sd.appendChild(_el('summary', '', `A sample report (${a.sample.from})`));
+    if ((a.sample.read || []).length) sd.appendChild(_el('p', 'agents-small', `Read with: ${a.sample.read.join(', ')}`));
+    if ((a.sample.wrote || []).length) sd.appendChild(_el('p', 'agents-small', `Wrote with: ${a.sample.wrote.join(', ')}`));
+    sd.appendChild(_el('pre', 'agents-pre', a.sample.answer || ''));
+    page.appendChild(sd);
+  }
 
   const form = _el('form', 'agents-form');
   form.appendChild(_el('h5', 'agents-h', `Hire ${a.name}`));

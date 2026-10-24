@@ -1,0 +1,21 @@
+{
+ "case": "an-ordinary-day",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the calendar, mail, notes and tasks",
+ "read": [
+  "manage_calendar",
+  "list_emails",
+  "manage_notes",
+  "manage_tasks"
+ ],
+ "wrote": [],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Today."
+  }
+ ],
+ "answer": "**Today**\n- 15:00 Dentist\n\n**Mail that needs you**\n- ana@example.com — Contract for Friday\n\n**Due**\n- Renew passport\n\n**Overnight**\n- nothing\n\n## Report\n- read the calendar, mail, notes and tasks\n\n## Carry forward\n- nothing"
+}

@@ -4616,7 +4616,10 @@ class TaskScheduler:
                                                + list(agent_plan.context_messages))
             _agent_slot["agent"] = {"hire_id": agent_plan.hire_id,
                                     "ask_effects": sorted(agent_plan.ask_effects),
-                                    "never_effects": sorted(agent_plan.never_effects)}
+                                    "never_effects": sorted(agent_plan.never_effects),
+                                    "sealed": agent_plan.sealed, "blind": agent_plan.blind}
+            if agent_plan.workspace:
+                _agent_slot["workspace"] = agent_plan.workspace
             for _line in agent_plan.skill_lines:
                 self._record_run_step(run_id, kind="progress", detail=_line)
 
@@ -5113,10 +5116,15 @@ class TaskScheduler:
                 allowed_tools=frozenset(_slot["allowed_tools"]),
                 **({"allowed_owner": "this agent's",
                     "ask_effects": frozenset(_agent.get("ask_effects") or ()),
-                    "never_effects": frozenset(_agent.get("never_effects") or ())}
+                    "never_effects": frozenset(_agent.get("never_effects") or ()),
+                    "sealed": bool(_agent.get("sealed")),
+                    "blind": bool(_agent.get("blind"))}
                    if _agent else {}))
         if _slot.get("suppress_skills"):
             _loop_extra["suppress_skills"] = True
+        if _slot.get("workspace"):
+            # `B1434`. A hired agent works in the folder its hire names.
+            _loop_extra["workspace"] = _slot["workspace"]
 
         # Resolve headers from the endpoint's API key
         headers = {}

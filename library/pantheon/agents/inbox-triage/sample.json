@@ -1,0 +1,27 @@
+{
+ "case": "vip-and-deadline-are-urgent",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- sorted 3, drafted 2",
+ "read": [
+  "list_emails",
+  "read_email"
+ ],
+ "wrote": [
+  "draft_email_reply",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Inbox triage”",
+   "ok": true,
+   "detail": "“Inbox triage” is there."
+  },
+  {
+   "check": "at most 10 drafts",
+   "ok": true,
+   "detail": "It made 2 drafts."
+  }
+ ],
+ "answer": "Sorted three.\n\n## Report\n- sorted 3, drafted 2\n\n## Carry forward\n- m1, m2, m3"
+}

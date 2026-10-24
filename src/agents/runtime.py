@@ -89,6 +89,69 @@ class RunPlan:
     inputs: Dict[str, Any] = field(default_factory=dict)
     project: Optional[str] = None
     memory: str = "own"
+    sealed: bool = False
+    blind: bool = False
+    workspace: Optional[str] = None
+
+
+#: `D-2026-10-24-01`. A tool with any of these effects can carry data out of
+#: the install — the network, a search or fetch, sending, a shell, settings.
+#: A kit with none of them is *sealed*.
+SEALING_EFFECTS = frozenset({"network_egress", "brokered_network_read", "external_side_effect",
+                             "execute_code", "admin_change"})
+
+
+def workspace_for(owner: Optional[str], project: Optional[str]) -> Optional[str]:
+    """`B1434`. The folder a hire's run works in: its project inside the
+    person's projects folder, or the whole projects folder with none — so a
+    relative path a runbook writes (`site/index.html`) lands there, and an
+    input that names a folder "inside your projects folder" resolves. `None`
+    where this person's tools run in their workstation: there the tools start
+    in the workstation home, whose `/projects` is the same folder
+    (`D-2026-10-01-01`)."""
+    try:
+        from src.workstation_access import routes_tools
+        if routes_tools(owner):
+            return None
+    except Exception:
+        pass
+    from src.tool_execution import projects_root, vet_workspace
+    root = projects_root(owner, create=True)
+    if project:
+        path = os.path.join(root, project)
+        os.makedirs(path, exist_ok=True)
+        return vet_workspace(path)
+    return vet_workspace(root)
+
+
+#: `D-2026-10-24-02`. A tool with any of these effects can read the person's
+#: private data: a shell reads anything, settings hold secrets, and a tool
+#: that writes notes, documents or files is one call from reading them
+#: (`manage_documents` is classed `write_private` and also lists and reads).
+#: A kit with none of them is *blind*.
+PRIVATE_READ_EFFECTS = frozenset({"read_private", "read_workspace", "write_private", "write_workspace",
+                                  "execute_code", "admin_change"})
+
+
+#: Tools that write something new and cannot read back what is there.
+WRITE_ONLY_TOOLS = frozenset({"create_document", "draft_email", "write_file"})
+
+
+def is_blind(tools) -> bool:
+    """Whether a kit cannot read any of the person's private data."""
+    from src.tool_capabilities import capabilities_for_tool
+    return bool(tools) and all(
+        capabilities_for_tool(t).known
+        and (t in WRITE_ONLY_TOOLS
+             or not ({e.value for e in capabilities_for_tool(t).effects} & PRIVATE_READ_EFFECTS))
+        for t in tools)
+
+
+def is_sealed(tools) -> bool:
+    """Whether a kit cannot carry data out of the install."""
+    from src.tool_capabilities import capabilities_for_tool
+    return all(not ({e.value for e in capabilities_for_tool(t).effects} & SEALING_EFFECTS)
+               and capabilities_for_tool(t).known for t in tools)
 
 
 def _person(owner: Optional[str]) -> str:
@@ -250,7 +313,8 @@ def plan_for_task(db, task, run_id: Optional[str] = None) -> Optional[RunPlan]:
                    system_prompt=system_prompt(manifest, hire, owner=hire.owner), tools=tools,
                    ask_effects=ask, never_effects=never, context_messages=msgs,
                    skill_lines=lines, memory=manifest.memory, delivers=manifest.delivers,
-                   owner=hire.owner, inputs=inputs, project=hire.project)
+                   owner=hire.owner, inputs=inputs, project=hire.project,
+                   sealed=is_sealed(tools), blind=is_blind(tools), workspace=workspace_for(hire.owner, hire.project))
 
 
 # ── The report ──────────────────────────────────────────────────────────────
@@ -298,7 +362,7 @@ def build_report(answer: str, steps: List[dict]) -> Dict[str, Any]:
     for s in steps or ():
         if s.get("kind") != "tool":
             continue
-        tool = str(s.get("tool") or "?")
+        tool = _bare(s.get("tool")) or "?"
         if s.get("status") == "blocked":
             refused.append({"tool": tool, "reason": str(s.get("output") or "")[:300]})
             continue
@@ -319,6 +383,14 @@ def build_report(answer: str, steps: List[dict]) -> Dict[str, Any]:
 # check is `{check, ok, detail}` in a person's words; the run report keeps them.
 
 DRAFT_TOOLS = ("draft_email", "draft_email_reply", "ai_draft_email_reply")
+
+
+def _bare(tool) -> str:
+    """`B1433`. The loop records the built-in mail tools under their MCP
+    spelling (`mcp__email__draft_email_reply`); a count by the bare name
+    found none, so a hire's draft limit was never enforced."""
+    tool = str(tool or "")
+    return tool[len("mcp__email__"):] if tool.startswith("mcp__email__") else tool
 _REF_RE = re.compile(r"\{([a-z][a-z0-9_]{0,31})\}")
 
 
@@ -382,7 +454,7 @@ def check_contract(db, plan: "RunPlan", answer: str, steps: List[dict], *,
                 out.append({"check": what, "ok": True, "detail": f"“{best.title}” is there."})
         elif kind == "email_draft":
             made = sum(1 for st in steps or () if st.get("kind") == "tool"
-                       and st.get("tool") in DRAFT_TOOLS and st.get("status") in ("ok", None))
+                       and _bare(st.get("tool")) in DRAFT_TOOLS and st.get("status") in ("ok", None))
             cap = d.get("max")
             if isinstance(cap, int) and made > cap:
                 out.append({"check": f"at most {cap} drafts", "ok": False,

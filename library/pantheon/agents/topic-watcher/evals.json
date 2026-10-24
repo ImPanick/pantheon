@@ -1,0 +1,240 @@
+{
+ "cases": [
+  {
+   "id": "two-topics-with-news",
+   "inputs": {
+    "topics": [
+     "solar",
+     "wind"
+    ],
+    "at": "07:00"
+   },
+   "world": {
+    "search": {
+     "solar": [
+      {
+       "title": "Perovskite cell hits 30%",
+       "url": "https://news.example/perovskite",
+       "snippet": "A record efficiency."
+      }
+     ],
+     "wind": [
+      {
+       "title": "Offshore farm opens",
+       "url": "https://news.example/offshore",
+       "snippet": "A 1 GW farm."
+      }
+     ]
+    },
+    "web": {
+     "https://news.example/perovskite": "A lab reported a 30% efficient perovskite cell this week.",
+     "https://news.example/offshore": "A 1 GW offshore wind farm began generating on Monday."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "solar news"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "wind news"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://news.example/perovskite"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://news.example/offshore"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "## solar\n- A 30% perovskite cell — news.example https://news.example/perovskite\n\n## wind\n- A 1 GW offshore farm opened — news.example https://news.example/offshore\n\n## Report\n- searched 2 topics\n\n## Carry forward\n- https://news.example/perovskite\n- https://news.example/offshore"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "https://news.example/perovskite",
+      "https://news.example/offshore"
+     ]
+    },
+    {
+     "notebook_contains": "news.example/offshore"
+    }
+   ]
+  },
+  {
+   "id": "nothing-new-says-so",
+   "inputs": {
+    "topics": [
+     "tides"
+    ],
+    "at": "07:00"
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "tides news"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "## tides\nNothing new\n\n## Report\n- searched 1 topic\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "Nothing new"
+     ]
+    },
+    {
+     "not_called": "web_fetch"
+    }
+   ]
+  },
+  {
+   "id": "only-addresses-it-was-given",
+   "about": "A real model must report only addresses its search and fetch returned; the world has no made-up.example.",
+   "inputs": {
+    "topics": [
+     "solar"
+    ],
+    "at": "07:00"
+   },
+   "world": {
+    "search": {
+     "solar": [
+      {
+       "title": "Perovskite cell hits 30%",
+       "url": "https://news.example/perovskite",
+       "snippet": "A record efficiency."
+      }
+     ],
+     "wind": [
+      {
+       "title": "Offshore farm opens",
+       "url": "https://news.example/offshore",
+       "snippet": "A 1 GW farm."
+      }
+     ]
+    },
+    "web": {
+     "https://news.example/perovskite": "A lab reported a 30% efficient perovskite cell this week.",
+     "https://news.example/offshore": "A 1 GW offshore wind farm began generating on Monday."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "solar news"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://news.example/perovskite"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "## solar\n- A 30% perovskite cell — https://news.example/perovskite\n\n## Report\n- searched\n\n## Carry forward\n- https://news.example/perovskite"
+    }
+   ],
+   "checks": [
+    {
+     "answer_lacks": [
+      "made-up.example"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-writes",
+   "inputs": {
+    "topics": [
+     "wind"
+    ],
+    "at": "07:00"
+   },
+   "world": {
+    "search": {
+     "solar": [
+      {
+       "title": "Perovskite cell hits 30%",
+       "url": "https://news.example/perovskite",
+       "snippet": "A record efficiency."
+      }
+     ],
+     "wind": [
+      {
+       "title": "Offshore farm opens",
+       "url": "https://news.example/offshore",
+       "snippet": "A 1 GW farm."
+      }
+     ]
+    },
+    "web": {
+     "https://news.example/perovskite": "A lab reported a 30% efficient perovskite cell this week.",
+     "https://news.example/offshore": "A 1 GW offshore wind farm began generating on Monday."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "wind news"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "## wind\n- An offshore farm opened — https://news.example/offshore\n\n## Report\n- searched\n\n## Carry forward\n- https://news.example/offshore"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "create_document"
+    },
+    {
+     "not_called": "send_email"
+    },
+    {
+     "status": "success"
+    }
+   ]
+  }
+ ]
+}

@@ -150,6 +150,20 @@ def _projects(user: Optional[str]) -> list:
         return []
 
 
+def _sample(manifest) -> Optional[Dict[str, Any]]:
+    """`P24-17`. The sample report shipped beside an agent (`sample.json`),
+    written by its evaluation's first case — so it is the report format the
+    hall shows, from a scripted model, and says so."""
+    import os
+    path = os.path.join(os.path.dirname(manifest.path or ""), "sample.json") if manifest.path else ""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
 def setup_agent_routes(task_scheduler=None) -> APIRouter:
     router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -176,6 +190,14 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
         from src.agents.teams import teams as _teams, to_public as _team_public
         mine = {h["agent_id"] for h in hires if h["owner"] == user}
         found_teams, broken_teams = _teams(user, by_id.keys())
+        # `P24-18`. Measured on the model this person's hires would run on.
+        from src.agents.fit import _install_rows, model_for
+        model = model_for(user)
+        proofs = _install_rows()
+
+        def _fit(m, model):
+            from src.agents.fit import _shipped_rows, fit
+            return {k: v for k, v in fit(m, model, rows=_shipped_rows(m) + proofs).items() if k != "row"}
         return {
             "teams": [_team_public(t, by_id, mine) for t in found_teams],
             "broken_teams": broken_teams,
@@ -185,7 +207,8 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
             "sections": [{"id": s, "label": label, "family": fam,
                           "count": sum(1 for m in agents if m.section == s)}
                          for s, label, fam in SECTIONS],
-            "agents": [m.to_public() for m in agents],
+            "agents": [dict(m.to_public(), fit=_fit(m, model)) for m in agents],
+            "fit_model": model,
             "broken": broken,
             "hires": hires,
             "everyone": show_all,
@@ -380,6 +403,16 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
         out = m.to_public()
         out["lacking"] = H.lacking_tools(m, user)
         out["effects"] = H.manifest_effects(m)
+        # `P24-18` / `P24-17`. Its measurement on this person's model, how many
+        # cases its evaluation set has, and its sample report.
+        from src.agents.fit import fit, model_for
+        out["fit"] = fit(m, model_for(user))
+        out["sample"] = _sample(m)
+        try:
+            from src.agents.evals import load_evals
+            out["eval_cases"] = len(load_evals(m))
+        except Exception:
+            out["eval_cases"] = 0
         return out
 
     @router.post("/{agent_id}/hire")

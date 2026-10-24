@@ -468,3 +468,24 @@ def test_a_skipped_run_says_why(sandbox):
     """)
     assert out["status"] == ["Skipped"]
     assert out["line"] == ["An admin has paused all agents (Settings → Agents), so this run did not start."]
+
+
+def test_a_card_says_what_was_measured_and_the_page_shows_a_sample(sandbox):
+    out = _hall(sandbox, """
+        hall.agents[2].fit = { badge: 'runs-well', words: 'Runs well', model: 'gpt-oss-20b',
+          row: { model: 'gpt-oss-20b', runs: 10, pass_rate: 0.9, median_minutes: 2 } };
+        hall.agents[1].fit = { badge: 'not-measured', words: 'Not measured', model: null, row: null };
+        hall.agents[2].sample = { from: 'its evaluation, with a scripted model', read: ['web_search'], wrote: [],
+                                  answer: '## solar\\n- <b>A record</b>' };
+        hall.agents[2].eval_cases = 4;
+        await mod.openAgents(); await settle(30);
+        const badge = (id) => q('.agents-card').find((c) => c.dataset.agent === id).querySelectorAll('.agents-fit')[0];
+        const cards = { tw: badge('topic-watcher').textContent, mc: badge('meeting-catcher').textContent,
+                        none: q('.agents-card').find((c) => c.dataset.agent === 'inbox-triage').querySelectorAll('.agents-fit').length };
+        await press(q('.agents-card').find((c) => c.dataset.agent === 'topic-watcher'));
+        out({ cards, line: q('.agents-fit-line')[0].textContent,
+              sample: q('.agents-sample')[0].querySelectorAll('.agents-pre')[0].textContent });
+    """)
+    assert out["cards"] == {"tw": "Runs well", "mc": "Not measured", "none": 0}
+    assert out["line"] == "Runs well on gpt-oss-20b: 90% of 10 runs passed, median 2 min."
+    assert out["sample"] == "## solar\n- <b>A record</b>", "a report is drawn as letters"

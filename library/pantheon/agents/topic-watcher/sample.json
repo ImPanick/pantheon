@@ -1,0 +1,19 @@
+{
+ "case": "two-topics-with-news",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- searched 2 topics",
+ "read": [
+  "web_search",
+  "web_fetch"
+ ],
+ "wrote": [],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered."
+  }
+ ],
+ "answer": "## solar\n- A 30% perovskite cell — news.example https://news.example/perovskite\n\n## wind\n- A 1 GW offshore farm opened — news.example https://news.example/offshore\n\n## Report\n- searched 2 topics\n\n## Carry forward\n- https://news.example/perovskite\n- https://news.example/offshore"
+}

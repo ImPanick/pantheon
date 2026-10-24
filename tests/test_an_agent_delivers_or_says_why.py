@@ -142,6 +142,10 @@ def test_drafts_are_counted_against_their_limit(world):
     steps.append({"kind": "tool", "tool": "draft_email", "status": "blocked"})
     draft = [c for c in R.check_contract(db, plan, "x", steps) if "drafts" in c["check"]][0]
     assert draft == {"check": "at most 10 drafts", "ok": False, "detail": "It made 11 drafts; its limit is 10."}
+    mcp = [{"kind": "tool", "tool": "mcp__email__draft_email_reply", "status": "ok"} for _ in range(11)]
+    draft = [c for c in R.check_contract(db, plan, "x", mcp) if "drafts" in c["check"]][0]
+    assert draft["ok"] is False, "`B1433`: the loop's own spelling of a draft counts too"
+    assert R.build_report("x", mcp[:1])["wrote"] == ["draft_email_reply"]
     draft = [c for c in R.check_contract(db, plan, "x", steps[:10]) if "drafts" in c["check"]][0]
     assert draft["ok"] is True and draft["detail"] == "It made 10 drafts.", "the limit itself is allowed"
 
@@ -332,3 +336,26 @@ def test_the_assistant_cannot_move_its_own_brakes(datadir, key, value):
     S._invalidate_caches()
     agent(action="reset", key=key)
     assert S.get_setting(key) == value
+
+
+# ── `B1434`: a hire works in the folder it names ────────────────────────────
+
+def test_a_hire_runs_in_its_project_or_the_projects_folder(world, monkeypatch):
+    import os
+    from src.tool_execution import projects_root
+    factory, sched, seen = world
+    db = factory()
+    root = projects_root("alice", create=True)
+    os.makedirs(os.path.join(root, "shop"), exist_ok=True)
+    h, _ = _hire(db, "morning-brief", inputs={"at": "06:00"}, project="shop")
+    seen["answer"] = "Today: nothing."
+    _run(sched, db, _task(db, h.id))
+    assert seen["slot"]["workspace"] == os.path.realpath(os.path.join(root, "shop"))
+    h2, _ = _hire(db, "morning-brief", inputs={"at": "06:00"})
+    seen["answer"] = "Today: nothing."
+    _run(sched, db, _task(db, h2.id))
+    assert seen["slot"]["workspace"] == os.path.realpath(root)
+    import src.workstation_access as wa
+    monkeypatch.setattr(wa, "routes_tools", lambda owner, **kw: True)
+    from src.agents.runtime import workspace_for
+    assert workspace_for("alice", "shop") is None, "in the workstation its tools start in its home"

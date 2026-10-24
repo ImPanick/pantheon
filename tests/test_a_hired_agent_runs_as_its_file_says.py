@@ -200,6 +200,10 @@ def test_the_loop_is_handed_the_hires_policy(world, monkeypatch):
     policy = captured["tool_policy"]
     assert policy.allowed_tools == frozenset({"manage_notes", "manage_documents"})
     assert policy.ask_effects == frozenset({"destructive"}) and policy.never_effects == frozenset()
+    assert policy.sealed is True, "notes and documents only: no way out (`D-2026-10-24-01`)"
+    import os
+    from src.tool_execution import projects_root
+    assert captured["workspace"] == os.path.realpath(projects_root("alice")), "`B1434`: it works in the projects folder"
     assert policy.reason_for("send_email") == "“send_email” is not one of this agent's tools."
 
 
@@ -290,3 +294,94 @@ def test_an_ask_can_be_answered_in_a_clean_run_and_a_never_cannot():
     assert _ctx(hire_never_effects=frozenset({"execute_code"})).asks_for("bash", bash) is False
     assert _ctx(hire_ask_effects=frozenset({"execute_code"})).asks_for(
         "web_search", '{"query": "x"}') is False, "an effect the hire is silent on is not its question"
+
+
+# ── `D-2026-10-24-01`: a sealed hire reads after outside content ───────────
+
+def _tainted(**kw):
+    return _ctx(external_untrusted_context_seen=True, **kw)
+
+
+def test_a_sealed_hire_reads_and_writes_its_own_data_after_outside_content():
+    """The owner's ruling: a kit with no way out of the install does not ask
+    to read more of the person's own data — the brief that read the calendar
+    then reads the mail."""
+    for tool, content in [("list_emails", '{"unread_only": true}'), ("mcp__email__read_email", '{"id": "m1"}'),
+                          ("manage_notes", '{"action": "list"}'), ("manage_tasks", '{"action": "list"}'),
+                          ("create_document", "Inbox triage\nUrgent")]:
+        assert _tainted()._ladder_decision_for(tool, content).allowed is False, f"premise: the floor asks for {tool}"
+        assert _tainted(hire_sealed=True).decision_for(tool, content).allowed is True, tool
+
+
+def test_a_sealed_run_lifts_nothing_that_reaches_outside():
+    for tool, content in [("send_email", '{"to": "a@b.c"}'), ("web_fetch", '{"url": "https://x"}'),
+                          ("bash", '{"command": "ls"}')]:
+        assert _tainted(hire_sealed=True).decision_for(tool, content).allowed is False, tool
+
+
+def test_what_a_later_run_would_trust_keeps_the_floor():
+    for tool, content in [("manage_memory", '{"action": "add", "content": "x"}'),
+                          ("manage_skills", '{"action": "create", "name": "x"}'),
+                          ("manage_tasks", '{"action": "create", "name": "x", "prompt": "y"}')]:
+        d = _tainted(hire_sealed=True).decision_for(tool, content)
+        assert d.allowed is False, tool
+
+
+def test_the_hires_own_table_still_asks_in_a_sealed_run():
+    d = _tainted(hire_sealed=True, hire_ask_effects=frozenset({"write_private"})).decision_for(
+        "create_document", "x\ny")
+    assert d.allowed is False and d.reason.startswith("This agent's hire asks before write_private")
+
+
+@pytest.mark.parametrize("tool,content", [
+    ("list_emails", '{"unread_only": true}'), ("send_email", '{"to": "a@b.c"}'),
+    ("manage_memory", '{"action": "add"}'), ("web_fetch", '{"url": "https://x"}')])
+def test_sealed_changes_nothing_before_outside_content_or_for_an_unsealed_run(tool, content):
+    clean_before = _ctx()._ladder_decision_for(tool, content)
+    clean_after = _ctx(hire_sealed=True).decision_for(tool, content)
+    assert (clean_after.allowed, clean_after.reason) == (clean_before.allowed, clean_before.reason)
+    tainted_before = _tainted()._ladder_decision_for(tool, content)
+    tainted_unsealed = _tainted().decision_for(tool, content)
+    assert (tainted_unsealed.allowed, tainted_unsealed.reason) == (tainted_before.allowed, tainted_before.reason)
+
+
+def test_a_kit_is_sealed_only_with_no_way_out():
+    from src.agents.runtime import is_sealed
+    assert is_sealed(get_agent("alice", "morning-brief").tools)
+    assert is_sealed(get_agent("alice", "inbox-triage").tools)
+    assert not is_sealed(get_agent("alice", "topic-watcher").tools), "web_search carries a query out"
+    assert not is_sealed(get_agent("alice", "server-health").tools), "a shell can reach anything"
+    assert not is_sealed(["send_email", "list_emails"])
+
+
+def test_the_run_carries_sealed_into_its_gate(world):
+    factory, sched, seen = world
+    db = factory()
+    h, _ = _hire(db, "morning-brief", inputs={"at": "06:00"})
+    seen["answer"] = "Today: nothing."
+    _run(sched, db, _task(db, h.id))
+    assert seen["slot"]["agent"]["sealed"] is True
+    h2, _ = _hire(db, "topic-watcher", inputs={"topics": ["x"]})
+    _run(sched, db, _task(db, h2.id))
+    assert seen["slot"]["agent"]["sealed"] is False
+
+
+# ── `D-2026-10-24-02`: a blind hire reads the web after outside content ────
+
+def test_a_blind_hire_fetches_after_outside_content_and_its_writes_still_ask():
+    fetch = ("web_fetch", '{"url": "https://news.example/x"}')
+    assert _tainted()._ladder_decision_for(*fetch).allowed is False, "premise: the floor asks"
+    assert _tainted(hire_blind=True).decision_for(*fetch).allowed is True
+    assert _tainted(hire_blind=True).decision_for("web_search", '{"query": "x"}').allowed is True
+    assert _tainted(hire_blind=True).decision_for("create_document", "x\ny").allowed is False
+    assert _tainted(hire_blind=True).decision_for("send_email", '{"to": "a@b.c"}').allowed is False
+    assert _ctx(hire_blind=True).decision_for(*fetch).allowed == _ctx()._ladder_decision_for(*fetch).allowed
+
+
+def test_a_kit_is_blind_only_when_it_can_read_nothing_private():
+    from src.agents.runtime import is_blind
+    assert is_blind(get_agent("alice", "topic-watcher").tools)
+    assert is_blind(["web_search", "web_fetch", "create_document"]), "a tool that only creates reads nothing"
+    assert not is_blind(["web_fetch", "manage_documents"]), "a tool that writes documents can read them"
+    assert not is_blind(["web_fetch", "bash"])
+    assert not is_blind(get_agent("alice", "morning-brief").tools)

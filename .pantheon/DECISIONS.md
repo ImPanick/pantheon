@@ -3093,3 +3093,44 @@ task now as *Run now* does, and offers *Hire* (which compiles its real triggers)
 under the hire's effects table: an `ask` effect parks it for a yes (`P24-08`), a `never` is refused, and it counts
 against `runs_per_day`. Cost: a trial can act, within its effects table, where a dry run could not; that is what the
 table is for, and an agent whose effects all *ask* tries itself one question at a time.
+
+## D-2026-10-24-01 — a hired agent with no way out reads after outside content without asking
+
+*The owner, 2026-10-24, answering the question the evaluation harness raised: **"Reads are free if no way out."***
+
+Building `P24-16` showed that the post-external gate (`FORBIDDEN.md` Part 2) made almost every mail and calendar
+agent interactive: Morning Brief reads the calendar — outside content, since invitations come from other people —
+and then asked before reading the mail, the notes and the tasks, one *Allow once* each, every morning. The gate
+exists to stop injected text turning into a privileged action; its harm needs a way to act outside or to carry data
+out.
+
+1. **A hired agent's kit is sealed** when no tool in it — after `never` has taken tools away — has an effect that
+   reaches outside the install: `network_egress`, `brokered_network_read` (a search query is data going out),
+   `external_side_effect`, `execute_code` (a shell reaches anything), `admin_change`. 70 of the 173 agents are.
+2. **In a sealed run after outside content**, an action whose every effect is a read or a write of the person's own
+   data runs without the gate's question. The hire's own effects table is asked first and still asks or refuses.
+3. **Except what a later run would trust**: a write to memory, skills or scheduled tasks keeps the gate — the
+   laundering path `D-2026-10-09-01` gated at the write. Their reads are lifted like any other.
+4. **Nothing else moves.** A chat, a plain task, a workflow step and any agent with a way out answer exactly as
+   before (asserted per tool, tainted and not).
+
+Cost: a hostile email read by a sealed agent can still steer what it writes into the person's own documents and
+drafts — never out of the install, and never into what a later run trusts. The run's report lists every write.
+
+## D-2026-10-24-02 — a hired agent that can read nothing private reads the web after outside content without asking
+
+*The owner, 2026-10-24, on the mirror case the harness found next: **"Yes, if nothing private."***
+
+Topic Watcher only searches and fetches public pages. Once a search result is in its run, each fetch after it asked —
+a daily digest that needed a yes every morning — though the run holds nothing of the person's to leak.
+
+1. **A hired agent's kit is blind** when no tool in it can read the person's private data: no `read_private`,
+   `read_workspace`, `write_private` or `write_workspace` (a tool that writes notes or documents can also list and read
+   them), `execute_code` or `admin_change`. Tools that only create something new and cannot read back —
+   `create_document`, `draft_email`, `write_file` — do not count against it. 31 of the 173 agents are blind.
+2. **In a blind run after outside content**, an action whose every effect is reading the public web
+   (`read_public`, `brokered_network_read`, `network_egress`) runs without the gate's question.
+3. **Its writes and sends are untouched**: a blind agent that saves a document after reading the web still asks
+   where today's rules ask.
+
+Cost: a page can steer which other public pages a blind agent fetches — it has nothing private to send them.

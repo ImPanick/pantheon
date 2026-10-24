@@ -276,6 +276,16 @@ class ToolPolicy:
     #: person's standing answer about this agent and a chat setting is not.
     ask_effects: frozenset = frozenset()
     never_effects: frozenset = frozenset()
+    #: `D-2026-10-24-01`. True when a hired agent's whole kit has no way to
+    #: carry data out of the install (`src.agents.runtime.SEALING_EFFECTS`):
+    #: then reading more of the person's own data after outside content does
+    #: not ask. False for every other turn, which is every existing caller.
+    sealed: bool = False
+    #: `D-2026-10-24-02`. True when a hired agent's whole kit cannot read any
+    #: of the person's private data (`src.agents.runtime.PRIVATE_READ_EFFECTS`):
+    #: then searching and fetching public pages after outside content does not
+    #: ask. False for every other turn.
+    blind: bool = False
 
     def __post_init__(self) -> None:
         # A list or set handed in becomes a frozenset of names, so the policy a

@@ -1489,6 +1489,16 @@ TOOL_CLASSIFICATION_UNRECOGNISED = "unrecognised"
 TOOL_CLASSIFICATION_UNAVAILABLE = "not_available"
 
 
+#: `D-2026-10-24-01`. In a sealed hire's run after outside content, an action
+#: whose every effect is one of these runs without the floor's question.
+SEALED_LIFTED_EFFECTS = frozenset({"read_workspace", "read_private", "write_workspace", "write_private"})
+#: ...unless the tool writes what a later run will trust. These keep the floor.
+LAUNDERING_TOOLS = frozenset({"manage_memory", "manage_skills", "manage_tasks"})
+#: `D-2026-10-24-02`. In a blind hire's run after outside content, an action
+#: whose every effect is one of these — reading the public web — runs.
+BLIND_LIFTED_EFFECTS = frozenset({"read_public", "brokered_network_read", "network_egress"})
+
+
 @dataclass(frozen=True)
 class ToolGateDecision:
     allowed: bool
@@ -1675,6 +1685,13 @@ class ToolRunSecurityContext:
     # every run that is not an agent's, which is every existing caller.
     hire_ask_effects: frozenset = frozenset()
     hire_never_effects: frozenset = frozenset()
+    # `D-2026-10-24-01`. A hired agent whose whole kit cannot carry data out
+    # of the install. Read by `_sealed_hire_decision_for`; False for every run
+    # that is not such an agent's, which is every existing caller.
+    hire_sealed: bool = False
+    # `D-2026-10-24-02`. A hired agent whose whole kit cannot read the
+    # person's private data. False for every other run.
+    hire_blind: bool = False
 
     def __post_init__(self) -> None:
         """`P7-08`. A run that starts tainted still has to be able to say so.
@@ -1815,6 +1832,8 @@ class ToolRunSecurityContext:
                 classification=TOOL_CLASSIFICATION_UNAVAILABLE,
             )
         hired = self._hire_decision_for(tool_name, content)
+        if hired is None:
+            hired = self._sealed_hire_decision_for(tool_name, content)
         if hired is not None:
             # `P24-07`. Before the ladder and before Auto: what a hire says
             # about an effect is the person's standing answer about this agent.
@@ -1878,6 +1897,44 @@ class ToolRunSecurityContext:
             classification=decision.classification,
             auto_approved=True,
         )
+
+    def _sealed_hire_decision_for(self, tool_name: Any, content: Any = None):
+        """`D-2026-10-24-01` — the owner's amendment to the post-external gate,
+        for one kind of run only.
+
+        A hired agent runs with a fixed kit, set before the run starts. When
+        nothing in that kit can carry data out of the install — no network,
+        no fetch or search, no sending, no shell, no settings
+        (`src.agents.runtime.SEALING_EFFECTS`) — reading more of the person's
+        own data after outside content arrived has nowhere to leak to, so it
+        does not ask. Writes the hire's table allows run too, except the
+        three that a *later* run would trust (`LAUNDERING_TOOLS`: memory,
+        skills, scheduled tasks), which keep the floor — the laundering path
+        `D-2026-10-09-01` gated at the write (their reads are lifted like any
+        other). Everything not covered here goes
+        to the ladder exactly as before; with `hire_sealed` False (every run
+        that is not such an agent's) this answers `None`."""
+        if not ((self.hire_sealed or self.hire_blind) and self.external_untrusted_context_seen):
+            return None
+        if self.hire_blind:
+            # `D-2026-10-24-02`, the mirror: nothing private in the run to
+            # leak, so reading more of the public web does not ask. Writes,
+            # sending and everything else go to the ladder as before.
+            caps = capabilities_for_action(tool_name, content)
+            effs = {effect.value for effect in caps.effects}
+            if caps.known and effs and effs <= BLIND_LIFTED_EFFECTS:
+                return ToolGateDecision(True, None)
+        if not self.hire_sealed:
+            return None
+        bare = tool_name[len("mcp__email__"):] if isinstance(tool_name, str) and tool_name.startswith(
+            "mcp__email__") else tool_name
+        capabilities = capabilities_for_action(tool_name, content)
+        effects = {effect.value for effect in capabilities.effects}
+        if not capabilities.known or not effects or not effects <= SEALED_LIFTED_EFFECTS:
+            return None
+        if bare in LAUNDERING_TOOLS and effects - {"read_workspace", "read_private"}:
+            return None
+        return ToolGateDecision(True, None)
 
     def _hire_decision_for(self, tool_name: Any, content: Any = None):
         """`P24-07`. A hired agent's effects table, or `None` when it has

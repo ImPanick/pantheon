@@ -6611,6 +6611,8 @@ async def stream_agent_loop(
         # `P24-07`. A hired agent's effects table rides in on its policy.
         hire_ask_effects=frozenset(getattr(tool_policy, "ask_effects", ()) or ()),
         hire_never_effects=frozenset(getattr(tool_policy, "never_effects", ()) or ()),
+        hire_sealed=bool(getattr(tool_policy, "sealed", False)),
+        hire_blind=bool(getattr(tool_policy, "blind", False)),
         allow_rule_lookup=(
             _resolve_allow_rule_lookup(owner, session_id)
             if rung_consults_allow_rules(_run_rung)
@@ -10728,7 +10730,13 @@ async def stream_agent_loop(
                         generated_image_data[k] = result[k]
                 yield f'data: {json.dumps(generated_image_data)}\n\n'
 
-            if block.tool_type == "manage_notes":
+            # `B1435`. These two put the tool's own listing into the answer as
+            # text — written for Pantheon's small finetune, like `B1429`'s
+            # summaries, and run for every model: a hired Morning Brief's
+            # report began "Here are your notes (1): … Found 1 tasks: 1.
+            # Morning Brief (<id>) — active, cron…" before its own brief. Now
+            # for the finetune only, as `B1429` left the summaries.
+            if block.tool_type == "manage_notes" and (_pan_qwen_finetune_model or _pan_notes_finetune_mode):
                 _notes_action = ""
                 try:
                     _notes_args = json.loads(block.content or "{}")
@@ -10761,7 +10769,7 @@ async def stream_agent_loop(
                         yield f'data: {json.dumps({"delta": _prefix + _notes_text})}\n\n'
                     _pan_notes_tool_completed = True
 
-            if block.tool_type == "manage_tasks":
+            if block.tool_type == "manage_tasks" and (_pan_qwen_finetune_model or _pan_notes_finetune_mode):
                 _tasks_action = ""
                 try:
                     _tasks_args = json.loads(block.content or "{}")

@@ -1,0 +1,411 @@
+{
+ "cases": [
+  {
+   "id": "a-one-page-bakery",
+   "inputs": {
+    "brief": "A one-page site for Rosa's Bakery: opening hours and a contact line.",
+    "folder": "bakery"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "mkdir",
+      "output": ""
+     },
+     {
+      "match": "http.server",
+      "output": "Serving HTTP on 0.0.0.0 port 8080"
+     },
+     {
+      "match": "curl",
+      "output": "200"
+     },
+     {
+      "match": "screenshot",
+      "output": "saved"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "mkdir -p $PANTHEON_PROJECTS/bakery"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "bakery/index.html",
+        "content": "<!doctype html><title>Rosa's Bakery</title><h1>Rosa's Bakery</h1><p>Open 7–15, Tue–Sun.</p><p>hello@rosa.example</p>"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/bakery && nohup python3 -m http.server 8080 &"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "It answers at http://localhost:8080/ (curl: 200). Files: bakery/index.html.\n\n## Report\n- wrote 1 file, curl 200\n\n## Carry forward\n- bakery served on 8080"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "bakery/index.html",
+      "contains": [
+       "Rosa's Bakery",
+       "Open"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "localhost:8080"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "every-step-after-the-shell-asks",
+   "about": "Its kit can reach outside, so after the shell's first answer every action waits for a yes; with each denied, nothing is written.",
+   "inputs": {
+    "brief": "A page for a book club.",
+    "folder": "club"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "mkdir",
+      "output": ""
+     },
+     {
+      "match": "http.server",
+      "output": "Serving HTTP on 0.0.0.0 port 8080"
+     },
+     {
+      "match": "curl",
+      "output": "200"
+     },
+     {
+      "match": "screenshot",
+      "output": "saved"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "mkdir -p $PANTHEON_PROJECTS/club"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "club/index.html",
+        "content": "<h1>Book club</h1>"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/club && nohup python3 -m http.server 8080 &"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- denied\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "write_file"
+    }
+   ]
+  },
+  {
+   "id": "no-address-no-delivery",
+   "about": "A run that never says where the site answers does not deliver.",
+   "inputs": {
+    "brief": "A page for a choir.",
+    "folder": "choir"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "mkdir",
+      "output": ""
+     },
+     {
+      "match": "http.server",
+      "output": "Serving HTTP on 0.0.0.0 port 8080"
+     },
+     {
+      "match": "curl",
+      "output": "200"
+     },
+     {
+      "match": "screenshot",
+      "output": "saved"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "mkdir -p $PANTHEON_PROJECTS/choir"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "choir/index.html",
+        "content": "<h1>Choir</h1>"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/choir && nohup python3 -m http.server 8080 &"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "I built it."
+    },
+    {
+     "say": "I built it, really."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  },
+  {
+   "id": "the-page-has-the-brief",
+   "inputs": {
+    "brief": "A page for Tom's Bikes with a repair price list.",
+    "folder": "bikes"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "mkdir",
+      "output": ""
+     },
+     {
+      "match": "http.server",
+      "output": "Serving HTTP on 0.0.0.0 port 8080"
+     },
+     {
+      "match": "curl",
+      "output": "200"
+     },
+     {
+      "match": "screenshot",
+      "output": "saved"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "mkdir -p $PANTHEON_PROJECTS/bikes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "bikes/index.html",
+        "content": "<h1>Tom's Bikes</h1><h2>Repairs</h2><ul><li>Puncture: 12</li><li>Service: 45</li></ul>"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/bikes && nohup python3 -m http.server 8080 &"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Served at http://localhost:8080/ — curl 200.\n\n## Report\n- wrote 1 file\n\n## Carry forward\n- bikes on 8080"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "bikes/index.html",
+      "contains": [
+       "Tom's Bikes",
+       "Repairs"
+      ]
+     }
+    }
+   ]
+  }
+ ]
+}

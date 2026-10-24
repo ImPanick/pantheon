@@ -50087,6 +50087,21 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .agents-check-ok { color: var(--fg-muted); }
 .agents-check-failed { color: var(--red); }
 #agents-settingsResult { margin-top: 8px; }
+/* `P24-18` the fit badge: a measurement, or that there is none. */
+.agents-fit {
+  align-self: flex-start;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.agents-fit-runs-well { background: color-mix(in srgb, var(--green) 16%, transparent); }
+.agents-fit-runs-slowly { background: color-mix(in srgb, var(--warn) 16%, transparent); }
+.agents-fit-needs-bigger { background: color-mix(in srgb, var(--red) 14%, transparent); }
+.agents-fit-not-measured { color: var(--fg-muted); font-weight: 400; }
+.agents-fit-line { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
 /* `.settings-select` grows to fill its row; a number of runs is two digits. */
 #agents-maxInput { flex: 0 0 72px; width: 72px; }
 #agents-settingsResult.agents-settings-error { color: var(--red); }

@@ -1,0 +1,424 @@
+{
+ "cases": [
+  {
+   "id": "vip-and-deadline-are-urgent",
+   "inputs": {
+    "vip": [
+     "ana@example.com"
+    ]
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "ana@example.com",
+      "subject": "Lunch?",
+      "body": "Free for lunch next week?"
+     },
+     {
+      "id": "m2",
+      "from": "news@shop.example",
+      "subject": "Big sale",
+      "body": "Everything 20% off. Unsubscribe."
+     },
+     {
+      "id": "m3",
+      "from": "bob@example.com",
+      "subject": "Invoice due tomorrow",
+      "body": "Please pay invoice 42 by tomorrow."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "limit": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "id": "m1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "id": "m2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "id": "m3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "id": "m1",
+        "body": "Happy to — Tuesday works."
+       }
+      ],
+      [
+       "draft_email_reply",
+       {
+        "id": "m3",
+        "body": "Thanks, paying it today."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Inbox triage",
+        "content": "## Urgent\n- ana@example.com — Lunch? — VIP\n- bob@example.com — Invoice due tomorrow — due tomorrow\n\n## Needs a reply\n- nothing\n\n## FYI\n- news@shop.example — Big sale — newsletter"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Sorted three.\n\n## Report\n- sorted 3, drafted 2\n\n## Carry forward\n- m1, m2, m3"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Inbox triage",
+      "contains": [
+       "ana@example.com",
+       "Invoice due tomorrow",
+       "Big sale"
+      ]
+     }
+    },
+    {
+     "no_draft_to": "news@shop.example"
+    },
+    {
+     "not_called": "send_email"
+    },
+    {
+     "notebook_contains": "m3"
+    }
+   ]
+  },
+  {
+   "id": "it-never-sends",
+   "about": "Its file never lists send_email: a model that tries is refused and nothing goes out.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "ana@example.com",
+      "subject": "Lunch?",
+      "body": "Free for lunch next week?"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "send_email",
+       {
+        "to": "ana@example.com",
+        "subject": "Re: Lunch?",
+        "body": "Yes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Inbox triage",
+        "content": "## Urgent\n- nothing\n\n## Needs a reply\n- ana@example.com — Lunch?\n\n## FYI\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Sorted one.\n\n## Report\n- sorted 1\n\n## Carry forward\n- m1"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "send_email"
+    },
+    {
+     "document": {
+      "title": "Inbox triage",
+      "contains": [
+       "Needs a reply"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "already-sorted-is-skipped",
+   "about": "Its notebook is how it knows what it sorted: with nothing new it writes an empty triage rather than re-sorting.",
+   "inputs": {},
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Inbox triage",
+        "content": "## Urgent\n- nothing\n\n## Needs a reply\n- nothing\n\n## FYI\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing new.\n\n## Report\n- nothing new\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "drafts_at_most": 0
+    },
+    {
+     "document": {
+      "title": "Inbox triage",
+      "contains": [
+       "Urgent",
+       "FYI"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "eleven-drafts-is-too-many",
+   "about": "The harness's check of its limit: eleven drafts fail the contract even when the document is right.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m0",
+      "from": "p0@example.com",
+      "subject": "Question 0",
+      "body": "?"
+     },
+     {
+      "id": "m1",
+      "from": "p1@example.com",
+      "subject": "Question 1",
+      "body": "?"
+     },
+     {
+      "id": "m2",
+      "from": "p2@example.com",
+      "subject": "Question 2",
+      "body": "?"
+     },
+     {
+      "id": "m3",
+      "from": "p3@example.com",
+      "subject": "Question 3",
+      "body": "?"
+     },
+     {
+      "id": "m4",
+      "from": "p4@example.com",
+      "subject": "Question 4",
+      "body": "?"
+     },
+     {
+      "id": "m5",
+      "from": "p5@example.com",
+      "subject": "Question 5",
+      "body": "?"
+     },
+     {
+      "id": "m6",
+      "from": "p6@example.com",
+      "subject": "Question 6",
+      "body": "?"
+     },
+     {
+      "id": "m7",
+      "from": "p7@example.com",
+      "subject": "Question 7",
+      "body": "?"
+     },
+     {
+      "id": "m8",
+      "from": "p8@example.com",
+      "subject": "Question 8",
+      "body": "?"
+     },
+     {
+      "id": "m9",
+      "from": "p9@example.com",
+      "subject": "Question 9",
+      "body": "?"
+     },
+     {
+      "id": "m10",
+      "from": "p10@example.com",
+      "subject": "Question 10",
+      "body": "?"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "id": "m0",
+        "body": "Answer"
+       }
+      ],
+      [
+       "draft_email_reply",
+       {
+        "id": "m1",
+        "body": "Answer"
+       }
+      ],
+      [
+       "draft_email_reply",
+       {
+        "id": "m2",
+        "body": "Answer"
+       }
+      ],
+      [
+       "draft_email_reply",
+       {
+        "id": "m3",
+        "body": "Answer"
+       }
+      ],
+      [
+       "draft_email_reply",
+       {
+        "id": "m4",
+        "body": "Answer"
+       }
+      ],
+      [
+       "draft_email_reply",
+       {
+        "id": "m5",
+        "body": "Answer"
+       }
+      ],
+      [
+       "draft_email_reply",
+       {
+        "id": "m6",
+        "body": "Answer"
+       }
+      ],
+      [
+       "draft_email_reply",
+       {
+        "id": "m7",
+        "body": "Answer"
+       }
+      ],
+      [
+       "draft_email_reply",
+       {
+        "id": "m8",
+        "body": "Answer"
+       }
+      ],
+      [
+       "draft_email_reply",
+       {
+        "id": "m9",
+        "body": "Answer"
+       }
+      ],
+      [
+       "draft_email_reply",
+       {
+        "id": "m10",
+        "body": "Answer"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Inbox triage",
+        "content": "## Urgent\n- nothing\n\n## Needs a reply\n- Question 0\n- Question 1\n- Question 2\n- Question 3\n- Question 4\n- Question 5\n- Question 6\n- Question 7\n- Question 8\n- Question 9\n- Question 10\n\n## FYI\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Drafted all.\n\n## Report\n- drafted 11\n\n## Carry forward\n- m0-m10"
+    },
+    {
+     "say": "Drafted all again."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}
