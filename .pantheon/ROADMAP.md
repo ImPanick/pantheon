@@ -250,7 +250,7 @@ they are for.*
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
 ### P24: summon an agent into a chat, and the hall says *Summon*
-`60372cf`…(this commit). **1472 tracked, 1081 done. `P24-26` filed and closed; `P24-27` filed for later.**
+`60372cf`…`3403e7f`. **1472 tracked, 1081 done. `P24-26` filed and closed; `P24-27` filed for later.**
 The owner asked for agents in the composer and for the mythology's word: the `^` menu's **Agents** summons one into the chat — its runbook, exactly its tools and its effects table for every turn until the chip is dismissed — and the hall summons and dismisses where it hired and fired. The owner also called the roster's runbooks thin, which they are: some are five lines for a job a person would brief in a page. That audit — substance for every agent, then the roster to full scope — is filed as `P24-27`, to be taken when the hall's build rows are done.
 
 ### P24 measured: the evaluation harness, the starred agents' sets, the fit badge, and two rulings
