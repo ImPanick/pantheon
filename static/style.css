@@ -49902,6 +49902,43 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .agents-back { align-self: flex-start; }
 .agents-tools { display: flex; gap: 8px; }
 .agents-new { flex: 0 0 auto; }
+/* `P25-08`. Building an agent by talking. */
+.agents-workshop-modes { margin-bottom: 4px; }
+.agents-talk { display: flex; flex-direction: column; gap: 8px; }
+.agents-talk-log {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: 4px 2px;
+}
+.agents-talk-msg {
+  margin: 0;
+  max-width: 82%;
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  border: 1px solid var(--border);
+}
+.agents-talk-you { align-self: flex-end; background: color-mix(in srgb, var(--fg) 7%, transparent); }
+.agents-talk-them { align-self: flex-start; background: var(--panel); }
+.agents-talk-busy { opacity: 0.7; }
+.agents-talk-form { display: flex; gap: 6px; align-items: flex-end; flex-wrap: wrap; }
+.agents-talk-input { flex: 1 1 240px; min-width: 0; resize: vertical; }
+.agents-proposal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-control, var(--border));
+  border-radius: 10px;
+  background: var(--panel);
+}
+.agents-proposal-facts { margin: 0; padding-left: 18px; font-size: 12px; line-height: 1.5; }
 .agents-workshop { display: flex; flex-direction: column; gap: 8px; }
 .agents-describe { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .agents-describe-text { width: 100%; box-sizing: border-box; }
@@ -50324,6 +50361,100 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .abw-frame[hidden], .abw-empty[hidden], .abw-hint[hidden] { display: none; }
 .abw-empty { padding: 24px; font-size: 13px; text-align: center; }
 .abw-hint { margin: 0; font-size: 12px; line-height: 1.45; }
+/* `P25-07`. The agent's hand, gliding to where it acts; its words beside it;
+   a ring where a click lands; and the trail of steps. Its colour is the
+   theme's accent, read by `browserWindow.js` and set on the hand (and the
+   ripple and the caption's rule take it from there): a pointer, not text, so
+   it adds no accent site to this sheet's census. */
+.abw-hand {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px var(--shadow-ink-3));
+  transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.abw-hand[hidden], .abw-caption[hidden], .abw-feed[hidden] { display: none; }
+.abw-caption {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  max-width: min(70%, 520px);
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid currentColor;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px var(--shadow-ink-3);
+  pointer-events: none;
+}
+.abw-caption[data-phase="doing"]::after { content: " …"; }
+.abw-caption[data-phase="failed"] { border-left-color: var(--red); }
+.abw-ripple {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: abw-ripple 0.65s ease-out forwards;
+}
+@keyframes abw-ripple {
+  0% { transform: scale(0.3); opacity: 0.9; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .abw-hand { transition-duration: 0.01ms; }
+  .abw-ripple { animation-duration: 0.01ms; }
+}
+.abw-feed {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+.abw-step { display: inline-flex; gap: 5px; align-items: baseline; min-width: 0; max-width: 100%; }
+.abw-step-mark { flex: 0 0 auto; font-weight: 700; }
+.abw-step-failed .abw-step-mark { color: var(--red); }
+.abw-step-who { flex: 0 0 auto; font-weight: 600; }
+.abw-step-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.abw-stop { color: var(--red); border-color: var(--red); font-weight: 600; }
+.abw-modal.abw-agent-busy .abw-stage { box-shadow: 0 0 0 1px var(--border-control, var(--border)); }
+
+/* ── `P25-09` · an agent offered for the job a message describes ────────── */
+.agent-offer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  padding: 6px 8px 6px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-control, var(--border));
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 12px;
+}
+.agent-offer-words { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.agent-offer-title { font-weight: 600; }
+.agent-offer-tag { opacity: 0.75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-offer-yes, .agent-offer-no {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 12px;
+  color: var(--fg);
+  background: none;
+  border: 1px solid var(--border-control, var(--border));
+  border-radius: 6px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.agent-offer-yes { font-weight: 600; }
 
 /* ── `P25-02` · Settings → Git ──────────────────────────────────────────── */
 .git-settings-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin: 10px 0 6px; }

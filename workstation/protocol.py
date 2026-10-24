@@ -206,8 +206,12 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     #   {"action": one of BROWSER_ACTIONS, ...its fields, "holder": "agent"|"person"="agent"}
     #   -> {"ok": true, "action", "url", "title", "tabs": [{"tab", "url", "current"}]}
     #      `read` adds {"text", "cut", "elements": [{"ref", "tag", "label", "type"?, "href"?}]};
-    #      `frame` is {"mime", "data_b64", "digest", "width", "height", "url", "title", "tabs"},
-    #      or `304` with "if_none_match" naming the frame the caller has.
+    #      `frame` is {"mime", "data_b64", "digest", "width", "height", "url", "title", "tabs",
+    #      "activity": [{"id", "seq", "at", "who", "action", "label", "x"?, "y"?,
+    #                    "phase": "doing"|"done"|"failed"}], "seq"} — what the browser did
+    #      after "since" (`P25-07`, added) — or `304` when "if_none_match" names the frame
+    #      the caller has and nothing was done since. Asking for frames is watching: while
+    #      someone watches, the agent's hand waits a moment before it acts.
     # While a person holds the screen, the agent's actions are `409 busy`
     # (`input`'s rule: the browser is on that screen). A daemon older than
     # this answers `404 not_found`.

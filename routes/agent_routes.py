@@ -16,6 +16,8 @@
     POST   /api/agents/own                     keep a file as my own ({dry: true}: only check it)
     DELETE /api/agents/own/{agent_id}          remove my own file (a shipped one is mine again)
     POST   /api/agents/draft                   *Describe it*: a sentence drafted into a file
+    POST   /api/agents/interview               `P25-08`: build it by talking — one turn
+    POST   /api/agents/suggest                 `P25-09`: an agent for what a message asks, or none
 
 The two install-wide ceilings (`P24-10`: *Pause all agents*, how many run at
 once) are settings, saved through `POST /api/auth/settings` like every other
@@ -476,6 +478,8 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
         text = body.get("text")
         if not isinstance(text, str) or not text.strip():
             return _refused("There is no file to keep — write it, or describe it and draft one.")
+        if isinstance(body.get("name"), str) and body["name"].strip():
+            text = WS.rename(text, body["name"])   # `P25-08`: the name the person chose
         try:
             if body.get("dry"):
                 m = WS.check(text)
@@ -500,6 +504,37 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
         except ManifestRefused as refused:
             return _refused(refused.sentence, 404)
         return {"ok": True, "back_to_shipped": WS.shadows(agent_id)}
+
+    @router.post("/interview")
+    async def interview_agent(request: Request):
+        """`P25-08`. One turn of building an agent by talking with the model."""
+        from src.agents import workshop as WS
+        from src.agents.manifest import ManifestRefused
+        if not request_is_a_person(request):
+            return _refused(ONLY_A_PERSON, 403)
+        try:
+            body = await _body(request)
+        except H.HireRefused as r:
+            return _refused(r.sentence, r.status)
+        try:
+            return await WS.interview(get_current_user(request), body.get("messages") or [],
+                                      seed=str(body.get("seed") or ""), build_now=bool(body.get("build_now")))
+        except ManifestRefused as refused:
+            return _refused(refused.sentence)
+
+    @router.post("/suggest")
+    async def suggest_agent(request: Request):
+        """`P25-09`. The agent a message is asking for, if one fits."""
+        from src.agents.suggest import suggest
+        try:
+            body = await _body(request)
+        except H.HireRefused as r:
+            return _refused(r.sentence, r.status)
+        user = get_current_user(request)
+        agents, _broken = catalogue(user)
+        got = suggest(str(body.get("text") or ""), agents,
+                      skip=[str(x) for x in (body.get("skip") or []) if isinstance(x, str)][:200])
+        return got or {}
 
     @router.post("/draft")
     async def draft_agent(request: Request):

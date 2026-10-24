@@ -134,6 +134,16 @@ globalThis.fetch = async (url, opts = {}) => {
   }
   m = key.match(/^DELETE \/api\/agents\/own\/(.+)$/);
   if (m) { hall.agents.find((x) => x.id === m[1]).source = 'shipped'; return reply(200, { ok: true, back_to_shipped: true }); }
+  if (key === 'POST /api/agents/interview') {
+    hallServer.talks = (hallServer.talks || 0) + 1;
+    hallServer.lastTalk = body;
+    if (!body.build_now && body.messages.filter((m) => m.role === 'user').length < 2) {
+      return reply(200, { reply: 'Which shops?', ready: false });
+    }
+    return reply(200, { reply: 'I will build it.', ready: true, proposal: { text: '---\nid: sock-watch\nname: Sock Watch\n---\n1. Watch.', ok: true,
+      sentence: 'Ready to build.', summary: { name: 'Sock Watch', id: 'sock-watch', tagline: 'Watches socks.', starts_on: 'daily at 08:00',
+      tools: ['web_fetch'], delivers: ['answer'], asks_before: ['external_side_effect'], never: [], inputs: ['Shops'] } } });
+  }
   if (key === 'POST /api/agents/draft') {
     if (!body.description) return reply(400, { detail: 'Say what the agent should do.' });
     return reply(200, { ok: true, text: '---\nid: drafted-one\n---\n1. Drafted.', sentence: 'Drafted. Read every field, then save it.' });
@@ -520,6 +530,9 @@ def test_new_agent_drafts_checks_and_saves_and_the_hall_says_yours(sandbox):
     out = _hall(sandbox, """
         await mod.openAgents(); await settle(30);
         await press(q('.agents-new')[0]);
+        const talkFirst = q('.agents-chip').filter((c) => c.dataset.mode).filter((c) => c.getAttribute('aria-selected') === 'true')
+          .map((c) => c.dataset.mode);
+        await press(q('.agents-chip').filter((c) => c.dataset.mode).find((c) => c.dataset.mode === 'describe'));
         const editor = () => q('.agents-editor')[0];
         const started = editor().value;
         const btn = (t) => q('button').find((b) => b.textContent === t);
@@ -537,9 +550,10 @@ def test_new_agent_drafts_checks_and_saves_and_the_hall_says_yours(sandbox):
         const saved = win().note.textContent;
         await press(q('.agents-back')[0]);
         const yours = q('.agents-card').filter((c) => c.querySelectorAll('.agents-own').length).map((c) => c.dataset.agent);
-        out({ started, empty, drafted, refused, view, saved, yours,
+        out({ talkFirst, started, empty, drafted, refused, view, saved, yours,
               posts: server.calls.filter((c) => c.method === 'POST').map((c) => [c.url, c.body.dry || false]) });
     """)
+    assert out["talkFirst"] == ["talk"], "`P25-08`: a new agent starts as a conversation"
     assert out["started"] == "---\nid: my-agent\n---\n1. One numbered step.", "the server's template, one spelling"
     assert out["empty"] == "Say what the agent should do."
     assert "id: drafted-one" in out["drafted"]
@@ -572,3 +586,41 @@ def test_customise_loads_its_file_and_remove_my_copy_gives_the_shipped_one_back(
     assert "Your copy of Inbox Triage is the one you see" in out["saved"] and out["edit"] is True
     assert out["removed"] == "Your copy is removed; Inbox Triage is the shipped one again."
     assert out["view"] == "hall"
+
+
+def test_talking_it_through_ends_in_a_proposal_the_person_names_and_builds(sandbox):
+    out = _hall(sandbox, """
+        await mod.openAgents(); await settle(30);
+        await press(q('.agents-new')[0]);
+        const say = async (text) => { const box = q('.agents-talk-input')[0]; box.value = text;
+          fire(q('.agents-talk-form')[0], 'submit'); await settle(60); };
+        await say('Watch sock prices');
+        const asked = texts(body(), 'agents-talk-msg');
+        const early = q('.agents-proposal').length;
+        await say('Wool & Co, every morning');
+        const card = q('.agents-proposal')[0];
+        const facts = texts(card, 'agents-proposal-facts');
+        q('.agents-proposal-name')[0].value = 'Sock Scout';
+        await press(card.querySelectorAll('.agents-primary')[0]); await settle(60);
+        const saved = server.calls.filter((c) => c.url === '/api/agents/own').pop().body;
+        out({ asked, early, facts, saved, talks: server.talks, last: server.lastTalk.messages.map((m) => m.role) });
+    """)
+    assert out["asked"][-1] == "Which shops?" and out["early"] == 0
+    assert "Starts: daily at 08:00" in out["facts"][0] and "Asks first before it may:" in out["facts"][0]
+    assert out["saved"]["name"] == "Sock Scout" and out["saved"]["text"].startswith("---\nid: sock-watch")
+    assert out["last"] == ["user", "assistant", "user"], "the whole talk travels each turn"
+
+
+def test_not_yet_puts_the_proposal_away_and_keeps_talking(sandbox):
+    out = _hall(sandbox, """
+        await mod.openAgents(); await settle(30);
+        await press(q('.agents-new')[0]);
+        const box = q('.agents-talk-input')[0]; box.value = 'Watch sock prices';
+        fire(q('.agents-talk-form')[0], 'submit'); await settle(60);
+        await press(q('.agents-btn').find((b) => b.textContent === 'Build it now')); await settle(60);
+        const shown = q('.agents-proposal').length;
+        await press(q('.agents-btn').find((b) => b.textContent === 'Not yet')); await settle(20);
+        out({ shown, after: q('.agents-proposal').length, box: q('.agents-talk-input')[0].value,
+              buildNow: server.lastTalk.build_now });
+    """)
+    assert out == {"shown": 1, "after": 0, "box": "Not yet — ", "buildNow": True}

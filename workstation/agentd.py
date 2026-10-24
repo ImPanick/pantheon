@@ -857,8 +857,10 @@ class Workstation:
         try:
             b = self.browsers.get(account)
             if action == "frame":
-                return b.frame(str(body.get("if_none_match") or ""))
-            return b.act(action, body)
+                since = body.get("since", 0)
+                since = since if isinstance(since, int) and not isinstance(since, bool) and since >= 0 else 0
+                return b.frame(str(body.get("if_none_match") or ""), since)
+            return b.act(action, body, who=who)
         except BrowserError as e:
             code = e.code if e.code in P.ERRORS else ("bad_request" if e.code in ("gone", "refused") else "unavailable")
             raise WorkstationError(code, e.message)

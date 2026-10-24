@@ -81,7 +81,9 @@ class _GitProblem(ValueError):
 
 
 def _bool(v: Any) -> bool:
-    return v is True or str(v).strip().lower() in ("true", "1", "yes", "on")
+    """A yes/no argument from the model: the tools' one rule (`env_flags`)."""
+    from src.env_flags import tool_arg_truthy
+    return tool_arg_truthy(v)
 
 
 def parse_args(content: Any) -> Tuple[Dict[str, Any], Optional[str]]:

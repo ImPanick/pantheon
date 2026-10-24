@@ -51,6 +51,12 @@ import { initTurnSheet } from './js/turnSheet.js';
 // screen*. It builds nothing until one is pressed.
 import './js/workstationScreen.js';
 import './js/browserWindow.js';   // `P25-06`: the agent browser's doors
+// `P25-07`. The agent browser's emergency stop also stops the reply on screen —
+// the Stop button's own path, asked for by event so the window needs no copy
+// of the chat module.
+document.addEventListener('pantheon-stop-reply', () => {
+  try { chatModule.stopCurrentReply(); } catch (_) {}
+});
 // Desktop window tiling — drag a modal near an edge/corner to snap.
 import './js/tileManager.js';
 import themeModule from './js/theme.js';

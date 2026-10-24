@@ -2488,6 +2488,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 
     const incognitoChkForSend = el('incognito-toggle');
     const isIncognitoForSend = !!(incognitoChkForSend && incognitoChkForSend.checked);
+    // `P25-09`. A message on its way, said once for whoever offers help with it
+    // (`summon.js` — an agent for the job it describes). Not in incognito.
+    if (!approvalForSend && !isIncognitoForSend && msg.trim()) {
+      try { window.dispatchEvent(new CustomEvent('pantheon:message-sent', { detail: { text: msg } })); } catch (_) {}
+    }
 
     if (!isIncognitoForSend) {
       await _adoptOpenedSessionBeforeAutoCreate();

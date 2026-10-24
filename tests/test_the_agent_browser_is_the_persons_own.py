@@ -173,7 +173,8 @@ def test_tabs_frames_and_the_one_holder(station, site):
     frame = station.browser(ACCOUNT, {"action": "frame"})
     assert base64.b64decode(frame["data_b64"])[:8] == b"\x89PNG\r\n\x1a\n"
     assert (frame["width"], frame["height"]) == (P.BROWSER_WIDTH, P.BROWSER_HEIGHT)
-    assert station.browser(ACCOUNT, {"action": "frame", "if_none_match": frame["digest"]}) is None
+    assert station.browser(ACCOUNT, {"action": "frame", "if_none_match": frame["digest"],
+                                     "since": frame["seq"]}) is None
 
     station.control(ACCOUNT, {"holder": "person"})
     try:
@@ -204,6 +205,33 @@ def test_nobody_else_can_attach_to_the_persons_browser(station, site):
     finally:
         other.close()
     assert station.browser(ACCOUNT, {"action": "read"})["title"] == "Shop", "and ours still works"
+
+
+@needs_firefox
+def test_what_the_hand_does_is_said_before_and_after_and_paced_while_watched(station, site):
+    """`P25-07`. Each action is in the activity before it is done (`doing`,
+    where it will land) and after (`done` or `failed`); a frame asked for is
+    watching, and while watched the agent's hand waits before it acts."""
+    import time as _t
+    from workstation.agentd import WorkstationError
+    station.browser(ACCOUNT, {"action": "open", "url": site + "/"})
+    station.browser(ACCOUNT, {"action": "read"})
+    seq = station.browser(ACCOUNT, {"action": "frame"})["seq"]
+    started = _t.monotonic()
+    station.browser(ACCOUNT, {"action": "click", "ref": 3})
+    paced = _t.monotonic() - started
+    with pytest.raises(WorkstationError):
+        station.browser(ACCOUNT, {"action": "click", "ref": 99})
+    station.browser(ACCOUNT, {"action": "reload", "holder": "person"})
+    f = station.browser(ACCOUNT, {"action": "frame", "if_none_match": "x", "since": seq})
+    acts = [(a["who"], a["action"], a["label"], a["phase"], "x" in a) for a in f["activity"]]
+    assert acts[0] == ("agent", "click", "Clicking “Go”", "done", True)
+    assert acts[1][3] == "failed" and "not on the page" in acts[1][2]
+    assert acts[2] == ("person", "reload", "Reloading the page", "done", False)
+    assert paced >= 0.75, "watched, the hand waited before it clicked"
+    again = station.browser(ACCOUNT, {"action": "frame", "since": f["seq"]})
+    assert station.browser(ACCOUNT, {"action": "frame", "if_none_match": again["digest"],
+                                     "since": again["seq"]}) is None, "nothing new and nothing changed: a 304"
 
 
 # ── the tool, through the dispatcher ────────────────────────────────────────
@@ -257,10 +285,12 @@ def test_the_window_sees_and_drives_the_callers_own_browser(app, ws, site):
     frame = me.get("/api/workstation/browser")
     assert frame.status_code == 200 and frame.headers["cache-control"] == "no-store"
     f = frame.json()
-    assert set(f) == {"mime", "data_b64", "width", "height", "digest", "url", "title", "tabs"}
+    assert set(f) == {"mime", "data_b64", "width", "height", "digest", "url", "title", "tabs",
+                      "activity", "seq"}
     assert f["url"] == site + "/two" and f["tabs"] == [{"tab": 1, "url": site + "/two", "current": True}]
     assert ws.token not in frame.text
-    assert me.get(f"/api/workstation/browser?if_none_match={f['digest']}").status_code == 304
+    assert f["activity"][-1]["label"] == f"Opening {site}/two" and f["activity"][-1]["who"] == "person"
+    assert me.get(f"/api/workstation/browser?if_none_match={f['digest']}&since={f['seq']}").status_code == 304
     theirs = as_user(app, ALSO).get("/api/workstation/browser").json()
     assert theirs["url"] != f["url"], "another person's browser is their own"
     bad = me.post("/api/workstation/browser", json={"action": "read"})

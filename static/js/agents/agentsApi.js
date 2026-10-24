@@ -109,10 +109,11 @@ export function agentSource(agentId) {
   return _call(`/api/agents/${_id(agentId)}/source`, {}, "That agent's file could not be read.");
 }
 
-/** Keep a file as this person's own; `dry` only checks it. */
-export function saveOwnAgent(text, { dry = false } = {}) {
+/** Keep a file as this person's own; `dry` only checks it; `name` renames it
+ *  (`P25-08`: the person names the agent they build). */
+export function saveOwnAgent(text, { dry = false, name = '' } = {}) {
   return _call('/api/agents/own',
-    { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ text, dry }) },
+    { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ text, dry, name: name || undefined }) },
     dry ? 'The file was not checked.' : 'The file was not kept.');
 }
 
@@ -126,4 +127,11 @@ export function draftAgent(description) {
   return _call('/api/agents/draft',
     { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ description }) },
     'The draft was not written.');
+}
+
+/** `P25-08`. One turn of building an agent by talking: `{reply, ready, proposal?}`. */
+export function interview({ messages = [], seed = '', build_now = false } = {}) {
+  return _call('/api/agents/interview',
+    { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ messages, seed, build_now }) },
+    'The model did not answer.');
 }

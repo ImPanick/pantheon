@@ -54,6 +54,13 @@ START_TIMEOUT_S = 30.0
 NAV_TIMEOUT_S = 45.0
 READ_MAX_CHARS = 12_000
 ELEMENTS_MAX = 150
+# `P25-07`. How many of the browser's own actions are kept for the window, how
+# recently a frame must have been asked for to count as someone watching, and
+# how long the agent's hand waits, while watched, before it acts.
+ACTIVITY_KEPT = 40
+WATCHED_S = 3.0
+PACE_POINTER_S = 0.8
+PACE_OTHER_S = 0.35
 _LISTENING_RE = re.compile(r"WebDriver BiDi listening on ws://([0-9.]+):(\d+)")
 
 USER_JS = """// Written by the Pantheon workstation (`workstation/browser.py`).
@@ -106,8 +113,11 @@ WHERE_FN = r"""(ref) => {
   if (!el) return '';
   el.scrollIntoView({ block: 'center', inline: 'center' });
   const r = el.getBoundingClientRect();
+  const label = (el.getAttribute('aria-label') || el.innerText || el.value || el.placeholder ||
+                 el.title || el.alt || el.name || el.tagName.toLowerCase()).replace(/\s+/g, ' ').trim().slice(0, 60);
   return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2),
-                          editable: !!(el.isContentEditable || /^(input|textarea|select)$/i.test(el.tagName)) });
+                          editable: !!(el.isContentEditable || /^(input|textarea|select)$/i.test(el.tagName)),
+                          label });
 }"""
 
 # WebDriver's key codes for the keys a person names (`press`).
@@ -173,6 +183,15 @@ class AccountBrowser:
         self.session: Optional[Session] = None
         self.current: Optional[str] = None
         self.lock = threading.RLock()
+        # `P25-07`. What the browser did, newest last, for the window to show
+        # as it happens: `{id, seq, at, who, action, label, x?, y?, phase}`.
+        # `seq` rises whenever an entry is added or moves on, so a window that
+        # has seen up to N asks only for what came after.
+        self.activity: List[Dict[str, Any]] = []
+        self.seq = 0
+        self._ids = 0
+        self.watched_at = 0.0
+        self._act_lock = threading.Lock()
 
     # -- life -------------------------------------------------------------------
 
@@ -232,7 +251,7 @@ class AccountBrowser:
             while self.proc and self.proc.stdout and self.proc.stdout.readline():
                 pass
         except (OSError, ValueError):
-            pass
+            pass  # the drain only keeps Firefox's pipe from filling; it ends when Firefox does
 
     def stop(self) -> None:
         with self.lock:
@@ -250,7 +269,7 @@ class AccountBrowser:
                     try:
                         os.killpg(self.proc.pid, 9)
                     except OSError:
-                        pass
+                        pass  # already gone between the check and the kill
             self.proc = None
             self.current = None
 
@@ -274,7 +293,7 @@ class AccountBrowser:
             self._call("browsingContext.setViewport",
                        {"context": ctx, "viewport": {"width": P.BROWSER_WIDTH, "height": P.BROWSER_HEIGHT}})
         except BrowserError:
-            pass
+            pass  # a viewport Firefox will not set leaves the window's own size; frames still come
 
     def _ctx(self) -> str:
         ids = [c["context"] for c in self._contexts()]
@@ -325,13 +344,104 @@ class AccountBrowser:
         try:
             title = str(self._eval(ctx, "() => document.title") or "")[:200]
         except BrowserError:
-            pass
+            pass  # a page that will not say its title has none to show; its address still does
         url = next((t["url"] for t in tabs if t["tab"] == ctx), "")
         return {"url": url, "title": title, "tabs": tabs}
 
+    # -- what the person watches (`P25-07`) -------------------------------------
+
+    def _log(self, who: str, action: str, label: str, x=None, y=None, phase: str = "doing") -> Dict:
+        with self._act_lock:
+            self._ids += 1
+            self.seq += 1
+            entry = {"id": self._ids, "seq": self.seq, "at": time.time(), "who": who,
+                     "action": action, "label": label[:160], "phase": phase}
+            if x is not None and y is not None:
+                entry["x"], entry["y"] = int(x), int(y)
+            self.activity.append(entry)
+            del self.activity[:-ACTIVITY_KEPT]
+            return entry
+
+    def _moved_on(self, entry: Dict, phase: str, label: Optional[str] = None) -> None:
+        with self._act_lock:
+            self.seq += 1
+            entry["seq"] = self.seq
+            entry["phase"] = phase
+            if label:
+                entry["label"] = label[:160]
+
+    def activity_since(self, since: int) -> List[Dict[str, Any]]:
+        with self._act_lock:
+            return [dict(e) for e in self.activity if e["seq"] > since]
+
+    def watched(self) -> bool:
+        return time.monotonic() - self.watched_at < WATCHED_S
+
+    def _pace(self, who: str, seconds: float) -> None:
+        """An agent's hand moves at a pace a watching person can follow — only
+        while someone watches, and outside the lock, so the window's frames
+        keep coming while it waits."""
+        if who == "agent" and self.watched():
+            time.sleep(seconds)
+
+    def act(self, action: str, body: Dict, who: str = "agent") -> Dict:
+        """One action, said in the activity before it is done and marked done
+        (or failed) after, so the window shows the hand arriving first."""
+        with self.lock:
+            if not self.running():
+                self.stop()
+                self.start()
+        try:
+            label, x, y = self._intent(action, body)
+        except BrowserError as e:
+            # Said too: a hand that reached for something no longer there.
+            what = f"element {body.get('ref')}" if body.get("ref") is not None else "the page"
+            self._log(who, action, f"{action.capitalize()} on {what} — {e.message}", phase="failed")
+            raise
+        entry = self._log(who, action, label, x, y)
+        self._pace(who, PACE_POINTER_S if x is not None else PACE_OTHER_S)
+        try:
+            out = self._act(action, body, at=(x, y) if x is not None else None)
+        except BrowserError as e:
+            self._moved_on(entry, "failed", f"{label} — {e.message}")
+            raise
+        self._moved_on(entry, "done")
+        return out
+
+    def _intent(self, action: str, body: Dict):
+        """What the hand is about to do, in words, and where: `(label, x, y)`."""
+        x = y = None
+        if action in ("click", "type") and body.get("ref") is not None:
+            with self.lock:
+                at = self._where(self._ctx(), body.get("ref"))
+            x, y = at["x"], at["y"]
+            what = at.get("label") or f"element {body.get('ref')}"
+        elif action == "click":
+            x, y = _xy(body)
+            what = "the page"
+        if action == "click":
+            return f"Clicking “{what}”", x, y
+        if action == "type":
+            text = str(body.get("text") or "")
+            shown = text if len(text) <= 40 else text[:39] + "…"
+            into = f" into “{what}”" if x is not None else ""
+            return f"Typing “{shown}”{into}{' and pressing Enter' if body.get('submit') else ''}", x, y
+        if action == "open":
+            return f"Opening {str(body.get('url') or '')[:120]}", None, None
+        if action == "read":
+            return "Reading the page", None, None
+        if action == "press":
+            return f"Pressing {body.get('keys')}", None, None
+        if action == "scroll":
+            dy = body.get("dy", 5) or 0
+            return f"Scrolling {'down' if dy >= 0 else 'up'}", None, None
+        return {"back": "Going back", "forward": "Going forward", "reload": "Reloading the page",
+                "tabs": "Looking at the tabs", "tab_new": "Opening a new tab",
+                "tab_switch": "Switching tabs", "tab_close": "Closing a tab"}.get(action, action), None, None
+
     # -- actions ----------------------------------------------------------------
 
-    def act(self, action: str, body: Dict) -> Dict:
+    def _act(self, action: str, body: Dict, at=None) -> Dict:
         with self.lock:
             if not self.running():
                 self.stop()
@@ -346,9 +456,11 @@ class AccountBrowser:
                 out.update(json.loads(raw or "{}"))
                 return out
             elif action == "click":
-                if body.get("ref") is not None:
-                    at = self._where(ctx, body.get("ref"))
-                    x, y = at["x"], at["y"]
+                if at is not None:
+                    x, y = at
+                elif body.get("ref") is not None:
+                    where = self._where(ctx, body.get("ref"))
+                    x, y = where["x"], where["y"]
                 else:
                     x, y = _xy(body)
                 self._point(ctx, x, y, clicks=2 if body.get("double") else 1)
@@ -358,9 +470,9 @@ class AccountBrowser:
                 if not isinstance(text, str) or len(text) > P.MAX_TYPE_CHARS:
                     raise BrowserError("bad_request", f"“text” is at most {P.MAX_TYPE_CHARS} characters.")
                 if body.get("ref") is not None:
-                    at = self._where(ctx, body.get("ref"))
-                    self._point(ctx, at["x"], at["y"])
-                    if at.get("editable"):
+                    where = self._where(ctx, body.get("ref"))
+                    self._point(ctx, where["x"], where["y"])
+                    if where.get("editable"):
                         self._keys(ctx, _key_actions("ctrl+a") + [{"type": "keyDown", "value": ""},
                                                                   {"type": "keyUp", "value": ""}])
                 keys: List[Dict[str, str]] = []
@@ -405,7 +517,7 @@ class AccountBrowser:
                 try:
                     self._call("browsingContext.activate", {"context": ctx})
                 except BrowserError:
-                    pass
+                    pass  # activating only raises the tab on a desktop; `current` already points at it
             elif action == "tab_close":
                 ctx_close = self._tab(body)
                 if len(self._contexts()) <= 1:
@@ -428,7 +540,10 @@ class AccountBrowser:
             return want
         raise BrowserError("bad_request", f"“tab” is a tab's number, 1 to {len(tabs)}.")
 
-    def frame(self, if_none_match: str = "") -> Optional[Dict]:
+    def frame(self, if_none_match: str = "", since: int = 0) -> Optional[Dict]:
+        """The page as it is, and what the browser did after `since`. None (a
+        `304`) only when both are what the caller already has."""
+        self.watched_at = time.monotonic()
         with self.lock:
             if not self.running():
                 self.stop()
@@ -437,10 +552,12 @@ class AccountBrowser:
             shot = self._call("browsingContext.captureScreenshot", {"context": ctx})
             data = base64.b64decode(shot.get("data") or "")
             digest = hashlib.sha256(data).hexdigest()[:16]
-            if if_none_match and digest == if_none_match:
+            activity = self.activity_since(since)
+            if if_none_match and digest == if_none_match and not activity:
                 return None
             out = {"mime": "image/png", "data_b64": shot.get("data") or "", "digest": digest,
-                   "width": P.BROWSER_WIDTH, "height": P.BROWSER_HEIGHT}
+                   "width": P.BROWSER_WIDTH, "height": P.BROWSER_HEIGHT,
+                   "activity": activity, "seq": self.seq}
             out.update(self.state(ctx))
             return out
 

@@ -181,3 +181,64 @@ def test_closing_while_holding_hands_it_back(sandbox):
               inBody: !!document.getElementById('agent-browser-modal') });
     """)
     assert out == {"last": "agent", "keepalive": True, "open": False, "inBody": False}
+
+
+# ── `P25-07`: the agent's hand, its words, its trail, and the stop ─────────
+
+def test_the_agents_hand_glides_to_where_it_acts_and_says_what_it_does(sandbox):
+    out = _window(sandbox, """
+        await open();
+        const w = win();
+        w.page.getBoundingClientRect = () => ({ left: 90, top: 40, width: 660, height: 420, right: 750, bottom: 460 });
+        mod.applyActivity([
+          { id: 1, seq: 1, who: 'agent', action: 'open', label: 'Opening https://shop.example/', phase: 'done' },
+          { id: 2, seq: 2, who: 'agent', action: 'click', label: 'Clicking “Add to basket”', phase: 'doing', x: 640, y: 400 },
+        ]);
+        const doing = { caption: w.caption.textContent, phase: w.caption.dataset.phase, hidden: w.caption.hidden,
+                        hand: w.hand.style.transform, handHidden: w.hand.hidden };
+        mod.applyActivity([{ id: 2, seq: 3, who: 'agent', action: 'click', label: 'Clicking “Add to basket”',
+                             phase: 'done', x: 640, y: 400 }]);
+        const ripples = w.page.querySelectorAll('.abw-ripple').length;
+        mod.applyActivity([{ id: 3, seq: 4, who: 'person', action: 'back', label: 'Going back', phase: 'done' }]);
+        out({ doing, ripples, caption: w.caption.textContent, since: mod._test.state().since,
+              feed: mod._test.state().feed.map((f) => [f.id, f.phase, f.who]),
+              busy: w.modal.classList.contains('abw-agent-busy') });
+    """)
+    assert out["doing"] == {"caption": "Clicking “Add to basket”", "phase": "doing", "hidden": False,
+                            "hand": "translate(330px, 210px)", "handHidden": False}, \
+        "the hand is at the frame's pixel, drawn where the picture is"
+    assert out["ripples"] == 1, "a finished click ripples where it landed"
+    assert out["caption"] == "Clicking “Add to basket”", "the person's own step does not speak for the agent"
+    assert out["feed"] == [[3, "done", "person"], [2, "done", "agent"], [1, "done", "agent"]]
+    assert out["since"] == 4 and out["busy"] is True
+
+
+def test_the_window_asks_only_for_what_it_has_not_seen(sandbox):
+    out = _window(sandbox, """
+        await open();
+        mod.applyActivity([{ id: 9, seq: 7, who: 'agent', action: 'read', label: 'Reading the page', phase: 'done' }]);
+        await settle(60);
+        const last = server.calls.filter((c) => String(c.url).startsWith('/api/workstation/browser') && c.method === 'GET').pop();
+        out({ url: last.url });
+    """)
+    assert "since=7" in out["url"]
+
+
+def test_stop_takes_the_browser_and_stops_the_reply(sandbox):
+    out = _window(sandbox, """
+        let stops = 0;
+        document.addEventListener('pantheon-stop-reply', () => { stops += 1; });
+        await open();
+        const w = win();
+        const shown = !w.stop.hidden;
+        fire(w.stop, 'click'); await settle(60);
+        const after = { stops, holder: server.holder, status: w.statusText.textContent, stopHidden: w.stop.hidden,
+                        give: !w.give.hidden, stopped: mod._test.state().stopped };
+        await mod.handBack(); await settle(20);
+        out({ shown, after, back: { holder: server.holder, stopped: mod._test.state().stopped } });
+    """)
+    assert out["shown"] is True
+    assert out["after"] == {"stops": 1, "holder": "person",
+                            "status": "Stopped. The agent cannot use the browser until you hand it back.",
+                            "stopHidden": True, "give": True, "stopped": True}
+    assert out["back"] == {"holder": "agent", "stopped": False}

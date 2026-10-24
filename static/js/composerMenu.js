@@ -113,10 +113,24 @@ function _openGitSettings() {
   });
 }
 
-async function _openHall({ workshop = false } = {}) {
+async function _openHall({ workshop = false, seed = '' } = {}) {
   const m = await import('./agents/agentsWindow.js');
   await m.openAgents();
-  if (workshop && m.openWorkshop) m.openWorkshop({ text: null });
+  if (workshop && m.openWorkshop) m.openWorkshop({ text: null, mode: 'talk', seed });
+}
+
+/** `P25-08`. The chat on screen as words — what *Build one from this chat*
+ *  hands the agent builder as context: who said what, newest last. */
+export function chatTranscript(doc = document, maxChars = 8000) {
+  const rows = Array.from(doc.querySelectorAll('#chat-history .msg.msg-user, #chat-history .msg.msg-ai'));
+  const lines = rows.map((m) => {
+    const b = m.querySelector('.body');
+    const text = ((b && (b.innerText || b.textContent)) || '').replace(/\s+\n/g, '\n').trim();
+    if (!text) return '';
+    return `${m.classList.contains('msg-user') ? 'Person' : 'Assistant'}: ${text}`;
+  }).filter(Boolean);
+  const all = lines.join('\n\n');
+  return all.length > maxChars ? all.slice(all.length - maxChars) : all;
 }
 
 /** Every submenu, from one list. `load()` answers `{ rows, empty }`; a row is
@@ -146,6 +160,7 @@ export const SUBMENUS = {
     },
     foot: [
       { label: 'New agent…', pick: () => _openHall({ workshop: true }) },
+      { label: 'Build one from this chat…', pick: () => _openHall({ workshop: true, seed: chatTranscript() }) },
       { label: 'Open the hall', pick: () => _openHall() },
     ],
   },

@@ -111,7 +111,7 @@ class _Socket:
                 try:
                     self.send(0x8, data[:2])
                 except OSError:
-                    pass
+                    pass  # the peer is closing anyway; our echo of its close is a courtesy
                 return None
             if opcode == 0x9:
                 self.send(0xA, data)
@@ -126,11 +126,11 @@ class _Socket:
         try:
             self.send(0x8, struct.pack("!H", 1000))
         except OSError:
-            pass
+            pass  # closing: a socket the browser already dropped needs no close frame
         try:
             self.sock.close()
         except OSError:
-            pass
+            pass  # closing: the socket is gone either way
 
 
 class Session:
@@ -168,7 +168,7 @@ class Session:
                 elif msg.get("type") == "event":
                     self.events.append(msg)
         except (OSError, ConnectionError, ValueError):
-            pass
+            pass  # the connection ended; `finally` marks the session closed and wakes every waiter, which is how callers learn it
         finally:
             self.closed = True
             with self._lock:

@@ -30,6 +30,10 @@ export const MODAL_ID = 'agent-browser-modal';
 
 const TIMING = {
   FRAME_MS: 500,
+  BUSY_FRAME_MS: 200,     // `P25-07`: while the agent's hand is moving
+  BUSY_FOR_MS: 4000,      // how long after its last action it counts as moving
+  CAPTION_MS: 1800,       // how long a finished action's caption stays
+  GLIDE_MS: 420,          // the hand's glide to where it acts
   HOLDER_MS: 4000,
   RETRY_MS: 5000,
   AFTER_INPUT_MS: 150,
@@ -41,6 +45,13 @@ const BROWSER_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none
   + 'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" '
   + 'aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/>'
   + '<path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
+
+// `P25-07`. The agent's pointer: an arrow in the theme's own accent (its colour
+// is `.abw-hand`'s, in the stylesheet), outlined in the panel colour so it reads
+// on any page in any theme.
+const HAND_SVG = '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">'
+  + '<path d="M4 2.5 L4 19 L8.6 14.8 L11.6 21.5 L14.4 20.3 L11.4 13.7 L17.6 13.4 Z" '
+  + 'fill="currentColor" stroke="var(--panel)" stroke-width="1.6" stroke-linejoin="round"/></svg>';
 
 const HINT = {
   watching: 'This is the agent\'s browser. Take over to click and type on the page yourself; the agent waits until you hand it back.',
@@ -100,6 +111,14 @@ let _typed = '';
 let _typeTimer = null;
 let _wheel = null;
 let _editingAddress = false;
+// `P25-07`. What the browser has done that this window has drawn, and the hand.
+let _since = 0;
+let _lastAgentAt = 0;
+let _hand = { x: null, y: null };
+let _captionTimer = null;
+let _feed = [];             // [{id, label, phase, who}], newest first
+let _stopped = false;
+const FEED_KEPT = 6;
 let _lastUrl = '';
 
 function _el(tag, cls, text) {
@@ -147,6 +166,8 @@ function _render() {
   const holding = _holding();
   _win.take.hidden = !up || _holder !== 'agent';
   _win.give.hidden = !holding;
+  _win.stop.hidden = !up || holding;
+  if (holding) _win.hand.hidden = true;
   _win.stage.classList.toggle('abw-held', holding);
   _win.page.classList.toggle('abw-holding', holding);
   _win.page.setAttribute('role', holding ? 'application' : 'img');
@@ -192,6 +213,110 @@ function _showFrame(f) {
   _drawTabs(f.tabs);
 }
 
+// ── `P25-07`: the agent's hand, its words, its trail ──────────────────────────
+
+/** A point on the page (the frame's own pixels) as a place on the drawn picture,
+ *  relative to the page box — `mapPoint` the other way round. */
+export function placeOf(x, y, imgRect, pageRect, w, h) {
+  if (!imgRect || !pageRect || !(imgRect.width > 0) || !(w > 0) || !(h > 0)) return null;
+  return {
+    left: imgRect.left - pageRect.left + (x / w) * imgRect.width,
+    top: imgRect.top - pageRect.top + (y / h) * imgRect.height,
+  };
+}
+
+/** The theme's accent, as the hand's colour — read from the page's own
+ *  tokens each time, so a theme change is followed. */
+function _handColour() {
+  try {
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+    return v || '';
+  } catch (_) { return ''; }
+}
+
+function _moveHand(x, y) {
+  if (!_win || x == null || y == null) return;
+  const colour = _handColour();
+  if (colour) { _win.hand.style.color = colour; _win.caption.style.color = ''; }
+  const at = placeOf(x, y, _win.img.getBoundingClientRect(), _win.page.getBoundingClientRect(), _size.w, _size.h);
+  if (!at) return;
+  _hand = { x, y };
+  _win.hand.hidden = false;
+  _win.hand.style.transform = `translate(${Math.round(at.left)}px, ${Math.round(at.top)}px)`;
+}
+
+function _ripple(x, y) {
+  if (!_win) return;
+  const at = placeOf(x, y, _win.img.getBoundingClientRect(), _win.page.getBoundingClientRect(), _size.w, _size.h);
+  if (!at) return;
+  const r = _el('span', 'abw-ripple');
+  r.style.color = _win.hand.style.color || '';
+  r.style.left = `${Math.round(at.left)}px`;
+  r.style.top = `${Math.round(at.top)}px`;
+  _win.page.appendChild(r);
+  setTimeout(() => { if (r.parentNode) r.parentNode.removeChild(r); }, 700);
+}
+
+function _caption(text, phase) {
+  if (!_win) return;
+  const c = _win.caption;
+  c.textContent = text;
+  c.dataset.phase = phase;
+  c.hidden = false;
+  if (_captionTimer) { clearTimeout(_captionTimer); _captionTimer = null; }
+  if (phase !== 'doing') _captionTimer = setTimeout(() => { if (_win) _win.caption.hidden = true; }, TIMING.CAPTION_MS);
+}
+
+function _drawFeed() {
+  if (!_win) return;
+  const list = _win.feed;
+  list.textContent = '';
+  _feed.forEach((f) => {
+    const li = _el('li', `abw-step abw-step-${f.phase}`);
+    li.appendChild(_el('span', 'abw-step-mark', f.phase === 'doing' ? '…' : (f.phase === 'failed' ? '!' : '✓')));
+    li.appendChild(_el('span', 'abw-step-who', f.who === 'person' ? 'You' : 'Agent'));
+    li.appendChild(_el('span', 'abw-step-label', f.label));
+    list.appendChild(li);
+  });
+  _win.feed.hidden = !_feed.length;
+}
+
+/** What the browser did since this window last looked, drawn as it was done:
+ *  the hand glides to where it acts, says what it is doing, and a click
+ *  ripples where it landed. Only the agent's hand is drawn — the person's
+ *  own is theirs. */
+export function applyActivity(entries) {
+  (entries || []).forEach((a) => {
+    const known = _feed.find((f) => f.id === a.id);
+    if (known) { known.phase = a.phase; known.label = a.label; }
+    else _feed.unshift({ id: a.id, label: a.label, phase: a.phase, who: a.who });
+    if (a.seq > _since) _since = a.seq;
+    if (a.who !== 'agent') return;
+    _lastAgentAt = Date.now();
+    if (a.x != null && a.y != null) _moveHand(a.x, a.y);
+    _caption(a.label, a.phase);
+    if (a.phase === 'done' && a.action === 'click' && a.x != null) _ripple(a.x, a.y);
+  });
+  _feed = _feed.slice(0, FEED_KEPT);
+  _drawFeed();
+  if (_win) _win.modal.classList.toggle('abw-agent-busy', Date.now() - _lastAgentAt < TIMING.BUSY_FOR_MS);
+}
+
+/** *Stop*: the browser is taken from the agent at once — every call it makes
+ *  after this is refused — and the reply on screen is stopped too. Handing
+ *  it back is the person's own, later, act. */
+export async function emergencyStop() {
+  _stopped = true;
+  document.dispatchEvent(new CustomEvent('pantheon-stop-reply'));
+  const ok = await _control('person');
+  if (_win) {
+    _win.caption.hidden = true;
+    _say(ok ? 'Stopped. The agent cannot use the browser until you hand it back.'
+      : 'The reply was stopped, but the browser did not answer: it may still be finishing one step.', { error: !ok });
+  }
+  return ok;
+}
+
 function _schedule(ms) {
   if (_timer) clearTimeout(_timer);
   _timer = setTimeout(_tick, Math.max(0, ms));
@@ -220,10 +345,17 @@ async function _tick() {
   const started = Date.now();
   let wait = TIMING.FRAME_MS;
   try {
-    const url = '/api/workstation/browser' + (_digest ? `?if_none_match=${encodeURIComponent(_digest)}` : '');
+    const q = [`since=${_since}`];
+    if (_digest) q.push(`if_none_match=${encodeURIComponent(_digest)}`);
+    const url = `/api/workstation/browser?${q.join('&')}`;
     const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
     if (res.status === 304 || res.ok) {
-      if (res.ok) _showFrame(await res.json());
+      if (res.ok) {
+        const f = await res.json();
+        _showFrame(f);
+        applyActivity(f.activity);
+      }
+      if (Date.now() - _lastAgentAt < TIMING.BUSY_FOR_MS) wait = TIMING.BUSY_FRAME_MS;
       if (_state !== 'up') { _state = 'up'; _say('Your browser, in your workstation.'); }
     } else {
       _state = res.status === 403 ? 'not_permitted' : 'down';
@@ -356,6 +488,7 @@ export async function takeOver() {
 }
 
 export async function handBack() {
+  _stopped = false;
   _flushTyped();
   _flushWheel();
   await _sendChain;
@@ -433,11 +566,15 @@ function _build() {
   const statusText = _el('span', 'ws-status-text', 'Starting the browser…');
   status.appendChild(dot);
   status.appendChild(statusText);
+  const stop = _button('abw-stop', 'Stop', () => { emergencyStop(); },
+    'Stop the agent now: the browser is yours until you hand it back');
+  stop.hidden = true;
   const take = _button('abw-take', 'Take over', () => { takeOver(); });
   const give = _button('abw-give', 'Hand back', () => { handBack(); });
   take.hidden = true;
   give.hidden = true;
   strip.appendChild(status);
+  strip.appendChild(stop);
   strip.appendChild(take);
   strip.appendChild(give);
 
@@ -451,6 +588,20 @@ function _build() {
   const empty = _el('div', 'abw-empty', 'Starting your browser — the first time takes a few seconds…');
   page.appendChild(img);
   page.appendChild(empty);
+  // `P25-07`. The agent's hand and its words, over the page.
+  const hand = _el('span', 'abw-hand');
+  hand.setAttribute('aria-hidden', 'true');
+  hand.innerHTML = HAND_SVG;   // a constant, never server text
+  hand.hidden = true;
+  const caption = _el('div', 'abw-caption');
+  caption.setAttribute('role', 'status');
+  caption.setAttribute('aria-live', 'polite');
+  caption.hidden = true;
+  page.appendChild(hand);
+  page.appendChild(caption);
+  const feed = _el('ol', 'abw-feed');
+  feed.setAttribute('aria-label', 'What the browser did');
+  feed.hidden = true;
   stage.appendChild(page);
   const hint = _el('p', 'abw-hint');
   hint.hidden = true;
@@ -460,6 +611,7 @@ function _build() {
   content.appendChild(bar);
   content.appendChild(strip);
   content.appendChild(stage);
+  content.appendChild(feed);
   content.appendChild(hint);
   modal.appendChild(content);
 
@@ -470,7 +622,7 @@ function _build() {
   img.addEventListener('dragstart', (e) => e.preventDefault());
 
   return { modal, content, header, title, tabs, back, forward, reload, address, go, status, statusText,
-    take, give, stage, page, img, empty, hint };
+    take, give, stop, stage, page, img, empty, hint, hand, caption, feed };
 }
 
 function _teardown() {
@@ -484,9 +636,14 @@ function _teardown() {
     }).catch(() => {});
   }
   const modal = _win.modal;
+  if (_captionTimer) { clearTimeout(_captionTimer); _captionTimer = null; }
   _win = null;
   _digest = '';
   _lastUrl = '';
+  _since = 0;
+  _feed = [];
+  _lastAgentAt = 0;
+  _stopped = false;
   _holder = null;
   _state = 'checking';
   if (modal.parentNode) modal.parentNode.removeChild(modal);
@@ -544,7 +701,8 @@ if (typeof document !== 'undefined' && document && typeof document.addEventListe
 
 export const _test = {
   TIMING, tick: _tick, win: () => _win, settled: () => _sendChain,
-  state: () => ({ open: !!_win, state: _state, holder: _holder, digest: _digest }),
+  state: () => ({ open: !!_win, state: _state, holder: _holder, digest: _digest, since: _since,
+    feed: _feed.map((f) => ({ ...f })), hand: { ..._hand }, stopped: _stopped }),
 };
 
-export default { openAgentBrowser, closeAgentBrowser, takeOver, handBack, openAddress };
+export default { openAgentBrowser, closeAgentBrowser, takeOver, handBack, openAddress, emergencyStop };

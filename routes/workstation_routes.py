@@ -320,12 +320,14 @@ def setup_workstation_routes() -> APIRouter:
     # ── `P25-06`: the agent browser's window ───────────────────────────────────
 
     @router.get("/browser")
-    async def workstation_browser(request: Request, if_none_match: str = ""):
+    async def workstation_browser(request: Request, if_none_match: str = "", since: int = 0):
         """The caller's own browser: one frame of the page, its address, title
-        and tabs; `304` when the page has not changed."""
+        and tabs, and what it did after `since` (`P25-07`); `304` when none
+        of that changed."""
         client, account = _mine(request)
         try:
-            shot = await client.browser(account, "frame", if_none_match=if_none_match or None)
+            shot = await client.browser(account, "frame", if_none_match=if_none_match or None,
+                                        since=max(0, int(since or 0)))
             if shot is None:
                 return Response(status_code=304, headers=_NO_STORE)
             frame = _frame(shot)
@@ -333,8 +335,11 @@ def setup_workstation_routes() -> APIRouter:
             raise _http_error(e)
         tabs = [{"tab": n, "url": str(t.get("url") or "")[:2000], "current": bool(t.get("current"))}
                 for n, t in enumerate(shot.get("tabs") or [], start=1) if isinstance(t, dict)]
+        activity = [_activity(a) for a in (shot.get("activity") or []) if isinstance(a, dict)]
+        seq = shot.get("seq") if isinstance(shot.get("seq"), int) and not isinstance(shot.get("seq"), bool) else 0
         return JSONResponse({**frame, "url": str(shot.get("url") or "")[:4000],
-                             "title": str(shot.get("title") or "")[:300], "tabs": tabs},
+                             "title": str(shot.get("title") or "")[:300], "tabs": tabs,
+                             "activity": activity, "seq": seq},
                             headers=_NO_STORE)
 
     @router.post("/browser")
@@ -354,6 +359,21 @@ def setup_workstation_routes() -> APIRouter:
                 "url": str(answer.get("url") or "")[:4000], "title": str(answer.get("title") or "")[:300]}
 
     return router
+
+
+def _activity(a: Dict[str, Any]) -> Dict[str, Any]:
+    """`P25-07`. One thing the browser did, as the window is given it: only the
+    fields it draws, each its own type."""
+    def _int(v):
+        return v if isinstance(v, int) and not isinstance(v, bool) else None
+    out = {"id": _int(a.get("id")) or 0, "seq": _int(a.get("seq")) or 0,
+           "who": "person" if a.get("who") == "person" else "agent",
+           "action": str(a.get("action") or "")[:20], "label": str(a.get("label") or "")[:160],
+           "phase": a.get("phase") if a.get("phase") in ("doing", "done", "failed") else "done"}
+    x, y = _int(a.get("x")), _int(a.get("y"))
+    if x is not None and y is not None:
+        out["x"], out["y"] = x, y
+    return out
 
 
 # `P25-06`. What a person's window may ask of their browser, and the fields it

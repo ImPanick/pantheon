@@ -85,9 +85,9 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P22 | The Workbench | 25 | 0 | 0 | **25** |
 | P23 | Alignment — the audits, fixed | 9 | 0 | 0 | **9** |
 | P24 | Agents — the hall of hireable agents | 27 | 8 | 0 | **19** |
-| P25 | The + menu, git per account, the agent browser | 7 | 1 | 0 | **6** |
+| P25 | The + menu, git per account, the agent browser | 10 | 1 | 0 | **9** |
 | Backlog | Bugs and hardening found in flight | 1014 | 350 | 0 | **662** |
-| **Total** | | **1479** | **384** | **5** | **1088** |
+| **Total** | | **1482** | **384** | **5** | **1091** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -249,6 +249,10 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P25: watch the agent's hand, build an agent by talking, an agent offered when it fits
+`c91adb7`…`HEAD`. **1482 tracked, 1091 done. `P25-07`…`P25-09` filed and closed.**
+The agent browser shows the agent's pointer in the theme's colour gliding to where it acts, says each step as it takes it, and has a Stop that takes the browser back at once; a new agent is built by talking with the model until it proposes one to name and approve, or from the chat on screen; and a message that describes a job is offered the agent that does it.
 
 ### P25 opened: the + menu nested, git for every account, the agent browser
 `6f1b3a3`…`HEAD`. **1479 tracked, 1088 done. `P25-00`…`P25-06` filed; `P25-01`…`P25-06` closed, `P25-00` (acceptance) open.**
@@ -11294,6 +11298,12 @@ browser, and the person can take it over (`P20-05`'s rule, not a second one).
   unrepresentable rather than absent, and the test now pins the structure: two builders that happen
   to agree today is the state the old form was in before somebody edited one.
   `CACHE_NAME` `v414` → `v415`. 6 tests.
+- [x] **P25-07** **The agent's hand: watch it act, and stop it.** The owner, 2026-10-24: *"When the user presses the + button and selects the browser — the same actions should happen that happen with modern agents. You see the agents mouse (color fit to the users current theme, tastefully) as well as the actions it does as it does it. Not internal thoughts (thats in the chat pane) but watch it take action. Include emergency stops in the browser as well."*
+  — **done 2026-10-24** — the daemon says each browser action before it does it and after (`activity`: who, what in words, where on the page, *doing*/*done*/*failed*; a reach for an element that is gone is said too), and a frame asked for is someone watching: while watched, the agent's hand waits a moment before it acts, outside the lock, so the window's frames keep coming. The window (`browserWindow.js`) asks only for what it has not seen (`since`), and draws the agent's pointer — the theme's own accent, read from its token, outlined in the panel colour — gliding to where it acts, a caption saying what it is doing (*Clicking “Add to basket”*, *Typing “hiking” into “Search socks” and pressing Enter*), a ring where a click lands, and the trail of the last six steps, the person's own marked *You*. Polls faster while the hand moves. **Stop**: the browser is taken from the agent at once (every call after it is refused, hired agents' too) and the reply on screen is stopped through the Stop button's own path; *Hand back* gives it back. `Verify:` `tests/test_the_agent_browser_is_the_persons_own.py` (+1, paced and said against a real Firefox), `tests/test_the_agent_browser_window_js.py` (+3); driven in Chromium: the agent opens, reads, types into the search box and clicks while the window shows its hand and words, then *Stop*.
+- [x] **P25-08** **Build an agent by talking.** The owner, 2026-10-24: *"you should be able to have a conversation with the LLM and it should be able to build agents from the chat context provided. Once enough context is reached the agent construction triggers and a button to approve or disprove the process pops up.. and agents can be named manually."*
+  — **done 2026-10-24** — *+ New agent* opens on **Talk it through** (beside *Describe it* and *Its file*): the model interviews one question at a time and answers data — `{reply, ready, agent?}` — so it can say it is ready only by handing over a whole agent, which `render` spells and the lint checks (one repair round); after six turns it is nudged to propose, and *Build it now* asks for one at once. The proposal is an **Agent construction** card: a name field (the person's choice becomes its name and id), what it starts on, asks for, uses and delivers, what it asks before and never does, and **Build it** / **Not yet** / *Open the file*. **Build one from this chat…** under *Agents ›* starts the talk from the chat on screen, handed to the model as context, not instructions. `POST /api/agents/interview`; `POST /api/agents/own` takes the name. `Verify:` `tests/test_an_agent_is_written_by_its_person.py` (+6), `tests/test_the_agents_hall_js.py` (+2); driven in Chromium.
+- [x] **P25-09** **An agent offered for the job a message describes.** The owner, 2026-10-24: *"If the user triggers key words or thought processes, such as 'I need optimization for X workflows' or 'I'm thinking of these products' the suggestion of 'load X agent' to enhance your experience in {whatever task is referenced}."*
+  — **done 2026-10-24** — `src/agents/suggest.py`, no model: a message that describes a job (need, plan, habit: *I need…*, *I'm thinking of…*, *every morning…*, *keep track of…*) is matched, stemmed, against each agent's name and id, tagline and section; the best is offered only when it clears the bar and is not tied — a wrong offer is worse than none. Above the composer: *{Agent} could help with this*, its tagline, **Summon** (switching to Agent mode when needed) and **Not now** (that agent is not offered again on the page). Not while an agent is summoned, not in incognito. `POST /api/agents/suggest`. `Verify:` `tests/test_an_agent_is_written_by_its_person.py` (+9), `tests/test_the_plus_menu_nests.py` (+1, in Chromium).
 
 - [x] **B70** **Upstream shipped a security fix through a private advisory fork and we do not have
   it.** Found 2026-09-11 while measuring `P19-06`. Two of the twelve unmerged upstream commits are

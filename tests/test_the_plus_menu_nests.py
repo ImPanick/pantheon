@@ -188,6 +188,14 @@ const rect = (page, sel) => page.$eval(sel, (n) => { const r = n.getBoundingClie
       await page.waitForTimeout(600);
       o.message = await page.$eval('#message', (n) => n.value);
       o.closed = await page.$eval('#overflow-menu', (n) => n.classList.contains('hidden')) && !(await page.$(SUB));
+      // `P25-09`. A job described is offered the agent that does it.
+      await page.fill('#message', "I'm planning a trip to Rome next spring");
+      await page.keyboard.press('Enter');
+      await page.waitForSelector('.agent-offer', { timeout: 15000 });
+      o.offer = await page.$eval('.agent-offer', (n) => [n.dataset.agent,
+        n.querySelector('.agent-offer-title').textContent]);
+      await page.click('.agent-offer-no');
+      o.offerGone = !(await page.$('.agent-offer'));
     }
     out[w] = o;
     await context.close();
@@ -226,7 +234,7 @@ def test_the_top_level_is_short_and_says_what_each_row_does(driven, width):
 def test_a_submenu_opens_beside_the_menu_on_a_wide_screen(driven):
     o = driven["1440"]
     assert o["beside"] is True and o["menuHiddenUnder"] is False and o["back"] == []
-    assert o["foot"] == ["New agent…", "Open the hall"], "it ends with the doors to where agents are managed"
+    assert o["foot"] == ["New agent…", "Build one from this chat…", "Open the hall"], "it ends with the doors to where agents are managed"
     assert len(o["agents"]) == 3
     assert "Morning Brief" in o["filtered"] and len(o["filtered"]) < 10, "typing filters the list"
 
@@ -318,3 +326,8 @@ def test_the_modes_row_lights_when_an_on_mode_is_out_of_sight(tmp_path):
     assert out["quiet"] is False, "on modes the bar shows do not light the row"
     assert out["changed"] is True and out["lit"] is True, "RAG on, folded into the menu"
     assert out["collapsed"] is True, "a chip collapsed for room that is on"
+
+
+def test_a_job_described_is_offered_an_agent_above_the_composer(driven):
+    o = driven["1440"]
+    assert o["offer"] == ["trip-planner", "Trip Planner could help with this"] and o["offerGone"] is True

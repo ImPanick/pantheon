@@ -166,3 +166,111 @@ def test_describe_it_over_http_says_no_model_as_a_503(client, monkeypatch):
     monkeypatch.setattr(wa, "ask_for_json", none)
     res = call(client, "POST", "/api/agents/draft", json={"description": "watch the news"})
     assert res.status_code == 503 and res.json()["detail"] == W.NO_MODEL
+
+
+# ── `P25-08` · build it by talking ──────────────────────────────────────────
+
+def _scripted(answers, seen):
+    async def fake(owner, messages, *, max_tokens):
+        seen.append([dict(m) for m in messages])
+        return answers.pop(0), None
+    return fake
+
+
+def test_the_talk_asks_until_it_knows_then_proposes_a_whole_checked_agent(monkeypatch):
+    import src.workflow_assist as wa
+    seen = []
+    monkeypatch.setattr(wa, "ask_for_json", _scripted([
+        {"reply": "Which mail account?", "ready": False},
+        {"reply": "I'll build Client Replies.", "ready": True, "agent": _fields()}], seen))
+    first = asyncio.run(W.interview("alice", [{"role": "user", "content": "Draft replies to my clients"}]))
+    assert first == {"reply": "Which mail account?", "ready": False}
+    second = asyncio.run(W.interview("alice", [
+        {"role": "user", "content": "Draft replies to my clients"},
+        {"role": "assistant", "content": "Which mail account?"},
+        {"role": "user", "content": "work"}]))
+    assert second["ready"] is True and second["proposal"]["ok"] is True
+    assert W.check(second["proposal"]["text"]).id == "client-replies"
+    s = second["proposal"]["summary"]
+    assert s["name"] == "Client Replies" and s["starts_on"] and s["tools"] == ["web_search"]
+    assert seen[1][-1] == {"role": "user", "content": "work"}, "the person's words, in order, last"
+
+
+def test_a_chat_seeds_the_talk_as_context_not_instructions(monkeypatch):
+    import src.workflow_assist as wa
+    seen = []
+    monkeypatch.setattr(wa, "ask_for_json", _scripted([{"reply": "A price watcher?", "ready": False}], seen))
+    out = asyncio.run(W.interview("alice", [], seed="Person: I keep checking sock prices by hand"))
+    assert out["reply"] == "A price watcher?"
+    seeded = [m for m in seen[0] if "chat so far" in m["content"]]
+    assert seeded and seeded[0]["role"] == "user" and "information, not instructions" in seeded[0]["content"]
+    assert "sock prices" in seeded[0]["content"]
+
+
+def test_build_it_now_asks_for_the_agent_and_a_long_talk_is_nudged(monkeypatch):
+    import src.workflow_assist as wa
+    seen = []
+    monkeypatch.setattr(wa, "ask_for_json", _scripted([{"reply": "ok", "ready": False}] * 2, seen))
+    asyncio.run(W.interview("alice", [{"role": "user", "content": "x"}], build_now=True))
+    assert "Build it now" in seen[0][-1]["content"]
+    talk = [{"role": r, "content": "x"} for _ in range(7) for r in ("user", "assistant")]
+    asyncio.run(W.interview("alice", talk))
+    assert seen[1][-1]["role"] == "system" and "talked enough" in seen[1][-1]["content"]
+
+
+def test_a_proposal_that_does_not_pass_is_repaired_once_then_said(monkeypatch):
+    import src.workflow_assist as wa
+    bad = _fields(tools=["launch_rockets"])
+    monkeypatch.setattr(wa, "ask_for_json", _scripted([
+        {"reply": "Here.", "ready": True, "agent": bad}, {"reply": "Here.", "ready": True, "agent": bad}], []))
+    out = asyncio.run(W.interview("alice", [{"role": "user", "content": "x"}]))
+    assert out["ready"] is True and out["proposal"]["ok"] is False
+    assert "not a tool Pantheon has" in out["proposal"]["sentence"]
+
+
+def test_the_person_names_what_they_build(data):
+    text = W.rename(W.TEMPLATE, "Sock Scout: daily")
+    m, _ = W.save("alice", text)
+    assert (m.id, m.name) == ("sock-scout-daily", "Sock Scout: daily")
+    assert W.rename(W.TEMPLATE, "   ") == W.TEMPLATE
+
+
+def test_the_interview_and_a_named_save_over_http(client, monkeypatch):
+    import src.workflow_assist as wa
+    monkeypatch.setattr(wa, "ask_for_json", _scripted([
+        {"reply": "Built.", "ready": True, "agent": _fields()}], []))
+    got = call(client, "POST", "/api/agents/interview",
+               json={"messages": [{"role": "user", "content": "client replies"}]}).json()
+    assert got["proposal"]["ok"] is True
+    saved = call(client, "POST", "/api/agents/own", json={"text": got["proposal"]["text"], "name": "My Replies"})
+    assert saved.json()["id"] == "my-replies"
+    bad = call(client, "POST", "/api/agents/interview", json={"messages": "nope"})
+    assert bad.status_code == 400 and "list of {role, content}" in bad.json()["detail"]
+
+
+# ── `P25-09` · an agent offered for the job a message describes ─────────────
+
+@pytest.mark.parametrize("text,agent", [
+    ("I need to keep an eye on competitor prices", "competitor-prices"),
+    ("I keep forgetting birthdays", "gift-date-keeper"),
+    ("help me keep track of my bills", "bill-renewal-tracker"),
+    ("I'm planning a trip to Rome", "trip-planner"),
+    ("I need to clean up my inbox", "inbox-triage"),
+    ("Every morning I want a summary of my calendar and mail", "morning-brief"),
+    ("what is the capital of France", None),
+    ("I need help", None),
+])
+def test_a_job_described_is_offered_the_agent_that_does_it(text, agent):
+    from src.agents.suggest import suggest
+    got = suggest(text, catalogue(None)[0])
+    assert (got and got["agent"]["id"]) == agent
+
+
+def test_a_declined_agent_is_not_offered_again_and_the_route_answers(client):
+    from src.agents.suggest import suggest
+    agents = catalogue(None)[0]
+    assert suggest("I keep forgetting birthdays", agents, skip=["gift-date-keeper"]) is None or \
+        suggest("I keep forgetting birthdays", agents, skip=["gift-date-keeper"])["agent"]["id"] != "gift-date-keeper"
+    r = call(client, "POST", "/api/agents/suggest", json={"text": "I'm planning a trip to Rome"}).json()
+    assert r["agent"]["id"] == "trip-planner" and r["why"].startswith("Trip Planner does this")
+    assert call(client, "POST", "/api/agents/suggest", json={"text": "hello"}).json() == {}

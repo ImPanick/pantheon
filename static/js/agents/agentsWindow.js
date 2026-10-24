@@ -706,10 +706,145 @@ function _renderAgent(a) {
 
 /** Open the workshop on a file (`text: null` — the server's template, one
  *  spelling of it: `workshop.TEMPLATE`). */
-export function openWorkshop({ text = null, from = null } = {}) {
+export function openWorkshop({ text = null, from = null, mode = null, seed = '' } = {}) {
   _say('');
-  _view = { kind: 'workshop', text: text || (_data && _data.template) || '', from };
+  // `P25-08`. A new agent starts as a conversation; a customised one, and a
+  // file handed in, start on the file.
+  const start = mode || ((text || from) ? 'file' : 'talk');
+  _view = { kind: 'workshop', text: text || (_data && _data.template) || '', from, mode: start,
+    talk: { messages: [], seed: String(seed || ''), proposal: null, busy: false, started: false } };
   _render();
+  if (start === 'talk' && seed) _talk(_view, { kickoff: true });
+}
+
+// ── `P25-08` · build it by talking ──────────────────────────────────────────
+
+const EFFECT_PHRASE = (e) => EFFECT_WORDS[e] || e.replace(/_/g, ' ');
+
+/** One turn: the person's words (if any) to the model; its reply, and a
+ *  proposal once it has enough. */
+async function _talk(v, { text = '', kickoff = false, buildNow = false } = {}) {
+  const t = v.talk;
+  if (t.busy) return;
+  if (text) t.messages.push({ role: 'user', content: text });
+  t.busy = true;
+  t.started = true;
+  if (_win && _view === v) _render();
+  const res = await Api.interview({ messages: t.messages, seed: t.seed, build_now: buildNow });
+  t.busy = false;
+  if (!_win || _view !== v) return;
+  if (!res.ok) {
+    _say(res.refusal.sentence, { error: true });
+  } else {
+    const d = res.data;
+    t.messages.push({ role: 'assistant', content: d.reply });
+    if (d.proposal) {
+      t.proposal = d.proposal;
+      v.text = d.proposal.text;
+      if (!d.proposal.ok) _say(d.proposal.sentence, { error: true });
+    }
+  }
+  _render();
+  void kickoff;
+}
+
+function _proposalCard(v) {
+  const p = v.talk.proposal;
+  const s = p.summary || {};
+  const card = _el('section', 'agents-proposal');
+  card.setAttribute('aria-label', 'Agent construction');
+  card.appendChild(_el('h5', 'agents-h', 'Agent construction'));
+  const nameRow = _el('label', 'agents-field');
+  nameRow.appendChild(_el('span', 'agents-field-label', 'Name'));
+  const name = document.createElement('input');
+  name.type = 'text';
+  name.className = 'agents-input agents-proposal-name';
+  name.maxLength = 48;
+  name.value = s.name || '';
+  nameRow.appendChild(name);
+  card.appendChild(nameRow);
+  if (s.tagline) card.appendChild(_el('p', 'agents-page-tag', s.tagline));
+  const facts = _el('ul', 'agents-proposal-facts');
+  const fact = (k, val) => { if (val) { const li = _el('li'); li.appendChild(_el('strong', '', `${k} `)); li.appendChild(document.createTextNode(val)); facts.appendChild(li); } };
+  fact('Starts:', s.starts_on);
+  fact('Asks you for:', (s.inputs || []).join(', '));
+  fact('Uses:', (s.tools || []).join(', '));
+  fact('Delivers:', (s.delivers || []).join(', '));
+  fact('Asks first before it may:', (s.asks_before || []).map(EFFECT_PHRASE).join(', '));
+  fact('Never:', (s.never || []).map(EFFECT_PHRASE).join(', '));
+  card.appendChild(facts);
+  if (!p.ok) card.appendChild(_el('p', 'agents-attention', p.sentence));
+  const bar = _el('div', 'agents-actions');
+  const build = _button('agents-primary', 'Build it', async () => {
+    if (_busy) return;
+    _busy = true;
+    build.disabled = true;
+    const res = await Api.saveOwnAgent(v.text, { name: name.value });
+    _busy = false;
+    build.disabled = false;
+    if (!_win) return;
+    if (!res.ok) { _say(res.refusal.sentence, { error: true }); return; }
+    await _load();
+    _openAgent(res.data.id).then(() => _say(res.data.sentence));
+  });
+  build.disabled = !p.ok;
+  bar.appendChild(build);
+  bar.appendChild(_button('agents-btn', 'Not yet', () => {
+    v.talk.proposal = null;
+    _render();
+    const box = _win && _win.body.querySelector('.agents-talk-input');
+    if (box) { box.value = 'Not yet — '; try { box.focus(); } catch (_) {} }
+  }));
+  bar.appendChild(_button('agents-btn', 'Open the file', () => { v.mode = 'file'; _render(); }));
+  card.appendChild(bar);
+  return card;
+}
+
+function _talkPanel(v) {
+  const t = v.talk;
+  const panel = _el('section', 'agents-talk');
+  const log = _el('div', 'agents-talk-log');
+  log.setAttribute('role', 'log');
+  log.setAttribute('aria-live', 'polite');
+  if (!t.messages.length) {
+    log.appendChild(_el('p', 'agents-talk-msg agents-talk-them', t.seed
+      ? 'Reading your chat to see what agent it calls for…'
+      : 'What job should your agent do? Say it the way you would brief a person — I will ask about anything missing.'));
+  }
+  t.messages.forEach((m) => {
+    const row = _el('p', `agents-talk-msg ${m.role === 'user' ? 'agents-talk-you' : 'agents-talk-them'}`, m.content);
+    log.appendChild(row);
+  });
+  if (t.busy) log.appendChild(_el('p', 'agents-talk-msg agents-talk-them agents-talk-busy', 'Thinking…'));
+  panel.appendChild(log);
+  if (t.proposal) panel.appendChild(_proposalCard(v));
+  const form = _el('form', 'agents-talk-form');
+  const box = document.createElement('textarea');
+  box.className = 'agents-input agents-talk-input';
+  box.rows = 2;
+  box.maxLength = 4000;
+  box.placeholder = t.messages.length ? 'Answer, or add anything…' : 'Every weekday at 8, read my mail and draft replies to clients…';
+  box.setAttribute('aria-label', 'Talk about the agent');
+  box.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.dispatchEvent(new Event('submit', { cancelable: true })); }
+  });
+  form.appendChild(box);
+  const send = _el('button', 'agents-primary', 'Send');
+  send.type = 'submit';
+  send.disabled = t.busy;
+  form.appendChild(send);
+  const now = _button('agents-btn', 'Build it now', () => _talk(v, { buildNow: true }));
+  now.disabled = t.busy || !t.started;
+  form.appendChild(now);
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = box.value.trim();
+    if (!text || t.busy) return;
+    box.value = '';
+    _talk(v, { text });
+  });
+  panel.appendChild(form);
+  return panel;
 }
 
 async function customise(agentId) {
@@ -727,9 +862,28 @@ function _renderWorkshop(v) {
   body.appendChild(_back());
   const page = _el('article', 'agents-page agents-workshop');
   page.appendChild(_el('h3', 'agents-page-name', v.from ? `Customise ${v.from}` : 'New agent'));
+  // `P25-08`. Three ways in, one file at the end.
+  const modes = _el('div', 'agents-chips agents-workshop-modes');
+  modes.setAttribute('role', 'tablist');
+  [['talk', 'Talk it through'], ['describe', 'Describe it'], ['file', 'Its file']].forEach(([id, label]) => {
+    const b = _button('agents-chip', label, () => { v.mode = id; _render(); });
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', String((v.mode || 'file') === id));
+    b.dataset.mode = id;
+    modes.appendChild(b);
+  });
+  page.appendChild(modes);
+  if (v.mode === 'talk') {
+    page.appendChild(_talkPanel(v));
+    body.appendChild(page);
+    const log = page.querySelector('.agents-talk-log');
+    if (log) log.scrollTop = log.scrollHeight;
+    return;
+  }
 
   // Describe it.
   const desc = _el('div', 'agents-describe');
+  desc.hidden = v.mode !== 'describe';
   desc.appendChild(_el('h5', 'agents-h', 'Describe it'));
   const say = document.createElement('textarea');
   say.className = 'agents-input agents-describe-text';
@@ -754,7 +908,7 @@ function _renderWorkshop(v) {
   desc.appendChild(draftBtn);
   page.appendChild(desc);
 
-  // The file.
+  // The file — under *Describe it* too, where a draft lands.
   page.appendChild(_el('h5', 'agents-h', 'Its file'));
   page.appendChild(_el('p', 'agents-small',
     'One file is the whole agent: the frontmatter is what it may do, the numbered steps are what the model is told.'));

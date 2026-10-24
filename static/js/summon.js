@@ -73,12 +73,83 @@ export function pickerRows(agents, mine, query) {
   return hits.filter((a) => own.has(a.id)).concat(hits.filter((a) => !own.has(a.id)));
 }
 
+// ── `P25-09` · an agent for what the person just described ─────────────────
+
+const _declined = new Set();   // agents the person said *Not now* to, this page
+let _offer = null;
+
+function _el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+}
+
+export function clearOffer() {
+  if (_offer && _offer.parentNode) _offer.parentNode.removeChild(_offer);
+  _offer = null;
+}
+
+/** Show the offer for `found` (`POST /api/agents/suggest`'s answer) above the
+ *  composer: *Summon* (switching to Agent mode first when needed), *Not now*. */
+export function showOffer(found) {
+  clearOffer();
+  if (!found || !found.agent || !found.agent.id) return null;
+  const a = found.agent;
+  const box = _el('div', 'agent-offer');
+  box.setAttribute('role', 'status');
+  box.dataset.agent = a.id;
+  const words = _el('div', 'agent-offer-words');
+  words.appendChild(_el('span', 'agent-offer-title', `${a.name} could help with this`));
+  words.appendChild(_el('span', 'agent-offer-tag', a.tagline || ''));
+  box.appendChild(words);
+  const yes = _el('button', 'agent-offer-yes', 'Summon');
+  yes.type = 'button';
+  yes.addEventListener('click', () => {
+    if (_isChatMode()) {
+      const agentBtn = document.getElementById('mode-agent-btn');
+      if (agentBtn) agentBtn.click();
+    }
+    summon({ id: a.id, name: a.name });
+    clearOffer();
+  });
+  const no = _el('button', 'agent-offer-no', 'Not now');
+  no.type = 'button';
+  no.addEventListener('click', () => { _declined.add(a.id); clearOffer(); });
+  box.appendChild(yes);
+  box.appendChild(no);
+  const bar = document.querySelector('.chat-input-bar') || document.body;
+  bar.insertBefore(box, bar.firstChild);
+  _offer = box;
+  return box;
+}
+
+/** Ask whether an agent does the job `text` describes — not while one is
+ *  summoned, and never one the person already declined. */
+export async function offerFor(text) {
+  if (getSummoned()) return null;
+  let found = null;
+  try {
+    const res = await fetch('/api/agents/suggest', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: String(text || '').slice(0, 4000), skip: [..._declined] }),
+    });
+    found = res.ok ? await res.json() : null;
+  } catch (_) { found = null; }
+  if (!found || !found.agent || getSummoned() || _declined.has(found.agent.id)) return null;
+  return showOffer(found);
+}
+
 /** The *Agents ›* row is a submenu (`composerMenu.js`, `P25-01`) — the
  *  list it shows is `pickerRows`, and a pick is `summon`. */
 export function initSummon() {
   const chip = document.getElementById('summon-indicator-btn');
   if (chip) chip.addEventListener('click', dismiss);
+  window.addEventListener('pantheon:message-sent', (e) => {
+    offerFor(e && e.detail ? e.detail.text : '');
+  });
   sync();
 }
 
-export default { initSummon, getSummoned, summon, dismiss, applyMode, sync, pickerRows };
+export default { initSummon, getSummoned, summon, dismiss, applyMode, sync, pickerRows, offerFor,
+  showOffer, clearOffer };
