@@ -236,14 +236,25 @@ def test_a_base_that_is_not_a_plain_http_origin_is_refused(monkeypatch, bad):
 
 
 def test_the_ssrf_validators_are_untouched():
-    """`FORBIDDEN.md:158`. They guard URLs arriving from *content*, and adding a
-    host-side agent changes nothing about that. `web_fetch` still refuses a
-    private address, and that never becomes negotiable."""
+    """`FORBIDDEN.md:158`. They guard URLs arriving from *content*. The floor
+    that never becomes negotiable is loopback and cloud metadata — reaching
+    this machine's own ports or the instance-metadata endpoint — and it holds
+    whatever `agent_lan_reach` says. The LAN itself the owner opened on purpose
+    (`P16-20`, `D-2026-10-25-02`): with reach off it is refused as before, with
+    it on it is reachable, because an agent reading a router page by URL is the
+    authorized behaviour."""
+    import src.outbound_fetch as of
     from src.outbound_fetch import _public_http_url
-    for blocked in ("http://192.168.1.1/", "http://169.254.169.254/",
-                    "http://127.0.0.1:7010/health", "http://10.0.0.1/"):
-        ok = _public_http_url(blocked)
-        assert not ok, f"the content-fetch path now accepts {blocked}"
+    always_blocked = ("http://169.254.169.254/", "http://127.0.0.1:7010/health", "http://[::1]/")
+    for off in (lambda: True, lambda: False):
+        of._lan_reach_on = off  # noqa: — restored below
+        for blocked in always_blocked:
+            assert not _public_http_url(blocked), f"loopback/metadata accepted: {blocked}"
+    # The LAN is gated, not floored.
+    of._lan_reach_on = lambda: False
+    assert not _public_http_url("http://192.168.1.1/") and not _public_http_url("http://10.0.0.1/")
+    of._lan_reach_on = lambda: True
+    assert _public_http_url("http://192.168.1.1/") and _public_http_url("http://10.0.0.1/")
 
 
 def test_the_agent_credential_is_a_secret_the_agent_cannot_write():

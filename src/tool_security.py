@@ -382,6 +382,9 @@ _PLAN_MODE_KNOWN_MUTATORS = {
     "manage_bg_jobs",
     # `P25-05`. A browser clicks and types into the world.
     "agent_browser",
+    # `P16-20`. A scan reaches out across the network; plan mode is read-only.
+    # Its `list` only looks, but the allowlist is by tool name, as for `computer`.
+    "network",
     # `P25-03`. Commits, pulls and pushes. Its status, diff and log only
     # read, but the allowlist is by tool name, as for `computer`.
     "git",

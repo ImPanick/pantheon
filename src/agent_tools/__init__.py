@@ -26,6 +26,7 @@ from .git_tools import GitTool
 from .browser_tools import BrowserTool
 from .login_shell_tools import LoginShellTool
 from .connections_tools import ConnectionsTool
+from .network_tools import NetworkTool
 from .subprocess_tools import BashTool, PythonTool
 from .web_tools import WebSearchTool, WebFetchTool
 from .filesystem_tools import ReadFileTool, WriteFileTool, EditFileTool, ApplyPatchTool, LsTool, GlobTool, GrepTool, GetWorkspaceTool
@@ -86,6 +87,9 @@ TOOL_HANDLERS = {
     "shell_with_login": LoginShellTool().execute,
     # `P27-09`. What this agent may sign in to. Dispatched by name, as `git` is.
     "connections": ConnectionsTool().execute,
+    # `P16-20`. Looking at the network the workstation sits on. Dispatched by
+    # name, as `agent_browser` is (it needs the owner).
+    "network": NetworkTool().execute,
 }
 # Config/integration admin tools (manage_endpoints/mcp/webhooks/tokens/settings).
 TOOL_HANDLERS.update(ADMIN_TOOL_HANDLERS)
@@ -148,6 +152,8 @@ TOOL_TAGS = {"bash", "python", "web_search", "web_fetch", "read_file", "write_fi
              "shell_with_login",
              # `P27-09`. The logins an agent may use, and a test of one.
              "connections",
+             # `P16-20`. Looking at the network the workstation sits on.
+             "network",
              # Email tool names come from BUILTIN_EMAIL_TOOLS (unioned below)
              # so the fence regex, dispatch, and non-admin blocklist all cover
              # the same set.

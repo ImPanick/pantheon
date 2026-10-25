@@ -935,8 +935,12 @@ def test_web_content_fetcher_blocks_private_url(monkeypatch):
 
 
 def test_web_content_fetcher_blocks_dns_to_private(monkeypatch):
+    # `P16-20`: with LAN reach off (a shared box), a name resolving to the LAN
+    # is refused exactly as it always was.
     import ipaddress
 
+    import src.outbound_fetch as _of
+    monkeypatch.setattr(_of, "_lan_reach_on", lambda: False)
     content = _load_search_content_for_test(monkeypatch, "services.search.content_under_test_dns")
 
     monkeypatch.setattr(content, "_resolve_hostname_ips", lambda host: [ipaddress.ip_address("10.0.0.5")])
@@ -979,9 +983,41 @@ import pytest as _pytest
     "file:///etc/passwd",                 # unsupported scheme
     "ftp://example.com/",                 # unsupported scheme
 ])
-def test_web_fetch_guard_blocks_private_and_bad_schemes(url):
+def test_web_fetch_guard_blocks_private_and_bad_schemes(url, monkeypatch):
+    # `P16-20`: with LAN reach off, the guard blocks every private/internal
+    # class, as it did before the LAN setting existed.
+    import src.outbound_fetch as _of
+    monkeypatch.setattr(_of, "_lan_reach_on", lambda: False)
     from src.search.content import _public_http_url
     assert _public_http_url(url) is False
+
+
+@_pytest.mark.parametrize("url", [
+    "http://127.0.0.1/", "http://localhost/", "http://169.254.169.254/latest/",
+    "http://metadata.google.internal/", "http://[::1]/", "http://[fe80::1]/",
+    "file:///etc/passwd", "ftp://example.com/",
+])
+def test_web_fetch_guard_blocks_loopback_and_metadata_even_with_lan_on(url, monkeypatch):
+    # `P16-20`: loopback, link-local/metadata and bad schemes stay blocked
+    # whatever `agent_lan_reach` says — reaching this machine's own ports is a
+    # different question (`FORBIDDEN.md` Part 2).
+    import src.outbound_fetch as _of
+    monkeypatch.setattr(_of, "_lan_reach_on", lambda: True)
+    from src.search.content import _public_http_url
+    assert _public_http_url(url) is False
+
+
+@_pytest.mark.parametrize("url", [
+    "http://10.0.0.5/", "http://172.16.0.1/", "http://192.168.1.1/",
+    "http://100.64.0.1/", "http://[fc00::1]/",
+])
+def test_web_fetch_guard_allows_lan_when_reach_is_on(url, monkeypatch):
+    # `P16-20` (`D-2026-10-25-02`): with LAN reach on (the default), the agent
+    # may read a router page or a LAN service by URL.
+    import src.outbound_fetch as _of
+    monkeypatch.setattr(_of, "_lan_reach_on", lambda: True)
+    from src.search.content import _public_http_url
+    assert _public_http_url(url) is True
 
 
 def test_web_fetch_guard_allows_public_ip():
@@ -990,6 +1026,8 @@ def test_web_fetch_guard_allows_public_ip():
 
 
 def test_web_fetch_guard_blocks_dns_resolving_to_private(monkeypatch):
+    import src.outbound_fetch as _of
+    monkeypatch.setattr(_of, "_lan_reach_on", lambda: False)
     from src.search import content
     monkeypatch.setattr(content, "_resolve_hostname_ips",
                         lambda host: [_ipaddr.ip_address("10.0.0.5")])
@@ -1372,14 +1410,25 @@ import httpx as _httpx
 
 
 def test_dns_rebinding_blocked_by_resolve_gate(monkeypatch):
+    # The rebind to loopback is refused whatever the LAN setting — this machine
+    # is never a fetch target. The rebind to the LAN is refused when LAN reach
+    # is off; with it on it is allowed by the owner's choice (`P16-20`), which
+    # is why this pins loopback, the invariant.
+    import src.outbound_fetch as _of
     from src.search import content
 
+    monkeypatch.setattr(_of, "_lan_reach_on", lambda: True)
     monkeypatch.setattr(content, "_resolve_hostname_ips",
-                        lambda host: [_ipaddr.ip_address("10.0.0.5")])
-
+                        lambda host: [_ipaddr.ip_address("127.0.0.1")])
     with _pytest.raises(_httpx.RequestError) as exc:
         content._resolve_public_ips("https://attacker.example/")
     assert "non-public" in str(exc.value).lower()
+
+    monkeypatch.setattr(_of, "_lan_reach_on", lambda: False)
+    monkeypatch.setattr(content, "_resolve_hostname_ips",
+                        lambda host: [_ipaddr.ip_address("10.0.0.5")])
+    with _pytest.raises(_httpx.RequestError):
+        content._resolve_public_ips("https://attacker.example/")
 
 
 def test_dns_rebinding_pinned_backend_connects_to_resolved_ip(monkeypatch):

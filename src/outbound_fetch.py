@@ -12,7 +12,7 @@ from __future__ import annotations
 import ipaddress
 import socket
 import ssl
-from typing import Callable, Iterable, cast
+from typing import Callable, Iterable, Optional, cast
 from urllib.parse import urljoin, urlparse
 
 import httpcore
@@ -33,19 +33,71 @@ _PRIVATE_NETWORKS = (
     ipaddress.ip_network("fe80::/10"),
 )
 
+# `P16-20` (`D-2026-10-25-02`). The local network the agent may be allowed to
+# reach: private ranges and Tailscale's CGNAT (`100.64/10`, which CPython calls
+# "shared", not "private", so it is named here on purpose). Loopback is NOT in
+# this set — reaching this machine's own ports is a different question
+# (`FORBIDDEN.md` Part 2), and stays blocked whatever the LAN setting says.
+_LAN_NETWORKS = (
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("100.64.0.0/10"),
+    ipaddress.ip_network("fc00::/7"),
+)
 
-def _is_private_address(addr: ipaddress._BaseAddress) -> bool:
+
+def _lan_reach_on() -> bool:
+    """`agent_lan_reach` (default on): whether this install lets fetches reach
+    the LAN. Off for a shared box that should stay on the public internet. On a
+    read failure it defaults on — local-first is the shipped intent, and a
+    transient settings hiccup should not break LAN fetches that are the norm."""
+    try:
+        from src.settings import get_setting
+        from src.env_flags import tool_arg_truthy
+        return tool_arg_truthy(get_setting("agent_lan_reach", True), default=True)
+    except Exception:
+        return True
+
+
+def _in_lan(addr: ipaddress._BaseAddress) -> bool:
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        addr = addr.ipv4_mapped
+    return any(addr in net for net in _LAN_NETWORKS)
+
+
+def _always_blocked(addr: ipaddress._BaseAddress) -> bool:
+    """What no setting lets a fetch reach: loopback, link-local (cloud
+    metadata), multicast, reserved and the unspecified address."""
     if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
         addr = addr.ipv4_mapped
     return (
-        addr.is_private
-        or addr.is_loopback
+        addr.is_loopback
         or addr.is_link_local
         or addr.is_reserved
         or addr.is_multicast
         or addr.is_unspecified
-        or any(addr in net for net in _PRIVATE_NETWORKS)
+        or addr in ipaddress.ip_network("0.0.0.0/8")
     )
+
+
+def _is_private_address(addr: ipaddress._BaseAddress, *, allow_lan: Optional[bool] = None) -> bool:
+    """Whether a fetch must be refused this address. `allow_lan` defaults to the
+    `agent_lan_reach` setting; pass it explicitly to classify without a read.
+
+    Loopback and metadata are always refused. The LAN is refused only when LAN
+    reach is off — the owner's authorization (`D-2026-10-25-02`) is exactly that
+    an agent may read a router page or a LAN service by URL, so with it on a
+    private LAN IP is reachable and a public IP always was."""
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        addr = addr.ipv4_mapped
+    if _always_blocked(addr):
+        return True
+    if _in_lan(addr) or addr.is_private:
+        if allow_lan is None:
+            allow_lan = _lan_reach_on()
+        return not allow_lan
+    return False
 
 
 def _resolve_hostname_ips(hostname: str) -> list[ipaddress._BaseAddress]:
@@ -76,16 +128,21 @@ def _public_http_url(
         if not host:
             return False
         lower = host.lower()
-        if lower in ("localhost", "metadata", "metadata.google.internal"):
+        # Always off, whatever the LAN setting: this machine itself and the
+        # cloud-metadata names. `.local`, `.lan`, `.internal`, `.intranet` are
+        # NOT pre-blocked any more (`P16-20`) — a name on the person's own LAN
+        # is exactly what they want reached; it is judged by the address it
+        # resolves to, so a name that resolves to loopback or does not resolve
+        # at all is still refused.
+        if lower in ("localhost", "metadata", "metadata.google.internal") or lower.endswith(".localhost"):
             return False
-        if lower.endswith((".local", ".localhost", ".internal", ".lan", ".intranet")):
-            return False
+        allow_lan = _lan_reach_on()
         try:
-            return not _is_private_address(ipaddress.ip_address(host))
+            return not _is_private_address(ipaddress.ip_address(host), allow_lan=allow_lan)
         except ValueError:
             pass
         addrs = resolver(host)
-        return bool(addrs) and not any(_is_private_address(a) for a in addrs)
+        return bool(addrs) and not any(_is_private_address(a, allow_lan=allow_lan) for a in addrs)
     except Exception:
         return False
 

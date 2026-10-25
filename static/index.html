@@ -3831,6 +3831,23 @@
                 </div>
                 <label class="admin-switch"><input type="checkbox" id="ws-route-tools" aria-describedby="ws-route-tools-why"><span class="admin-slider"></span></label>
               </div>
+
+              <!-- `P16-20` (`D-2026-10-25-02`). Reaching the local network. -->
+              <div class="admin-toggle-row ws-toggle">
+                <div>
+                  <label class="admin-toggle-label" for="ws-lan-reach">Agents may reach the local network</label>
+                  <div class="admin-toggle-sub" id="ws-lan-reach-why">On: the <code>network</code> tool (scan subnets, probe ports) and reading a router or LAN service by URL. Loopback and cloud metadata stay blocked. Off: Pantheon stays on the public internet.</div>
+                </div>
+                <label class="admin-switch"><input type="checkbox" id="ws-lan-reach" aria-describedby="ws-lan-reach-why"><span class="admin-slider"></span></label>
+              </div>
+              <div class="admin-toggle-row ws-toggle">
+                <div>
+                  <label class="admin-toggle-label" for="ws-net-raw">Raw-packet network tools (nmap SYN, arping, tcpdump)</label>
+                  <div class="admin-toggle-sub ws-warn" id="ws-net-raw-why">Needs the <code>workstation-netraw.yml</code> overlay. With it and sudo on, the strict network modes (internet only, none) become advisory for root. The <code>network</code> tool does not need this.</div>
+                  <div class="admin-toggle-sub" id="ws-net-raw-held"></div>
+                </div>
+                <label class="admin-switch"><input type="checkbox" id="ws-net-raw" aria-describedby="ws-net-raw-why"><span class="admin-slider"></span></label>
+              </div>
             </div>
             <div id="ws-admin-result" class="networks-probe-result" role="status" aria-live="polite" hidden></div>
           </div>

@@ -1453,6 +1453,12 @@ async def _execute_tool_block_impl(
         result = await _direct_fallback(tool, content, session_id=session_id, owner=owner,
                                         agent_id=getattr(tool_policy, "agent_id", None)) \
             or {"error": "agent_browser: execution failed", "exit_code": 1}
+    elif tool == "network":
+        # `P16-20`. By name, with the owner: whose workstation the scan runs in.
+        from src.agent_tools.network_tools import command_line as _net_line
+        desc = f"network: {_net_line(content)}"
+        result = await _direct_fallback(tool, content, session_id=session_id, owner=owner) \
+            or {"error": "network: execution failed", "exit_code": 1}
     elif tool == "connections":
         # `P27-09`. By name, with the owner, the agent and the workspace: whose
         # vault, which agent's grants, and where a test runs.

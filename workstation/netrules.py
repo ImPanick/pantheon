@@ -64,6 +64,7 @@ DOCKER_DNS = "127.0.0.11"
 #: connects to after a narrowing mode is written.
 SELF_TEST_ADDRESS = ("192.0.2.1", 9)
 CAP_NET_ADMIN = 12
+CAP_NET_RAW = 13   # `P16-20`: raw packets (nmap SYN, arping, tcpdump)
 
 Runner = Callable[[Sequence[str], Optional[str]], Tuple[int, str, str]]
 
@@ -252,7 +253,7 @@ def capabilities(field: str = "CapEff",
     return None
 
 
-__all__ = ["ACCOUNTS_TABLE", "CAP_NET_ADMIN", "COMMENT_PREFIX", "DOCKER_DNS", "GATE_TABLE",
+__all__ = ["ACCOUNTS_TABLE", "CAP_NET_ADMIN", "CAP_NET_RAW", "COMMENT_PREFIX", "DOCKER_DNS", "GATE_TABLE",
            "RulesError", "SELF_TEST_ADDRESS", "apply", "capability", "in_force", "lan_resolvers",
            "nft_path", "ruleset", "self_test",
            "capabilities",  # `B976`, added

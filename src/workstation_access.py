@@ -257,9 +257,11 @@ _DEFAULTS = {"workstation_sudo": True, "workstation_route_tools": True,
              "workstation_network": "full", "workstation_backend": "container"}
 
 
-def _bool(key: str) -> bool:
+def _bool(key: str, default: bool = False) -> bool:
     value = _setting(key)
-    return value if isinstance(value, bool) else bool(_DEFAULTS.get(key))
+    if isinstance(value, bool):
+        return value
+    return bool(_DEFAULTS.get(key, default))
 
 
 def sudo_wanted() -> bool:
@@ -306,6 +308,9 @@ def settings_view() -> Dict[str, Any]:
         "sudo": sudo_wanted(),
         "network": network_setting(),
         "route_tools": route_tools_wanted(),
+        # `P16-20`. Reaching the local network, and raw-packet tools.
+        "lan_reach": _bool("agent_lan_reach", True),
+        "net_raw_wanted": _bool("workstation_net_raw", False),
         "backends": list(P.BACKENDS),
         "network_modes": list(P.NETWORK_MODES),
         # `B956`. Shown beside `sudo` when the workstation is the container.

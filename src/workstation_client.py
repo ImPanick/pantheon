@@ -695,6 +695,16 @@ class WorkstationClient:
         certificates; answers what a command there is given."""
         return await self._call("names", account, {"map": names, "pins": pins}, timeout=60.0 + _TIMEOUT)
 
+    async def network(self, account: str, action: str, **fields: Any) -> Dict:
+        """`P16-20`. Look at the account's network: its interfaces, a sweep of a
+        range, or a host's ports (`workstation/netscan.py`). A full sweep can
+        take a little while, so it gets a wider timeout."""
+        if action not in P.NETWORK_ACTIONS:
+            raise WorkstationError("bad_request",
+                                   f"“{action}” is not one of {', '.join(P.NETWORK_ACTIONS)}.")
+        body = {"action": action, **{k: v for k, v in fields.items() if v is not None}}
+        return await self._call("network", account, body, timeout=180.0 + _TIMEOUT)
+
 
 # ── the network gate (`P20-06`) ───────────────────────────────────────────────
 #

@@ -97,6 +97,7 @@ BUILTIN_TOOL_DESCRIPTIONS: Dict[str, str] = {
     # Desktop (the schema's comment in `tool_schemas.py` has the measurement).
     "host_shell": "Run a shell command on the HOST machine, outside the Docker container, through the network agent the operator installed there. Use for anything that must act on the real computer itself — its files beyond what is mounted into the container, its processes and services, its own network configuration (addresses, routes, neighbour table) — which `bash` cannot do because it runs inside the container. Connecting to a service over the network, `bash` can often do itself (on Docker Desktop a container reaches the host and the LAN). Requires the host agent to be configured and shell to be enabled.",
     "computer": "Use the workstation's desktop (an Ubuntu machine with a browser) by looking at its screen and working its mouse and keyboard: take a screenshot, click, double/right/middle click, move, drag, scroll, type text, press keys, wait. Every action returns a screenshot of the result. Use for GUI work — clicking through a web page or an app on the workstation, filling a form, checking what something looks like. Not for running commands or editing files; bash, python and the file tools do that.",
+    "network": "Task about the network the person's workstation is on: list its interfaces and the person's declared networks (and their trust), scan a range (a CIDR up to a /22, or a host) for live hosts and their open ports, or probe one host's ports. A TCP connect in the person's workstation, within its network mode; an untrusted network is list-only. For mapping the operator's own networks.",
     "connections": "List what this agent may sign in to — the logins in the person's vault granted to it, by name, with their addresses and whether each asks first, and the git hosts they keep a token for — or test that a login's address answers. Never shows a password.",
     "shell_with_login": "Run one shell command with logins from the person's vault in its environment ($LOGIN_USER, $LOGIN_PASSWORD, $LOGIN_OTP, $LOGIN_URL, or $LOGIN_<NAME>_… for several) — the agent names the logins and never sees them; output is scrubbed. For APIs and CLIs that need a sign-in: curl, a service's CLI, a database client.",
     "git": "The person's own git, as them, where their shell runs: status, diff, log, branch, commit, pull, push (never forced) and clone from https, one action per call, with their commit identity and their token for the host a command reaches. Use for version control instead of git through bash.",
@@ -653,6 +654,11 @@ class ToolIndex:
         frozenset({"my login", "with my login", "signed in", "credentials", "vault",
                    "api key", "sign in to", "authenticate"}):
             {"shell_with_login", "agent_browser", "connections"},
+        # `P16-20`. Looking at the network the workstation is on.
+        frozenset({"my network", "the network", "subnet", "subnets", "scan the network",
+                   "lan", "which hosts", "what's on my network", "port scan", "ip range",
+                   "discover hosts", "vlan", "network map"}):
+            {"network"},
         # `P25-03`. The person's own git.
         frozenset({"git", "commit my", "pull request", "repository", "repo", "git clone",
                    "github", "gitlab"}):

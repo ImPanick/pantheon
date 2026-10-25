@@ -3160,3 +3160,74 @@ would leave the account's uid behind — on the Ubuntu install the network rules
    design withholds from the workstation's root).
 
 Cost: a raw-TCP tool that only takes a host name, and cannot be given an address, still needs the LAN's DNS.
+
+---
+
+## D-2026-10-25-01 — the assistant may switch itself, with the person's consent each time
+
+*The owner, 2026-10-25, answering `B700`: "self switch is good with user consent."*
+
+`B700` asked which of two remedies closes the self-switch hole — (a) refuse `ui_control set_mode agent`
+and `toggle <tool> on` outright, naming the switch so the person flips it themselves, or (b) ask for
+confirmation each time. **Decided: (b).** The assistant may propose giving itself more reach — Agent
+mode, turning the shell or web on — but each such switch stops and asks, and the person's yes is for
+that one switch, not a standing grant.
+
+This is already what the gate does, because the trust-ladder rework after `B700` was filed made
+`MORE_REACH` a `FLOOR_STOP_CONDITION` (`src/tool_capabilities.py`): a self-escalation is refused at
+**every** rung, in a clean run and a tainted one, and past any "allow for this chat" — the
+escalation check sits first in `_ladder_decision_for`, above both the bypass and the untainted early
+exit, so neither lets a self-switch through. A harmless `ui_control` call (a theme, opening a panel)
+still runs unasked. Covered by `tests/test_the_assistant_cannot_give_itself_more_reach.py`
+(`test_it_asks_at_every_rung_in_every_run_and_past_any_blanket_approval`).
+
+Cost: the model cannot turn its own shell on to finish a task without one confirmation, even in a
+clean chat the person started. That is the point — the alternative (a) subtracts the capability the
+tool advertises, and the owner chose to keep it behind consent rather than remove it.
+
+What reopens it: the owner asking for (a) instead, or for some self-switch to run unasked.
+
+---
+
+## D-2026-10-25-02 — the agent may act on the operator's own networks, and the hard gates loosen for that
+
+*The owner, 2026-10-25, re-evaluating `P16-20`: "Having it able to act and be agentic, so it needs its
+'hard gates' loosened a bit. This is authorization for just that. The user and its agents should be
+able to task about their network… subnets and all."* Four questions answered with the recommended
+option each.
+
+`P16-20` was filed (`D-2026-09-01-03`) as the deferred OS-level boundary — the hard half of `P16-16`'s
+named-network scoping, parked because *"we aren't building fort knox, just an orchestration harness."*
+The owner now re-scopes it: the harness is for **administering the operator's own networks**, so the
+gates that assumed every private address was off-limits are loosened, deliberately and named.
+
+1. **Raw packets in the workstation (`NET_RAW`).** The workstation container may hold `CAP_NET_RAW`,
+   so standard network tools (`ping`, `arping`, `arp-scan`, `nmap` SYN/OS probes, `tcpdump`) work for
+   root. Settings says plainly that with `NET_RAW` and sudo on, the *Internet only* and *None* network
+   modes become advisory for root — a tool writing its own frames steps around the nft rules the same
+   way a shell always could. The default mode, *Full*, loses nothing. With sudo off the modes stay
+   hard, because raw tools need root.
+2. **Server-side fetches reach the LAN and tailnet, not loopback.** `web_fetch` and the paced HTTP
+   layer allow `10/8`, `172.16/12`, `192.168/16`, `100.64/10` (Tailscale) and IPv6 ULA (`fc00::/7`),
+   so an agent can read a router page or a LAN service's API by URL. Loopback (this machine's own
+   ports), link-local and cloud-metadata (`169.254/16`, `fe80::/10`) stay refused — reaching
+   Pantheon's own process is a different question (`FORBIDDEN.md` Part 2). Named network scopes
+   (`src/networks.py`) still apply on top: a run scoped to one segment is refused the others.
+3. **A `network` tool, scoped to the operator's own networks.** The agent gets a first-class tool to
+   task about subnets: list this machine's interfaces and the admin's declared networks, discover
+   which hosts on one are up, and check which ports a host answers on. It runs in the person's
+   workstation. It is paced to be gentle on the network — not to hide from anything, because these
+   are the operator's own networks and there is nothing to evade. A sweep is bounded to a `/22`
+   (1,024 addresses); larger needs the shell, deliberately. An `untrusted`-trust network
+   (`src/networks.py`) can be listed but not swept.
+4. **Workstation users get it.** Anyone allowed the workstation (`can_use_workstation`) and their
+   agents. An admin can switch the LAN reach off. On a shared install a non-workstation account keeps
+   today's limits.
+
+What does **not** move: the auth boundary (`FORBIDDEN.md` Part 2, `D-2026-09-01-01`) — none of this is
+about who may log in; loopback stays off-limits to fetches; and nothing here is a default — a fresh
+install reaches the LAN for fetches (local-first was always the point) but ships no `NET_RAW` grant an
+admin did not enable and no declared networks.
+
+What reopens it: the owner narrowing any of the four, or a shared-install operator wanting the hard
+namespace boundary after all (the original `P16-20`, which stays available for that deployment).

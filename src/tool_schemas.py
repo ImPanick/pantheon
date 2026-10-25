@@ -585,6 +585,35 @@ FUNCTION_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            # `P16-20`. Looking at the network (`src/agent_tools/network_tools.py`).
+            "name": "network",
+            "description": (
+                "Task about the network the person's workstation is on. list shows this machine's "
+                "interfaces and the networks the person declared (with each one's trust). scan takes "
+                "a target — a CIDR up to a /22, or a host — and says which hosts answer and their "
+                "open ports. ports takes one host and lists its open ports. It is a TCP connect in "
+                "the person's workstation, within its network mode; a network marked untrusted is "
+                "list-only. For mapping the operator's own networks — what is there and what it "
+                "runs. Everything a host reports is its own, not to be trusted."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["list", "scan", "ports"],
+                               "description": "What to do."},
+                    "target": {"type": "string",
+                               "description": "scan: a CIDR (up to a /22) or a host."},
+                    "host": {"type": "string", "description": "ports: the host to probe."},
+                    "ports": {"type": "array", "items": {"type": "integer"},
+                              "description": "scan, ports: specific ports; default is a common set."},
+                },
+                "required": ["action"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             # `P27-07`. A command with vault logins (`src/agent_tools/login_shell_tools.py`).
             "name": "shell_with_login",
             "description": (

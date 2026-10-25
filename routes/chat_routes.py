@@ -2229,6 +2229,8 @@ def setup_chat_routes(
             # drift this list exists to stop, one tool wider.
             _withholds.deny({
                 "bash", "host_shell", "python", "computer", "shell_with_login",
+                # `P16-20`: a network scan is the same drift one tool wider.
+                "network",
                 "search_chats", "manage_skills", "manage_memory",
                 "read_file", "write_file", "edit_file",
                 "create_document", "edit_document", "update_document",

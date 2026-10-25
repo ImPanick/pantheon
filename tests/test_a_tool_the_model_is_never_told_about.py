@@ -199,8 +199,9 @@ def test_the_surface_is_three_shapes_and_the_rows_numbers_were_stale():
     # their own) and `P20-04` added `computer_tools.py`. 32 and 17 since `P25-03`
     # and `P25-05` added `git_tools.GitTool` and `browser_tools.BrowserTool`; 33
     # and 18 since `P27-07` added `login_shell_tools.LoginShellTool`; 34 and 19
-    # since `P27-09` added `connections_tools.ConnectionsTool`.
-    assert classes == 34 and len(modules) == 19, (classes, len(modules))
+    # since `P27-09` added `connections_tools.ConnectionsTool`; 35 and 20 since
+    # `P16-20` added `network_tools.NetworkTool`.
+    assert classes == 35 and len(modules) == 20, (classes, len(modules))
     assert len(_BUILTIN_SERVERS) == 3, "memory stopped being connected in B67"
     assert len(list((ROOT / "mcp_servers").glob("*_server.py"))) == 4, (
         "four server files, three of them connected — the row counted files")

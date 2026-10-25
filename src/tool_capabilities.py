@@ -204,6 +204,15 @@ _register(
     result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED,
 )
 _register(
+    # `P16-20`. Looking at the network the workstation sits on: the tool as a
+    # whole carries reading (its `list`) and reaching the network (a `scan` or a
+    # `ports`), each call classified by its action below (`_ACTION_CAPABILITIES`).
+    {"network"},
+    ToolEffect.READ_WORKSPACE,
+    ToolEffect.NETWORK_EGRESS,
+    result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED,
+)
+_register(
     # `P25-05`. The agent browser: everything any of its actions can do (what an
     # agent's effects table lists), each call classified by its action below.
     {"agent_browser"},
@@ -705,7 +714,9 @@ class _ActionArgumentTooDeep(Exception):
     """
 
 
-_LINE_ACTION_TOOLS = frozenset({"manage_memory", "manage_session"})
+# `P16-20`: `network` too, so a bare `network scan 10.0.0.0/24` resolves its
+# action for the gate the same as the JSON form does.
+_LINE_ACTION_TOOLS = frozenset({"manage_memory", "manage_session", "network"})
 
 # `B17`. A nesting depth beyond which we refuse to parse rather than ask CPython
 # to. `json.loads` recurses per level and raises `RecursionError`, which is a
@@ -855,6 +866,15 @@ _ACTION_CAPABILITIES: Mapping[str, Mapping[str, ToolCapabilities]] = MappingProx
     "connections": MappingProxyType({
         "list": _capabilities(ToolEffect.READ_PRIVATE),
         "test": _REACH,
+    }),
+    # `P16-20`. Listing reads this machine's own interfaces and the person's
+    # declared networks — local, looking. A scan or a port probe reaches out
+    # across the network to hosts the model names, and what a host answers is a
+    # stranger's banner — the same shape as a fetch.
+    "network": MappingProxyType({
+        "list": _capabilities(ToolEffect.READ_WORKSPACE),
+        "scan": _REACH,
+        "ports": _REACH,
     }),
     "git": MappingProxyType({
         "status": _capabilities(ToolEffect.READ_WORKSPACE,

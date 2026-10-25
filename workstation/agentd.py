@@ -286,7 +286,13 @@ class System:
         """What this daemon holds, in `protocol.ROUTES["health"]`'s words."""
         from workstation import netrules
         return {"network_in_force": None, "network_enforcement": "none",
-                "root_can_change_network": netrules.capability(netrules.CAP_NET_ADMIN, "CapBnd")}
+                "root_can_change_network": netrules.capability(netrules.CAP_NET_ADMIN, "CapBnd"),
+                # `P16-20`. Whether this container actually holds `CAP_NET_RAW` —
+                # the truth about raw-packet tools (nmap SYN, arping, tcpdump),
+                # beside the admin's intent (`workstation_net_raw`). With it, a
+                # root tool writes its own frames past the network mode's rules,
+                # which is why the panel then calls those modes advisory.
+                "net_raw": netrules.capability(netrules.CAP_NET_RAW, "CapBnd")}
 
     def screen(self, account: str) -> Screen:
         return NoScreen("This workstation has no display.")
@@ -903,6 +909,25 @@ class Workstation:
             code = e.code if e.code in P.ERRORS else ("bad_request" if e.code in ("gone", "refused") else "unavailable")
             raise WorkstationError(code, e.message)
 
+    def network(self, account: str, body: Dict) -> Dict:
+        """`P16-20`. Look at the network, as the account: name its interfaces,
+        sweep a range for live hosts, or probe one host's ports
+        (`workstation/netscan.py`). Runs inside the account's network mode — the
+        kernel refuses an out-of-mode target, the same as it does the browser —
+        and the caller has already decided, on the server, which ranges are in
+        scope. The daemon keeps only the size bound."""
+        from workstation.netscan import NetScanError, act
+        action = body.get("action")
+        if action not in P.NETWORK_ACTIONS:
+            raise WorkstationError("bad_request",
+                                   f"“action” is one of {', '.join(P.NETWORK_ACTIONS)}.")
+        self.system.ensure(account)
+        try:
+            return act(action, body)
+        except NetScanError as e:
+            code = e.code if e.code in P.ERRORS else "bad_request"
+            raise WorkstationError(code, e.message)
+
 
 def _int(value, default: int, name: str) -> int:
     if value is None:
@@ -1112,7 +1137,8 @@ class Handler(BaseHTTPRequestHandler):
                        "list": lambda: self.station.list(account, body),
                        "input": lambda: self.station.input(account, body),
                        "browser": lambda: self.station.browser(account, body),
-                       "names": lambda: self.station.names(account, body)}[name]
+                       "names": lambda: self.station.names(account, body),
+                       "network": lambda: self.station.network(account, body)}[name]
             answer = handler()
             if answer is None:          # `P25-05`: a browser frame the caller has
                 self._send(304, None)

@@ -1396,6 +1396,10 @@ class VmStation(Workstation):
         """`P27-04`: the names proxy runs in the machine, as the account."""
         return self.system.forward(account, "names", body, timeout=60.0)
 
+    def network(self, account: str, body: Dict) -> Dict:
+        """`P16-20`: the scan runs in the machine, on the machine's network."""
+        return self.system.forward(account, "network", body, timeout=180.0)
+
 
 # ── the command line ──────────────────────────────────────────────────────────
 
