@@ -100,7 +100,7 @@ BUILTIN_TOOL_DESCRIPTIONS: Dict[str, str] = {
     "connections": "List what this agent may sign in to — the logins in the person's vault granted to it, by name, with their addresses and whether each asks first, and the git hosts they keep a token for — or test that a login's address answers. Never shows a password.",
     "shell_with_login": "Run one shell command with logins from the person's vault in its environment ($LOGIN_USER, $LOGIN_PASSWORD, $LOGIN_OTP, $LOGIN_URL, or $LOGIN_<NAME>_… for several) — the agent names the logins and never sees them; output is scrubbed. For APIs and CLIs that need a sign-in: curl, a service's CLI, a database client.",
     "git": "The person's own git, as them, where their shell runs: status, diff, log, branch, commit, pull, push (never forced) and clone from https, one action per call, with their commit identity and their token for the host a command reaches. Use for version control instead of git through bash.",
-    "agent_browser": "A real web browser in the person's workstation, which they can watch and take over in the app: open a page, read its text and numbered elements, click, type, press keys, scroll, go back, manage tabs, take a screenshot, sign in with a login from the person's vault without seeing its password. For sites that need clicking, logging in or forms.",
+    "agent_browser": "A real web browser in the person's workstation, which they can watch and take over in the app: open a page, read its text and numbered elements, click, type, press keys, scroll, go back, manage tabs, take a screenshot, sign in with a login from the person's vault without seeing its password, inspect a page's design — colours, fonts, spacing, an element's styles — or the element the person pointed at. For sites that need clicking, logging in or forms, and for \"this page\".",
     "manage_rag": "RAG document index: list indexed files, add or remove a directory, store arbitrary text (add_text), or search the vector store (search). Use add_text to offload a large tool result you must retain and search to get it back, instead of holding it all in context. NOT for durable facts about the user — those go in manage_memory.",
     "manage_skills": "Skill management: add, update, publish, or search reusable skills/presets.",
     "manage_tasks": "Scheduled task management: list, create, edit, delete, pause, resume, or run cron tasks — or dry_run one to say what a run would do without running it, or draft_workflow to draft a workflow of several steps that run one after another.",
@@ -645,7 +645,9 @@ class ToolIndex:
             {"computer"},
         # `P25-05`. The agent browser.
         frozenset({"browser", "website", "web page", "log in to", "fill in the form",
-                   "click on", "open the site", "on the site"}):
+                   "click on", "open the site", "on the site",
+                   # `P25-10`: the person pointing at the page they mean.
+                   "this page", "pointed at", "pointing at", "page i'm on", "in the browser"}):
             {"agent_browser"},
         # `P27-07`. A command signed in with a vault login.
         frozenset({"my login", "with my login", "signed in", "credentials", "vault",

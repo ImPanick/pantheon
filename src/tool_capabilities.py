@@ -847,6 +847,8 @@ _ACTION_CAPABILITIES: Mapping[str, Mapping[str, ToolCapabilities]] = MappingProx
         # `P26-03`. Reading the person's notes and closing one touch only the
         # notes, which are the person's words to the agent — looking.
         "notes": _LOOK, "note_done": _LOOK,
+        # `P25-11`. Reading how the open page is made — looking.
+        "inspect": _LOOK,
     }),
     # `P27-09`. Listing reads the person's own vault's names; a test reaches
     # the address — a status line back from a stranger's server.

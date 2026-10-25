@@ -256,7 +256,14 @@ INPUT_ACTIONS = (
 # "still_asking": bool} and never a value. Only Pantheon's server sends it.
 BROWSER_ACTIONS = ("open", "read", "click", "type", "press", "scroll", "back", "forward",
                    "reload", "tabs", "tab_new", "tab_switch", "tab_close", "frame", "login",
-                   "note_add", "note_edit", "note_remove", "notes", "note_done", "notes_sent")
+                   "note_add", "note_edit", "note_remove", "notes", "note_done", "notes_sent",
+                   "inspect", "point")
+# `P25-10` / `P25-11`, added. inspect {ref | pointed | selector | x, y | nothing: the page}
+#   -> {"ok", "action", "title", "url", "element": {tag, selector, role, text, box, styles,
+#      on_background, children, href?, src?, alt?, natural?} | "page": {…counted…},
+#      "pointed"?, "elsewhere"?}. point {x, y | page: true} (a person's only)
+#   -> {"ok", "action", "pointed": {page, url, title, anchor, facts, page_facts, at}, …state}.
+#   Any agent action may carry "why": a sentence the window shows (`P25-12`).
 # `P26-01` … `P26-03`, added. Notes pinned to the open page's elements:
 #   note_add {x, y, text} · note_edit {note, text?, shapes?} · note_remove {note}
 #   (a person's only) · notes {all?} · note_done {note | notes, said?, declined?}

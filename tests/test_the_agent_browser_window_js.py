@@ -13,9 +13,15 @@ What is pinned, and why each is a defect if it breaks:
     name as https, a machine on the network as http, and words that are not
     an address are refused here with a sentence: Pantheon picks no search
     engine for anyone;
-  * **watching is not driving** — a click or a key on the page does nothing
-    until *Take over*; then a click lands at the page's own pixel, typing is
-    text and Enter is a key, and *Hand back* gives it back;
+  * **watching is not driving while the agent drives** — while a reply runs, a
+    click or a key on the page does nothing until *Take over*; then a click
+    lands at the page's own pixel, typing is text and Enter is a key, and *Hand
+    back* gives it back;
+  * **browsing it yourself** (`P25-10`) — while the agent is idle, a click on
+    the page takes it and lands; sending a message hands it back; *Point at…*
+    and *This page* put a line naming it into the composer, unsent;
+  * **watching it think** (`P25-12`) — the reply's reasoning runs in a strip,
+    the agent's *why* sits under its words, an inspection is outlined;
   * **nobody is left holding it** — closing the window while holding hands
     the browser back.
 """
@@ -41,6 +47,7 @@ export const browser = { url: 'https://shop.example/', title: 'Shop', frame: 1,
   tabs: [{ tab: 1, url: 'https://shop.example/', current: true },
          { tab: 2, url: 'https://news.example/', current: false }], acts: [] };
 const _screenFetch = globalThis.fetch;
+export function fireWin(type, detail) { (winListeners[type] || []).forEach((fn) => fn({ type, detail })); }
 globalThis.fetch = async (url, opts = {}) => {
   const path = String(url).split('?')[0];
   if (path !== '/api/workstation/browser') return _screenFetch(url, opts);
@@ -56,6 +63,11 @@ globalThis.fetch = async (url, opts = {}) => {
   const body = JSON.parse(opts.body);
   browser.acts.push(body);
   if (body.action === 'open') { browser.url = body.url; browser.title = 'Opened'; }
+  if (body.action === 'point') {
+    return reply(200, { ok: true, action: 'point', url: browser.url, title: browser.title,
+      pointed: body.page ? { url: browser.url, title: browser.title, page: true }
+        : { url: browser.url, title: browser.title, page: false, tag: 'h1', text: 'Wool & Co', box: [10, 20, 300, 40] } });
+  }
   browser.frame += 1;
   return reply(200, { ok: true, action: body.action, url: browser.url, title: browser.title });
 };
@@ -65,7 +77,7 @@ _MODALS_SPEC = re.search(r"""['"](\./modalManager\.js[^'"]*)['"]""",
                          MODULE.read_text(encoding="utf-8")).group(1)
 
 _PREAMBLE = (
-    "import { document, fire, server, settle, browser, fireWindow } from './shim.js';\n"
+    "import { document, fire, server, settle, browser, fireWindow, fireWin } from './shim.js';\n"
     "const mod = await import('./browserWindow.js');\n"
     "Object.assign(mod._test.TIMING, { FRAME_MS: 15, HOLDER_MS: 40, RETRY_MS: 40,\n"
     "  AFTER_INPUT_MS: 5, TYPE_FLUSH_MS: 10, WHEEL_FLUSH_MS: 10 });\n"
@@ -152,9 +164,11 @@ def test_watching_is_not_driving_and_taking_over_is(sandbox):
     out = _window(sandbox, """
         await open();
         const w = win();
+        fireWin('pantheon:chat-busy-change', { active: true });
         fire(w.page, 'click', { clientX: 420, clientY: 250 });
         fire(w.page, 'keydown', { key: 'a' }); await done();
         const watched = acts().length;
+        const busyHint = w.hint.textContent;
         await mod.takeOver(); await settle(20);
         fire(w.page, 'click', { clientX: 420, clientY: 250 });
         fire(w.page, 'keydown', { key: 'h' }); fire(w.page, 'keydown', { key: 'i' });
@@ -164,13 +178,88 @@ def test_watching_is_not_driving_and_taking_over_is(sandbox):
         const held = acts();
         const ring = w.stage.classList.contains('abw-held');
         await mod.handBack(); await settle(20);
-        out({ watched, held, ring, controls: server.calls.filter((c) => c.url === '/api/workstation/control'
+        out({ watched, busyHint, held, ring, controls: server.calls.filter((c) => c.url === '/api/workstation/control'
               && c.method === 'POST').map((c) => c.body.holder), give: !w.give.hidden });
     """)
-    assert out["watched"] == 0, "a click and a key while watching reach nothing"
+    assert out["watched"] == 0, "a click and a key while the agent works reach nothing"
+    assert "Take over or Stop" in out["busyHint"]
     assert out["held"] == [{"action": "click", "x": 640, "y": 400}, {"action": "type", "text": "hi"},
                            {"action": "press", "keys": "enter"}], "F5 is not a key the browser route takes"
     assert out["ring"] is True and out["controls"] == ["person", "agent"] and out["give"] is False
+
+
+def test_browsing_it_yourself_while_the_agent_is_idle(sandbox):
+    """`P25-10`. The owner: *"the user can navigate freely and tell the agent
+    'This is the page I am talking about'."*"""
+    out = _window(sandbox, """
+        await open();
+        const w = win();
+        const idle = mod.agentIdle();
+        fire(w.page, 'keydown', { key: 'a' }); await done();
+        const keyFirst = acts().length;
+        fire(w.page, 'click', { clientX: 420, clientY: 250 }); await done(); await settle(30);
+        const clicked = acts();
+        const holder = mod._test.state().holder;
+        fireWin('pantheon:message-sent', { text: 'this one' }); await settle(60);
+        const controls = server.calls.filter((c) => c.url === '/api/workstation/control'
+              && c.method === 'POST').map((c) => c.body.holder);
+        out({ idle, keyFirst, clicked, holder, controls, after: mod._test.state().holder });
+    """)
+    assert out["idle"] is True and out["keyFirst"] == 0, "a key alone takes nothing: a click does"
+    assert out["clicked"] == [{"action": "click", "x": 640, "y": 400}], "the click that took it lands"
+    assert out["holder"] == "person" and out["controls"] == ["person", "agent"] and out["after"] == "agent", \
+        "sending a message hands the browser back"
+
+
+def test_pointing_puts_a_line_in_the_composer_unsent(sandbox):
+    out = _window(sandbox, """
+        await open();
+        const w = win();
+        const box = document.body.appendChild(document.createElement('textarea'));
+        box.id = 'message'; box.value = 'make ours like this';
+        fire(w.point, 'click'); await settle(10);
+        const pointing = mod._test.state().pointing && w.page.classList.contains('abw-pointing');
+        fire(w.page, 'click', { clientX: 420, clientY: 250 }); await done(); await settle(30);
+        const first = box.value;
+        await mod.pointAt({ page: true }); await settle(20);
+        const pts = browser.acts.filter((a) => a.action === 'point');
+        out({ pointing, first, second: box.value, pts, clicks: acts().filter((a) => a.action === 'click').length,
+              sent: server.calls.some((c) => String(c.url).includes('/api/chat')) });
+    """)
+    assert out["pointing"] is True
+    assert out["pts"] == [{"action": "point", "x": 640, "y": 400}, {"action": "point", "page": True}]
+    assert out["clicks"] == 0, "a click while pointing points; it does not click the page"
+    assert out["first"].startswith("[In the browser I am pointing at <h1> “Wool & Co” on “Shop” (https://shop.example/)")
+    assert "agent_browser inspect with pointed: true" in out["first"] and out["first"].endswith("\nmake ours like this")
+    assert out["second"].startswith("[In the browser I am pointing at this page, “Shop”")
+    assert out["second"].count("[In the browser") == 1, "a second point replaces the first line"
+    assert out["sent"] is False
+
+
+def test_the_agents_thinking_and_why_beside_the_page(sandbox):
+    out = _window(sandbox, """
+        await open();
+        const w = win();
+        fireWin('pantheon:chat-busy-change', { active: true });
+        fireWin('pantheon:live-thinking', { text: 'The hero uses a serif; I will check its size.' });
+        const live = { shown: !w.thinking.hidden, text: w.thinkingText.textContent, head: w.thinkingHead.textContent };
+        mod.applyActivity([{ id: 9, seq: 9, who: 'agent', action: 'inspect', phase: 'doing',
+          label: 'Inspecting <h1> “Wool & Co” — Georgia 32px #333333', why: 'To match the heading type.',
+          x: 160, y: 40, box: [10, 20, 300, 40] }]);
+        const cap = w.caption.textContent;
+        const outlined = !w.outline.hidden;
+        const feed = mod._test.state().feed[0];
+        fireWin('pantheon:chat-busy-change', { active: false });
+        const after = w.thinkingHead.textContent;
+        fireWin('pantheon:message-sent', { text: 'next' });
+        out({ live, cap, outlined, why: feed.why, after, cleared: w.thinking.hidden,
+              tail: mod.thinkingTail('x'.repeat(50) + ' ' + 'y'.repeat(30), 40) });
+    """)
+    assert out["live"] == {"shown": True, "text": "The hero uses a serif; I will check its size.",
+                           "head": "The agent is thinking"}
+    assert "To match the heading type." in out["cap"] and out["outlined"] is True
+    assert out["why"] == "To match the heading type." and out["after"] == "What the agent was thinking"
+    assert out["cleared"] is True and out["tail"].startswith("…") and len(out["tail"]) <= 41
 
 
 def test_closing_while_holding_hands_it_back(sandbox):

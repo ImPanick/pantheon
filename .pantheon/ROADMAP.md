@@ -85,11 +85,11 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P22 | The Workbench | 25 | 0 | 0 | **25** |
 | P23 | Alignment — the audits, fixed | 9 | 0 | 0 | **9** |
 | P24 | Agents — the hall of hireable agents | 27 | 8 | 0 | **19** |
-| P25 | The + menu, git per account, the agent browser | 10 | 1 | 0 | **9** |
+| P25 | The + menu, git per account, the agent browser | 13 | 1 | 0 | **12** |
 | P26 | Design — the studio, and notes on the live page | 10 | 3 | 0 | **7** |
 | P27 | Connections — the hub and the private vault | 11 | 3 | 0 | **8** |
 | Backlog | Bugs and hardening found in flight | 1015 | 350 | 0 | **663** |
-| **Total** | | **1504** | **390** | **5** | **1107** |
+| **Total** | | **1507** | **390** | **5** | **1110** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -251,6 +251,10 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P25-10, P25-11, P25-12: browse it yourself, point at what you mean, watch the agent look
+`03790be`…`HEAD`. **1507 tracked, 1110 done. `P25-10`, `P25-11` and `P25-12` filed and closed.**
+The person can click and scroll the agent browser whenever the agent is idle and point at an element or a page, which puts a line and a picture into their message; the agent inspects what they pointed at — or any element, or the whole page counted — with what it looked at outlined, its reason under its hand, and the reply's reasoning running beside the page.
 
 ### P26-06, P26-07: a design is files, with versions and variants; the canvas
 `ae3a838`…`HEAD`. **1504 tracked, 1107 done. `P26-06` and `P26-07` closed.**
@@ -11338,6 +11342,19 @@ browser, and the person can take it over (`P20-05`'s rule, not a second one).
   — **done 2026-10-24** — *+ New agent* opens on **Talk it through** (beside *Describe it* and *Its file*): the model interviews one question at a time and answers data — `{reply, ready, agent?}` — so it can say it is ready only by handing over a whole agent, which `render` spells and the lint checks (one repair round); after six turns it is nudged to propose, and *Build it now* asks for one at once. The proposal is an **Agent construction** card: a name field (the person's choice becomes its name and id), what it starts on, asks for, uses and delivers, what it asks before and never does, and **Build it** / **Not yet** / *Open the file*. **Build one from this chat…** under *Agents ›* starts the talk from the chat on screen, handed to the model as context, not instructions. `POST /api/agents/interview`; `POST /api/agents/own` takes the name. `Verify:` `tests/test_an_agent_is_written_by_its_person.py` (+6), `tests/test_the_agents_hall_js.py` (+2); driven in Chromium.
 - [x] **P25-09** **An agent offered for the job a message describes.** The owner, 2026-10-24: *"If the user triggers key words or thought processes, such as 'I need optimization for X workflows' or 'I'm thinking of these products' the suggestion of 'load X agent' to enhance your experience in {whatever task is referenced}."*
   — **done 2026-10-24** — `src/agents/suggest.py`, no model: a message that describes a job (need, plan, habit: *I need…*, *I'm thinking of…*, *every morning…*, *keep track of…*) is matched, stemmed, against each agent's name and id, tagline and section; the best is offered only when it clears the bar and is not tied — a wrong offer is worse than none. Above the composer: *{Agent} could help with this*, its tagline, **Summon** (switching to Agent mode when needed) and **Not now** (that agent is not offered again on the page). Not while an agent is summoned, not in incognito. `POST /api/agents/suggest`. `Verify:` `tests/test_an_agent_is_written_by_its_person.py` (+9), `tests/test_the_plus_menu_nests.py` (+1, in Chromium).
+- [x] **P25-10** **Browse it yourself, and point at what you mean.** The owner, 2026-10-25: *"Give the users control of the in-application's browser too. So that way the user can navigate freely and tell the agent \"This is the page I am talking about. Reference the design aspects (or whatever, content etc..)\" - The user should be able to watch the LLM inspect etc be it in browser control or via the internal thoughts laid bare by the LLM"*. Clicking or scrolling the page while the
+  agent is idle takes the browser, and sending a message hands it back; *Point at…* and *This page* tell the agent which
+  element or page the person means. `Verify:` a click while idle lands; a click while the agent works does not; a point
+  reaches the agent after the person has browsed on.
+  — **done 2026-10-25** — `static/js/browserWindow.js`: a click or a scroll on the page while no reply runs and the agent has not acted for four seconds takes the browser (the screen's own `control`, as *Take over*) and the click lands; while the agent works the window says *Take over or Stop*, because a page moving under its hand would make its next step wrong; a key alone takes nothing. A message sent (`pantheon:message-sent`) hands a hold back, except after *Stop*, which stays the person's until they say. *Point at…* turns the next click into a point, *This page* points at the page: the daemon's `point` (a person's only) keeps the element's anchor and what it was made of, and the composer gets one line naming it — *[In the browser I am pointing at <h1> “Wool & Co” on “Wool & Co” (url) — agent_browser inspect with pointed: true reads it.]* — before whatever is typed, with a crop of it outlined, unsent; pointing again replaces the line. `Verify:` `tests/test_the_agent_browser_window_js.py` (busy, idle, hand-back on send, the line in the composer) and `tests/test_point_at_this_page_and_inspect_it.py` (a real Firefox: the person points, the agent may not, the point kept after browsing on, the agent refused while the person holds it); driven in Chromium against a real daemon and Firefox at 1440×900: a page opened, clicked (taken), the h1 pointed at with its picture attached, the message hands it back.
+- [x] **P25-11** **The agent inspects a page's design and content, and is watched doing it.** `agent_browser inspect`: one
+  element — by `read` number, selector, or what the person pointed at — or the whole page, as a designer or editor reads it.
+  `Verify:` the pointed element's type and colours reach the model; the window outlines what was looked at.
+  — **done 2026-10-25** — `workstation/browser.py` (`INSPECT_FN`): an element's tag, selector, text, box, children and its styles that are not the browser's defaults (font, size, weight, line height, colour and background as hex, border, radius, shadow, padding, margin, gap, flex and grid), with the background it is drawn on; the page counted — text colours by amount of text, backgrounds by area, fonts, sizes, spacing, radii, shadows, max widths, `:root` variables, breakpoints, headings, landmarks, images without alt, the description. Looking only (`_LOOK`), so it never asks. With `pointed: true` after the person browsed on, it answers what was kept when they pointed, and says so. Each inspection is in the activity with its box: the window outlines the element, dims the rest, and holds it 1.2 s while watched. `Verify:` the same test file (a real Firefox: the h1's Georgia 48px #8a4b2a, the page's variables, fonts, backgrounds and breakpoint, a selector that is not there refused in a sentence); driven: *Inspecting <h1> “Wool & Co” — Georgia 48px #8a4b2a* outlined on the page.
+- [x] **P25-12** **The agent's reasons beside the page.** Every `agent_browser` call may carry `why`, a sentence shown
+  under what the hand does; the reply's reasoning runs beside the page while the window is open. `Verify:` both show while
+  a reply runs.
+  — **done 2026-10-25** — `why` is in the schema and the fenced form (*Give every call a why*); the daemon keeps it on the agent's activity only, the route passes it (200 characters), and the window shows it in italics under the caption and in the trail. `chat.js` dispatches its throttled live reasoning (`pantheon:live-thinking`); the window shows the last 1,200 characters under the page — *The agent is thinking …* while the reply runs, *What the agent was thinking* after, cleared by the next message. `Verify:` `tests/test_the_agent_browser_window_js.py` (the strip, its heading as the reply ends, the why under the caption and in the trail, the outline); driven: all three on screen during an inspection.
 
 # P26 · Design — a studio for each person's projects, and notes pinned to the live page
 

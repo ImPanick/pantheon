@@ -61,6 +61,9 @@ ACTIVITY_KEPT = 40
 WATCHED_S = 3.0
 PACE_POINTER_S = 0.8
 PACE_OTHER_S = 0.35
+PACE_INSPECT_S = 1.2       # `P25-11`: long enough to see what was looked at
+WHY_MAX = 200
+INSPECT_ELEMENTS_MAX = 2500
 _LISTENING_RE = re.compile(r"WebDriver BiDi listening on ws://([0-9.]+):(\d+)")
 
 USER_JS = """// Written by the Pantheon workstation (`workstation/browser.py`).
@@ -214,6 +217,157 @@ LOCATE_FN = r"""(anchors) => {
   }));
 }"""
 
+# `P25-11`. What a page is made of, as a designer or an editor reads it — for
+# one element (a `read` number, a person's `point`, a selector, or a point) or
+# the whole page. Colours come back as hex; a password field's value never.
+# Looking only: nothing on the page is changed but the element scrolled into
+# view, which the person watching sees.
+INSPECT_FN = r"""(raw, maxEls) => {
+  const target = raw ? JSON.parse(raw) : null;
+  const hex = (c) => {
+    const m = String(c || '').match(/rgba?\(([^)]+)\)/);
+    if (!m) return String(c || '');
+    const p = m[1].split(/[ ,/]+/).filter(Boolean).map(Number);
+    const a = p.length > 3 ? p[3] : 1;
+    if (a === 0) return 'transparent';
+    const h = '#' + p.slice(0, 3).map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
+    return a < 1 ? h + Math.round(a * 255).toString(16).padStart(2, '0') : h;
+  };
+  const esc = (s) => (window.CSS && CSS.escape) ? CSS.escape(s) : s.replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+  const path = (e) => {
+    const parts = [];
+    while (e && e.nodeType === 1 && e !== document.documentElement) {
+      if (e.id && document.querySelectorAll('#' + esc(e.id)).length === 1) { parts.unshift('#' + esc(e.id)); break; }
+      let p = e.tagName.toLowerCase();
+      const same = e.parentElement ? [...e.parentElement.children].filter((c) => c.tagName === e.tagName) : [];
+      if (same.length > 1) p += ':nth-of-type(' + (same.indexOf(e) + 1) + ')';
+      parts.unshift(p);
+      e = e.parentElement;
+    }
+    return parts.join(' > ');
+  };
+  const words = (el) => (el.getAttribute('aria-label') || el.innerText || el.alt || el.placeholder || el.title || '')
+    .replace(/\s+/g, ' ').trim();
+  const shown = (el) => { const r = el.getBoundingClientRect(); const st = getComputedStyle(el);
+    return r.width >= 1 && r.height >= 1 && st.visibility !== 'hidden' && st.display !== 'none'; };
+  const PROPS = ['font-family', 'font-size', 'font-weight', 'line-height', 'letter-spacing', 'text-transform',
+    'text-align', 'color', 'background-color', 'background-image', 'border', 'border-radius', 'box-shadow',
+    'padding', 'margin', 'gap', 'display', 'flex-direction', 'justify-content', 'align-items',
+    'grid-template-columns', 'width', 'height', 'max-width', 'opacity', 'position'];
+  const DULL = { 'background-image': 'none', 'box-shadow': 'none', 'text-transform': 'none', 'opacity': '1',
+    'position': 'static', 'letter-spacing': 'normal', 'gap': 'normal', 'grid-template-columns': 'none',
+    'max-width': 'none', 'border-radius': '0px', 'margin': '0px', 'padding': '0px', 'flex-direction': 'row',
+    'justify-content': 'normal', 'align-items': 'normal' };
+  const element = (el) => {
+    el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    const r = el.getBoundingClientRect();
+    const cs = getComputedStyle(el);
+    const styles = {};
+    PROPS.forEach((k) => {
+      let v = cs.getPropertyValue(k).trim();
+      if (!v || DULL[k] === v) return;
+      if (k === 'border' && /^0px/.test(v)) return;
+      if (/color$/.test(k)) v = hex(v);
+      if (k === 'background-color' && v === 'transparent') return;
+      if (k === 'border' || k === 'box-shadow') v = v.replace(/rgba?\([^)]+\)/g, hex);
+      if (k === 'background-image') v = v.replace(/url\([^)]{60,}\)/g, 'url(…)').slice(0, 200);
+      styles[k] = v.slice(0, 200);
+    });
+    const tag = el.tagName.toLowerCase();
+    const out = { tag, selector: path(el), role: el.getAttribute('role') || '', text: words(el).slice(0, 400),
+      box: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)], styles,
+      children: el.children.length };
+    if (tag === 'a') out.href = (el.href || '').slice(0, 300);
+    if (tag === 'img') { out.src = (el.currentSrc || el.src || '').slice(0, 300); out.alt = el.alt || '';
+      out.natural = [el.naturalWidth, el.naturalHeight]; }
+    if (el.type === 'password') out.text = el.placeholder || '';
+    let b = el, bg = 'transparent';
+    while (b && b.nodeType === 1) { const c = hex(getComputedStyle(b).backgroundColor); if (c !== 'transparent') { bg = c; break; } b = b.parentElement; }
+    out.on_background = bg;
+    return out;
+  };
+  let el = null;
+  if (target && target.ref != null) {
+    el = document.querySelector('[data-pantheon-ref="' + target.ref + '"]');
+    if (!el) return JSON.stringify({ missing: 'There is no element ' + target.ref + ' on this reading; read the page again.' });
+  } else if (target && target.selector) {
+    try { el = document.querySelector(target.selector); } catch (_) { el = null; }
+    const same = (e) => !target.text || words(e).slice(0, 80).startsWith(String(target.text).slice(0, 30));
+    if (el && !same(el)) el = null;
+    if (!el && target.tag) el = [...document.getElementsByTagName(target.tag)].find(same) || null;
+    if (!el) return JSON.stringify({ missing: 'That element is no longer on the page.' });
+  } else if (target && target.x != null) {
+    el = document.elementFromPoint(target.x, target.y);
+    if (!el || el === document.documentElement || el === document.body) el = null;
+    if (!el) return JSON.stringify({ missing: 'There is nothing on the page there.' });
+  }
+  if (el) return JSON.stringify({ title: document.title, url: location.href, element: element(el) });
+  // The whole page: what it is made of, counted.
+  const count = (m, k, w) => { if (k) m.set(k, (m.get(k) || 0) + (w || 1)); };
+  const top = (m, n) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([v, c]) => ({ value: v, count: Math.round(c) }));
+  const text = new Map(), back = new Map(), fonts = new Map(), sizes = new Map(), space = new Map(),
+    radii = new Map(), shadows = new Map(), widths = new Map();
+  let seen = 0;
+  // The page's own ground: the body's background, or the root's behind it.
+  [document.documentElement, document.body].forEach((e) => {
+    const bg = e ? hex(getComputedStyle(e).backgroundColor) : 'transparent';
+    if (bg !== 'transparent') count(back, bg, innerWidth * innerHeight / 1000);
+  });
+  for (const e of document.body ? document.body.querySelectorAll('*') : []) {
+    if (seen >= maxEls) break;
+    if (!shown(e)) continue;
+    seen += 1;
+    const cs = getComputedStyle(e);
+    const r = e.getBoundingClientRect();
+    const own = [...e.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim().length;
+    if (own) {
+      count(text, hex(cs.color), own);
+      count(fonts, cs.fontFamily.split(',')[0].replace(/["']/g, '').trim(), own);
+      count(sizes, cs.fontSize, own);
+    }
+    const bg = hex(cs.backgroundColor);
+    if (bg !== 'transparent') count(back, bg, r.width * r.height / 1000);
+    ['padding-top', 'padding-left', 'margin-top', 'margin-bottom', 'row-gap', 'column-gap'].forEach((k) => {
+      const v = cs.getPropertyValue(k); if (/^[1-9][0-9.]*px$/.test(v)) count(space, v); });
+    if (/^[1-9]/.test(cs.borderTopLeftRadius)) count(radii, cs.borderTopLeftRadius);
+    if (cs.boxShadow && cs.boxShadow !== 'none') count(shadows, cs.boxShadow.replace(/rgba?\([^)]+\)/g, hex).slice(0, 120));
+    if (cs.maxWidth && cs.maxWidth !== 'none' && /px$/.test(cs.maxWidth)) count(widths, cs.maxWidth);
+  }
+  const vars = {};
+  try {
+    const rs = getComputedStyle(document.documentElement);
+    for (const sheet of document.styleSheets) {
+      let rules; try { rules = sheet.cssRules; } catch (_) { continue; }
+      for (const rule of rules || []) {
+        if (!rule.style || !/(^|,)\s*(:root|html)\s*(,|$)/.test(rule.selectorText || '')) continue;
+        for (const k of rule.style) if (k.startsWith('--') && Object.keys(vars).length < 60) vars[k] = rs.getPropertyValue(k).trim().slice(0, 80);
+      }
+    }
+  } catch (_) { /* a sheet that will not be read says nothing */ }
+  const media = new Set();
+  try {
+    for (const sheet of document.styleSheets) {
+      let rules; try { rules = sheet.cssRules; } catch (_) { continue; }
+      for (const rule of rules || []) if (rule.media && rule.conditionText && media.size < 12) media.add(rule.conditionText.slice(0, 80));
+    }
+  } catch (_) { /* as above */ }
+  const heads = [...document.querySelectorAll('h1, h2, h3')].filter(shown).slice(0, 24)
+    .map((h) => ({ tag: h.tagName.toLowerCase(), text: words(h).slice(0, 100) }));
+  const imgs = [...document.images];
+  const meta = (n) => { const m = document.querySelector('meta[name="' + n + '"]'); return m ? (m.content || '').slice(0, 300) : ''; };
+  return JSON.stringify({ title: document.title, url: location.href, page: {
+    size: [document.documentElement.scrollWidth, document.documentElement.scrollHeight],
+    viewport: [innerWidth, innerHeight], scrolled: Math.round(scrollY), description: meta('description'),
+    theme_color: meta('theme-color'), lang: document.documentElement.lang || '',
+    text_colours: top(text, 8), backgrounds: top(back, 8), fonts: top(fonts, 6), sizes: top(sizes, 10),
+    spacing: top(space, 10), radii: top(radii, 6), shadows: top(shadows, 4), max_widths: top(widths, 4),
+    variables: vars, media: [...media], headings: heads,
+    landmarks: ['header', 'nav', 'main', 'aside', 'footer'].filter((t) => document.querySelector(t)),
+    images: imgs.length, images_without_alt: imgs.filter((i) => !i.hasAttribute('alt')).length,
+    links: document.links.length, elements_counted: seen } });
+}"""
+
+
 # WebDriver's key codes for the keys a person names (`press`).
 KEYS = {
     "enter": "", "return": "", "tab": "", "escape": "", "esc": "",
@@ -285,6 +439,7 @@ class AccountBrowser:
         self.seq = 0
         self._ids = 0
         self.watched_at = 0.0
+        self.pointed: Optional[Dict] = None   # `P25-10`: what the person last pointed at
         self._act_lock = threading.Lock()
 
     # -- life -------------------------------------------------------------------
@@ -451,7 +606,8 @@ class AccountBrowser:
 
     # -- what the person watches (`P25-07`) -------------------------------------
 
-    def _log(self, who: str, action: str, label: str, x=None, y=None, phase: str = "doing") -> Dict:
+    def _log(self, who: str, action: str, label: str, x=None, y=None, phase: str = "doing",
+             why: Any = None, box: Any = None) -> Dict:
         with self._act_lock:
             self._ids += 1
             self.seq += 1
@@ -459,6 +615,13 @@ class AccountBrowser:
                      "action": action, "label": label[:160], "phase": phase}
             if x is not None and y is not None:
                 entry["x"], entry["y"] = int(x), int(y)
+            # `P25-12`. The agent's own sentence for why — what the person
+            # watching reads under the hand. A person's acts need none.
+            if who == "agent" and isinstance(why, str) and why.strip():
+                entry["why"] = " ".join(why.split())[:WHY_MAX]
+            # `P25-11`. What an inspection looked at, outlined on the page.
+            if isinstance(box, (list, tuple)) and len(box) == 4:
+                entry["box"] = [int(v) for v in box]
             self.activity.append(entry)
             del self.activity[:-ACTIVITY_KEPT]
             return entry
@@ -492,6 +655,10 @@ class AccountBrowser:
             if not self.running():
                 self.stop()
                 self.start()
+        if action == "inspect":
+            return self._inspect(body, who)
+        if action == "point":
+            return self._point_at(body, who)
         try:
             label, x, y = self._intent(action, body)
         except BrowserError as e:
@@ -499,7 +666,7 @@ class AccountBrowser:
             what = f"element {body.get('ref')}" if body.get("ref") is not None else "the page"
             self._log(who, action, f"{action.capitalize()} on {what} — {e.message}", phase="failed")
             raise
-        entry = self._log(who, action, label, x, y)
+        entry = self._log(who, action, label, x, y, why=body.get("why"))
         self._pace(who, PACE_POINTER_S if x is not None else PACE_OTHER_S)
         try:
             out = self._act(action, body, at=(x, y) if x is not None else None)
@@ -635,6 +802,115 @@ class AccountBrowser:
                 raise BrowserError("bad_request", f"“{action}” is not a browser action.")
             out.update(self.state(ctx))
             return out
+
+    # -- `P25-10` / `P25-11`: what the person points at, and what is looked at ---
+
+    def _facts(self, ctx: str, target: Optional[Dict]) -> Dict:
+        raw = self._eval(ctx, INSPECT_FN, json.dumps(target) if target else "", INSPECT_ELEMENTS_MAX)
+        got = json.loads(raw or "{}")
+        if got.get("missing"):
+            raise BrowserError("refused", got["missing"])
+        return got
+
+    def _inspect(self, body: Dict, who: str) -> Dict:
+        """`P25-11`. One element, or the whole page, as it is made: logged with
+        what was looked at outlined, held long enough to be seen."""
+        target: Optional[Dict] = None
+        elsewhere = None
+        with self.lock:
+            ctx = self._ctx()
+            url = self.state(ctx).get("url") or ""
+            if body.get("pointed"):
+                p = self.pointed
+                if not p:
+                    raise BrowserError("refused", "The person has not pointed at anything in the browser yet.")
+                if p["page"] != url.split("#", 1)[0]:
+                    elsewhere = p
+                elif p.get("anchor"):
+                    target = dict(p["anchor"])
+            elif body.get("ref") is not None:
+                target = {"ref": body.get("ref")}
+            elif body.get("selector"):
+                sel = str(body.get("selector"))
+                if len(sel) > 300:
+                    raise BrowserError("bad_request", "“selector” is at most 300 characters.")
+                target = {"selector": sel}
+            elif body.get("x") is not None or body.get("y") is not None:
+                x, y = _xy(body)
+                target = {"x": x, "y": y}
+        if elsewhere is not None:
+            # The person pointed on another page: what was kept then, said so.
+            entry = self._log(who, "inspect", f"Recalling what you pointed at on {elsewhere['title'] or elsewhere['page']}",
+                              why=body.get("why"))
+            self._moved_on(entry, "done")
+            return {"ok": True, "action": "inspect", "url": url, "title": "", "pointed": elsewhere,
+                    "elsewhere": True, **({"element": elsewhere["facts"]} if elsewhere.get("facts") else
+                                          {"page": elsewhere.get("page_facts") or {}})}
+        entry = self._log(who, "inspect", "Inspecting the page" if target is None else "Inspecting an element",
+                          why=body.get("why"))
+        try:
+            with self.lock:
+                got = self._facts(self._ctx(), target)
+        except BrowserError as e:
+            self._moved_on(entry, "failed", f"{entry['label']} — {e.message}")
+            raise
+        el = got.get("element")
+        if el:
+            st = el.get("styles") or {}
+            font = (st.get("font-family") or "").split(",")[0].strip("\"' ")
+            bits = [b for b in (font, st.get("font-size"), st.get("color")) if b]
+            label = f"Inspecting <{el['tag']}>{(' “' + el['text'][:40] + '”') if el.get('text') else ''}" \
+                    f"{(' — ' + ' '.join(bits)) if bits else ''}"
+            bx = el.get("box") or [0, 0, 0, 0]
+            with self._act_lock:
+                self.seq += 1
+                entry.update(seq=self.seq, label=label[:160], box=[int(v) for v in bx],
+                             x=int(bx[0] + bx[2] / 2), y=int(bx[1] + bx[3] / 2))
+        else:
+            with self._act_lock:
+                self.seq += 1
+                entry.update(seq=self.seq, label="Inspecting the page — colours, type, spacing, structure")
+        self._pace(who, PACE_INSPECT_S)
+        self._moved_on(entry, "done")
+        got.update(ok=True, action="inspect")
+        if body.get("pointed"):
+            got["pointed"] = self.pointed
+        return got
+
+    def _point_at(self, body: Dict, who: str) -> Dict:
+        """`P25-10`. The person says *this*: an element under a point, or the
+        page. Kept until they point again, so the agent can look at it after
+        they have browsed on — what it was then travels with it."""
+        if who != "person":
+            raise BrowserError("refused", "Pointing is the person's: it is how they say which page they mean.")
+        with self.lock:
+            ctx = self._ctx()
+            st = self.state(ctx)
+            url = st.get("url") or ""
+            if body.get("page"):
+                facts = self._facts(ctx, None)
+                self.pointed = {"page": url.split("#", 1)[0], "url": url, "title": st.get("title") or "",
+                                "anchor": None, "facts": None, "page_facts": facts.get("page"), "at": time.time()}
+                label = f"Pointed at the page {st.get('title') or url}"
+                box = None
+            else:
+                x, y = _xy(body)
+                raw = self._eval(ctx, ANCHOR_FN, x, y)
+                if not raw:
+                    raise BrowserError("refused", "There is nothing on the page there to point at.")
+                anchor = json.loads(raw)
+                anchor.pop("box", None)
+                facts = self._facts(ctx, {"x": x, "y": y})
+                el = facts.get("element") or {}
+                anchor = {"selector": el.get("selector") or anchor["selector"], "tag": anchor["tag"],
+                          "text": anchor["text"]}
+                self.pointed = {"page": url.split("#", 1)[0], "url": url, "title": st.get("title") or "",
+                                "anchor": anchor, "facts": el, "page_facts": None, "at": time.time()}
+                label = f"Pointed at <{anchor['tag']}>{(' “' + anchor['text'][:40] + '”') if anchor['text'] else ''}"
+                box = el.get("box")
+        entry = self._log(who, "point", label, box=box)
+        self._moved_on(entry, "done")
+        return {"ok": True, "action": "point", "pointed": self.pointed, **st}
 
     # -- `P26-01` … `P26-03`: notes pinned to the page ---------------------------
 

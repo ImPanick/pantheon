@@ -40,7 +40,8 @@ TOOL_NAME = "agent_browser"
 SCREENSHOT = "screenshot"
 # `P26-03`. The agent reads the person's notes and closes them; making,
 # changing and removing a note, and marking notes sent, are the person's.
-PERSON_ONLY = ("frame", "note_add", "note_edit", "note_remove", "notes_sent")
+# `P25-10`. Pointing is how the person says which page or element they mean.
+PERSON_ONLY = ("frame", "note_add", "note_edit", "note_remove", "notes_sent", "point")
 ACTIONS: Tuple[str, ...] = tuple(a for a in P.BROWSER_ACTIONS if a not in PERSON_ONLY) + (SCREENSHOT,)
 READ_TEXT_MAX = 8_000
 
@@ -78,6 +79,9 @@ def parse_args(content: Any) -> Tuple[Dict[str, Any], Optional[str]]:
             a[key] = int(v.strip())
         elif isinstance(v, float) and v == v:
             a[key] = int(round(v))
+    if "pointed" in a:
+        from src.env_flags import tool_arg_truthy
+        a["pointed"] = tool_arg_truthy(a.get("pointed"))
     if action == "scroll" and "dy" not in a and "dx" not in a:
         direction = str(a.get("direction") or "down").lower()
         amount = a.get("amount", 5) if isinstance(a.get("amount", 5), int) else 5
@@ -99,6 +103,14 @@ def describe(args: Dict[str, Any]) -> str:
         return f"type “{shown}”{where}{' and Enter' if args.get('submit') else ''}"
     if action == "login":
         return f"sign in with “{args.get('item') or '?'}”"
+    if action == "inspect":
+        if args.get("pointed"):
+            return "inspect what the person pointed at"
+        if args.get("ref") is not None:
+            return f"inspect [{args['ref']}]"
+        if args.get("selector"):
+            return f"inspect {str(args['selector'])[:60]}"
+        return "inspect the page"
     if action == "notes":
         return "read the person's notes" + (" on every page" if args.get("all") else "")
     if action == "note_done":
@@ -136,6 +148,71 @@ def page_text(answer: Dict[str, Any]) -> str:
             href = f" → {e['href']}" if e.get("href") else ""
             off = " (disabled)" if e.get("disabled") else ""
             lines.append(f"[{e['ref']}] {kind}{label}{href}{off}")
+    return "\n".join(lines)
+
+
+def _counted(rows: Any, unit: str = "") -> str:
+    return ", ".join(f"{r.get('value')}{unit} ×{r.get('count')}" for r in (rows or []) if isinstance(r, dict))
+
+
+def inspect_text(answer: Dict[str, Any]) -> str:
+    """`P25-11`. An inspection as the model reads it: one element's make-up,
+    or the page's, counted. All of it is the page's own — a stranger's."""
+    lines = []
+    p = answer.get("pointed") if isinstance(answer.get("pointed"), dict) else None
+    if p:
+        what = (f"<{p['anchor'].get('tag')}> “{p['anchor'].get('text') or ''}”" if p.get("anchor")
+                else "the whole page")
+        lines.append(f"The person pointed at {what} on {p.get('title') or '(untitled)'} — {p.get('url')}.")
+        if answer.get("elsewhere"):
+            lines.append("The browser has moved on from that page since; this is what it was when they pointed. "
+                         "Open that address again to look further.")
+    else:
+        lines.append(f"Page: {answer.get('title') or '(untitled)'} — {answer.get('url') or ''}")
+    el = answer.get("element")
+    if isinstance(el, dict):
+        lines.append(f"Element <{el.get('tag')}> at {el.get('selector')}"
+                     + (f" (role {el['role']})" if el.get("role") else ""))
+        if el.get("text"):
+            lines.append(f"Text: {el['text']}")
+        box = el.get("box") or []
+        if len(box) == 4:
+            lines.append(f"Box: {box[2]}×{box[3]} px at ({box[0]}, {box[1]}) in the viewport; {el.get('children', 0)} children.")
+        for k, v in (el.get("styles") or {}).items():
+            lines.append(f"  {k}: {v}")
+        if el.get("on_background"):
+            lines.append(f"  (drawn on background {el['on_background']})")
+        for k in ("href", "src", "alt"):
+            if el.get(k):
+                lines.append(f"{k}: {el[k]}")
+        if el.get("natural"):
+            lines.append(f"Image's own size: {el['natural'][0]}×{el['natural'][1]}")
+        return "\n".join(lines)
+    pg = answer.get("page") if isinstance(answer.get("page"), dict) else {}
+    if not pg:
+        return "\n".join(lines + ["(Nothing was counted.)"])
+    size = pg.get("size") or [0, 0]
+    lines.append(f"Size: {size[0]}×{size[1]} px (viewport {'×'.join(str(v) for v in pg.get('viewport') or [])}); "
+                 f"{pg.get('elements_counted', 0)} visible elements counted."
+                 + (f" Language: {pg['lang']}." if pg.get("lang") else ""))
+    if pg.get("description"):
+        lines.append(f"Description: {pg['description']}")
+    for label, key, unit in (("Text colours (by amount of text)", "text_colours", ""),
+                             ("Backgrounds (by area)", "backgrounds", ""), ("Fonts", "fonts", ""),
+                             ("Font sizes", "sizes", ""), ("Spacing", "spacing", ""), ("Corner radii", "radii", ""),
+                             ("Shadows", "shadows", ""), ("Max widths", "max_widths", "")):
+        if pg.get(key):
+            lines.append(f"{label}: {_counted(pg[key], unit)}")
+    if pg.get("theme_color"):
+        lines.append(f"Theme colour: {pg['theme_color']}")
+    if pg.get("variables"):
+        lines.append("CSS variables: " + "; ".join(f"{k}: {v}" for k, v in list(pg["variables"].items())[:60]))
+    if pg.get("media"):
+        lines.append("Breakpoints: " + "; ".join(pg["media"]))
+    if pg.get("headings"):
+        lines.append("Headings: " + " · ".join(f"{h.get('tag')} {h.get('text')}" for h in pg["headings"]))
+    lines.append(f"Landmarks: {', '.join(pg.get('landmarks') or []) or 'none'}. Images: {pg.get('images', 0)} "
+                 f"({pg.get('images_without_alt', 0)} without alt). Links: {pg.get('links', 0)}.")
     return "\n".join(lines)
 
 
@@ -203,7 +280,7 @@ class BrowserTool:
         await sync_names(client, account, owner)
         fields = {k: v for k, v in args.items()
                   if k in ("url", "ref", "x", "y", "text", "submit", "keys", "dx", "dy", "tab", "double",
-                           "note", "notes", "said", "declined", "all")}
+                           "note", "notes", "said", "declined", "all", "pointed", "selector", "why")}
         if action == "login":
             return await _login(client, account, owner, args, session=(ctx or {}).get("session_id"),
                                 agent=(ctx or {}).get("agent_id"))
@@ -222,6 +299,9 @@ class BrowserTool:
         answer = answer or {}
         if action == "read":
             return {"output": page_text(answer), "exit_code": 0, "ran_in": "workstation",
+                    "url": answer.get("url")}
+        if action == "inspect":
+            return {"output": inspect_text(answer), "exit_code": 0, "ran_in": "workstation",
                     "url": answer.get("url")}
         if action in ("notes", "note_done"):
             return {"output": notes_text(answer, closed=action == "note_done"), "exit_code": 0,

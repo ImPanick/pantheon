@@ -50425,6 +50425,44 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .abw-step-who { flex: 0 0 auto; font-weight: 600; }
 .abw-step-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .abw-stop { color: var(--red); border-color: var(--red); font-weight: 600; }
+/* `P25-10` … `P25-12`. Pointing at what the person means; what an inspection
+   looked at (outlined in the hand's colour, set by `browserWindow.js`); the
+   agent's why under its words; the reply's reasoning beside the page. */
+.abw-page.abw-pointing, .abw-page.abw-pointing .abw-frame { cursor: crosshair; }
+.abw-point[aria-pressed="true"] { border-color: currentColor; font-weight: 600; }
+.abw-outline {
+  position: absolute;
+  border: 2px solid currentColor;
+  border-radius: 4px;
+  box-shadow: 0 0 0 9999px color-mix(in srgb, var(--bg) 22%, transparent);
+  pointer-events: none;
+  transition: left 0.3s ease, top 0.3s ease, width 0.3s ease, height 0.3s ease;
+}
+.abw-outline[hidden], .abw-thinking[hidden] { display: none; }
+.abw-caption-why { display: block; margin-top: 2px; font-style: italic; }
+.abw-caption[data-phase="doing"]:has(.abw-caption-why)::after { content: none; }
+.abw-caption[data-phase="doing"] .abw-caption-why::after { content: " …"; }
+.abw-step-why { font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.abw-step-why::before { content: "— "; }
+.abw-thinking {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: var(--panel);
+}
+.abw-thinking-head { margin: 0 0 4px; font-size: 12px; font-weight: 600; }
+.abw-thinking-live .abw-thinking-head::after { content: " …"; }
+.abw-thinking-text {
+  max-height: 96px;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (prefers-reduced-motion: reduce) {
+  .abw-outline { transition-duration: 0.01ms; }
+}
 .abw-modal.abw-agent-busy .abw-stage { box-shadow: 0 0 0 1px var(--border-control, var(--border)); }
 
 /* ── `P26-01` … `P26-03` · notes pinned to the page ─────────────────────────

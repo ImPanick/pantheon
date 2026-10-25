@@ -1694,7 +1694,9 @@ Blocked paths/routes (refused for safety): /api/auth/, /api/users/, /api/tokens/
         "click (ref), type (ref, text, submit), press (keys), scroll (dy), back, forward, "
         "reload, tabs, tab_new (url), tab_switch (tab), tab_close (tab), screenshot, login "
         "(item: a login's name in the person's vault — the browser fills the form, you never "
-        "see the password). Read again after anything that changes the page."
+        "see the password), inspect (ref, selector, pointed: true for what the person pointed "
+        "at, or nothing for the whole page — colours, type, spacing, structure). Add why: one "
+        "sentence the person watching reads. Read again after anything that changes the page."
     ),
     # `P27-09`. The fenced form of the `connections` schema.
     "connections": (

@@ -362,6 +362,8 @@ def setup_workstation_routes() -> APIRouter:
                "url": str(answer.get("url") or "")[:4000], "title": str(answer.get("title") or "")[:300]}
         if isinstance(answer.get("notes"), list):
             out["notes"] = [_note(n) for n in answer["notes"] if isinstance(n, dict)]
+        if isinstance(answer.get("pointed"), dict):
+            out["pointed"] = _pointed(answer["pointed"])
         return out
 
     return router
@@ -379,6 +381,29 @@ def _activity(a: Dict[str, Any]) -> Dict[str, Any]:
     x, y = _int(a.get("x")), _int(a.get("y"))
     if x is not None and y is not None:
         out["x"], out["y"] = x, y
+    # `P25-12`: the agent's sentence for why. `P25-11`: what it looked at.
+    if isinstance(a.get("why"), str) and a["why"].strip():
+        out["why"] = a["why"][:200]
+    box = a.get("box")
+    if isinstance(box, list) and len(box) == 4 and all(_int(v) is not None for v in box):
+        out["box"] = list(box)
+    return out
+
+
+def _pointed(p: Dict[str, Any]) -> Dict[str, Any]:
+    """`P25-10`. What the person pointed at, as their window is given it: enough
+    to say it in the message and crop the picture — the facts stay with the
+    daemon for the agent's `inspect`."""
+    a = p.get("anchor") if isinstance(p.get("anchor"), dict) else None
+    facts = p.get("facts") if isinstance(p.get("facts"), dict) else {}
+    out = {"url": str(p.get("url") or "")[:2000], "title": str(p.get("title") or "")[:300],
+           "page": a is None}
+    if a is not None:
+        out["tag"] = str(a.get("tag") or "")[:40]
+        out["text"] = str(a.get("text") or "")[:80]
+        box = facts.get("box")
+        if isinstance(box, list) and len(box) == 4 and all(isinstance(v, int) and not isinstance(v, bool) for v in box):
+            out["box"] = box
     return out
 
 
@@ -387,9 +412,11 @@ def _activity(a: Dict[str, Any]) -> Dict[str, Any]:
 _BROWSER_PERSON_ACTIONS = ("open", "click", "type", "press", "scroll", "back", "forward",
                            "reload", "tab_new", "tab_switch", "tab_close",
                            # `P26-01` … `P26-03`: the person's notes on the page.
-                           "note_add", "note_edit", "note_remove", "notes", "note_done", "notes_sent")
+                           "note_add", "note_edit", "note_remove", "notes", "note_done", "notes_sent",
+                           # `P25-10`: "this is the page I mean".
+                           "point")
 _BROWSER_FIELDS = ("url", "x", "y", "text", "submit", "keys", "dx", "dy", "tab", "double",
-                   "note", "notes", "shapes", "said", "status", "all")
+                   "note", "notes", "shapes", "said", "status", "all", "page")
 
 
 def _note(n: Dict[str, Any]) -> Dict[str, Any]:

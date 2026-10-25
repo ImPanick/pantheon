@@ -526,7 +526,12 @@ FUNCTION_TOOL_SCHEMAS = [
                 "the person has taken over the browser, ask them or wait. To sign in, open the "
                 "service's sign-in page and use login with item, the name of a login in the "
                 "person's vault: the browser fills the form itself and you never see the "
-                "password — never ask the person to type one into the chat."
+                "password — never ask the person to type one into the chat. inspect shows how the "
+                "page is made: with ref (or selector) one element's type, colours, spacing, box and "
+                "styles; with nothing the whole page counted — colours, fonts, sizes, spacing, radii, "
+                "CSS variables, breakpoints, headings; with pointed: true what the person pointed at "
+                "in the browser — use it when they say this page or this. Give every call a why: one "
+                "short sentence the person watching reads beside your hand."
             ),
             "parameters": {
                 "type": "object",
@@ -534,12 +539,17 @@ FUNCTION_TOOL_SCHEMAS = [
                     "action": {"type": "string",
                                "enum": ["open", "read", "click", "type", "press", "scroll", "back",
                                         "forward", "reload", "tabs", "tab_new", "tab_switch",
-                                        "tab_close", "screenshot", "login"],
+                                        "tab_close", "screenshot", "login", "inspect"],
                                "description": "What to do."},
+                    "why": {"type": "string",
+                            "description": "One short sentence, shown to the person watching: why this step."},
+                    "pointed": {"type": "boolean",
+                                "description": "inspect: what the person pointed at in the browser."},
+                    "selector": {"type": "string", "description": "inspect: a CSS selector for one element."},
                     "item": {"type": "string",
                              "description": "login: the name of a login in the person's vault."},
                     "url": {"type": "string", "description": "open, tab_new: the address."},
-                    "ref": {"type": "integer", "description": "click, type: the element's number from read."},
+                    "ref": {"type": "integer", "description": "click, type, inspect: the element's number from read."},
                     "text": {"type": "string", "description": "type: what to type."},
                     "submit": {"type": "boolean", "description": "type: press Enter after."},
                     "keys": {"type": "string",

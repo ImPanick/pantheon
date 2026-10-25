@@ -3624,6 +3624,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       function _commitLiveThinkingText(text) {
         _liveThinkLatestText = String(text ?? '');
         _liveThinkTokenCount = _estimateThinkingTokens(_liveThinkLatestText);
+        // `P25-12`. The same text, for the agent browser's window: the person
+        // watching the page reads the reasoning beside it (`browserWindow.js`).
+        // Already throttled; a listener only keeps the latest.
+        try { window.dispatchEvent(new CustomEvent('pantheon:live-thinking', { detail: { text: _liveThinkLatestText } })); } catch (_) {}
         const target = _liveThinkInner;
         if (!target || !target.isConnected) return;
         const thinkBox = target.closest('.thinking-content');
