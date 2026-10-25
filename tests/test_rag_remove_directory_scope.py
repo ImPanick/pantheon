@@ -132,11 +132,24 @@ def test_personal_docs_remove_is_targeted(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# do_manage_rag remove path must not fire a whole-collection rebuild (edit B)
+# the live manage_rag remove path must not fire a whole-collection rebuild
 # --------------------------------------------------------------------------- #
+#
+# This pinned `src/ai_interaction.py:do_manage_rag`, a handler nothing routed to
+# (`manage_rag` goes to the `rag` MCP server, `tool_execution.py`). That handler
+# was deleted (`B1449`); the property is now held where the tool actually runs.
 
 
-async def test_do_manage_rag_remove_does_not_rebuild(monkeypatch):
+async def test_manage_rag_remove_does_not_rebuild(monkeypatch):
+    import importlib.util
+    from pathlib import Path
+    import src.agent_tools  # noqa: F401 — the import cycle rag_server documents
+    root = Path(__file__).resolve().parent.parent
+    spec = importlib.util.spec_from_file_location("_rag_server_probe",
+                                                  root / "mcp_servers" / "rag_server.py")
+    srv = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(srv)
+
     calls = {"rebuild": 0}
 
     class _Rag:
@@ -150,11 +163,12 @@ async def test_do_manage_rag_remove_does_not_rebuild(monkeypatch):
         def remove_directory(self, directory):
             pass
 
-    monkeypatch.setattr(ai, "_rag_manager", _Rag())
-    monkeypatch.setattr(ai, "_personal_docs_manager", _PDocs())
+    monkeypatch.setattr(srv, "_ensure_init", lambda: None)
+    monkeypatch.setattr(srv, "_rag_manager", _Rag())
+    monkeypatch.setattr(srv, "_personal_docs_manager", _PDocs())
 
-    # Untracked path: the old code still fired an unconditional rebuild_index().
-    result = await ai.do_manage_rag("remove_directory\n/abs/untracked/dir")
+    out = await srv.call_tool("manage_rag", {"action": "remove_directory",
+                                             "directory": "/abs/untracked/dir"})
 
     assert calls["rebuild"] == 0, "remove must not rebuild (whole-collection wipe)"
-    assert "error" not in result, result
+    assert "removed" in out[0].text, out[0].text

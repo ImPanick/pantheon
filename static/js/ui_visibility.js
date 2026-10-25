@@ -48,7 +48,6 @@ export const UI_VIS_MAP = {
   'mode-toggle':         '.mode-toggle',
   'preset-mini-btn':     '#overflow-preset-btn',
   'attach-btn':          '#overflow-attach-btn',
-  'research-btn':        '#overflow-research-btn',
   'rail-new-chat':       '#rail-new-session',
 };
 

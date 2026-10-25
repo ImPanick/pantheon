@@ -4636,6 +4636,13 @@ class TaskScheduler:
         # which model actually produced the output). `P8-27`: against this run,
         # not against the scheduler.
         self.set_run_model(run_id, model)
+        # `B1448`. A hired agent's declared needs against the route it actually
+        # got: a line in the run, not a refusal — the fit badge is the
+        # measurement, this is the warning.
+        if agent_plan is not None and run_id is not None:
+            from src.agents.needs import run_warnings as _needs_warnings
+            for _line in _needs_warnings(agent_plan, endpoint_url, model):
+                self._record_run_step(run_id, kind="progress", detail=_line)
 
         # Ensure a session exists for output
         session_id = task.session_id

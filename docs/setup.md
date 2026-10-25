@@ -876,11 +876,18 @@ second tailnet, the production network:
 ```json
 [
   {"name": "lab",  "cidrs": ["10.9.0.0/24"],  "hosts": ["lab-gpu.lan"],
-   "trust": "limited", "notes": "GPU box + bench machines"},
-  {"name": "prod", "cidrs": ["10.20.0.0/16"], "hosts": ["prod-llm.internal"],
-   "trust": "trusted"}
+   "trust": "trusted", "notes": "GPU box + bench machines"},
+  {"name": "guest", "cidrs": ["192.168.9.0/24"], "trust": "untrusted"}
 ]
 ```
+
+**Trust is two levels.** `trusted`: the agent's own connections — a page fetch,
+a `network reach` check — may go there. `untrusted`: the network is listed, so
+the agent knows it exists, but Pantheon opens no connection there on its behalf.
+(An older third level, `limited`, never behaved differently from `trusted`; a
+saved one still reads as `trusted`, and the settings form says so if you save it
+again.) Like scoping, this governs Pantheon's own connections, not a shell
+command — see below.
 
 **`cidrs` classify; `hosts` are scanned.** A `/16` is 65,536 addresses, and
 expanding a declaration into a sweep is how "discover my networks" becomes a

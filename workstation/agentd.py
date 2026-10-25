@@ -286,13 +286,7 @@ class System:
         """What this daemon holds, in `protocol.ROUTES["health"]`'s words."""
         from workstation import netrules
         return {"network_in_force": None, "network_enforcement": "none",
-                "root_can_change_network": netrules.capability(netrules.CAP_NET_ADMIN, "CapBnd"),
-                # `P16-20`. Whether this container actually holds `CAP_NET_RAW` —
-                # the truth about raw-packet tools (nmap SYN, arping, tcpdump),
-                # beside the admin's intent (`workstation_net_raw`). With it, a
-                # root tool writes its own frames past the network mode's rules,
-                # which is why the panel then calls those modes advisory.
-                "net_raw": netrules.capability(netrules.CAP_NET_RAW, "CapBnd")}
+                "root_can_change_network": netrules.capability(netrules.CAP_NET_ADMIN, "CapBnd")}
 
     def screen(self, account: str) -> Screen:
         return NoScreen("This workstation has no display.")
@@ -910,13 +904,13 @@ class Workstation:
             raise WorkstationError(code, e.message)
 
     def network(self, account: str, body: Dict) -> Dict:
-        """`P16-20`. Look at the network, as the account: name its interfaces,
-        sweep a range for live hosts, or probe one host's ports
-        (`workstation/netscan.py`). Runs inside the account's network mode — the
-        kernel refuses an out-of-mode target, the same as it does the browser —
-        and the caller has already decided, on the server, which ranges are in
-        scope. The daemon keeps only the size bound."""
-        from workstation.netscan import NetScanError, act
+        """`P16-20` / `D-2026-10-25-03`. As the account: name this machine's
+        interfaces, or check whether one host answers on one port
+        (`workstation/netcheck.py`). Runs inside the account's network mode —
+        the kernel refuses an out-of-mode target, the same as it does the
+        browser — and the caller has already decided, on the server, which
+        hosts are in scope."""
+        from workstation.netcheck import NetCheckError, act
         action = body.get("action")
         if action not in P.NETWORK_ACTIONS:
             raise WorkstationError("bad_request",
@@ -924,7 +918,7 @@ class Workstation:
         self.system.ensure(account)
         try:
             return act(action, body)
-        except NetScanError as e:
+        except NetCheckError as e:
             code = e.code if e.code in P.ERRORS else "bad_request"
             raise WorkstationError(code, e.message)
 

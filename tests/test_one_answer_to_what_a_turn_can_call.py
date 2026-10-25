@@ -220,21 +220,25 @@ def test_the_anonymous_and_the_non_admin_cap_is_the_non_admin_register(monkeypat
     get `NON_ADMIN_BLOCKED_TOOLS` plus the two per-turn gates this install has:
     no workstation (`computer`) and no image backend (`generate_image`).
     """
-    # `P25-05`: `agent_browser` is offered to exactly whom `computer` is.
+    # `P25-05`: `agent_browser` is offered to exactly whom `computer` is, and
+    # `P16-20`'s `network` too — it runs in the person's workstation, so this
+    # install (no workstation) withholds all three.
     expected = (set(ts.NON_ADMIN_BLOCKED_TOOLS)
-                | {"computer", "agent_browser"} | set(ts.setting_disabled_tools(lambda k, d=None: d)))
+                | {"computer", "agent_browser", "network"}
+                | set(ts.setting_disabled_tools(lambda k, d=None: d)))
     anon = run_turn(monkeypatch, tmp_path / "a", owner=None)
     member = run_turn(monkeypatch, tmp_path / "b", owner=MEMBER)
     assert anon.cap == expected, sorted(expected ^ anon.cap)
     assert member.cap == anon.cap, sorted(member.cap ^ anon.cap)
     # The brief's number, stated with its scope so a future reader can re-derive
-    # it: the non-admin names + `computer` + `agent_browser` + `generate_image`.
-    assert len(anon.cap) == len(ts.NON_ADMIN_BLOCKED_TOOLS) + 3
+    # it: the non-admin names + `computer` + `agent_browser` + `network` +
+    # `generate_image`.
+    assert len(anon.cap) == len(ts.NON_ADMIN_BLOCKED_TOOLS) + 4
 
 
 def test_an_admin_is_capped_only_by_what_this_install_cannot_do(monkeypatch, tmp_path):
     admin = run_turn(monkeypatch, tmp_path, owner=ADMIN)
-    assert admin.cap == {"computer", "agent_browser", "generate_image"}, sorted(admin.cap)
+    assert admin.cap == {"computer", "agent_browser", "network", "generate_image"}, sorted(admin.cap)
     assert not (admin.cap & set(ts.NON_ADMIN_BLOCKED_TOOLS))
 
 

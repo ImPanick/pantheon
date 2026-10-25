@@ -162,5 +162,9 @@ class ConnectionsTool:
     with the turn's owner, agent and workspace."""
 
     async def execute(self, content: str, ctx: Optional[dict] = None) -> Dict[str, Any]:
+        # `B1449`: the workspace too, when the caller has one — without it a
+        # `test` through this path probed from Pantheon's machine instead of
+        # the person's workstation, unlike the by-name dispatch.
         c = ctx or {}
-        return await run_connections(content, owner=c.get("owner"), agent_id=c.get("agent_id"))
+        return await run_connections(content, owner=c.get("owner"), agent_id=c.get("agent_id"),
+                                     station_workspace=c.get("station_workspace"))

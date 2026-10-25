@@ -1397,8 +1397,8 @@ class VmStation(Workstation):
         return self.system.forward(account, "names", body, timeout=60.0)
 
     def network(self, account: str, body: Dict) -> Dict:
-        """`P16-20`: the scan runs in the machine, on the machine's network."""
-        return self.system.forward(account, "network", body, timeout=180.0)
+        """`P16-20`: the check runs in the machine, on the machine's network."""
+        return self.system.forward(account, "network", body, timeout=30.0)
 
 
 # ── the command line ──────────────────────────────────────────────────────────

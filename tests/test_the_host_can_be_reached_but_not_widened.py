@@ -29,6 +29,8 @@ import base64
 import json
 from pathlib import Path
 
+import re
+
 import pytest
 
 from netagent import guard
@@ -378,7 +380,11 @@ def test_a_non_admin_cannot_run_commands_on_the_operators_machine():
 
 def test_disabling_shell_from_chat_reaches_both():
     src = (_REPO / "src" / "agent_tools" / "admin_tools.py").read_text(encoding="utf-8")
-    assert '"shell": ["bash", "host_shell"]' in src
+    # The alias names both; `P27-07` added the vault-login shell to it too.
+    m = re.search(r'"shell": \[([^\]]*)\]', src)
+    assert m, "the shell alias is gone"
+    names = {n.strip().strip('"') for n in m.group(1).split(",")}
+    assert {"bash", "host_shell"} <= names, names
 
 
 @pytest.mark.parametrize("spelling", [

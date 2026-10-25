@@ -91,18 +91,29 @@ def _phone_start():
     return text, text.index("`D-2026-10-09-01` §4 — the phone's turn controls")
 
 
+def _phone_end(text: str, start: int) -> int:
+    """Where the block stops: the next section banner (`/* ── `). It was the
+    end of the file when this row landed, and the slice ran to end-of-file —
+    so every block appended after it (`P24-12`'s Agents hall, `P26`'s design
+    view, each with its own text areas and focus rules) was read as the phone
+    block's and failed its rules. Bounded by the sheet's own section marker
+    instead."""
+    end = text.find("\n/* ── ", start)
+    return len(text) if end < 0 else end
+
+
 def _phone_block():
     """The one appended block this row wrote, by its marker — comments and all."""
     text, start = _phone_start()
-    return text[start:]
+    return text[start:_phone_end(text, start)]
 
 
 def _phone_code():
     """The same block with its comments blanked (`B290`), offsets preserved, so
     a word the comment uses to say it is NOT reached for cannot pass for a
     declaration that reaches for it."""
-    _text, start = _phone_start()
-    return CSS[start:]
+    text, start = _phone_start()
+    return CSS[start:_phone_end(text, start)]
 
 
 def test_the_query_that_drops_the_toggle_shows_the_chip_in_its_place():

@@ -306,7 +306,13 @@ def test_the_claim_is_read_from_the_headline_and_not_the_narrative(tmp_path):
     mod = _module()
     lines = ROADMAP.read_text(encoding="utf-8").splitlines()
     title, headline = mod.progress_headlines(lines)[0]
-    assert "tracked," in headline and "closed;" in headline
+    # The headline is the entry's bold `N tracked, M done.` line. This also
+    # required `"closed;"` — the punctuation of the entry that was newest when
+    # the test was written — and went red the first time a newer headline said
+    # "filed and closed." instead (`B310`'s shape: a test that names today's
+    # answer). What holds for every entry is the count, and that the narrative
+    # below is not part of it.
+    assert "tracked," in headline and " done" in headline
     body = ROADMAP.read_text(encoding="utf-8")
     assert "**Three rows were closed by re-measuring" in body
     assert "Three rows were closed by re-measuring" not in headline

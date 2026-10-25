@@ -111,7 +111,7 @@ jobs:
           "
 
   wiring-ratchet:
-    name: Wiring ratchet (check-wiring.py --max 23)
+    name: Wiring ratchet (check-wiring.py --max 0)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -243,7 +243,7 @@ jobs:
         run: python3 .pantheon/check-mcp-schemas.py
 
       - name: check-wiring
-        run: python3 .pantheon/check-wiring.py --max 23
+        run: python3 .pantheon/check-wiring.py --max 0
       # Law 14, arrived at by accident. A module imported under two URLs is two
       # modules with two copies of its state, and nothing breaks loudly when it
       # happens — a registry written through one specifier is simply empty when
@@ -315,8 +315,12 @@ jobs:
       # always called, from the Revoke button `P7-04` shipped, through a URL
       # assembled from a constant that mentioned no path. A ratchet only ever
       # comes down.
+      # 90 -> 60 on 2026-10-25 (`B1450`): the deep audit traced every flagged
+      # route; `/api/codex/`, `/api/claude/` and `/api/companion/` are external
+      # agent and device surfaces with real callers outside the browser, now in
+      # the ALLOWED map. Measured with the app imported, as this job runs it.
       - name: check-unreachable
-        run: python3 .pantheon/check-unreachable.py --max-routes 90
+        run: python3 .pantheon/check-unreachable.py --max-routes 60
       # P0-31. A rename that finishes on one side of a join is invisible: the
       # writers move, the readers do not, and nothing raises. It happened four
       # times from one sweep — the API token prefix a person pastes into

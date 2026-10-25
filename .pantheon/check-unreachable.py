@@ -96,6 +96,16 @@ ALLOWED = {
     # mount's redirect, not a literal any page could carry. Before `B370` the
     # mount served them itself, to a caller with no session.
     "/sandbox/": "developer sandboxes; /static/<name>.html redirects here (app.py DEVELOPER_SANDBOX_PAGES)",
+    # `B1450`, the 2026-10-25 audit. An external agent surface, reached with a
+    # scoped API token by the Codex plugin (`integrations/codex/scripts/
+    # pantheon_api.py`, which refuses any other prefix) and the Claude Code
+    # skill (`integrations/claude/skills/pantheon/`); the tokens page in
+    # `settings.js` mints the tokens and hands out the two plugin zips.
+    "/api/codex/": "the Codex plugin and Claude Code skill, by scoped API token (integrations/)",
+    "/api/claude/": "the Claude Code skill's plugin.zip, offered by settings.js's agent-token cards",
+    # A paired LAN device, by its own token (`companion/README.md`); `GET /pair`
+    # is a page an admin opens by URL to pair one.
+    "/api/companion/": "a paired LAN companion device, by token (companion/README.md)",
 }
 
 _FRONTEND_GLOBS = ("static/*.js", "static/js", "static/*.html")

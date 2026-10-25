@@ -373,7 +373,7 @@ DEFAULT_SETTINGS = {
     # defaults, not capability.
     #
     # [{"name": "lab", "cidrs": ["10.9.0.0/24"], "hosts": ["lab-gpu.lan"],
-    #   "trust": "limited", "enabled": true, "notes": "…"}]
+    #   "trust": "trusted" | "untrusted", "enabled": true, "notes": "…"}]
     "networks": [],
     # `P17-01`. Where the network agent listens, and the credential Pantheon
     # presents to it. **Both ship empty and that is the whole default**: with no
@@ -459,21 +459,12 @@ DEFAULT_SETTINGS = {
     # stops being a key to the house. Off puts them back where they run today.
     "workstation_route_tools": True,
     # `P16-20` (`D-2026-10-25-02`). Whether the agent may reach the LOCAL
-    # network at all: the `network` tool (scan/ports) and the LAN half of
-    # `web_fetch` (a router page, a LAN service's API by URL). ON by default —
-    # local-first was always the point, and the owner authorized the agent to
-    # task about their own subnets. Off for a shared box that should stay on the
-    # public internet; loopback and cloud-metadata are refused either way.
+    # network at all: the `network` tool (list interfaces, check one host is
+    # reachable — `D-2026-10-25-03`) and the LAN half of `web_fetch` (a router
+    # page, a LAN service's API by URL). ON by default — local-first was always
+    # the point. Off for a shared box that should stay on the public internet;
+    # loopback and cloud-metadata are refused either way.
     "agent_lan_reach": True,
-    # `P16-20`. Whether the admin WANTS the workstation container to hold
-    # `CAP_NET_RAW`, so raw-packet tools (nmap SYN/OS probes, arping, arp-scan,
-    # tcpdump) work for root there. The capability itself is the container's
-    # (`docker/workstation.yml`, and the `workstation-netraw.yml` override that
-    # grants it); this records the intent and, with it on, the panel says that
-    # the *internet only* and *none* network modes become advisory for root
-    # while sudo is on. The `network` tool does not need it — it is a TCP
-    # connect — so this changes only what the shell can do. Off by default.
-    "workstation_net_raw": False,
     # `P17-11`. **Your** list, beside the agent's. The agent's nuclear denylist
     # is compiled into it, on the host, and nothing here can widen it — that is
     # the boundary. These two narrow what Pantheon will even ASK for, and are

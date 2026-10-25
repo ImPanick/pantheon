@@ -291,22 +291,41 @@ def wiring_report():
     return r.stdout
 
 
-def test_static_app_js_is_actually_scanned(wiring_report):
+def test_static_app_js_is_actually_scanned(monkeypatch, capsys):
     """It was not, for the life of the checker — the application's own wiring,
     outside the scan. A drift metric that does not read the biggest file is a
     different number, not a floor.
 
-    Asserted through the REAL RUN, on ids only `app.js` contributes. An earlier
-    version called `tracked()` directly and checked `static/app.js` was in the
-    list — which stayed true when `main()` was changed to ignore it, because the
-    test never went near `main()`. Testing the ingredient rather than the recipe,
-    for the sixth time in this project.
+    Asserted through the REAL `main()`, on a lookup only `app.js` contributes.
+    An earlier version called `tracked()` directly and checked `static/app.js`
+    was in the list — which stayed true when `main()` was changed to ignore it,
+    because the test never went near `main()`. The version after that named two
+    real unresolved ids `app.js` held (`mode-toggle`, `notes-fullscreen-toggle`)
+    and went red on 2026-10-25 when the count reached 0 (`B1446`) — a test that
+    names today's defect fails the day the defect is fixed (`B310`, `B520`).
 
-    `mode-toggle` and `notes-fullscreen-toggle` are the two the roadmap
-    predicted this would surface, by name and line.
+    So the probe is planted: `read()` hands `main()` the real `app.js` with one
+    lookup appended for an id nothing defines, and the report must name it.
+    Nothing on disk changes.
     """
-    assert "mode-toggle" in wiring_report
-    assert "notes-fullscreen-toggle" in wiring_report
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_check_wiring_probe", WIRING)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    real_read = mod.read
+    probe = "zzprobe-only-app-js"
+
+    def read(f):
+        text = real_read(f)
+        if str(f).replace("\\", "/").endswith("static/app.js"):
+            text += f"\ndocument.getElementById('{probe}');\n"
+        return text
+
+    monkeypatch.setattr(mod, "read", read)
+    monkeypatch.setattr(sys, "argv", ["check-wiring.py"])
+    mod.main()
+    out = capsys.readouterr().out
+    assert probe in out, "a lookup that only static/app.js makes did not reach the report"
 
 
 def test_the_indirect_path_is_actually_used(wiring_report):

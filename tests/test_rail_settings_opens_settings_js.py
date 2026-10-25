@@ -94,7 +94,9 @@ SIDEBAR_LAYOUT = ROOT / "static" / "js" / "sidebar-layout.js"
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
 _BLOCK_START = "// Rail: settings button"
-_BLOCK_END = "// Rail: admin button"
+# The next section of `app.js`. It was `// Rail: admin button` until `B1444`
+# deleted that handler (it wired a `#rail-admin` no markup ever had).
+_BLOCK_END = "// Sync the contextual rail icons."
 
 
 def _rail_settings_block() -> str:

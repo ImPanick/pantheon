@@ -84,7 +84,12 @@ def test_the_csp_no_longer_allows_arbitrary_image_hosts():
     assert live, "no img-src directive found"
     for ln in live:
         assert "https:" not in ln, f"img-src still allows any https host: {ln.strip()}"
-        assert "'self'" in ln
+        assert "http:" not in ln and "*" not in ln, ln.strip()
+    # The app's own pages load their images from this origin. A design's
+    # sandboxed preview (`P26-06`) is narrower still — its images arrive
+    # inlined, so it allows only `data:`/`blob:` — which is the property this
+    # test is about held more tightly, not an exception to it.
+    assert any("'self'" in ln for ln in live)
 
 
 def test_every_csp_site_was_tightened_not_just_one():

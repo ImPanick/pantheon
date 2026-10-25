@@ -38,7 +38,7 @@ otherwise hire an agent with more reach than the turn that asked for it.
 Every refusal is `{detail: "<sentence>"}` (`Law 15`); a body is read by hand,
 under a ceiling, so a malformed one is answered in a sentence too.
 
-**The route ceiling** (`check-unreachable.py --max-routes 90`): every path
+**The route ceiling** (`check-unreachable.py --max-routes 60`): every path
 here is spelled in `static/js/agents/agentsApi.js`, its one caller.
 """
 
@@ -205,6 +205,9 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
         from src.agents.fit import _install_rows, model_for
         model = model_for(user)
         proofs = _install_rows()
+        # `B1448`. What this person's route has, once, against each agent's needs.
+        from src.agents.needs import check as _needs_check, owner_route_facts
+        route = owner_route_facts(user)
 
         def _fit(m, model):
             from src.agents.fit import _shipped_rows, fit
@@ -218,7 +221,8 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
             "sections": [{"id": s, "label": label, "family": fam,
                           "count": sum(1 for m in agents if m.section == s)}
                          for s, label, fam in SECTIONS],
-            "agents": [dict(m.to_public(), fit=_fit(m, model)) for m in agents],
+            "agents": [dict(m.to_public(), fit=_fit(m, model), needs_check=_needs_check(m, route))
+                       for m in agents],
             "fit_model": model,
             "template": _template(),
             "broken": broken,
@@ -419,6 +423,9 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
         # cases its evaluation set has, and its sample report.
         from src.agents.fit import fit, model_for
         out["fit"] = fit(m, model_for(user))
+        # `B1448`. Whether that model has what the agent declared it needs.
+        from src.agents.needs import check as _needs_check, owner_route_facts
+        out["needs_check"] = _needs_check(m, owner_route_facts(user))
         out["sample"] = _sample(m)
         try:
             from src.agents.evals import load_evals

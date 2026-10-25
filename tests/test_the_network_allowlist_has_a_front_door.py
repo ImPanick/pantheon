@@ -35,7 +35,7 @@ from src.networks import (
 def test_a_well_formed_declaration_has_no_problems():
     assert validate_networks([
         {"name": "home", "cidrs": ["192.168.1.0/24"], "trust": "trusted"},
-        {"name": "lab", "hosts": ["nas.local"], "trust": "limited"},
+        {"name": "lab", "hosts": ["nas.local"], "trust": "untrusted"},
     ]) == []
 
 
@@ -92,6 +92,14 @@ def test_an_unnamed_entry_is_reported():
 def test_every_declared_trust_level_is_accepted(trust):
     assert validate_networks([
         {"name": "x", "cidrs": ["10.0.0.0/8"], "trust": trust}]) == []
+
+
+def test_the_retired_limited_level_is_refused_on_write_with_why():
+    """`B1447`. Reads as trusted (lenient on read); on write the sentence says
+    it was retired and what it always meant."""
+    problems = validate_networks([
+        {"name": "x", "cidrs": ["10.0.0.0/8"], "trust": "limited"}])
+    assert len(problems) == 1 and "retired" in problems[0] and "trusted" in problems[0], problems
 
 
 def test_an_invented_trust_level_is_refused():

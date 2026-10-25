@@ -166,6 +166,27 @@ function _notesFullscreenSafeRect() {
   return { left, top: 0, width: right - left, height: vh };
 }
 
+function _fillWindow(pane) {
+  pane.classList.add('notes-window-fullscreen');
+  snapModalToZone(pane, {
+    name: 'fullscreen',
+    rect: _notesFullscreenSafeRect(),
+  });
+}
+
+/** Fill the window with Notes, the rail still visible — the state dragging the
+ *  header to the top edge gives. The `/notes` route opens it this way
+ *  (`B1446`). True once the pane is there (so a caller retrying until the pane
+ *  mounts can stop); false before it mounts. On a phone the pane is already
+ *  the whole screen. */
+export function enterFullscreen() {
+  const pane = document.getElementById('notes-pane');
+  if (!pane) return false;
+  if (window.innerWidth <= 768 || pane.classList.contains('notes-window-fullscreen')) return true;
+  _fillWindow(pane);
+  return true;
+}
+
 function _wireNotesWindow(pane) {
   if (!pane || pane.dataset.windowDragWired === '1') return;
   const header = pane.querySelector('.notes-pane-header');
@@ -178,13 +199,7 @@ function _wireNotesWindow(pane) {
     skipSelector: 'button, input, select, textarea, label, .notes-mobile-grabber',
     enableDock: true,
     enableLeftDock: true,
-    onEnterFullscreen: () => {
-      pane.classList.add('notes-window-fullscreen');
-      snapModalToZone(pane, {
-        name: 'fullscreen',
-        rect: _notesFullscreenSafeRect(),
-      });
-    },
+    onEnterFullscreen: () => { _fillWindow(pane); },
     onExitFullscreen: () => {
       _restoreNotesSidebarDock(pane);
     },
@@ -5764,7 +5779,7 @@ async function openNote(noteId) {
   setTimeout(tryNext, 120);
 }
 
-const notesModule = { openPanel, closePanel, togglePanel, isPanelOpen, openNote, openNotes: openPanel, closeNotes: closePanel, isNotesOpen: isPanelOpen, refreshDueBadge };
+const notesModule = { openPanel, closePanel, togglePanel, isPanelOpen, openNote, openNotes: openPanel, closeNotes: closePanel, isNotesOpen: isPanelOpen, refreshDueBadge, enterFullscreen };
 export default notesModule;
 export { openPanel as openNotes, closePanel as closeNotes, isPanelOpen as isNotesOpen, openNote };
 window.notesModule = notesModule;

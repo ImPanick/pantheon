@@ -298,7 +298,6 @@ function fillSettings(settings) {
   if ($('ws-sudo')) $('ws-sudo').checked = !!settings.sudo;
   if ($('ws-route-tools')) $('ws-route-tools').checked = !!settings.route_tools;
   if ($('ws-lan-reach')) $('ws-lan-reach').checked = settings.lan_reach !== false;  // `P16-20`, default on
-  if ($('ws-net-raw')) $('ws-net-raw').checked = !!settings.net_raw_wanted;
   // `SET-M-13` (P23-03): what the admin typed and has not saved yet is kept —
   // a re-read on reopen or a status poll emptied the field without a word.
   if ($('ws-url') && !_typed($('ws-url'))) $('ws-url').value = settings.url_setting || '';
@@ -346,7 +345,6 @@ function renderEffects(settings, daemon, network) {
 
   renderSudo(settings, daemon);
   renderRecreate(settings, daemon);
-  renderNetRaw(settings, daemon);
 
   const networkEffect = $('ws-network-effect');
   if (networkEffect) {
@@ -375,25 +373,6 @@ function renderEffects(settings, daemon, network) {
  *  answer for every sentence that depends on it (`B956`, `B981`). */
 function machineKind(settings, daemon) {
   return (daemon && daemon.backend) || (settings && settings.backend) || '';
-}
-
-/** `P16-20`. The truth beside the raw-packet intent: whether the workstation
- *  actually holds NET_RAW (from the daemon), so a half-done change shows. */
-function renderNetRaw(settings, daemon) {
-  const held = $('ws-net-raw-held');
-  if (!held) return;
-  const wanted = !!(settings && settings.net_raw_wanted);
-  const have = daemon && typeof daemon.net_raw === 'boolean' ? daemon.net_raw : null;
-  if (have === null) { held.textContent = ''; return; }
-  if (wanted && !have) {
-    held.textContent = 'The workstation does not hold NET_RAW yet — add the workstation-netraw.yml overlay and recreate it.';
-  } else if (!wanted && have) {
-    held.textContent = 'The workstation holds NET_RAW. Remove the overlay and recreate it to drop it.';
-  } else if (have) {
-    held.textContent = 'In effect: the workstation holds NET_RAW.';
-  } else {
-    held.textContent = '';
-  }
 }
 
 /** `B981`. The sentence beside the `sudo` switch, for this kind of machine. The
@@ -569,7 +548,6 @@ function wire() {
   onChange('ws-sudo', 'workstation_sudo', (n) => !!n.checked);
   onChange('ws-route-tools', 'workstation_route_tools', (n) => !!n.checked);
   onChange('ws-lan-reach', 'agent_lan_reach', (n) => !!n.checked);        // `P16-20`
-  onChange('ws-net-raw', 'workstation_net_raw', (n) => !!n.checked);      // `P16-20`
   onChange('ws-backend', 'workstation_backend', (n) => n.value);
   onChange('ws-network', 'workstation_network', (n) => n.value);
   $('ws-save-address')?.addEventListener('click', () => { saveAddress(); });

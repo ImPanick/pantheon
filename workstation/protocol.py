@@ -221,14 +221,16 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # -> {"proxy": "http://127.0.0.1:N" | null, "ca_file": path | null, "names": [...],
     #     "pins": int, "digest", "changed": bool}. A change restarts the browser.
     "names": ("POST", "/v1/users/{account}/names"),
-    # `P16-20`, added (`D-2026-10-25-02`): looking at the network the workstation
-    # sits on (`workstation/netscan.py`), as the account, within its network mode.
+    # `P16-20`, added (`D-2026-10-25-02`), trimmed (`D-2026-10-25-03`): what
+    # network the workstation is on, and whether it can reach one host
+    # (`workstation/netcheck.py`), as the account, within its network mode.
     #   {"action": one of NETWORK_ACTIONS, ...}
-    #   interfaces {} -> {"interfaces": [{name, up, mac, addresses:[{ip, cidr, family, hosts}]}], "ip_available"}
-    #   scan {target: CIDR|host, ports?} -> {"cidr", "scanned", "up", "hosts":[{ip, open:[{port,name}]}], "took_ms"}
-    #   ports {host, ports?} -> {"host", "open":[{port,name}], "refused", "filtered", "reachable", "took_ms"}
-    # The scope — which ranges may be swept — is Pantheon's, decided before the
-    # call (`src/networks.py`); the daemon enforces only the size bound.
+    #   interfaces {} -> {"interfaces": [{name, up, addresses:[{ip, cidr, family}]}], "ip_available"}
+    #   reach {host, port, timeout_ms?, deny?: [{name, cidrs}]} -> {"host", "address", "port",
+    #         "result": "connected"|"refused"|"no answer", "via_gateway", "took_ms"}
+    # Which hosts may be reached is Pantheon's, decided before the call
+    # (`src/networks.py`): a run's scope, and a network marked untrusted, whose
+    # ranges ride along as `deny` and are checked after the name resolves here.
     "network": ("POST", "/v1/users/{account}/network"),
 }
 
@@ -237,13 +239,9 @@ SHELLS = ("bash", "python")
 ENTRY_TYPES = ("file", "dir", "symlink", "other")
 SCREENSHOT_FORMATS = ("png", "jpeg")
 HOLDERS = ("agent", "person")
-# `P16-20`. The network actions and their bounds (`workstation/netscan.py`).
-NETWORK_ACTIONS = ("interfaces", "scan", "ports")
-#: A sweep is at most this many addresses — a /22 for IPv4 (`D-2026-10-25-02`).
-#: Bigger is the shell's job, deliberately: a tool that sweeps a /8 is a tool
-#: that becomes a weeks-long scan from one model mistake.
-NET_SCAN_MAX_HOSTS = 1024
-NET_SCAN_MAX_PORTS = 1024
+# `P16-20` / `D-2026-10-25-03`. The network actions (`workstation/netcheck.py`):
+# one connection per `reach`, no ranges.
+NETWORK_ACTIONS = ("interfaces", "reach")
 # Every action takes coordinates in the screenshot's own pixels; the screen is
 # a fixed size, so there is no scaling for either side to get wrong.
 INPUT_ACTIONS = (
@@ -508,7 +506,7 @@ __all__ = [
     "DEFAULT_HOST", "DEFAULT_PAIRING_DIR", "DEFAULT_PORT", "ENTRY_TYPES",
     "ERRORS", "HOLDERS", "INPUT_ACTIONS", "LOCAL_OWNER_SLUG", "MAX_BODY_BYTES",
     "MAX_EXEC_TIMEOUT_S", "MAX_FILE_BYTES", "MAX_LIST_ENTRIES", "MAX_OUTPUT_BYTES",
-    "MAX_SCROLL_CLICKS", "MAX_TYPE_CHARS", "MAX_WAIT_MS", "NETWORK_ACTIONS", "NET_SCAN_MAX_HOSTS", "NET_SCAN_MAX_PORTS", "NETWORK_MODES", "PAIRING_DIR_ENV", "PROTOCOL_VERSION",
+    "MAX_SCROLL_CLICKS", "MAX_TYPE_CHARS", "MAX_WAIT_MS", "NETWORK_ACTIONS", "NETWORK_MODES", "PAIRING_DIR_ENV", "PROTOCOL_VERSION",
     "PROJECTS_DIR", "PROJECTS_DIR_ENV", "PROJECTS_ENV", "ROUTES", "SCREEN_HEIGHT", "SCREEN_WIDTH", "SCREENSHOT_FORMATS", "SHELLS", "TOKEN_ENTROPY_BYTES",
     "TOKEN_ENV", "TOKEN_FILENAME", "TOKEN_PREFIX", "URL_ENV", "account_name", "error_body",
     "project_folder", "project_folder_of",

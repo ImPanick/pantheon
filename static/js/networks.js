@@ -19,7 +19,12 @@
 
 import { invalidateSettings } from './appConfig.js';
 
-const _EMPTY = { name: '', cidrs: '', hosts: '', trust: 'limited', enabled: true, ids_sensitive: false };
+// `D-2026-10-25-03`. Two trust levels: trusted (the agent's own connections may
+// go there) and untrusted (listed, never connected to). The retired "limited"
+// always behaved as trusted, so a saved one reads as that.
+const TRUST_LEVELS = ['trusted', 'untrusted'];
+const _trustOf = (t) => (t === 'untrusted' ? 'untrusted' : 'trusted');
+const _EMPTY = { name: '', cidrs: '', hosts: '', trust: 'trusted', enabled: true };
 
 let _rows = [];
 let _loaded = false;
@@ -33,9 +38,8 @@ function toValue() {
     name: String(r.name || '').trim(),
     cidrs: split(r.cidrs),
     hosts: split(r.hosts).map((h) => h.toLowerCase()),
-    trust: r.trust || 'limited',
+    trust: _trustOf(r.trust),
     enabled: r.enabled !== false,
-    ids_sensitive: r.ids_sensitive === true,
   }));
 }
 
@@ -44,9 +48,8 @@ function fromValue(list) {
     name: n && n.name ? String(n.name) : '',
     cidrs: Array.isArray(n && n.cidrs) ? n.cidrs.join(' ') : '',
     hosts: Array.isArray(n && n.hosts) ? n.hosts.join(' ') : '',
-    trust: (n && n.trust) || 'limited',
+    trust: _trustOf(n && n.trust),
     enabled: !(n && n.enabled === false),
-    ids_sensitive: !!(n && n.ids_sensitive),
   }));
 }
 
@@ -99,7 +102,8 @@ function rowEl(row, i) {
   trustCap.textContent = 'Trust';
   const trust = document.createElement('select');
   trust.className = 'settings-select';
-  for (const level of ['untrusted', 'limited', 'trusted']) {
+  trust.title = 'Trusted: the agent may connect there (a page fetch, a reach check). Untrusted: listed, never connected to.';
+  for (const level of TRUST_LEVELS) {
     const opt = document.createElement('option');
     opt.value = level;
     opt.textContent = level;
@@ -128,27 +132,6 @@ function rowEl(row, i) {
   onCell.append(onCap, sw);
   wrap.appendChild(onCell);
 
-  // `audit-IDS`. Reached through a gateway whose IDS watches cross-segment
-  // traffic: the agent probes one host in it instead of sweeping, and paces
-  // gently. The person marks the segment that sits behind their NGFW.
-  const idsCell = document.createElement('label');
-  idsCell.className = 'networks-cell networks-cell-switch';
-  idsCell.style.flex = '0 0 auto';
-  const idsCap = document.createElement('span');
-  idsCap.className = 'networks-cell-label';
-  idsCap.textContent = 'IDS-sensitive';
-  idsCap.title = 'Reached through a gateway/firewall with an IDS. The agent won\u2019t sweep it \u2014 only probe named hosts, gently.';
-  const idsSw = document.createElement('label');
-  idsSw.className = 'admin-switch';
-  const idsCb = document.createElement('input');
-  idsCb.type = 'checkbox';
-  idsCb.checked = row.ids_sensitive === true;
-  idsCb.addEventListener('change', () => { row.ids_sensitive = idsCb.checked; });
-  const idsSlider = document.createElement('span');
-  idsSlider.className = 'admin-slider';
-  idsSw.append(idsCb, idsSlider);
-  idsCell.append(idsCap, idsSw);
-  wrap.appendChild(idsCell);
 
   const del = document.createElement('button');
   del.type = 'button';

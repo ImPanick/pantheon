@@ -27,7 +27,7 @@ import pytest
 from src import networks as nw
 
 LAB = {"name": "lab", "cidrs": ["10.9.0.0/24"], "hosts": ["lab-gpu.lan"],
-       "trust": "limited"}
+       "trust": "untrusted"}
 PROD = {"name": "prod", "cidrs": ["10.20.0.0/16"], "hosts": ["prod-llm.internal"],
         "trust": "trusted"}
 
@@ -75,8 +75,15 @@ def test_hosts_resolve_to_the_network_that_contains_them(declared):
 
 def test_trust_is_per_network(declared):
     declared(LAB, PROD)
-    assert nw.trust_for("10.9.0.5") == "limited"
+    assert nw.trust_for("10.9.0.5") == "untrusted"
     assert nw.trust_for("10.20.7.3") == "trusted"
+
+
+def test_the_retired_limited_level_reads_as_trusted(declared):
+    """`B1447` / `D-2026-10-25-03`. "limited" never behaved differently from
+    "trusted"; a saved one keeps doing exactly what it did."""
+    declared({"name": "old", "cidrs": ["10.30.0.0/24"], "trust": "limited"})
+    assert nw.trust_for("10.30.0.4") == "trusted"
 
 
 def test_a_bare_name_matches_only_by_exact_listing(declared):

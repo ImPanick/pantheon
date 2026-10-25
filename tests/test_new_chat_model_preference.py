@@ -36,7 +36,7 @@ def test_desktop_new_chat_actions_use_shared_preference_helper():
     rail_handler = _slice(
         source,
         "// New session button on icon rail",
-        "// Mobile new chat button",
+        "// Logo click \u2192 new chat",
     )
     brand_handler = _slice(
         source,

@@ -933,13 +933,7 @@ function initializeEventListeners() {
     // Close document panel if open
     if (documentModule && documentModule.closePanel) documentModule.closePanel();
     if (researchPanelModule && researchPanelModule.isOpen()) researchPanelModule.closePanel();
-    // Reset research overflow dot (but don't touch research state — caller manages that)
-    const _overflowRes = el('overflow-research-btn');
-    if (_overflowRes) _overflowRes.classList.remove('active');
     if (typeof updatePlusDot === 'function') updatePlusDot();
-    // Reset agent mode to Chat
-    const modeToggle = el('agent-mode-toggle');
-    if (modeToggle && modeToggle.checked) { modeToggle.checked = false; modeToggle.dispatchEvent(new Event('change')); }
     // Clear character/persona
     if (presetsModule && presetsModule.deactivateCharacter) presetsModule.deactivateCharacter();
   }
@@ -947,17 +941,11 @@ function initializeEventListeners() {
   /** Sync Research indicator button + overflow + tool sidebar active state. */
   function _syncResearchIndicator(active) {
     const btn = el('research-toggle-btn');
-    const overflow = el('overflow-research-btn');
     const toolBtn = el('tool-research-btn');
     const chk = el('research-toggle');
     if (btn) {
       btn.style.display = active ? '' : 'none';
       btn.classList.toggle('active', active);
-    }
-    // Hide from overflow menu when showing in chatbox (avoid duplicate)
-    if (overflow) {
-      overflow.classList.toggle('active', active);
-      overflow.style.display = active ? 'none' : '';
     }
     if (toolBtn) toolBtn.classList.toggle('active', active);
     if (chk) chk.checked = active;
@@ -979,15 +967,10 @@ function initializeEventListeners() {
   /** Sync Group Chat indicator button + overflow. */
   function _syncGroupIndicator(active) {
     const btn = el('group-toggle-btn');
-    const overflow = el('overflow-group-btn');
     const chk = el('group-toggle');
     if (btn) {
       btn.style.display = active ? '' : 'none';
       btn.classList.toggle('active', active);
-    }
-    if (overflow) {
-      overflow.classList.toggle('active', active);
-      overflow.style.display = active ? 'none' : '';
     }
     if (chk) chk.checked = active;
     // Hide/show model picker
@@ -1133,18 +1116,6 @@ function initializeEventListeners() {
       if (_raiseIfOpen('cookbook-modal')) return;
       // Not registered yet → fresh open
       cookbookModule.open();
-    });
-  }
-
-  // Document library tool button
-  const toolDoclibBtn = el('tool-doclib-btn');
-  if (toolDoclibBtn) {
-    toolDoclibBtn.addEventListener('click', () => {
-      if (_closeCompareIfActive()) return;
-      if (documentModule) {
-        if (documentModule.isLibraryOpen() && _raiseIfOpen('doclib-modal')) return;
-        documentModule.openLibrary();
-      }
     });
   }
 
@@ -1309,17 +1280,11 @@ function initializeEventListeners() {
       if (!notesModule) return;
       _collapseSidebarToRail();
       notesModule.openPanel();
-      // Promote to fullscreen-with-rail-visible. The pane wires up its own
-      // fullscreen toggle (#notes-fullscreen-toggle); piggyback on that
-      // path so the button icon flips and overflow:hidden gets applied
-      // alongside. Retry on rAF in case the panel mounts a tick later.
-      const _go = () => {
-        const btn = document.getElementById('notes-fullscreen-toggle');
-        const pane = document.querySelector('.notes-pane');
-        if (!pane) return false;
-        if (!pane.classList.contains('notes-pane-fullscreen') && btn) btn.click();
-        return true;
-      };
+      // Promote to fullscreen-with-rail-visible: the same state dragging the
+      // header to the top edge gives (`B1446` — this looked for a button and a
+      // class that never existed, so the deep link never filled the window).
+      // Retry on rAF in case the panel mounts a tick later.
+      const _go = () => notesModule.enterFullscreen && notesModule.enterFullscreen();
       if (!_go()) {
         requestAnimationFrame(_go);
         setTimeout(_go, 50);
@@ -1495,13 +1460,6 @@ function initializeEventListeners() {
     });
   }
 
-  const toolArchiveBtn = el('tool-archive-btn');
-  if (toolArchiveBtn) {
-    toolArchiveBtn.addEventListener('click', () => {
-      if (sessionModule) sessionModule.openLibrary('archive');
-    });
-  }
-
   const toolThemeBtn = el('tool-theme-btn');
   if (toolThemeBtn) {
     toolThemeBtn.addEventListener('click', () => {
@@ -1511,19 +1469,13 @@ function initializeEventListeners() {
     });
   }
 
-  // Sidebar toggle
-  const toggleSidebarOption = el('toggle-sidebar-option');
-  if (toggleSidebarOption) {
-    toggleSidebarOption.addEventListener('click', () => {
-      const sidebar = el('sidebar');
-      sidebar.classList.toggle('hidden');
-    });
-  }
 
-  // Sidebar user bar — settings, admin, profile
+  // Sidebar user bar — settings, profile. An admin's panels are tabs in
+  // Settings (`adminModule.open` is `settingsModule.open(tab)`), so the gear is
+  // the one door to both (`B1444`: three admin-only launchers were wired here
+  // and on the rail for buttons the markup never had).
   const userBarSettings = el('user-bar-settings');
   const userBarProfile = el('user-bar-profile');
-  const userBarAdmin = el('user-bar-admin');
 
   if (userBarSettings) {
     userBarSettings.addEventListener('click', () => settingsModule.open());
@@ -1533,16 +1485,11 @@ function initializeEventListeners() {
     // instead of landing on whatever was last selected.
     userBarProfile.addEventListener('click', () => settingsModule.open('account'));
   }
-  if (userBarAdmin) {
-    userBarAdmin.addEventListener('click', () => adminModule.open());
-  }
-
-  // Fetch auth status — populate user bar and show admin button if admin
+  // Fetch auth status — populate the user bar
   fetch(`${API_BASE}/api/auth/status`, { credentials: 'same-origin' })
     .then(r => r.json())
     .then(d => {
       window._isAdmin = !!d.is_admin;
-      if (d.is_admin && userBarAdmin) userBarAdmin.style.display = '';
       const userBarName = el('user-bar-name');
       const userBarAvatar = el('user-bar-avatar');
       if (userBarName && d.username) {
@@ -1677,26 +1624,6 @@ function initializeEventListeners() {
     if (autoSortBtn) autoSortBtn.addEventListener('click', () => _runTidy(false));
   }
 
-  // Model sort dropdown
-  const modelSortBtn = el('model-sort-btn');
-  const modelSortDropdown = el('model-sort-dropdown');
-  if (modelSortBtn && modelSortDropdown) {
-    modelSortBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      modelSortDropdown.style.display = modelSortDropdown.style.display === 'block' ? 'none' : 'block';
-    });
-    document.addEventListener('click', () => { modelSortDropdown.style.display = 'none'; });
-    modelSortDropdown.addEventListener('click', (e) => e.stopPropagation());
-    modelSortDropdown.querySelectorAll('.sort-option').forEach(opt => {
-      opt.addEventListener('click', () => {
-        const mode = opt.dataset.sort;
-        Storage.set('pantheon-model-sort', mode);
-        if (modelsModule) modelsModule.refreshModels();
-        modelSortDropdown.style.display = 'none';
-        uiModule.showToast('Models sorted: ' + opt.textContent.trim().toLowerCase());
-      });
-    });
-  }
 
 
 
@@ -1740,61 +1667,6 @@ function initializeEventListeners() {
     .catch(() => {});
 
   // (Logout handler moved to sidebar user bar above)
-
-  // Rename AI modal
-  const renameAiOption = el('rename-ai-option');
-  const renameAiModal = el('rename-ai-modal');
-  const closeRenameAi = el('close-rename-ai');
-  const cancelRenameAi = el('cancel-rename-ai');
-  const saveAiName = el('save-ai-name');
-  const aiNameInput = el('ai-name-input');
-  
-  if (renameAiOption) {
-    renameAiOption.addEventListener('click', () => {
-      const currentName = aiNameInput.value;
-      renameAiModal.classList.remove('hidden');
-    });
-  }
-  
-  if (closeRenameAi) {
-    closeRenameAi.addEventListener('click', () => {
-      renameAiModal.classList.add('hidden');
-    });
-  }
-  
-  if (cancelRenameAi) {
-    cancelRenameAi.addEventListener('click', () => {
-      renameAiModal.classList.add('hidden');
-    });
-  }
-  
-  if (saveAiName) {
-    saveAiName.addEventListener('click', async () => {
-      const newName = aiNameInput.value.trim();
-      
-      if (!newName) {
-        uiModule.showError('Please enter a name for the AI');
-        return;
-      }
-      
-      try {
-        const response = await fetch(`${API_BASE}/api/ai/name`, {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ name: newName })
-        });
-        
-        const result = await response.json();
-        if (result.success) {
-          uiModule.showToast(`AI renamed to ${newName}`);
-          renameAiModal.classList.add('hidden');
-          aiNameInput.value = '';
-        }
-      } catch (e) {
-        uiModule.showError('Failed to rename AI: ' + e.message);
-      }
-    });
-  }
 
   // Memory management
   const memoryModal = el('memory-modal');
@@ -1884,10 +1756,6 @@ function initializeEventListeners() {
     });
   }
 
-  const addMemBtn = el('add-memory-btn');
-  if (addMemBtn) {
-    addMemBtn.addEventListener('click', memoryModule.addNewMemory);
-  }
   
   const memorySearchInput = el('memory-search');
   if (memorySearchInput) {
@@ -2457,9 +2325,7 @@ function initializeEventListeners() {
       el('research-toggle').checked = resState;
       researchBtn.classList.toggle('active', resState);
       researchBtn.style.display = resState ? '' : 'none';
-      // Sync overflow + tool sidebar on load
-      const overflowRes = el('overflow-research-btn');
-      if (overflowRes) overflowRes.classList.toggle('active', resState);
+      // Sync the tool sidebar on load
       const toolRes = el('tool-research-btn');
       if (toolRes) toolRes.classList.toggle('active', resState);
       // On load: if both research and web are ON, research wins
@@ -2731,72 +2597,6 @@ function initializeEventListeners() {
     });
   }
 
-  // ── Overflow Research toggle ──
-  const overflowResearchBtn = el('overflow-research-btn');
-  if (overflowResearchBtn) {
-    overflowResearchBtn.addEventListener('click', () => {
-      const chk = el('research-toggle');
-      const turningOn = chk ? !chk.checked : false;
-      _syncResearchIndicator(turningOn);
-      if (turningOn) {
-        // Clear character — mutually exclusive with research
-        if (presetsModule && presetsModule.deactivateCharacter) presetsModule.deactivateCharacter();
-        // Mutual exclusion with web search
-        const webChk = el('web-toggle');
-        const webBtn = el('web-toggle-btn');
-        if (webChk && webChk.checked) {
-          webChk.checked = false;
-          if (webBtn) webBtn.classList.remove('active');
-          saveToolPref('web', (loadToggleState().mode || 'chat'), false);
-        }
-        // Research requires chat mode
-        const rs2 = loadToggleState();
-        if (rs2.mode === 'agent') {
-          rs2.mode = 'chat';
-          saveToggleState(rs2);
-          const ab2 = el('mode-agent-btn'), cb2 = el('mode-chat-btn');
-          if (ab2) ab2.classList.remove('active');
-          if (cb2) cb2.classList.add('active');
-          applyModeToToggles('chat');
-        }
-      }
-    });
-  }
-
-  // ── Overflow Group Chat toggle ──
-  const overflowGroupBtn = el('overflow-group-btn');
-  if (overflowGroupBtn) {
-    overflowGroupBtn.addEventListener('click', async () => {
-      const chk = el('group-toggle');
-      const turningOn = chk ? !chk.checked : false;
-      if (turningOn) {
-        const picked = await groupModule.showModelPicker();
-        if (!picked || picked.length < 2) return;
-        groupModule.setActive(true);  // Set early so updateModelPicker sees it
-        _syncGroupIndicator(true);
-        _startFreshChat();
-        // Hide the welcome screen (`P23-04`: there are no splash bubbles to clear).
-        const _chatBox = document.getElementById('chat-history');
-        if (_chatBox) {
-          if (chatModule && chatModule.hideWelcomeScreen) chatModule.hideWelcomeScreen();
-        }
-        // Start group — create participant sessions immediately
-        const sid = sessionModule.getCurrentSessionId() || 'group-' + Date.now();
-        await groupModule.startGroup(picked, sid);
-        // Re-hide picker after everything settles
-        const _mpw = el('model-picker-wrap');
-        if (_mpw) _mpw.style.display = 'none';
-        uiModule.showToast(`Group chat ready — ${picked.length} models`);
-      } else {
-        _syncGroupIndicator(false);
-        groupModule.stopGroup();
-        // Restore model picker
-        const _mpWrap2 = el('model-picker-wrap');
-        if (_mpWrap2) _mpWrap2.style.display = '';
-      }
-    });
-  }
-
   // ── Group toggle button (chatbox indicator) — click to deactivate ──
   const groupToggleBtn = el('group-toggle-btn');
   if (groupToggleBtn) {
@@ -3053,9 +2853,7 @@ function initializeEventListeners() {
   }, true);
   // Sync checkmarks when dropdowns open
   const _sessionSortBtn = el('session-sort-btn');
-  const _modelSortBtn = el('model-sort-btn');
   if (_sessionSortBtn) _sessionSortBtn.addEventListener('click', syncRearrangeChecks);
-  if (_modelSortBtn) _modelSortBtn.addEventListener('click', syncRearrangeChecks);
   syncRearrangeChecks();
 
   // ── Text-only emoji conversion ──
@@ -3459,23 +3257,6 @@ function initializeEventListeners() {
     });
   }
 
-  // RAG directory
-  const addDirBtn = el('add-directory-btn');
-  if (addDirBtn) {
-    addDirBtn.addEventListener('click', () => {
-      ragModule.addRagDirectory(uiModule.showToast, uiModule.showError);
-    });
-  }
-  
-  const directoryInput = el('rag-directory');
-  if (directoryInput) {
-    directoryInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        ragModule.addRagDirectory(uiModule.showToast, uiModule.showError);
-      }
-    });
-
-  }
 
   // Sidebar layout (extracted to js/sidebar-layout.js)
   initSidebarLayout(Storage, {
@@ -3590,26 +3371,6 @@ function initializeEventListeners() {
     railNewSession.addEventListener('click', async (e) => {
       if (e) { e.preventDefault(); e.stopPropagation(); }
       await _handleNewChatAction();
-    });
-  }
-
-  // Mobile new chat button — always go to blank welcome screen.
-  // The send path at chat.js:354 will auto-create a session using /api/default-chat
-  // on first submit, so users can start typing before models finish loading and
-  // the default model attaches when they hit send.
-  const mobileNewChat = el('mobile-new-chat-btn');
-  if (mobileNewChat) {
-    mobileNewChat.addEventListener('click', () => {
-      if (!sessionModule) return;
-      if (_closeCompareIfActive()) return;
-      _deactivateIncognito();
-      _startFreshChat();
-      document.querySelectorAll('.session-item.active').forEach(s => s.classList.remove('active'));
-      // Focus the composer synchronously so mobile keyboards pop open.
-      // iOS Safari only honours programmatic focus inside the original click
-      // callback — a setTimeout breaks the user-gesture chain.
-      const _input = el('message-input');
-      if (_input) { try { _input.focus(); } catch (_) {} }
     });
   }
 
@@ -4068,16 +3829,6 @@ function startPantheonApp() {
     _railSettings.addEventListener('click', () => settingsModule.open());
   }
 
-  // Rail: admin button
-  const _railAdmin = el('rail-admin');
-  if (_railAdmin) {
-    _railAdmin.addEventListener('click', () => {
-      // Try to open admin modal
-      const adminBtn = document.querySelector('[data-modal="admin-modal"]') || el('tool-admin-btn');
-      if (adminBtn) adminBtn.click();
-    });
-  }
-
   // Sync the contextual rail icons. Tool launchers (calendar/compare/cookbook/
   // research/gallery/tasks/archive/memory/notes/theme/email) are now
   // always-visible launchers, so only the doc + background-chat indicators
@@ -4119,7 +3870,7 @@ function startPantheonApp() {
   const chatForm = document.getElementById('chat-form');
   const originalSubmit = chatModule.handleChatSubmit;
   let _submitting = false;
-  const _messageInput = document.getElementById('message') || document.getElementById('message-input');
+  const _messageInput = document.getElementById('message');
   if (_messageInput) {
     _messageInput.addEventListener('focus', () => _bumpChatPriority(15000));
     _messageInput.addEventListener('input', () => _bumpChatPriority(15000));

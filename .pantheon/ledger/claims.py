@@ -440,12 +440,12 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="tests",
         area="Verification apparatus",
-        headline="Test files 792 -> 1588, and a suite of 20,309 passing with nothing red.",
+        headline="Test files 792 -> 1589, and a suite of 20,309 passing with nothing red.",
         stock="792 test files.",
-        pantheon=("1588 test files, and 20,309 tests passing, 0 failing, 113 skipped, "
+        pantheon=("1589 test files, and 20,309 tests passing, 0 failing, 113 skipped, "
                   "0 xfailed when the suite was last run whole — 2026-10-18, at `c66fe54`."),
         before="792 test files",
-        after="1588 test files · 20,309",
+        after="1589 test files · 20,309",
         provenance="diffed",
         repro=f"git ls-tree -r --name-only {FORK_POINT} | grep -c '^tests/test_.*\\.py$' && python3 -m pytest -q",
         evidence=("tests",),
@@ -901,7 +901,7 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="wiring",
         area="Dead code and wiring",
-        headline="Unreachable UI 78 -> 120 -> 23 and ratcheted, with 1,524 lines deleted against 340 added.",
+        headline="Unreachable UI 78 -> 120 -> 23 -> 0 and ratcheted, with 1,524 lines deleted against 340 added.",
         stock="78 wiring defects: markup, handlers and ids that nothing could reach.",
         pantheon="A ratchet in CI that cannot go up.",
         before="78",
@@ -928,9 +928,17 @@ CLAIMS: Tuple[Claim, ...] = (
         # `25 -> 23` on 2026-10-22: `P24-12` drew `#tool-agents-btn` and
         # `#rail-agents`, two ids an inherited handler in `app.js` had looked up
         # for markup that was never written (an empty click listener, now gone).
-        after="23",
+        #
+        # `23 -> 0` on 2026-10-25 (`B1444`–`B1446`): the deep audit confirmed all
+        # 23 were dead lookups, none built at runtime. Twenty-one were deleted —
+        # Rename AI (whose backend route never existed), the model-sort menu,
+        # the composer's RAG-directory field, three admin launchers for the one
+        # door Settings already is, and superseded duplicates. `/notes` now
+        # calls the Notes window's own fullscreen instead of a button that was
+        # never drawn.
+        after="0",
         provenance="measured",
-        repro="python3 .pantheon/check-wiring.py --max 23",
+        repro="python3 .pantheon/check-wiring.py --max 0",
         evidence=(".pantheon/check-wiring.py",),
         rows=("P3-13", "P3-14", "P3-15"),
         how=(
@@ -939,9 +947,9 @@ CLAIMS: Tuple[Claim, ...] = (
             "shipped, and never reached. The companion route checker had a worse "
             "version of the same disease: it recursed, found nothing, and reported "
             "**23 routes when the real number was 443**, looking entirely correct while "
-            "doing so. The figure above is the ceiling CI holds, not a floor anybody "
-            "reached: `check-wiring.py` reports **23** unresolved lookups today and "
-            "`ci.yml` refuses 24. It said `2` here until `B348`, against its own "
+            "doing so. The figure above is the ceiling CI holds, and since 2026-10-25 "
+            "the count as well: `check-wiring.py` reports **0** unresolved lookups and "
+            "`ci.yml` refuses 1. It said `2` here until `B348`, against its own "
             "repro command printing `120` — the ledger failing on the ledger."
         ),
     ),

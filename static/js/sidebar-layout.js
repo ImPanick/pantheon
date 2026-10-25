@@ -276,7 +276,7 @@ export function initSidebarLayout(Storage, opts) {
   if (iconRail) {
     iconRail.addEventListener('click', (e) => {
       const btn = e.target.closest('.icon-rail-btn');
-      if (!btn || btn.id === 'rail-new-session' || btn.id === 'rail-delete-session' || btn.id === 'rail-search-btn' || btn.id === 'rail-settings' || btn.id === 'rail-admin') return;
+      if (!btn || btn.id === 'rail-new-session' || btn.id === 'rail-delete-session' || btn.id === 'rail-search-btn' || btn.id === 'rail-settings') return;
       const sectionId = btn.dataset.section;
       if (!sectionId) return;
       const sidebar = document.getElementById('sidebar');

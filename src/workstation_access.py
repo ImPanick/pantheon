@@ -310,7 +310,6 @@ def settings_view() -> Dict[str, Any]:
         "route_tools": route_tools_wanted(),
         # `P16-20`. Reaching the local network, and raw-packet tools.
         "lan_reach": _bool("agent_lan_reach", True),
-        "net_raw_wanted": _bool("workstation_net_raw", False),
         "backends": list(P.BACKENDS),
         "network_modes": list(P.NETWORK_MODES),
         # `B956`. Shown beside `sudo` when the workstation is the container.

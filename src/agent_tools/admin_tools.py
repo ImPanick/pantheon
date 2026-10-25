@@ -1192,10 +1192,9 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
                 # Playwright server above.
                 "agent_browser": ["agent_browser"],
                 "workstation_browser": ["agent_browser"],
-                # `P16-20`. The network scanner; the bare name needs no alias.
+                # `P16-20`. What network the workstation is on, and reach checks.
                 "network": ["network"],
-                "netscan": ["network"],
-                "network_scan": ["network"],
+                "connectivity": ["network"],
                 "terminal": ["bash"],
                 "search": ["web_search", "web_fetch"],
                 "web": ["web_search", "web_fetch"],

@@ -138,13 +138,31 @@ def _public_http_url(
             return False
         allow_lan = _lan_reach_on()
         try:
-            return not _is_private_address(ipaddress.ip_address(host), allow_lan=allow_lan)
+            addrs = [ipaddress.ip_address(host)]
         except ValueError:
-            pass
-        addrs = resolver(host)
-        return bool(addrs) and not any(_is_private_address(a, allow_lan=allow_lan) for a in addrs)
+            addrs = resolver(host)
+        if not addrs or any(_is_private_address(a, allow_lan=allow_lan) for a in addrs):
+            return False
+        return _untrusted_refusal(host, addrs) is None
     except Exception:
         return False
+
+
+def _untrusted_refusal(host: str, addrs) -> Optional[str]:
+    """`D-2026-10-25-03`. A network the person marked untrusted is listed for
+    the agent but never connected to on its behalf — checked against the name
+    and every address it resolved to. None when nothing is declared untrusted."""
+    try:
+        from src.networks import untrusted_refusal
+    except ImportError:
+        return None
+    return untrusted_refusal(host, *[str(a) for a in addrs])
+
+
+def _refuse_untrusted(host: str, addrs) -> None:
+    refusal = _untrusted_refusal(host, addrs)
+    if refusal:
+        raise httpx.RequestError(f"Blocked: {refusal}")
 
 
 def _resolve_public_ips(
@@ -176,6 +194,7 @@ def _resolve_public_ips(
         ip = ipaddress.ip_address(host)
         if _is_private_address(ip):
             raise httpx.RequestError(f"Blocked non-public IP literal: {host}")
+        _refuse_untrusted(host, [ip])
         return [ip]
     except httpx.RequestError:
         raise
@@ -184,6 +203,7 @@ def _resolve_public_ips(
     addrs = resolver(host)
     if not addrs or any(_is_private_address(a) for a in addrs):
         raise httpx.RequestError(f"Blocked non-public URL: {url}")
+    _refuse_untrusted(host, addrs)
     return addrs
 
 

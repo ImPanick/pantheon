@@ -15,7 +15,6 @@ Two parts, each run under node:
     when another tool opens over it.
 """
 
-import re
 import shutil
 import subprocess
 import textwrap
@@ -31,17 +30,12 @@ pytestmark = pytest.mark.skipif(not _HAS_NODE, reason="node binary not on PATH")
 
 
 def _cancel_fn() -> str:
-    text = _SLASH.read_text(encoding="utf-8")
-    m = re.search(r"window\.cancelActiveTour = function cancelActiveTour\(_why\) \{", text)
-    assert m, "cancelActiveTour not found"
-    start, i, depth = m.start(), m.end(), 1
-    while i < len(text) and depth:
-        if text[i] == "{":
-            depth += 1
-        elif text[i] == "}":
-            depth -= 1
-        i += 1
-    return text[start:i]
+    """`cancelActiveTour`, resolved by the shared extractor (`B876`): a
+    hand-rolled brace counter here was the shape `test_one_js_function_extractor`
+    exists to keep out."""
+    from tests.helpers.js_source import js_function
+    body = js_function(_SLASH.read_text(encoding="utf-8"), "function cancelActiveTour(_why)")
+    return "window.cancelActiveTour = function cancelActiveTour(_why) " + body
 
 
 def _run(js: str) -> str:

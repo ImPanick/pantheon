@@ -70,7 +70,7 @@ def test_the_population_this_row_is_about_is_still_mostly_empty():
 @pytest.mark.parametrize("action", ["reset", "delete"])
 def test_the_agent_cannot_delete_a_declared_network(settings_file, action):
     S, fresh = settings_file
-    declared = [{"name": "lab", "cidrs": ["10.9.0.0/16"], "trust": "limited"}]
+    declared = [{"name": "lab", "cidrs": ["10.9.0.0/16"], "trust": "untrusted"}]
     cfg = S.load_settings()
     cfg["networks"] = declared
     S.save_settings(cfg)

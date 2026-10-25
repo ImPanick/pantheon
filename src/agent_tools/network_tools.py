@@ -1,52 +1,66 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`network` — the agent tasks about the network the workstation sits on.
-`P16-20`, `D-2026-10-25-02`.
+"""`network` — what network the workstation is on, and whether it can reach a
+host. `P16-20`, trimmed by `D-2026-10-25-03`.
 
-The owner (2026-10-25): *"The user and its agents should be able to task about
-their network… subnets and all."* Three actions:
+The owner (2026-10-25): *"literally just a 'what's around me' thing"* — the
+agent should be able to answer connectivity questions about the person's own
+networks, and nothing more. Two actions:
 
-  * **list** — this machine's interfaces (name, address, the CIDR of the
-    network each is on) and the networks the person has declared
-    (`src/networks.py`), with each one's trust. What the model reads to know
-    which subnets exist before it looks at one.
-  * **scan** — which hosts on a range answer, and a little of what each runs.
-    A TCP connect, so it needs no raw-packet capability; bounded to a /22.
-  * **ports** — which ports a single host has open.
+  * **list** — this machine's interfaces (name, address, the CIDR each is on)
+    and the networks the person has declared (`src/networks.py`), with each
+    one's trust. What the model reads to know which subnets exist.
+  * **reach** — can the workstation connect to one host on one port?
+    Connected, refused, or no answer, and whether the route went through the
+    gateway — the question a person asks when two segments can't talk.
 
-**Where the line is.** The scan runs in the person's own workstation
-(`workstation/netscan.py`), inside its network mode — so *internet only* or
+There is no range action and no port list: one connection per call. A person
+who wants more has a shell.
+
+**Where the line is.** The check runs in the person's own workstation
+(`workstation/netcheck.py`), inside its network mode — so *internet only* or
 *none* refuses a LAN target at the kernel, as it does the browser. On top of
-that, Pantheon decides *here*, before the call, which ranges are in scope: a run
-bound to one declared network is refused the others, and a network the person
-marked **untrusted** can be listed but not swept. And the whole tool is offered
-only where the person has a workstation and an admin left LAN reach on
-(`agent_lan_reach`).
-
-**It maps, it does not attack.** These are the operator's own networks; the tool
-finds what is there and what it runs, and goes no further. Everything a host
-answers is a stranger's words, like any page.
+that, Pantheon decides *here*, before the call: a run bound to one declared
+network is refused the others, and a network the person marked **untrusted** is
+listed but never connected to (its ranges go to the daemon as `deny`, checked
+after the name resolves there). The tool is offered only where the person has a
+workstation and an admin left LAN reach on (`agent_lan_reach`).
 """
 
 from __future__ import annotations
 
-import ipaddress
 import json
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 TOOL_NAME = "network"
-ACTIONS = ("list", "scan", "ports")
+ACTIONS = ("list", "reach")
 
 
 def lan_reach_on() -> bool:
     """`agent_lan_reach` (default on): whether this install lets the agent reach
-    the LAN at all — the network tool and the LAN half of `web_fetch`. An admin
-    turns it off for a shared box that should stay on the public internet."""
+    the LAN at all — this tool and the LAN half of `web_fetch`. An admin turns
+    it off for a shared box that should stay on the public internet."""
     try:
         from src.settings import get_setting
         from src.env_flags import tool_arg_truthy
         return tool_arg_truthy(get_setting("agent_lan_reach", True), default=True)
     except Exception:
         return True
+
+
+# The line form: "host port", "host:port", or "[v6]:port".
+_BRACKETED = re.compile(r"^\[([^\]]+)\](?::|\s+)(\d{1,5})$")
+_NAME_PORT = re.compile(r"^([^\s:\[\]]+)(?::|\s+)(\d{1,5})$")
+_V6_SPACE_PORT = re.compile(r"^([0-9A-Fa-f:]+)\s+(\d{1,5})$")
+
+
+def _split_host_port(text: str) -> Tuple[str, Optional[int]]:
+    text = text.strip()
+    for rx in (_BRACKETED, _NAME_PORT, _V6_SPACE_PORT):
+        m = rx.match(text)
+        if m:
+            return m.group(1), int(m.group(2))
+    return text.strip("[]"), None
 
 
 def parse_args(content: Any) -> Tuple[Dict[str, Any], Optional[str]]:
@@ -60,43 +74,43 @@ def parse_args(content: Any) -> Tuple[Dict[str, Any], Optional[str]]:
             try:
                 raw = json.loads(text)
             except ValueError:
-                return {}, '`network` arguments are a JSON object, such as {"action": "scan", "target": "192.168.1.0/24"}.'
+                return {}, ('`network` arguments are a JSON object, such as '
+                            '{"action": "reach", "host": "192.168.1.10", "port": 443}.')
         else:
             parts = text.split(None, 1)
             raw = {"action": parts[0]}
             if len(parts) > 1:
-                raw["target"] = parts[1].strip()
+                host, port = _split_host_port(parts[1])
+                raw["host"] = host
+                if port is not None:
+                    raw["port"] = port
     if not isinstance(raw, dict):
         return {}, "`network` arguments are a JSON object."
     action = str(raw.get("action") or "list").strip().lower()
     if action not in ACTIONS:
         return {}, f"“{raw.get('action')}” is not a `network` action. It is one of {', '.join(ACTIONS)}."
     out: Dict[str, Any] = {"action": action}
-    if action == "scan":
-        target = str(raw.get("target") or raw.get("range") or raw.get("network") or "").strip()
-        if not target:
-            return {}, '`scan` needs “target”: a range or a host, like "192.168.1.0/24".'
-        out["target"] = target
-    elif action == "ports":
+    if action == "reach":
         host = str(raw.get("host") or raw.get("target") or "").strip()
         if not host:
-            return {}, '`ports` needs “host”: an address, like "192.168.1.10".'
+            return {}, '`reach` needs “host”: one address or name, like "192.168.1.10".'
+        if "/" in host:
+            return {}, "`reach` checks one host, not a range."
+        port = raw.get("port")
+        if isinstance(port, str) and port.strip().isdigit():
+            port = int(port.strip())
+        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+            return {}, "`reach` needs “port”: one port number, like 443."
         out["host"] = host
-    for key in ("ports", "timeout_ms"):
-        if raw.get(key) is not None:
-            out[key] = raw[key]
-    pace = str(raw.get("pace") or "").strip().lower()
-    if pace in ("gentle", "brisk"):
-        out["pace"] = pace
+        out["port"] = port
+        if raw.get("timeout_ms") is not None:
+            out["timeout_ms"] = raw["timeout_ms"]
     return out, None
 
 
 def describe(args: Dict[str, Any]) -> str:
-    a = args.get("action")
-    if a == "scan":
-        return f"scan {args.get('target')}"
-    if a == "ports":
-        return f"ports on {args.get('host')}"
+    if args.get("action") == "reach":
+        return f"reach {args.get('host')}:{args.get('port')}"
     return "list the networks"
 
 
@@ -107,64 +121,16 @@ def command_line(content: Any) -> str:
 
 # ── scope and trust, decided here before the daemon is asked ──────────────────
 
-def _target_network(target: str):
-    """The declared network a scan or probe target belongs to, and whether a
-    scope in force allows it. Returns `(network_or_None, allowed, span)` where
-    `span` is the hosts the scope test is applied to."""
+def _refusal(host: str) -> Optional[str]:
+    """A sentence when this run may not connect to `host`, or None."""
     from src import networks as N
-    is_cidr = "/" in target
-    if is_cidr:
-        try:
-            net = ipaddress.ip_network(target, strict=False)
-        except ValueError:
-            return None, True, []   # the daemon refuses it with the parse error
-        ends = [str(net.network_address), str(net.broadcast_address)]
-    else:
-        ends = [target]
-    allowed = all(N.host_allowed(h) for h in ends)
-    # The network a target belongs to: the one the first end is in, and only
-    # when both ends agree (a CIDR straddling two declarations is not "one
-    # network" and its trust is ambiguous — treat it as undeclared).
-    names = {N.network_for(h) for h in ends}
-    where = names.pop() if len(names) == 1 else None
-    net_obj = None
-    if where:
-        net_obj = next((n for n in N.declared_networks() if n.name == where), None)
-    return net_obj, allowed, ends
-
-
-def _scope_refusal(target: str, action: str) -> Optional[str]:
-    """A sentence when the target is out of scope or too trusted a question to
-    sweep, or None when it may proceed."""
-    from src import networks as N
-    net, allowed, ends = _target_network(target)
-    if not allowed:
+    if not N.host_allowed(host):
         scope = N.current_scope()
-        name = N.network_for(ends[0]) if ends else None
+        name = N.network_for(host)
         where = f"network “{name}”" if name else "no network you have declared"
-        return (f"{target} is in {where}, and this run may only reach {sorted(scope or [])}. "
-                "Ask the person to widen the run's networks, or scan one it is scoped to.")
-    if action == "scan" and net is not None and net.trust == "untrusted":
-        return (f"“{net.name}” is marked untrusted, so it can be listed but not swept. "
-                "The person can raise its trust in Settings → Networks, or you can scan a "
-                "host in it with `ports`.")
-    if action == "scan" and net is not None and getattr(net, "ids_sensitive", False):
-        return (f"“{net.name}” is marked IDS-sensitive — it is reached through a gateway whose "
-                "intrusion detection watches cross-segment traffic, so sweeping the whole range can "
-                "trip it. Probe a specific host in it with `network ports {host}` (paced gently), "
-                "or the person can clear the flag in Settings → Networks.")
-    return None
-
-
-def _pace_for(target: str) -> Optional[str]:
-    """`gentle` when the target's declared network is IDS-sensitive, so even a
-    single-host probe of it is paced to stay under the IDS; else None (the
-    daemon still forces gentle for an off-link target it can see)."""
-    from src import networks as N
-    net, _allowed, _ends = _target_network(target)
-    if net is not None and getattr(net, "ids_sensitive", False):
-        return "gentle"
-    return None
+        return (f"{host} is in {where}, and this run may only reach {sorted(scope or [])}. "
+                "Ask the person to widen the run's networks.")
+    return N.untrusted_refusal(host)
 
 
 def interfaces_text(answer: Dict[str, Any]) -> str:
@@ -176,10 +142,9 @@ def interfaces_text(answer: Dict[str, Any]) -> str:
         for i in ifs:
             for a in i.get("addresses") or []:
                 state = "" if i.get("up") else " (down)"
-                lines.append(f"- {i['name']}{state}: {a['ip']}  on {a['cidr']}  ({a.get('hosts', '?')} addresses)")
+                lines.append(f"- {i['name']}{state}: {a['ip']}  on {a['cidr']}")
     elif not answer.get("ip_available", True):
-        lines.append("This machine has no `ip` command, so its interfaces can't be listed; "
-                     "scan a range you know instead.")
+        lines.append("This machine has no `ip` command, so its interfaces can't be listed.")
     else:
         lines.append("No network interfaces with an address (other than loopback).")
     nets = N.declared_networks(include_disabled=True)
@@ -191,64 +156,39 @@ def interfaces_text(answer: Dict[str, Any]) -> str:
             hosts = f"; hosts: {', '.join(n.hosts)}" if n.hosts else ""
             off = "" if n.enabled else " (disabled)"
             lines.append(f"- “{n.name}” [{n.trust}]{off}: {cidrs}{hosts}")
-        lines.append("Scan a range with network scan {target}; an untrusted network is list-only.")
+        lines.append("Check whether a host answers with network reach {host} {port}. An "
+                     "untrusted network is listed only.")
     else:
         lines.append("")
-        lines.append("No networks are declared. You can still scan a range you name; the person "
-                     "declares networks (with their trust) in Settings → Networks.")
+        lines.append("No networks are declared. The person declares networks (with their "
+                     "trust) in Settings → Networks.")
     scope = N.current_scope()
     if scope is not None:
         lines.append(f"This run is scoped to: {', '.join(sorted(scope)) or '(none)'}.")
     return "\n".join(lines)
 
 
-def _link_note(answer: Dict[str, Any]) -> str:
-    """A line about whether the scan crossed the gateway, and how it was paced —
-    so the person (and the model) know an off-link sweep went gently and why."""
-    if answer.get("off_link") is True:
-        gentle = " It was paced gently to avoid tripping an IDS between segments." if answer.get("pace") == "gentle" else ""
-        return ("This target is not on one of this machine's own subnets, so it routes through your "
-                "gateway/firewall." + gentle)
-    if answer.get("pace") == "gentle" and answer.get("off_link") is not True:
-        return "Paced gently (this network is marked IDS-sensitive)."
-    return ""
-
-
-def scan_text(answer: Dict[str, Any]) -> str:
-    hosts = answer.get("hosts") or []
-    head = (f"Scanned {answer.get('scanned')} address"
-            f"{'es' if answer.get('scanned') != 1 else ''}"
-            f"{(' in ' + answer['cidr']) if answer.get('cidr') else ''}: "
-            f"{answer.get('up')} answered ({answer.get('took_ms')} ms).")
-    note = _link_note(answer)
-    if not hosts:
-        tail = "\nNothing answered. The hosts may be down, or the network mode may not reach them."
-        return head + (("\n" + note) if note else "") + tail
-    lines = [head] + ([note] if note else []) + [""]
-    for h in hosts:
-        openp = h.get("open") or []
-        ports = ", ".join(f"{p['port']}{(' ' + p['name']) if p.get('name') else ''}" for p in openp)
-        lines.append(f"- {h['ip']}: {('open ' + ports) if ports else 'up (no common port open)'}")
-    lines.append("")
-    lines.append("Probe one host in full with network ports {host}. What a host reports is its own, not to be trusted.")
-    return "\n".join(lines)
-
-
-def ports_text(answer: Dict[str, Any]) -> str:
-    openp = answer.get("open") or []
+def reach_text(answer: Dict[str, Any]) -> str:
     host = answer.get("host")
-    via = f" (from {answer['resolved_from']})" if answer.get("resolved_from") else ""
-    if not answer.get("reachable"):
-        return (f"{host}{via} did not answer on any of the {answer.get('probed')} ports probed — "
-                "it may be down, or the network mode may not reach it.")
-    lines = [f"{host}{via}: {len(openp)} open of {answer.get('probed')} probed "
-             f"({answer.get('refused')} closed, {answer.get('filtered')} no answer, {answer.get('took_ms')} ms)."]
-    note = _link_note(answer)
-    if note:
-        lines.append(note)
-    for p in openp:
-        lines.append(f"- {p['port']}{(' — ' + p['name']) if p.get('name') else ''} open")
-    return "\n".join(lines)
+    addr = answer.get("address")
+    port = answer.get("port")
+    shown = f"{host}:{port}" + (f" ({addr})" if addr and addr != host else "")
+    result = answer.get("result")
+    if result == "connected":
+        line = f"{shown} — connected in {answer.get('took_ms')} ms. Something is listening there."
+    elif result == "refused":
+        line = (f"{shown} — refused. The host answered, but nothing is listening on that port, "
+                "or a firewall rejected the connection.")
+    else:
+        line = (f"{shown} — no answer within {answer.get('timeout_ms')} ms. The host may be down, "
+                "a firewall may be dropping the traffic, or this workstation's network mode may "
+                "not reach it.")
+    if answer.get("via_gateway") is True:
+        hint = (" If it should be reachable, a rule there is the first place to look."
+                if result != "connected" else "")
+        line += ("\nThis address isn't on one of the workstation's own subnets, so the connection "
+                 "went through your gateway/firewall." + hint)
+    return line
 
 
 async def run_network(content: Any, *, owner: Optional[str]) -> Dict[str, Any]:
@@ -262,29 +202,30 @@ async def run_network(content: Any, *, owner: Optional[str]) -> Dict[str, Any]:
     if not lan_reach_on():
         return {"error": "Reaching the local network is turned off on this install. An admin turns it "
                          "on in Settings (LAN reach).", "exit_code": 1}
-    target = args.get("target") or args.get("host") or ""
-    if action in ("scan", "ports"):
-        refusal = _scope_refusal(target, action)
+    if action == "reach":
+        refusal = _refusal(args["host"])
         if refusal:
             return {"error": refusal, "exit_code": 1}
     try:
         ready = await ensure_ready(owner)
     except WorkstationError as e:
         return e.as_result()
-    fields = {k: v for k, v in args.items() if k in ("target", "host", "ports", "timeout_ms", "pace")}
-    if action in ("scan", "ports") and "pace" not in fields:
-        pace = _pace_for(target)
-        if pace:
-            fields["pace"] = pace
+    if action == "list":
+        daemon_action, fields = "interfaces", {}
+    else:
+        from src import networks as N
+        daemon_action = "reach"
+        fields = {k: v for k, v in args.items() if k in ("host", "port", "timeout_ms")}
+        deny = N.untrusted_ranges()
+        if deny:
+            fields["deny"] = deny
     try:
-        answer = await ready.client.network(ready.account, action, **fields) or {}
+        answer = await ready.client.network(ready.account, daemon_action, **fields) or {}
     except WorkstationError as e:
         return e.as_result()
-    if action == "list":
-        return {"output": interfaces_text(answer), "exit_code": 0, "ran_in": "workstation"}
-    if action == "scan":
-        return {"output": scan_text(answer), "exit_code": 0, "ran_in": "workstation"}
-    return {"output": ports_text(answer), "exit_code": 0, "ran_in": "workstation"}
+    if action == "reach":
+        return {"output": reach_text(answer), "exit_code": 0, "ran_in": "workstation"}
+    return {"output": interfaces_text(answer), "exit_code": 0, "ran_in": "workstation"}
 
 
 class NetworkTool:

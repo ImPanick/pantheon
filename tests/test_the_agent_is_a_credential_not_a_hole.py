@@ -235,7 +235,7 @@ def test_a_base_that_is_not_a_plain_http_origin_is_refused(monkeypatch, bad):
     assert nac.configured() is False
 
 
-def test_the_ssrf_validators_are_untouched():
+def test_the_ssrf_validators_are_untouched(monkeypatch):
     """`FORBIDDEN.md:158`. They guard URLs arriving from *content*. The floor
     that never becomes negotiable is loopback and cloud metadata — reaching
     this machine's own ports or the instance-metadata endpoint — and it holds
@@ -247,13 +247,13 @@ def test_the_ssrf_validators_are_untouched():
     from src.outbound_fetch import _public_http_url
     always_blocked = ("http://169.254.169.254/", "http://127.0.0.1:7010/health", "http://[::1]/")
     for off in (lambda: True, lambda: False):
-        of._lan_reach_on = off  # noqa: — restored below
+        monkeypatch.setattr(of, "_lan_reach_on", off)
         for blocked in always_blocked:
             assert not _public_http_url(blocked), f"loopback/metadata accepted: {blocked}"
     # The LAN is gated, not floored.
-    of._lan_reach_on = lambda: False
+    monkeypatch.setattr(of, "_lan_reach_on", lambda: False)
     assert not _public_http_url("http://192.168.1.1/") and not _public_http_url("http://10.0.0.1/")
-    of._lan_reach_on = lambda: True
+    monkeypatch.setattr(of, "_lan_reach_on", lambda: True)
     assert _public_http_url("http://192.168.1.1/") and _public_http_url("http://10.0.0.1/")
 
 

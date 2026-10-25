@@ -52,10 +52,21 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
 logger = logging.getLogger(__name__)
 
-# Trust levels, ordered. The names are the operator's vocabulary, not ours --
-# they describe what a person is willing to let an agent do there.
-TRUST_LEVELS = ("untrusted", "limited", "trusted")
-DEFAULT_TRUST = "limited"
+# Trust levels. The names are the operator's vocabulary, not ours -- they say
+# whether an agent may open connections there at all (`D-2026-10-25-03`):
+#
+#   * trusted   -- Pantheon's own connections on the agent's behalf (a page
+#                  fetch, a `network reach` check) may go there;
+#   * untrusted -- the network is listed, so the agent knows it exists, but
+#                  Pantheon opens no connection there for the agent.
+#
+# There was a third level, "limited", the default. Nothing ever made it differ
+# from "trusted", so a choice the operator made changed nothing (`B1447`). It
+# reads as "trusted" -- exactly what it always did -- and is refused on write
+# with a sentence saying so.
+TRUST_LEVELS = ("untrusted", "trusted")
+DEFAULT_TRUST = "trusted"
+RETIRED_TRUST = {"limited": "trusted"}
 
 # The active scope: which declared networks this run may reach. None means "no
 # scope in force", which is the shipped state and today's behaviour.
@@ -75,11 +86,11 @@ class NetworkScopeViolation(Exception):
 class Network:
     """One named segment: what is in it, how far it is trusted."""
 
-    __slots__ = ("name", "hosts", "cidrs", "trust", "enabled", "notes", "ids_sensitive")
+    __slots__ = ("name", "hosts", "cidrs", "trust", "enabled", "notes")
 
     def __init__(self, name: str, hosts: Sequence[str] = (),
                  cidrs: Sequence[str] = (), trust: str = DEFAULT_TRUST,
-                 enabled: bool = True, notes: str = "", ids_sensitive: bool = False) -> None:
+                 enabled: bool = True, notes: str = "") -> None:
         self.name = str(name).strip()
         self.hosts = [str(h).strip().lower() for h in hosts if str(h).strip()]
         self.cidrs = []
@@ -88,14 +99,10 @@ class Network:
                 self.cidrs.append(ipaddress.ip_network(str(raw).strip(), strict=False))
             except ValueError:
                 logger.warning("network %r: ignoring unparseable CIDR %r", name, raw)
+        trust = RETIRED_TRUST.get(trust, trust)
         self.trust = trust if trust in TRUST_LEVELS else DEFAULT_TRUST
         self.enabled = bool(enabled)
         self.notes = str(notes or "")
-        # `P16-20` / `audit-IDS`. A segment reached THROUGH a gateway/NGFW whose
-        # IDS watches cross-segment traffic. A sweep of it can trip that IDS, so
-        # the agent probes one named host in it rather than sweeping the range
-        # (`network_tools._scope_refusal`), and the scan is paced gently.
-        self.ids_sensitive = bool(ids_sensitive)
 
     def contains(self, host: str) -> bool:
         host = (host or "").strip().lower().strip("[]")
@@ -116,8 +123,7 @@ class Network:
     def as_dict(self) -> Dict[str, Any]:
         return {"name": self.name, "hosts": list(self.hosts),
                 "cidrs": [str(c) for c in self.cidrs], "trust": self.trust,
-                "enabled": self.enabled, "notes": self.notes,
-                "ids_sensitive": self.ids_sensitive}
+                "enabled": self.enabled, "notes": self.notes}
 
 
 def _raw_networks() -> List[Dict[str, Any]]:
@@ -148,7 +154,6 @@ def declared_networks(*, include_disabled: bool = False) -> List[Network]:
             trust=raw.get("trust") or DEFAULT_TRUST,
             enabled=raw.get("enabled", True),
             notes=raw.get("notes") or "",
-            ids_sensitive=bool(raw.get("ids_sensitive", False)),
         )
         if net.enabled or include_disabled:
             out.append(net)
@@ -174,6 +179,39 @@ def trust_for(host: str) -> Optional[str]:
         if net.contains(host):
             return net.trust
     return None
+
+
+def untrusted_network_of(*hosts: str) -> Optional[str]:
+    """The name of the untrusted declared network any of `hosts` is in, else
+    None. What Pantheon's own agent-side connections (`outbound_fetch`, the
+    `network` tool) consult before opening one (`D-2026-10-25-03`). Pass the
+    name and the addresses it resolved to, so a name that is not listed but
+    lands in an untrusted CIDR is still caught."""
+    nets = [n for n in declared_networks() if n.trust == "untrusted"]
+    for host in hosts:
+        for net in nets:
+            if net.contains(str(host)):
+                return net.name
+    return None
+
+
+def untrusted_ranges() -> List[Dict[str, Any]]:
+    """Every untrusted network's CIDRs, as `[{"name", "cidrs"}]` — what the
+    workstation's `reach` is handed as `deny`, so a name that resolves *there*
+    into an untrusted range is refused before it connects."""
+    return [{"name": n.name, "cidrs": [str(c) for c in n.cidrs]}
+            for n in declared_networks() if n.trust == "untrusted" and n.cidrs]
+
+
+def untrusted_refusal(host: str, *addresses: str) -> Optional[str]:
+    """A sentence when `host` (or what it resolved to) is in an untrusted
+    network, else None."""
+    name = untrusted_network_of(host, *addresses)
+    if not name:
+        return None
+    return (f"{host} is in network “{name}”, which is marked untrusted, so Pantheon doesn't "
+            "open connections there for the agent. The person can change its trust in "
+            "Settings → Networks.")
 
 
 def current_scope() -> Optional[Set[str]]:
@@ -324,15 +362,16 @@ def validate_networks(value: Any) -> List[str]:
                 f"a run scoped to it would refuse every address.")
 
         trust = raw.get("trust")
-        if trust is not None and trust not in TRUST_LEVELS:
+        if trust in RETIRED_TRUST:
+            problems.append(
+                f"{where}: trust {trust!r} was retired — it always behaved as "
+                f"{RETIRED_TRUST[trust]!r}. Use one of {', '.join(TRUST_LEVELS)}.")
+        elif trust is not None and trust not in TRUST_LEVELS:
             problems.append(
                 f"{where}: trust {trust!r} is not one of {', '.join(TRUST_LEVELS)}.")
         enabled = raw.get("enabled", True)
         if not isinstance(enabled, bool):
             problems.append(f"{where}: enabled must be true or false.")
-        ids_sensitive = raw.get("ids_sensitive", False)
-        if not isinstance(ids_sensitive, bool):
-            problems.append(f"{where}: ids_sensitive must be true or false.")
     return problems
 
 

@@ -207,6 +207,10 @@ Re-measured 2026-10-24, at `P24`'s third wave: **53 filed, 41 closed**, open **3
 
 **Direction as of 2026-10-24: the open count is rising.**
 
+Re-measured 2026-10-25, after the deep audit: **26 filed, 35 closed**, open **409 → 400** — falling. The window lost `P24`'s opening batch and gained the waves that built the Design studio, the Connections vault and the agent browser and then audited for anything half-built; that audit closed ten and filed five open (`B1453`–`B1456`, `B1458`), none of them a gate.
+
+**Direction as of 2026-10-25: the open count is falling.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus

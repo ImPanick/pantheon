@@ -385,6 +385,13 @@ function _agentCard(a, hired) {
   card.appendChild(_el('span', 'agents-card-tag', a.tagline));
   card.appendChild(_el('span', 'agents-card-when', a.starts_on));
   if (a.fit) card.appendChild(_fitBadge(a.fit));
+  // `B1448`. A mark on the card when this person's model lacks what it needs;
+  // the detail page says what.
+  if (a.needs_check && (a.needs_check.short || []).length) {
+    const m = _el('span', 'agents-needs-mark', 'Needs more');
+    m.title = a.needs_check.short.join(' ');
+    card.appendChild(m);
+  }
   return card;
 }
 
@@ -643,6 +650,16 @@ function _renderAgent(a) {
       : (a.eval_cases ? ` on this model yet. Its ${a.eval_cases} evaluation cases run with a proof run.`
         : ' on this model yet.')));
     page.appendChild(fitLine);
+  }
+  // `B1448`. What it declared it needs and this person's model lacks — a
+  // warning, not a lock: Summon still works.
+  const short = (a.needs_check && a.needs_check.short) || [];
+  if (short.length) {
+    const warn = _el('div', 'agents-needs-warn');
+    warn.setAttribute('role', 'note');
+    warn.appendChild(_el('strong', '', `On ${a.needs_check.model || 'your model'}:`));
+    short.forEach((line) => warn.appendChild(_el('p', 'agents-small', line)));
+    page.appendChild(warn);
   }
   if (a.sample) {
     const sd = _el('details', 'agents-sample');

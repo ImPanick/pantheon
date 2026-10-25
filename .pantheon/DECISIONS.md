@@ -3231,3 +3231,33 @@ admin did not enable and no declared networks.
 
 What reopens it: the owner narrowing any of the four, or a shared-install operator wanting the hard
 namespace boundary after all (the original `P16-20`, which stays available for that deployment).
+
+## D-2026-10-25-03 — the network tool is "what's around me", nothing more
+
+*The owner, 2026-10-25: "We are not making hacktools or any kind of evasive technology. We are just
+trying to reduce noise, ensuring connectivity across the networks… literally just a 'what's around
+me' thing although it may not even be necessary."* Asked how to trim it, the owner chose **trim**:
+keep the listing, add a single reachability check, remove the rest.
+
+This narrows `D-2026-10-25-02` points 1 and 3; points 2 and 4 stand.
+
+1. **The `network` tool has two actions.** `list` — this machine's interfaces and the person's
+   declared networks. `reach` — can the workstation open **one** TCP connection to **one** host on
+   **one** port: connected, refused, or no answer, and whether the route went through the gateway
+   (the first place to look when two segments can't talk). The range action and the port-list action
+   are gone, with their bound (`NET_SCAN_MAX_HOSTS`), pacing profiles, port-name table and the
+   `ids_sensitive` network flag that existed only to slow a range action down. The daemon module is
+   `workstation/netcheck.py`; `netscan.py` is deleted.
+2. **The raw-packet opt-in is withdrawn.** The `workstation_net_raw` setting, its panel switch and the
+   `net_raw` health field are removed; the `workstation-netraw.yml` overlay it pointed at had shipped
+   empty, so the switch never did anything. The workstation runs without `CAP_NET_RAW` as `P20-06`
+   built it — load-bearing for the network modes — and `ping` still works there (`B976`).
+3. **Trust is two levels, and both mean something.** `trusted`: Pantheon's own connections on the
+   agent's behalf (a page fetch, a `reach`) may go there. `untrusted`: the network is listed, never
+   connected to — refused on the server before the call, and in the workstation after a name
+   resolves there (the untrusted ranges travel with `reach` as `deny`). The old middle level,
+   `limited`, never differed from `trusted` (`B1447`); a saved one reads as `trusted`, and writing it
+   is refused with a sentence that says so. Like named-network scoping, this governs Pantheon's own
+   connections, not a shell command.
+
+What reopens it: the owner asking for more than a reachability check.

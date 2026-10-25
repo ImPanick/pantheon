@@ -562,10 +562,9 @@ _MCP_TOOL_MAP = {
     # `B66`. The `rag` server is registered and connected at startup by
     # `builtin_mcp.py` and its `manage_rag` schema already carries the exact
     # actions the system prompt promises (`add_text`, `search`). It was simply
-    # never routed to. `src/ai_interaction.py:do_manage_rag` is a THIRD form of
-    # this tool with a smaller, line-based action set (list/add_directory/
-    # remove_directory) and no reference anywhere — routing there would fail on
-    # `add_text`, which is the action the prompt actually asks for.
+    # never routed to. (A third, line-based form with only list/add_directory/
+    # remove_directory lived in `src/ai_interaction.py` with no caller; deleted
+    # 2026-10-25, `B1449`, so nothing can be pointed back at it.)
     "manage_rag":     ("rag",        "manage_rag"),
 }
 _EMAIL_MCP_OWNER_ARG = "_pantheon_owner"
@@ -1454,7 +1453,7 @@ async def _execute_tool_block_impl(
                                         agent_id=getattr(tool_policy, "agent_id", None)) \
             or {"error": "agent_browser: execution failed", "exit_code": 1}
     elif tool == "network":
-        # `P16-20`. By name, with the owner: whose workstation the scan runs in.
+        # `P16-20`. By name, with the owner: whose workstation the check runs in.
         from src.agent_tools.network_tools import command_line as _net_line
         desc = f"network: {_net_line(content)}"
         result = await _direct_fallback(tool, content, session_id=session_id, owner=owner) \

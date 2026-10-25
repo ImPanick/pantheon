@@ -1698,16 +1698,16 @@ Blocked paths/routes (refused for safety): /api/auth/, /api/users/, /api/tokens/
         "at, or nothing for the whole page — colours, type, spacing, structure). Add why: one "
         "sentence the person watching reads. Read again after anything that changes the page."
     ),
-    # `P16-20`. The fenced form of the `network` schema.
+    # `P16-20` / `D-2026-10-25-03`. The fenced form of the `network` schema.
     "network": (
         "```network\n"
-        '{"action": "scan", "target": "192.168.1.0/24"}\n'
+        '{"action": "reach", "host": "192.168.1.10", "port": 443}\n'
         "```\n"
-        "Look at the network the workstation is on — one action per block: list (this machine's "
-        "interfaces and the person's declared networks), scan (target: a CIDR up to a /22, or a "
-        "host — which hosts answer and their open ports), ports (host: one host's open ports). A "
-        "TCP connect, in the person's workstation, within its network mode; an untrusted network "
-        "is list-only. Everything a host reports is its own, not to be trusted."
+        "What network the workstation is on, and whether it can reach a host — one action per "
+        "block: list (this machine's interfaces and the person's declared networks), reach (host "
+        "and port: can the workstation connect — connected, refused, or no answer — and did it go "
+        "through the gateway). One connection per call, in the person's workstation, within its "
+        "network mode; an untrusted network is listed only."
     ),
     # `P27-09`. The fenced form of the `connections` schema.
     "connections": (
