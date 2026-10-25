@@ -237,8 +237,79 @@ def public(row, sealed: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
             "has_secret": bool(s.get("secret")), "has_totp": bool(s.get("totp")),
             "has_notes": bool(s.get("notes")), "agent_account": bool(row.agent_account),
             "use": row.use if row.use in USES else "ask", "agents": granted(row),
+            "mapped": mapped(row),
+            "pins": {o: {"sha256": p.get("sha256"), "subject": p.get("subject")}
+                     for o, p in pinned(row).items()},
             "last_used_at": _iso(row.last_used_at), "last_used_by": row.last_used_by or None,
             "updated_at": _iso(row.updated_at)}
+
+
+# ── `P27-04`: a name only the person's network knows ───────────────────────
+
+def mapped(row) -> Dict[str, str]:
+    try:
+        got = json.loads(getattr(row, "mapped", None) or "{}")
+    except ValueError:
+        return {}
+    return {str(k): str(v) for k, v in got.items()} if isinstance(got, dict) else {}
+
+
+def pinned(row) -> Dict[str, Dict[str, str]]:
+    try:
+        got = json.loads(getattr(row, "pins", None) or "{}")
+    except ValueError:
+        return {}
+    return {str(k): v for k, v in got.items() if isinstance(v, dict)} if isinstance(got, dict) else {}
+
+
+def _hosts_of(origins: List[str]) -> List[str]:
+    out = []
+    for o in origins:
+        host = urlsplit(o).hostname or ""
+        if host and host not in out:
+            out.append(host)
+    return out
+
+
+def _clean_mapped(raw: Any, origins: List[str]) -> Dict[str, str]:
+    """`{name: address}` for this login's own names only. A private address
+    is mapped only while the workstation may reach private addresses (its
+    network mode is *Full*): the mode stays the one boundary
+    (`D-2026-10-24-03` §2)."""
+    if raw in (None, "", {}):
+        return {}
+    if not isinstance(raw, dict) or len(raw) > ADDRESSES_MAX:
+        raise VaultRefused("“mapped” is {name: address} for this login's own names.")
+    hosts = _hosts_of(origins)
+    out: Dict[str, str] = {}
+    for name, addr in raw.items():
+        n = str(name).strip().lower().rstrip(".")
+        if n not in hosts:
+            raise VaultRefused(f"“{n[:60]}” is not one of this login's addresses ({', '.join(hosts) or 'none'}).")
+        try:
+            ip = ipaddress.ip_address(str(addr).strip())
+        except ValueError:
+            raise VaultRefused(f"“{str(addr)[:60]}” is not an address, such as 10.0.0.5.") from None
+        try:
+            ipaddress.ip_address(n)
+            raise VaultRefused(f"{n} is an address already; there is nothing to map.")
+        except ValueError:
+            pass   # a name, which is what is mapped
+        # Loopback is the workstation itself — a service the person runs there.
+        if ip.is_unspecified or ip.is_multicast:
+            raise VaultRefused(f"{ip} is not an address a service is reached at.")
+        # The network rules' own test (`netrules.excluded`), so what may be
+        # mapped and what the gate lets through cannot disagree (`Law 7`).
+        from src.workstation_access import network_setting
+        from workstation.netrules import excluded
+        mode = network_setting()
+        if mode == "none" or (mode == "internet" and excluded(str(ip))):
+            reach = "nothing" if mode == "none" else "the internet only, not private networks"
+            raise VaultRefused(f"{ip} is not reachable: the workstation's network is set to “{mode}”, which "
+                               f"reaches {reach}. An admin sets it in Settings → Workstation; mapping a name "
+                               "never widens it.")
+        out[n] = str(ip)
+    return out
 
 
 # ── `P27-09`: which agents may use an item ──────────────────────────────────
@@ -390,7 +461,8 @@ def create(db, owner: Optional[str], body: Dict[str, Any]) -> Dict[str, Any]:
     row = VaultItem(id=uuid.uuid4().hex, account=acct, kind=kind, label=label,
                     addresses=json.dumps(addresses), sealed=_seal(f, sealed),
                     agent_account=bool(body.get("agent_account")), use=use,
-                    agents=json.dumps(_clean_agents(body.get("agents"))))
+                    agents=json.dumps(_clean_agents(body.get("agents"))),
+                    mapped=json.dumps(_clean_mapped(body.get("mapped"), addresses)), pins="{}")
     db.add(row)
     db.commit()
     touch(db, owner)
@@ -424,6 +496,13 @@ def update(db, owner: Optional[str], item_id: str, body: Dict[str, Any]) -> Dict
         row.agent_account = bool(body.get("agent_account"))
     if "agents" in body:
         row.agents = json.dumps(_clean_agents(body.get("agents")))
+    if "mapped" in body:
+        row.mapped = json.dumps(_clean_mapped(body.get("mapped"), json.loads(row.addresses or "[]")))
+    if "addresses" in body:
+        # A name no longer among the addresses is no longer mapped or pinned.
+        hosts = _hosts_of(json.loads(row.addresses or "[]"))
+        row.mapped = json.dumps({k: v for k, v in mapped(row).items() if k in hosts})
+        row.pins = json.dumps({o: p for o, p in pinned(row).items() if o in json.loads(row.addresses or "[]")})
     if row.kind == "login" and not sealed.get("secret"):
         raise VaultRefused("A login needs its password.")
     row.sealed = _seal(f, sealed)
@@ -486,7 +565,7 @@ def for_use(db, owner: Optional[str], ref: Any, *, by: str = "agent",
     return {"id": row.id, "label": row.label, "kind": row.kind,
             "origins": json.loads(row.addresses or "[]"),
             "username": sealed.get("username") or "", "secret": sealed.get("secret") or "",
-            "otp": otp, "use": row.use if row.use in USES else "ask"}
+            "otp": otp, "use": row.use if row.use in USES else "ask", "mapped": mapped(row)}
 
 
 def scrub(text: str, values: List[str]) -> str:
@@ -556,7 +635,7 @@ async def _bw_for_use(owner: Optional[str], item_id: str) -> Dict[str, Any]:
     logger.info("vault: %s used bitwarden item %s", account(owner), item_id)
     return {"id": BW_PREFIX + item_id, "label": str(item.get("name") or item_id)[:LABEL_MAX],
             "kind": "login", "origins": origins, "username": login.get("username") or "",
-            "secret": login.get("password") or "", "otp": otp, "use": "ask"}
+            "secret": login.get("password") or "", "otp": otp, "use": "ask", "mapped": {}}
 
 
 # ── `P27-08`: how each item may be used ─────────────────────────────────────

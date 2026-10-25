@@ -59,7 +59,7 @@ import logging
 import os
 import ssl
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, Optional, Union
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from workstation import protocol as P
@@ -688,6 +688,12 @@ class WorkstationClient:
         # The first call starts the browser (up to half a minute), and a page
         # may take its own time to load on top.
         return await self._call("browser", account, body, timeout=120.0 + _TIMEOUT, allow_304=True)
+
+
+    async def names(self, account: str, names: Dict[str, str], pins: List[Dict[str, str]]) -> Dict:
+        """`P27-04`. The account's whole set of mapped names and pinned
+        certificates; answers what a command there is given."""
+        return await self._call("names", account, {"map": names, "pins": pins}, timeout=60.0 + _TIMEOUT)
 
 
 # ── the network gate (`P20-06`) ───────────────────────────────────────────────

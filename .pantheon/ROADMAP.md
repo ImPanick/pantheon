@@ -86,10 +86,10 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P23 | Alignment — the audits, fixed | 9 | 0 | 0 | **9** |
 | P24 | Agents — the hall of hireable agents | 27 | 8 | 0 | **19** |
 | P25 | The + menu, git per account, the agent browser | 10 | 1 | 0 | **9** |
-| P26 | Design — the studio, and notes on the live page | 10 | 7 | 0 | **3** |
-| P27 | Connections — the hub and the private vault | 11 | 4 | 0 | **7** |
+| P26 | Design — the studio, and notes on the live page | 10 | 5 | 0 | **5** |
+| P27 | Connections — the hub and the private vault | 11 | 3 | 0 | **8** |
 | Backlog | Bugs and hardening found in flight | 1015 | 350 | 0 | **663** |
-| **Total** | | **1504** | **395** | **5** | **1102** |
+| **Total** | | **1504** | **392** | **5** | **1105** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -251,6 +251,10 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P27-04, P26-04, P26-05: a name only your network knows; the Design window and design systems
+`9109d7c`…`HEAD`. **1504 tracked, 1105 done. `P27-04`, `P26-04` and `P26-05` closed.**
+A login's name can be mapped to an address for one person — their browser and commands reach it through a proxy that runs as them, within the network mode — and a self-signed certificate is trusted only once they confirm its fingerprint; the Design window opens on six starting points that become a brief to the agent, and design systems are extracted from what the person gives, checked for contrast and written into the project.
 
 ### P27: agent accounts on the person's services, and what each agent may sign in to
 `bebed6b`…`HEAD`. **1504 tracked, 1102 done. `P27-05` and `P27-09` closed.**
@@ -11386,17 +11390,19 @@ layer after it; `P26-08`'s branch-and-preview is the seam it will build on, and 
   stay as a draft for the page. `Verify:` a scripted model receives every note in order with its crop; a note the
   turn did not address stays open.
   — **done 2026-10-24** — *Send N notes* writes one message — each note by number, the element, the person's words, how many marks — attaches a crop of the page for each (the element centred, its pin and marks drawn on in the accent), sends it, and marks the notes *sent*. The agent reads them with `agent_browser notes` (each by number and element, where it is now, *lost* when gone) and closes each with `note_done` (`said`, or `declined`); the pin greys, the list shows *Agent: …*, and the person can reopen. Making, changing and removing notes are the person's; the agent's call to make one is refused by the daemon. A note not sent stays on its page. `Verify:` the same file (+2: the message and the crop geometry under node; the agent closing a note through the daemon); driven: two notes and an arrow sent, the chat receiving the words and `note-4.png`.
-- [ ] **P26-04** **The Design window.** Beside the chat, for the project in view: *What will you design?* and
+- [x] **P26-04** **The Design window.** Beside the chat, for the project in view: *What will you design?* and
   starting points as cards — *Document*, *Mockup*, *Prototype*, *Motion*, *Slides*, *Dashboard* — each opening a
   short brief (who it is for, the screens, the design system) or *describe it in the chat*; below, the project's
   designs and design systems. One registry of starting points (`Law 7`); the + menu's *Design ›* reads it. Personal
   designs (no project) live under *Mine*. `Verify:` the cards and the + menu are one list.
-- [ ] **P26-05** **Design systems.** A name, *Project* or *Personal*; paste a style guide, brand notes, CSS or a tokens
+  — **done 2026-10-24** — `static/js/design/designWindow.js`: *Design* beside the chat, the workspace's name in its title; *What will you design?* and six cards — Document, Mockup, Prototype, Motion, Slides, Dashboard — from one list (`static/js/design/starts.js`), which the + menu's new *Design ›* reads too (`Law 7`). A card opens a short brief — who it is for, what it shows, the start's own questions (screens and size for a mockup, slide count for a deck…), the design system — and *Start designing* sends one message to the chat naming what to make, the system's tokens file and colours, and that the files go in the workspace under `design/`. Below: the design systems. Doors: the + menu, the window list (`modalManager`), the search palette. **Not yet:** designs listed in the window — they are files from `P26-06`; until then a brief's result is what the agent makes in the workspace. `Verify:` `tests/test_a_design_system_is_kept_and_checked.py` (the starts and the brief under node); driven in Chromium at 1440×900 dark and 390×844 light: the + menu's six rows, the cards, a brief sent and arriving in the chat.
+- [x] **P26-05** **Design systems.** A name, *Project* or *Personal*; paste a style guide, brand notes, CSS or a tokens
   export, or upload a file (PDF, PPTX, image, CSS, JSON), or point at the project's own stylesheets or a URL the
   agent browser opens: the model extracts a palette, type scale, spacing, radii and a sentence of voice into one
   tokens file, shown as swatches the person can correct before saving. The tokens are a file in the project
   (`design/systems/<name>.tokens.json`), so the agent reads the same thing the person edited, and every design names
   the system it uses. `Verify:` an extracted system round-trips; a contrast pair below AA is flagged, not saved silently.
+  — **done 2026-10-24** — `src/design_systems.py`, `routes/design_routes.py` (five routes), `DesignSystem`. A name, *Project* or *Personal*; paste, or upload CSS/JSON/text or a PDF, PPTX or DOCX (read through the library's own extractors); the model answers one tokens object — palette with roles, type families and scale, spacing, radii, a sentence of voice — checked (hex only, bounds, roles) with one repair round, and shown as colour pickers, hex fields, names and roles to correct, with a live preview card in those tokens. Every text-on-background pair under 4.5:1 is said by name and ratio and saved only after *Save anyway*, and stays flagged on its card. A *Project* system is written to `design/systems/<slug>.tokens.json` in the workspace (the workstation's, or this machine's for a person whose tools run here) and the brief names that file. **Not built:** reading an image's colours (refused in a sentence: no reader here does it yet), and reading the project's own stylesheets or a URL directly — paste or upload them. `Verify:` the same file (10: cleaning, contrast, the file written into a real project folder, extraction reading a CSS upload with the material labelled as information, the routes as the caller's own); driven in Chromium: a system extracted, corrected and saved.
 - [ ] **P26-06** **A design is files, with versions and variants.** `design/<slug>/` in the project: the page(s), a
   brief, the system it uses, its notes. Every model or hand change is a version the person can step back to; *Try
   variants* asks for 2–4 side by side, one is kept and the rest become versions. Previewed by the person's own
@@ -11463,13 +11469,14 @@ a dedicated account on the service with the role the person picks, and its passw
   the model, never written to a transcript. `Verify:` a dump of the database and the logs after use contains no
   plaintext secret; another account's request for an item is 404.
   — **done 2026-10-24** — `src/vault.py`, `routes/vault_mine_routes.py`, Settings → Vault (`static/js/vaultSettings.js`). `VaultKey` (each account's Fernet key, wrapped by the server's) and `VaultItem` (label and origins in the clear, everything else one sealed blob). Addresses are origins: `grafana.lan:3000` is `http://grafana.lan:3000`, a public name https. Six routes under `/api/vault/mine` — `/api/vault/…` without it stays the admin's Bitwarden link; writes, reveal and unlock are a person's only, and reveal and unlock ask for the Pantheon password again. Lock after an idle time (default never; the unlock is in memory, so a restart locks). One-time codes made at the moment of use. **Not built:** the optional passphrase the server never stores — the wrapped key is the server's to open. `Verify:` `tests/test_the_vault_is_each_persons_own.py` (the store, the routes, and a grep of the database file for the password).
-- [ ] **P27-04** **Map an address.** A login's addresses may be a name only the person's network knows: map
+- [x] **P27-04** **Map an address.** A login's addresses may be a name only the person's network knows: map
   `grafana.lan` to an IP (and port) for that person's workstation — the browser and the shell both resolve it there,
   nowhere else — with a reachability check and, per item and only when chosen, trust for that service's self-signed
   certificate. Private addresses stay inside `P17`'s policy for the person: mapping a name never widens what the
   workstation may reach. `Verify:` the mapping is the person's alone; a mapped name is refused when the policy
   forbids its address.
   **Ruled 2026-10-24 (`D-2026-10-24-03`):** a per-person forwarding proxy run as the account's own user (PAC for Firefox, `HTTP(S)_PROXY` for commands), only after the LAN's DNS is asked first; anyone may map within the network mode, which stays the only boundary; a self-signed certificate is pinned by fingerprint on first test and confirmed by the person; non-HTTP tools get `$LOGIN_HOST_IP` and `$LOGIN_PORT`.
+  — **done 2026-10-24** — as ruled. **The proxy** (`workstation/name_proxy.py`, standard library): `CONNECT` tunnels and absolute-form HTTP, a mapped name to its address and every other name as the network resolves it, the map re-read when it changes; started by the daemon with the account's own `run_as` prefix (`workstation/names.py`), stopped when nothing is mapped and with the daemon. **The set** (`ROUTES["names"]`): Pantheon sends the person's whole set when it changed (`src/vault_names.py`); the daemon writes the PAC file (mapped names only), the trusted file (the system's CAs and the pins) and the browser's exception list, and restarts the browser on a change. **Commands** run through `_Place` — `git`, `shell_with_login`, `connections test`, agent-account setup — get `HTTP(S)_PROXY` and `SSL_CERT_FILE`/`CURL_CA_BUNDLE`/`REQUESTS_CA_BUNDLE`/`GIT_SSL_CAINFO`; `shell_with_login` adds `$LOGIN_HOST`, `$LOGIN_HOST_IP`, `$LOGIN_PORT`. **Within the mode**: a mapping the network rules would refuse is refused in a sentence naming the mode — asked of `netrules.excluded`, the rules' own test; loopback is allowed (the workstation itself). **Pinning**: Settings → Vault → *Test* asks from the workstation whether each name resolves (then nothing is mapped), whether it answers, and which certificate it shows (SHA-256, subject, self-signed, trusted); *Trust this certificate* fetches it again and keeps it only if it is the one confirmed; a changed one is said. Measured while building: Firefox refuses a self-signed certificate imported as a trusted peer with `certutil` (`MOZILLA_PKIX_ERROR_SELF_SIGNED_CERT`) and honours its own exception list, keyed by host, port and fingerprint — that is what is written. `Verify:` `tests/test_a_name_only_your_network_knows.py` (8): curl through the real proxy to a mapped name; a self-signed HTTPS server for `secure.lan` refused unpinned and served pinned; the daemon over HTTP and the person's real Firefox reaching `plain.lan` and the pinned `secure.lan`, a wrong fingerprint refused.
 - [x] **P27-05** **An agent account on the service.** *Set up an agent account* on a login: the person picks a role
   from the service's own (read from it where it has an API, offered from a template where not) and approves; the agent
   uses the person's admin item **by reference** to create a dedicated user with that role through the service's API

@@ -1711,7 +1711,7 @@ Blocked paths/routes (refused for safety): /api/auth/, /api/users/, /api/tokens/
         '{"logins": ["Grafana (agent)"], "command": "curl -su \\"$LOGIN_USER:$LOGIN_PASSWORD\\" \\"$LOGIN_URL/api/health\\""}\n'
         "```\n"
         "One shell command with logins from the person's vault in its environment — you name "
-        "them, you never see them: $LOGIN_<NAME>_USER, _PASSWORD, _OTP, _URL (and $LOGIN_USER… "
+        "them, you never see them: $LOGIN_<NAME>_USER, _PASSWORD, _OTP, _URL, _HOST, _HOST_IP, _PORT (and $LOGIN_USER… "
         "when only one is named). Write the variables, never a value; the output is scrubbed."
     ),
     # `P25-03`. The fenced form of the `git` schema, for a model with no

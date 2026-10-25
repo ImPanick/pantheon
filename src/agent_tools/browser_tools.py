@@ -161,6 +161,19 @@ def notes_text(answer: Dict[str, Any], *, closed: bool = False) -> str:
     return "\n".join(lines)
 
 
+async def sync_names(client, account: str, owner: Optional[str]) -> None:
+    """`P27-04`. The person's mapped names and pinned certificates, sent to
+    their workstation when they changed (the browser restarts to read them)."""
+    from src import vault_names
+    from src.workstation_client import WorkstationError
+    try:
+        await vault_names.sync(client, account, owner)
+    except WorkstationError as e:
+        logger.info("names not applied for %s: %s", account, e.message)
+    except Exception as e:  # noqa: BLE001 — names unread never stop the browser; a mapped name then does not resolve, in its own words
+        logger.warning("names not read for %s: %s", account, e)
+
+
 def _where_now(answer: Dict[str, Any]) -> str:
     tabs = answer.get("tabs") or []
     tab_line = ""
@@ -187,6 +200,7 @@ class BrowserTool:
         except WorkstationError as e:
             return e.as_result()
         client, account = ready.client, ready.account
+        await sync_names(client, account, owner)
         fields = {k: v for k, v in args.items()
                   if k in ("url", "ref", "x", "y", "text", "submit", "keys", "dx", "dy", "tab", "double",
                            "note", "notes", "said", "declined", "all")}

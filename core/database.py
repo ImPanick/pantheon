@@ -1739,12 +1739,31 @@ class VaultItem(TimestampMixin, Base):
     # `P27-09`. Which of the person's agents may use it: a JSON list of agent
     # ids (`chat` is the plain chat), or `[]` for every one of them.
     agents        = Column(Text, nullable=False, default="[]")
+    # `P27-04`. `{name: address}` for an address only the person's network
+    # knows, and `{origin: {sha256, pem, subject}}` for a certificate the
+    # person pinned on testing it. Neither is a secret.
+    mapped        = Column(Text, nullable=False, default="{}")
+    pins          = Column(Text, nullable=False, default="{}")
     last_used_at  = Column(DateTime, nullable=True)
     last_used_by  = Column(String, nullable=True)
 
     __table_args__ = (
         UniqueConstraint('account', 'label', name='uq_vault_items_account_label'),
     )
+
+
+class DesignSystem(TimestampMixin, Base):
+    """`P26-05`. A palette, type, spacing, radii and a sentence of voice
+    (`src/design_systems.py`), the person's own. A *project* system is also
+    written into that project as `design/systems/<slug>.tokens.json`."""
+    __tablename__ = "design_systems"
+
+    id      = Column(String, primary_key=True)
+    account = Column(String, nullable=False, index=True)
+    name    = Column(String, nullable=False)
+    scope   = Column(String, nullable=False, default="project")
+    project = Column(Text, nullable=True)
+    tokens  = Column(Text, nullable=False, default="{}")
 
 
 class AgentRunReport(Base):
@@ -2178,6 +2197,10 @@ def _migrate_add_vault_item_agents():
         columns = [row[1] for row in conn.execute("PRAGMA table_info(vault_items)").fetchall()]
         if columns and "agents" not in columns:
             conn.execute("ALTER TABLE vault_items ADD COLUMN agents TEXT NOT NULL DEFAULT '[]'")
+        if columns and "mapped" not in columns:   # `P27-04`
+            conn.execute("ALTER TABLE vault_items ADD COLUMN mapped TEXT NOT NULL DEFAULT '{}'")
+        if columns and "pins" not in columns:
+            conn.execute("ALTER TABLE vault_items ADD COLUMN pins TEXT NOT NULL DEFAULT '{}'")
         conn.commit()
     except Exception as e:
         logging.getLogger(__name__).warning(f"vault_items agents migration failed: {e}")

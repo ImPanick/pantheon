@@ -216,6 +216,11 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # (`input`'s rule: the browser is on that screen). A daemon older than
     # this answers `404 not_found`.
     "browser": ("POST", "/v1/users/{account}/browser"),
+    # `P27-04`, added. The account's whole set of names and pinned certificates:
+    # {"map": {name: address}, "pins": [{"origin", "pem"}]}
+    # -> {"proxy": "http://127.0.0.1:N" | null, "ca_file": path | null, "names": [...],
+    #     "pins": int, "digest", "changed": bool}. A change restarts the browser.
+    "names": ("POST", "/v1/users/{account}/names"),
 }
 
 # ── what the fields may hold ──────────────────────────────────────────────────

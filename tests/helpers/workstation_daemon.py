@@ -108,6 +108,7 @@ def running_workstation(tmp_path: Path, *, token: str = TEST_TOKEN, with_screen:
     finally:
         # `P25-05`: a browser the daemon started goes with it.
         server.station.browsers.stop_all()
+        server.station.stop_names()   # `P27-04`: its names proxies too
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)

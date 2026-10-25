@@ -12,6 +12,10 @@
                                                {template, role, username, label?} — `P27-05`: from
                                                this admin login, make an account for the agent on
                                                the service and keep it here (`src/agent_accounts.py`)
+    POST   /api/vault/mine/items/{id}/test     `P27-04`: from the workstation — does each address's
+                                               name resolve, does it answer, which certificate it shows
+    POST   /api/vault/mine/items/{id}/pin      {origin, sha256} trust the certificate the person
+                                               confirmed, or {origin, remove: true}
 
 `/api/vault/…` without `mine` is the server's Bitwarden link (`routes/vault/`),
 an admin's; this is everyone's own and no route here reaches another person's.
@@ -97,6 +101,47 @@ def setup_vault_mine_routes() -> APIRouter:
             from src.agent_accounts import templates_public
             return {**V.listing(db, user), "services": templates_public()}
         return _run(go)
+
+    @router.post("/items/{item_id}/test")
+    async def test_item(item_id: str, request: Request):
+        """`P27-04`. What the person reads before mapping a name or pinning a
+        certificate. Reaches the login's addresses, so a person's only."""
+        from src import vault_names
+        if not request_is_a_person(request):
+            return _refused(ONLY_A_PERSON, 403)
+        user = get_current_user(request)
+        from src import vault as V
+        db = SessionLocal()
+        try:
+            return await vault_names.test(db, user, item_id)
+        except V.VaultRefused as r:
+            return _refused(r.sentence, r.status)
+        finally:
+            db.close()
+
+    @router.post("/items/{item_id}/pin")
+    async def pin_item(item_id: str, request: Request):
+        """`P27-04`. Trust exactly the certificate the person confirmed."""
+        from src import vault_names
+        if not request_is_a_person(request):
+            return _refused(ONLY_A_PERSON, 403)
+        try:
+            body = await _body(request)
+        except ValueError as e:
+            return _refused(str(e))
+        user = get_current_user(request)
+        from src import vault as V
+        db = SessionLocal()
+        try:
+            if body.get("remove"):
+                return vault_names.unpin(db, user, item_id, str(body.get("origin") or ""))
+            return await vault_names.pin(db, user, item_id, str(body.get("origin") or ""),
+                                         str(body.get("sha256") or ""))
+        except V.VaultRefused as r:
+            db.rollback()
+            return _refused(r.sentence, r.status)
+        finally:
+            db.close()
 
     @router.post("/items/{item_id}/agent-account")
     async def agent_account(item_id: str, request: Request):

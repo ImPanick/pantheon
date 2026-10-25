@@ -80,8 +80,18 @@ def environment(items: List[Dict[str, Any]]) -> Tuple[Dict[str, str], List[str]]
     names it was given — names only, for the answer."""
     env: Dict[str, str] = {}
     for item in items:
+        url = (item.get("origins") or [""])[0]
         fields = {"USER": item.get("username") or "", "PASSWORD": item.get("secret") or "",
-                  "OTP": item.get("otp") or "", "URL": (item.get("origins") or [""])[0]}
+                  "OTP": item.get("otp") or "", "URL": url}
+        # `P27-04` / `D-2026-10-24-03` §4. For a tool that is not HTTP and so
+        # does not go through the person's proxy: the address itself, and the port.
+        if url:
+            from urllib.parse import urlsplit
+            parts = urlsplit(url)
+            host = parts.hostname or ""
+            fields["HOST"] = host
+            fields["HOST_IP"] = (item.get("mapped") or {}).get(host, "")
+            fields["PORT"] = str(parts.port or (443 if parts.scheme == "https" else 80))
         prefixes = [f"LOGIN_{env_name(item['label'])}_"] + (["LOGIN_"] if len(items) == 1 else [])
         for prefix in prefixes:
             for k, v in fields.items():
@@ -128,7 +138,8 @@ async def run_with_login(content: Any, *, owner: Optional[str], station_workspac
     finally:
         db.close()
     env, names = environment(items)
-    values = [v for v in env.values() if v and not v.startswith(("http://", "https://"))]
+    values = [v for k, v in env.items()
+              if v and not v.startswith(("http://", "https://")) and not k.endswith(("_HOST", "_HOST_IP", "_PORT"))]
     r = await place.run(args["command"], cwd, env, TIMEOUT_S)
     out = V.scrub(r.get("stdout") or "", values)
     err = V.scrub(r.get("stderr") or "", values)

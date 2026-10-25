@@ -29,6 +29,7 @@
 
 import summon, { pickerRows } from './summon.js';
 import workspaceModule from './workspace.js';
+import { STARTS as DESIGN_STARTS } from './design/starts.js';
 
 const PHONE_MAX = 640;
 const HOVER_OPEN_MS = 140;
@@ -111,6 +112,10 @@ function _openGitSettings() {
     if (mod && typeof mod.open === 'function') return mod.open('git');
     return null;
   });
+}
+
+function _openDesign(opts = {}) {
+  return import('./design/designWindow.js').then((m) => m.openDesign(opts));
 }
 
 async function _openHall({ workshop = false, seed = '' } = {}) {
@@ -216,6 +221,22 @@ export const SUBMENUS = {
     },
     foot: [
       { label: 'Git settings', pick: () => _openGitSettings() },
+    ],
+  },
+  // `P26-04`. The Design window's starting points — its cards' own list.
+  design: {
+    label: 'Design',
+    filter: null,
+    async load() {
+      const rows = DESIGN_STARTS.map((s) => ({
+        label: s.label, hint: s.hint, search: `${s.label} ${s.hint}`,
+        pick: () => _openDesign({ start: s.id }),
+      }));
+      return { rows, empty: '' };
+    },
+    foot: [
+      { label: 'Design systems…', pick: () => _openDesign({ system: 'new' }) },
+      { label: 'Open Design', pick: () => _openDesign() },
     ],
   },
   modes: {

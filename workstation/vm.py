@@ -1392,6 +1392,10 @@ class VmStation(Workstation):
         """`P25-05`: the browser is the machine's; its `304` comes back as None."""
         return self.system.forward(account, "browser", body, timeout=180.0, allow_304=True)
 
+    def names(self, account: str, body: Dict) -> Dict:
+        """`P27-04`: the names proxy runs in the machine, as the account."""
+        return self.system.forward(account, "names", body, timeout=60.0)
+
 
 # ── the command line ──────────────────────────────────────────────────────────
 

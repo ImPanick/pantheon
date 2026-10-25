@@ -129,6 +129,88 @@ function _agentAccountInto(row, item) {
   svc.focus();
 }
 
+/** `P27-04`. Test a login from the workstation: does each name resolve on
+ *  your network, does it answer, which certificate it shows — and from the
+ *  answer, map a name or trust a certificate (`D-2026-10-24-03`). */
+async function _testInto(row, item) {
+  row.querySelector('.vault-test')?.remove();
+  const box = _el('div', 'vault-test');
+  box.appendChild(_el('p', 'admin-toggle-sub', 'Testing from your workstation…'));
+  row.appendChild(box);
+  const r = await _call('POST', `/items/${encodeURIComponent(item.id)}/test`);
+  box.textContent = '';
+  if (!r.ok) { box.appendChild(_el('p', 'admin-toggle-sub git-settings-error', r.sentence)); return; }
+  (r.data.results || []).forEach((res) => {
+    const host = res.host;
+    const part = _el('div', 'vault-test-result');
+    part.appendChild(_el('div', 'vault-test-origin', res.origin));
+    const lines = [];
+    if (res.mapped_to) lines.push(`${host} is mapped to ${res.mapped_to} for you.`);
+    else if ((res.dns || []).length) lines.push(`${host} resolves on your network (${res.dns.join(', ')}); nothing needs mapping.`);
+    else lines.push(`${host} does not resolve on your network.`);
+    if (res.http) lines.push(`It answered HTTP ${res.http}.`);
+    else if (res.http_error || res.tls_error) lines.push(`It did not answer: ${res.http_error || res.tls_error}`);
+    lines.forEach((t) => part.appendChild(_el('p', 'vault-test-line', t)));
+    if (!(res.dns || []).length || res.mapped_to) {
+      const map = _el('div', 'git-settings-row vault-test-map');
+      const ip = document.createElement('input');
+      ip.type = 'text';
+      ip.value = res.mapped_to || '';
+      ip.placeholder = '10.0.0.5';
+      ip.setAttribute('aria-label', `The address ${host} is at`);
+      const field = _el('label', 'git-settings-field');
+      field.appendChild(_el('span', '', `Map ${host} to`));
+      field.appendChild(ip);
+      map.appendChild(field);
+      map.appendChild(_btn(res.mapped_to ? 'Change' : 'Map it', 'vault-map-btn', async () => {
+        const m = { ...(item.mapped || {}), [host]: ip.value.trim() };
+        const u = await _call('PUT', `/items/${encodeURIComponent(item.id)}`, { mapped: m });
+        if (!u.ok) { _say(u.sentence, { error: true }); return; }
+        item.mapped = u.data.mapped;
+        _say(`${host} now reaches ${ip.value.trim()} for you — in your browser and your commands. Testing again…`);
+        await _testInto(row, item);
+      }));
+      if (res.mapped_to) {
+        map.appendChild(_btn('Unmap', 'vault-unmap-btn', async () => {
+          const m = { ...(item.mapped || {}) };
+          delete m[host];
+          const u = await _call('PUT', `/items/${encodeURIComponent(item.id)}`, { mapped: m });
+          if (!u.ok) { _say(u.sentence, { error: true }); return; }
+          item.mapped = u.data.mapped;
+          await _testInto(row, item);
+        }));
+      }
+      part.appendChild(map);
+    }
+    const c = res.cert;
+    if (c) {
+      const facts = [`Certificate ${c.sha256}`, c.subject || '', c.self_signed ? 'signed by itself' : '',
+        c.pinned ? 'trusted: you pinned it' : (c.trusted ? 'trusted' : 'not trusted')].filter(Boolean);
+      part.appendChild(_el('p', 'vault-test-cert', facts.join(' · ')));
+      if (c.changed) {
+        part.appendChild(_el('p', 'vault-test-line git-settings-error',
+          'This is not the certificate you pinned. It is refused until you look and trust it again.'));
+      }
+      if (!c.trusted && !c.pinned) {
+        part.appendChild(_btn('Trust this certificate', 'vault-pin-btn', async () => {
+          const u = await _call('POST', `/items/${encodeURIComponent(item.id)}/pin`, { origin: res.origin, sha256: c.sha256 });
+          if (!u.ok) { _say(u.sentence, { error: true }); return; }
+          _say(`Trusted for ${res.origin} only — this exact certificate, in your browser and your commands.`);
+          await _testInto(row, item);
+        }));
+      } else if (c.pinned) {
+        part.appendChild(_btn('Forget the pin', 'vault-unpin-btn', async () => {
+          const u = await _call('POST', `/items/${encodeURIComponent(item.id)}/pin`, { origin: res.origin, remove: true });
+          if (!u.ok) { _say(u.sentence, { error: true }); return; }
+          await _testInto(row, item);
+        }));
+      }
+    }
+    box.appendChild(part);
+  });
+  box.appendChild(_btn('Close', '', () => box.remove()));
+}
+
 function _revealInto(row, item) {
   if (row.querySelector('.vault-reveal')) return;
   const box = _el('div', 'vault-reveal git-settings-row');
@@ -186,10 +268,15 @@ export function draw(data) {
     const facts = [USE_WORDS[it.use] || USE_WORDS.ask];
     if (it.agent_account) facts.push('agent account');
     if ((it.agents || []).length) facts.push(`only ${it.agents.map((a) => _agentNames[a] || a).join(', ')}`);
+    Object.entries(it.mapped || {}).forEach(([h, ip]) => facts.push(`${h} → ${ip}`));
+    if (Object.keys(it.pins || {}).length) facts.push('certificate pinned');
     if (it.has_totp) facts.push('one-time codes');
     if (it.last_used_at) facts.push(`used ${String(it.last_used_at).slice(0, 10)}${it.last_used_by ? ` by ${it.last_used_by}` : ''}`);
     row.appendChild(_el('span', 'git-host-since', facts.join(' · ')));
     row.appendChild(_btn('Reveal', 'vault-reveal-btn', () => _revealInto(row, it)));
+    if (it.kind === 'login' && (it.addresses || []).length) {
+      row.appendChild(_btn('Test', 'vault-test-btn', () => _testInto(row, it)));
+    }
     if (it.kind === 'login' && !it.agent_account && _services.length) {
       row.appendChild(_btn('Agent account…', 'vault-agent-account-btn', () => _agentAccountInto(row, it)));
     }

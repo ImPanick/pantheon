@@ -438,6 +438,9 @@ class Workstation:
         # `P25-05`: each account's browser, started on first use.
         from workstation.browser import Browsers
         self.browsers = Browsers(system)
+        # `P27-04`. Each account's mapped names and pinned certificates.
+        self._names: Dict[str, Any] = {}
+        self.browsers.names_of = lambda account: self._names.get(account)
 
     # -- auth and accounts ------------------------------------------------------
 
@@ -520,11 +523,43 @@ class Workstation:
 
     def reset(self, account: str) -> Dict:
         self.browsers.stop(account)   # `P25-05`: its profile goes with the home
+        names = self._names.pop(account, None)
+        if names is not None:
+            names.stop()              # `P27-04`: its files go with the home too
         self.system.reset(account)
         with self._lock:
             self._holders.pop(account, None)
             self._frames.pop(account, None)  # `B974`
         return {"account": account, "reset": True}
+
+    def stop_names(self) -> None:
+        """`P27-04`. Every account's names proxy, when the daemon stops."""
+        with self._lock:
+            items = list(self._names.values())
+            self._names.clear()
+        for n in items:
+            n.stop()
+
+    def names(self, account: str, body: Dict) -> Dict:
+        """`P27-04`. The account's whole set of mapped names and pinned
+        certificates (`ROUTES["names"]`), made so; a change to what the browser
+        reads restarts it on its next action."""
+        from workstation.names import AccountNames, NamesRefused
+        self.ensure(account)
+        with self._lock:
+            n = self._names.get(account)
+            if n is None:
+                prefix, env = self.system.run_as(account)
+                n = AccountNames(self.system.home(account), prefix, env,
+                                 own=lambda paths, a=account: self.system.own(a, paths))
+                self._names[account] = n
+        try:
+            out = n.apply(body)
+        except NamesRefused as e:
+            raise WorkstationError("bad_request", e.message) from None
+        if out["changed"]:
+            self.browsers.stop(account)
+        return out
 
     def control(self, account: str, body: Dict) -> Dict:
         who = body.get("holder")
@@ -1076,7 +1111,8 @@ class Handler(BaseHTTPRequestHandler):
                        "write": lambda: self.station.write(account, body),
                        "list": lambda: self.station.list(account, body),
                        "input": lambda: self.station.input(account, body),
-                       "browser": lambda: self.station.browser(account, body)}[name]
+                       "browser": lambda: self.station.browser(account, body),
+                       "names": lambda: self.station.names(account, body)}[name]
             answer = handler()
             if answer is None:          # `P25-05`: a browser frame the caller has
                 self._send(304, None)

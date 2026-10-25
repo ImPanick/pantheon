@@ -164,7 +164,7 @@ const rect = (page, sel) => page.$eval(sel, (n) => { const r = n.getBoundingClie
       o.escBack = { sub: (await page.$$(SUB)).length,
                     focus: await page.evaluate(() => document.activeElement && document.activeElement.id),
                     menuOpen: await page.$eval('#overflow-menu', (n) => !n.classList.contains('hidden')) };
-      for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowDown');   // Skills, Git, Browser, Modes
+      for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowDown');   // Skills, Git, Design (`P26-04`), Browser, Modes
       o.down = await page.evaluate(() => document.activeElement && document.activeElement.id);
       await page.keyboard.press('ArrowRight');
       await page.waitForSelector(`${SUB}[data-submenu="modes"] .composer-submenu-row`, { timeout: 5000 });
@@ -224,8 +224,8 @@ def test_nothing_threw(driven):
 @pytest.mark.parametrize("width", ["1440", "390"])
 def test_the_top_level_is_short_and_says_what_each_row_does(driven, width):
     o = driven[width]
-    assert o["top"] == ["Add files", "Documents", "Workspace", "Agents", "Skills", "Git", "Browser",
-                        "Modes", "Prompt"], "RAG lives under Modes; every other row kept"
+    assert o["top"] == ["Add files", "Documents", "Workspace", "Agents", "Skills", "Git", "Design", "Browser",
+                        "Modes", "Prompt"], "RAG lives under Modes; every other row kept (`P26-04`: + Design)"
     assert o["hints"] == ["From this device", "Write beside the chat", "A folder the agent works in",
                           "Watch the agent browse, or browse with it", "Persona and system prompt"]
     assert o["seps"] == 2
@@ -275,6 +275,8 @@ def _node(tmp_path, script):
     shutil.copy(js / "composerMenu.js", tmp_path / "composerMenu.js")
     (tmp_path / "summon.js").write_text("export const pickerRows = (a) => a; export default {};")
     (tmp_path / "workspace.js").write_text("export default { getWorkspace: () => '' };")
+    (tmp_path / "design").mkdir(exist_ok=True)   # `P26-04`: the Design submenu's starts, a leaf
+    shutil.copy(js / "design" / "starts.js", tmp_path / "design" / "starts.js")
     (tmp_path / "case.mjs").write_text(script)
     proc = subprocess.run([NODE, "case.mjs"], cwd=tmp_path, capture_output=True, text=True, timeout=30)
     assert proc.returncode == 0, proc.stderr

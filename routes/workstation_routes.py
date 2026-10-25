@@ -351,6 +351,9 @@ def setup_workstation_routes() -> APIRouter:
         if action not in _BROWSER_PERSON_ACTIONS:
             raise HTTPException(400, f"“action” is one of {', '.join(_BROWSER_PERSON_ACTIONS)}.")
         fields = {k: body[k] for k in _BROWSER_FIELDS if k in body}
+        if action in ("open", "reload", "tab_new"):
+            from src.agent_tools.browser_tools import sync_names
+            await sync_names(client, account, require_user(request))   # `P27-04`
         try:
             answer = await client.browser(account, action, holder="person", **fields) or {}
         except WorkstationError as e:

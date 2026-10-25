@@ -250,6 +250,9 @@ const _DOOR_FUNCTIONS = {
   // `P25-06`. The agent browser's window, loaded by `app.js` for its doors.
   'agent-browser-modal': () => import('./browserWindow.js')
     .then((m) => m.openAgentBrowser()),
+  // `P26-04`. The Design window.
+  'design-modal': () => import('./design/designWindow.js')
+    .then((m) => m.openDesign()),
   // `B947` (b). Email has no `_AUTO_WIRE` door, on purpose (it keeps its own
   // unread dot), so the palette reached it only as `/email`, one extra Enter.
   // Its door is the one `/email` presses (`slashCommands.js`): the rail's

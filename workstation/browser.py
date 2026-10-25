@@ -298,9 +298,16 @@ class AccountBrowser:
         if not firefox:
             raise BrowserError("unavailable", "This workstation has no Firefox, so it has no browser.")
         self.profile.mkdir(parents=True, exist_ok=True)
-        (self.profile / "user.js").write_text(USER_JS, encoding="utf-8")
+        names = self.names() if callable(getattr(self, "names", None)) else None
+        (self.profile / "user.js").write_text(USER_JS + (names.browser_prefs() if names else ""),
+                                              encoding="utf-8")
         if self.own:
             self.own([self.profile.parent, self.profile, self.profile / "user.js"])
+        if names:
+            # `P27-04`. The pinned certificates, each trusted as its own
+            # server's only; what could not be done is logged, not fatal.
+            for problem in names.import_pins(self.profile):
+                logger.warning("browser: %s", problem)
         argv = self.launch_prefix + [firefox, "--remote-debugging-port=0", "--no-remote",
                                      "--profile", str(self.profile)]
         if self.headless:
@@ -829,6 +836,7 @@ class Browsers:
 
     def __init__(self, system) -> None:
         self.system = system
+        self.names_of = lambda account: None   # `P27-04`: set by the daemon
         self._by_account: Dict[str, AccountBrowser] = {}
         self._lock = threading.Lock()
 
@@ -852,6 +860,7 @@ class Browsers:
                 profile = Path(self.system.home(account)) / PROFILE_DIR
                 b = AccountBrowser(prefix, env, profile, headless,
                                    own=lambda paths, a=account: self.system.own(a, paths))
+                b.names = lambda a=account: self.names_of(a)   # `P27-04`
                 self._by_account[account] = b
             return b
 

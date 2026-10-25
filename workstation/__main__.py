@@ -324,6 +324,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     except KeyboardInterrupt:
         logger.info("workstation stopping")
     finally:
+        server.station.stop_names()   # `P27-04`: no names proxy outlives its daemon
         server.server_close()
     return NAMESPACE_LOST if lost.is_set() else 0
 

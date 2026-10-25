@@ -284,6 +284,9 @@ class _Place:
         self.client = None
         self.account = None
         self.home = None
+        # `P27-04`. The person's proxy and trusted file, for every command run
+        # here (`src/vault_names.env_for`); empty on this machine.
+        self.names_env: Dict[str, str] = {}
 
     async def open(self) -> Optional[Dict[str, Any]]:
         from src.workstation_access import routes_tools
@@ -298,6 +301,15 @@ class _Place:
             self.home = await _home_path(self.client, self.account)
         except WorkstationError as e:
             return e.as_result()
+        from src import vault_names
+        try:
+            self.names_env = vault_names.env_for(await vault_names.sync(self.client, self.account, self.owner))
+        except WorkstationError as e:
+            # A daemon older than `P27-04` has no names route: commands run as
+            # before, and a mapped name is said not to resolve in its own words.
+            logger.info("names not applied for %s: %s", self.account, e.message)
+        except Exception as e:  # noqa: BLE001 — names unread never stop a command; see above
+            logger.warning("names not read for %s: %s", self.account, e)
         return None
 
     @property
@@ -333,7 +345,7 @@ class _Place:
                     "GIT_CONFIG_NOSYSTEM": "1", "LC_ALL": "C.UTF-8"}
         if self.in_workstation:
             r = await self.client.exec(self.account, command, shell="bash", cwd=cwd,
-                                       timeout_s=timeout, env={**base_env, **env})
+                                       timeout_s=timeout, env={**base_env, **self.names_env, **env})
             return {"stdout": r.get("stdout") or "", "stderr": r.get("stderr") or "",
                     "exit_code": r.get("exit_code"), "timed_out": bool(r.get("timed_out"))}
         from src.agent_tools.subprocess_tools import _create_bash_subprocess, kill_tree, own_process_group
