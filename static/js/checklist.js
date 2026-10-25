@@ -56,7 +56,12 @@ export const CHECKLIST_SURFACES = {
     kind: 'plan',
     title: 'Active plan',
     ariaLabel: 'Active plan',
-    blurb: 'Steps you approved. The agent works down this list.',
+    // `audit-P2-draft`. The default/at-rest blurb must not claim approval: a
+    // DRAFT plan is one the agent proposed and the person has NOT approved —
+    // the panel used to read "Steps you approved" over a draft with an Execute
+    // button, implying an approval that had not happened. `planBlurb(state)`
+    // below is the live, state-aware text; this stays neutral for first paint.
+    blurb: 'Steps the agent proposed. Review them, then Execute to run them.',
   },
   agentTodo: {
     kind: 'agent-todo',
@@ -76,6 +81,21 @@ export const CHECKLIST_SURFACES = {
  */
 export function checklistProgress(done, total) {
   return `${done} of ${total} done`;
+}
+
+/**
+ * `audit-P2-draft`. The Active-plan blurb, by state — so the wording never runs
+ * ahead of what the person has actually done. A draft is proposed, not
+ * approved; approval happens on Execute (`executing`); `done` is finished.
+ * Shared from here so the window and any other surface say it the same way.
+ */
+export const PLAN_BLURBS = {
+  draft: 'Steps the agent proposed. Review them, then Execute to run them.',
+  executing: 'Steps you approved. The agent works down this list.',
+  done: 'Every step is done.',
+};
+export function planBlurb(state) {
+  return PLAN_BLURBS[state] || PLAN_BLURBS.draft;
 }
 
 /**

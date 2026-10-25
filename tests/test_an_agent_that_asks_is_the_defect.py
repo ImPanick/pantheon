@@ -710,3 +710,19 @@ def test_the_same_skill_library_capped_for_this_person_is_not(monkeypatch):
     )
     assert any(e.get("type") == "ask_user" for e in events), events
     assert len(requests) == 1, _system_text(requests[-1])[-400:]
+
+
+def test_plan_mode_resolves_a_format_conflict_instead_of_looping():
+    """`audit-P1-plan-loop`. GPT-6.1's audit: a weak model spent four minutes
+    reconciling a request's formatting demands against plan mode's checklist
+    requirement, never emitting a plan. The directive now resolves the conflict
+    outright — the checklist wins, a requested shape becomes a step, one pass —
+    so there is nothing to loop on."""
+    from src.agent_loop import PLAN_MODE_DIRECTIVE
+    d = PLAN_MODE_DIRECTIVE
+    assert "THE CHECKLIST WINS" in d
+    assert "do NOT reason back and forth" in d.replace("—", "-")
+    assert "One pass, then stop." in d
+    # It tells the model to fold a requested output shape into a step, not to
+    # format the plan itself that way.
+    assert "one of the checklist steps" in d

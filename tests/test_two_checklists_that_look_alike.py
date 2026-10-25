@@ -117,9 +117,17 @@ def test_each_card_says_in_words_what_kind_of_list_it_is():
     assert todo["blurb"], "the todo card's head says nothing about what it is"
     assert plan["blurb"] != todo["blurb"]
 
-    # The words that carry the distinction. "approved" is the plan's claim and
-    # nothing else on screen may make it; "agent"/"own" is the todo card's.
-    assert "approved" in plan["blurb"].lower()
+    # The words that carry the distinction. `audit-P2-draft`: the plan's claim
+    # of approval belongs to the EXECUTING state only — a DRAFT is proposed, not
+    # approved, and the default/at-rest blurb must not claim it either. The todo
+    # card never claims it. The blurbs are state-aware now (`PLAN_BLURBS`).
+    blurbs = plan.get("blurbs") or {}
+    assert "approved" in blurbs.get("executing", "").lower(), (
+        "an executing plan is a commitment the person approved — it says so")
+    assert "approved" not in blurbs.get("draft", "").lower(), (
+        "a DRAFT plan has NOT been approved — the panel must not imply it was")
+    assert "approved" not in plan["blurb"].lower(), (
+        "the at-rest plan blurb must not claim approval before Execute")
     assert "agent" in todo["blurb"].lower() or "own" in todo["blurb"].lower()
     assert "approved" not in todo["blurb"].lower(), (
         "the scratch list must not claim to be approved — that is the whole row"

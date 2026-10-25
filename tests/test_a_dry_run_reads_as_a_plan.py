@@ -153,3 +153,30 @@ def test_a_tasks_card_says_its_schedule_in_words(tasks_sandbox):
     assert said["something_newx3"] == "Every 3 something new"
     assert said["0 9 * * 1-5"] == "Weekdays at 09:00"
     assert said["15 3 1 * *"] == "Cron: 15 3 1 * *", "a shape with no words is shown as written"
+
+
+def test_a_no_tools_step_is_not_described_as_with_tools():
+    """`audit-P2-dry-tools`. GPT-6.1's audit: a step labelled "Prompt · No
+    tools" had a dry-run summary that said it would go to a model "with tools".
+    The preview must reflect the SAVED policy: no tools says no tools, a named
+    set names them, and an unset step (or a task) keeps the default wording."""
+    from src.builtin_actions import dry_run_plan
+    from src.workflow_document import plan_lines
+
+    no_tools = plan_lines({"id": "n1", "kind": "llm", "label": "Summarise",
+                           "config": {"prompt": "Summarise it", "tools": []}})
+    assert any("with no tools" in ln for ln in no_tools), no_tools
+    assert not any("with tools." in ln for ln in no_tools), no_tools
+    # And it does not also claim "Tools it may use: none" beside "with no tools".
+    assert not any("Tools it may use" in ln for ln in no_tools), no_tools
+
+    named = plan_lines({"id": "n2", "kind": "llm", "label": "Look up",
+                        "config": {"prompt": "x", "tools": ["web_search"]}})
+    assert "Tools it may use: web_search" in named
+
+    # Unset: the default wording is unchanged (a task, or a step that never set it).
+    assert "Would send this task's prompt to a model, with tools." in dry_run_plan(
+        task_type="llm", action=None, prompt="x")
+    assert "Would send this step's prompt to a model, with no tools — it only reads what it is " \
+           "given and writes an answer." in dry_run_plan(task_type="llm", action=None, prompt="x",
+                                                         noun="step", tools=[])

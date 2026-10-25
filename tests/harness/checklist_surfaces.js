@@ -248,12 +248,15 @@ if (mode === 'rows') {
     ${headBlock}
   `)(els, 1, 2, 'executing', { sessionId: '' }, () => 's1', null);
 
-  // The blurb, when the surface has one, is written by init() from the shared
-  // table; read it the same way the browser would.
+  // The at-rest blurb init() writes (`CHECKLIST_SURFACES.plan.blurb`), read the
+  // same way the browser would. `audit-P2-draft`: render() then overwrites it
+  // with the state-aware `planBlurb(state)` (reported as `blurbs` below), so the
+  // at-rest one is read from the shared table rather than by matching the first
+  // `_els.blurb.textContent =` (which is now the state-dependent one).
   let planBlurb = '';
-  const blurbWrite = planSrc.match(/_els\.blurb\.textContent\s*=\s*([^;]+);/);
-  if (blurbWrite && shared) {
-    planBlurb = new Function(`${shared}\nreturn ${blurbWrite[1]};`)();
+  if (shared) {
+    try { planBlurb = new Function(`${shared}\nreturn CHECKLIST_SURFACES.plan.blurb;`)(); }
+    catch (_) { planBlurb = ''; }
   }
   // Same for the title the module writes over the pre-JS paint: reported so a
   // test can hold the two equal rather than asserting a literal twice.
@@ -261,6 +264,14 @@ if (mode === 'rows') {
   const titleWrite = planSrc.match(/_els\.title\.textContent\s*=\s*([^;]+);/);
   if (titleWrite && shared) {
     planTitle = new Function(`${shared}\nreturn ${titleWrite[1]};`)();
+  }
+  // `audit-P2-draft`. The state-aware blurbs, read from the shared module the
+  // way the window does, so a test can hold the draft one clear of "approved".
+  let planBlurbs = {};
+  if (shared) {
+    try {
+      planBlurbs = new Function(`${shared}\nreturn {draft: planBlurb('draft'), executing: planBlurb('executing'), done: planBlurb('done')};`)();
+    } catch (_) { planBlurbs = {}; }
   }
 
   console.log(JSON.stringify({
@@ -270,6 +281,7 @@ if (mode === 'rows') {
       status: els.status.textContent,
       title: planTitle,
       blurb: planBlurb,
+      blurbs: planBlurbs,
       visible: [strip(planHead), els.count.textContent, els.status.textContent, planBlurb]
         .filter(Boolean).join(' · '),
     },

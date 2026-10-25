@@ -3623,10 +3623,21 @@ async function _cmdTourSettings(args, ctx) {
     if (btn) btn.click();
   }
 
-  const steps = [
-    { sel: '#settings-modal .modal-content',
-      text: '<b>Settings.</b> Add a model first.',
-      placement: 'center-above' },
+  // audit-P2-onboarding. The opener and the model-setup steps depend on BOTH
+  // the viewer's permissions and what is already configured. A restricted user
+  // was shown 'Add a model first' over controls they could not use, with a
+  // model already selectable. Model endpoints and AI defaults are admin-managed,
+  // so a non-admin is never pointed at them; and the 'add a model' opener is
+  // only right when no model is configured yet.
+  const canAddModels = !!window._isAdmin;
+  let hasModels = false;
+  try { hasModels = await _hasConfiguredModels(); } catch (_) { hasModels = false; }
+  const opener = !canAddModels
+    ? '<b>Settings.</b> Your models and defaults are managed by an admin. Here is what you can change yourself.'
+    : hasModels
+      ? '<b>Settings.</b> You already have a model set up — here is the rest of what you can change.'
+      : '<b>Settings.</b> Add a model first.';
+  const modelSteps = canAddModels ? [
     { sel: '#settings-modal .settings-nav-item[data-settings-tab="services"]',
       text: '<b>Add Models</b> — a local endpoint (Ollama, vLLM, llama.cpp) or a cloud provider.',
       before: () => _clickNav('services') },
@@ -3642,6 +3653,12 @@ async function _cmdTourSettings(args, ctx) {
     { sel: '#settings-modal .admin-card:has(#set-vlModelSelect)',
       text: '<b>Vision</b> — reads the images you drop in a chat.',
       before: () => _clickNav('ai') },
+  ] : [];
+  const steps = [
+    { sel: '#settings-modal .modal-content',
+      text: opener,
+      placement: 'center-above' },
+    ...modelSteps,
     { sel: '#settings-modal .settings-nav-item[data-settings-tab="integrations"]',
       // `P23-05`: highlighted, not pressed — the entry opens the Workbench over
       // Settings, which would cover every step after it.

@@ -35,7 +35,7 @@
  */
 
 import Storage from './storage.js';
-import { CHECKLIST_SURFACES, checklistProgress, stepChipClass, PLAY_POINTS }
+import { CHECKLIST_SURFACES, checklistProgress, stepChipClass, PLAY_POINTS, planBlurb }
   from './checklist.js';
 import { chevronIcon } from './icons.js';
 
@@ -503,6 +503,9 @@ function render() {
   _els.status.textContent = STATE_TEXT[state];
   _els.status.dataset.planState = state;
   _els.hint.textContent = STATE_HINT[state];
+  // `audit-P2-draft`: the blurb follows the state too, so a draft never reads
+  // "Steps you approved".
+  if (_els.blurb) _els.blurb.textContent = planBlurb(state);
   _els.fill.style.width = total ? Math.round((done / total) * 100) + '%' : '0%';
 
   const sid = currentSessionId();

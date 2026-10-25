@@ -6127,6 +6127,20 @@ PLAN_MODE_DIRECTIVE = (
     "effect). Do not execute. Do not end with 'Done' or anything implying the work "
     "is finished. End your turn with the checklist.\n"
     "\n"
+    # `audit-P1-plan-loop`. GPT-6.1's audit found a weak local model stuck for
+    # over four minutes reconciling a request's own formatting demands (three
+    # numbered steps, an ending marker) against this checklist requirement —
+    # reasoning in circles, never emitting a plan. The cure is to make the
+    # resolution explicit so there is nothing to reconcile: the checklist format
+    # is not negotiable, and a format the request asks for becomes a STEP.
+    "IF THE REQUEST ASKS FOR A DIFFERENT OUTPUT SHAPE (a set number of items, an "
+    "ending marker, prose, a table, 'reply in format X'), THE CHECKLIST WINS — it "
+    "is how a plan is proposed here, full stop. Do NOT try to satisfy both shapes "
+    "at once, and do NOT reason back and forth about how to format: decide once "
+    "(a checklist) and write it. If the user wants the eventual WORK in a "
+    "particular shape, make producing it in that shape one of the checklist steps "
+    "— do not format the plan itself that way. One pass, then stop.\n"
+    "\n"
     # `B1345` / `D-2026-10-14-01` §3. This paragraph used to end *"Ask first,
     # then plan."* — the same ask-before-looking shape `B1327` fixed for
     # execution turns (`D-2026-10-09-01` §3: *"An agent that asks a question it

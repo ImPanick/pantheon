@@ -10,7 +10,7 @@ import logging
 import os
 import json
 from datetime import datetime
-from typing import Tuple
+from typing import Any, Tuple
 
 from src.auth_helpers import owner_filter
 from core.platform_compat import IS_WINDOWS, find_bash
@@ -3972,7 +3972,8 @@ def action_effect_sentences(action: str | None) -> list:
 def dry_run_plan(*, task_type: str | None, action: str | None,
                  prompt: str | None = None, owner: str | None = None,
                  model: str | None = None, endpoint_url: str | None = None,
-                 extra: "list | None" = None, noun: str = "task") -> list:
+                 extra: "list | None" = None, noun: str = "task",
+                 tools: "Any" = "__unset__") -> list:
     """What the real run would do, as lines. Executes nothing.
 
     `P8-33`. The whole honesty of the dry run is that this function cannot run
@@ -4040,7 +4041,16 @@ def dry_run_plan(*, task_type: str | None, action: str | None,
     else:
         # `P23-05` (COPY-U-27): one line; "It would: call a model, and whatever
         # the tools it is allowed to call then do" said it again.
-        lines.append(f"Would send this {noun}'s prompt to a model, with tools.")
+        # `audit-P2-dry-tools`. The line must reflect the step's SAVED tool
+        # policy, not always say "with tools": a step configured for no tools
+        # (`tools == []`) was contradicting its own "Prompt · No tools" label
+        # and a "Tools it may use: none" line in the same preview. `__unset__`
+        # (a task, or a step that never set tools) keeps the default wording.
+        if isinstance(tools, (list, tuple)) and len(tools) == 0:
+            lines.append(f"Would send this {noun}'s prompt to a model, with no tools — "
+                         "it only reads what it is given and writes an answer.")
+        else:
+            lines.append(f"Would send this {noun}'s prompt to a model, with tools.")
     if kind in ("llm", "research"):
         lines.append(f"Model: {model}" if model else "Model: the default.")
     for line in (extra or ()):

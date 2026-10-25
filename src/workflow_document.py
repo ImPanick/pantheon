@@ -1947,12 +1947,15 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
     if kind in STAND_IN_KINDS:
         lines = dry_run_plan(task_type=kind, action=config.get("action"),
                              prompt=config.get("prompt"), model=config.get("model"),
-                             endpoint_url=config.get("endpoint_url"), noun="step")
+                             endpoint_url=config.get("endpoint_url"), noun="step",
+                             tools=(config.get("tools") if kind == NODE_KIND_PROMPT else "__unset__"))
         if kind != NODE_KIND_ACTION and config.get("prompt") and "{{" in config["prompt"]:
             lines.append(f"Its prompt, as written: {config['prompt']}")
-        if kind == NODE_KIND_PROMPT and config.get("tools") is not None:
-            tools = ", ".join(config["tools"]) or "none"
-            lines.append(f"Tools it may use: {tools}")
+        # `audit-P2-dry-tools`. The base line above now states the no-tools /
+        # default case; name the specific tools only when there are some, so the
+        # preview never says both "with tools" and "Tools it may use: none".
+        if kind == NODE_KIND_PROMPT and config.get("tools"):
+            lines.append(f"Tools it may use: {', '.join(config['tools'])}")
         if kind == NODE_KIND_PROMPT and config.get("answer_fields"):
             names = ", ".join(f["name"] for f in config["answer_fields"])
             lines.append(f"It answers with the fields: {names}")

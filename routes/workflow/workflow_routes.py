@@ -993,7 +993,8 @@ def _node_plan(node, owner, tasks_by_id, resources=None) -> list:
         return lines + [line for line in dry_run_lines(target) if line != DRY_RUN_HEADLINE]
     return dry_run_plan(task_type=kind, action=config.get("action"), prompt=config.get("prompt"),
                         owner=owner, model=config.get("model"),
-                        endpoint_url=config.get("endpoint_url"), noun="step")
+                        endpoint_url=config.get("endpoint_url"), noun="step",
+                        tools=config.get("tools") if kind == wd.NODE_KIND_PROMPT else "__unset__")
 
 
 # What a planner's line says an effect with (`dry_run_plan`, `plan_lines`):

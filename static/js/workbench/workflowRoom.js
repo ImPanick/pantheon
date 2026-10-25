@@ -1284,6 +1284,12 @@ export function mountAutomations(host, opts = {}) {
       runList.replaceChildren(_el('li', 'wf-run-empty', `The runs could not be loaded: ${_sentence(err, 'no answer')}`));
       return;
     }
+    // `audit-P2-run-status`. What the open run said before this read, so a
+    // transition (running → success/failed) redraws the CANVAS too — the list
+    // alone updating is what left the canvas reading "Running" until the run was
+    // selected again.
+    const openWas = w.runId && (w.runs || []).find((r) => String(r.id) === w.runId);
+    const openWasStatus = openWas ? openWas.status : null;
     w.runs = Array.isArray(reply && reply.runs) ? reply.runs : [];
     drawRuns();
     shelfFromRuns(w);
@@ -1294,7 +1300,11 @@ export function mountAutomations(host, opts = {}) {
     }
     // Opened on the newest run, or the one already open.
     const keep = w.runId && w.runs.find((r) => String(r.id) === w.runId);
-    if (!keep) openRun(w.runs[0].id);
+    if (!keep) { openRun(w.runs[0].id); return; }
+    // The open run is still here; if its status moved since the last read,
+    // redraw its canvas so the overall status, the steps and the sentence agree
+    // without the person reselecting it.
+    if (keep.status !== openWasStatus) openRun(w.runId);
   }
 
   function drawRuns() {
@@ -1396,9 +1406,15 @@ export function mountAutomations(host, opts = {}) {
       if (w.failSentence) rc.say(w.failSentence);
       return;
     }
+    // `audit-P2-run-status`. A run still queued or running has NOT ended, so it
+    // must not read "This run ended: running" — a word contradicting itself. It
+    // is said as in-flight; a finished run reads "worked" or "ended: <word>".
+    const _active = RUN_ACTIVE_STATUSES.includes(run.status);
     rc.say(isDryRun(run)
       ? 'A dry run: each step says what it would have done. Nothing ran.'
-      : `This run ${runWords(run).word === 'Success' ? 'worked' : 'ended: ' + runWords(run).word.toLowerCase()}. Click a step for what it was handed and what it made.`);
+      : _active
+        ? `This run is ${runWords(run).word.toLowerCase()}. Click a step for what it was handed and what it made so far.`
+        : `This run ${runWords(run).word === 'Success' ? 'worked' : 'ended: ' + runWords(run).word.toLowerCase()}. Click a step for what it was handed and what it made.`);
   }
 
   /** What a waiting run's line says when it opens on its waiting step. */
