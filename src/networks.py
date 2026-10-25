@@ -75,11 +75,11 @@ class NetworkScopeViolation(Exception):
 class Network:
     """One named segment: what is in it, how far it is trusted."""
 
-    __slots__ = ("name", "hosts", "cidrs", "trust", "enabled", "notes")
+    __slots__ = ("name", "hosts", "cidrs", "trust", "enabled", "notes", "ids_sensitive")
 
     def __init__(self, name: str, hosts: Sequence[str] = (),
                  cidrs: Sequence[str] = (), trust: str = DEFAULT_TRUST,
-                 enabled: bool = True, notes: str = "") -> None:
+                 enabled: bool = True, notes: str = "", ids_sensitive: bool = False) -> None:
         self.name = str(name).strip()
         self.hosts = [str(h).strip().lower() for h in hosts if str(h).strip()]
         self.cidrs = []
@@ -91,6 +91,11 @@ class Network:
         self.trust = trust if trust in TRUST_LEVELS else DEFAULT_TRUST
         self.enabled = bool(enabled)
         self.notes = str(notes or "")
+        # `P16-20` / `audit-IDS`. A segment reached THROUGH a gateway/NGFW whose
+        # IDS watches cross-segment traffic. A sweep of it can trip that IDS, so
+        # the agent probes one named host in it rather than sweeping the range
+        # (`network_tools._scope_refusal`), and the scan is paced gently.
+        self.ids_sensitive = bool(ids_sensitive)
 
     def contains(self, host: str) -> bool:
         host = (host or "").strip().lower().strip("[]")
@@ -111,7 +116,8 @@ class Network:
     def as_dict(self) -> Dict[str, Any]:
         return {"name": self.name, "hosts": list(self.hosts),
                 "cidrs": [str(c) for c in self.cidrs], "trust": self.trust,
-                "enabled": self.enabled, "notes": self.notes}
+                "enabled": self.enabled, "notes": self.notes,
+                "ids_sensitive": self.ids_sensitive}
 
 
 def _raw_networks() -> List[Dict[str, Any]]:
@@ -142,6 +148,7 @@ def declared_networks(*, include_disabled: bool = False) -> List[Network]:
             trust=raw.get("trust") or DEFAULT_TRUST,
             enabled=raw.get("enabled", True),
             notes=raw.get("notes") or "",
+            ids_sensitive=bool(raw.get("ids_sensitive", False)),
         )
         if net.enabled or include_disabled:
             out.append(net)
@@ -323,6 +330,9 @@ def validate_networks(value: Any) -> List[str]:
         enabled = raw.get("enabled", True)
         if not isinstance(enabled, bool):
             problems.append(f"{where}: enabled must be true or false.")
+        ids_sensitive = raw.get("ids_sensitive", False)
+        if not isinstance(ids_sensitive, bool):
+            problems.append(f"{where}: ids_sensitive must be true or false.")
     return problems
 
 

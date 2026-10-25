@@ -104,6 +104,10 @@ function _isMobile() {
 }
 
 let _initialized = false;
+// `audit-P1-tours`. The modal the running tour is anchored to. Closing it, or
+// opening another tool over it, ends the tour so its tip and glowing outline do
+// not linger on the next destination.
+let _activeTourModalId = null;
 // Suppress re-fire if a tour is already active or another modal opens while
 // we're mid-tour. The slash command itself adds `body.tour-active` for the
 // duration of its halos.
@@ -124,6 +128,7 @@ async function _maybeFire(modal) {
   if (!tour) return;
   if (_tourActive()) {
     try { window.cancelActiveTour?.('modal-opened'); } catch (_) {}
+    _activeTourModalId = null;
     return;
   }
   // The three "wrong moment" gates. None of them marks the tour seen — a
@@ -145,6 +150,7 @@ async function _maybeFire(modal) {
     if (_tourActive()) return;
     try {
       // Not conversation: no echoed command, nothing written to the session.
+      _activeTourModalId = id;   // `audit-P1-tours`: what this tour is anchored to
       handleSlashCommand('/' + tour, { echo: false, persist: false });
     } catch (e) {
       // If firing fails we don't unmark — re-attempting on every modal open
@@ -199,6 +205,36 @@ function _watchModals() {
     }
   });
   docObserver.observe(document.body, { childList: true, subtree: false });
+
+  // `audit-P1-tours`. Any `.modal` visibility change, while a tour is running:
+  // the anchor closing, or another tool opening over it, ends the tour. This is
+  // separate from the fire path above (which only watches tour-target modals),
+  // because the destination a stale halo lands on is often NOT a tour target.
+  const cancelObserver = new MutationObserver((muts) => {
+    if (!_tourActive()) { _activeTourModalId = null; return; }
+    for (const m of muts) {
+      if (m.attributeName !== 'class' && m.attributeName !== 'style') continue;
+      const el = m.target;
+      if (!(el instanceof HTMLElement) || !el.classList.contains('modal')) continue;
+      const wasHidden = !m.oldValue || /\bhidden\b/.test(m.oldValue) || /display:\s*none/.test(m.oldValue);
+      const nowVisible = _isVisible(el);
+      // The anchor was closed.
+      if (el.id && el.id === _activeTourModalId && !nowVisible) {
+        try { window.cancelActiveTour?.('anchor-closed'); } catch (_) {}
+        _activeTourModalId = null;
+        return;
+      }
+      // Another tool opened over the running tour.
+      if (wasHidden && nowVisible && el.id !== _activeTourModalId) {
+        try { window.cancelActiveTour?.('other-modal-opened'); } catch (_) {}
+        _activeTourModalId = null;
+        return;
+      }
+    }
+  });
+  cancelObserver.observe(document.body, {
+    attributes: true, attributeOldValue: true, attributeFilter: ['class', 'style'], subtree: true,
+  });
 }
 
 // Settings → Appearance carries the "Show again" button next to the tours

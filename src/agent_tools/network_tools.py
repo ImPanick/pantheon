@@ -85,6 +85,9 @@ def parse_args(content: Any) -> Tuple[Dict[str, Any], Optional[str]]:
     for key in ("ports", "timeout_ms"):
         if raw.get(key) is not None:
             out[key] = raw[key]
+    pace = str(raw.get("pace") or "").strip().lower()
+    if pace in ("gentle", "brisk"):
+        out["pace"] = pace
     return out, None
 
 
@@ -145,6 +148,22 @@ def _scope_refusal(target: str, action: str) -> Optional[str]:
         return (f"“{net.name}” is marked untrusted, so it can be listed but not swept. "
                 "The person can raise its trust in Settings → Networks, or you can scan a "
                 "host in it with `ports`.")
+    if action == "scan" and net is not None and getattr(net, "ids_sensitive", False):
+        return (f"“{net.name}” is marked IDS-sensitive — it is reached through a gateway whose "
+                "intrusion detection watches cross-segment traffic, so sweeping the whole range can "
+                "trip it. Probe a specific host in it with `network ports {host}` (paced gently), "
+                "or the person can clear the flag in Settings → Networks.")
+    return None
+
+
+def _pace_for(target: str) -> Optional[str]:
+    """`gentle` when the target's declared network is IDS-sensitive, so even a
+    single-host probe of it is paced to stay under the IDS; else None (the
+    daemon still forces gentle for an off-link target it can see)."""
+    from src import networks as N
+    net, _allowed, _ends = _target_network(target)
+    if net is not None and getattr(net, "ids_sensitive", False):
+        return "gentle"
     return None
 
 
@@ -183,15 +202,29 @@ def interfaces_text(answer: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _link_note(answer: Dict[str, Any]) -> str:
+    """A line about whether the scan crossed the gateway, and how it was paced —
+    so the person (and the model) know an off-link sweep went gently and why."""
+    if answer.get("off_link") is True:
+        gentle = " It was paced gently to avoid tripping an IDS between segments." if answer.get("pace") == "gentle" else ""
+        return ("This target is not on one of this machine's own subnets, so it routes through your "
+                "gateway/firewall." + gentle)
+    if answer.get("pace") == "gentle" and answer.get("off_link") is not True:
+        return "Paced gently (this network is marked IDS-sensitive)."
+    return ""
+
+
 def scan_text(answer: Dict[str, Any]) -> str:
     hosts = answer.get("hosts") or []
     head = (f"Scanned {answer.get('scanned')} address"
             f"{'es' if answer.get('scanned') != 1 else ''}"
             f"{(' in ' + answer['cidr']) if answer.get('cidr') else ''}: "
             f"{answer.get('up')} answered ({answer.get('took_ms')} ms).")
+    note = _link_note(answer)
     if not hosts:
-        return head + "\nNothing answered. The hosts may be down, or the network mode may not reach them."
-    lines = [head, ""]
+        tail = "\nNothing answered. The hosts may be down, or the network mode may not reach them."
+        return head + (("\n" + note) if note else "") + tail
+    lines = [head] + ([note] if note else []) + [""]
     for h in hosts:
         openp = h.get("open") or []
         ports = ", ".join(f"{p['port']}{(' ' + p['name']) if p.get('name') else ''}" for p in openp)
@@ -210,6 +243,9 @@ def ports_text(answer: Dict[str, Any]) -> str:
                 "it may be down, or the network mode may not reach it.")
     lines = [f"{host}{via}: {len(openp)} open of {answer.get('probed')} probed "
              f"({answer.get('refused')} closed, {answer.get('filtered')} no answer, {answer.get('took_ms')} ms)."]
+    note = _link_note(answer)
+    if note:
+        lines.append(note)
     for p in openp:
         lines.append(f"- {p['port']}{(' — ' + p['name']) if p.get('name') else ''} open")
     return "\n".join(lines)
@@ -235,7 +271,11 @@ async def run_network(content: Any, *, owner: Optional[str]) -> Dict[str, Any]:
         ready = await ensure_ready(owner)
     except WorkstationError as e:
         return e.as_result()
-    fields = {k: v for k, v in args.items() if k in ("target", "host", "ports", "timeout_ms")}
+    fields = {k: v for k, v in args.items() if k in ("target", "host", "ports", "timeout_ms", "pace")}
+    if action in ("scan", "ports") and "pace" not in fields:
+        pace = _pace_for(target)
+        if pace:
+            fields["pace"] = pace
     try:
         answer = await ready.client.network(ready.account, action, **fields) or {}
     except WorkstationError as e:

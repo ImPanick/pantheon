@@ -4,11 +4,17 @@
 
 import { topPortalZ } from './toolWindowZOrder.js';
 
-window.cancelActiveTour = function cancelActiveTour() {
+window.cancelActiveTour = function cancelActiveTour(_why) {
+  // `audit-P1-tours`. End any running tour and clear everything it drew, so a
+  // tip or glowing outline never lingers over a destination the tour no longer
+  // points at. The abort hook (set by the running tour) stops its loop; the DOM
+  // sweep below is the belt-and-braces for a tour that registered no hook.
+  try { window.__tourAbort && window.__tourAbort(_why || 'cancelled'); } catch (_) {}
   document.querySelectorAll('.pantheon-highlight, .pantheon-highlight-click')
     .forEach(e => e.classList.remove('pantheon-highlight', 'pantheon-highlight-click'));
   document.querySelectorAll('.tour-halo').forEach(e => e.remove());
   document.getElementById('tour-tooltip')?.remove();
+  document.querySelectorAll('.tour-hint').forEach(e => e.remove());
   document.body?.classList.remove('tour-active');
 };
 
@@ -2225,6 +2231,7 @@ async function _cmdDemo(args, ctx) {
   let _draftObserver = null;
   let _draftPoll = null;
   const _clearTour = () => {
+    if (window.__tourAbort) { try { delete window.__tourAbort; } catch (_) { window.__tourAbort = null; } }
     document.querySelectorAll('.pantheon-highlight, .pantheon-highlight-click').forEach(e => {
       e.classList.remove('pantheon-highlight', 'pantheon-highlight-click');
     });
@@ -2306,6 +2313,18 @@ async function _cmdDemo(args, ctx) {
   document.body.appendChild(tooltip);
 
   let cancelled = false;
+  // `audit-P1-tours`. A way to end the tour from outside — when the tool it is
+  // anchored to is closed, or another tool is opened over it (`tourAutoplay.js`
+  // calls `window.cancelActiveTour`, which calls this). It flips `cancelled`
+  // and resolves the step the loop is waiting on, so the loop runs `_clearTour`
+  // and returns rather than leaving a halo over whatever is now on screen.
+  let _resolveStep = null;
+  window.__tourAbort = (why) => {
+    cancelled = true;
+    const r = _resolveStep;
+    _resolveStep = null;
+    if (r) { try { r('cancel'); } catch (_) {} }
+  };
 
   function positionTooltip(target) {
     // Remove old arrow
@@ -2416,6 +2435,7 @@ async function _cmdDemo(args, ctx) {
   function showStep(sel, text, mode = 'next', isFirst = false, stepOpts = {}) {
     return new Promise(resolve => {
       if (cancelled) return resolve('cancel');
+      _resolveStep = resolve;   // `audit-P1-tours`: so an external cancel can end this step
       document.querySelectorAll('.pantheon-highlight').forEach(e => e.classList.remove('pantheon-highlight'));
       document.querySelectorAll('.tour-halo').forEach(e => e.remove());
 
@@ -2535,6 +2555,7 @@ async function _cmdDemo(args, ctx) {
       const onModelPicked = () => { cleanup(); resolve('next'); };
 
       const cleanup = () => {
+        if (_resolveStep === resolve) _resolveStep = null;
         tooltip.removeEventListener('click', onClick);
         ['click', 'pointerdown', 'mousedown'].forEach(evt => {
           document.removeEventListener(evt, onDocClickCapture, true);

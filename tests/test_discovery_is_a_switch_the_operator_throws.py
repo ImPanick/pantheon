@@ -570,14 +570,31 @@ def test_the_ssrf_validators_still_refuse_a_private_address():
     HOST agent; it must not have moved the line for URLs arriving from content.
     The same assertion `P17-01` made, re-made because this row is the one that
     starts sending."""
+    import src.outbound_fetch as _of
     from src.outbound_fetch import _public_http_url
     from src.url_safety import check_outbound_url
 
-    for candidate in ("http://192.168.1.1/", "http://169.254.169.254/",
-                      "http://127.0.0.1:7000/", "http://224.0.0.251/",
-                      "http://239.255.255.250:1900/"):
-        assert not _public_http_url(candidate), \
-            f"the content-fetch path now accepts {candidate}"
+    # Loopback, metadata and multicast are refused whatever `agent_lan_reach`
+    # says (`P16-20`, `D-2026-10-25-02`): the LAN loosening never touches them.
+    always = ("http://169.254.169.254/", "http://127.0.0.1:7000/",
+              "http://224.0.0.251/", "http://239.255.255.250:1900/")
+    _orig = _of._lan_reach_on
+    try:
+        for on in (True, False):
+            _of._lan_reach_on = (lambda: on)
+            for candidate in always:
+                assert not _public_http_url(candidate), \
+                    f"the content-fetch path now accepts {candidate} (lan_reach={on})"
+        # The LAN itself is gated: refused with reach off, reachable with it on.
+        _of._lan_reach_on = (lambda: False)
+        assert not _public_http_url("http://192.168.1.1/")
+        _of._lan_reach_on = (lambda: True)
+        assert _public_http_url("http://192.168.1.1/")
+    finally:
+        _of._lan_reach_on = _orig
+    # The strict-lockdown door (block_private=True) is unchanged: it refuses
+    # every private address, including the LAN, regardless of the setting.
+    for candidate in ("http://192.168.1.1/",) + always:
         ok, _why = check_outbound_url(candidate, block_private=True,
                                       resolver=lambda host: [host])
         assert not ok, f"check_outbound_url now accepts {candidate}"

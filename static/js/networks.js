@@ -19,7 +19,7 @@
 
 import { invalidateSettings } from './appConfig.js';
 
-const _EMPTY = { name: '', cidrs: '', hosts: '', trust: 'limited', enabled: true };
+const _EMPTY = { name: '', cidrs: '', hosts: '', trust: 'limited', enabled: true, ids_sensitive: false };
 
 let _rows = [];
 let _loaded = false;
@@ -35,6 +35,7 @@ function toValue() {
     hosts: split(r.hosts).map((h) => h.toLowerCase()),
     trust: r.trust || 'limited',
     enabled: r.enabled !== false,
+    ids_sensitive: r.ids_sensitive === true,
   }));
 }
 
@@ -45,6 +46,7 @@ function fromValue(list) {
     hosts: Array.isArray(n && n.hosts) ? n.hosts.join(' ') : '',
     trust: (n && n.trust) || 'limited',
     enabled: !(n && n.enabled === false),
+    ids_sensitive: !!(n && n.ids_sensitive),
   }));
 }
 
@@ -125,6 +127,28 @@ function rowEl(row, i) {
   sw.append(cb, slider);
   onCell.append(onCap, sw);
   wrap.appendChild(onCell);
+
+  // `audit-IDS`. Reached through a gateway whose IDS watches cross-segment
+  // traffic: the agent probes one host in it instead of sweeping, and paces
+  // gently. The person marks the segment that sits behind their NGFW.
+  const idsCell = document.createElement('label');
+  idsCell.className = 'networks-cell networks-cell-switch';
+  idsCell.style.flex = '0 0 auto';
+  const idsCap = document.createElement('span');
+  idsCap.className = 'networks-cell-label';
+  idsCap.textContent = 'IDS-sensitive';
+  idsCap.title = 'Reached through a gateway/firewall with an IDS. The agent won\u2019t sweep it \u2014 only probe named hosts, gently.';
+  const idsSw = document.createElement('label');
+  idsSw.className = 'admin-switch';
+  const idsCb = document.createElement('input');
+  idsCb.type = 'checkbox';
+  idsCb.checked = row.ids_sensitive === true;
+  idsCb.addEventListener('change', () => { row.ids_sensitive = idsCb.checked; });
+  const idsSlider = document.createElement('span');
+  idsSlider.className = 'admin-slider';
+  idsSw.append(idsCb, idsSlider);
+  idsCell.append(idsCap, idsSw);
+  wrap.appendChild(idsCell);
 
   const del = document.createElement('button');
   del.type = 'button';

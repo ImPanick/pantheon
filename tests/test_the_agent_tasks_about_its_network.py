@@ -179,3 +179,45 @@ def test_the_tool_is_wired_through_every_surface():
     assert any(s["function"]["name"] == "network" for s in FUNCTION_TOOL_SCHEMAS)
     assert "network" in BUILTIN_TOOL_DESCRIPTIONS and "network" in loop.TOOL_SECTIONS
     assert set(_ACTION_CAPABILITIES["network"]) == {"list", "scan", "ports"}
+
+
+# ── IDS-aware scanning: off-link / gateway / sensitive networks ──────────────
+
+def test_an_off_link_target_is_paced_gently_and_said_so():
+    """`audit-IDS`. A target not on one of this machine's subnets routes through
+    the gateway, where an IDS between segments sits — so the sweep goes gently
+    and the output says it crossed the gateway."""
+    import ipaddress
+    # Pretend this machine is on 192.168.50.0/24 only.
+    conn = [ipaddress.ip_network("192.168.50.0/24")]
+    on = NS._link_of("192.168.50.0/30", [ipaddress.ip_address("192.168.50.1")]) if False else None
+    # on-link vs off-link, with a known connected set
+    assert NS._on_link(ipaddress.ip_address("192.168.50.9"), conn) is True
+    assert NS._on_link(ipaddress.ip_address("10.9.9.9"), conn) is False
+    # the pace selector: off-link forces gentle; caller can force it too
+    assert NS._pace_of({}, {"off_link": True}) == "gentle"
+    assert NS._pace_of({}, {"off_link": False}) == "brisk"
+    assert NS._pace_of({"pace": "gentle"}, {"off_link": False}) == "gentle"
+    # the tool's note names the gateway crossing
+    note = NT._link_note({"off_link": True, "pace": "gentle"})
+    assert "routes through your gateway" in note and "IDS" in note
+
+
+def test_an_ids_sensitive_network_is_probe_one_host_not_a_sweep(monkeypatch):
+    _declare(monkeypatch, [{"name": "biz", "cidrs": ["10.20.0.0/24"], "trust": "trusted",
+                            "ids_sensitive": True}])
+    # A sweep of it is refused with a sentence naming the IDS; a single-host
+    # probe is allowed, and paced gently.
+    refusal = NT._scope_refusal("10.20.0.0/24", "scan")
+    assert refusal and "IDS-sensitive" in refusal and "ports" in refusal
+    assert NT._scope_refusal("10.20.0.5", "ports") is None
+    assert NT._pace_for("10.20.0.5") == "gentle"
+
+
+def test_the_network_declaration_carries_ids_sensitive():
+    from src import networks as N
+    net = N.Network(name="opt1", cidrs=["10.20.0.0/24"], trust="trusted", ids_sensitive=True)
+    assert net.ids_sensitive is True and net.as_dict()["ids_sensitive"] is True
+    # validate refuses a non-bool flag
+    bad = N.validate_networks([{"name": "x", "cidrs": ["10.0.0.0/24"], "ids_sensitive": "yes"}])
+    assert any("ids_sensitive must be true or false" in p for p in bad)

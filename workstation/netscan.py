@@ -73,11 +73,17 @@ PORT_NAMES: Dict[int, str] = {
 }
 
 _CONNECT_TIMEOUT_S = 0.6
-_MAX_WORKERS = 64
-# A breather between batches, so a sweep is gentle on a small network rather
-# than a burst of a thousand connections at once.
-_BATCH = 256
-_BATCH_PAUSE_S = 0.05
+# Two pacing profiles. `brisk` is the default for a directly-connected (on-link)
+# subnet — the traffic stays on the local segment. `gentle` is for a segment
+# reached THROUGH a gateway/NGFW (off-link, or a network the person marked
+# IDS-sensitive): a small number of connections at a time with a real pause
+# between batches, so a sweep does not arrive as the burst an IDS flags. This
+# is about not setting off the operator's OWN monitoring on their OWN network —
+# there is nothing to hide from, only a tripwire to step around (`audit-IDS`).
+_PACING = {
+    "brisk":  {"workers": 64, "batch": 256, "pause": 0.05},
+    "gentle": {"workers": 6,  "batch": 24,  "pause": 0.6},
+}
 
 
 def _is_ip(text: str) -> Optional[ipaddress._BaseAddress]:
@@ -213,20 +219,52 @@ def _clean_ports(raw: Any, default: Sequence[int]) -> List[int]:
     return out
 
 
-def _sweep(pairs: Sequence[Tuple[str, int]], timeout: float) -> Dict[Tuple[str, int], str]:
-    """Probe every (address, port), a batch at a time with a breather between,
-    so the burst stays small on a little network."""
+def _sweep(pairs: Sequence[Tuple[str, int]], timeout: float,
+           pace: str = "brisk") -> Dict[Tuple[str, int], str]:
+    """Probe every (address, port), a batch at a time with a breather between.
+    `pace` picks how large each burst is and how long the breather — `gentle`
+    for anything reached through a gateway, so an IDS is not tripped."""
+    prof = _PACING.get(pace, _PACING["brisk"])
     result: Dict[Tuple[str, int], str] = {}
-    workers = min(_MAX_WORKERS, max(1, len(pairs)))
+    workers = min(prof["workers"], max(1, len(pairs)))
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-        for start in range(0, len(pairs), _BATCH):
-            batch = pairs[start:start + _BATCH]
+        for start in range(0, len(pairs), prof["batch"]):
+            batch = pairs[start:start + prof["batch"]]
             futures = {pool.submit(_probe, a, p, timeout): (a, p) for a, p in batch}
             for fut in concurrent.futures.as_completed(futures):
                 result[futures[fut]] = fut.result()
-            if start + _BATCH < len(pairs):
-                time.sleep(_BATCH_PAUSE_S)
+            if start + prof["batch"] < len(pairs):
+                time.sleep(prof["pause"])
     return result
+
+
+def _connected_networks() -> List[ipaddress._BaseNetwork]:
+    """The subnets this machine is directly on — what a scan of them stays L2,
+    not crossing the gateway. Empty when `ip` is missing (then every target
+    reads as off-link, the cautious answer)."""
+    nets: List[ipaddress._BaseNetwork] = []
+    for iface in interfaces():
+        for a in iface.get("addresses") or []:
+            try:
+                nets.append(ipaddress.ip_network(a["cidr"], strict=False))
+            except (ValueError, KeyError):
+                continue
+    return nets
+
+
+def _on_link(addr: ipaddress._BaseAddress, connected: Sequence[ipaddress._BaseNetwork]) -> bool:
+    return any(addr.version == n.version and addr in n for n in connected)
+
+
+def _link_of(target: str, addrs: Sequence[ipaddress._BaseAddress]) -> Dict[str, Any]:
+    """Whether a scan target is on this machine's own segment (`on_link`) or
+    reached through the gateway (`off_link`). An off-link sweep is the one an
+    IDS between segments watches."""
+    connected = _connected_networks()
+    if not connected:
+        return {"on_link": None, "off_link": None}   # cannot tell without `ip`
+    on = all(_on_link(a, connected) for a in addrs)
+    return {"on_link": on, "off_link": not on}
 
 
 def scan(body: Dict[str, Any]) -> Dict[str, Any]:
@@ -235,9 +273,11 @@ def scan(body: Dict[str, Any]) -> Dict[str, Any]:
     addrs, cidr = _addresses_of(str(body.get("target") or body.get("range") or body.get("host") or ""))
     ports = _clean_ports(body.get("ports"), DISCOVERY_PORTS)
     timeout = _timeout(body)
+    link = _link_of(cidr or str(addrs[0]), addrs)
+    pace = _pace_of(body, link)
     pairs = [(str(a), p) for a in addrs for p in ports]
     started = time.monotonic()
-    probed = _sweep(pairs, timeout)
+    probed = _sweep(pairs, timeout, pace)
     hosts = []
     for a in addrs:
         s = str(a)
@@ -247,7 +287,7 @@ def scan(body: Dict[str, Any]) -> Dict[str, Any]:
         if up:
             hosts.append({"ip": s, "open": [{"port": p, "name": PORT_NAMES.get(p, "")} for p in openp]})
     return {"ok": True, "action": "scan", "cidr": cidr, "scanned": len(addrs),
-            "ports_each": ports, "up": len(hosts), "hosts": hosts,
+            "ports_each": ports, "up": len(hosts), "hosts": hosts, "pace": pace, **link,
             "took_ms": int((time.monotonic() - started) * 1000)}
 
 
@@ -263,8 +303,10 @@ def ports(body: Dict[str, Any]) -> Dict[str, Any]:
     wide = tuple(sorted(set(DISCOVERY_PORTS) | set(PORT_NAMES)))
     want = _clean_ports(body.get("ports"), wide)
     timeout = _timeout(body)
+    link = _link_of(addr, addrs[:1])
+    pace = _pace_of(body, link)
     started = time.monotonic()
-    states = _sweep([(addr, p) for p in want], timeout)
+    states = _sweep([(addr, p) for p in want], timeout, pace)
     openp, refused, filtered = [], 0, 0
     for p in want:
         st = states[(addr, p)]
@@ -276,8 +318,21 @@ def ports(body: Dict[str, Any]) -> Dict[str, Any]:
             filtered += 1
     return {"ok": True, "action": "ports", "host": addr, "resolved_from": target if target != addr else None,
             "probed": len(want), "open": openp, "refused": refused, "filtered": filtered,
-            "reachable": bool(openp) or refused > 0,
+            "reachable": bool(openp) or refused > 0, "pace": pace, **link,
             "took_ms": int((time.monotonic() - started) * 1000)}
+
+
+def _pace_of(body: Dict[str, Any], link: Dict[str, Any]) -> str:
+    """`gentle` when the caller asks, or when the target is off-link (through
+    the gateway) — which is where an IDS between segments sits. On-link stays
+    `brisk`. When the link cannot be told (no `ip`), the caller's choice wins,
+    defaulting brisk."""
+    asked = str(body.get("pace") or "").strip().lower()
+    if asked == "gentle":
+        return "gentle"
+    if link.get("off_link") is True:
+        return "gentle"
+    return "brisk"
 
 
 def _timeout(body: Dict[str, Any]) -> float:
