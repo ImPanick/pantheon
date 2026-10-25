@@ -32,7 +32,7 @@ export const STARTS = Object.freeze([
 /** The message a brief becomes: what to make, for whom, showing what, in
  *  which design system — and where its files go, so the agent works in the
  *  project, not in the chat. */
-export function briefMessage(start, answers, system) {
+export function briefMessage(start, answers, system, folder) {
   const a = answers || {};
   const lines = [`Design ${start.makes}.`];
   if (a.who) lines.push(`Who it is for: ${a.who}`);
@@ -48,7 +48,14 @@ export function briefMessage(start, answers, system) {
       + `${system.tokens && system.tokens.voice ? `; voice: ${String(system.tokens.voice).replace(/[.\s]+$/, '')}` : ''}.`);
   }
   lines.push('');
-  lines.push('Make it as files in the workspace, in its own folder under design/, and say which file to open.');
+  if (folder) {
+    lines.push(`Write it in ${folder}/ in the workspace: the page is ${folder}/index.html, self-contained `
+      + '(its CSS in a <style>, any script inline or beside it), with its colours, sizes and spacing as :root '
+      + `CSS variables so they can be tweaked. Leave ${folder}/design.json and brief.md as they are. `
+      + 'Say when the page is there.');
+  } else {
+    lines.push('Make it as files in the workspace, in its own folder under design/, and say which file to open.');
+  }
   return lines.join('\n');
 }
 

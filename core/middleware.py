@@ -164,6 +164,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         is_document_pdf_preview = path.startswith("/api/document/") and path.endswith("/render-pdf")
         # Visual report pages are self-contained HTML — need inline scripts + external images
         is_report = path.startswith("/api/research/report/")
+        # `P26-07`. A design's page, framed by the Design window: its own
+        # scripts and the picker run, in an opaque origin, reaching nothing.
+        is_design_preview = path.startswith("/api/design/designs/") and path.endswith("/preview")
         # Served-back uploads: `GET /api/upload/{file_id}` (and `?thumb=1`),
         # plus the sibling stats/cleanup/vision routes. Matched on the same
         # `path` form as the three above; see the NOTE on prefix deployments
@@ -196,6 +199,25 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "img-src 'self' data: blob:; "
                 "connect-src 'self'; "
                 "frame-ancestors 'none'"
+            )
+        elif is_design_preview:
+            # A page the agent (or a hand) wrote, run as a design runs. The
+            # sandbox makes it an opaque origin — no cookie, no storage, no
+            # reach into this app or its window — and `default-src 'none'`
+            # means it fetches nothing at all: its stylesheets, scripts and
+            # small images arrive inlined (`design_files.bundle`), so a design
+            # that names a remote font or script shows without it (`Law 16`).
+            # Framed only by this app's own pages.
+            response.headers["X-Frame-Options"] = "SAMEORIGIN"
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'none'; "
+                "script-src 'unsafe-inline'; "
+                "style-src 'unsafe-inline'; "
+                "img-src data: blob:; "
+                "font-src data:; "
+                "media-src data: blob:; "
+                "sandbox allow-scripts; "
+                "frame-ancestors 'self'"
             )
         elif is_tool_render:
             # Skip framing headers for tools.

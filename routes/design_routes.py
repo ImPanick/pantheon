@@ -8,6 +8,20 @@
     PUT    /api/design/systems/{id}       the same fields, any of them
     DELETE /api/design/systems/{id}
 
+`P26-06` / `P26-07` · designs, as files in the project (`src/design_files.py`):
+
+    GET    /api/design/designs?project=                     the project's designs
+    POST   /api/design/designs                              {project, name, kind, brief?, system?} → its folder
+    GET    /api/design/designs/{slug}?project=&version=&variant=
+                                                            facts, versions, variants, a page to preview
+    GET    /api/design/designs/{slug}/preview?project=&version=&variant=
+                                                            that page as its own sandboxed document, for the frame
+    POST   /api/design/designs/{slug}/versions              {project, note?} keep the present as a version
+    POST   /api/design/designs/{slug}/restore               {project, version}
+    POST   /api/design/designs/{slug}/keep                  {project, variant}
+    POST   /api/design/designs/{slug}/adjust                {project, selector, props} — the canvas
+    POST   /api/design/designs/{slug}/tweaks                {project} → sliders for this design
+
 Everything is the caller's own (`src/design_systems.py`): there is no route to
 another person's systems — collaborators are `P26-09`'s. Every refusal is
 `{detail: "<sentence>"}` (`Law 15`); a contrast pair below AA is `422` with
@@ -21,7 +35,7 @@ import json
 from typing import Any, Dict
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from core.database import SessionLocal
 from src.auth_helpers import get_current_user, request_is_a_person
@@ -115,7 +129,99 @@ def setup_design_routes() -> APIRouter:
         finally:
             db.close()
 
+    # ── designs, as files (`P26-06` / `P26-07`) ─────────────────────────────
+
+    async def _design(request: Request, fn, *, person: bool = True):
+        from src import design_files as F
+        if person and not request_is_a_person(request):
+            return _refused(ONLY_A_PERSON, 403)
+        try:
+            body = await _body(request) if request.method != "GET" else {}
+        except ValueError as e:
+            return _refused(str(e))
+        try:
+            return await fn(F, get_current_user(request), body)
+        except F.DesignFileRefused as r:
+            return _refused(r.sentence, r.status)
+
+    @router.get("/designs")
+    async def my_designs(request: Request, project: str = ""):
+        async def go(F, user, _b):
+            return {"designs": await F.listing(user, project)}
+        return await _design(request, go, person=False)
+
+    @router.post("/designs")
+    async def new_design(request: Request):
+        async def go(F, user, b):
+            return await F.create(user, str(b.get("project") or ""), b)
+        return await _design(request, go)
+
+    @router.get("/designs/{slug}")
+    async def one_design(slug: str, request: Request, project: str = "", version: int = 0, variant: str = ""):
+        async def go(F, user, _b):
+            return await F.opened(user, project, slug, version=version or None, variant=variant or None)
+        return await _design(request, go, person=False)
+
+    @router.get("/designs/{slug}/preview")
+    async def preview(slug: str, request: Request, project: str = "", version: int = 0, variant: str = ""):
+        # Its policy — `sandbox allow-scripts`, nothing fetched — is set by
+        # `core/middleware.py` (`is_design_preview`); see `design_files.preview`.
+        async def go(F, user, _b):
+            html = await F.preview(user, project, slug, version=version or None, variant=variant or None)
+            return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+        return await _design(request, go, person=False)
+
+    @router.post("/designs/{slug}/versions")
+    async def keep_version(slug: str, request: Request):
+        async def go(F, user, b):
+            return await F.save_version(user, str(b.get("project") or ""), slug, str(b.get("note") or ""))
+        return await _design(request, go)
+
+    @router.post("/designs/{slug}/restore")
+    async def restore_version(slug: str, request: Request):
+        async def go(F, user, b):
+            v = b.get("version")
+            if isinstance(v, bool) or not isinstance(v, int):
+                raise F.DesignFileRefused("“version” is a version's number.")
+            return await F.restore(user, str(b.get("project") or ""), slug, v)
+        return await _design(request, go)
+
+    @router.post("/designs/{slug}/keep")
+    async def keep_variant(slug: str, request: Request):
+        async def go(F, user, b):
+            return await F.keep_variant(user, str(b.get("project") or ""), slug, str(b.get("variant") or ""))
+        return await _design(request, go)
+
+    @router.post("/designs/{slug}/adjust")
+    async def adjust(slug: str, request: Request):
+        async def go(F, user, b):
+            return await F.adjust(user, str(b.get("project") or ""), slug, b.get("selector"), b.get("props"),
+                                  tokens_css=_tokens_css(user, b.get("system")))
+        return await _design(request, go)
+
+    @router.post("/designs/{slug}/tweaks")
+    async def tweaks(slug: str, request: Request):
+        async def go(F, user, b):
+            return await F.suggest_tweaks(user, str(b.get("project") or ""), slug)
+        return await _design(request, go)
+
     return router
+
+
+def _tokens_css(user, system_id) -> str:
+    """The design system's tokens as `:root` properties, so an adjustment to
+    `var(--color-ink)` resolves inside the page itself."""
+    if not system_id:
+        return ""
+    from core.database import DesignSystem
+    from src import design_systems as D
+    db = SessionLocal()
+    try:
+        row = (db.query(DesignSystem)
+               .filter(DesignSystem.account == D.account(user), DesignSystem.id == str(system_id)).first())
+        return D.as_css(json.loads(row.tokens)) if row else ""
+    finally:
+        db.close()
 
 
 __all__ = ["setup_design_routes"]

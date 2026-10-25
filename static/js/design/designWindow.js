@@ -18,6 +18,7 @@ import * as Modals from '../modalManager.js?v=20261009census';
 import { makeWindowDraggable } from '../windowDrag.js';
 import workspaceModule from '../workspace.js';
 import { STARTS, briefMessage } from './starts.js';
+import { renderDesign } from './designView.js';
 
 export const MODAL_ID = 'design-modal';
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -31,6 +32,9 @@ let _win = null;
 let _view = { kind: 'home' };
 let _systems = [];
 let _roles = [];
+let _designs = [];          // `P26-06`: the project's designs
+let _designsNote = '';
+let _leave = [];            // what a design's view undoes when it is left
 
 function _el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -97,6 +101,15 @@ function _projectName() {
   return p ? p.replace(/\/+$/, '').split('/').pop() : '';
 }
 
+async function _loadDesigns() {
+  _designs = [];
+  _designsNote = '';
+  if (!_project()) { _designsNote = 'Pick a workspace to see its designs.'; return; }
+  const r = await _call('GET', `/api/design/designs?project=${encodeURIComponent(_project())}`);
+  if (r.ok) _designs = r.data.designs || [];
+  else _designsNote = r.sentence;
+}
+
 async function _loadSystems() {
   const q = _project() ? `?project=${encodeURIComponent(_project())}` : '';
   const r = await _call('GET', `/api/design/systems${q}`);
@@ -135,6 +148,21 @@ function _renderHome() {
     grid.appendChild(card);
   });
   body.appendChild(grid);
+
+  // `P26-06`. The project's designs: files in its design/ folder.
+  body.appendChild(_el('h3', 'design-section-title', `Designs${_projectName() ? ` in ${_projectName()}` : ''}`));
+  if (_designsNote) body.appendChild(_el('p', 'design-section-sub', _designsNote));
+  else if (!_designs.length) body.appendChild(_el('p', 'design-empty', 'No designs here yet. Pick a starting point above.'));
+  const dl = _el('div', 'design-systems design-designs');
+  _designs.forEach((d) => {
+    const kind = STARTS.find((s) => s.id === d.kind);
+    const card = _btn('design-system-card design-design-card', '', () => { _say(''); _view = { kind: 'design', slug: d.slug }; _render(); }, `Open ${d.name}`);
+    card.appendChild(_el('span', 'design-system-name', d.name));
+    card.appendChild(_el('span', 'design-chip', kind ? kind.label : (d.kind || 'design')));
+    if (!d.has_page) card.appendChild(_el('span', 'design-section-sub', 'no page yet'));
+    dl.appendChild(card);
+  });
+  body.appendChild(dl);
 
   const head = _el('div', 'design-section-head');
   head.appendChild(_el('h3', 'design-section-title', 'Design systems'));
@@ -192,6 +220,8 @@ function _renderBrief(startId) {
   body.appendChild(_el('h2', 'design-page-title', start.label));
   body.appendChild(_el('p', 'design-section-sub', `${start.hint}. A short brief, then the agent makes it in your workspace.`));
   const form = _el('form', 'design-brief');
+  const nameIn = _input(`A name, such as “${start.label} for the shop”`);
+  form.appendChild(_field('Name', nameIn));
   const who = _input('Who will read or use it?');
   const what = _input('What it shows — the sections, screens or story', true);
   form.appendChild(_field('Who it is for', who));
@@ -209,16 +239,28 @@ function _renderBrief(startId) {
   const go = _el('button', 'design-btn design-btn-primary', 'Start designing');
   go.type = 'submit';
   form.appendChild(go);
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const answers = { who: who.value.trim(), what: what.value.trim() };
     Object.entries(extra).forEach(([k, i]) => { answers[k] = i.value.trim(); });
     if (!answers.what) { _say('Say what it shows — a sentence is enough.', { error: true }); what.focus(); return; }
     const system = _systems.find((s) => s.id === sys.value) || null;
-    if (_sendToChat(briefMessage(start, answers, system))) {
-      _say(`Sent to the chat. The agent makes the ${start.label.toLowerCase()} in ${_projectName() || 'your workspace'}.`);
-      _view = { kind: 'home' };
-      _render();
+    // `P26-06`. With a workspace, the design is a folder first — design.json
+    // and the brief — so the agent writes into it and the window can open it.
+    let folder = null;
+    let slug = null;
+    if (_project()) {
+      const name = nameIn.value.trim() || answers.what.split(/\s+/).slice(0, 6).join(' ');
+      const brief = briefMessage(start, answers, system);
+      const r = await _call('POST', '/api/design/designs', { project: _project(), name, kind: start.id, brief, system: system ? system.id : null });
+      if (!r.ok) { _say(r.sentence, { error: true }); return; }
+      folder = r.data.folder;
+      slug = r.data.slug;
+    }
+    if (_sendToChat(briefMessage(start, answers, system, folder))) {
+      _say(`Sent to the chat. The agent makes the ${start.label.toLowerCase()}${folder ? ` in ${folder}/` : ` in ${_projectName() || 'your workspace'}`}.`);
+      _view = slug ? { kind: 'design', slug } : { kind: 'home' };
+      await _refresh();
     }
   });
   body.appendChild(form);
@@ -473,8 +515,18 @@ function _build() {
 
 function _render() {
   if (!_win) return;
+  _leave.splice(0).forEach((f) => { try { f(); } catch (_) { /* a listener already gone */ } });
   _win.where.textContent = _projectName();
   _win.body.textContent = '';
+  if (_view.kind === 'design') {
+    renderDesign({
+      body: _win.body, slug: _view.slug, project: _project(), systems: _systems,
+      say: _say, call: _call, sendToChat: _sendToChat,
+      back: () => { _say(''); _view = { kind: 'home' }; _refresh(); },
+      onLeave: (f) => _leave.push(f),
+    });
+    return;
+  }
   if (_view.kind === 'brief') _renderBrief(_view.start);
   else if (_view.kind === 'system') _renderSystem(_view.id);
   else _renderHome();
@@ -482,6 +534,7 @@ function _render() {
 
 function _teardown() {
   if (!_win) return;
+  _leave.splice(0).forEach((f) => { try { f(); } catch (_) { /* a listener already gone */ } });
   const m = _win.modal;
   _win = null;
   _view = { kind: 'home' };
@@ -489,7 +542,7 @@ function _teardown() {
 }
 
 async function _refresh() {
-  await _loadSystems();
+  await Promise.all([_loadSystems(), _view.kind === 'home' ? _loadDesigns() : Promise.resolve()]);
   _render();
 }
 
@@ -511,8 +564,7 @@ export async function openDesign({ start, system } = {}) {
     });
   }
   _view = start ? { kind: 'brief', start } : (system === 'new' ? { kind: 'system' } : { kind: 'home' });
-  await _loadSystems();
-  _render();
+  await _refresh();
   return true;
 }
 

@@ -86,10 +86,10 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P23 | Alignment — the audits, fixed | 9 | 0 | 0 | **9** |
 | P24 | Agents — the hall of hireable agents | 27 | 8 | 0 | **19** |
 | P25 | The + menu, git per account, the agent browser | 10 | 1 | 0 | **9** |
-| P26 | Design — the studio, and notes on the live page | 10 | 5 | 0 | **5** |
+| P26 | Design — the studio, and notes on the live page | 10 | 3 | 0 | **7** |
 | P27 | Connections — the hub and the private vault | 11 | 3 | 0 | **8** |
 | Backlog | Bugs and hardening found in flight | 1015 | 350 | 0 | **663** |
-| **Total** | | **1504** | **392** | **5** | **1105** |
+| **Total** | | **1504** | **390** | **5** | **1107** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -251,6 +251,10 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### P26-06, P26-07: a design is files, with versions and variants; the canvas
+`ae3a838`…`HEAD`. **1504 tracked, 1107 done. `P26-06` and `P26-07` closed.**
+A brief now makes a design folder first and opens it; the window previews its page as its own sandboxed document, keeps every change as a version, shows variants side by side to keep one, and lets the person select an element and adjust it or move the page's own variables — each an edit to the file.
 
 ### P27-04, P26-04, P26-05: a name only your network knows; the Design window and design systems
 `9109d7c`…`HEAD`. **1504 tracked, 1105 done. `P27-04`, `P26-04` and `P26-05` closed.**
@@ -11403,16 +11407,18 @@ layer after it; `P26-08`'s branch-and-preview is the seam it will build on, and 
   (`design/systems/<name>.tokens.json`), so the agent reads the same thing the person edited, and every design names
   the system it uses. `Verify:` an extracted system round-trips; a contrast pair below AA is flagged, not saved silently.
   — **done 2026-10-24** — `src/design_systems.py`, `routes/design_routes.py` (five routes), `DesignSystem`. A name, *Project* or *Personal*; paste, or upload CSS/JSON/text or a PDF, PPTX or DOCX (read through the library's own extractors); the model answers one tokens object — palette with roles, type families and scale, spacing, radii, a sentence of voice — checked (hex only, bounds, roles) with one repair round, and shown as colour pickers, hex fields, names and roles to correct, with a live preview card in those tokens. Every text-on-background pair under 4.5:1 is said by name and ratio and saved only after *Save anyway*, and stays flagged on its card. A *Project* system is written to `design/systems/<slug>.tokens.json` in the workspace (the workstation's, or this machine's for a person whose tools run here) and the brief names that file. **Not built:** reading an image's colours (refused in a sentence: no reader here does it yet), and reading the project's own stylesheets or a URL directly — paste or upload them. `Verify:` the same file (10: cleaning, contrast, the file written into a real project folder, extraction reading a CSS upload with the material labelled as information, the routes as the caller's own); driven in Chromium: a system extracted, corrected and saved.
-- [ ] **P26-06** **A design is files, with versions and variants.** `design/<slug>/` in the project: the page(s), a
+- [x] **P26-06** **A design is files, with versions and variants.** `design/<slug>/` in the project: the page(s), a
   brief, the system it uses, its notes. Every model or hand change is a version the person can step back to; *Try
   variants* asks for 2–4 side by side, one is kept and the rest become versions. Previewed by the person's own
   workstation, never by the server's process (`P20`'s rule). `Verify:` restore an earlier version; variants never
   overwrite one another.
-- [ ] **P26-07** **The canvas: select, adjust, tweak.** Select an element in a design: a panel for what it is (type for
+  — **done 2026-10-25** — `src/design_files.py`, six routes in `routes/design_routes.py`, `static/js/design/designView.js`. *Start designing* first makes `design/<slug>/` (`design.json`, `brief.md`; a taken name gets `-2`) in the workspace — the workstation's, or this machine's for a person whose tools run here — then sends the brief naming that folder and opens the design. Opening it keeps any change since the last version as a version (*Changed in the files (the agent, or a hand)*), so a model's or a hand's edit is always one step back; *Step back to this* keeps the present first and says which files it left alone. *Try variants* asks the agent for `variants/1..k/`; they show side by side, *Keep this* makes one the page and every other a version, then clears `variants/`. The page is bundled (local CSS, JS and images up to 1 MB inlined, 10 MB in all) and served at `…/designs/{slug}/preview` as its own document with `sandbox allow-scripts` and `default-src 'none'` (`core/middleware.py`, `is_design_preview`): it runs in the person's browser, in an opaque origin, fetching nothing — the server's process reads the files and never runs them. A `srcdoc` frame was the first try and ran nothing, because it inherits the app's CSP. `Verify:` `tests/test_a_design_is_files_with_versions.py` (15: making, versions and a restore that keeps the present, variants kept and cleared, the bundle, the preview's own policy, the routes as the caller's own with writes a person's); driven in Chromium at 1440×900: brief → folder → the agent's page → version 1, two variants side by side, one kept, the other a version.
+- [x] **P26-07** **The canvas: select, adjust, tweak.** Select an element in a design: a panel for what it is (type for
   text, spacing and alignment for a container, fill and radius for a box) that writes to the design's file — tokens
   first, a literal value only when the person picks one. *Tweaks*: the model proposes a few sliders and switches bound
   to the design's own variables (density, corner, accent strength) that change it live without a new generation.
   `Verify:` an adjustment edits the file, not only the view; a tweak is undoable.
+  — **done 2026-10-25** — *Select* outlines what is under the pointer in the preview and a click posts the element's path from `<body>` and its computed styles (the picker, `design_files.PICKER`; the window believes only its own frame). The panel offers type for text, spacing and alignment for a container, fill and radius for a box — the design system's tokens first (`var(--color-…)`, `--text-n`, `--space-n`, `--radius-n`), a literal only when picked. *Apply* writes one `<style data-pantheon-edits>` block in `index.html` (a whitelist of properties, a selector grammar of tags and `:nth-of-type`, values checked), with the system's tokens alongside, and keeps it as a version. *Tweaks* are the page's own `:root` variables — lengths and numbers as sliders, hex colours as swatches — chosen by the model when there are more than five; a move shows live in the frame and is written, debounced, as a version, so *Undo the last change* steps it back. `Verify:` the same file (an adjustment in the file and the edits read back, a refused value, tweaks from the page's variables including a last one with no `;`); driven: the h1 selected, colour and centring applied and in the file, a gap slider moved — versions 2 and 3.
 - [ ] **P26-08** **Hand off to a branch.** *Build it* turns a design into work on the project: a branch
   `design/<slug>`, a brief the agent follows (screens, tokens, notes, acceptance), the agent's changes made there with
   the git tools (`P25-03`) and previewed in the browser before anything is merged; merging asks the person. The seam
