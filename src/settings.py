@@ -826,6 +826,12 @@ DEFAULT_SETTINGS = {
     "reminder_llm_persona": "",
     "reminder_ntfy_topic": "Reminders",
     "reminder_email_to": "",
+    # `B1461`. Which email account reminders are sent FROM, when there are
+    # several (Settings → Reminders → *Send from*). Empty: the default account.
+    # The picker saved this from the day it was drawn, and the save loop keeps
+    # only keys named here — so the choice was dropped with a 200 and every
+    # reminder went from the default account.
+    "reminder_email_account_id": "",
     # Generic outbound webhook channel: pick any saved Integration as the
     # target and supply a JSON payload template. Use {{title}} and {{message}}
     # as placeholders — they are JSON-escaped before substitution, so the
@@ -1772,8 +1778,12 @@ def resolve_limit_detail(key: str, default: int, *,
 # model + image-generation model. The owner argument is the authed username
 # resolved by FastAPI deps; an empty/None owner falls through to the global.
 _PER_USER_KEYS = {
-    "vision_model", "vision_enabled", "vision_model_fallbacks",
-    "image_model", "image_gen_enabled", "image_quality",
+    # `B1465`. `vision_model`, `vision_enabled`, `image_model`,
+    # `image_gen_enabled` and `image_quality` were listed here too, and every
+    # reader of them asks `get_setting` — the global value — so a per-user copy
+    # could never take effect; nothing wrote one either. The vision fallback
+    # chain IS resolved per person (`endpoint_resolver._resolve_fallback_candidates`).
+    "vision_model_fallbacks",
     # Default chat endpoint / model — without per-user resolution every new
     # account inherited whatever the most-recent admin picked, which then
     # got injected into the chat composer on first open.

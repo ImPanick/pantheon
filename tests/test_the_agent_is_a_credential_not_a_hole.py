@@ -253,7 +253,7 @@ def test_the_ssrf_validators_are_untouched(monkeypatch):
     # The LAN is gated, not floored.
     monkeypatch.setattr(of, "_lan_reach_on", lambda: False)
     assert not _public_http_url("http://192.168.1.1/") and not _public_http_url("http://10.0.0.1/")
-    monkeypatch.setattr(of, "_lan_reach_on", lambda: True)
+    monkeypatch.setattr(of, "lan_allowed", lambda: True)
     assert _public_http_url("http://192.168.1.1/") and _public_http_url("http://10.0.0.1/")
 
 

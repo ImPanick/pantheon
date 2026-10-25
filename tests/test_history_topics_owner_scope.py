@@ -195,49 +195,13 @@ def _build_app_with_loopback_bypass(session_manager):
     return app
 
 
-def test_route_rejects_or_scopes_under_loopback_bypass():
-    """
-    Drive the real route via TestClient with a stubbed AuthMiddleware
-    that mimics LOCALHOST_BYPASS: no `current_user` is set. The
-    endpoint must NOT return cross-tenant topics in the response.
-    """
-    from fastapi.testclient import TestClient
-
-    sessions = {
-        "s-alice-1": _make_session(
-            "s-alice-1", "alice",
-            [{"role": "user", "content": "AI safety is a fascinating topic."}],
-        ),
-        "s-bob-1": _make_session(
-            "s-bob-1", "bob",
-            [{"role": "user", "content": "I need to fix a python bug."}],
-        ),
-        "s-carol-1": _make_session(
-            "s-carol-1", "carol",
-            [{"role": "user", "content": "Family dinner planning tonight."}],
-        ),
-    }
-    sm = _stub_session_manager(sessions)
-    app = _build_app_with_loopback_bypass(sm)
-    client = TestClient(app)
-
-    # No auth cookie, no bearer token, no internal-tool header. Pretend
-    # to come from a real local client. The middleware bypasses auth
-    # exactly as app.py:248 would.
-    resp = client.get(
-        "/api/conversations/topics",
-        headers={"host": "127.0.0.1:8000"},
-    )
-
-    # Behavior under the fix: the route uses `require_user` which raises
-    # 401 when auth_manager is configured and the caller is anonymous,
-    # which is the state this test sets up. The cross-tenant leak path
-    # (200 with topics from other owners) must be closed.
-    assert resp.status_code == 401, (
-        f"Expected 401 from /api/conversations/topics under the loopback "
-        f"bypass + configured auth_manager; got {resp.status_code}. "
-        f"body={resp.text!r}"
-    )
+def test_the_route_is_gone():
+    """`B1453`. `/api/conversations/topics` had no caller and is retired; the
+    owner scoping it once leaked is still pinned on `analyze_topics` above,
+    which the memory extractor's fallback uses."""
+    import routes.history.history_routes as H
+    src = open(H.__file__, encoding="utf-8").read()
+    assert '@router.get("/api/conversations/topics")' not in src
 
 
 def test_route_data_flow_on_paper():

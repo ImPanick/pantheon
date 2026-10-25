@@ -14,7 +14,6 @@ from core.database import SessionLocal, ChatMessage as DbChatMessage, Session as
 from src.auth_helpers import effective_user
 from src.tool_approval_scopes import sanitize_client_message_metadata
 from src.agent_stops import RUN_KEYS, is_continue_prompt, merge_runs   # `B941`
-from src.topic_analyzer import analyze_topics
 from src.upload_handler import reserve_message_upload_references
 from routes.session_routes import (
     _message_role,
@@ -878,14 +877,9 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             logger.error(f"Fork error {session_id}: {e}")
             raise HTTPException(500, str(e))
 
-    @router.get("/api/conversations/topics")
-    async def get_conversation_topics(request: Request) -> Dict[str, Any]:
-        from src.auth_helpers import require_user
-        user = require_user(request)
-        try:
-            return analyze_topics(session_manager, owner=user or None)
-        except Exception as e:
-            raise HTTPException(500, f"Topic analysis failed: {e}")
+    # (`B1453`: `GET /api/conversations/topics` was here with no caller in any
+    # layer. `src/topic_analyzer.analyze_topics` stays — the memory extractor's
+    # fallback uses it, owner-scoped.)
 
     @router.get("/api/session/{session_id}/context")
     async def get_session_context_usage(request: Request, session_id: str) -> Dict[str, Any]:

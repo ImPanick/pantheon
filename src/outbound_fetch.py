@@ -9,6 +9,8 @@ same transport boundary.
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import ipaddress
 import socket
 import ssl
@@ -47,6 +49,52 @@ _LAN_NETWORKS = (
 )
 
 
+# `B1459` — who the LAN loosening is FOR. `D-2026-10-25-02` §4: "Workstation
+# users get it… a non-workstation account keeps today's limits." And it is the
+# AGENT's reach: the owner authorized an agent reading a router page by URL,
+# not every server-side fetch Pantheon makes. As first shipped the switch was
+# install-wide and read on every call, so the image proxy (`/api/img`, which
+# fetches whatever `<img src>` a stranger's email names) and a non-workstation
+# account's fetches reached the LAN too.
+#
+# So the default is the old answer — no LAN — and a grant is explicit and
+# scoped: the agent's `web_fetch` opens one with `lan_reach_for(owner)` around
+# its fetch, and only when the install allows LAN reach AND that person may use
+# the workstation. Everything else (the image proxy, search-result fetching,
+# anything new) gets no LAN without having to remember to ask for none.
+_LAN_GRANT: "contextvars.ContextVar[bool]" = contextvars.ContextVar(
+    "pantheon_lan_grant", default=False)
+
+
+def lan_allowed() -> bool:
+    """Whether the fetch running now may reach the LAN: a grant is in force
+    (`lan_reach_for`) and the install still allows it."""
+    return _LAN_GRANT.get() and _lan_reach_on()
+
+
+def may_reach_lan(owner: Optional[str]) -> bool:
+    """The person's half of the grant: the workstation privilege, resolved the
+    way every privilege is (`workstation_access.may_use`)."""
+    try:
+        from src.workstation_access import may_use
+        return bool(may_use(owner))
+    except Exception:
+        return False   # an unanswerable question is a no
+
+
+@contextlib.contextmanager
+def lan_reach_for(owner: Optional[str]):
+    """Fetches inside this block may reach the LAN when the install allows it
+    and `owner` may use the workstation. Yields whether they may. Set it in the
+    thread that fetches — a context variable does not cross `run_in_executor`."""
+    allow = _lan_reach_on() and may_reach_lan(owner)
+    token = _LAN_GRANT.set(bool(allow))
+    try:
+        yield bool(allow)
+    finally:
+        _LAN_GRANT.reset(token)
+
+
 def _lan_reach_on() -> bool:
     """`agent_lan_reach` (default on): whether this install lets fetches reach
     the LAN. Off for a shared box that should stay on the public internet. On a
@@ -82,8 +130,9 @@ def _always_blocked(addr: ipaddress._BaseAddress) -> bool:
 
 
 def _is_private_address(addr: ipaddress._BaseAddress, *, allow_lan: Optional[bool] = None) -> bool:
-    """Whether a fetch must be refused this address. `allow_lan` defaults to the
-    `agent_lan_reach` setting; pass it explicitly to classify without a read.
+    """Whether a fetch must be refused this address. `allow_lan` defaults to
+    whether a LAN grant is in force (`lan_allowed`, `B1459`); pass it
+    explicitly to classify without one.
 
     Loopback and metadata are always refused. The LAN is refused only when LAN
     reach is off — the owner's authorization (`D-2026-10-25-02`) is exactly that
@@ -95,7 +144,7 @@ def _is_private_address(addr: ipaddress._BaseAddress, *, allow_lan: Optional[boo
         return True
     if _in_lan(addr) or addr.is_private:
         if allow_lan is None:
-            allow_lan = _lan_reach_on()
+            allow_lan = lan_allowed()
         return not allow_lan
     return False
 
@@ -136,7 +185,7 @@ def _public_http_url(
         # at all is still refused.
         if lower in ("localhost", "metadata", "metadata.google.internal") or lower.endswith(".localhost"):
             return False
-        allow_lan = _lan_reach_on()
+        allow_lan = lan_allowed()
         try:
             addrs = [ipaddress.ip_address(host)]
         except ValueError:

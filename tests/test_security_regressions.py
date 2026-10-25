@@ -1002,7 +1002,7 @@ def test_web_fetch_guard_blocks_loopback_and_metadata_even_with_lan_on(url, monk
     # whatever `agent_lan_reach` says — reaching this machine's own ports is a
     # different question (`FORBIDDEN.md` Part 2).
     import src.outbound_fetch as _of
-    monkeypatch.setattr(_of, "_lan_reach_on", lambda: True)
+    monkeypatch.setattr(_of, "lan_allowed", lambda: True)
     from src.search.content import _public_http_url
     assert _public_http_url(url) is False
 
@@ -1015,7 +1015,7 @@ def test_web_fetch_guard_allows_lan_when_reach_is_on(url, monkeypatch):
     # `P16-20` (`D-2026-10-25-02`): with LAN reach on (the default), the agent
     # may read a router page or a LAN service by URL.
     import src.outbound_fetch as _of
-    monkeypatch.setattr(_of, "_lan_reach_on", lambda: True)
+    monkeypatch.setattr(_of, "lan_allowed", lambda: True)
     from src.search.content import _public_http_url
     assert _public_http_url(url) is True
 
@@ -1417,14 +1417,14 @@ def test_dns_rebinding_blocked_by_resolve_gate(monkeypatch):
     import src.outbound_fetch as _of
     from src.search import content
 
-    monkeypatch.setattr(_of, "_lan_reach_on", lambda: True)
+    monkeypatch.setattr(_of, "lan_allowed", lambda: True)
     monkeypatch.setattr(content, "_resolve_hostname_ips",
                         lambda host: [_ipaddr.ip_address("127.0.0.1")])
     with _pytest.raises(_httpx.RequestError) as exc:
         content._resolve_public_ips("https://attacker.example/")
     assert "non-public" in str(exc.value).lower()
 
-    monkeypatch.setattr(_of, "_lan_reach_on", lambda: False)
+    monkeypatch.setattr(_of, "lan_allowed", lambda: False)
     monkeypatch.setattr(content, "_resolve_hostname_ips",
                         lambda host: [_ipaddr.ip_address("10.0.0.5")])
     with _pytest.raises(_httpx.RequestError):

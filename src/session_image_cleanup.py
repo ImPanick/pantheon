@@ -129,3 +129,54 @@ def cleanup_session_images(session_id: str, db=None) -> int:
     finally:
         if owns_db:
             db.close()
+
+
+def wipe_every_session(db, session_manager=None) -> dict:
+    """Delete every chat on the install, with the images that belong to them.
+
+    `B1453`. Two admin doors did this and disagreed: `DELETE /api/sessions/all`
+    also retired each chat's gallery images and their files, and the Danger
+    Zone's *Delete all chats* (`DELETE /api/admin/wipe/chats`) dropped only the
+    rows — leaving images whose chat was gone. One function now, the thorough
+    one, behind the one door. Commits; the caller owns `db`."""
+    from core.database import ChatMessage, GalleryImage, Session as DbSession
+    from sqlalchemy import or_
+
+    session_ids = [row[0] for row in db.query(DbSession.id).all()]
+    count = len(session_ids)
+    image_ids: set[str] = set()
+    filenames: set[str] = set()
+    for sid in session_ids:
+        ids, names = session_image_refs(db, sid)
+        image_ids.update(ids)
+        filenames.update(names)
+    clauses = []
+    if session_ids:
+        clauses.append(GalleryImage.session_id.in_(session_ids))
+    if image_ids:
+        clauses.append(GalleryImage.id.in_(list(image_ids)))
+    if filenames:
+        clauses.append(GalleryImage.filename.in_(list(filenames)))
+    images = db.query(GalleryImage).filter(or_(*clauses)).all() if clauses else []
+    removed_images = 0
+    for img in images:
+        img.is_active = False
+        if img.filename:
+            path = _generated_image_path_for_cleanup(img.filename)
+            if path and path.exists():
+                try:
+                    path.unlink()
+                except Exception as exc:
+                    logger.warning("Could not remove generated image %s while deleting every chat: %s",
+                                   img.filename, exc)
+        removed_images += 1
+    db.query(ChatMessage).delete()
+    db.query(DbSession).delete()
+    db.commit()
+    if session_manager is not None:
+        try:
+            session_manager.sessions.clear()
+        except Exception:
+            pass   # the rows are gone; a stale cache entry 404s on its next read
+    logger.info("Deleted every chat (%d) and %d linked images", count, removed_images)
+    return {"count": count, "images_deleted": removed_images}

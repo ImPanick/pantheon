@@ -205,7 +205,8 @@ workstation's containers share. It has full network access by default — an
 admin narrows it to *internet only* or *none* in the same panel, held by the
 small `workstation-net` container the overlay starts beside it, so an agent
 using *sudo* cannot lift it (`P20-06`) — and no access to Docker or to
-Pantheon's data; with *sudo* on (the default) one person's agent can read
+Pantheon's data, except each person's projects folder (`data/projects`,
+shared read-write so a project is the same folder on both sides, `B1417`); with *sudo* on (the default) one person's agent can read
 another's workstation home, and the panel says so beside the switch. With a GPU
 overlay, list all three:
 `COMPOSE_FILE=docker-compose.yml:docker/gpu.nvidia.yml:docker/workstation.yml`.
@@ -569,10 +570,9 @@ uv pip sync requirements.lock                          # reproduce it exactly la
 `requirements.lock` is gitignored and platform-specific (compile it on the OS you deploy to). Regenerate it deliberately when you want to take upgrades. The plain `uv pip install -r requirements.txt` keeps following the unpinned requirements like pip does.
 
 ### Outlook / Office 365 email
-Pantheon email accounts currently use IMAP/SMTP username-password auth. Outlook
-and Microsoft 365 generally require OAuth instead, so normal Microsoft mailbox
-passwords will fail. See [docs/email-outlook.md](docs/email-outlook.md) for the
-current limitation and the planned integration direction.
+Outlook and Microsoft 365 mailboxes connect with **Sign in with Microsoft**
+(OAuth) — a normal Microsoft mailbox password will fail over plain IMAP/SMTP.
+[email-outlook.md](email-outlook.md) has the app registration and settings it needs.
 
 ## Security Notes
 Pantheon is a self-hosted workspace with powerful local tools: shell access, file uploads, model downloads, web research, email/calendar integrations, and API tokens. Treat it like an admin console.
@@ -744,11 +744,13 @@ Three things bite when moving an existing install behind TLS:
   Gmail redirect URI it cannot be derived from a request — it is registered
   with each MCP authorization server up front — so set it to the external
   origin if you use remote MCP servers over OAuth.
-- Pantheon sends `Strict-Transport-Security` once it sees `X-Forwarded-Proto:
-  https`. HSTS applies to the whole hostname and ignores the port, so any other
-  plain-HTTP service on that same hostname becomes unreachable in browsers that
-  have visited Pantheon. Give Pantheon its own hostname, or strip the header at
-  the proxy (`header_down -Strict-Transport-Security` in Caddy).
+- Pantheon sends `Strict-Transport-Security` (with `includeSubDomains`) once it
+  sees `X-Forwarded-Proto: https`. HSTS applies to the whole hostname and every
+  subdomain under it, and ignores the port, so any other plain-HTTP service on
+  that hostname or below it becomes unreachable in browsers that have visited
+  Pantheon. Give Pantheon its own hostname with nothing plain-HTTP beneath it,
+  or strip the header at the proxy (`header_down -Strict-Transport-Security` in
+  Caddy).
 
 Server-sent events are not buffered by this configuration, so chat streaming
 arrives token by token; add `flush_interval -1` inside the `reverse_proxy`
@@ -885,8 +887,8 @@ second tailnet, the production network:
 a `network reach` check — may go there. `untrusted`: the network is listed, so
 the agent knows it exists, but Pantheon opens no connection there on its behalf.
 (An older third level, `limited`, never behaved differently from `trusted`; a
-saved one still reads as `trusted`, and the settings form says so if you save it
-again.) Like scoping, this governs Pantheon's own connections, not a shell
+saved one reads as `trusted` — the settings form shows it that way and saves it
+as `trusted` — and writing `limited` through the API is refused with a sentence.) Like scoping, this governs Pantheon's own connections, not a shell
 command — see below.
 
 **`cidrs` classify; `hosts` are scanned.** A `/16` is 65,536 addresses, and

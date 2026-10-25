@@ -44,13 +44,14 @@ _SECRET = "ghp_B1175_NOT_FOR_BOB"
 _PROBE = r'''
 import asyncio
 import httpx
-from core.database import McpServer, Session as DbSession, SessionLocal
+from core.database import McpServer, ModelEndpoint, Session as DbSession, SessionLocal
 from core.middleware import INTERNAL_TOOL_HEADER, INTERNAL_TOOL_TOKEN
 
 _db = SessionLocal()
 _db.add(McpServer(id="gh1", name="github", transport="stdio", command="npx",
                   args='["-y", "server-github"]', env=json.dumps({"GITHUB_TOKEN": %(secret)r}),
                   is_enabled=False))
+_db.add(ModelEndpoint(id="ep-ada", name="Lab GPU", base_url="http://127.0.0.1:9/v1"))
 _db.add(DbSession(id="ada-chat", name="Quarterly numbers", endpoint_url="http://127.0.0.1:9",
                   model="m", owner=ADMIN))
 _db.commit()
@@ -87,6 +88,14 @@ def assistant(owner, method, path):
             "reached": list(reached)}
 
 
+def endpoints():
+    db = SessionLocal()
+    try:
+        return sorted(r[0] for r in db.query(ModelEndpoint.id).all())
+    finally:
+        db.close()
+
+
 def chats():
     db = SessionLocal()
     try:
@@ -102,8 +111,8 @@ RESULT["in_person"] = {who: {p: client(who).get(p).status_code for p in READS}
 WHO = {"bob": MEMBER, "ada": ADMIN, "local owner": "__pantheon_local__", "nobody": None}
 RESULT["reads"] = {label: {p: assistant(who, "GET", p) for p in READS}
                    for label, who in WHO.items()}
-RESULT["member_wipe"] = assistant(MEMBER, "DELETE", "/api/sessions/all")
-RESULT["chats_after_member_wipe"] = chats()
+RESULT["member_wipe"] = assistant(MEMBER, "DELETE", "/api/model-endpoints/ep-ada")
+RESULT["endpoints_after_member_wipe"] = endpoints()
 
 
 def raw(headers):
@@ -174,11 +183,15 @@ def test_a_non_admins_assistant_is_refused_where_the_person_is(gated):
 
 
 def test_a_non_admins_assistant_cannot_empty_every_chat(gated):
-    """A write no blocklist names: `DELETE /api/sessions/all`. Before `B1175`
-    bob's loopback deleted ada's chat with everyone else's."""
+    """An admin-only write no blocklist names. Before `B1175` bob's loopback
+    ran `DELETE /api/sessions/all` and emptied every chat on the instance; that
+    route is gone (`B1453` — the Danger Zone's *Delete all chats* is the one
+    door), so the probe is the same shape on another admin-only delete that
+    no blocklist names: removing a model endpoint, which clears every setting,
+    preference and chat that pointed at it."""
     row = gated["member_wipe"]
-    assert row["reached"] == [["DELETE", "/api/sessions/all", 403]], row
-    assert gated["chats_after_member_wipe"] == ["ada-chat"], gated["chats_after_member_wipe"]
+    assert row["reached"] == [["DELETE", "/api/model-endpoints/ep-ada", 403]], row
+    assert gated["endpoints_after_member_wipe"] == ["ep-ada"], gated["endpoints_after_member_wipe"]
 
 
 def test_an_admins_assistant_still_reads_what_the_admin_reads(gated):

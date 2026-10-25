@@ -20,7 +20,6 @@ from src.auth_helpers import (
     request_is_a_person,
     require_chat_api_token_scope,
 )
-from src.session_image_cleanup import _generated_image_path_for_cleanup, session_image_refs
 from src.session_actions import is_session_recently_active
 from src.upload_handler import reserve_message_upload_references
 from src.tool_approval_scopes import sanitize_client_message_metadata
@@ -328,8 +327,6 @@ def setup_session_routes(
 
     REQUEST_TIMEOUT = config.get("REQUEST_TIMEOUT", 20)
     SESSION_MODEL_VALIDATION_TIMEOUT = min(float(REQUEST_TIMEOUT or 20), 3.0)
-    OPENAI_API_KEY = config.get("OPENAI_API_KEY")
-    SESSIONS_FILE = config.get("SESSIONS_FILE")
     
     # `P23-07` (`PERF-M-5`). How many chats the sidebar asks for by default, and
     # the most one request may ask for. "Show older" asks for the next hundred.
@@ -815,10 +812,9 @@ def setup_session_routes(
         session_manager.save_sessions()
         return {"ok": True, "count": len(messages)}
 
-    @router.post("/session/{sid}/delete")
-    def delete_session_beacon(request: Request, sid: str):
-        """Delete session via POST (for navigator.sendBeacon on page close)."""
-        return delete_session(request, sid)
+    # (`B1453`: `POST /session/{sid}/delete`, "for navigator.sendBeacon on page
+    # close", was here; nothing beacons it — unload deletes use `DELETE
+    # /session/{sid}` with `keepalive` and `/sessions/bulk-delete`.)
 
     @router.post("/sessions/bulk-delete")
     async def bulk_delete_sessions(request: Request):
@@ -899,58 +895,10 @@ def setup_session_routes(
                 }
             )
     
-    @router.delete("/sessions/all")
-    def delete_all_sessions(request: Request):
-        """Admin only: permanently delete ALL sessions and their messages."""
-        from core.middleware import require_admin
-        require_admin(request)
-
-        db = SessionLocal()
-        try:
-            from core.database import ChatMessage as DbChatMessage
-            session_ids = [row[0] for row in db.query(DbSession.id).all()]
-            count = db.query(DbSession).count()
-            image_ids: set[str] = set()
-            filenames: set[str] = set()
-            for sid in session_ids:
-                ids, names = session_image_refs(db, sid)
-                image_ids.update(ids)
-                filenames.update(names)
-            image_query = db.query(GalleryImage).filter(GalleryImage.session_id.in_(session_ids)) if session_ids else db.query(GalleryImage).filter(False)
-            if image_ids or filenames:
-                from sqlalchemy import or_
-                clauses = []
-                if session_ids:
-                    clauses.append(GalleryImage.session_id.in_(session_ids))
-                if image_ids:
-                    clauses.append(GalleryImage.id.in_(list(image_ids)))
-                if filenames:
-                    clauses.append(GalleryImage.filename.in_(list(filenames)))
-                image_query = db.query(GalleryImage).filter(or_(*clauses))
-            images = image_query.all()
-            removed_images = 0
-            for img in images:
-                img.is_active = False
-                if img.filename:
-                    path = _generated_image_path_for_cleanup(img.filename)
-                    if path and path.exists():
-                        try:
-                            path.unlink()
-                        except Exception as exc:
-                            logger.warning("Could not remove generated image %s during all-session delete: %s", img.filename, exc)
-                removed_images += 1
-            db.query(DbChatMessage).delete()
-            db.query(DbSession).delete()
-            db.commit()
-            session_manager.sessions.clear()
-            logger.info(f"Admin deleted all {count} sessions and {removed_images} linked images")
-            return {"status": "deleted", "count": count, "images_deleted": removed_images}
-        except Exception as e:
-            db.rollback()
-            logger.error(f"Error deleting all sessions: {e}")
-            raise HTTPException(500, "Failed to delete sessions")
-        finally:
-            db.close()
+    # (`B1453`: `DELETE /sessions/all` was here, an admin-only second door to
+    # what Settings → Danger Zone → *Delete all chats* does. Its thorough half
+    # — the chats' images too — is `wipe_every_session`, which that one door
+    # now runs.)
 
     @router.post("/session/{sid}/archive")
     def archive_session(request: Request, sid: str):
@@ -1263,52 +1211,11 @@ def setup_session_routes(
 
         return _download(_md_stream(), "text/markdown", "md")
     
-    @router.post("/sessions/save")
-    def sessions_save_now(request: Request):
-        user = effective_user(request)
-        if not user:
-            raise HTTPException(401, "Not authenticated")
-        session_manager.save_sessions()
-        return {"ok": True, "path": SESSIONS_FILE}
-    
-    @router.post("/session/openai")
-    def create_session_openai(
-        request: Request,
-        name: str = Form("New Chat (OpenAI)"),
-        # `D-2026-10-07-02` §1: no model is assumed. This was "gpt-4o" for a
-        # caller who named none, whatever the server's key could use.
-        model: str = Form(""),
-        rag: str = Form(None)
-    ):
-        if not OPENAI_API_KEY:
-            raise HTTPException(400, "Server missing OPENAI_API_KEY")
-        model = (model or "").strip()
-        if not model:
-            raise HTTPException(400, "Name a model: one OpenAI lists for this server's key.")
-        # The one listing (`Law 14`): OpenAI's own `GET /v1/models` for the key.
-        from routes.model_routes import _probe_endpoint
-        _outcome: dict = {}
-        listed = _probe_endpoint("https://api.openai.com/v1", OPENAI_API_KEY, timeout=15, outcome=_outcome)
-        if not listed:
-            raise HTTPException(503, "OpenAI isn't answering for this server's key. Try again.")
-        if model not in listed:
-            raise HTTPException(409, f"OpenAI doesn't list {model} for this server's key.")
-        sid = str(uuid.uuid4())
-        user = effective_user(request)
-        session = session_manager.create_session(
-            session_id=sid,
-            name="",
-            endpoint_url="https://api.openai.com/v1/chat/completions",
-            model=model,
-            rag=request_flag(rag),  # `B97`
-            owner=user,
-        )
-        session.headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
-        session_manager.save_sessions()
-        from src.event_bus import fire_event
-        fire_event("session_created", user, {"session_id": sid})
-        return {"id": sid, "name": "", "model": model}
-    
+    # (`B1453`: `POST /sessions/save` — flush sessions to disk — and `POST
+    # /session/openai` — a dedicated OpenAI session from the server's
+    # `OPENAI_API_KEY` — were here. Neither had a caller: sessions save as they
+    # change, and an OpenAI chat is an endpoint like any other.)
+
     @router.post("/session/{session_id}/important")
     async def mark_session_important(request: Request, session_id: str, important: bool = Form(True)):
         """Mark a session as important to protect it from automatic cleanup."""

@@ -103,7 +103,7 @@ Note: this inventory was refreshed against current `dev` after `tests/test_resea
   flat-layout paths (e.g. `tests/test_auth_config_lock_concurrency.py` in
   `test_run_focus.py`), so they stay put.
 - Script-like but `uncategorized` files - `test_pr_blocker_audit.py`,
-  `test_update_database_script.py`, `test_windows_update_script.py`,
+  `test_windows_update_script.py`,
   `test_setup_admin_user.py`, `test_amd_gpu_check_args.py`, `test_hwfit_*.py`.
   They exercise `scripts/` too, but moving them would make `tests/cli/`
   diverge from the `area_cli` marker set. Reclassify or move them in a later,

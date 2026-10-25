@@ -431,9 +431,8 @@ def comprehensive_web_search(
     """Perform comprehensive web search with content fetching and advanced filtering.
 
     ``fetch_content=False`` returns the search results and the block without
-    fetching any page. It is the consumer `SearchService`'s constructor flag
-    never had (`Law 13`): that method asked for ten pages, this function
-    fetched all ten, and the caller read none of them.
+    fetching any page. (It was added for the `SearchService` facade, which
+    asked for ten pages and read none; the facade is gone, `B1470`.)
     """
     logger.info(f"Starting comprehensive search for: {query}")
     if time_filter:

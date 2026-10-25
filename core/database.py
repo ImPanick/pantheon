@@ -1074,47 +1074,10 @@ class Webhook(TimestampMixin, Base):
     last_error = Column(String, nullable=True)
 
 
-class UserTool(TimestampMixin, Base):
-    """User-created sandboxed mini-apps/tools."""
-    __tablename__ = "user_tools"
-
-    id            = Column(String, primary_key=True, index=True)
-    name          = Column(String, nullable=False)
-    description   = Column(Text, nullable=True)
-    icon          = Column(String, nullable=True, default="")
-    html_content  = Column(Text, nullable=False)
-    scope         = Column(String, nullable=False, default="global")  # "global" or session_id
-    session_id    = Column(String, ForeignKey("sessions.id", ondelete="SET NULL"), nullable=True)
-    owner         = Column(String, nullable=True, index=True)      # username
-    is_pinned     = Column(Boolean, default=False)
-    is_active     = Column(Boolean, default=True)
-    version       = Column(Integer, default=1)
-    author        = Column(String, nullable=True, default="ai")
-
-    session = relationship("Session", backref=backref("user_tools", cascade="all, delete-orphan"))
-
-    __table_args__ = (
-        Index('ix_user_tools_scope', 'scope'),
-        Index('ix_user_tools_active', 'is_active'),
-    )
-
-
-class UserToolData(Base):
-    """Key-value storage for user tool persistent data."""
-    __tablename__ = "user_tool_data"
-
-    id         = Column(Integer, primary_key=True, autoincrement=True)
-    tool_id    = Column(String, ForeignKey("user_tools.id", ondelete="CASCADE"), nullable=False)
-    key        = Column(String, nullable=False)
-    value      = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=utcnow_naive)
-    updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive)
-
-    tool = relationship("UserTool", backref=backref("data_entries", cascade="all, delete-orphan"))
-
-    __table_args__ = (
-        Index('ix_user_tool_data_tool_key', 'tool_id', 'key', unique=True),
-    )
+# `B1467`. `UserTool` / `UserToolData` ("user-created sandboxed mini-apps")
+# lived here from v1.0 with no route, tool or page that read or wrote them —
+# only a cascade from `Session` that queried them on every session delete. The
+# models are gone; an install that has the two tables keeps them, unused.
 
 
 class ToolAllowRule(TimestampMixin, Base):
@@ -2711,7 +2674,6 @@ def _migrate_add_multiuser_owner_columns():
     """Add owner column to memories, gallery_images, user_tools, comparisons."""
     _migrate_add_owner_to_table("memories", "ix_memories_owner")
     _migrate_add_owner_to_table("gallery_images", "ix_gallery_images_owner")
-    _migrate_add_owner_to_table("user_tools", "ix_user_tools_owner")
     _migrate_add_owner_to_table("comparisons", "ix_comparisons_owner")
     _migrate_add_owner_to_table("api_tokens", "ix_api_tokens_owner")
     # documents derived ownership from their session join until this column
@@ -2816,13 +2778,16 @@ def _migrate_assign_legacy_owner():
         # Every table with an `owner` column. New tables added later will be
         # picked up automatically because we only UPDATE when the column
         # exists; the explicit list documents intent.
+        # `B1467`: tables that exist and carry an `owner` column. It also
+        # named `gallery_people` (never created), `task_runs`, `user_tool_data`
+        # and `webhooks` (no `owner` column — skipped every boot), and the two
+        # unused tables whose models are gone.
         tables = [
-            "sessions", "memories", "gallery_images", "user_tools",
+            "sessions", "memories", "gallery_images",
             "comparisons", "documents", "signatures", "notes",
-            "calendars", "calendar_events", "integrations",
-            "scheduled_tasks", "task_runs", "crew_members",
-            "gallery_albums", "gallery_people", "user_tool_data",
-            "api_tokens", "webhooks",
+            "calendars", "calendar_events",
+            "scheduled_tasks", "crew_members",
+            "gallery_albums", "api_tokens",
         ]
         for table in tables:
             try:
@@ -3367,19 +3332,9 @@ class CalendarDeletedEvent(TimestampMixin, Base):
     last_error = Column(Text, nullable=True)
 
 
-class Integration(TimestampMixin, Base):
-    """An external service connection (email, RSS, webhook, etc.)."""
-    __tablename__ = "integrations"
-
-    id     = Column(String, primary_key=True, index=True)
-    owner  = Column(String, nullable=True, index=True)
-    name   = Column(String, nullable=False)
-    type   = Column(String, nullable=False)  # "email", "rss", "webhook"
-    config = Column(JSON, nullable=True)     # type-specific config
-    enabled = Column(Boolean, default=True)
-
-
-
+# `B1467`. An `Integration` model ("email, RSS, webhook") sat here unused:
+# integrations are stored in `data/integrations.json` (`src/integrations.py`).
+# Gone; an install that has the `integrations` table keeps it, unused.
 
 
 def _migrate_email_account_default_invariant():
@@ -4318,15 +4273,7 @@ def get_upcoming_events(owner, horizon_days: int = 60, limit: int = 40):
             for e in q.order_by(CalendarEvent.dtstart).limit(limit).all()
         ]
 
-def archive_session(session_id: str):
-    """Archive a session"""
-    with get_db_session() as db:
-        session = db.query(Session).filter(Session.id == session_id).first()
-        if session:
-            session.archived = True
-            db.commit()
-            return True
-    return False
+# (`B1470`: `archive_session(session_id)` was here; the route archives inline.)
 
 # Initialize the database by creating all tables. `P23-07`: with the patient
 # wait — `uvicorn app:app` imports this inside its running loop, and a

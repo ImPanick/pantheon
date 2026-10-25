@@ -59,7 +59,7 @@ CREATE TABLE comparisons (
 # What `POST /api/compare/record` used to write into `blind_mapping`.
 _VOTE_BLOB = json.dumps({"models": ["m1", "m2", "m3"],
                          "costs": [0.1, None, 0.3], "mode": "arena"})
-# What `POST /api/compare/start` writes into the same column, and still does.
+# What `POST /api/compare/start` wrote into the same column (retired, `B1453`).
 _MAPPING_BLOB = json.dumps({"left": "b", "right": "a"})
 # A shape no writer in this tree has ever produced, and therefore one nobody
 # can say the meaning of. A hand-edited database can hold it.
@@ -251,27 +251,9 @@ def test_the_model_declares_the_column_the_migration_adds():
     assert "vote_meta" in cdb.Comparison.__table__.columns
 
 
-def test_the_vote_endpoint_no_longer_crashes_on_a_row_the_other_path_wrote():
-    """What the two meanings actually cost, as a test. `P13-12`.
+# (`B1453`: a test of `vote_comparison` reading a `{"models": …}` blob lived
+# here. `POST /api/compare/{id}/vote` — and `_blind_mapping`, its only reader —
+# were retired with no caller; the column's two meanings it guarded against are
+# pinned on the migration and on `/record` above and below.)
 
-    `vote_comparison` indexes `mapping["left"]` and `mapping["right"]`
-    unconditionally — the reveal block runs even for a tie — so a row whose
-    `blind_mapping` holds `{"models": [...]}` was a `KeyError`, which is a 500
-    rather than a 4xx. It is reachable because `RecordVoteRequest.winner` is a
-    plain `str`: an empty one is valid, it is falsy, and it slips past the
-    "Already voted" guard that otherwise hides the mismatch.
-    """
-    from routes.compare.compare_routes import _blind_mapping
 
-    class _Row:
-        id = "cmp-1"
-        blind_mapping = _VOTE_BLOB
-
-    mapping = _blind_mapping(_Row())
-    assert mapping["left"] in ("a", "b") and mapping["right"] in ("a", "b")
-
-    class _Real:
-        id = "cmp-2"
-        blind_mapping = _MAPPING_BLOB
-
-    assert _blind_mapping(_Real()) == {"left": "b", "right": "a"}

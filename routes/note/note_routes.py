@@ -799,69 +799,10 @@ def setup_note_routes(task_scheduler=None, upload_handler=None):
         finally:
             db.close()
 
-    # --- TOGGLE PIN ---
-    @router.post("/{note_id}/pin")
-    def toggle_pin(request: Request, note_id: str):
-        user = _owner(request)
-        db = SessionLocal()
-        try:
-            note = db.query(Note).filter(Note.id == note_id).first()
-            if not note:
-                raise HTTPException(404, "Note not found")
-            # SECURITY: strict ownership — previously `note.owner and note.owner != user`
-            # let any user touch a row whose owner field was null/empty.
-            if user is not None and note.owner != user:
-                raise HTTPException(404, "Note not found")
-            note.pinned = not note.pinned
-            db.commit()
-            return {"ok": True, "pinned": note.pinned}
-        finally:
-            db.close()
-
-    # --- TOGGLE ARCHIVE ---
-    @router.post("/{note_id}/archive")
-    def toggle_archive(request: Request, note_id: str):
-        user = _owner(request)
-        db = SessionLocal()
-        try:
-            note = db.query(Note).filter(Note.id == note_id).first()
-            if not note:
-                raise HTTPException(404, "Note not found")
-            # SECURITY: strict ownership — previously `note.owner and note.owner != user`
-            # let any user touch a row whose owner field was null/empty.
-            if user is not None and note.owner != user:
-                raise HTTPException(404, "Note not found")
-            note.archived = not note.archived
-            db.commit()
-            return {"ok": True, "archived": note.archived}
-        finally:
-            db.close()
-
-    # --- TOGGLE CHECKLIST ITEM ---
-    @router.post("/{note_id}/items/{index}/toggle")
-    def toggle_item(request: Request, note_id: str, index: int):
-        user = _owner(request)
-        db = SessionLocal()
-        try:
-            note = db.query(Note).filter(Note.id == note_id).first()
-            if not note:
-                raise HTTPException(404, "Note not found")
-            # SECURITY: strict ownership — previously `note.owner and note.owner != user`
-            # let any user touch a row whose owner field was null/empty.
-            if user is not None and note.owner != user:
-                raise HTTPException(404, "Note not found")
-            if not note.items:
-                raise HTTPException(400, "Note has no checklist items")
-            items = json.loads(note.items)
-            if index < 0 or index >= len(items):
-                raise HTTPException(400, f"Item index {index} out of range")
-            items[index]["done"] = not items[index].get("done", False)
-            note.items = json.dumps(items)
-            flag_modified(note, "items")
-            db.commit()
-            return {"ok": True, "items": items}
-        finally:
-            db.close()
+    # (`B1453`: `POST /{note_id}/pin`, `/archive` and `/items/{index}/toggle`
+    # were here. Notes pins, archives and ticks a checklist through `PUT
+    # /{note_id}` — `notes.js` `_patchNote`/`_saveNote` — and the agent's
+    # `manage_notes` writes the row directly, so the three had no caller.)
 
     # --- FIRE REMINDER ---
     @router.post("/fire-reminder")
@@ -894,6 +835,8 @@ def setup_note_routes(task_scheduler=None, upload_handler=None):
                 _override["reminder_channel"] = body["channel"]
             if body.get("webhook_integration_id"):
                 _override["reminder_webhook_integration_id"] = body["webhook_integration_id"]
+            if "email_account_id" in body:
+                _override["reminder_email_account_id"] = str(body.get("email_account_id") or "")
             if body.get("webhook_payload_template"):
                 _override["reminder_webhook_payload_template"] = body["webhook_payload_template"]
             # Mirror the in-UI AI Synthesis toggle + persona so the test

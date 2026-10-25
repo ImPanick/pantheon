@@ -31,9 +31,6 @@ ROOT = Path(__file__).resolve().parent.parent
 TONGYI = re.compile(r"Tongyi|DeepResearch|IterResearch|Alibaba", re.I)
 NOTICE = "Apache-2.0 §4(b) change notice"
 STAMPED = (
-    "services/research/__init__.py",
-    "services/research/research_handler.py",
-    "services/research/service.py",
     "routes/research/__init__.py",
     "routes/research/research_routes.py",
     "src/research_handler.py",

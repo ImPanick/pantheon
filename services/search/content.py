@@ -191,7 +191,11 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
     effective_cap = min(max_bytes or WEB_FETCH_SOFT_MAX_BYTES, WEB_FETCH_HARD_MAX_BYTES)
     # The cap is part of the cache identity: a truncated soft-cap fetch must
     # not be served to a later full-budget request for the same URL.
-    cache_key = generate_cache_key(f"{url}#cap={effective_cap}")
+    # And so is a LAN grant (`B1459`): a page fetched under one (a router page
+    # an allowed person's agent read) must never be served from the cache to a
+    # fetch without one — the cache is read before any address is checked.
+    cache_key = generate_cache_key(
+        f"{url}#cap={effective_cap}#lan={int(_outbound_fetch.lan_allowed())}")
     cache_file = CONTENT_CACHE_DIR / f"{cache_key}.cache"
 
     # Check cache

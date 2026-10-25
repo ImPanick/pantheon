@@ -126,9 +126,6 @@ async def test_no_identity_fails_closed_on_every_owner_scoped_route(env):
         assert (await c.get("/api/notes/note-alice")).status_code == 401
         assert (await c.put("/api/notes/note-alice", json={"title": "pwn"})).status_code == 401
         assert (await c.delete("/api/notes/note-alice")).status_code == 401
-        assert (await c.post("/api/notes/note-alice/pin")).status_code == 401
-        assert (await c.post("/api/notes/note-alice/archive")).status_code == 401
-        assert (await c.post("/api/notes/note-alice/items/0/toggle")).status_code == 401
         assert (await c.post("/api/notes/reorder", json={"ids": ["note-bob", "note-alice"]})).status_code == 401
         assert (await c.post("/api/notes", json={"title": "ghost"})).status_code == 401
 
@@ -136,8 +133,7 @@ async def test_no_identity_fails_closed_on_every_owner_scoped_route(env):
 async def test_no_identity_did_not_mutate_anything(env):
     app, factory = env
     async with _client(app) as c:
-        await c.put("/api/notes/note-alice", json={"title": "pwn"})
-        await c.post("/api/notes/note-alice/pin")
+        await c.put("/api/notes/note-alice", json={"title": "pwn", "pinned": True})
         await c.delete("/api/notes/note-bob")
     db = factory()
     rows = {n.id: n for n in db.query(Note).all()}
@@ -188,7 +184,6 @@ async def test_auth_enabled_false_is_no_anonymous_mode_any_more(monkeypatch, tmp
     async with _client(app) as c:
         assert (await c.get("/api/notes")).status_code == 401
         assert (await c.put("/api/notes/n1", json={"title": "still mine"})).status_code == 401
-        assert (await c.post("/api/notes/n1/pin")).status_code == 401
     db = factory()
     try:
         assert db.query(Note).filter(Note.id == "n1").one().title == "solo"

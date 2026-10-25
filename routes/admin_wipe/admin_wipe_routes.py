@@ -3,8 +3,8 @@
 
 Each endpoint is admin-only and truncates exactly one domain so the
 user can selectively reset memory / skills / notes / etc. without
-nuking everything. The catch-all `chats` endpoint mirrors the
-existing /api/sessions/all so the Danger Zone speaks one URL pattern.
+nuking everything. `chats` is the one way to delete every chat
+(`wipe_every_session`, with their images); `/api/sessions/all` was retired.
 
 URL shape: DELETE /api/admin/wipe/{kind}
 Kinds: chats, memory, skills, notes, tasks, documents, gallery, calendar.
@@ -19,8 +19,6 @@ from fastapi import APIRouter, HTTPException, Request
 from core.middleware import require_admin
 from core.database import (
     SessionLocal,
-    Session as DbSession,
-    ChatMessage as DbChatMessage,
     Memory,
     Note,
     ScheduledTask,
@@ -78,15 +76,12 @@ def setup_admin_wipe_routes(session_manager):
         db = SessionLocal()
         try:
             if kind == "chats":
-                count = db.query(DbSession).count()
-                db.query(DbChatMessage).delete()
-                db.query(DbSession).delete()
-                db.commit()
-                try:
-                    session_manager.sessions.clear()
-                except Exception:
-                    pass
-                return {"status": "deleted", "kind": kind, "count": count}
+                # `B1453`: the thorough delete — the chats' images too — that
+                # `DELETE /api/sessions/all` did and this door did not.
+                from src.session_image_cleanup import wipe_every_session
+                done = wipe_every_session(db, session_manager)
+                return {"status": "deleted", "kind": kind, "count": done["count"],
+                        "images_deleted": done["images_deleted"]}
 
             if kind == "memory":
                 count = db.query(Memory).count()

@@ -386,6 +386,9 @@ function _removeSessionFromLocalState(sid) {
   document.querySelectorAll('.list-item[data-session-id]').forEach(el => {
     if (String(el.dataset.sessionId) === id) el.remove();
   });
+  // `B1468`. A deleted chat's running cost stayed in localStorage forever:
+  // `resetSessionCost` existed for exactly this and nothing called it.
+  try { chatRenderer.resetSessionCost && chatRenderer.resetSessionCost(id); } catch (_) {}
   _deselectCurrentSession(id);
 }
 

@@ -20,7 +20,7 @@ Measured on `fcd559e` (the base):
     names and an endpoint that did not answer with a row `(endpoint offline)`;
     `chat_with_model` matched against the built-in names;
   * `POST /api/v1/chat` with an API key and no model used `deepseek-chat`;
-    `POST /api/session/openai` with no model used `gpt-4o`.
+    `POST /api/session/openai` with no model used `gpt-4o` (that route is gone, `B1453`).
 
 Driven (`Law 20`): the real chat route over HTTP, the real scheduler running a
 task to its run record, the agent's real tools, the real API routes — against
@@ -461,25 +461,10 @@ def test_the_api_names_no_model_for_a_callers_key(world, monkeypatch):
     assert sent == [] and created == []
 
 
-def test_an_openai_session_names_no_model(world, monkeypatch):
-    import routes.model_routes as model_routes
+def test_the_openai_session_route_is_gone():
+    """`POST /api/session/openai` — the last route here that assumed a model —
+    was retired with no caller (`B1453`); an OpenAI chat is an endpoint like
+    any other, and the generic session route asks it what it serves."""
     import routes.session_routes as session_routes
-
-    # Nothing may be asked of OpenAI here (`Law 16`): a call is a failure.
-    monkeypatch.setattr(model_routes, "_probe_endpoint",
-                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("asked OpenAI")))
-
-    router = session_routes.setup_session_routes(
-        SimpleNamespace(create_session=lambda **kw: (_ for _ in ()).throw(AssertionError("made"))),
-        {"OPENAI_API_KEY": "sk-server", "REQUEST_TIMEOUT": 5, "SESSIONS_FILE": "x"})
-    app = FastAPI()
-
-    @app.middleware("http")
-    async def _who(request, call_next):
-        request.state.current_user = "ada"
-        return await call_next(request)
-
-    app.include_router(router)
-    res = TestClient(app, raise_server_exceptions=False).post("/api/session/openai", data={})
-    assert res.status_code == 400
-    assert res.json()["detail"] == "Name a model: one OpenAI lists for this server's key."
+    router = session_routes.setup_session_routes(SimpleNamespace(), {"REQUEST_TIMEOUT": 5})
+    assert not any(getattr(r, "path", "") == "/api/session/openai" for r in router.routes)

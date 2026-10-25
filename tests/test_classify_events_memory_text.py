@@ -32,3 +32,20 @@ def test_skips_rows_without_text_attribute():
 def test_respects_limit():
     mems = [_Mem(f"memory {i}") for i in range(50)]
     assert len(_memory_context_lines(mems, limit=40)) == 40
+
+
+def test_the_memory_store_dicts_are_read():
+    """`B1463`. The classifier reads the memory store, whose entries are dicts
+    — the `memories` table it used to query has had no writer since memories
+    moved to the store, so the context was always empty."""
+    assert _memory_context_lines([{"text": "Alice is my spouse"}, {"text": ""}, {}]) == \
+        ["- Alice is my spouse"]
+
+
+def test_the_classifier_asks_the_store_not_the_table():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parent.parent / "src" / "builtin_actions.py").read_text(encoding="utf-8")
+    body = src[src.index("async def action_classify_events"):]
+    body = body[:body.index("classified_h = 0")]
+    assert "_memory_manager" in body and ".load(owner=owner)" in body
+    assert "db.query(_Mem)" not in body

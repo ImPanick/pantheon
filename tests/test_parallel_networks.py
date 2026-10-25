@@ -27,7 +27,9 @@ import pytest
 from src import networks as nw
 
 LAB = {"name": "lab", "cidrs": ["10.9.0.0/24"], "hosts": ["lab-gpu.lan"],
-       "trust": "untrusted"}
+       "trust": "trusted"}
+GUEST = {"name": "guest", "cidrs": ["192.168.9.0/24"], "hosts": ["guest-printer.lan"],
+         "trust": "untrusted"}
 PROD = {"name": "prod", "cidrs": ["10.20.0.0/16"], "hosts": ["prod-llm.internal"],
         "trust": "trusted"}
 
@@ -74,9 +76,18 @@ def test_hosts_resolve_to_the_network_that_contains_them(declared):
 
 
 def test_trust_is_per_network(declared):
-    declared(LAB, PROD)
-    assert nw.trust_for("10.9.0.5") == "untrusted"
+    declared(LAB, PROD, GUEST)
+    assert nw.trust_for("192.168.9.5") == "untrusted"
     assert nw.trust_for("10.20.7.3") == "trusted"
+
+
+def test_discovery_does_not_probe_an_untrusted_network(declared):
+    """`B1460`. Untrusted is listed, never connected to — and discovery's probe
+    is a connection, so a host listed only under an untrusted network is not
+    probed, while a trusted one's is."""
+    declared(LAB, GUEST)
+    hosts = nw.hosts_in_scope()
+    assert "lab-gpu.lan" in hosts and "guest-printer.lan" not in hosts
 
 
 def test_the_retired_limited_level_reads_as_trusted(declared):

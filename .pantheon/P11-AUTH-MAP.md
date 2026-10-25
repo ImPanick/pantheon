@@ -127,8 +127,8 @@ derived: direct 107 · Depends 21 · total 128
 | `routes/mcp/mcp_routes.py` | `builds_sent` | `GET /api/mcp/builds-sent` | the MCP servers people built in their workstations and sent for registration — whose, what they offer, and the admin route's fields pinned to their code. A person's only, not the agent's loopback (`B1130`) |
 | `routes/mcp/mcp_routes.py` | `build_sent` | `GET /api/mcp/builds-sent/{sent_id}` | one of them as an admin reviews it: every code file as it was sent, and a fingerprint read in its author's workstation account — other people's code, read before it is registered to run for everyone (`B1130`) |
 | `routes/mcp/mcp_routes.py` | `build_sent_remove` | `DELETE /api/mcp/builds-sent/{sent_id}` | takes one off that list; its sender may too, so the gate decides which, it does not refuse (`B1130`) |
-| `routes/session_routes.py` | `delete_all_sessions` | `DELETE /api/sessions/all` | deletes every chat session and message on the instance, and their gallery images with them |
 | `routes/skills_routes.py` | `import_skill_from_url` | `POST /api/skills/import-from-url` | fetches a skill bundle over the network and installs it. A supply-chain decision; `FORBIDDEN.md` keeps the host allowlist and the IP-pinned transport under it |
+| `routes/skills_routes.py` | `import_skill_file` | `POST /api/skills/import-file` | installs a skill from a downloaded skill file — files written under `skills/`, the same supply-chain decision as the URL import without the network. `B1469` |
 | `routes/skills_routes.py` | `update_package` | `POST /api/skills/packages/{package_id}/update` | fetches an installed skill package from GitHub again and rewrites its skills — `import_skill_from_url`'s surface on a package already here. `P8-49` |
 | `routes/vault/vault_routes.py` | `get_config` | `GET /api/vault/config` | the credential vault's configuration |
 | `routes/vault/vault_routes.py` | `save_config` | `POST /api/vault/config` | rewrites it |
@@ -361,12 +361,10 @@ routes: 2
 
 #### `routes/compare/compare_routes.py`
 
-routes: 5
+routes: 3
 
 | route | handler | gate | intended |
 |---|---|---|---|
-| `POST /api/compare/start` | `start_comparison` | `middleware + owner_filter` | yes — `owner_filter` resolves the endpoints it is allowed to use; a chat-scoped token cannot borrow another owner's provider key. |
-| `POST /api/compare/{comp_id}/vote` | `vote_comparison` | `middleware + get_current_user` | yes — owner-scoped; the handler resolves the caller and filters on it. |
 | `POST /api/compare/record` | `record_comparison` | `middleware + get_current_user` | yes — owner-scoped; the handler resolves the caller and filters on it. |
 | `GET /api/compare/history` | `list_comparisons` | `middleware + get_current_user` | yes — owner-scoped; the handler resolves the caller and filters on it. |
 | `DELETE /api/compare/{comp_id}` | `delete_comparison` | `middleware + get_current_user` | yes — owner-scoped; the handler resolves the caller and filters on it. |

@@ -2199,7 +2199,6 @@ async function initSkillAudit() {
 async function initAgentSettings() {
   var toolsInput = el('set-agentMaxTools');
   var roundsInput = el('set-agentMaxRounds');
-  var supInput = el('set-agentSupervisorLadder');
   var verInput = el('set-agentVerifier');   // H16
   var ceilInput = el('set-localMaxTokens'); // P3-21
   var msg = el('set-agentMsg');
@@ -2210,7 +2209,6 @@ async function initAgentSettings() {
     var settings = await res.json();
     if (settings.agent_max_tool_calls) toolsInput.value = settings.agent_max_tool_calls;
     if (roundsInput && settings.agent_max_rounds) roundsInput.value = settings.agent_max_rounds;
-    if (supInput) supInput.checked = !!settings.agent_supervisor_ladder;
     // H16. `!!` on a value the server now always sends, rather than a
     // truthiness test on a key that used to be absent from every response.
     if (verInput) verInput.checked = !!settings.agent_verifier_subagent;
@@ -2240,7 +2238,6 @@ async function initAgentSettings() {
     if (roundsInput) roundsInput.value = rounds;
     var payload = { agent_max_tool_calls: tools };
     if (rounds != null) payload.agent_max_rounds = rounds;
-    if (supInput) payload.agent_supervisor_ladder = !!supInput.checked;
     if (verInput) payload.agent_verifier_subagent = !!verInput.checked;   // H16
     // P3-21. A blank box is not a zero: zero is the documented "no lift" value
     // and blank means "leave the machine ceiling at its default", so only a
@@ -2268,7 +2265,6 @@ async function initAgentSettings() {
 
   toolsInput.addEventListener('change', save);
   if (roundsInput) roundsInput.addEventListener('change', save);
-  if (supInput) supInput.addEventListener('change', save);
   if (verInput) verInput.addEventListener('change', save);   // H16
   if (ceilInput) ceilInput.addEventListener('change', save);  // P3-21
   // `B1241` (round 2): nothing on load — the card's own fields say the
@@ -3387,7 +3383,7 @@ async function initReminderSettings() {
       const savedId = s.reminder_email_account_id;
       populateReminderEmailAccounts(savedId || '');
       if (emailAcctSel.value && emailAcctSel.value !== (savedId || '')) {
-        save({ reminder_email_account_id: emailAcctSel.value || null });
+        save({ reminder_email_account_id: emailAcctSel.value || '' });
       }
     }
     if (hint) hint.textContent = CHANNEL_HINTS[channelSel.value] || '';
@@ -3417,7 +3413,7 @@ async function initReminderSettings() {
   }
   if (emailAcctSel) {
     emailAcctSel.addEventListener('change', () => {
-      save({ reminder_email_account_id: emailAcctSel.value || null });
+      save({ reminder_email_account_id: emailAcctSel.value || '' });
     });
   }
   if (ntfyTopicIn) {
@@ -3494,6 +3490,10 @@ async function initReminderSettings() {
             // hitting Save.
             llm_synthesis: !!(llmToggle && llmToggle.checked),
             llm_persona: (personaSel && personaSel.value) || '',
+            ...(channelSel.value === 'email' ? {
+              // `B1461`: the account picked on screen, so a test sends from it.
+              email_account_id: el('set-reminder-email-account')?.value || '',
+            } : {}),
             ...(channelSel.value === 'webhook' ? {
               webhook_integration_id: webhookIntgSel?.value || '',
               webhook_payload_template: webhookTemplateIn?.value.trim() || '',

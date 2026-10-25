@@ -11,7 +11,7 @@ Workbench's Skills room at 440px) **every such card's name box was 0px wide**:
 the card had no name. The window and the room alike — the card header's
 layout, not the room.
 
-**Now** the header wraps and the name keeps 10rem (or the whole card): the
+**Now** the header wraps and the name keeps 9rem (10rem until `B1458`; or the whole card): the
 cluster moves under the name. A one-pill card still fits on one line at 390px,
 and a wide card is one row, as before.
 

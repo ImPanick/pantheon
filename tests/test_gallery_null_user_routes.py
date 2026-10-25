@@ -78,15 +78,7 @@ def test_auth_enabled_null_user_gallery_routes_fail_closed(monkeypatch, tmp_path
     assert shuffled["items"] == []
     assert shuffled["total"] == 0
 
-    assert client.get("/api/gallery/tags").json() == {"tags": []}
     assert client.get("/api/gallery/albums").json() == {"albums": []}
-    assert client.get("/api/gallery/stats").json() == {
-        "total_photos": 0,
-        "total_size": 0,
-        "total_size_human": "0.0 B",
-        "favorites": 0,
-        "albums": 0,
-    }
     assert client.post("/api/gallery/ai-tag-batch").json() == {
         "ok": True,
         "queued": 0,
@@ -106,9 +98,7 @@ def test_auth_enabled_false_null_user_gallery_routes_fail_closed_too(monkeypatch
     library = client.get("/api/gallery/library").json()
     assert library["items"] == [] and library["total"] == 0
     assert library["tags"] == [] and library["models"] == []
-    assert client.get("/api/gallery/tags").json() == {"tags": []}
     assert client.get("/api/gallery/albums").json() == {"albums": []}
-    assert client.get("/api/gallery/stats").json()["total_photos"] == 0
     batch = client.post("/api/gallery/ai-tag-batch").json()
     assert batch["queued"] == 0 and batch["image_ids"] == []
 
@@ -124,16 +114,8 @@ def test_authenticated_gallery_routes_remain_owner_scoped(monkeypatch, tmp_path)
     assert library["tags"] == ["alice-tag"]
     assert library["models"] == ["model-a"]
 
-    assert client.get("/api/gallery/tags").json() == {"tags": ["alice-tag"]}
     albums = client.get("/api/gallery/albums").json()["albums"]
     assert [album["id"] for album in albums] == ["album-alice"]
-    assert client.get("/api/gallery/stats").json() == {
-        "total_photos": 1,
-        "total_size": 10,
-        "total_size_human": "10.0 B",
-        "favorites": 0,
-        "albums": 1,
-    }
     assert client.post("/api/gallery/ai-tag-batch").json() == {
         "ok": True,
         "queued": 1,

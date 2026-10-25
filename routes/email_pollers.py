@@ -6,7 +6,7 @@ Background loops that periodically scan IMAP and act on mail:
 
     - `_auto_summarize_pass` / `_auto_summarize_pass_single` — daily/hourly
       summary + AI-reply + spam-classification pass over recently received mail.
-    - `_auto_summarize_poller` — driver that wakes the pass on a 30-min cadence.
+      (Run by the `summarize_emails` task; the old 30-minute driver is gone.)
     - `_scheduled_email_poller` — polls the `scheduled_emails` SQLite for
       due rows and delivers them via SMTP.
     - `_inbox_check_loop` — `B1137`: looks at every configured account's
@@ -1372,17 +1372,8 @@ async def _auto_summarize_pass_single(days_back: int = 1, account_id: str | None
                 pass
 
 
-async def _auto_summarize_poller():
-    """Background loop kept for backward compatibility — calls _auto_summarize_pass periodically.
-    Newer setups should use scheduled tasks instead (summarize_emails, draft_email_replies)."""
-    import asyncio as _asyncio
-    while True:
-        try:
-            settings = _load_settings()
-            await _asyncio.sleep(60 if settings.get("email_auto_reply", False) else 1800)
-            await _auto_summarize_pass()
-        except Exception as e:
-            logger.error(f"Auto-summarize poller crash: {e}")
+# (`B1470`: `_auto_summarize_poller` was here, never started — the
+# `summarize_emails` task replaced it.)
 
 
 def _scheduled_poll_once() -> dict:

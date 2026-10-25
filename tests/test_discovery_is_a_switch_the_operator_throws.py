@@ -578,20 +578,21 @@ def test_the_ssrf_validators_still_refuse_a_private_address():
     # says (`P16-20`, `D-2026-10-25-02`): the LAN loosening never touches them.
     always = ("http://169.254.169.254/", "http://127.0.0.1:7000/",
               "http://224.0.0.251/", "http://239.255.255.250:1900/")
-    _orig = _of._lan_reach_on
+    _orig = _of.lan_allowed
     try:
         for on in (True, False):
-            _of._lan_reach_on = (lambda: on)
+            _of.lan_allowed = (lambda: on)
             for candidate in always:
                 assert not _public_http_url(candidate), \
                     f"the content-fetch path now accepts {candidate} (lan_reach={on})"
-        # The LAN itself is gated: refused with reach off, reachable with it on.
-        _of._lan_reach_on = (lambda: False)
+        # The LAN itself is gated: refused without a grant (`B1459`), reachable
+        # inside one.
+        _of.lan_allowed = (lambda: False)
         assert not _public_http_url("http://192.168.1.1/")
-        _of._lan_reach_on = (lambda: True)
+        _of.lan_allowed = (lambda: True)
         assert _public_http_url("http://192.168.1.1/")
     finally:
-        _of._lan_reach_on = _orig
+        _of.lan_allowed = _orig
     # The strict-lockdown door (block_private=True) is unchanged: it refuses
     # every private address, including the LAN, regardless of the setting.
     for candidate in ("http://192.168.1.1/",) + always:

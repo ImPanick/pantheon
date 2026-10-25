@@ -2563,27 +2563,6 @@ class TaskScheduler:
                     logger.warning(f"ping_notes background scanner errored for owner={ow!r}: {e}")
             await sleep_jittered(60)  # 1 min, spread
 
-    async def _event_pings_loop(self):
-        """Built-in calendar-event scanner — same recipe as note pings. Runs
-        every 10 min, fires reminders via dispatch_reminder. Not a user task.
-        Iterates per-owner so each user only gets their own calendar pings
-        (passing owner="" globally would email User B's events to User A's
-        configured SMTP "from" address — see review C3).
-        """
-        from src.jitter import sleep_jittered
-        await sleep_jittered(90)
-        from src.builtin_actions import action_ping_events, TaskNoop
-        while self._running:
-            owners = self._known_task_owners()
-            for ow in (owners or [""]):
-                try:
-                    await action_ping_events(owner=ow)
-                except TaskNoop:
-                    pass
-                except Exception as e:
-                    logger.warning(f"ping_events background scanner errored for owner={ow!r}: {e}")
-            await sleep_jittered(600)  # 10 min, spread
-
     def _known_task_owners(self) -> list:
         """Distinct non-empty owners that background scanners should visit.
 

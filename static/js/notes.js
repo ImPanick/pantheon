@@ -1278,8 +1278,9 @@ export function openPanel() {
   _editingId = null;
   _searchQuery = '';
   _clearViewedReminderGlows();
-  _firedDotDismissedAt = Date.now();
-  try { localStorage.setItem(REMINDER_DISMISSED_AT_KEY, String(_firedDotDismissedAt)); } catch {}
+  // Opening Notes is seeing the fired reminders: the one dismissal, which also
+  // redraws the rail badge at once rather than at the next refresh.
+  dismissFiredReminderDot();
 
   const container = document.getElementById('chat-container');
   if (!container) return;

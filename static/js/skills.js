@@ -2964,6 +2964,43 @@ function _importStatus(m, kind, lines, openName) {
 
 let _importInFlight = false;
 
+/** `B1469`. A skill file — what *Download* gives — handed back. */
+async function importSkillFromFile(m, file) {
+  if (!file || _importInFlight) return;
+  _importInFlight = true;
+  _importStatus(m, 'busy', `Reading ${file.name}…`);
+  try {
+    let bundle;
+    try {
+      bundle = JSON.parse(await file.text());
+    } catch (_) {
+      throw new Error(`${file.name} is not a skill file — choose the .json a skill's Download gave.`);
+    }
+    if (!bundle || typeof bundle !== 'object' || !bundle.files || typeof bundle.files !== 'object') {
+      throw new Error(`${file.name} has no skill in it — choose the .json a skill's Download gave.`);
+    }
+    const res = await fetch(`${API}/api/skills/import-file`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skill: String(bundle.skill || ''), files: bundle.files }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || data.error || `HTTP ${res.status}`);
+    const name = data.skill?.name || 'skill';
+    const count = Number(data.files || 1);
+    const notes = Array.isArray(data.notes) ? data.notes : [];
+    _importStatus(m, notes.length ? 'warn' : 'ok',
+      [`Imported ${name} — ${count} file${count === 1 ? '' : 's'}.`, ...notes], name);
+    uiModule.showToast(`Imported ${name}`);
+    await loadSkills();
+    openSkill(name, undefined, m);
+  } catch (err) {
+    _importStatus(m, 'error', `Import failed: ${(err && err.message) || err}`);
+  } finally {
+    _importInFlight = false;
+  }
+}
+
 async function importSkillFromUrl(m) {
   const input = m.el('skill-import-url');
   const url = (input?.value || '').trim();
@@ -3960,6 +3997,12 @@ function _wireMount(m) {
   m.wired = true;
   const on = (id, type, fn) => { m.el(id)?.addEventListener(type, fn); };
   on('skill-import-url-btn', 'click', () => importSkillFromUrl(m));
+  on('skill-import-file-btn', 'click', () => m.el('skill-import-file')?.click());
+  on('skill-import-file', 'change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    importSkillFromFile(m, f);
+  });
   on('skill-import-url', 'keydown', (e) => {
     if (e.key === 'Enter') importSkillFromUrl(m);
   });

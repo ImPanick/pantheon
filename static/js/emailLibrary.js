@@ -560,6 +560,25 @@ function _emailTagGroupHtml(tags, em) {
 
 const _DONE_RESPONSE_TAGS = new Set(['urgent', 'reply-soon', 'action-needed']);
 
+/** `B1453`. Override the AI's spam verdict for one message. */
+async function _markNotSpam(em, btn) {
+  if (!em || em.uid == null) return;
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API_BASE}/api/email/${encodeURIComponent(em.uid)}/unflag-spam`, {
+      method: 'POST', credentials: 'same-origin',
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || d.ok === false) throw new Error(d.error || `HTTP ${res.status}`);
+    em.is_spam_verdict = false;
+    btn.remove();
+    if (typeof uiModule !== 'undefined' && uiModule && uiModule.showToast) uiModule.showToast('Marked not spam.');
+  } catch (e) {
+    btn.disabled = false;
+    if (typeof uiModule !== 'undefined' && uiModule && uiModule.showError) uiModule.showError('Could not mark it not spam: ' + (e.message || e));
+  }
+}
+
 function _visibleEmailTagsForRender(em) {
   const tags = Array.isArray(em?.tags) ? em.tags : [];
   if (!em?.is_answered) return tags;
@@ -5263,15 +5282,25 @@ function _createCard(em) {
     tagWrap.className = 'email-tags email-card-tags' + (tags.length > 1 ? ' email-tags-collapsed' : '');
     tagWrap.innerHTML = _emailTagGroupHtml(tags, em);
     if (em.is_spam_verdict) {
-      tagWrap.insertAdjacentHTML('beforeend', '<span class="email-tag email-tag-spam">spam</span>');
+      // `B1453`. The AI's spam verdict, with its override: `POST
+      // /api/email/{uid}/unflag-spam` ("mark email as not spam") had no
+      // caller, so a wrong verdict could be seen and never answered.
+      tagWrap.insertAdjacentHTML('beforeend',
+        '<button type="button" class="email-tag email-tag-spam email-not-spam" data-email-not-spam '
+        + 'title="Marked spam by the AI. Click if it is not." aria-label="Marked spam. Mark as not spam">spam &times;</button>');
     }
     tagWrap.addEventListener('click', (ev) => {
       const calBtn = ev.target.closest('[data-calendar-event-uid]');
       const tagBtn = ev.target.closest('[data-email-filter-tag]');
       const moreBtn = ev.target.closest('[data-email-tags-more]');
-      if (!calBtn && !tagBtn && !moreBtn) return;
+      const notSpamBtn = ev.target.closest('[data-email-not-spam]');
+      if (!calBtn && !tagBtn && !moreBtn && !notSpamBtn) return;
       ev.preventDefault();
       ev.stopPropagation();
+      if (notSpamBtn) {
+        _markNotSpam(em, notSpamBtn);
+        return;
+      }
       if (moreBtn) {
         const expanded = tagWrap.classList.toggle('email-tags-expanded');
         moreBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
@@ -5859,11 +5888,8 @@ async function _toggleCardPreview(card, em) {
  * Anything matched gets wrapped from the marker through end-of-body.
  */
 /**
- * Render the email body with sig/quote folds. If the backend has cached
- * LLM-detected boundary offsets (data.boundaries), use those for an exact
- * fold based on plain-text positions. Otherwise fall back to the regex
- * detectors. The plain-body branch is always preferred when boundaries
- * exist because the offsets are computed against plain text.
+ * Render the email body with sig/quote folds, from the server's thread parse
+ * when bubbles are on, else the client-side regex detectors.
  */
 // Global escape hatch — when the server's thread parser misfires (it
 // occasionally splits a single reply into two bogus "turns" by treating a
@@ -5889,8 +5915,8 @@ function _renderEmailBody(data) {
   const isMine = !!fromAddr && _meEmailAddrs().has(fromAddr);
 
   // Messages authored by the user (Sent folder or self-sent copies in INBOX)
-  // are current authored text. Do not let cached boundaries or HTML
-  // blockquote parsing hide the whole thing behind "Earlier reply".
+  // are current authored text. Do not let HTML blockquote parsing hide the
+  // whole thing behind "Earlier reply".
   if ((isSentFolder || isMine) && plain) {
     const plainTurns = _renderPlaintextThread(plain);
     if (plainTurns && !/^\s*<details\b/i.test(plainTurns.trim())) {
@@ -5908,55 +5934,11 @@ function _renderEmailBody(data) {
       data && data.sender_signature || null,
     );
   }
-  const b = data && data.boundaries;
-  // Use cached boundaries when present AND we have plain-text body to slice
-  if (b && plain && (b.sig_start >= 0 || b.quote_start >= 0)) {
-    // Pick the EARLIER of the two as the cut for "everything below this is
-    // foldable", but render sig and quote with their own labels.
-    let sig = (typeof b.sig_start === 'number' && b.sig_start >= 0) ? b.sig_start : -1;
-    let quote = (typeof b.quote_start === 'number' && b.quote_start >= 0) ? b.quote_start : -1;
-    // Clamp
-    if (sig >= plain.length) sig = -1;
-    if (quote >= plain.length) quote = -1;
-    let head = plain;
-    let sigSection = '';
-    let quoteSection = '';
-    if (sig >= 0 && quote >= 0) {
-      const earlier = Math.min(sig, quote);
-      head = plain.slice(0, earlier);
-      if (sig < quote) {
-        sigSection = plain.slice(sig, quote);
-        quoteSection = plain.slice(quote);
-      } else {
-        quoteSection = plain.slice(quote, sig);
-        sigSection = plain.slice(sig);
-      }
-    } else if (sig >= 0) {
-      head = plain.slice(0, sig);
-      sigSection = plain.slice(sig);
-    } else {
-      head = plain.slice(0, quote);
-      quoteSection = plain.slice(quote);
-    }
-    const fmt = (s) => _escLinkify(s).replace(/\n/g, '<br>');
-    let out = fmt(head);
-    if (quoteSection) {
-      out += '<details class="email-quote-fold">'
-           + _foldSummary('Earlier thread', _QUOTE_ICON, _extractQuoteMeta(quoteSection))
-           + fmt(quoteSection) + '</details>';
-    }
-    if (sigSection) {
-      const sigHtml = fmt(sigSection);
-      if (_isBloatedSig(sigHtml)) {
-        out += '<details class="email-sig-fold">' + _foldSummary('Signature', _SIG_ICON)
-             + sigHtml + '</details>';
-      } else {
-        // Short closing — leave inline; folding would just add chrome.
-        out += sigHtml;
-      }
-    }
-    return out;
-  }
+  // `B1466`. A branch here folded by `data.boundaries` — LLM-detected
+  // signature/quote offsets from the `email_boundaries` cache. Nothing has
+  // written that cache since its housekeeping action was retired, so the
+  // server always sent none and the branch never ran; it is gone with the
+  // cache. Folding is the client-side parse below.
   // Fallback: client-side parse (HTML or plaintext).
   const hintSig = (data && data.sender_signature) || null;
   const isHtml = !!data.body_html;

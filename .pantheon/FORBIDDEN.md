@@ -167,7 +167,7 @@ why that block goes. For everything below, something is.
 | `_resolve_tool_path` + sensitive-basename list | Credential exfiltration (`.env`, `.ssh`, `id_rsa`) and `authorized_keys` write. |
 | `_resolve_mcp_oauth_path` jail | Arbitrary file write as the app user. |
 | `_validate_serve_cmd` metachar gate | Command injection into a tmux-executed wrapper. |
-| The five SSRF validators + pinned-IP transports | Cloud-metadata and internal-network SSRF. |
+| The five SSRF validators + pinned-IP transports | Cloud-metadata and internal-network SSRF. The one opening is the owner's (`D-2026-10-25-02`, scoped by `B1459`): the agent's own `web_fetch`, for a person allowed the workstation, may reach the LAN and tailnet while `agent_lan_reach` is on (default on) — never loopback, link-local, metadata or an `untrusted` network, and never for the image proxy, search results or any other fetch. |
 | The nh3 report sanitiser | XSS under the relaxed CSP on report pages. |
 | The two email HTML sanitisers | DOM XSS from received mail; live script shipped to recipients. |
 | `OutboundHostLimiter` on every third-party call | **The user's access to services they depend on.** See below — this one is not a security control and is here anyway. |

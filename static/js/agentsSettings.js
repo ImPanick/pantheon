@@ -36,6 +36,26 @@ function _draw(settings) {
   const input = $('agents-maxInput');
   if (toggle) toggle.checked = settings.agents_paused === true;
   if (input && settings.agents_max_concurrent != null) input.value = String(settings.agents_max_concurrent);
+  _drawSlotNote(settings);
+}
+
+/** `B1464`. A scheduled agent run also takes one of the background-model
+ *  slots (`task_concurrency_cap`, 1 by default), so below this number that is
+ *  the real limit — say so, rather than let a 4 here read as four at once. */
+function _drawSlotNote(settings) {
+  const note = $('agents-maxNote');
+  if (!note) return;
+  const slots = Number(settings.task_concurrency_cap);
+  const most = Number(settings.agents_max_concurrent);
+  if (Number.isFinite(slots) && Number.isFinite(most) && slots < most) {
+    note.textContent = `Scheduled runs also wait for one of Pantheon's ${slots} background-model ` +
+      `slot${slots === 1 ? '' : 's'} (task_concurrency_cap), so at most ${slots} run at once. ` +
+      'A first run when you summon, and a workflow step, do not wait for one.';
+    note.hidden = false;
+  } else {
+    note.textContent = '';
+    note.hidden = true;
+  }
 }
 
 /** Save one change; draw what the server kept. */

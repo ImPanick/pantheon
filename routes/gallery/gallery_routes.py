@@ -26,7 +26,7 @@ from src.constants import GENERATED_IMAGES_DIR
 from src.optional_deps import patch_realesrgan_torchvision_compat
 
 from routes.gallery.gallery_helpers import (
-    GalleryPatch, _extract_exif, _image_to_dict, _owner_filter, _human_size,
+    GalleryPatch, _extract_exif, _image_to_dict, _owner_filter,
 )
 
 logger = logging.getLogger(__name__)
@@ -664,27 +664,9 @@ def setup_gallery_routes() -> APIRouter:
             logger.exception("style_transfer: request failed")
             return {"error": "Style transfer failed"}
 
-    # ---- GET /api/gallery/tags ----
-    @router.get("/api/gallery/tags")
-    async def gallery_tags(request: Request) -> Dict[str, Any]:
-        """Return distinct tags across all active gallery images."""
-        user = get_current_user(request)
-        db = SessionLocal()
-        try:
-            q = db.query(GalleryImage.tags).filter(
-                GalleryImage.is_active == True, GalleryImage.tags != None, GalleryImage.tags != ""
-            )
-            q = _owner_filter(q, user)
-            rows = q.all()
-            tag_set = set()
-            for (raw,) in rows:
-                for t in raw.split(","):
-                    t = t.strip()
-                    if t:
-                        tag_set.add(t)
-            return {"tags": sorted(tag_set)}
-        finally:
-            db.close()
+    # (`B1453`: `GET /api/gallery/tags` — every tag in the gallery — was here;
+    # its only reader, the chip row under the search, was removed on purpose
+    # (`gallery.js`), and `/library` returns the tags a view needs.)
 
     # ---- GET /api/gallery/library ----
     @router.get("/api/gallery/library")
@@ -885,31 +867,8 @@ def setup_gallery_routes() -> APIRouter:
         finally:
             db.close()
 
-    @router.get("/api/gallery/stats")
-    async def gallery_stats(request: Request):
-        user = get_current_user(request)
-        db = SessionLocal()
-        try:
-            from sqlalchemy import func
-            base = db.query(GalleryImage).filter(GalleryImage.is_active == True)
-            size_q = db.query(func.sum(GalleryImage.file_size)).filter(GalleryImage.is_active == True)
-            album_q = db.query(GalleryAlbum)
-            base = _owner_filter(base, user)
-            size_q = _owner_filter(size_q, user)
-            album_q = _owner_filter(album_q, user, GalleryAlbum)
-            total = base.count()
-            total_size = size_q.scalar() or 0
-            fav_count = base.filter(GalleryImage.favorite == True).count()
-            album_count = album_q.count()
-            return {
-                "total_photos": total,
-                "total_size": total_size,
-                "total_size_human": _human_size(total_size),
-                "favorites": fav_count,
-                "albums": album_count,
-            }
-        finally:
-            db.close()
+    # (`B1453`: `GET /api/gallery/stats` was here; the stats line counts what
+    # the library returned, and nothing asked for the rest.)
 
     @router.post("/api/gallery/ai-tag-batch")
     async def ai_tag_batch(
@@ -1058,30 +1017,9 @@ def setup_gallery_routes() -> APIRouter:
         finally:
             db.close()
 
-    # ---- POST /api/gallery/clear-user-tags ----
-    # Wipe the `tags` field on every image owned by the current user.
-    # Leaves `ai_tags` intact. Use after a bug populated user-tags with
-    # AI-suggested values you never added.
-    @router.post("/api/gallery/clear-user-tags")
-    async def clear_gallery_user_tags(request: Request) -> Dict[str, Any]:
-        user = get_current_user(request)
-        db = SessionLocal()
-        try:
-            q = db.query(GalleryImage).filter(GalleryImage.is_active == True)
-            q = _owner_filter(q, user)
-            cleared = 0
-            for img in q.all():
-                if img.tags:
-                    img.tags = ''
-                    cleared += 1
-            db.commit()
-            return {"ok": True, "cleared": cleared}
-        except Exception:
-            db.rollback()
-            logger.exception("clear_gallery_user_tags: failed")
-            raise HTTPException(500, "Tag update failed")
-        finally:
-            db.close()
+    # (`B1454`: `POST /api/gallery/clear-user-tags`, wiping every tag a person
+    # typed, was a one-off cleanup for a past bug with no button — and a
+    # button for it would be one press from losing all your own tags.)
 
     # ---- POST /api/gallery/clear-ai-tags ----
     # Wipe the `ai_tags` field on every image owned by the current user.
@@ -1110,44 +1048,8 @@ def setup_gallery_routes() -> APIRouter:
         finally:
             db.close()
 
-    # ---- POST /api/gallery/dedupe-tags ----
-    # One-shot cleanup: for every image owned by the current user, drop any
-    # tag from `tags` that also appears in `ai_tags` (case-insensitive).
-    # Returns how many rows were touched + how many tags removed.
-    @router.post("/api/gallery/dedupe-tags")
-    async def dedupe_gallery_tags(request: Request) -> Dict[str, Any]:
-        user = get_current_user(request)
-        db = SessionLocal()
-        try:
-            q = db.query(GalleryImage).filter(GalleryImage.is_active == True)
-            q = _owner_filter(q, user)
-            rows_touched = 0
-            tags_removed = 0
-            for img in q.all():
-                ai_set = {t.strip().lower() for t in (img.ai_tags or '').split(',') if t.strip()}
-                if not ai_set:
-                    continue
-                original = [t.strip() for t in (img.tags or '').split(',') if t.strip()]
-                cleaned = []
-                seen = set()
-                for t in original:
-                    k = t.lower()
-                    if k in ai_set or k in seen:
-                        continue
-                    seen.add(k)
-                    cleaned.append(t)
-                if len(cleaned) != len(original):
-                    rows_touched += 1
-                    tags_removed += len(original) - len(cleaned)
-                    img.tags = ', '.join(cleaned)
-            db.commit()
-            return {"ok": True, "rows_touched": rows_touched, "tags_removed": tags_removed}
-        except Exception:
-            db.rollback()
-            logger.exception("dedupe_gallery_tags: failed")
-            raise HTTPException(500, "Tag deduplication failed")
-        finally:
-            db.close()
+    # (`B1453`: `POST /api/gallery/dedupe-tags`, a one-shot cleanup of user
+    # tags that repeated AI tags, was here with no caller.)
 
     # ---- DELETE /api/gallery/{image_id} ----
     @router.delete("/api/gallery/{image_id}")

@@ -1061,108 +1061,9 @@ async def action_tidy_research(owner: str, **kwargs) -> Tuple[str, bool]:
         return str(e), False
 
 
-async def action_tidy_calendar(owner: str, **kwargs) -> Tuple[str, bool]:
-    """Find duplicate calendar events (same title + start time) and DELETE the dups,
-    keeping the oldest (first-seen) instance.
-
-    Incremental: remembers the newest `created_at` already scanned in
-    data/tidy_calendar_state.json. If no events have been added since then,
-    short-circuits. Otherwise only events newer than the watermark are candidates
-    for deletion, but they're checked against the FULL existing set so a new
-    duplicate of an old event still gets caught.
-    """
-    try:
-        import json
-        from pathlib import Path
-        from core.database import SessionLocal, CalendarEvent
-        from sqlalchemy import func
-
-        STATE_FILE = Path(TIDY_CALENDAR_STATE_FILE)
-        last_watermark = None
-        try:
-            if STATE_FILE.exists():
-                saved = json.loads(STATE_FILE.read_text(encoding="utf-8"))
-                if saved.get("last_created_at"):
-                    last_watermark = datetime.fromisoformat(saved["last_created_at"])
-        except Exception:
-            last_watermark = None
-
-        db = SessionLocal()
-        try:
-            newest = db.query(func.max(CalendarEvent.created_at)).scalar()
-            db.query(CalendarEvent).count()
-
-            # Short-circuit: nothing new since last run
-            if last_watermark is not None and newest is not None and newest <= last_watermark:
-                raise TaskNoop(f"no new events since watermark {last_watermark.strftime('%Y-%m-%d %H:%M')}")
-
-            events = db.query(CalendarEvent).order_by(CalendarEvent.dtstart).all()
-            # Build full seen-set from events at or before the watermark (known-clean).
-            # Events after the watermark are candidates for deletion.
-            seen = {}
-            candidates = []
-            no_title = 0
-            for e in events:
-                title = (e.summary or "").strip()
-                if not title:
-                    no_title += 1
-                    continue
-                if last_watermark is None or (e.created_at and e.created_at <= last_watermark):
-                    # Known-clean region: first occurrence wins
-                    key = (title.lower(), e.dtstart)
-                    if key not in seen:
-                        seen[key] = e
-                    # If a dup exists in the known-clean region (first run, or imported later
-                    # with the same created_at), still remove it — fall through to candidate check.
-                    else:
-                        candidates.append(e)
-                else:
-                    candidates.append(e)
-
-            removed = []
-            for e in candidates:
-                title = (e.summary or "").strip()
-                key = (title.lower(), e.dtstart)
-                if key in seen:
-                    when = e.dtstart.strftime('%Y-%m-%d %H:%M') if e.dtstart else '?'
-                    removed.append(f"{title} @ {when}")
-                    db.delete(e)
-                else:
-                    seen[key] = e
-
-            if removed:
-                db.commit()
-
-            # Persist the new watermark (newest created_at among events that survive)
-            try:
-                STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-                if newest is not None:
-                    STATE_FILE.write_text(json.dumps({
-                        "last_created_at": newest.isoformat(),
-                        "last_run_at": datetime.utcnow().isoformat(),
-                        "scanned": len(events),
-                        "removed": len(removed),
-                    }, indent=2), encoding="utf-8")
-            except Exception as se:
-                logger.warning(f"tidy_calendar watermark save failed: {se}")
-
-            new_since = len(candidates)
-            parts = [f"Scanned {len(events)} event(s), {new_since} new since last run"]
-            if removed:
-                preview = "; ".join(removed[:5])
-                if len(removed) > 5:
-                    preview += f" (+{len(removed) - 5} more)"
-                parts.append(f"removed {len(removed)} duplicate(s): {preview}")
-            if no_title:
-                parts.append(f"{no_title} untitled (kept)")
-            if not removed and not no_title:
-                parts.append("no duplicates")
-            return " · ".join(parts), True
-        finally:
-            db.close()
-    except Exception as e:
-        logger.error(f"tidy_calendar action failed: {e}")
-        return str(e), False
+# (`B1470`: `action_tidy_calendar` — delete duplicate calendar events — was
+# here. It was retired from the task registry (`RETIRED_HOUSEKEEPING_ACTIONS`)
+# and nothing ran it.)
 
 
 def _result_has_work(result: str | None) -> bool:
@@ -1546,16 +1447,18 @@ def _classify_event_heuristic(summary: str) -> tuple:
 
 
 def _memory_context_lines(mems, limit: int = 40) -> list:
-    """Render Memory rows into short personal-context bullets for event classify.
+    """Render memory entries into short personal-context bullets for event classify.
 
-    Reads the Memory ORM `text` column. The previous inline code read a
-    non-existent `content` attribute, so it raised AttributeError on the first
-    row, the surrounding except swallowed it, and the classifier ran with no
-    personal context at all. getattr keeps it robust to future schema drift.
+    Entries are the memory store's dicts (`MemoryManager.load`), each with a
+    `text`. `B1463`: this read the `memories` ORM table, which nothing has
+    written since memories moved to the store — so the classifier always ran
+    with no personal context, whatever the person had told Pantheon. An object
+    with a `text` attribute (a legacy row) still reads.
     """
     lines: list = []
     for m in mems:
-        c = (getattr(m, "text", "") or "").strip()
+        raw = m.get("text") if isinstance(m, dict) else getattr(m, "text", "")
+        c = (raw or "").strip()
         if c:
             lines.append(f"- {c[:200]}")
         if len(lines) >= limit:
@@ -1594,8 +1497,9 @@ async def action_classify_events(owner: str, **kwargs) -> Tuple[str, bool]:
             # events are personal/social, not work.
             _memory_context = ""
             try:
-                from core.database import Memory as _Mem
-                _mems = db.query(_Mem).filter(_Mem.owner == owner).limit(60).all() if owner else []
+                from src import ai_interaction as _ai
+                _mgr = getattr(_ai, "_memory_manager", None)
+                _mems = list(_mgr.load(owner=owner) or [])[:60] if (owner and _mgr) else []
                 _lines = _memory_context_lines(_mems)
                 if _lines:
                     _memory_context = "USER CONTEXT (relationships, work, life):\n" + "\n".join(_lines) + "\n\n"
@@ -1723,11 +1627,6 @@ async def action_classify_events(owner: str, **kwargs) -> Tuple[str, bool]:
     except Exception as e:
         logger.error(f"classify_events action failed: {e}")
         return str(e), False
-
-
-async def action_ping_events(owner: str, **kwargs) -> Tuple[str, bool]:
-    """Calendar event reminders are now dispatched by Notes."""
-    raise TaskNoop("calendar event reminders are handled by Notes")
 
 
 async def action_extract_email_events(owner: str, **kwargs) -> Tuple[str, bool]:
@@ -2323,7 +2222,8 @@ async def action_audit_skills(owner: str, **kwargs) -> Tuple[str, bool]:
 async def action_ping_notes(owner: str, **kwargs) -> Tuple[str, bool]:
     """Background note-due scanner. Fires a reminder for any note whose
     `due_date` falls in the current ±5-minute window and hasn't been pinged
-    within the last 25 minutes. Mirrors `action_ping_events` for calendar.
+    within the last 25 minutes. Calendar reminders are stored as notes, so this
+    scanner carries them too.
 
     State (`data/note_pings.json`): {note_id: iso_ts_of_last_ping}. Pruned
     on each run by dropping entries for notes that are gone/archived/replied.

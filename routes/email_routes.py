@@ -3116,50 +3116,10 @@ def setup_email_routes():
             logger.error(f"unsubscribe cleanup failed: {e}")
             return {"success": False, "error": "Mail operation failed", "changed": changed, "failed": failed}
 
-    @router.get("/contacts")
-    async def list_contacts(
-        q: str = Query(""),
-        limit: int = Query(20),
-        owner: str = Depends(require_owner),
-    ):
-        """Distinct name/address pairs aggregated from the email_tags table
-        — used by the from-sender sidebar's autocomplete to convert typed
-        names into chips. Backed by the AI-classification cache so it's a
-        cheap SQL read; people you've never received a tagged email from
-        won't appear yet."""
-        ql = (q or "").strip().lower()
-        try:
-            conn = _sql3.connect(SCHEDULED_DB)
-            owner_clause, owner_params = _email_tag_owner_clause(None, owner)
-            rows = conn.execute(
-                f"SELECT sender FROM email_tags WHERE sender IS NOT NULL AND sender != '' AND {owner_clause}",
-                owner_params,
-            ).fetchall()
-            conn.close()
-            seen = {}
-            for (s,) in rows:
-                try:
-                    name, addr = email.utils.parseaddr(s or "")
-                except Exception:
-                    continue
-                if not addr:
-                    continue
-                addr_l = addr.lower()
-                if ql and ql not in (name or "").lower() and ql not in addr_l:
-                    continue
-                if addr_l in seen:
-                    continue
-                seen[addr_l] = {"name": (name or addr).strip(), "address": addr}
-            items = list(seen.values())
-            # Prefer entries whose name starts with the query, then alphabetical.
-            items.sort(key=lambda c: (
-                0 if ql and (c["name"] or "").lower().startswith(ql) else 1,
-                (c["name"] or c["address"]).lower(),
-            ))
-            return {"contacts": items[: max(1, int(limit))]}
-        except Exception as e:
-            logger.error(f"contacts list failed: {e}")
-            return {"contacts": [], "error": "Mail operation failed"}
+    # (`B1454`: `GET /contacts` — names and addresses aggregated from the AI
+    # classification cache, "used by the autocomplete" — was here. The
+    # autocomplete reads the person's CardDAV contacts (`/api/contacts/list`),
+    # so it had no caller.)
 
     @router.get("/search")
     # Sync def: the body is blocking IMAP I/O with no awaits. As `async def` it ran
@@ -3445,11 +3405,11 @@ def setup_email_routes():
                     f"size={len(raw)} full={full} total={_t_total*1000:.0f}ms"
                 )
 
-            # Look up cached summary, AI reply, and LLM-detected boundaries
-            # by Message-ID
+            # Look up the cached summary and AI reply by Message-ID
             cached_summary = None
             cached_ai_reply = None
-            cached_boundaries = None
+            cached_turns = None
+            cached_sender_sig = None
             try:
                 import sqlite3 as _sql3
                 _c = _sql3.connect(SCHEDULED_DB)
@@ -3466,10 +3426,6 @@ def setup_email_routes():
                 ).fetchone()
                 if _row2:
                     cached_ai_reply = _apply_email_style_mechanics(_extract_reply(_row2[0] or ""))
-                _row3 = _c.execute(
-                    "SELECT sig_start, quote_start, turns_json FROM email_boundaries WHERE message_id = ?",
-                    (message_id.strip(),),
-                ).fetchone()
                 cached_turns = None
                 cached_sender_sig = None
                 # Look up a per-sender cached signature (built by the
@@ -3489,32 +3445,14 @@ def setup_email_routes():
                     # signature is computed from the message body instead,
                     # which is the same answer more slowly.
                     pass
-                if _row3:
-                    cached_boundaries = {"sig_start": _row3[0], "quote_start": _row3[1]}
-                    if _row3[2]:
-                        try:
-                            from src.email_thread_parser import THREAD_PARSER_VERSION
-                            _parsed = json.loads(_row3[2])
-                            # Versioned envelope: {"v": N, "turns": [...]}.
-                            # Anything else (bare list from older code, wrong
-                            # version) is treated as a cache miss so the
-                            # on-the-fly parser re-runs and the next write
-                            # warms the cache with the current shape.
-                            if (
-                                isinstance(_parsed, dict)
-                                and _parsed.get("v") == THREAD_PARSER_VERSION
-                                and isinstance(_parsed.get("turns"), list)
-                            ):
-                                cached_turns = _parsed["turns"]
-                        except Exception:
-                            cached_turns = None
                 _c.close()
             except Exception:
                 pass
 
-            # If no cached turns, parse on-the-fly so the client never has
-            # to do the heavy lifting. Cheap on a 50KB body, free for short
-            # ones. The background task warms the cache for next reads.
+            # Parse the thread here so the client never has to do the heavy
+            # lifting. Cheap on a 50KB body, free for short ones. (`B1466`: a
+            # cached parse was read from `email_boundaries` first; nothing has
+            # written that table since its housekeeping action was retired.)
             if cached_turns is None:
                 try:
                     from src.email_thread_parser import parse_thread
@@ -3543,7 +3481,6 @@ def setup_email_routes():
                 "attachment_version": EMAIL_READ_ATTACHMENT_VERSION,
                 "cached_summary": cached_summary,
                 "cached_ai_reply": cached_ai_reply,
-                "boundaries": cached_boundaries,
                 "thread_turns": cached_turns,
                 "sender_signature": cached_sender_sig,
                 # Per-request, not part of the message: the route strips this
@@ -4243,27 +4180,9 @@ def setup_email_routes():
             logger.error(f"attachment-as-doc {uid}/{index} failed: {e}")
             return {"error": "Mail operation failed"}
 
-    @router.post("/attachment-path/{uid}/{index}")
-    async def get_attachment_path(uid: str, index: int, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
-        """Extract attachment to local disk and return the path (for AI to read via read_file)."""
-        try:
-            with _imap(account_id, owner=owner) as conn:
-                conn.select(_q(folder), readonly=True)
-                status, msg_data = _imap_uid_fetch(conn, uid, "(RFC822)")
-            if status != "OK":
-                return {"error": "Email not found"}
-            raw = msg_data[0][1]
-            msg = email_mod.message_from_bytes(raw)
-
-            target_dir = attachment_extract_dir(folder, uid)
-            filepath = _extract_attachment_to_disk(msg, index, target_dir)
-            if not filepath:
-                return {"error": f"Attachment index {index} not found"}
-
-            return {"path": str(filepath), "filename": filepath.name, "size": filepath.stat().st_size}
-        except Exception as e:
-            logger.error(f"Failed to get attachment path {uid}/{index}: {e}")
-            return {"error": "Mail operation failed"}
+    # (`B1454`: `POST /attachment-path/{uid}/{index}` — extract an attachment
+    # to disk "for AI to read via read_file" — was here; no tool named it. The
+    # agent's `download_attachment` tool is the way an attachment reaches it.)
 
     @router.post("/mark-unread/{uid}")
     async def mark_unread(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
@@ -4796,53 +4715,8 @@ def setup_email_routes():
             logger.error(f"delete_compose_upload {token!r} failed: {e}")
             return {"success": False, "error": "Mail operation failed"}
 
-    async def _send_email_sync(
-        to, cc, bcc, subject, body, in_reply_to, references, attachments,
-        account_id=None, owner="", pantheon_kind=None, pantheon_ref=None,
-    ):
-        """Shared send logic used by both /send and scheduled delivery.
-
-        SECURITY: callers MUST pass `owner` (the authed user) so the config
-        lookup is scoped — otherwise the fallback picks whichever account
-        happens to be is_default globally and the message ships through
-        someone else's SMTP creds + From-address.
-        """
-        cfg = _resolve_send_config(account_id, owner=owner)
-        has_atts = bool(attachments)
-        if has_atts:
-            outer = MIMEMultipart("mixed")
-            body_container = MIMEMultipart("alternative")
-        else:
-            outer = MIMEMultipart("alternative")
-            body_container = outer
-
-        to = _normalize_addr_field(to or "")
-        cc = _normalize_addr_field(cc or "")
-        bcc = _normalize_addr_field(bcc or "")
-        outer["From"] = email.utils.formataddr((cfg.get("display_name") or "", cfg["from_address"]))
-        outer["To"] = to
-        if cc:
-            outer["Cc"] = cc
-        outer["Subject"] = subject or ""
-        outer["Date"] = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")
-        _apply_pantheon_headers(outer, pantheon_kind or "scheduled", pantheon_ref)
-        if in_reply_to:
-            outer["In-Reply-To"] = in_reply_to
-        if references:
-            outer["References"] = references
-
-        body_container.attach(MIMEText(body or "", "plain", "utf-8"))
-        body_container.attach(MIMEText(_md_to_email_html(body or ""), "html", "utf-8"))
-
-        if has_atts:
-            outer.attach(body_container)
-            _attach_compose_uploads(outer, attachments)
-
-        recipients = _envelope_recipients(to, cc, bcc)
-
-        _send_smtp_message(cfg, cfg["from_address"], recipients, outer.as_string())
-
-        _cleanup_compose_uploads(attachments)
+    # (`B1470`: `_send_email_sync` — "shared by /send and scheduled delivery" — was
+    # here; neither used it.)
 
     @router.post("/schedule")
     async def schedule_email(req: dict, owner: str = Depends(require_owner)):

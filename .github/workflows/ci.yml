@@ -319,8 +319,11 @@ jobs:
       # route; `/api/codex/`, `/api/claude/` and `/api/companion/` are external
       # agent and device surfaces with real callers outside the browser, now in
       # the ALLOWED map. Measured with the app imported, as this job runs it.
+      # 60 -> 37 the same day (`B1453`, `B1454`, `B1263`): nineteen routes
+      # with no caller retired, and four given the door they lacked (uploads'
+      # stats and cleanup, the RAG index's stats, not-spam).
       - name: check-unreachable
-        run: python3 .pantheon/check-unreachable.py --max-routes 60
+        run: python3 .pantheon/check-unreachable.py --max-routes 37
       # P0-31. A rename that finishes on one side of a join is invisible: the
       # writers move, the readers do not, and nothing raises. It happened four
       # times from one sweep — the API token prefix a person pastes into

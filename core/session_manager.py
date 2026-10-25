@@ -677,46 +677,9 @@ class SessionManager:
         finally:
             db.close()
 
-    def archive_session(self, session_id: str):
-        """Archive a session."""
-        if session_id not in self.sessions:
-            return
+    # (`B1470`: `archive_session` was here; `POST /api/session/{sid}/archive` does it.)
 
-        db = SessionLocal()
-        try:
-            db_session = db.query(DbSession).filter(DbSession.id == session_id).first()
-            if db_session:
-                db_session.archived = True
-                db_session.updated_at = datetime.now(timezone.utc)
-                db.commit()
-                self.sessions[session_id].archived = True
-        except Exception as e:
-            db.rollback()
-            logger.error(f"Error archiving session: {e}")
-            raise
-        finally:
-            db.close()
-
-    def mark_important(self, session_id: str, important: bool = True):
-        """Mark session as important."""
-        db = SessionLocal()
-        try:
-            db_session = db.query(DbSession).filter(DbSession.id == session_id).first()
-            if db_session:
-                db_session.is_important = important
-                db_session.updated_at = datetime.now(timezone.utc)
-                db.commit()
-
-                if session_id in self.sessions:
-                    self.sessions[session_id].is_important = important
-            else:
-                raise KeyError(f"Session {session_id} not found")
-        except Exception as e:
-            db.rollback()
-            logger.error(f"Error marking session important: {e}")
-            raise
-        finally:
-            db.close()
+    # (`B1470`: `mark_important` was here; `POST /api/session/{id}/important` sets it.)
 
     # ------------------------------------------------------------------
     # Queries
@@ -827,55 +790,5 @@ class SessionManager:
     # Cleanup
     # ------------------------------------------------------------------
 
-    def cleanup_empty_sessions(self, auto_archive_days: int = 30, min_age_hours: int = 1) -> dict:
-        """Clean up empty and old sessions.
-
-        Args:
-            auto_archive_days: Age in days before non-important sessions are archived.
-            min_age_hours: Minimum age in hours before an empty session can be deleted.
-                          Prevents deleting sessions that were just created.
-        """
-        db = SessionLocal()
-        stats = {'deleted_empty': 0, 'archived_old': 0, 'total_checked': 0}
-
-        try:
-            all_sessions = db.query(DbSession).all()
-            cutoff_date = utcnow_naive() - timedelta(days=auto_archive_days)
-            min_age = utcnow_naive() - timedelta(hours=min_age_hours)
-
-            for db_session in all_sessions:
-                stats['total_checked'] += 1
-
-                # Delete empty sessions only if older than min_age_hours
-                if db_session.message_count == 0:
-                    if db_session.created_at is not None:
-                        created = db_session.created_at
-                        if created.tzinfo is None:
-                            created = created.replace(tzinfo=timezone.utc)
-                        if created > min_age:
-                            continue  # Too young to delete
-                    if db_session.id in self.sessions:
-                        del self.sessions[db_session.id]
-                    db.delete(db_session)
-                    stats['deleted_empty'] += 1
-
-                # Archive old sessions
-                elif (not db_session.archived and
-                      db_session.last_accessed and
-                      db_session.last_accessed < cutoff_date and
-                      db_session.message_count > 0 and
-                      not getattr(db_session, 'is_important', False)):
-                    db_session.archived = True
-                    stats['archived_old'] += 1
-
-            db.commit()
-            logger.info(f"Cleanup: {stats['deleted_empty']} deleted, {stats['archived_old']} archived")
-
-        except Exception as e:
-            logger.error(f"Cleanup error: {e}")
-            db.rollback()
-            raise
-        finally:
-            db.close()
-
-        return stats
+    # (`B1470`: `cleanup_empty_sessions` was here; Settings → System's cleanup
+    # (`/api/cleanup`, `src/session_cleanup`) is the one that runs.)

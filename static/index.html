@@ -688,6 +688,9 @@
                     <span class="skill-rich-ph"><span class="k">Skill link</span> — skills.sh page, npx skills add line, or GitHub link</span>
                   </div>
                   <button type="button" id="skill-import-url-btn" class="theme-io-btn" title="Import skill from URL" style="flex:none;height:28px;font-size:12px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Import</button>
+                  <!-- `B1469`. The file a skill's *Download* gives, handed back. -->
+                  <button type="button" id="skill-import-file-btn" class="theme-io-btn" title="Import a skill file you downloaded" style="flex:none;height:28px;font-size:12px;">From a file…</button>
+                  <input type="file" id="skill-import-file" accept=".json,application/json" hidden aria-label="Skill file to import">
                 </div>
                 <!-- `B926`. Where the import says what it is doing and how it ended,
                      beside the box it was started from. A toast alone was the only
@@ -3705,6 +3708,7 @@
               <div>
                 <div class="admin-toggle-label" id="agents-maxLabel">Most agent runs at once</div>
                 <div class="admin-toggle-sub" id="agents-maxSub">A run that would go past this waits two minutes and tries again; nothing is lost. 1 to 16.</div>
+                <div class="admin-toggle-sub" id="agents-maxNote" hidden></div>
               </div>
               <input type="number" id="agents-maxInput" class="settings-select" min="1" max="16" step="1" aria-labelledby="agents-maxLabel" aria-describedby="agents-maxSub">
             </div>
@@ -3831,7 +3835,7 @@
               <div class="admin-toggle-row ws-toggle">
                 <div>
                   <label class="admin-toggle-label" for="ws-lan-reach">Agents may reach the local network</label>
-                  <div class="admin-toggle-sub" id="ws-lan-reach-why">On: the <code>network</code> tool (list interfaces, check whether a host is reachable) and reading a router or LAN service by URL. Loopback and cloud metadata stay blocked. Off: Pantheon stays on the public internet.</div>
+                  <div class="admin-toggle-sub" id="ws-lan-reach-why">On: for people allowed the workstation, their agents' <code>network</code> tool (list interfaces, check whether a host is reachable) and reading a router or LAN service by URL. Nothing else Pantheon fetches — images in mail, search results — reaches the LAN. Loopback and cloud metadata stay blocked. Off: agents stay on the public internet.</div>
                 </div>
                 <label class="admin-switch"><input type="checkbox" id="ws-lan-reach" aria-describedby="ws-lan-reach-why"><span class="admin-slider"></span></label>
               </div>
@@ -3920,6 +3924,8 @@
             <div class="admin-rag-toolbar">
               <button class="admin-btn-sm" id="adm-ragReloadBtn" title="Re-read every indexed file and directory from disk">Reload Index</button>
             </div>
+            <!-- `B1453`: what `GET /api/rag/stats` says — it had no caller. -->
+            <div class="admin-toggle-sub" id="adm-ragStats"></div>
             <div class="admin-rag-section-label">Indexed directories</div>
             <div id="adm-ragDirList"><div class="admin-empty">Loading...</div></div>
             <div class="admin-rag-dir-row">
@@ -4057,6 +4063,21 @@
             </div>
             <div id="adm-cleanupMsg" style="margin-top:6px;font-size:12px;" role="status" aria-live="polite"></div>
             <div id="adm-cleanupPreview" style="margin-top:8px;" hidden></div>
+          </div>
+          <!-- `B1453`. Uploaded files. `GET /api/upload/stats` and `POST
+               /api/upload/cleanup` were both admin routes with no caller, and
+               nothing ran the cleanup on a schedule either — so an expired,
+               unreferenced upload was never removed on any install. The
+               cleanup is reference-safe: it removes only uploads past their
+               age that no chat, document or gallery item points at, and
+               refuses outright when it cannot prove that. -->
+          <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Uploaded files</h2>
+            <div class="admin-toggle-sub" id="adm-uploadsStats" style="margin-bottom:8px">Loading…</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <button class="admin-btn-add" id="adm-uploadsCleanBtn">Remove expired uploads</button>
+            </div>
+            <div id="adm-uploadsMsg" style="margin-top:6px;font-size:12px;" role="status" aria-live="polite"></div>
           </div>
           <div class="admin-card admin-danger-card">
             <h2 style="color:#e55;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.75"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Danger Zone</h2>

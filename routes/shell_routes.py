@@ -1806,52 +1806,12 @@ def setup_shell_routes() -> APIRouter:
                 pkg["install_hint"] = status.install_hint
         return {"packages": packages}
 
-    @router.post("/api/cookbook/packages/install")
-    async def install_package(request: Request):
-        """Install a package via pip. Admin only — pip install is effectively code exec."""
-        _require_admin(request)
-        import sys as _sys
-
-        body = await request.json()
-        pip_name = body.get("pip")
-        if not pip_name:
-            return {"ok": False, "error": "No package specified"}
-        # Validate against known packages to prevent arbitrary pip install
-        known = {
-            "rembg[gpu]",
-            "hf_transfer",
-            "llama-cpp-python[server]",
-            "sglang[all]",
-            "diffusers",
-            "diffusers[torch]",
-            "git+https://github.com/huggingface/diffusers.git",
-            "mflux",
-            "git+https://github.com/xocialize/boogu-image-mlx.git",
-            "mlx-vlm",
-            "transformers",
-            "TTS",
-            "bark",
-            "faster-whisper",
-            "playwright",
-            "realesrgan",
-            "gfpgan",
-            "insightface",
-            "onnxruntime-gpu",
-            "onnxruntime",
-            "hdbscan",
-            "vllm",
-            "mlx-lm",
-        }
-        if pip_name not in known:
-            return {"ok": False, "error": f"Unknown package: {pip_name}"}
-        cmd = [_sys.executable, "-m", "pip", "install", pip_name]
-        proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        stdout, stderr = await proc.communicate()
-        if proc.returncode == 0:
-            return {"ok": True, "output": stdout.decode()[-200:]}
-        return {"ok": False, "error": stderr.decode()[-300:]}
+    # (`B1454`: `POST /api/cookbook/packages/install` — a blocking `pip install`
+    # into Pantheon's own interpreter from a fixed list — was here with no
+    # caller. Forge installs and updates a package as a visible tmux task on
+    # the target it is for (`cookbook.js`), which is where a package belongs;
+    # `app_api` still refuses the path, so a route of that name never becomes a
+    # back door.)
 
     @router.post("/api/cookbook/install-system-deps")
     async def install_system_deps(request: Request):

@@ -10,7 +10,7 @@ The on-disk format is SKILL.md (frontmatter + structured body) under
 
 import logging
 import re
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 import httpx
 
@@ -143,6 +143,17 @@ class SkillLintRequest(BaseModel):
 
 class SkillImportUrlRequest(BaseModel):
     url: str = Field(..., min_length=8, max_length=2000)
+
+
+# `B1469`. The file *Download* gives (`GET /{skill_id}/export`), handed back.
+# Bounded like a fetched bundle: a skill is a few text files, not an archive.
+SKILL_FILE_MAX_FILES = 200
+SKILL_FILE_MAX_BYTES = 2 * 1024 * 1024
+
+
+class SkillImportFileRequest(BaseModel):
+    skill: str = Field("", max_length=200)
+    files: Dict[str, str] = Field(...)
 
 
 # `P22-23`. What a person types under *Draft from a description*. Not capped by
@@ -1527,6 +1538,22 @@ def _resolve_audit_models(owner=None):
     return url, model, headers, teacher
 
 
+def scheduled_audit_hour() -> int:
+    """`skill_audit_hour`, 0–23 (`B1462`). The loop read it as
+    `int(get_setting(...) or 2)`, so a stored `0` — midnight, which the panel
+    offers and confirms as "from 00:00" — ran at 02:00. Only a missing or
+    unreadable value falls back to 2."""
+    try:
+        from src.settings import get_setting
+        raw = get_setting("skill_audit_hour", 2)
+        hour = int(raw) if raw is not None and not isinstance(raw, bool) else 2
+    except (TypeError, ValueError):
+        return 2
+    except Exception:
+        return 2   # settings unreadable: the shipped default
+    return hour if 0 <= hour <= 23 else 2
+
+
 async def run_scheduled_skill_audit(skills_manager: SkillsManager,
                                     owner: Optional[str] = None,
                                     max_skills: int = 8) -> dict:
@@ -1952,6 +1979,41 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         except Exception as e:
             raise _import_errors(e) from e
         return _import_answer(user, result)
+
+    @router.post("/import-file")
+    async def import_skill_file(request: Request, body: SkillImportFileRequest):
+        """Install a skill from the file *Download* gave — `B1469`.
+
+        `GET /{skill_id}/export` has said since `P22-23` that "a download is an
+        import's inverse", and nothing took the file back: `import_bundle_from_files`
+        was written for it and had no caller. Admin-only like the URL import it
+        sits beside, because a bundle is files written under `skills/`.
+        """
+        require_admin(request)
+        user = _owner(request)
+        from starlette.concurrency import run_in_threadpool
+
+        files = body.files or {}
+        if not files:
+            raise HTTPException(400, "That file has no skill in it — choose a file a skill's Download gave.")
+        if len(files) > SKILL_FILE_MAX_FILES:
+            raise HTTPException(400, f"A skill file holds at most {SKILL_FILE_MAX_FILES} files; this one has {len(files)}.")
+        total = sum(len(str(k)) + len(str(v)) for k, v in files.items())
+        if total > SKILL_FILE_MAX_BYTES:
+            raise HTTPException(400, "That skill file is larger than 2 MB, which no skill needs.")
+        try:
+            entry = await run_in_threadpool(skills_manager.import_bundle_from_files,
+                                            {str(k): str(v) for k, v in files.items()},
+                                            owner=user, category="imported")
+        except Exception as e:
+            raise _import_errors(e) from e
+        name = entry.get("name")
+        notes = []
+        if entry.get("_renamed_from"):
+            notes.append(f"A skill named {entry['_renamed_from']} already exists, so this one was saved as {name}.")
+        _fire_skill_added(user, name)
+        return {"ok": True, "skill": {k: v for k, v in entry.items() if not k.startswith("_")},
+                "files": len(files), "notes": notes}
 
     # ── packages and groups — `P8-49` … `P8-52` ────────────────────────────
     # Declared before `/{skill_id}` so `GET /collections` is not read as a

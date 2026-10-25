@@ -201,7 +201,8 @@ async def run_network(content: Any, *, owner: Optional[str]) -> Dict[str, Any]:
     action = args["action"]
     if not lan_reach_on():
         return {"error": "Reaching the local network is turned off on this install. An admin turns it "
-                         "on in Settings (LAN reach).", "exit_code": 1}
+                         "on in Settings → Workstation (“Agents may reach the local network”).",
+                "exit_code": 1}
     if action == "reach":
         refusal = _refusal(args["host"])
         if refusal:

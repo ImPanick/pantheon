@@ -124,7 +124,16 @@ class WebFetchTool:
             url = "https://" + url
         loop = asyncio.get_running_loop()
         try:
+            _owner = (ctx or {}).get("owner")
+
             def _fetch():
+                # `B1459`: the LAN is the agent's, for a person allowed the
+                # workstation — granted here, in the thread that fetches.
+                from src.outbound_fetch import lan_reach_for
+                with lan_reach_for(_owner):
+                    return _fetch_inner()
+
+            def _fetch_inner():
                 kwargs = {"timeout": 10}
                 try:
                     sig = inspect.signature(fetch_webpage_content)

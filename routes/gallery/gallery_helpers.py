@@ -134,10 +134,3 @@ def _owner_filter(q, user, model_cls=GalleryImage):
     return q.filter(False)
 
 
-
-def _human_size(nbytes):
-    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-        if abs(nbytes) < 1024:
-            return f"{nbytes:.1f} {unit}"
-        nbytes /= 1024
-    return f"{nbytes:.1f} PB"

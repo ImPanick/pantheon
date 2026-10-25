@@ -1824,13 +1824,20 @@ async def _startup_event():
         # everyone picks, and it is the job whose spike lands when nobody is
         # awake to see it. Spread across the five minutes after the hour.
         from src.jitter import next_daily_run
+        from routes.skills_routes import scheduled_audit_hour
         while True:
-            try:
-                from src.settings import get_setting
-                hour = int(get_setting("skill_audit_hour", 2) or 2)
-            except Exception:
-                hour = 2
-            await asyncio.sleep(max(60, next_daily_run(hour)))
+            hour = scheduled_audit_hour()
+            # `B1462`: wake at least every 15 minutes to re-read the hour, so a
+            # change takes effect for the next run rather than the one after.
+            target = time.monotonic() + max(60, next_daily_run(hour))
+            moved = False
+            while (left := target - time.monotonic()) > 0:
+                await asyncio.sleep(min(left, 900))
+                if scheduled_audit_hour() != hour:
+                    moved = True
+                    break
+            if moved:
+                continue
             try:
                 from src.settings import get_setting
                 if not get_setting("skill_audit_nightly", True):

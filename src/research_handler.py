@@ -3,8 +3,9 @@
 # pipeline adapted from Tongyi DeepResearch (Alibaba-NLP / Tongyi Lab),
 # licensed Apache-2.0. It is NOT Tongyi's original: it has been changed.
 # Changed by Odysseus, and further by Pantheon: the warning when a result
-# cannot be marked consumed (`P3-17`), the `research_completed` event (`P8-23`)
-# and the SPDX line above (`P0-18`).
+# cannot be marked consumed (`P3-17`), the `research_completed` event (`P8-23`),
+# the removal of an unused `generate_plan` (`B1470`) and the SPDX line above
+# (`P0-18`).
 #
 # Upstream licence text (Tongyi DeepResearch): licenses/DeepResearch-Apache-2.0.txt
 # Attribution: CREDITS.md
@@ -182,52 +183,8 @@ class ResearchHandler:
 
         return _fallback()
 
-    async def generate_plan(
-        self, query: str, llm_endpoint: str, llm_model: str, llm_headers: dict = None,
-    ) -> Optional[dict]:
-        """Generate a research plan for user review before starting research."""
-        try:
-            from src.deep_research import RESEARCH_PLAN_PROMPT, current_date_context
-            from src.llm_core import llm_call_async
-
-            prompt = current_date_context() + RESEARCH_PLAN_PROMPT.format(question=query)
-            response = await llm_call_async(
-                url=llm_endpoint,
-                model=llm_model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
-                max_tokens=1024,
-                headers=llm_headers,
-                timeout=30,
-                max_retries=1,
-            )
-            response = strip_thinking(response)
-
-            # Try to parse structured plan
-            import json as _json
-            parsed = None
-            try:
-                # Try to extract JSON from response
-                _clean = response.strip()
-                if _clean.startswith("```"):
-                    _clean = re.sub(r'^```(?:json)?\s*', '', _clean)
-                    _clean = re.sub(r'\s*```$', '', _clean)
-                import re as _re
-                _match = _re.search(r'\{[\s\S]*\}', _clean)
-                if _match:
-                    parsed = _json.loads(_match.group())
-            except Exception:
-                pass
-
-            return {
-                "sub_questions": parsed.get("sub_questions", []) if parsed else [],
-                "key_topics": parsed.get("key_topics", []) if parsed else [],
-                "success_criteria": parsed.get("success_criteria", "") if parsed else "",
-                "raw": response,
-            }
-        except Exception as e:
-            logger.warning(f"Research plan generation failed: {e}")
-            return None
+    # (`B1470`: `generate_plan` — a plan "for user review before starting research" —
+    # was here with no caller; `deep_research._create_plan` makes the plan.)
 
     # ------------------------------------------------------------------
     # Task registry — background research with persistence

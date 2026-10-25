@@ -197,7 +197,7 @@ def test_loopback_and_metadata_are_refused_whatever_the_setting(addr):
 def test_a_fetch_into_an_untrusted_network_is_refused(monkeypatch):
     import httpx
     import src.outbound_fetch as of
-    monkeypatch.setattr(of, "_lan_reach_on", lambda: True)
+    monkeypatch.setattr(of, "lan_allowed", lambda: True)
     _declare(monkeypatch, [{"name": "guest", "cidrs": ["192.168.9.0/24"], "trust": "untrusted"}])
     with pytest.raises(httpx.RequestError) as e:
         of._resolve_public_ips("http://192.168.9.20/")

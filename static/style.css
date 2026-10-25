@@ -20992,9 +20992,13 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
    The name's basis is now 10rem and the header wraps, so when the cluster
    does not fit beside 10rem of name it moves under the name instead of over
    it. 10rem, not more: a one-pill card still fits on one line at 390px
-   (measured: 12rem wrapped every card there). */
+   (measured: 12rem wrapped every card there).
+   `B1458`: 9rem now. At 10rem the one-pill card at 390px was 1px short —
+   a 326px header holding 160px of name, a 6px gap and a 161px cluster
+   (`published` + `80% · used 0×` + the menu) — so it wrapped. 9rem leaves
+   the line 17px of slack for a longer stat. */
 .skill-card-textcol {
-  flex: 1 1 10rem;
+  flex: 1 1 9rem;
   min-width: 0;
   overflow: hidden;
 }
@@ -34205,11 +34209,9 @@ button .spinner-whirlpool {
   border-radius: 10px; padding: 1px 6px; font-size: 9px; font-weight: 600;
   text-transform: lowercase; letter-spacing: 0.3px;
 }
-.email-spam-unflag {
-  background: none; border: none; color: inherit; cursor: pointer;
-  padding: 0 2px; font-size: 10px; line-height: 1; opacity: 0.6;
-}
-.email-spam-unflag:hover { opacity: 1; color: var(--fg); }
+/* `B1453`: the spam pill is the not-spam override's button. */
+.email-tag-spam.email-not-spam { font-family: inherit; line-height: inherit; cursor: pointer; }
+.email-tag-spam.email-not-spam:hover { filter: brightness(1.2); }
 /* Unread state is now a subtle icon, not full styling */
 .email-done-check {
   display: inline-flex; align-items: center; justify-content: center;

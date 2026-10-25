@@ -223,15 +223,17 @@ texts are in [`licenses/`](licenses/).
 - **[Tongyi DeepResearch](https://github.com/Alibaba-NLP/DeepResearch)** by
   **Alibaba-NLP / Tongyi Lab** — the multi-step deep-research agent pipeline.
   Copyright © Alibaba-NLP / Tongyi Lab. **Apache-2.0.** Adapted for Pantheon's
-  Deep Research feature (`services/research/`, `src/research_handler.py`,
+  Deep Research feature (`src/research_handler.py`,
   `routes/research/research_routes.py`, `services/search/`). Full text in
   [`licenses/DeepResearch-Apache-2.0.txt`](licenses/DeepResearch-Apache-2.0.txt).
 
-Apache-2.0 §4(b) requires modified files to carry a change notice. Eight files
-carry one at the top as of 2026-08-27: the six under `services/research/`,
-`routes/research/` and `src/research_handler.py`, plus `src/deep_research.py`
-and `src/goal_based_extractor.py`, which declare their Alibaba derivation in
-their own docstrings.
+Apache-2.0 §4(b) requires modified files to carry a change notice. Five files
+carry one at the top: the three under `routes/research/` and
+`src/research_handler.py`, plus `src/deep_research.py` and
+`src/goal_based_extractor.py`, which declare their Alibaba derivation in their
+own docstrings. (Eight did as of 2026-08-27; the three under
+`services/research/` — an unused copy of the research handler and a facade
+over it — were deleted on 2026-10-25, `B1470`.)
 
 **`services/search/` keeps its credit and carries no change notice — the
 owner's ruling of 2026-10-02 (`D-2026-10-02-03`).** It appears in the path list

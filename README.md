@@ -147,8 +147,9 @@ unless you set `APP_BIND`, and the port is `APP_PORT`. Your first admin password
 on first boot and printed in `docker compose logs pantheon` as `Temporary password:` — set
 `PANTHEON_ADMIN_PASSWORD` in `.env` beforehand to choose your own.
 
-`.env.example` is the whole configuration surface, commented; copying it unedited is a working
-default.
+`.env.example` is the configuration an operator sets, commented; copying it unedited is a working
+default. (A few more variables exist for development and tests — `check-env-declared.py` lists
+them — and most settings live in Settings, not the environment.)
 
 Native installs, GPU setup, Windows and macOS, HTTPS and configuration are in the
 [setup guide](docs/setup.md). `main` is the only branch here; upstream's `dev` is available on
@@ -202,7 +203,7 @@ We wrote a script that counts element lookups with nothing behind them. It found
 six subsystems, which is the point of writing the script rather than writing the list. What
 follows is that original finding, kept because it is the honest picture of what a fork inherits.
 
-**Run it today and it says 40.** It said 120 when this paragraph was written and 78 when the
+**Run it today and it says 0** (2026-10-25, `B1444`–`B1446`). It said 40 before that, 120 when this paragraph was written and 78 when the
 original sweep was taken, and neither difference is a regression — it is the same script looking at
 more than it used to, and then a triage driving down what it found. It has been widened three times since the 78 was taken, each time because
 it turned out to be measuring less than it claimed: it read `static/js/` and never `static/app.js`,
@@ -216,7 +217,7 @@ up, so a *new* unreachable id shows up the day it is written. It has come down t
 triaged 124 to 40, and `P3-20`'s own test used to pin the literal `120` and went red the day the
 ratchet did its job, which is `B520`.
 
-**Nor are the remaining 40 all defects.** Classified by how each id is reached rather than by
+**Nor were the 40 all defects.** Classified by how each id is reached rather than by
 name, at least 87 of the 124 measured at the 2026-08-30 triage were guarded by construction — code that knows the markup
 may be absent and returns early. That is a feature removed cleanly with its wiring left behind
 on purpose, costing one null check. The triage is `P3-20`, and its finding was that driving the
@@ -248,15 +249,15 @@ proved it dead.
 
 ## Status
 
-**1529 tracked tasks, 1129 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**1556 tracked tasks, 1150 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
 above.
 
 **Read that number with the trend beside it.** Over the last ten waves, *done* went
-**72.8% → 73.8%** and *open* went **409 → 400**: 26 rows filed against 35 closed, a
-file-to-close ratio of **0.743** — the open count fell, though less than a wave earlier, because the latest wave was an audit for anything half-built and it filed what it could not finish: it closed ten (every dead element lookup gone, agents' declared needs checked, the network tool trimmed to a listing and a reachability check, the suite run whole and every drifted test fixed) and left five open on purpose — routes with no caller, routes whose promised caller was never built, and three suite defects (`B1453`–`B1456`, `B1458`). Before it, a wave built the Design studio and the Connections vault, another gave the agent browser to the person (point at a page, watch it inspect), and this one re-scoped `P16-20` and settled `B700` without filing much. Earlier the count had risen on a phase's build list, not defects: opening `P24`, the Agents hall, filed its 25 rows at once, and its first waves closed 18 of its 27, so the 9 still open are its plan — one of them the owner's own audit of every runbook (`P24-27`). Before that wave
+**72.9% → 73.9%** and *open* went **407 → 406**: 52 rows filed against 53 closed, a
+file-to-close ratio of **0.981** — the open count fell, by one, because the latest wave was the deep audit's third pass and four audits that had not been run, and it filed what it found and did not finish: it closed twenty-one (every route with no caller deleted or given a door, LAN reach held to the agent of a person allowed the workstation, settings that were saved and then ignored, three tables nothing used, about 2,500 lines of dead code, and the five rows the pass before had left open) and filed thirteen open on purpose, each a decision an audit named — dead code, a switch that changes only words, columns nothing reads (`B1473`–`B1485`). The pass before it closed ten and left those five open. Before it, a wave built the Design studio and the Connections vault, another gave the agent browser to the person (point at a page, watch it inspect), and this one re-scoped `P16-20` and settled `B700` without filing much. Earlier the count had risen on a phase's build list, not defects: opening `P24`, the Agents hall, filed its 25 rows at once, and its first waves closed 18 of its 27, so the 9 still open are its plan — one of them the owner's own audit of every runbook (`P24-27`). Before that wave
 the window read **0.917**, the first in this record where closing outran filing. Most of that is `P23`, the audits' fixes — built by eight lanes, driven by the owner's
 walk twice on the merged tree and closed on 2026-10-07 — and what came straight after it: the owner's rulings that
 evening, and then `v0.2.0` shipping and the owner running it on their own install. Their two reports of 2026-10-09
@@ -267,7 +268,7 @@ control — one row of that table's twenty-five: a chat can be set to **Auto**, 
 privileged effect that follows outside content. What that gives up, and what it leaves untouched, are written out in
 [`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md)'s register under `B1338`. The open count falls only when closing outruns filing, and in
 most waves it does not — most rows are defects found by sweeps over code that was already here,
-not new work invented — so this reading is a good stretch, not a promise. What matters more is a different number: of the last 40 backlog rows filed (`B1419`–`B1458`), **none** is
+not new work invented — so this reading is a good stretch, not a promise. What matters more is a different number: of the last 40 backlog rows filed (`B1446`–`B1485`), **none** is
 on the ship line's open list — the short list of rows that stop a stranger relying on this
 repository now that it is public (measured 2026-10-02, and read again on 2026-10-07, 2026-10-08, 2026-10-09 and twice on 2026-10-14 for every row filed since): `B1179`, found at wave G's merge, was met
 the same day, and every gate the list named is met. The series, the classification and
@@ -314,7 +315,7 @@ sixth and seventh were upstream's pictures under our filenames too, gone the day
 - **More themes** — new palettes, and subtle ASCII-art backgrounds as a ninth pattern, picked
   the same way the seven animated ones already are: independently of the palette.
 
-Twenty-four phases, every task written down: [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md).
+Twenty-eight phases, every task written down: [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md).
 
 ---
 
@@ -382,13 +383,17 @@ asks for one now: those variables are ignored, and named once in the log if set.
 This fork removes restrictions, so it's worth naming the ones it doesn't. About thirty controls
 are on a never-lift list: authentication, CSRF posture, the approval store's seal, path-traversal
 and SSRF guards, command-injection guards, secrets redaction, and the extension allowlist on
-uploaded fonts, which is the one place an uploaded file is served back.
+uploaded fonts, which is the one place an uploaded file is served back. One SSRF opening is
+deliberate and on by default: an agent working for someone allowed the workstation may read a LAN
+or tailnet address by URL (a router page, a LAN service) — never loopback or cloud metadata, and
+nothing else Pantheon fetches gets it. *Agents may reach the local network* in Settings →
+Workstation turns it off.
 
 **Dependencies.** `.github/dependabot.yml` opens grouped weekly pull requests for the Python and
 npm packages, the Docker base image, and the pinned versions of the GitHub Actions themselves. On
 every pull request, dependency review blocks a change that pulls in a package with a known
-advisory; `pip-audit` reports advisories in what is already installed and deliberately does not
-block, because it flags things no particular pull request introduced. Front-end libraries are
+advisory, and `pip-audit` blocks too, on advisories in what is already installed
+(`.github/workflows/dependency-review.yml`). Front-end libraries are
 vendored rather than fetched at runtime, and `.pantheon/check-licences.py` treats that inventory
 as an allowlist — a file under `static/lib/`, `static/fonts/`, `static/icons/` or `library/` that
 is not listed in [`CREDITS.md`](CREDITS.md) fails the build, so adding one means having read its

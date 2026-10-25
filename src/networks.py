@@ -286,6 +286,10 @@ def hosts_in_scope() -> Optional[List[str]]:
         return None
     out: List[str] = []
     for net in nets:
+        # `B1460`: an untrusted network is listed, never connected to — and
+        # discovery's probe is a connection. Its hosts are not probed.
+        if net.trust == "untrusted":
+            continue
         for host in net.hosts:
             if host not in out:
                 out.append(host)

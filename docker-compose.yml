@@ -92,6 +92,14 @@ services:
       - OAUTH_REDIRECT_BASE_URL=${OAUTH_REDIRECT_BASE_URL:-}
       - TAVILY_API_KEY=${TAVILY_API_KEY:-}
       - SERPER_API_KEY=${SERPER_API_KEY:-}
+      # `B1471`. docs/setup.md tells an operator to set these three in `.env`,
+      # and a Docker install read none of them: `.env` is not in the image and
+      # nothing forwarded them. Empty source/endpoint means "use the stored
+      # setting or the default", as before; the engines carry their default
+      # here because the reader takes an empty value as no engines at all.
+      - PANTHEON_SOURCE_URL=${PANTHEON_SOURCE_URL:-}
+      - PANTHEON_OTLP_ENDPOINT=${PANTHEON_OTLP_ENDPOINT:-}
+      - SEARXNG_GENERAL_ENGINES=${SEARXNG_GENERAL_ENGINES:-bing,mojeek,presearch}
       # PUID / PGID — the user/group the container drops to before
       # running uvicorn (entrypoint also chowns /app/data + /app/logs
       # to match, so bind-mounted files stay editable from the host).

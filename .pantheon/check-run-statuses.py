@@ -298,10 +298,11 @@ def _is_status_attr(node: ast.AST, bound: set[str]) -> bool:
             and (node.value.id in bound or node.value.id in MODELS))
 
 
-def status_sites(path: Path) -> list[tuple[int, str, str]]:
+def status_sites(path: Path, tree: ast.AST | None = None) -> list[tuple[int, str, str]]:
     """`(line, literal, how)` for every status literal this module writes or
     tests against a `TaskRun` row."""
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    if tree is None:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     found: list[tuple[int, str, str]] = []
     for scope in _scopes(tree):
         found.extend(_scope_sites(scope))
@@ -400,7 +401,7 @@ RAW_SQL_STATUS_SITES: dict[tuple[str, str], tuple[str, str]] = {
 }
 
 
-def raw_sql_status_sites(path: Path) -> list[tuple[int, str, list[str]]]:
+def raw_sql_status_sites(path: Path, tree: ast.AST | None = None) -> list[tuple[int, str, list[str]]]:
     """`(line, enclosing function, status literals)` for every raw-SQL
     statement in *path* that writes or tests `task_runs.status`.
 
@@ -412,7 +413,8 @@ def raw_sql_status_sites(path: Path) -> list[tuple[int, str, list[str]]]:
     migration docstring, which spells the statement out in prose — can never be
     mistaken for a statement. `Law 20` in the same direction as question 3.
     """
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    if tree is None:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     parents: dict[ast.AST, ast.AST] = {}
     for node in ast.walk(tree):
         for child in ast.iter_child_nodes(node):
@@ -457,6 +459,33 @@ def raw_sql_status_sites(path: Path) -> list[tuple[int, str, list[str]]]:
                 continue
         stack.extend(ast.iter_child_nodes(node))
     return sorted(found)
+
+
+def _could_hold(tree: ast.AST) -> tuple[bool, bool]:
+    """Whether *tree* could hold a question-3 site and a question-4 site, from
+    one walk (`B1456`).
+
+    Question 3 needs an attribute or a keyword named `status` (`run.status =
+    …`, `TaskRun(status=…)`); question 4 needs a string
+    constant naming `task_runs` and one naming `status`. Most modules have
+    neither, and the scope walks below were three quarters of this checker's
+    time — 27 s a run, twelve runs in its own test file. A module that cannot
+    answer either is parsed once (a file that will not parse is still
+    reported) and not walked again. Read from the tree, not the text, so a
+    string split across implicit concatenation is still seen whole; `main`
+    only skips this walk for a file whose text has no `status` in any case.
+    """
+    orm = table = status = False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr == "status":
+            orm = True
+        elif isinstance(node, ast.keyword) and node.arg == "status":
+            orm = True
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            low = node.value.lower()
+            table = table or "task_runs" in low
+            status = status or "status" in low
+    return orm, table and status
 
 
 # Directories that are not ours to parse, spelled the way `check-licences.py`
@@ -587,12 +616,15 @@ def main() -> int:
     classified: set[tuple[str, str]] = set()
     for rel in _python_files():
         path = ROOT / rel
+        text = path.read_text(encoding="utf-8")
         try:
-            found = status_sites(path)
-            raw_found = [] if rel == SELF else raw_sql_status_sites(path)
+            tree = ast.parse(text, filename=str(path))
         except SyntaxError as e:
             problems.append(f"{rel}: will not parse ({e})")
             continue
+        may_orm, may_sql = _could_hold(tree) if "status" in text.lower() else (False, False)
+        found = status_sites(path, tree) if may_orm else []
+        raw_found = raw_sql_status_sites(path, tree) if may_sql and rel != SELF else []
         scanned += 1
         for line, literal, how in found:
             sites += 1

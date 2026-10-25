@@ -23,7 +23,7 @@ checked by a test — and the upgrade steps in order.
 ## Versions
 
 **Which version am I running?** Ask the instance: `GET /api/version` returns
-`{"version": "…"}`, `GET /api/readiness` carries the same string, and the
+`{"version": "…"}`, `GET /api/ready` carries the same string, and the
 Prometheus surface exposes it as `pantheon_build_info{version="…"}`. All three
 read one constant, `APP_VERSION` in `src/constants.py`, and nothing else in this
 tree declares a version — `tests/test_one_version_string.py` fails if a second
@@ -108,6 +108,14 @@ the next one is cut.
 
 ### Added
 
+- **Doors for things that were built and unreachable** (`B1453`, `B1469`): *Uploaded files* in
+  Settings → System (how many, how much, and *Remove expired uploads* — nothing ever removed
+  them), the RAG index's own count under its panel, a *not spam* override on the AI's spam pill in
+  Email, and *From a file…* in Skills to import the file a skill's *Download* gives.
+- **An agent says when your model is short of what it needs** (`B1448`): a mark on its card, the
+  reason on its page and a line in its run, when the model has a smaller context window than the
+  agent declared or calls tools only in the fenced form it cannot rely on. It warns; it never stops
+  a run.
 - **The phone gets every control that decides a turn.** On a phone the Agent/Chat toggle was
   dropped below a 340 px chat bar and nothing took its place — a 360×800 phone makes that bar
   exactly 340 px — so there was no way to reach Agent or Chat mode at all, and no menu, palette
@@ -118,6 +126,27 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **An agent can read your LAN by URL — if you may use the workstation.** `web_fetch` refused every
+  private address in `v0.2.0`. It now reaches LAN and tailnet addresses (a router page, a NAS's
+  API) for the agent of a person allowed the workstation, while *Agents may reach the local
+  network* (Settings → Workstation) is on, which it is by default (`D-2026-10-25-02`, `B1459`).
+  Loopback, link-local and cloud metadata stay refused for everyone; the image proxy, search
+  results and every other fetch Pantheon makes never reach the LAN; a network you declare
+  `untrusted` is never connected to. Switch it off and everything is as in `v0.2.0`.
+- **The agent's `network` tool lists and checks one host — it does not scan.** `list` names this
+  machine's interfaces and your declared networks; `reach` opens one connection to one host and
+  port and says connected, refused or no answer (`D-2026-10-25-03`). Network trust is two levels,
+  `trusted` and `untrusted`; a saved `limited` reads as `trusted` (what it always did) and writing
+  it through the API is refused.
+- **Nineteen API routes nothing called are gone** (`B1453`, `B1454`, `B1263`): `POST
+  /api/compare/start` and `/{id}/vote`, the notes `pin`/`archive`/`items/{i}/toggle` POSTs (use
+  `PUT /api/notes/{id}`), `GET /api/gallery/tags` and `/stats`, `POST /api/gallery/dedupe-tags` and
+  `/clear-user-tags`, `POST /api/session/openai`, `POST /api/session/{sid}/delete`, `DELETE
+  /api/sessions/all` (Settings → Danger Zone → *Delete all chats* is the one way, and now removes
+  the chats' images too), `POST /api/sessions/save`, `GET /api/conversations/topics`, `POST
+  /api/cookbook/packages/install`, `GET /api/email/contacts`, `POST
+  /api/email/attachment-path/{uid}/{index}`, and `GET /api/cookbook/vllm-recipe` and
+  `/vllm-recipe-manifest`. A script that called one of them gets a 404 now.
 - **A chat can be set to Auto, and then it does not ask.** Every chat has an approval mode:
   *Manual approve*, which is what chats do today and what every chat still starts at, or *Auto*,
   where the agent runs a step that would have raised an approval card. **Read what Auto gives up
@@ -185,6 +214,15 @@ the next one is cut.
   first action that is a question with nothing yet looked at buys one round of looking. `ask_user`
   still raises its card once anything has been run, asked twice, or asked on a turn with no other
   tool, and plan mode may still end on a question.
+- **Settings that were saved and then ignored now take effect.** Settings → Reminders → *Send from*
+  was dropped on save, so every reminder went from the default account (`B1461`); a nightly skill
+  audit set to 00:00 ran at 02:00, and a new hour waited a whole extra night (`B1462`); and the
+  Agents panel says when the background-model slots, not its own number, are the real limit on
+  scheduled runs (`B1464`). Sorting calendar events reads your saved memories again — it read a
+  table nothing has written since memories moved to their own store (`B1463`). Opening Notes
+  clears the fired-reminder dot, and a deleted chat's running cost is forgotten with it (`B1468`).
+  A Docker install now reads `PANTHEON_SOURCE_URL`, `PANTHEON_OTLP_ENDPOINT` and
+  `SEARXNG_GENERAL_ENGINES` from `.env`, as the setup guide always said it did (`B1471`).
 
 ---
 

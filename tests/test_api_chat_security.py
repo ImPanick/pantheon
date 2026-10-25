@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import ipaddress
+import json
 import importlib.util
 import sys
 import types
@@ -253,6 +254,17 @@ def _install_sync_chat_stubs(monkeypatch):
     llm_core.llm_call_async = _llm_call_async
     core_models.ChatMessage = _ChatMessage
 
+    # `B1455`. `sync_chat` asks `routes.model_routes` which names an endpoint
+    # offers (`offered_models`, the picker's one list) — an import the route
+    # gained after this stub set was written, and `routes.model_routes` cannot
+    # load over the stubbed `core.database` above. The stand-in reads what each
+    # row lists, which is what these tests set (`cached_models`).
+    model_routes = types.ModuleType("routes.model_routes")
+    model_routes.offered_models = lambda ep: list(json.loads(getattr(ep, "cached_models", None) or "[]"))
+    model_routes.unusable_model_sentence = lambda ep, model, then="", listed=None: (
+        f"{model or 'that model'} is not listed. {then}".strip())
+
+    monkeypatch.setitem(sys.modules, "routes.model_routes", model_routes)
     monkeypatch.setitem(sys.modules, "python_multipart", python_multipart)
     monkeypatch.setitem(sys.modules, "core.models", core_models)
     monkeypatch.setitem(sys.modules, "src.llm_core", llm_core)

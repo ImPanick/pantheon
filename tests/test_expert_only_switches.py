@@ -68,7 +68,11 @@ def test_the_readers_fallbacks_still_match_the_declarations():
     from src.settings import DEFAULT_SETTINGS
     app_py = (ROOT / "app.py").read_text(encoding="utf-8")
     loop_py = (ROOT / "src" / "agent_loop.py").read_text(encoding="utf-8")
-    assert f'get_setting("skill_audit_hour", {DEFAULT_SETTINGS["skill_audit_hour"]})' in app_py
+    # `B1462`: the hour's one reader is `routes/skills_routes.scheduled_audit_hour`,
+    # which `app.py`'s loop calls — the stored `0` that `or 2` turned into 02:00.
+    skills_py = (ROOT / "routes" / "skills_routes.py").read_text(encoding="utf-8")
+    assert f'get_setting("skill_audit_hour", {DEFAULT_SETTINGS["skill_audit_hour"]})' in skills_py
+    assert "scheduled_audit_hour()" in app_py
     assert f'get_setting("skill_audit_batch", {DEFAULT_SETTINGS["skill_audit_batch"]})' in app_py
     assert 'get_setting("skill_audit_nightly", True)' in app_py
     assert 'get_setting("agent_verifier_subagent", False)' in loop_py

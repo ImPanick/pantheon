@@ -4,7 +4,7 @@ This directory contains the Codex plugin/skill bundle for Pantheon.
 
 ## User Flow
 
-1. Open Pantheon Settings > Integrations.
+1. Open Pantheon Settings > MCP & Integrations.
 2. Add a Codex Agent.
 3. Copy the full setup commands shown after the generated token.
 4. Toggle the tools Codex is allowed to use.

@@ -1079,20 +1079,9 @@ def _init_scheduled_db():
             PRIMARY KEY (owner, account_key, folder, uid)
         )
     """)
-    # Boundary cache — LLM-detected sig/quote start positions in the body.
-    # Stored as char offsets (-1 = no boundary found). Once cached, the
-    # client uses these to fold without ever re-calling the LLM.
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS email_boundaries (
-            message_id TEXT PRIMARY KEY,
-            uid TEXT,
-            folder TEXT,
-            sig_start INTEGER,
-            quote_start INTEGER,
-            model_used TEXT,
-            created_at TEXT NOT NULL
-        )
-    """)
+    # (`B1466`: an `email_boundaries` cache was created here for LLM-detected
+    # signature/quote offsets. Its writer was retired and nothing filled it, so
+    # it is no longer created; an install that has the table keeps it, empty.)
     # Lazy migration: add account_id column to scheduled_emails if missing
     try:
         cols = [r[1] for r in conn.execute("PRAGMA table_info(scheduled_emails)").fetchall()]
@@ -1131,18 +1120,6 @@ def _init_scheduled_db():
                 pass
     except Exception:
         pass
-    # Lazy migration: add turns_json to email_boundaries for server-side
-    # thread parsing cache (talon-style precomputed reply chain).
-    try:
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(email_boundaries)").fetchall()]
-        if "turns_json" not in cols:
-            conn.execute("ALTER TABLE email_boundaries ADD COLUMN turns_json TEXT")
-    except Exception as exc:
-        # `P3-17`. The guard above means an exception here is a real failure,
-        # not "the column already exists". Swallowed, the column never appears
-        # and the precomputed reply chain silently never caches — for the life
-        # of the install, with nothing anywhere saying why threads are slow.
-        logger.warning("Lazy migration of email_boundaries.turns_json failed: %s", exc)
     # Per-sender signature cache. Populated by `learn_sender_signatures`.
     # Message sender addresses are global, so signatures must be scoped to the
     # mailbox owner before `/read` returns them to the renderer.

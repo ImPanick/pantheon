@@ -12,7 +12,7 @@ Use this skill when a user asks to interact with Pantheon from Codex.
 Expect these environment variables:
 
 - `PANTHEON_URL`: Base URL for the user's Pantheon instance, for example `http://127.0.0.1:7000`.
-- `PANTHEON_API_TOKEN`: Scoped API token created in Pantheon Settings > Integrations > Add Integration > Codex Agent.
+- `PANTHEON_API_TOKEN`: Scoped API token created in Pantheon Settings > MCP & Integrations > Add Integration > Codex Agent.
 
 If either value is missing, do not guess credentials. Tell the user to create a Codex Agent token in Pantheon Settings and expose both values to the terminal session.
 

@@ -430,16 +430,6 @@ ABSENT_BY_DESIGN = [
             "set-carddav-url", "set-carddav-user",
         ),
     },
-    {
-        "where": "static/js/settings.js",
-        "guard": "if (supInput) supInput.checked = !!settings.agent_supervisor_ladder;",
-        "why": "`agent_supervisor_ladder` exists in no Python file in the "
-               "repository — not in `DEFAULT_SETTINGS`, not read by the agent "
-               "loop. The control is absent because the setting behind it is. "
-               "Both reads are `if (supInput)`-guarded, so the payload key is "
-               "never written either.",
-        "ids": ("set-agentSupervisorLadder",),
-    },
 ]
 
 

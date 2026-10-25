@@ -456,8 +456,11 @@ def _worktree(tmp_path: Path) -> Path:
         ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
         cwd=str(ROOT), capture_output=True, text=True, timeout=120).stdout.split()
     dest = tmp_path / "tree"
+    # Only what the checker reads: every `.py`, and the one JS file that holds
+    # the browser's vocabulary. Copying every `.js` took `static/lib`'s 22 MB
+    # of vendored code along six times a run (`B1456`).
     for rel in files:
-        if not (rel.endswith(".py") or rel.endswith(".js")):
+        if not (rel.endswith(".py") or rel == "static/js/runStatus.js"):
             continue
         target = dest / rel
         target.parent.mkdir(parents=True, exist_ok=True)

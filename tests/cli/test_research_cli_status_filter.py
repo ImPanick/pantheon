@@ -2,9 +2,8 @@
 """`pantheon-research list --status complete` was returning nothing.
 
 The CLI's `--status` argparse choice is "complete" — that is the user-facing
-label — but the writer in `services/research/research_handler.py` stores
-`status="done"` for a finished run (and the older `src/research_handler.py`
-copy does the same). The list filter was a literal string compare, so
+label — but the writer in `src/research_handler.py` stores `status="done"`
+for a finished run. The list filter was a literal string compare, so
 `--status complete` matched zero records on any real on-disk corpus.
 
 These tests pin the alias so the friendlier CLI word keeps matching the

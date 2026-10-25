@@ -211,6 +211,10 @@ Re-measured 2026-10-25, after the deep audit: **26 filed, 35 closed**, open **40
 
 **Direction as of 2026-10-25: the open count is falling.**
 
+Re-measured 2026-10-25, after the deep audit's third pass: **52 filed, 53 closed**, open **407 → 406** — falling, by one. The wave closed twenty-one, the five the pass before had left open among them, and filed thirteen open (`B1473`–`B1485`): each is a decision an audit named — code with no caller, a switch that changes only words, columns nothing reads, a migration to rebuild properly — and none is a gate (`ship-line.py`: 0 of the last 40 `B` rows, `B1446`–`B1485`).
+
+**Direction as of 2026-10-25, after pass 3: the open count is falling.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus

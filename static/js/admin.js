@@ -2515,6 +2515,7 @@ function initMcpForm() {
 
 /* ── RAG ── */
 async function loadRag() {
+  loadRagStats();   // `B1453`: the count moves with every add, remove and reload
   try {
     const res = await fetch('/api/personal');
     const data = await res.json();
@@ -2559,6 +2560,66 @@ async function loadRag() {
     el('adm-ragDirList').innerHTML = '<div class="admin-error">Failed to load</div>';
     el('adm-ragFileList').innerHTML = '';
   }
+}
+
+/** `B1453`. The index's own account of itself: how many chunks, which model
+ *  embeds them — `GET /api/rag/stats`, which nothing called. */
+async function loadRagStats() {
+  const out = el('adm-ragStats');
+  if (!out) return;
+  try {
+    const res = await fetch('/api/rag/stats', { credentials: 'same-origin' });
+    const s = res.ok ? await res.json() : null;
+    if (!s || s.error) { out.textContent = s && s.error ? `Index: ${s.error}` : ''; return; }
+    const n = Number(s.document_count) || 0;
+    out.textContent = `Index: ${n.toLocaleString()} chunk${n === 1 ? '' : 's'}`
+      + (s.embedding_model && s.embedding_model !== 'N/A' ? ` · embedded with ${s.embedding_model}` : '');
+  } catch (_) {
+    out.textContent = '';
+  }
+}
+
+/** `B1453`. Uploaded files: how many, how much, and the reference-safe
+ *  cleanup of expired ones — `GET /api/upload/stats` and `POST
+ *  /api/upload/cleanup`, which nothing called and nothing ran. */
+async function loadUploads() {
+  const out = el('adm-uploadsStats');
+  if (!out) return;
+  try {
+    const res = await fetch('/api/upload/stats', { credentials: 'same-origin' });
+    const s = res.ok ? await res.json() : null;
+    if (!s || s.error) { out.textContent = 'Could not read the upload index.'; return; }
+    const n = Number(s.total_files) || 0;
+    out.textContent = `${n.toLocaleString()} file${n === 1 ? '' : 's'}, ${s.total_size_mb} MB. `
+      + `"Remove expired uploads" deletes files older than ${s.cleanup_days} days that no chat, `
+      + 'document or gallery item still uses.';
+  } catch (_) {
+    out.textContent = 'Could not read the upload index.';
+  }
+}
+
+function initUploads() {
+  const btn = el('adm-uploadsCleanBtn');
+  const msg = el('adm-uploadsMsg');
+  if (!btn || !msg) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    msg.textContent = 'Checking every chat, document and gallery item first…';
+    msg.style.color = '';
+    try {
+      const res = await fetch('/api/upload/cleanup', { method: 'POST', credentials: 'same-origin' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+      const n = Number(data.files_cleaned) || 0;
+      msg.textContent = n ? `Removed ${n} expired upload${n === 1 ? '' : 's'}.` : 'Nothing had expired.';
+      loadUploads();
+    } catch (e) {
+      msg.textContent = String(e.message || e);
+      msg.style.color = 'var(--red)';
+    } finally {
+      btn.disabled = false;
+    }
+  });
 }
 
 let _ragMsgTimer = null;
@@ -3839,7 +3900,7 @@ function initAll() {
   const inits = [
     initSignupToggle, initShareDefaultsToggle, initAddUser, initEndpointForm, initMcpForm,
     initCalDAV, initBackup, initCleanup, initDangerZone, initTokenForm, initLogsView,
-    initWebhookForm, initRag,
+    initWebhookForm, initRag, initUploads,
     () => settingsModule.initIntegrations()
   ];
   for (const fn of inits) {
@@ -3857,6 +3918,7 @@ function refreshAll() {
   loadTokens();
   loadWebhooks();
   loadRag();
+  loadUploads();
   loadFeatures();
   loadLogs(false);
 }

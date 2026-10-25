@@ -122,7 +122,7 @@ Windows is not actively tested. Docker on Linux or a Linux/macOS manual install 
 
 ## Running Checks
 
-**While you work**, run the files your change touches. The suite is large — around a thousand test
+**While you work**, run the files your change touches. The suite is large — around sixteen hundred test
 files — and running all of it on every edit is not a workflow:
 
 ```bash
