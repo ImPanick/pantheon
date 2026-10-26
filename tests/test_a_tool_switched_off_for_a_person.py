@@ -194,7 +194,9 @@ def test_a_held_task_says_why_once_and_keeps_its_schedule(tmp_path, monkeypatch,
     sched = TS.TaskScheduler.__new__(TS.TaskScheduler)
     monkeypatch.setattr(TS.TaskScheduler, "_notify_run_outcome",
                         lambda self, task, status, body=None, task_id=None, **k: told.append((status, body)))
-    monkeypatch.setattr(TS.TaskScheduler, "_next_run_after", lambda self, db, task: None)
+    # `B1540`: the finished run's next time is set by `_set_next_run_after` now.
+    monkeypatch.setattr(TS.TaskScheduler, "_set_next_run_after",
+                        lambda self, db, task: setattr(task, "next_run", None))
     sched._skip_switched_off(db, task, "r1", "can_use_tasks")
     sched._skip_switched_off(db, task, "r2", "can_use_tasks")
     runs = {r.id: r for r in db.query(cdb.TaskRun).all()}

@@ -260,7 +260,9 @@ def test_the_scheduler_records_the_sentence_and_keeps_the_task(tmp_path, monkeyp
     sched = TS.TaskScheduler.__new__(TS.TaskScheduler)
     monkeypatch.setattr(TS.TaskScheduler, "_notify_run_outcome",
                         lambda self, task, status, body=None, task_id=None, **k: told.append(body))
-    monkeypatch.setattr(TS.TaskScheduler, "_next_run_after", lambda self, db, task: None)
+    # `B1540`: the finished run's next time is set by `_set_next_run_after` now.
+    monkeypatch.setattr(TS.TaskScheduler, "_set_next_run_after",
+                        lambda self, db, task: setattr(task, "next_run", None))
     sched._skip_switched_off(db, task, "r1", TP.held_by_switch(db, task))
     run = db.get(cdb.TaskRun, "r1")
     assert run.status == "skipped" and "switched off for everyone" in run.result

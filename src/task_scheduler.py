@@ -3878,7 +3878,7 @@ class TaskScheduler:
                     run.model = self.run_model(run_id)
                 self._attach_run_steps(run_id, run)
                 task.last_run = _utcnow()
-                task.next_run = self._next_run_after(db, task)
+                self._set_next_run_after(db, task)
                 db.commit()
                 return
             except TaskDeferred as defer:
@@ -4021,7 +4021,7 @@ class TaskScheduler:
                         tz_name=_resolve_task_timezone(db, task),
                     )
                 else:
-                    task.next_run = self._next_run_after(db, task)   # `B1512`
+                    self._set_next_run_after(db, task)   # `B1512`
                 db.commit()
                 # `B112`. Declared silent in `TASK_RUN_NOTIFY`, with the reason:
                 # the restart sweep aborts every in-flight run on every boot and
@@ -4052,7 +4052,7 @@ class TaskScheduler:
                         tz_name=_resolve_task_timezone(db, task),
                     )
                 else:
-                    task.next_run = self._next_run_after(db, task)   # `B1512`
+                    self._set_next_run_after(db, task)   # `B1512`
                 db.commit()
                 # `B112`. A no-op that leaves the task on its schedule is a
                 # housekeeping action saying "nothing to do" — it recurs on every
@@ -4098,9 +4098,11 @@ class TaskScheduler:
                 # is now the one place either shape is answered (`Law 14`).
                 plan = failure_next_run(db, task, run_id=run_id)
                 task.next_run = plan.next_run
-                if task.next_run is None and (task.trigger_type or "schedule") != "schedule":
-                    task.next_run = self._queued_event_due(db, task)   # `B1512`
                 self._say_failure_plan(task_id, run_id, run, plan)   # `B805`, `B1494`
+                if task.next_run is None and (task.trigger_type or "schedule") != "schedule":
+                    # `B1512`, `B1540`: last before the commit, which the
+                    # conditional write holds the row's lock until.
+                    self._settle_event_next_run(db, task)
                 if (task.next_run is None and task.schedule == "once"
                         and (task.trigger_type or "schedule") == "schedule"):
                     task.status = "completed"
@@ -4115,7 +4117,7 @@ class TaskScheduler:
                 if task.next_run is None and task.schedule == "once":
                     task.status = "completed"
             else:
-                task.next_run = self._next_run_after(db, task)   # `B1512`
+                self._set_next_run_after(db, task)   # `B1512`
 
             db.commit()
             logger.info(f"Task '{task.name}' completed (run {run_id})")
@@ -4330,16 +4332,47 @@ class TaskScheduler:
 
     # ── `P22-11` / `B674` · a run that waits ──────────────────────────────────
 
-    def _next_run_after(self, db, task):
-        """A scheduled task's next time, as a finished run would set it; `None`
-        for an event or webhook task (it runs when it is triggered) — unless an
-        event is queued for it (`_queued_event_due`)."""
+    def _set_next_run_after(self, db, task) -> None:
+        """Set a task's next time as a finished run does: the schedule's next
+        occurrence; for an event or webhook task (it runs when it is
+        triggered) none — unless an event is queued for it
+        (`_settle_event_next_run`). Callers commit straight after."""
         if (task.trigger_type or "schedule") != "schedule":
-            return self._queued_event_due(db, task)
-        return compute_next_run(
+            self._settle_event_next_run(db, task)
+            return
+        task.next_run = compute_next_run(
             task.schedule, task.scheduled_time, task.scheduled_day, task.scheduled_date,
             after=_utcnow(), cron_expression=task.cron_expression,
             tz_name=_resolve_task_timezone(db, task))
+
+    def _settle_event_next_run(self, db, task) -> None:
+        """`B1540`. An event task's `next_run` at the end of a run: the queued
+        event's when one is (`_queued_event_due`), else cleared — but cleared
+        only where no event is queued *at the moment of the write*.
+
+        `B1512` read the row and then let the ORM write `next_run = None` at
+        the commit, so an event committed between that read and the commit was
+        still overwritten: its `pending_trigger` stood with no `next_run`, and
+        the loop never ran it. The clear is now one conditional `UPDATE … WHERE
+        pending_trigger IS NULL`, so the database decides at the write: an
+        event that landed first keeps its `next_run`; one that lands after
+        waits on the write lock this statement takes and lands after it. The
+        ORM's own copy is set without history (`set_committed_value`), so the
+        commit does not write `next_run` a second time. Callers commit
+        straight after, so the lock is held for no longer than the commit.
+        """
+        due = self._queued_event_due(db, task)
+        if due is not None:
+            task.next_run = due
+            return
+        from sqlalchemy import or_
+        from sqlalchemy.orm.attributes import set_committed_value
+        from core.database import ScheduledTask
+        set_committed_value(task, "next_run", None)
+        db.query(ScheduledTask).filter(
+            ScheduledTask.id == task.id,
+            or_(ScheduledTask.pending_trigger.is_(None), ScheduledTask.pending_trigger == ""),
+        ).update({ScheduledTask.next_run: None}, synchronize_session=False)
 
     def _queued_event_due(self, db, task):
         """`B1512`. When an event queued on the row while this run was in
@@ -4352,8 +4385,8 @@ class TaskScheduler:
         it loaded when it started, over the event's `next_run`: the event never
         ran, and its envelope was taken by whatever run started next. So the
         row is read again here, past this session's stale copy, and a queued
-        envelope keeps its `next_run`. Residual, said: an event landing between
-        this read and the commit that follows it is still overwritten.
+        envelope keeps its `next_run`. An event landing between this read and
+        the commit is `_settle_event_next_run`'s (`B1540`).
         """
         from core.database import ScheduledTask
         try:
@@ -4385,7 +4418,7 @@ class TaskScheduler:
             run.result = sentence
             run.error = sentence
             run.finished_at = _utcnow()
-        task.next_run = self._next_run_after(db, task)
+        self._set_next_run_after(db, task)
         db.commit()
         logger.info("Workflow '%s': %s", task.name, sentence)
         return sentence
@@ -4410,7 +4443,7 @@ class TaskScheduler:
             run.error = sentence
             run.finished_at = _utcnow()
         task.last_run = _utcnow()
-        task.next_run = self._next_run_after(db, task)
+        self._set_next_run_after(db, task)
         db.commit()
         logger.info("Task '%s' held: %s", task.name, sentence)
         if previous is None or (previous.result or "") != sentence:
