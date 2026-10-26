@@ -8083,6 +8083,13 @@ class TaskScheduler:
                     continue
                 task.task_type = "action"
                 task.action = action
+            # `B1505`. The session is `autoflush=False` (`SessionLocal`), so
+            # without this the repair above stays in memory while
+            # `existing_actions` and `builtin_tasks` below read the database:
+            # the same reconcile seeded a fresh built-in beside the repaired
+            # row, and the next one kept one of the two and deleted the other
+            # with its run history.
+            db.flush()
 
             from core.database import TaskRun
             retired_ids = [
