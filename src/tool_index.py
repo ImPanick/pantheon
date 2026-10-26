@@ -476,16 +476,81 @@ class ToolIndex:
         rows.sort(key=lambda row: (-row["score"], lane_priority.get(row["embedding_lane"], 99)))
         return [row["tool_name"] for row in dedupe_results(rows, id_key="tool_name", limit=k)]
 
-    # Structural recurring-schedule intent. Typo-resilient (matches "every dya"
-    # via "every <word>"), and catches bare clock times ("at 7:30 am", "7am").
-    # Used in addition to the literal keyword hints below.
+    # Structural recurring-schedule intent. Catches the cadence adverbs and bare
+    # clock times ("at 7:30 am", "7am"); "every <word>" is `_every_is_a_cadence`
+    # below. Used in addition to the literal keyword hints.
     _SCHEDULE_RE = re.compile(
-        r"\bevery\s+\w+"                                       # every day / dya / morning / monday / 2 hours
-        r"|\b(?:daily|nightly|hourly|weekly|monthly)\b"
+        r"\b(?:daily|nightly|hourly|weekly|monthly)\b"
         r"|\beach\s+(?:day|morning|night|week|hour|evening)\b"
         r"|\bat\s+\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)\b",  # at 7:30 am / at 7am
         re.I,
     )
+
+    # `B502`. This regex's first branch was `\bevery\s+\w+`, typo-resilient on
+    # purpose ("every dya") and so also a schedule in *"check every file"*,
+    # *"every time i push"* and *"every one of them"* — `every` as a quantifier.
+    # `GAP-ANALYSIS.md` measured `manage_tasks` offered in 17 of 39 runs and
+    # called 0. The row declined to pick a list of non-temporal words out of
+    # somebody's traffic, and this does not: it names what a **cadence** is —
+    # a unit of time or a day — which is a property of English, not of a
+    # corpus, and keeps the typo tolerance by allowing one edit to one of those
+    # words (only a swap of adjacent letters for a word of three letters or
+    # fewer, so "dya" is "day" and "man" is not "mon").
+    _CADENCE_WORDS = frozenset({
+        "second", "seconds", "sec", "secs", "minute", "minutes", "min", "mins",
+        "hour", "hours", "hr", "hrs", "day", "days", "night", "nights",
+        "morning", "mornings", "afternoon", "afternoons", "evening", "evenings",
+        "weekday", "weekdays", "weekend", "weekends", "week", "weeks",
+        "fortnight", "month", "months", "quarter", "quarters", "year", "years",
+        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+        "mon", "tue", "tues", "wed", "thu", "thur", "thurs", "fri", "sat", "sun",
+    })
+    _EVERY_RE = re.compile(
+        r"\bevery\s+(?:(?:\d+|other|few|couple(?:\s+of)?|two|three|four|five|six|"
+        r"seven|eight|nine|ten|twelve|fifteen|twenty|thirty)\s+)?([a-z]+)",
+        re.I,
+    )
+
+    # `B503`. The session hint set below was contiguous phrases, so a count or a
+    # determiner between the verb and the noun broke it: *"rename the last
+    # twelve chats"* matched none of eighteen, and the generic `rename` in the
+    # document set offered the wrong family entirely. A phrase list cannot say
+    # "these words, in this order, with anything between", so this does: the
+    # verb, up to five words, then the noun. It replaces the thirteen phrases
+    # it covers; the ones it does not ("my chats", "chat history", …) stay.
+    _SESSION_NOUN_RE = re.compile(
+        r"\b(?:(?:re)?name|archive|delete|fork|retitle)\b(?:\W+\w+){0,5}?\W+"
+        r"(?:chats?|sessions?|conversations?)\b",
+        re.I,
+    )
+    _SESSION_TOOLS = frozenset({"list_sessions", "manage_session"})
+
+    @staticmethod
+    def _one_edit_from(word: str, target: str) -> bool:
+        """One insertion, deletion, substitution or adjacent swap apart — only
+        the swap for a word of three letters or fewer (`B502`)."""
+        if word == target:
+            return True
+        short = len(word) <= 3
+        if len(word) == len(target):
+            diff = [i for i in range(len(word)) if word[i] != target[i]]
+            if (len(diff) == 2 and diff[1] == diff[0] + 1
+                    and word[diff[0]] == target[diff[1]] and word[diff[1]] == target[diff[0]]):
+                return True
+            return not short and len(diff) == 1
+        if short or abs(len(word) - len(target)) != 1:
+            return False
+        longer, shorter = (word, target) if len(word) > len(target) else (target, word)
+        return any(longer[:i] + longer[i + 1:] == shorter for i in range(len(longer)))
+
+    @staticmethod
+    def every_is_a_cadence(text: str) -> bool:
+        """`every <cadence>`, typo-tolerant; `every <thing>` is not one (`B502`)."""
+        for m in ToolIndex._EVERY_RE.finditer(text or ""):
+            word = m.group(1).lower()
+            if any(ToolIndex._one_edit_from(word, c) for c in ToolIndex._CADENCE_WORDS):
+                return True
+        return False
     _WEB_RE = re.compile(
         r"https?://|www\.|\b(?:visit|open|fetch|check|read)\s+(?:this\s+)?(?:url|link|site|website|page)\b",
         re.I,
@@ -531,16 +596,27 @@ class ToolIndex:
             {"manage_bg_jobs"},
         frozenset({"note", "todo", "reminder", "remind", "checklist", "remember to"}):
             {"manage_notes"},
+        # `B1373`. The person's own procedures. `manage_skills` reached a turn
+        # only when the catalogue shipped (`B1360`) — no hint named it, no domain
+        # seeded it — so on a window the product cannot prove, where the suite
+        # planner keeps only what is pinned (`reason=window_unknown`), *"use the
+        # rotate-logs skill"* was offered ten tools and not the one it named.
+        # Phrases where the bare word would over-reach: "procedure" alone is in
+        # medical and legal text; "procedure for" asks for one.
+        frozenset({"skill", "skills", "is there a skill", "procedure for",
+                   "runbook", "how do we usually", "add this to my skills",
+                   "save this as a skill"}):
+            {"manage_skills"},
         # Chat/session management. "rename" alone maps to documents below, so a
         # request like "rename the last 12 sessions/chats" needs these session
         # keywords to surface the right tools (NOT app_api — /api/sessions is
         # owner-filtered and returns empty for tool calls).
+        #
+        # `B503`. "rename chat", "archive the session", "name my chats" and the
+        # ten others like them are `_SESSION_NOUN_RE` now — a verb, anything up
+        # to five words, a noun — so "rename the last twelve chats" is one too.
         frozenset({"sessions", "my chats", "these chats", "those chats",
-                   "chat history", "rename chat", "rename session",
-                   "rename the chat", "rename my chat", "rename the session",
-                   "archive chat", "archive session", "delete chat",
-                   "delete session", "fork chat", "fork session",
-                   "name the chats", "name my chats", "rename them"}):
+                   "chat history", "rename them"}):
             {"list_sessions", "manage_session"},
         frozenset({"recurring", "every day", "every hour", "every morning",
                    "every evening", "every night", "every week", "each morning",
@@ -780,12 +856,16 @@ class ToolIndex:
             if any(re.search(rf"\b{re.escape(kw)}\b", ql) for kw in keywords):
                 base.update(tools)
         # Structural scheduling-intent detection — typo-resilient (the literal
-        # keyword "every day" misses "every dya"). Catches "every <word>",
+        # keyword "every day" misses "every dya"). Catches "every <cadence>",
         # daily/nightly/etc., or a clock time like "at 7:30 am" / "7am", which
         # all signal a recurring/scheduled task. Force-include manage_tasks so
         # the agent can actually create the cron job instead of fumbling.
-        if ToolIndex._SCHEDULE_RE.search(ql):
+        # `B502`: "every file" / "every time" are not cadences.
+        if ToolIndex._SCHEDULE_RE.search(ql) or ToolIndex.every_is_a_cadence(ql):
             base.add("manage_tasks")
+        # `B503`: a session verb and a session noun with words between them.
+        if ToolIndex._SESSION_NOUN_RE.search(ql):
+            base.update(ToolIndex._SESSION_TOOLS)
         # URL/site requests need web tools even when embedding retrieval is
         # stubbed/unavailable. Keep this structural, not always-on, so trivial
         # prompts do not drag web schemas into the agent context.

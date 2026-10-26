@@ -160,6 +160,13 @@ def test_the_feature_denylist_reaches_the_same_gate_plan_mode_uses(monkeypatch):
     # same contribution is spelled `withhold(..., because=...)` — the point of
     # the type being that the reason is recorded. `update` is still accepted
     # because it still works and still means the same thing.
+    #
+    # `B580` moved the feature half one step: the loop reads the four standing
+    # withholds through `_standing_withholds` (so `GET /api/skills/index` asks
+    # the same question), and contributes `_standing.feature` — which is
+    # `feature_disabled_tools()`, called inside that function. Both spellings
+    # are the same set reaching the same gate, so both are accepted, and the
+    # indirection is followed rather than trusted.
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and getattr(node.func, "attr", "") in ("update", "withhold"):
             arg = node.args[0] if node.args else None
@@ -167,8 +174,14 @@ def test_the_feature_denylist_reaches_the_same_gate_plan_mode_uses(monkeypatch):
                 inner = getattr(arg.func, "id", None) or getattr(arg.func, "attr", None)
                 if inner in ("feature_disabled_tools", "plan_mode_disabled_tools"):
                     targets.add((getattr(node.func.value, "id", None), inner))
+            elif (isinstance(arg, ast.Attribute) and arg.attr == "feature"
+                  and getattr(arg.value, "id", None) == "_standing"):
+                targets.add((getattr(node.func.value, "id", None), "feature_disabled_tools"))
     assert ("disabled_tools", "feature_disabled_tools") in targets
     assert ("disabled_tools", "plan_mode_disabled_tools") in targets
+    import src.agent_loop as agent_loop
+    monkeypatch.setattr(agent_loop, "feature_disabled_tools", lambda: {"generate_image"})
+    assert "generate_image" in agent_loop._standing_withholds(None).feature
     # And the property itself, driven rather than read (`Law 20`): the set the
     # loop builds is the one the dispatcher's refusal reads, so a feature's
     # tools are refused by name and not only hidden.

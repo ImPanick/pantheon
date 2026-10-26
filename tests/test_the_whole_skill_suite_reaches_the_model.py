@@ -313,6 +313,53 @@ def test_the_loop_offers_it_to_nobody_when_the_route_suppressed_skills(store, mo
     assert seen["prompt_names_tool"] is False
 
 
+#: `B1373`. A question that names a skill, in the words the row lists.
+NAMES_A_SKILL = "Use the rotate-logs skill."
+
+
+def test_a_question_naming_a_skill_still_gets_the_tool_with_no_catalogue(store, monkeypatch):
+    """`B1373`, the row's own `Verify:`: the catalogue gate is off
+    (`suppress_skills=True`) and the question names a skill, so nothing about
+    the skills block can put `manage_skills` in — the words have to. Red before:
+    no hint, no domain and no intent named it, so it reached a turn only by
+    riding the catalogue (`B1360`)."""
+    assert "skills" in agent_loop._classify_agent_request([], NAMES_A_SKILL)["domains"]
+    seen = _one_request(monkeypatch, NAMES_A_SKILL, relevant_tools={"bash"},
+                        suppress_skills=True)
+    assert seen.get("messages"), "no request was built, so this asserts nothing"
+    assert _skills_block(seen["messages"]) == ""
+    assert "manage_skills" in seen["tools"]
+
+
+@pytest.mark.parametrize("question", [
+    NAMES_A_SKILL,
+    "is there a skill for onboarding a client?",
+    "save this as a skill",
+    "what is the runbook for a full disk?",
+])
+def test_the_suite_planner_pins_it_on_a_window_nobody_proved(question):
+    """`B1373`, the half `fx11-track`'s correction re-measured: on an endpoint
+    that reports no window the planner keeps only what is pinned
+    (`reason=window_unknown`) — ten names, `manage_skills` not among them. The
+    keyword group pins it, because the request named it."""
+    from src.tool_index import SUITE_REASON_WINDOW_UNKNOWN
+
+    suite = agent_loop.plan_turn_tool_suite(
+        question, endpoint_url="", model="", disabled_tools=set(),
+        domains=agent_loop._classify_agent_request([], question)["domains"])
+    assert suite.reason == SUITE_REASON_WINDOW_UNKNOWN
+    assert "manage_skills" in suite.offered
+
+
+def test_a_turn_about_something_else_is_not_handed_the_tool_by_this():
+    from src.tool_index import ToolIndex
+
+    for question in ("what is the capital of France", "rotate the logs on the server",
+                     "the doctor described the procedure"):
+        assert "manage_skills" not in ToolIndex.select_without_embeddings(question, set())
+        assert "skills" not in agent_loop._classify_agent_request([], question)["domains"]
+
+
 # ── 2. the model can actually load one ──────────────────────────────────────
 
 def test_the_tool_that_loads_a_body_is_offered_whenever_the_catalogue_ships(store):

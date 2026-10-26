@@ -209,3 +209,128 @@ def test_withheld_is_derived_from_the_schema_not_restated():
                                                              "title", "problem",
                                                              "solution", "steps"}
     assert schema_keys <= covered, f"unclassified skill fields: {schema_keys - covered}"
+
+
+# ── `B580` / `B1376` — the same list, and the same sentence, as the turn ─────
+
+def _write_needing(root: Path, name: str, tool: str):
+    d = root / "design" / name
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "SKILL.md").write_text(textwrap.dedent(f"""\
+        ---
+        name: {name}
+        description: a procedure that needs {tool}
+        version: 1.0.0
+        category: design
+        tags: [testing]
+        requires_toolsets: [{tool}]
+        status: published
+        confidence: 0.9
+        source: learned
+        ---
+
+        ## When to Use
+
+        rotate and prune the application log files on the server
+
+        ## Procedure
+
+        1. call {tool}
+        """), encoding="utf-8")
+
+
+async def _injected_with(monkeypatch, settings: dict):
+    """`_block_the_loop_injects`, with the install's settings as given."""
+    def get_setting(k, d=None):
+        if k == "agent_input_token_budget":
+            return 0
+        return settings.get(k, d)
+
+    monkeypatch.setattr(agent_loop, "get_setting", get_setting, raising=False)
+    monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None, raising=False)
+    monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *a, **k: 10, raising=False)
+    monkeypatch.setattr(agent_loop, "blocked_tools_for_owner", lambda o: set(), raising=False)
+    agent_loop._cached_base_prompt = None
+    agent_loop._cached_base_prompt_key = None
+    seen = {}
+
+    async def capture(*a, **k):
+        factory = k.get("candidate_request_factory")
+        if factory is not None:
+            req = await factory(0, "http://local.test/v1", "small-local-model", None)
+            seen["messages"] = (req or {}).get("messages") or []
+        yield f"data: {json.dumps({'delta': 'Done.'})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    monkeypatch.setattr(agent_loop, "stream_llm_with_fallback", capture, raising=False)
+    async for _ in agent_loop.stream_agent_loop(
+        "http://local.test/v1", "small-local-model",
+        [{"role": "user", "content": REQUEST}],
+        max_rounds=1, relevant_tools={"bash"},
+    ):
+        pass
+    for m in seen.get("messages") or []:
+        content = str(m.get("content", ""))
+        if "## Available skills" in content:
+            return content
+    return ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("image_on", [False, True])
+async def test_a_skill_needing_a_switched_off_tool_is_out_of_both_or_in_both(
+        library, tmp_path, monkeypatch, image_on):
+    """`B580`. `image_gen_enabled` ships off, so on a default install
+    `generate_image` is withheld from every turn (`setting_disabled_tools`). A
+    skill declaring `requires_toolsets: [generate_image]` was hidden from the
+    prompt and listed by the endpoint, which called `index_for` with no
+    `active_toolsets`. Red before: the endpoint listed it with the tool off.
+    The other half of the parameter is the control — on, both carry it."""
+    _write_needing(tmp_path / "skills", "make-a-poster", "generate_image")
+    settings = {"image_gen_enabled": image_on}
+    injected = await _injected_with(monkeypatch, settings)
+    assert injected, "no catalogue reached the request, so this asserts nothing"
+
+    router = setup_skills_routes(library)
+    payload = await _handler(router, "/api/skills/index", "GET")(_request(None))
+    listed = {e["name"] for e in payload["index"]}
+
+    assert ("make-a-poster" in listed) is image_on
+    assert ("`make-a-poster`" in injected) is image_on
+    assert payload["prompt"].strip() in injected
+
+
+@pytest.mark.asyncio
+async def test_the_preview_without_the_tool_is_the_block_a_turn_without_it_gets(library):
+    """`B1376`. The block's first sentence depends on whether `manage_skills` is
+    callable on the turn; the preview had no turn and always rendered the
+    fetchable form. `?can_fetch=false` renders the other form word for word —
+    compared against the loop's own block on a turn with the tool disabled — and
+    each answer says which it assumed."""
+    from services.memory.skill_injection import (
+        INDEX_ASSUMES_FETCH,
+        INDEX_ASSUMES_NO_FETCH,
+        INDEX_PREAMBLE_NO_FETCH,
+    )
+
+    router = setup_skills_routes(library)
+    handler = _handler(router, "/api/skills/index", "GET")
+    fetchable = await handler(_request(None))
+    no_fetch = await handler(_request(None), can_fetch=False)
+    assert (fetchable["can_fetch"], fetchable["assumes"]) == (True, INDEX_ASSUMES_FETCH)
+    assert (no_fetch["can_fetch"], no_fetch["assumes"]) == (False, INDEX_ASSUMES_NO_FETCH)
+    assert INDEX_PREAMBLE_NO_FETCH.split(".")[0] in no_fetch["prompt"]
+    assert "manage_skills" not in no_fetch["prompt"]
+
+    agent_loop._cached_base_prompt = None
+    agent_loop._cached_base_prompt_key = None
+    messages, _mcp = agent_loop._build_system_prompt(
+        [{"role": "user", "content": REQUEST}], "gemma-4-26b", None, None,
+        disabled_tools={"manage_skills"},
+        relevant_tools={"ask_user", "update_plan", "web_search"},
+        owner=None, context_report={},
+    )
+    block = next(str(m.get("content")) for m in messages
+                 if "## Available skills" in str(m.get("content", "")))
+    assert no_fetch["prompt"].strip() in block
+    assert fetchable["prompt"].strip() not in block

@@ -217,7 +217,17 @@ async def test_a_shipped_skill_runs_as_a_slash_command(store):
             return {"request": "open firefox"}
 
     out = await handler(_Req(), "workstation-apps-and-windows")
-    assert "BEGIN SKILL" in json.dumps(out)
+    # `B1374` moved this. The answer was one string with the SKILL.md inside it,
+    # sent as the person's own message, and this case pinned that by finding
+    # "BEGIN SKILL" in it. Now the message is the person's words and the skill
+    # rides beside it by name; the turn reads the shipped source and frames it.
+    assert out["skill"] == "workstation-apps-and-windows"
+    assert out["message"] == "open firefox"
+    assert "BEGIN SKILL" not in json.dumps(out)
+    from services.memory.skill_injection import invoked_skill_messages
+    framed, note = invoked_skill_messages(store, "alice", "workstation-apps-and-windows")
+    assert "name: workstation-apps-and-windows" in framed["content"]
+    assert "/workstation-apps-and-windows" in note["content"]
 
 
 # ── 4. they reach the prompt on the turns that need them ────────────────────

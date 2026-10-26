@@ -2123,7 +2123,9 @@ async def action_test_skills(owner: str, **kwargs) -> Tuple[str, bool]:
                 # user-set value (e.g. 1.0 → 0.95) is destructive.
                 if v in ("pass", "needs_work", "fail", "inconclusive"):
                     try:
-                        sm.set_audit(name, v, by_teacher=False, worker_model=model, owner=owner)
+                        # `B886`: the card says when a run stopped for a yes.
+                        sm.set_audit(name, v, by_teacher=False, worker_model=model, owner=owner,
+                                     needs_approval=bool((verdict or {}).get("approval_required")))
                     except Exception as _e:
                         logger.warning(f"test_skills set_audit({name}) failed: {_e}")
                 if v == "unknown":

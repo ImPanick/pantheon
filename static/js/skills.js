@@ -351,15 +351,25 @@ function _matches(sk, query) {
 // on two, **Draft** and **Published**, with the verbs **Publish** /
 // **Unpublish** — and the rule P8-03 cared about carried by the hover, so the
 // word can be short and the state still told truly.
+//
+// `B581`. The draft sentence said a draft is *"used only when a message matches
+// it and it clears the confidence bar"*, which stopped being true with `B1361`:
+// `injectable_skills` — the one list the catalogue and the matched bodies both
+// read — leaves out every draft but the teacher's, at any confidence. So a skill
+// written in the Add form, which saves a draft, reached no turn, and the one
+// surface that explained drafts promised it would. The pill now says what is
+// true for whose draft it is, and what to do: publish it.
 const _STATUS_PILL_TITLE = {
   published: 'Published: listed for the model on every request.',
-  draft: 'Draft: not listed; used only when a message matches it and it clears the confidence bar in Settings.',
+  draft: 'Draft: the model is not shown it. Publish it to use it — Audit publishes a draft that passes.',
+  teacherDraft: 'Draft the teacher wrote: listed for the model, and used when a message matches it and it clears the confidence bar in Settings.',
 };
 
 function _statusPill(sk) {
   const s = sk.status || (sk._legacy ? 'legacy' : 'draft');
+  const draftTitle = sk.source === 'teacher-escalation' ? _STATUS_PILL_TITLE.teacherDraft : _STATUS_PILL_TITLE.draft;
   if (s === 'published') return `<span class="memory-cat-badge skill-status-pill" data-status="published" title="${esc(_STATUS_PILL_TITLE.published)}" style="background:color-mix(in srgb, var(--accent, #4ade80) 30%, transparent)">published</span>`;
-  if (s === 'draft')     return `<span class="memory-cat-badge skill-status-pill" data-status="draft" title="${esc(_STATUS_PILL_TITLE.draft)}" style="background:color-mix(in srgb, var(--fg) 14%, transparent)">draft</span>`;
+  if (s === 'draft')     return `<span class="memory-cat-badge skill-status-pill" data-status="draft" title="${esc(draftTitle)}" style="background:color-mix(in srgb, var(--fg) 14%, transparent)">draft</span>`;
   return `<span class="memory-cat-badge skill-status-pill" data-status="${esc(s)}" style="opacity:0.6">${esc(s)}</span>`;
 }
 
@@ -369,7 +379,13 @@ function _statusPill(sk) {
 function _offPill(sk) {
   const why = (_collections.off || {})[sk.name || sk.id];
   if (!Array.isArray(why) || !why.length) return '';
-  const title = `Off with ${why.join(' and ')} (sidebar).`;
+  // `B1421`. A shipped skill a person has forked is off for them because their
+  // copy replaces it — not a switch in the sidebar, and the way back is to
+  // delete the copy.
+  const copy = why.find(w => String(w).startsWith('replaced by your copy'));
+  const title = copy
+    ? `Off: ${copy}, which your model is shown instead. Delete the copy to use this one again.`
+    : `Off with ${why.join(' and ')} (sidebar).`;
   return `<span class="memory-cat-badge skill-off-pill" title="${esc(title)}">off</span>`;
 }
 
@@ -514,6 +530,28 @@ function _necessityPill(sk) {
     ? `Duplicate group #${sk._duplicateGroup}. Recommended keep: ${sk._duplicateKeepName}. Group: ${group.join(', ')}`
     : (nec.reason || 'May not be worth keeping') + (dup.length ? ' | overlaps: ' + dup.join(', ') : '');
   return `<span class="memory-cat-badge skill-necessity-pill skill-necessity-${kind}" title="${esc(why)}">${label}</span>`;
+}
+
+// `B886`. An unattended audit that reached an action needing a person's yes
+// stops, denies its own copy of the request, and records `inconclusive` — so
+// such a skill looked like any other inconclusive one, and the only thing that
+// told them apart was a line in the audit log. The server now records the fact
+// beside the verdict (`audit_needs_approval`) and this pill says it, and what to
+// do: the pill IS the Test button, because a fresh Test run reaches the same
+// action and asks on a card the person can answer.
+const _NEEDS_APPROVAL_TITLE = 'The audit stopped at an action that needs your yes, and did not run it. '
+  + 'Press to test this skill yourself: it will ask you to allow or deny that action.';
+
+function _needsApprovalPill(sk) {
+  if (!sk || !sk.audit_needs_approval) return '';
+  return `<button type="button" class="memory-cat-badge skill-needs-approval-pill" title="${esc(_NEEDS_APPROVAL_TITLE)}" aria-label="${esc(_NEEDS_APPROVAL_TITLE)}" style="border:0;cursor:pointer;font:inherit;color:inherit;background:color-mix(in srgb, var(--color-warning, #f0ad4e) 30%, transparent)">needs your yes</button>`;
+}
+
+function _wireNeedsApprovalPill(card, name) {
+  const pill = card && card.querySelector('.skill-needs-approval-pill');
+  if (!pill || pill.dataset.wired) return;
+  pill.dataset.wired = '1';
+  pill.addEventListener('click', (e) => { e.stopPropagation(); _testSkill(card, name); });
 }
 
 function _duplicatePriorityPill(sk) {
@@ -987,6 +1025,7 @@ function renderSkillsList(m) {
         ${_sourcePill(sk)}
         ${_auditModelPills(sk)}
         ${_necessityPill(sk)}
+        ${_needsApprovalPill(sk)}
         ${_duplicatePriorityPill(sk)}
         <span class="skill-stats">${_auditMarks(sk)}<span class="skill-conf" style="color:${confColor};">${conf}%</span> · used ${uses}×</span>
         <button type="button" class="skill-chevron-up skill-back-to-list" aria-label="Back to the list">← Skills</button>
@@ -995,6 +1034,7 @@ function renderSkillsList(m) {
       </div>
     `;
     card.appendChild(header);
+    _wireNeedsApprovalPill(card, name);   // `B886`
 
     // Kebab dropdown (collapsed-bar quick actions: same set + icons as the
     // expanded footer). Clicking the kebab opens it; it doesn't expand.
@@ -1373,10 +1413,41 @@ function _toggleSkillEdit(card, name) {
   ta.addEventListener('click', (e) => e.stopPropagation());
   if (pre) pre.style.display = 'none';
   preview.insertBefore(ta, preview.querySelector('.doclib-card-expanded-actions'));
+  // `B613`. The Add form has had the lint since `P8-12`; this editor is where
+  // an existing skill is *changed*, and it said nothing. The same check, on the
+  // whole SKILL.md, before the save and while typing — advice beside the Save
+  // button, never in front of it.
+  const lintPanel = _el('div', 'skill-lint-panel skill-card-lint hidden');
+  preview.insertBefore(lintPanel, preview.querySelector('.doclib-card-expanded-actions'));
+  let lintTimer = null;
+  ta.addEventListener('input', () => {
+    clearTimeout(lintTimer);
+    lintTimer = setTimeout(() => _lintCardMarkdown(name, ta.value, lintPanel), 400);
+  });
+  _lintCardMarkdown(name, ta.value, lintPanel);
   ta.focus();
   // Flip the Edit button label to "Save".
   const editBtn = [...preview.querySelectorAll('.doclib-card-action-btn')].find(b => /Edit|Save/.test(b.textContent));
   if (editBtn) editBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save';
+}
+
+/** `B613`. Lint the card editor's SKILL.md into its panel. Advice: never
+ *  throws, never gates the save, silent when the check cannot run. */
+async function _lintCardMarkdown(name, markdown, panel) {
+  if (!panel) return null;
+  try {
+    const res = await fetch(`${API}/api/skills/lint`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, markdown }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const result = await res.json();
+    _renderLintInto(panel, result, {});
+    return result;
+  } catch (e) {
+    return null;
+  }
 }
 
 async function _saveSkillEdit(card, name) {
@@ -2258,14 +2329,16 @@ function _applySkillStateToHeader(card, state, fallbackVerdict) {
   }
   const right = card.querySelector('.skill-card-right');
   if (right && state) {
-    right.querySelectorAll('.skill-model-pill, .skill-necessity-pill').forEach(n => n.remove());
+    right.querySelectorAll('.skill-model-pill, .skill-necessity-pill, .skill-needs-approval-pill')
+      .forEach(n => n.remove());
     const stats = right.querySelector('.skill-stats');
     const wrap = document.createElement('span');
-    wrap.innerHTML = _auditModelPills(state) + _necessityPill(state);
+    wrap.innerHTML = _auditModelPills(state) + _necessityPill(state) + _needsApprovalPill(state);
     [...wrap.children].forEach(p => {
       if (stats) right.insertBefore(p, stats);
       else right.appendChild(p);
     });
+    _wireNeedsApprovalPill(card, state.name || card.dataset.skillName);
   }
 }
 
@@ -2275,7 +2348,13 @@ function _applyAuditResults(st) {
   for (const r of results.slice(_auditSeenResults)) {
     const name = r && r.skill;
     if (!name) continue;
-    const state = r.skill_state || null;
+    let state = r.skill_state || null;
+    // `B886`. `approval_required` is the result the audit returns when it
+    // stopped for a yes, and no browser file read it; it fell through to the
+    // verdict and drew an ordinary `inconclusive`.
+    if (r.result === 'approval_required') {
+      state = { ...(state || { name }), audit_needs_approval: true };
+    }
     _mergeSkillState(state);
     const verdict = state?.audit_verdict || r.verdict?.verdict || (r.result === 'flagged' ? 'fail' : null);
     for (const card of _skillCardsNamed(name)) _applySkillStateToHeader(card, state, verdict);
@@ -2360,7 +2439,9 @@ function _renderAuditPanel(panel, st) {
   const pct = total ? Math.round((done / total) * 100) : 0;
   const counts = {};
   for (const r of (st.results || [])) counts[r.result] = (counts[r.result] || 0) + 1;
-  const summary = Object.entries(counts).map(([k, v]) => v + ' ' + k.replace(/_/g, ' ')).join(' · ');
+  // `B886`: the card's word for it, so the panel and the pill agree.
+  const _resultWord = { approval_required: 'need your yes' };
+  const summary = Object.entries(counts).map(([k, v]) => v + ' ' + (_resultWord[k] || k.replace(/_/g, ' '))).join(' · ');
   const running = st.status === 'running';
   const cancelled = st.status === 'cancelled';
   const head = running
@@ -2838,11 +2919,15 @@ async function _renderPromptPreview(m) {
   let promptText = '';
   let promptChars = 0;
   let withheld = [];
+  let assumes = '';
   try {
     const res = await fetch(`${API}/api/skills/index`, { credentials: 'same-origin' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     index = Array.isArray(data && data.index) ? data.index : [];
+    // `B1376`. The block's first sentence depends on the turn; the server
+    // says which turn this rendering assumed, and that is drawn verbatim.
+    assumes = typeof (data && data.assumes) === 'string' ? data.assumes : '';
     // `P8-06`'s closing half. `prompt` is the string
     // `services/memory/skill_injection.py::render_skill_index_block` returns —
     // the same call `agent_loop._build_base_prompt` makes — so what is drawn
@@ -2883,6 +2968,7 @@ async function _renderPromptPreview(m) {
     // contents are a prompt assembled out of user-written descriptions.
     pre.textContent = promptText;
     exact.appendChild(pre);
+    if (assumes) exact.appendChild(_el('div', 'skill-prompt-note skill-prompt-assumes', assumes));
   }
 
   const body = _el('div', 'skill-prompt-body');
@@ -3126,9 +3212,19 @@ function _draftIsEmpty(draft) {
 // sees red beside a button reasonably assumes the button is now refusing.
 const _LINT_NEVER_BLOCKS = 'None of this stops you saving.';
 
+// `B581`. What a skill saved from the Add form is, and the step that changes it.
+const _SAVED_AS_DRAFT = 'Saved as a draft. The model is not shown it until you publish it.';
+
 function _renderLint(m, result, opts) {
   const panel = m.el('skill-lint-panel');
   if (!panel) return;
+  _renderLintInto(panel, result, opts, m);
+}
+
+// `B613`. The body of `_renderLint`, for any panel: the Add form's, and the one
+// the card's SKILL.md editor carries. One renderer, so the two say the same
+// things in the same words (`Law 7`).
+function _renderLintInto(panel, result, opts, m) {
   const o = opts || {};
   const findings = Array.isArray(result && result.findings) ? result.findings : [];
   const counts = (result && result.counts) || {};
@@ -3152,7 +3248,7 @@ function _renderLint(m, result, opts) {
   const head = _el('div', 'skill-lint-head',
     // `P22-23`. With *Fix these with the model* below it, the line says so
     // rather than sending the person to the card for what this panel offers.
-    (o.saved ? `Saved as a draft. ${parts.length ? parts.join(', ') + (o.name
+    (o.saved ? `${_SAVED_AS_DRAFT} ${parts.length ? parts.join(', ') + (o.name
       ? ' — fix them with the model below, or open its card to fix them by hand. '
       : ' — open its card to fix them. ') : ''}`
              : (parts.length ? parts.join(', ') + '. ' : ''))
@@ -3173,7 +3269,7 @@ function _renderLint(m, result, opts) {
   // `P22-23`. Once the skill exists, the model can fix what the lint found —
   // `manage_skills action=improve`'s button. Before it is saved there is no
   // skill to rewrite, and the panel says only that nothing stops a save.
-  if (o.saved && o.name && findings.length) {
+  if (o.saved && o.name && findings.length && m) {
     const fix = _el('button', 'doclib-card-text-btn doclib-card-action-btn skill-lint-fix-btn',
       'Fix these with the model');
     fix.type = 'button';
@@ -3278,7 +3374,16 @@ async function addSkill(m) {
     // about or they read as a verdict on the blank form in front of them.
     if (lint) _renderLint(m, lint, { saved: true, name: savedName });
     await loadSkills();
-    uiModule.showToast('Skill added (draft)');
+    // `B581`. The form saves a draft, and the model is shown no draft a person
+    // wrote (`B1361`). "Skill added (draft)" was the whole of what they were
+    // told, so a procedure they had just written was ignored with nothing
+    // saying why. The toast says it and carries the one step that changes it.
+    uiModule.showToast(_SAVED_AS_DRAFT, {
+      action: 'Publish',
+      actionHint: 'the model is shown it from the next message',
+      onAction: () => _setSkillStatus(savedName, 'published'),
+      duration: 9000,
+    });
   } catch (err) {
     uiModule.showError('Failed to add skill: ' + err.message);
   }

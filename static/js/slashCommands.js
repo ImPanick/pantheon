@@ -412,7 +412,20 @@ async function _invokeSkillByName(name, requestText, ctx) {
     return true;
   }
   const data = await res.json();
-  if (!data.message || !_submitComposedMessage(data.message)) {
+  // `B1374`. The reply used to be one string holding the whole SKILL.md,
+  // sent as the person's own message. Now the message is only their words
+  // (`request`) and the skill rides beside it by name (`skill`), on the form,
+  // for `chat.js` to send as its own field; the server reads the skill's text
+  // and frames it. Handed over on the form element both modules already share,
+  // and pinned to this exact text, so a different message typed in the 350 ms
+  // before the submit does not carry it.
+  const said = data.request || data.message;
+  const form = document.getElementById('chat-form');
+  if (form && data.skill && said) {
+    form.dataset.invokedSkill = JSON.stringify({ name: String(data.skill), text: String(said) });
+  }
+  if (!said || !_submitComposedMessage(said)) {
+    if (form) delete form.dataset.invokedSkill;
     slashReply('Could not start skill invocation.');
   }
   return true;

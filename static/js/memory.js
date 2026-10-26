@@ -511,10 +511,13 @@ export function skillGateHints({ autoApprove = true, minConfidence = 0.85 } = {}
       coupling: 'Auto-publish is off, so only published skills are used. A draft waits until you publish it.',
     };
   }
+  // `B581`. The bar applies to the drafts the teacher writes; a draft a person
+  // writes is not shown to the model at any confidence (`B1361`), so "a new
+  // skill starts at 80%" told them a number that decided nothing.
   return {
     confidence: value <= 0
-      ? 'No minimum: every draft is used when a message matches it — the loosest setting.'
-      : `Drafts are used from ${pct}%; published skills always. A new skill starts at 80%.`,
+      ? 'No minimum: every draft the teacher writes is used when a message matches it — the loosest setting.'
+      : `Drafts the teacher writes are used from ${pct}%; published skills always. A draft you write is used once you publish it.`,
     coupling: '',
   };
 }
