@@ -588,6 +588,25 @@ export function applyToolVisibility(patch = {}, doc = (typeof document !== 'unde
   return _hidden;
 }
 
+/** The person's column, as `/api/auth/status` answers it — what `app.js`
+ *  hands `applyToolVisibility` once the status arrives.
+ *
+ *  `B1543`. This passed `isAdmin: d.authenticated ? !!d.is_admin : null`, so a
+ *  status naming nobody — a session that lapsed before the page asked — read
+ *  as auth-off's *unknown*, and unknown is on: the page went on asking for
+ *  admin lists and got 401s. There is no auth-off install (`D-2026-10-07-02`
+ *  §2), so a status that answered is an answer: nobody signed in is not an
+ *  admin. `null` stays what it means — the status has not answered yet. */
+export function statusVisibility(d) {
+  const s = d || {};
+  return {
+    privileges: s.privileges || null,
+    isAdmin: !!s.is_admin,
+    shell: s.shell || null,
+    auth: true,
+  };
+}
+
 /** May the person signed in see the admin's Settings? The status's answer
  *  when someone is signed in; otherwise only a page whose status said
  *  `is_admin` (`window._isAdmin === true`). Not answered yet: not shown, until

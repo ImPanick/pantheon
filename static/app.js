@@ -32,7 +32,7 @@ import memoryModule from './js/memory.js?v=20261009census';
 import voiceRecorderModule from './js/voiceRecorder.js';
 import censorModule from './js/censor.js';
 import galleryModule from './js/gallery.js?v=20260708match1';
-import { UI_VIS_DEFAULT_OFF, resolveVisibility, applyToolVisibility, guardRouteOpener, installToolDoorGuard, noteStatusAsked, noteStatusFailed, onToolVisibilityApplied, toolShown, whenToolVisibilityReady } from './js/ui_visibility.js';
+import { UI_VIS_DEFAULT_OFF, resolveVisibility, applyToolVisibility, guardRouteOpener, installToolDoorGuard, noteStatusAsked, noteStatusFailed, onToolVisibilityApplied, statusVisibility, toolShown, whenToolVisibilityReady } from './js/ui_visibility.js';
 import tasksModule from './js/tasks.js?v=20261009census';
 import calendarModule from './js/calendar.js';
 import notesModule from './js/notes.js';
@@ -1507,15 +1507,9 @@ function initializeEventListeners() {
       // the next Appearance flip. Now the status is handed to the applier,
       // which hides every door of the tool and records it in the one set.
       window._userPrivileges = d.privileges || null;
-      applyToolVisibility({
-        privileges: d.privileges || null,
-        // Forge is for admins (`SET-M-9`). Unknown only if the status names
-        // nobody, which a signed-in page cannot get (`D-2026-10-07-02` §2,
-        // `B1271`): unknown is on, and the server decides.
-        isAdmin: d.authenticated ? !!d.is_admin : null,
-        shell: d.shell || null,
-        auth: true,
-      });
+      // Forge is for admins (`SET-M-9`). `B1543`: a status naming nobody is a
+      // non-admin, not auth-off's *unknown* — `statusVisibility` says why.
+      applyToolVisibility(statusVisibility(d));
       // The Agent button goes, not the whole picker — Chat has to stay
       // reachable and has to be what the person is on (`P3-20`).
       if (!toolShown('agent')) {
