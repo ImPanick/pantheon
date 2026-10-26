@@ -268,6 +268,13 @@ export function mountAutomations(host, opts = {}) {
   pickLabel.appendChild(_el('span', 'wf-shelf-pick-word', 'Showing'));
   const pick = _el('select', 'wf-shelf-select');
   pickLabel.appendChild(pick);
+  // `B1172`. The open workflow's last run, beside the select: the list that
+  // says it on each row (and keeps it current, `B1108`) is hidden at phone
+  // width, and the select's options say On/Off only, so a run's state was
+  // read in the Runs tab alone. Inside the label, so the select is announced
+  // with it; empty (and not drawn) on *Tasks and chains*.
+  const pickLast = _el('span', 'wf-shelf-pick-last');
+  pickLabel.appendChild(pickLast);
   for (const n of [pickLabel, shelfList, newWfBtn, newForm, shelfNote]) shelf.appendChild(n);
 
   const main = _el('div', 'wf-main');
@@ -534,11 +541,13 @@ export function mountAutomations(host, opts = {}) {
     tasksBtn.appendChild(_el('span', 'wf-shelf-sub', 'Every task, and the arrows between them'));
     tasksBtn.addEventListener('click', () => openTasks());
     items.push(tasksBtn);
+    let pickWords = null;
     for (const w of R.workflows) {
       const b = _button('wf-shelf-item', null);
       b.dataset.key = String(w.id);
       const on = isOn(w);
       const last = runWords(w.last_run && !w.last_run.dry ? w.last_run : null);
+      if (String(w.id) === key) pickWords = last;
       b.appendChild(_el('span', 'wf-shelf-name', String(w.name || 'Untitled workflow')));
       const sub = _el('span', 'wf-shelf-sub');
       const state = _el('span', 'wf-shelf-state', on ? 'On' : 'Off');
@@ -575,6 +584,10 @@ export function mountAutomations(host, opts = {}) {
     pick.replaceChildren(opt(TASKS_KEY, 'Tasks and chains'),
       ...R.workflows.map((w) => opt(String(w.id), `${String(w.name || 'Untitled workflow')} (${isOn(w) ? 'On' : 'Off'})`)));
     pick.value = key;
+    // `B1172`: the row's own words, for the entry the select shows.
+    pickLast.textContent = pickWords
+      ? (pickWords.tone === 'none' ? pickWords.word : `Last run: ${pickWords.word}`) : '';
+    pickLast.dataset.tone = pickWords ? pickWords.tone : 'none';
   }
 
   // The arrow keys go along the shelf; Tab leaves it.

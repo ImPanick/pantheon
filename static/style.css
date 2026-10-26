@@ -47990,6 +47990,9 @@ button.task-card-toggle {
 .wf-shelf-mark[data-tone="ok"] { color: var(--green); }
 .wf-shelf-pick { display: none; align-items: center; gap: 6px; }
 .wf-shelf-pick-word { font-size: 11px; color: var(--color-muted-alt); }
+/* `B1172`: drawn at phone width only, where the list (which says it per row) is hidden. */
+.wf-shelf-pick-last { display: none; font-size: 11px; color: var(--color-muted-alt); white-space: nowrap; }
+.wf-shelf-pick-last[data-tone="error"] { font-weight: 700; color: var(--red); }
 .wf-shelf-note { margin: 0; font-size: 11px; color: var(--color-muted-alt); overflow-wrap: anywhere; }
 .wf-shelf-note:empty { display: none; }
 .wf-new { display: flex; flex-direction: column; gap: 6px; }
@@ -48331,6 +48334,8 @@ button.task-card-toggle {
   .wf-shelf-list { display: none; }
   .wf-shelf-pick { display: inline-flex; flex: 1 1 180px; min-width: 0; }
   .wf-shelf-select { flex: 1 1 auto; min-width: 0; }
+  .wf-shelf-pick-last { display: inline; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .wf-shelf-pick-last:empty { display: none; }
   .wf-shelf-note,
   .wf-new { flex: 1 0 100%; }
   .wf-bar { gap: 6px; padding: 6px 10px; }
