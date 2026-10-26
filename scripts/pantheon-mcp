@@ -363,10 +363,15 @@ def cmd_delete(args):
         # `B864`. The row's switched-off tools go with it; a server added again
         # starts with every tool on. Handed back so whoever re-adds it can
         # switch them off again (`PATCH /api/mcp/servers/{id}/tools`).
+        # `B1527`: and its tool overrides — read-only answers and descriptions
+        # — in the shape that route takes as `{"overrides": ...}`.
+        from src.mcp_manager import dropped_tool_overrides
         dropped = _json_list(s.disabled_tools)
+        overrides = dropped_tool_overrides(s.tool_overrides)
         db.delete(s)
         db.commit()
-        emit({"ok": True, "deleted": snap, "dropped_disabled_tools": dropped}, args)
+        emit({"ok": True, "deleted": snap, "dropped_disabled_tools": dropped,
+              "dropped_tool_overrides": overrides}, args)
     finally:
         db.close()
 

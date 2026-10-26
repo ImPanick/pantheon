@@ -22,7 +22,8 @@ from src.mcp_manager import (
     MCP_TOOL_OVERRIDE_NAME_MAX,
     clean_tool_description,
     dropped_disabled_tools,
-    dropped_disabled_tools_sentence,
+    dropped_tool_choices_sentence,
+    dropped_tool_overrides,
     load_disabled_map,
     new_mcp_server_id,
     normalize_tool_overrides,
@@ -955,6 +956,11 @@ def setup_mcp_routes(mcp_manager: McpManager):
         whatever re-adds the server can send to
         `PATCH /api/mcp/servers/{new_id}/tools` as `{"disabled": [...]}`, and
         says so in `message` for a person.
+
+        `B1527`. The row carries `tool_overrides` too (`P8-48`): the
+        operator's read-only answers and the descriptions the model is shown.
+        Handed back the same way, as `dropped_tool_overrides` — the map that
+        `PATCH` takes as `{"overrides": {...}}` — and said in `message`.
         """
         require_admin(request)
         db = SessionLocal()
@@ -964,15 +970,17 @@ def setup_mcp_routes(mcp_manager: McpManager):
                 raise HTTPException(404, "Server not found")
             name = srv.name
             dropped = dropped_disabled_tools(srv.disabled_tools)
+            overrides = dropped_tool_overrides(srv.tool_overrides)
 
             await mcp_manager.disconnect_server(server_id)
 
             db.delete(srv)
             db.commit()
-            said = dropped_disabled_tools_sentence(name, dropped)
+            said = dropped_tool_choices_sentence(name, dropped, overrides)
             return {
                 "status": "deleted",
                 "dropped_disabled_tools": dropped,
+                "dropped_tool_overrides": overrides,
                 "message": f"Removed '{name}'." + (f" {said}" if said else ""),
             }
         finally:

@@ -4353,9 +4353,13 @@ async function initUnifiedIntegrations() {
             // `B864`. The server's switched-off tools go with it, and one
             // added again starts with every tool on — the route says which,
             // in its own sentence, and that is shown rather than lost.
+            // `B1527`: so do its tool overrides (read-only answers and
+            // descriptions), said in the same sentence.
             const r = await fetch(`/api/mcp/servers/${id}`, { method: 'DELETE', credentials: 'same-origin' });
             const out = r.ok ? await r.json().catch(() => ({})) : {};
-            if ((out.dropped_disabled_tools || []).length && out.message) uiModule.showToast(out.message, 9000);
+            const droppedSomething = (out.dropped_disabled_tools || []).length
+              || Object.keys(out.dropped_tool_overrides || {}).length;
+            if (droppedSomething && out.message) uiModule.showToast(out.message, 9000);
           }
           else if (type === 'codex' || type === 'claude' || type === 'token') await fetch(`/api/tokens/${id}`, { method: 'DELETE', credentials: 'same-origin' });
           else if (type === 'vault') await fetch('/api/vault/logout', { method: 'POST', credentials: 'same-origin' });
