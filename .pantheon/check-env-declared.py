@@ -335,6 +335,59 @@ def _aliased_reads(rel: str, tree) -> dict[str, set]:
     return found
 
 
+#: `B551`. The byte-cap readers in `src/upload_limits.py`, and which argument
+#: holds the variable's name.
+_BYTE_CAP_READERS = {"read_byte_limit_env": 0, "resolve_byte_cap": 1}
+
+
+def _register_entries(tree, register: str) -> dict:
+    """`key -> name` for a module-level dict literal `register = {key: (name, …)}`.
+
+    The name may be spelled as a module constant of the same module
+    (`CHAT_UPLOAD_MAX_BYTES_ENV`). That is the one place a constant is resolved
+    by this scan, and deliberately: a register entry is the declaration of a
+    read, not a variable that happens to hold a name.
+    """
+    out = {}
+    for stmt in tree.body:
+        target = (stmt.targets[0] if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1
+                  else stmt.target if isinstance(stmt, ast.AnnAssign) else None)
+        if not (isinstance(target, ast.Name) and target.id == register
+                and isinstance(stmt.value, ast.Dict)):
+            continue
+        for k, v in zip(stmt.value.keys, stmt.value.values):
+            if _str(k) is not None and isinstance(v, ast.Tuple) and v.elts:
+                first = v.elts[0]
+                name = _str(first) or (_module_consts(tree).get(first.id)
+                                       if isinstance(first, ast.Name) else None)
+                if name:
+                    out[_str(k)] = name
+    return out
+
+
+def _byte_cap_names(node, reader: str, tree) -> list:
+    """The variables a byte-cap reader call reads.
+
+    `read_byte_limit_env("X", default)` and `resolve_byte_cap(key, "X", default)`
+    name one as a literal. `read_byte_limit_env(*BYTE_LIMITS["key"])` indexes a
+    REGISTER — and the register is read whole: `resolve_byte_limit_with_source`
+    hands every entry's name to `resolve_byte_cap` by key, which is how the chat
+    composer's cap is read and why no call names it. So a register one call
+    unpacks is a read of every name it holds.
+    """
+    at = _BYTE_CAP_READERS[reader]
+    if len(node.args) <= at:
+        return []
+    arg = node.args[at]
+    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+        return [arg.value]
+    if (at == 0 and isinstance(arg, ast.Starred)
+            and isinstance(arg.value, ast.Subscript)
+            and isinstance(arg.value.value, ast.Name)):
+        return list(_register_entries(tree, arg.value.value.id).values())
+    return []
+
+
 def literal_reads() -> dict[str, set]:
     """Name → files that read it with a string literal.
 
@@ -395,6 +448,14 @@ def literal_reads() -> dict[str, set]:
                         and len(node.args) >= 3 and isinstance(node.args[2], ast.Constant) \
                         and isinstance(node.args[2].value, str):
                     name = node.args[2].value
+                # `B551`. The other house helper, and `B91`'s lesson again: the
+                # byte caps are read through `read_byte_limit_env`, inside which
+                # the name is a parameter, so of the eleven `PANTHEON_*BYTES`
+                # names this scan saw only the one still read by a raw
+                # `os.getenv`. Three spellings, all literal reads in substance.
+                elif isinstance(func, ast.Name) and func.id in _BYTE_CAP_READERS:
+                    for each in _byte_cap_names(node, func.id, tree):
+                        found.setdefault(each, set()).add(rel)
             elif isinstance(node, ast.Subscript) and isinstance(node.value, ast.Attribute) \
                     and node.value.attr == "environ" and isinstance(node.slice, ast.Constant) \
                     and isinstance(node.slice.value, str):
@@ -487,9 +548,15 @@ def _env_name_of(node, consts: dict):
                 and isinstance(func.value, ast.Attribute)
                 and func.value.attr == "environ")))
         or (isinstance(func, ast.Name) and func.id == "getenv"))
-    if not (getenvish and node.args):
+    at = 0
+    # `B551`. A byte cap read through the house helper is an env read too, or
+    # the `H06` rule could never fire on one: `get_setting(K)` beside
+    # `read_byte_limit_env("PANTHEON_K", …)` is exactly the shape it exists for.
+    if isinstance(func, ast.Name) and func.id in _BYTE_CAP_READERS:
+        getenvish, at = True, _BYTE_CAP_READERS[func.id]
+    if not (getenvish and len(node.args) > at):
         return None
-    arg = node.args[0]
+    arg = node.args[at]
     return _str(arg) or (consts.get(arg.id) if isinstance(arg, ast.Name) else None)
 
 
