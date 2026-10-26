@@ -380,6 +380,23 @@ def _stream_fields(result: Any) -> Dict[str, Any]:
     return fields
 
 
+def _step_fields(step_offset: int) -> Dict[str, Any]:
+    """`B1199`. `step_offset` beside an event's `round`, when there is one.
+
+    A run resumed from an approval card counts its own rounds from 1 — `round`
+    indexes its `round_texts` and its budget, and has to — so the turn read
+    `list · APPROVED · 1 done` then `read · 1 done` where the audit asks for
+    1..n across the turn. The offset is the steps the turn had taken before
+    this run's round 1; a card shows `round + step_offset`. Absent, not 0, on
+    a turn's first run, so every event that never needed it is unchanged.
+    """
+    try:
+        offset = int(step_offset or 0)
+    except (TypeError, ValueError):
+        return {}
+    return {"step_offset": offset} if offset > 0 else {}
+
+
 def _command_fields(command: Any, full_command: Any) -> Dict[str, Any]:
     """The full argument text for one action's card (`P4-09`).
 
@@ -5754,6 +5771,10 @@ class PausedTurn:
     messages: tuple
     paused_round: Dict[str, Any]
     replaces: tuple = ()
+    #: `B1199`. The step the paused run's own round 1 was in the turn — 0 for a
+    #: turn's first run, more for a continuation that was itself stopped by a
+    #: card — so the run that resumes it numbers its steps on from the turn's.
+    step_offset: int = 0
 
 
 def _paused_turn(
@@ -5768,6 +5789,7 @@ def _paused_turn(
     tool_result_records: list,
     round_num: int,
     resumed_from=None,
+    step_offset: int = 0,
 ) -> Optional[PausedTurn]:
     """The record a card keeps of the turn it stopped (`B1069`).
 
@@ -5797,6 +5819,7 @@ def _paused_turn(
                 "round_num": round_num,
             }),
             replaces=replaces,
+            step_offset=max(int(step_offset or 0), 0),
         )
     except Exception:
         # A result that cannot be copied (no tool returns one today) leaves the
@@ -8753,6 +8776,12 @@ async def stream_agent_loop(
             return _initial_route_source_messages
         return _without_stand_ins(_initial_route_source_messages, _stand_in_ids) + added
 
+    # `B1199`. Where this run's steps sit in the turn: 0 for a turn's first
+    # run. A continuation numbers its own rounds on from the round its card
+    # was asked in (`requested_round`), on top of whatever offset that run
+    # itself had; the approved call keeps the asking run's numbering.
+    _approved_step_offset = 0
+    _step_offset = 0
     if exact_approval is not None:
         approved = exact_approval.pending
         approved_block = ToolBlock(approved.tool_name, approved.content)
@@ -8785,6 +8814,12 @@ async def stream_agent_loop(
         # before this field existed reports 0; 1 is the honest floor, because
         # something ran and no run has a round below 1.
         approved_round = int(getattr(approved, "requested_round", 0) or 0) or 1
+        _paused = getattr(approved, "continuation_turn", None)
+        _approved_step_offset = (
+            max(int(getattr(_paused, "step_offset", 0) or 0), 0)
+            if isinstance(_paused, PausedTurn) else 0
+        )
+        _step_offset = _approved_step_offset + approved_round
         if approval_matches:
             yield (
                 "data: "
@@ -8794,6 +8829,7 @@ async def stream_agent_loop(
                         "tool": approved.tool_name,
                         "command": approved_display[:240],
                         "round": approved_round,
+                        **_step_fields(_approved_step_offset),   # `B1199`
                         **_command_fields(approved_display[:240], approved_display),
                         "approved": True,
                         **approved_effects,
@@ -8962,6 +8998,7 @@ async def stream_agent_loop(
             # the canonical reload dropped the asked one (`P23-04`'s
             # `dropAskedTwin`).
             "approval_digest": approved.digest[:16],
+            **_step_fields(_approved_step_offset),   # `B1199`
             **approved_effects,
         }
         for key in (
@@ -9058,6 +9095,7 @@ async def stream_agent_loop(
             "status": tool_outcome(approved_result),
             "approved": approved_ran,
             "approval_digest": approved.digest[:16],
+            **_step_fields(_approved_step_offset),   # `B1199`
             # Same reason as the main path: the ranking has to survive a reload.
             # `approved_effects` is already `{}` when the binding did not match,
             # so a refused grant persists nothing rather than persisting a claim
@@ -9811,6 +9849,7 @@ async def stream_agent_loop(
                     "type": "tool_blocked",
                     "tool": _unknown_name,
                     "round": round_num,
+                    **_step_fields(_step_offset),   # `B1199`
                     "command": "",
                     "reason": _unknown_reason,
                     "policy": "unknown_tool",
@@ -9819,6 +9858,7 @@ async def stream_agent_loop(
             )
             tool_events.append({
                 "round": round_num,
+                **_step_fields(_step_offset),   # `B1199`
                 "model": _round_actual_model,
                 "endpoint_id": _round_actual_endpoint_id,
                 "endpoint_label": _round_actual_endpoint_label,
@@ -10112,7 +10152,8 @@ async def stream_agent_loop(
                 # worth as much as the list of complaints, and "it could not
                 # check" is worth more than either, because that is the state
                 # that used to be indistinguishable from agreement.
-                _verifier_event = _vfail.as_event(round_num)
+                _verifier_event = {**_vfail.as_event(round_num),
+                                   **_step_fields(_step_offset)}   # `B1199`
                 _verifier_findings.append(_verifier_event)
                 yield f'data: {json.dumps(_verifier_event)}\n\n'
                 if _vfail:
@@ -10696,6 +10737,7 @@ async def stream_agent_loop(
                         "type": "tool_blocked",
                         "tool": block.tool_type,
                         "round": round_num,
+                        **_step_fields(_step_offset),   # `B1199`
                         "command": cmd_display,
                         "reason": reason,
                         "policy": "current_tool_policy",
@@ -10806,6 +10848,9 @@ async def stream_agent_loop(
                             tool_result_records=tool_result_records,
                             round_num=round_num,
                             resumed_from=exact_approval,
+                            # `B1199`: so a run resumed from this card numbers
+                            # its steps on from this run's.
+                            step_offset=_step_offset,
                         ),
                         # `D-2026-10-02-01` §1. The caller's deadline for this
                         # card (a workflow step's), clamped by the store; None
@@ -10829,7 +10874,7 @@ async def stream_agent_loop(
                     )
             else:
                 yield (
-                    f'data: {json.dumps({"type": "tool_start", "tool": block.tool_type, "command": cmd_display, "round": round_num, **_command_fields(cmd_display, full_command), **block_effects, **_auto_fields})}\n\n'
+                    f'data: {json.dumps({"type": "tool_start", "tool": block.tool_type, "command": cmd_display, "round": round_num, **_step_fields(_step_offset), **_command_fields(cmd_display, full_command), **block_effects, **_auto_fields})}\n\n'
                 )
 
                 # Streaming progress for long-running tools (bash, python).
@@ -11105,7 +11150,7 @@ async def stream_agent_loop(
             # rewrite that draws the result had only the truncated line.
             # `D-2026-10-09-01` §2: `**_auto_fields` rides here too, so the
             # finished step says it ran under Auto and not only the start of it.
-            tool_output_data = {"type": "tool_output", "tool": block.tool_type, "command": cmd_display, "round": round_num, **_command_fields(cmd_display, full_command), "output": output_text, "exit_code": result.get("exit_code"), "status": tool_outcome(result), **_stream_fields(result), **block_effects, **_auto_fields}
+            tool_output_data = {"type": "tool_output", "tool": block.tool_type, "command": cmd_display, "round": round_num, **_step_fields(_step_offset), **_command_fields(cmd_display, full_command), "output": output_text, "exit_code": result.get("exit_code"), "status": tool_outcome(result), **_stream_fields(result), **block_effects, **_auto_fields}
             if is_doc_tool and "action" in result:
                 tool_output_data.update({
                     "doc_id": result.get("doc_id"),
@@ -11337,6 +11382,8 @@ async def stream_agent_loop(
             # Save for history persistence
             tool_event = {
                 "round": round_num,
+                # `B1199`: the card's step in the turn is `round` + this.
+                **_step_fields(_step_offset),
                 "model": _round_actual_model,
                 "endpoint_id": _round_actual_endpoint_id,
                 "endpoint_label": _round_actual_endpoint_label,

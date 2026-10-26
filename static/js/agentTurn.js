@@ -41,7 +41,7 @@ import {
   safeToolScreenshotSrc,
 } from './chatRenderer.js?v=20261009census';
 import { applyAgentThreadNode, agentThreadContent, toolOutputPanesHtml,
-         screenshotSummary, approvalOutcome } from './agentThread.js';
+         screenshotSummary, approvalOutcome, shownStep } from './agentThread.js';
 
 function scrollAfter(opts) {
   const scroll = opts && opts.scroll !== undefined ? opts.scroll : () => uiModule.scrollHistory();
@@ -71,7 +71,7 @@ export function startToolCard(threadWrap, json, opts = {}) {
   const cmd = json.command || '';
   const node = document.createElement('div');
   applyAgentThreadNode(node, { tool: json.tool, state: 'running', command: cmd, fullCommand: json.full_command,
-    round: json.round, approved: json.approved });
+    round: shownStep(json), approved: json.approved });   // `B1199`: the step in the turn
   // Expand/collapse via delegated click handler (init at the bottom of `chat.js`).
   threadWrap.appendChild(node);
   // Animate the wave
@@ -212,7 +212,7 @@ export function finishToolCard(currentToolBubble, json, opts = {}) {
   const outcome = approvalOutcome(json);
   const asked = outcome && json.ask_user && json.ask_user.action ? json.ask_user.action : null;
   applyAgentThreadNode(currentToolBubble, {
-    tool: json.tool, state: 'done', ok, round: json.round, approved: json.approved,
+    tool: json.tool, state: 'done', ok, round: shownStep(json), approved: json.approved,   // `B1199`
     ranIn: json.ran_in, ranAs: json.ran_as,   // `P20-03`: where it ran
     command: cmd, fullCommand: json.full_command,
     output: outcome ? '' : outHtml, diff: diffHtml, todo: todoHtml,

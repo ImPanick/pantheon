@@ -25,7 +25,7 @@ import { renderAgentStop, renderAgentNote, withdrawContinueOffers, compactionFro
 import { scrollBehavior } from './motion.js';
 import { memoryConfidencePill } from './memoryFacts.js';
 import { applyAgentThreadNode, verifierCardOptions, approvalOutcome,
-         blockedCardOptions, toolOutputPanesHtml, screenshotSummary } from './agentThread.js';
+         blockedCardOptions, toolOutputPanesHtml, screenshotSummary, shownStep } from './agentThread.js';
 // `B1247` (fx2-chat). One agent turn, one reply.
 import { bubbleParts, isReasoningOnly, reasoningAbove, threadAbove,
          carryTurnReasoning } from './turnReasoning.js';
@@ -4109,6 +4109,12 @@ export function addMessage(role, content, modelName, metadata) {
       // The step a card names is the step of its own run — the teacher's and a
       // continuation's count from 1 live, on their cards and their meter — not
       // the reply's round it is placed by.
+      //
+      // `B1199`. A run resumed from an approval card counts from 1 too, but
+      // it is the same turn as the reply that paused: its events carry
+      // `step_offset`, the steps the turn took before its round 1, and a card
+      // names `stepOf(round)` plus that (`shownStep`, the one rule the live
+      // cards use).
       const stepOf = (round) => {
         const n = Number(round);
         if (!Number.isInteger(n) || n < 1) return round;
@@ -4131,16 +4137,20 @@ export function addMessage(role, content, modelName, metadata) {
       let lastMsgAi = null;
 
       // `P23-04` (CHAT-M-8). The call an approval let through is the first
-      // thing its continuation did, so it opens the turn's first round. It
-      // carries the round it was *asked* in, a round of the reply before, and
-      // grouped by that it was drawn after the answer that reports it.
-      const ownRounds = toolEvents.filter((ev) => ev && !ev.approval_digest)
-        .map((ev) => Number(ev.round ?? 1)).filter((n) => Number.isInteger(n));
-      const openingRound = ownRounds.length ? Math.min(...ownRounds) : 1;
+      // thing its continuation did. It carries the round it was *asked* in, a
+      // round of the reply before, and grouped by that it was drawn after the
+      // answer that reports it.
+      //
+      // `B1199`. It was grouped into the continuation's first round with tools
+      // instead, and a round draws its bubble before its rows — so a reload
+      // put the continuation's round-1 reasoning above the approved row, where
+      // the live stream draws the row first (the replay runs before round 1
+      // asks the model anything). Slot 0 is before round 1, which is where it
+      // happened.
       const toolsByRound = {};
       for (const ev of toolEvents) {
         const r = ev.round ?? 1;
-        const bucket = ev.approval_digest ? openingRound : r;
+        const bucket = ev.approval_digest ? 0 : r;
         if (!toolsByRound[bucket]) toolsByRound[bucket] = [];
         toolsByRound[bucket].push(ev);
       }
@@ -4335,11 +4345,12 @@ export function addMessage(role, content, modelName, metadata) {
             // wrong would draw.
             applyAgentThreadNode(node, ev.blocked
               ? { ...blockedCardOptions({
-                    tool: ev.tool, round: stepOf(ev.round), command: ev.command,
+                    tool: ev.tool, round: stepOf(ev.round), step_offset: ev.step_offset, command: ev.command,
                     full_command: ev.full_command, reason: ev.output,
                   }) }
               : {
-                tool: ev.tool, state: 'done', ok, round: stepOf(ev.round), approved: ev.approved,
+                tool: ev.tool, state: 'done', ok, approved: ev.approved,
+                round: shownStep({ round: stepOf(ev.round), step_offset: ev.step_offset }),   // `B1199`
                 // `P20-03`: persisted with the event, so a reload says where it ran.
                 ranIn: ev.ran_in, ranAs: ev.ran_as,
                 command: ev.command, fullCommand: ev.full_command,

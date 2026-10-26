@@ -636,3 +636,97 @@ def test_every_fold_on_the_page_opens_its_own_reasoning(reload_sandbox):
     assert [f["opens"] for f in out] == [True, True, True], out
     # (The shim keeps no whitespace-only text between the steps' parts.)
     assert [f["text"] for f in out] == ["First a.First b.", "Second a.Second b.", "A plain reply thought too."], out
+
+
+# ── `B1199`: a turn continued after Allow is one count, and the row comes first ─
+# A run resumed from an approval card counts its own rounds from 1, so the turn
+# read `list · APPROVED · 1` then `read · 1`; and the reload put the
+# continuation's round-1 bubble above the approved row, where the live stream
+# draws the row first (the replay runs before round 1 asks the model). The
+# continuation's own events carry `step_offset` (the steps the turn took before
+# its round 1 — see `tests/test_a_turn_continued_after_an_approval_counts_on.py`
+# for the wire), and the approved row is drawn before round 1.
+
+STEP_DIGEST = "0a1b2c3d4e5f6071"
+STEP_PAUSED = ("Allow this task to continue?", {
+    "timestamp": "2026-10-07T15:42:05Z", "round_texts": [""],
+    "round_thinking": ["The folders first."], "thinking": "The folders first.",
+    "tool_events": [_row(1, "manage_documents", "list_folders", exit_code=None,
+                         output="Waiting for an exact user approval.", ask_user={
+                             "kind": "tool_approval", "approval_id": "appr-9", "session_id": "s1",
+                             "question": "Allow this task to continue?", "resolved": "approve_task",
+                             "options": [{"label": "Allow for this task", "value": "approve_task"}],
+                             "action": {"tool": "manage_documents", "content": "list_folders",
+                                        "digest": STEP_DIGEST}})],
+})
+STEP_CONTINUED = ("Nine folders; the newest is Launch.", {
+    "timestamp": "2026-10-07T15:42:09Z",
+    "round_texts": ["Reading the newest one.", "Nine folders; the newest is Launch."],
+    "round_thinking": ["", ""],
+    "tool_events": [
+        _row(1, "manage_documents", "list_folders", approved=True, approval_digest=STEP_DIGEST),
+        _row(1, "manage_documents", "read", step_offset=1),
+    ],
+})
+
+_ORDER_READ = r"""
+function order() {
+  const out = [];
+  for (const n of history.children) {
+    if (n.style && n.style.display === 'none') continue;
+    if (n.classList.contains('agent-thread')) {
+      for (const c of n.querySelectorAll('.agent-thread-node')) {
+        out.push({ row: words(c.querySelector('.agent-thread-tool')),
+                   step: words(c.querySelector('.agent-thread-round')) });
+      }
+    } else if (n.classList.contains('msg-ai')) {
+      const body = n.querySelector('.body');
+      const said = body.childNodes.filter((c) => !(c.classList && c.classList.contains('thinking-section')))
+        .map(words).join(' ').trim();
+      if (said) out.push({ said });
+    }
+  }
+  return out;
+}
+"""
+
+
+def test_a_reloaded_continuation_counts_on_and_draws_the_approved_row_first(reload_sandbox):
+    calls = "\n".join(
+        "addMessage('assistant', %s, 'scripted-demo', %s);" % (json.dumps(c), json.dumps(md))
+        for c, md in (STEP_PAUSED, STEP_CONTINUED))
+    out = _run(reload_sandbox, "", _READ + _ORDER_READ + textwrap.dedent("""
+        user('List my folders and read the newest.');
+        %s
+        console.log(JSON.stringify(order()));
+    """ % calls))
+    rows = [e for e in out if "row" in e]
+    # One row per call (the asked one taken by its approved twin, `CHAT-M-8`),
+    # numbered across the turn: the approved call was step 1, the read step 2.
+    assert [r["step"] for r in rows] == ["1", "2"], out
+    # The approved row is drawn where the live stream drew it: before the
+    # continuation's round-1 words, which come before that round's own row.
+    said = [i for i, e in enumerate(out) if e.get("said") == "Reading the newest one."]
+    assert said, out
+    assert out.index(rows[0]) < said[0] < out.index(rows[1]), out
+
+
+def test_live_a_continuation_counts_on_from_its_card(sandbox):
+    events = [
+        {"type": "tool_start", "tool": "manage_documents", "command": "list_folders",
+         "round": 1, "approved": True},
+        {"type": "tool_output", "tool": "manage_documents", "command": "list_folders",
+         "round": 1, "exit_code": 0, "output": "9 folders", "approved": True,
+         "approval_digest": STEP_DIGEST},
+        {"delta": "Reading the newest one."},
+        {"type": "tool_start", "tool": "manage_documents", "command": "read", "round": 1,
+         "step_offset": 1},
+        {"type": "tool_output", "tool": "manage_documents", "command": "read", "round": 1,
+         "step_offset": 1, "exit_code": 0, "output": "done"},
+    ]
+    script = (streams._module_level() + "\n" + _live_driver() + "\n" + _LIVE_READ + "\n"
+              + textwrap.dedent("""
+        runLive(%s, []);
+        console.log(JSON.stringify(history.querySelectorAll('.agent-thread-round').map(words)));
+    """ % json.dumps(events)))
+    assert _run(sandbox, _live_preamble(), script) == ["1", "2"]

@@ -312,6 +312,22 @@ export function roundBadgeHtml(round) {
   return `<span class="agent-thread-round" title="Agent round ${n}">${n}</span>`;
 }
 
+/**
+ * `B1199`. The step an event's card names in its turn: its run's own `round`
+ * plus the `step_offset` a run resumed from an approval card carries — the
+ * steps the turn took before that run's round 1. A continuation counted from
+ * 1 again (`list · APPROVED · 1`, then `read · 1`), where the turn is 1..n.
+ * Anything that is not a positive whole round is passed through untouched, so
+ * a card that cannot name its step still says nothing.
+ */
+export function shownStep(o) {
+  const round = o && o.round;
+  const n = Number(round);
+  const offset = Number(o && o.step_offset);
+  if (!Number.isInteger(n) || n < 1) return round;
+  return Number.isInteger(offset) && offset > 0 ? n + offset : n;
+}
+
 export const APPROVED_ICON =
   '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
   'stroke-width="3" stroke-linecap="round" stroke-linejoin="round" ' +
@@ -353,7 +369,7 @@ export function verifierCardOptions(o) {
       + '</ul>'
     : '';
   return {
-    tool: '', label, state: 'done', round: o && o.round,
+    tool: '', label, state: 'done', round: shownStep(o),   // `B1199`
     // `ok` drives the glyph and the error styling. Only a pass is a tick: a
     // check that could not run has not agreed with anything.
     ok: outcome === 'pass',
@@ -441,7 +457,7 @@ export function blockedCardOptions(o) {
     label: `${toolLabel((o && o.tool) || '', 'done')} · blocked`,
     state: 'done',
     ok: false,
-    round: o && o.round,
+    round: shownStep(o),   // `B1199`
     command: (o && o.command) || '',
     fullCommand: o && o.full_command,
     output: `<div class="agent-thread-blocked-reason">${esc(reason)}</div>`,
@@ -881,7 +897,7 @@ export default { agentThreadNodeHtml, applyAgentThreadNode, agentThreadContent,
                  ensureThreadToggleAll, toggleThreadAll, syncThreadToggleAll,
                  threadIsAllOpen, prettyJson,
                  toolLabel, toolIcon, toolAction, toolActionLabel, approvalOutcome,
-                 nodeClassName, roundBadgeHtml, approvedBadgeHtml, whereBadgeHtml,
+                 nodeClassName, roundBadgeHtml, shownStep, approvedBadgeHtml, whereBadgeHtml,
                  commandBlockHtml, highlightCommandBlocks, verifierCardOptions,
                  blockedCardOptions, toolOutputPanesHtml,
                  TOOL_LABELS, TOOL_NAMES, TOOL_ICONS, CMD_LANGUAGES, SEARCH_ICON,
