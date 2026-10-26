@@ -98,4 +98,5 @@ async def test_a_tainted_run_pause_still_says_untrusted_content(monkeypatch):
     result = await _pause_summary(monkeypatch, tainted=True)
     assert "paused safely" in result
     assert "That action was not executed" in result
-    assert "untrusted" in result.lower()
+    # `B1202`: the card's words for it — outside data — which the pause reuses.
+    assert "outside data" in result.lower()

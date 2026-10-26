@@ -538,4 +538,7 @@ def test_a_call_after_a_web_result_still_waits_for_the_person(monkeypatch):
     cards = [e for e in events if e.get("type") == "ask_user"
              and (e.get("data") or {}).get("kind") == "tool_approval"]
     assert cards, "a held call with no card is a turn that stops in silence"
-    assert "mcp__osrs__lookup_raid" in str(cards[0]["data"].get("description") or "")
+    # `B1202`: the card's reason is the person's sentence now; the tool it
+    # holds is the sealed action's (the gate's own sentence, naming it, is the
+    # refusal the model reads).
+    assert (cards[0]["data"].get("action") or {}).get("tool") == "mcp__osrs__lookup_raid"

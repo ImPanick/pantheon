@@ -1812,9 +1812,12 @@ def setup_email_routes():
     # `B1191` (`D-2026-10-26-01` §5): refused, in the door's words, to a person this
     # Tools entry is switched off for (`src/tool_privileges.py`).
     from fastapi import Depends as _Depends
-    from src.tool_privileges import tool_privilege as _tool_privilege
+    from src.tool_privileges import everyone_switch as _everyone_switch, tool_privilege as _tool_privilege
     router = APIRouter(prefix="/api/email", tags=["email"],
-                       dependencies=[_Depends(_tool_privilege("can_use_email"))])
+                       # `B1488`: the switch for everyone first (it refuses everyone, in
+                       # the door's *everyone* words), then the person's.
+                       dependencies=[_Depends(_everyone_switch("can_use_email")),
+                                     _Depends(_tool_privilege("can_use_email"))])
 
     # ── In-memory cache + prefetch + IMAP connection pool ──
     # Three layers stacked because every cold click was hitting Dovecot

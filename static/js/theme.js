@@ -8,7 +8,6 @@ import { initColorPickers, attachColorPicker } from './colorPicker.js';
 import { hexToRgb } from './color/hex.js';
 import { prefersReducedMotion } from './motion.js';
 import { makeWindowDraggable } from './windowDrag.js';
-import { snapModalToZone } from './tileManager.js';
 
 export const THEMES = {
   dark:       { bg:'#282c34', fg:'#9cdef2', panel:'#111111', border:'#355a66', red:'#e06c75' },
@@ -1930,19 +1929,9 @@ export function makeDraggable(el, handle) {
     // title, and dragging its thumb must move the slider, not the window.
     skipSelector: 'button, input, select, .theme-opacity-wrap',
   };
-  if (dockTarget && dockTarget.id === 'theme-modal') {
-    dragOptions.onEnterFullscreen = () => {
-      snapModalToZone(dockTarget, {
-        name: 'fullscreen',
-        rect: {
-          left: 0,
-          top: 0,
-          width: window.innerWidth || document.documentElement.clientWidth || 0,
-          height: window.innerHeight || document.documentElement.clientHeight || 0,
-        },
-      });
-    };
-  }
+  // `B810`: the Theme window's top-edge fullscreen is `tileManager.js`'s (its
+  // `_zoneForContent` narrows this window to `fullscreen`); `windowDrag.js`
+  // takes no fullscreen callback.
   makeWindowDraggable(dockTarget, dragOptions);
 }
 

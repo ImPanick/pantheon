@@ -412,11 +412,17 @@ def test_the_card_carries_the_gates_own_sentence_not_a_second_one():
 
     card = _card(context, "bash", "rm -rf /tmp/scratch")
 
-    assert card["description"] == decision.reason
-    # And the sentence and the structured half name the same effects. Two
-    # renderings of one answer is the design; two answers would be `Law 14`.
+    # `B1202` changed the words, not the source: the card says the gate's own
+    # sentence as a person reads it (`tool_approvals.card_words`) — *why* it
+    # asks — and the structured half (`gate.tripped_effects`) names the
+    # effects, which the card's question and list draw. The gate's sentence,
+    # effects and all, is still what the model reads as the refusal.
+    from src.tool_approvals import card_words
+    assert card["description"] == card_words(decision.reason)
+    assert card["description"] == "It has read outside data this turn, so this needs a yes from you."
+    assert card["gate"]["tripped_effects"]
     for effect in card["gate"]["tripped_effects"]:
-        assert effect in card["description"]
+        assert effect in decision.reason
 
 
 def test_a_rung_minted_card_with_no_reason_does_not_claim_untrusted_context():
@@ -452,7 +458,8 @@ def test_the_default_sentence_and_the_gate_block_cannot_contradict_each_other():
         capabilities=capabilities_for_action("bash", "echo hi"),
     ).public_payload()
     assert tainted["gate"]["tainted"] is True
-    assert "untrusted" in tainted["description"].lower()
+    # `B1202`: said as a person reads it — outside data, not "untrusted context".
+    assert "outside data" in tainted["description"].lower()
 
     clean = store.create(
         owner="alice", session_id="s", origin_run_id="r", tool_name="bash",
@@ -462,6 +469,7 @@ def test_the_default_sentence_and_the_gate_block_cannot_contradict_each_other():
     ).public_payload()
     assert clean["gate"]["tainted"] is False
     assert "untrusted" not in clean["description"].lower()
+    assert "outside data" not in clean["description"].lower()
 
 
 def test_an_unliftable_refusal_does_not_offer_untrusted_context_as_the_reason():

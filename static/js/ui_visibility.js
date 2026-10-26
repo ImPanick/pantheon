@@ -159,9 +159,11 @@ export const TOOL_VISIBILITY = Object.freeze({
   // `B1191` (`D-2026-10-26-01` §5): the eight entries below with a
   // `privilege:` got their person's switch; `src/tool_privileges.py` refuses
   // their routes and holds their background work while it is off.
+  // `B1488`: and each a switch for everyone (`feature:`, `TOOL_FEATURES` there),
+  // the column `toolOff` reads first.
   assistant: _tool({
     label: 'Assistant', doors: ['tool-assistant-btn', 'rail-assistant'],
-    privilege: 'can_use_assistant', ui: 'tool-assistant',
+    feature: 'assistant', privilege: 'can_use_assistant', ui: 'tool-assistant',
   }),
   brain: _tool({
     label: 'Brain', doors: ['tool-memory-btn', 'rail-memory'],
@@ -173,12 +175,13 @@ export const TOOL_VISIBILITY = Object.freeze({
   calendar: _tool({
     label: 'Calendar', doors: ['tool-calendar-btn', 'rail-calendar'],
     windows: ['calendar-modal'], slash: ['event'], routes: ['/calendar'],
-    shortcut: 'open_calendar', privilege: 'can_use_calendar', ui: 'tool-calendar',
+    shortcut: 'open_calendar', feature: 'calendar', privilege: 'can_use_calendar', ui: 'tool-calendar',
   }),
   compare: _tool({
     label: 'Compare', doors: ['tool-compare-btn', 'rail-compare'],
     windows: ['compare-model-overlay'], slash: ['compare', 'tour-compare'],
-    routes: ['/compare'], shortcut: 'open_compare', privilege: 'can_use_compare', ui: 'tool-compare',
+    routes: ['/compare'], shortcut: 'open_compare', feature: 'compare', privilege: 'can_use_compare',
+    ui: 'tool-compare',
   }),
   research: _tool({
     label: 'Deep Research', doors: ['tool-research-btn', 'rail-research'],
@@ -239,17 +242,17 @@ export const TOOL_VISIBILITY = Object.freeze({
   notes: _tool({
     label: 'Notes', doors: ['tool-notes-btn', 'rail-notes'],
     windows: ['notes-panel', 'notes-pane'], slash: ['notes', 'note', 'todo'],
-    routes: ['/notes'], shortcut: 'open_notes', privilege: 'can_use_notes', ui: 'tool-notes',
+    routes: ['/notes'], shortcut: 'open_notes', feature: 'notes', privilege: 'can_use_notes', ui: 'tool-notes',
   }),
   tasks: _tool({
     label: 'Tasks', doors: ['tool-tasks-btn', 'rail-tasks'],
     windows: ['tasks-modal'], slash: ['tasks', 'tour-task-1', 'tour-task-2'],
-    routes: ['/tasks'], shortcut: 'open_tasks', privilege: 'can_use_tasks', ui: 'tool-tasks',
+    routes: ['/tasks'], shortcut: 'open_tasks', feature: 'tasks', privilege: 'can_use_tasks', ui: 'tool-tasks',
   }),
   theme: _tool({
     label: 'Theme', doors: ['tool-theme-btn', 'rail-theme'],
     windows: ['theme-modal'], slash: ['tour-theme'], routes: ['/theme'],
-    shortcut: 'open_theme', privilege: 'can_use_theme', ui: 'tool-theme',
+    shortcut: 'open_theme', feature: 'theme', privilege: 'can_use_theme', ui: 'tool-theme',
   }),
   // `P24-12`. The Agents hall. Everyone may hire any agent
   // (`D-2026-10-22-01` §2), so no feature, privilege or admin column: what a
@@ -260,13 +263,13 @@ export const TOOL_VISIBILITY = Object.freeze({
   }),
   workbench: _tool({
     label: 'Workbench', doors: ['tool-workbench-btn', 'rail-workbench'],
-    windows: ['workbench-modal'], routes: ['/workbench'], privilege: 'can_use_workbench',
+    windows: ['workbench-modal'], routes: ['/workbench'], feature: 'workbench', privilege: 'can_use_workbench',
     ui: 'tool-workbench',
   }),
   email: _tool({
     label: 'Email', doors: ['email-section', 'rail-email'],
     windows: ['email-lib-modal'], slash: ['email'], routes: ['/email'],
-    privilege: 'can_use_email', ui: 'email-section',
+    feature: 'email', privilege: 'can_use_email', ui: 'email-section',
   }),
   // ── Composer chips ──
   web: _tool({
@@ -472,19 +475,41 @@ export function whenToolVisibilityReady(ms = 4000) {
 }
 
 let _statusAsked = false;
+// `B1525`. The status has answered, or could not be had: either way a wait for
+// it is over. Its own promise, not `_ready` — that one also waits for the
+// features, which this question does not need.
+let _statusSettled = false;
+let _settleStatus = null;
+const _statusDone = new Promise((resolve) => { _settleStatus = resolve; });
+function _statusArrived() {
+  _statusSettled = true;
+  if (_settleStatus) { _settleStatus(); _settleStatus = null; }
+}
 
 /** `B1192`. `app.js` says it has asked for the person's status, so a check that
  *  needs the answer waits for it rather than guessing ahead of it. */
 export function noteStatusAsked() { _statusAsked = true; }
 
+/** `B1525`. `app.js` says the status could not be had: nothing waits on it
+ *  any longer, and unknown asks. */
+export function noteStatusFailed() { _statusArrived(); }
+
 /** `B1192`. Whether to ask for something only an admin may have: while the
- *  status the page has asked for is on its way, wait for it (at most `ms`),
- *  then answer `false` only for a viewer the server called a non-admin.
- *  Unknown asks, as `SET-M-8`'s gate does, so a slow status never hides an
- *  admin's own lists. A request the page knows will be refused is a request it
- *  should not send. */
-export async function viewerMayAdminister(ms = 4000) {
-  if (_statusAsked && !_known.auth) await whenToolVisibilityReady(ms);
+ *  status the page has asked for is on its way, wait for it, then answer
+ *  `false` only for a viewer the server called a non-admin. Unknown asks, as
+ *  `SET-M-8`'s gate does, so a status that fails never hides an admin's own
+ *  lists. A request the page knows will be refused is a request it should not
+ *  send.
+ *
+ *  `B1525`: the wait is for the status alone, and long enough for a slow one
+ *  (`core/database.py` records `GET /api/auth/status` measured at 4,773 ms): at
+ *  four seconds, a guest whose status took longer was asked for all of it. A
+ *  status that errors ends the wait at once (`noteStatusFailed`); `ms` only
+ *  bounds one that never answers. */
+export async function viewerMayAdminister(ms = 20000) {
+  if (_statusAsked && !_known.auth && !_statusSettled) {
+    await Promise.race([_statusDone, new Promise((r) => setTimeout(r, ms))]);
+  }
   return _state.isAdmin !== false;
 }
 
@@ -531,7 +556,7 @@ export function applyToolVisibility(patch = {}, doc = (typeof document !== 'unde
   if ('privileges' in p) _state.privileges = p.privileges || null;
   if ('isAdmin' in p) _state.isAdmin = p.isAdmin === null || p.isAdmin === undefined ? null : !!p.isAdmin;
   if ('shell' in p) _state.shell = p.shell || null;
-  if (p.auth) _known.auth = true;
+  if (p.auth) { _known.auth = true; _statusArrived(); }
   if ('ui' in p) _state.ui = p.ui || {};
   if (_known.features && _known.auth && _readyResolve) { _readyResolve(); _readyResolve = null; }
 
@@ -564,14 +589,20 @@ export function applyToolVisibility(patch = {}, doc = (typeof document !== 'unde
 }
 
 /** May the person signed in see the admin's Settings? The status's answer
- *  when someone is signed in. Nobody signed in once `/api/auth/status` has
- *  answered (`window._isAdmin` set, to `false`) is an install with auth off,
- *  whose one operator the server's `require_admin` lets in — the owner. Not
- *  answered yet: not shown, until it says. */
+ *  when someone is signed in; otherwise only a page whose status said
+ *  `is_admin` (`window._isAdmin === true`). Not answered yet: not shown, until
+ *  it says.
+ *
+ *  `B1523`. The fallback answered `window._isAdmin !== undefined`, so a status
+ *  that said `false` (nobody signed in — a session that lapsed before the page
+ *  asked) read as an admin. That was auth-off mode's rule — its one operator
+ *  was let in by `require_admin` — and there is no auth-off install any more
+ *  (`D-2026-10-07-02` §2, `core/middleware.py:require_admin`): a viewer the
+ *  server called a non-admin is one. */
 export function viewerIsAdmin() {
   if (_state.isAdmin !== null) return _state.isAdmin;
   const said = typeof window !== 'undefined' ? window._isAdmin : undefined;
-  return said !== undefined;
+  return said === true;
 }
 
 /** A read-only view of what is known, for the Settings rows that explain a

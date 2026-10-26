@@ -811,8 +811,13 @@ def test_the_tour_points_at_whichever_control_the_bar_is_showing():
     """
     source = SLASH.read_text(encoding="utf-8")
     body = js_function(source, "function showStep")
-    assert "checkVisibility" in body, (
+    # `B1346` moved the filter into one helper every tour's step runner uses
+    # (`_tourTargets`); showStep asks it, and it asks `checkVisibility`. The
+    # Compare tour's runner is driven in
+    # `tests/test_the_compare_tour_points_only_at_what_is_shown.py`.
+    assert "_tourTargets(sel)" in body, (
         "showStep still highlights a control the page is not showing")
+    assert "checkVisibility" in js_function(source, "function _tourTargets")
     assert "resolve('skip')" in body, "a step with nothing to point at must be skipped"
 
     tour = js_function(source, "export async function runFirstRunTour") if (

@@ -90,6 +90,7 @@ def _drag_case(tours_on) -> dict:
         globalThis.document = {{ body: {{ classList: {{ contains: () => false }} }}, getElementById: () => null }};
         globalThis.setTimeout = (fn, ms) => {{ scheduled.push(ms); return 0; }};
         let _shown = false;
+        let _pending = null;   // `B1065`: the hint about to show, which a later window cancels
         const _hasSeen = () => false;
         const _modalShouldShowHint = () => true;
         const _show = () => {{}};

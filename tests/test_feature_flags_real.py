@@ -427,13 +427,24 @@ def test_every_feature_the_ui_hides_is_also_gated_somewhere_real():
     ui_flags = set(out)
     assert ui_flags, "could not read the table's feature keys"
 
-    from src.tool_security import _FEATURE_TOOLS
+    from src.tool_privileges import TOOL_FEATURES
+    from src.tool_security import _FEATURE_NOTES, _FEATURE_TOOLS
     gated_server_side = set()
     for path in ("routes/research/research_routes.py", "routes/gallery/gallery_routes.py",
                  "routes/memory/memory_routes.py", "routes/document/document_routes.py"):
         text = (ROOT / path).read_text(encoding="utf-8")
         gated_server_side |= set(re.findall(r'require_feature\(\s*"([a-z_]+)"', text))
+    # `B1488`: the eight Tools entries' switches for everyone are on their
+    # routers as `everyone_switch(<privilege>)`, which is `require_feature`.
+    for path in ROOT.glob("routes/**/*.py"):
+        for key in re.findall(r'_everyone_switch\("(can_use_[a-z]+)"\)', path.read_text(encoding="utf-8")):
+            gated_server_side.add(TOOL_FEATURES[key])
 
     for flag in ui_flags:
+        if flag == "theme":
+            # `B1488`: Theme's window is the browser's alone (no route, no
+            # tool); its note says what the switch takes instead.
+            assert flag in _FEATURE_NOTES
+            continue
         assert _FEATURE_TOOLS.get(flag) or flag in gated_server_side, \
             f"{flag} is hidden in the UI and enforced nowhere else"

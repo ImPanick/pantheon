@@ -137,10 +137,10 @@ globalThis.innerWidth = 1280;
 globalThis.innerHeight = 800;
 
 // `ui.js`'s `_initScrollDismiss` binds to `#chat-history`, and when the element
-// is absent it re-arms itself on a 500ms timer — its own comment says "retry
-// once", and it is unbounded (filed as `B733`). Under node that is a refed
-// handle that never settles and the case hangs rather than failing. The page
-// always has this element, so the shim does too.
+// is absent it retries once, 500 ms later (`B733` bounded it; it re-armed
+// itself forever before, and under node that was a refed handle that never
+// settled). The page always has this element, so the shim does too;
+// `tests/test_the_scroll_dismiss_retries_once_as_it_says.py` drives it without.
 document.body.appendChild(new Node('div')).setAttribute('id', 'chat-history');
 
 /** A fresh container to draw into, as a tab's grid would be. */

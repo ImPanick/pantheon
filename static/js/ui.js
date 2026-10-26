@@ -968,21 +968,28 @@ export function isTouchInsideModal() {
   return _touchInsideModal;
 }
 
-// Close floating dropdowns/popups on scroll to prevent them drifting
-function _initScrollDismiss() {
+// Close floating dropdowns/popups on scroll to prevent them drifting.
+//
+// `B733`. If `#chat-history` is not there yet, it retries once, 500 ms later,
+// and then stops. The comment said "retry once" while the code re-armed itself
+// every 500 ms for as long as the element was missing — nothing on the shipped
+// page (the element is in the markup, and the first call binds), but a live
+// timer forever on any page that loads this module without a chat history:
+// every test sandbox, and any page that reuses it.
+function _initScrollDismiss(retried = false) {
   const chatHistory = document.getElementById('chat-history');
   if (chatHistory) {
     chatHistory.addEventListener('scroll', () => {
       chatHistory.querySelectorAll('.dropdown.show').forEach(d => d.classList.remove('show'));
       document.querySelectorAll('.ctx-popup').forEach(dismissOrRemove);
     }, { passive: true });
-  } else {
-    // Retry once if element doesn't exist yet
-    setTimeout(_initScrollDismiss, 500);
+  } else if (!retried) {
+    setTimeout(() => _initScrollDismiss(true), 500);
   }
 }
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', _initScrollDismiss);
+  // Wrapped: the event would otherwise arrive as `retried`.
+  document.addEventListener('DOMContentLoaded', () => _initScrollDismiss());
 } else {
   _initScrollDismiss();
 }

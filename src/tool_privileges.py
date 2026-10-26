@@ -26,6 +26,18 @@ this module is the one place that says what each takes:
     and says so; nothing is deleted, and turning it back on is all it takes.
 
 A privilege store that cannot be read refuses (`B531`).
+
+`B1488`, the owner's ruling: each of the eight also has a switch for
+**everyone** — a key in `DEFAULT_FEATURES` (`TOOL_FEATURES` below), set in
+Settings → Agent Tools, the shape Brain, Deep Research, Gallery and the Library
+already have. Off for everyone outranks on for a person, as
+`ui_visibility.toolOff` orders the columns: the door goes (`TOOL_VISIBILITY`'s
+`feature:`), the routes refuse everyone (`everyone_switch`, `require_feature`
+beside `tool_privilege` on each router), the agent's tools go
+(`tool_security._FEATURE_TOOLS`, read from `TOOL_PRIVILEGES` here), and every
+piece of background work above holds for everyone — `may_use_tool` asks the
+everyone switch first — with the sentence that names that switch. Nothing is
+deleted.
 """
 
 from __future__ import annotations
@@ -57,19 +69,62 @@ TOOL_PRIVILEGES: Dict[str, tuple] = {
 }
 
 
+#: `B1488`. privilege key → the `DEFAULT_FEATURES` key of the same Tools
+#: entry's switch for everyone. `static/js/ui_visibility.js`'s
+#: `TOOL_VISIBILITY` names both on each entry (`privilege:`, `feature:`).
+TOOL_FEATURES: Dict[str, str] = {
+    "can_use_assistant": "assistant",
+    "can_use_calendar": "calendar",
+    "can_use_compare": "compare",
+    "can_use_email": "email",
+    "can_use_notes": "notes",
+    "can_use_tasks": "tasks",
+    "can_use_theme": "theme",
+    "can_use_workbench": "workbench",
+}
+
+
 def label(key: str) -> str:
     return TOOL_PRIVILEGES.get(key, (key, None))[0]
 
 
+def off_for_everyone(key: str) -> bool:
+    """`B1488`. Is this Tools entry switched off for everyone? Read the way
+    every feature switch is read (`feature_gate.feature_enabled`: a features
+    file that cannot be read leaves everything on, and the person's column
+    still holds)."""
+    feature = TOOL_FEATURES.get(key)
+    if not feature:
+        return False
+    from src.feature_gate import feature_enabled
+    return not feature_enabled(feature)
+
+
+def everyone_switch(key: str):
+    """`B1488`. A router dependency: the entry's switch for everyone, as
+    `require_feature` refuses — every caller, an admin and a request naming
+    nobody included — in the door's *everyone* words."""
+    from src.feature_gate import require_feature
+    return require_feature(TOOL_FEATURES[key], label=label(key))
+
+
 def off_sentence(key: str) -> str:
-    """The sentence a refused door says (`ui_visibility.toolRefusal`'s person
-    case), so the route and the page read alike."""
+    """The sentence a refused door says (`ui_visibility.toolRefusal`): the
+    *everyone* one when the entry is off for everyone (`B1488`), else the
+    person's — so the route and the page read alike."""
+    if off_for_everyone(key):
+        from src.feature_gate import feature_off_sentence
+        return feature_off_sentence(label(key))
     return (f"{label(key)} is switched off for your account. An admin can turn it back on "
             "in Settings → Users.")
 
 
 def paused_sentence(key: str) -> str:
-    """What a paused piece of background work says."""
+    """What a paused piece of background work says — naming the switch that
+    holds it (`B1488`: the one for everyone, when that is the one off)."""
+    if off_for_everyone(key):
+        return (f"Paused: {label(key)} is switched off for everyone. Nothing was deleted; an admin "
+                "can turn it back on in Settings → Agent Tools, and it runs again from then.")
     return (f"Paused: {label(key)} is switched off for this account. Nothing was deleted; an admin "
             "can turn it back on in Settings → Users, and it runs again from then.")
 
@@ -81,8 +136,17 @@ def _auth_manager():
 
 def may_use_tool(owner: Optional[str], key: str, *, auth_manager: Any = None) -> bool:
     """Whether `owner` may use the Tools entry `key` names — for background
-    work, which has no request. Nobody named (Pantheon's own work) may; an
-    admin may; a store that cannot be read may not, said once (`B531`)."""
+    work, which has no request. Off for everyone (`B1488`) holds everybody's,
+    Pantheon's own and an admin's included. Otherwise nobody named (Pantheon's
+    own work) may; an admin may; a store that cannot be read may not, said
+    once (`B531`)."""
+    if off_for_everyone(key):
+        return False
+    return _person_may(owner, key, auth_manager=auth_manager)
+
+
+def _person_may(owner: Optional[str], key: str, *, auth_manager: Any = None) -> bool:
+    """The person's column of `may_use_tool` (`B1191`)."""
     from src.owner_identity import is_request_sentinel_owner, normalize_owner
     name = normalize_owner(owner)
     if not name or is_request_sentinel_owner(name):
@@ -125,8 +189,10 @@ def tool_privilege(key: str):
 
 
 def refuse_unless(request: Any, key: str) -> None:
-    """The same check, called from inside a route (a router shared with an
-    auth-exempt path, or a bridge that calls another router's endpoint)."""
+    """The same checks, called from inside a route (a router shared with an
+    auth-exempt path, or a bridge that calls another router's endpoint): the
+    switch for everyone first (`B1488`), then the person's."""
+    everyone_switch(key)()
     tool_privilege(key)(request)
 
 
@@ -186,10 +252,22 @@ def withheld_for_owner(owner: Optional[str], *, auth_manager: Any = None) -> Set
     every run, a chat's or a scheduled one's."""
     out: Set[str] = set()
     for key, (_label, tools) in TOOL_PRIVILEGES.items():
-        if tools and not may_use_tool(owner, key, auth_manager=auth_manager):
+        # The person's column only: the everyone column reaches the same set
+        # as a feature (`tool_security.feature_disabled_tools`, `B1488`), so a
+        # tool it takes is recorded as withheld by the feature, not by them.
+        if tools and not _person_may(owner, key, auth_manager=auth_manager):
             out |= set(tools)
     return out
 
 
-__all__ = ["ACTION_TOOLS", "TOOL_PRIVILEGES", "held_by_switch", "label", "may_use_tool", "off_sentence", "paused_sentence",
-           "refuse_unless", "tool_privilege", "withheld_agent_tools", "withheld_for_owner"]
+def feature_tools() -> Dict[str, Set[str]]:
+    """`B1488`. Each everyone switch's agent tools, read from `TOOL_PRIVILEGES`
+    so the person's column and everyone's take one list
+    (`tool_security._FEATURE_TOOLS` folds these in)."""
+    return {TOOL_FEATURES[key]: set(tools) for key, (_label, tools) in TOOL_PRIVILEGES.items() if tools}
+
+
+__all__ = ["ACTION_TOOLS", "TOOL_FEATURES", "TOOL_PRIVILEGES", "everyone_switch", "feature_tools",
+           "held_by_switch", "label", "may_use_tool", "off_for_everyone", "off_sentence",
+           "paused_sentence", "refuse_unless", "tool_privilege", "withheld_agent_tools",
+           "withheld_for_owner"]

@@ -40,6 +40,14 @@ function _modalShouldShowHint(id) {
 
 let _shown = false;
 let _initialized = false;
+// `B1065`. The hint is placed beside the window that triggered it, above
+// everything (`topPortalZ()`), for 14 s — and a window opened in that time
+// (the Workbench, measured by verify-a) had its −/+/Fit and its window
+// buttons under it. The hint yields: a window opened while it is up, or while
+// it is waiting to come up, sends it away. It is not marked seen — it was not
+// read — so it comes back beside a tool window on a later visit.
+let _active = null;     // { anchor, go } while the hint is on screen
+let _pending = null;    // { anchor, timer } in the moment before it is
 
 function _hasSeen() { return localStorage.getItem(HINT_SEEN_KEY) === '1'; }
 function _markSeen() { try { localStorage.setItem(HINT_SEEN_KEY, '1'); } catch {} }
@@ -76,7 +84,18 @@ function _onModalOpened(modal) {
 
   _shown = true;
   // Give the modal a moment to settle (some open with their own animation).
-  setTimeout(() => _show(modal), 380);
+  const timer = setTimeout(() => { _pending = null; _show(modal); }, 380);
+  _pending = { anchor: modal, timer };
+}
+
+/** `B1065`. Another window came up: the hint (or the hint about to show) gives
+ *  way to it. */
+function _yieldTo(el) {
+  if (_pending && el !== _pending.anchor) {
+    clearTimeout(_pending.timer);
+    _pending = null;
+  }
+  if (_active && el !== _active.anchor) _active.go();
 }
 
 function _show(modal) {
@@ -132,14 +151,20 @@ function _show(modal) {
     pop.classList.add('tour-hint-in');
   });
 
-  const dismiss = () => {
+  const leave = () => {
+    if (_active && _active.pop === pop) _active = null;
     pop.classList.add('tour-hint-out');
     setTimeout(() => pop.remove(), 280);
+  };
+  const dismiss = () => {
+    leave();
     _markSeen();
   };
+  _active = { anchor: modal, pop, go: leave };
   pop.querySelector('.tour-hint-dismiss').addEventListener('click', dismiss);
-  // Auto-dismiss after 14s so it doesn't linger forever.
-  setTimeout(() => { if (pop.isConnected) dismiss(); }, 14000);
+  // Auto-dismiss after 14s so it doesn't linger forever — unless it already
+  // gave way to another window (`B1065`), which is not a reading of it.
+  setTimeout(() => { if (pop.isConnected && _active && _active.pop === pop) dismiss(); }, 14000);
 }
 
 function _watchModals() {
@@ -151,22 +176,25 @@ function _watchModals() {
       attributeOldValue: true,
       attributeFilter: ['class', 'style'],
     });
-    if (_isVisible(modal)) _onModalOpened(modal);
+    if (_isVisible(modal)) { _yieldTo(modal); _onModalOpened(modal); }
   };
+  // Nothing left to do: seen, or shown and gone. While the hint is up or about
+  // to be, a window opening is still news (`B1065`).
+  const idle = () => !_active && !_pending && (_hasSeen() || _shown);
   const observer = new MutationObserver((muts) => {
-    if (_hasSeen() || _shown) return;
+    if (idle()) return;
     for (const m of muts) {
       if (m.attributeName !== 'class' && m.attributeName !== 'style') continue;
       const el = m.target;
       if (!(el instanceof HTMLElement)) continue;
       if (!el.classList.contains('modal')) continue;
       const wasHidden = !m.oldValue || /\bhidden\b/.test(m.oldValue) || /display:\s*none/.test(m.oldValue);
-      if (wasHidden && _isVisible(el)) _onModalOpened(el);
+      if (wasHidden && _isVisible(el)) { _yieldTo(el); _onModalOpened(el); }
     }
   });
   document.querySelectorAll('.modal').forEach(observeModal);
   const addObserver = new MutationObserver((muts) => {
-    if (_hasSeen() || _shown) return;
+    if (idle()) return;
     for (const m of muts) {
       m.addedNodes.forEach(node => {
         if (!(node instanceof HTMLElement)) return;

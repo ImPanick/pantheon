@@ -1271,6 +1271,17 @@ DEFAULT_FEATURES = {
     "rag": True,
     "sensitive_filter": True,
     "gallery": True,
+    # `B1488`, the owner's ruling: the eight Tools entries `B1191` gave a
+    # person's switch get one for everyone too, on like the rest. What each
+    # takes is `src/tool_privileges.py`'s (`TOOL_FEATURES`).
+    "assistant": True,
+    "calendar": True,
+    "compare": True,
+    "email": True,
+    "notes": True,
+    "tasks": True,
+    "theme": True,
+    "workbench": True,
 }
 
 

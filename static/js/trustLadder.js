@@ -618,6 +618,11 @@ export function allowRuleWording(tool, match, pattern) {
         + 'again. Anything even slightly different still stops and asks you.',
     };
   }
+  // `B900`. Neither wider rule covers a change that gives the assistant more
+  // reach — a switch turned on, a limit the person set raised (`P7-02`): the
+  // gate asks before every one of those whatever a rule says. Said in both
+  // sentences, so they are true of every tool, on the card and in the list
+  // under the ladder; for a tool that never widens anything it costs a clause.
   if (kind === 'prefix' && literal) {
     return {
       label: `Anything beginning with “${literal}”`,
@@ -629,7 +634,8 @@ export function allowRuleWording(tool, match, pattern) {
       sentence:
         `Pantheon goes ahead without asking whenever the command begins with `
         + `those exact letters — “${literal} …” — including things you have not `
-        + `seen it do yet. Everything else still stops and asks you.`,
+        + `seen it do yet, except a change that gives it more reach, which asks `
+        + `every time. Everything else still stops and asks you.`,
     };
   }
   if (kind === 'any' && name) {
@@ -638,7 +644,8 @@ export function allowRuleWording(tool, match, pattern) {
       detail: name,
       sentence:
         `Pantheon goes ahead without asking every time it uses ${name}, `
-        + `whatever it passes to it. This is the widest yes you can give and it `
+        + `whatever it passes to it — except a change that gives it more reach, `
+        + `which asks every time. This is the widest yes you can give and it `
         + `covers uses you have not seen yet.`,
     };
   }
@@ -776,6 +783,11 @@ export function buildAllowRuleChooser(aq) {
   // caller, a build with no such route and a store whose whole vocabulary is
   // newer than this screen are all the same "no" here.
   if (_rung !== 'allow_listed') return null;
+  // `B900`. A card for a change that widens the assistant's reach: no rule
+  // can stop it asking (the store refuses `exact` for one, and the gate asks
+  // whatever a `prefix` or `any` rule says), so a "stop asking" chooser here
+  // would promise what the gate does not do.
+  if (aq && aq.gate && aq.gate.widening) return null;
   const scopes = allowRuleScopes(aq);
   if (!scopes.length) return null;
 

@@ -41,6 +41,9 @@ from test_the_agent_raises_its_own_limits_for_the_run import (  # noqa: E402
 )
 
 TAINTED = "External untrusted context has already influenced this run"
+# `B1202`: the card says the same thing in a person's words (`tool_approvals.
+# card_words`); the gate's sentence above is still what the model reads.
+CARD_TAINTED = "It has read outside data this turn"
 
 
 def _call(**args):
@@ -186,7 +189,7 @@ def test_through_the_loop_bash_after_anything_else_still_asks(stored, monkeypatc
     _drive(monkeypatch, [first, _BASH, "I will wait."])
     events = _events(max_rounds=20, loop_caps_source=CAPS_FROM_SETTINGS, relevant_tools=_TOOLS)
     [card] = _cards(events)
-    assert card["description"].startswith(TAINTED)
+    assert card["description"].startswith(CARD_TAINTED)
     assert _ran(events, "bash") == []
 
 
@@ -211,7 +214,7 @@ def test_through_the_loop_a_raise_does_not_clean_a_tainted_run(stored, monkeypat
     _drive(monkeypatch, [fetch, _RAISE, _BASH, "I will wait."])
     events = _events(max_rounds=20, loop_caps_source=CAPS_FROM_SETTINGS, relevant_tools=_TOOLS)
     [card] = _cards(events)
-    assert card["description"].startswith(TAINTED)
+    assert card["description"].startswith(CARD_TAINTED)
     assert _ran(events, "bash") == []
 
 

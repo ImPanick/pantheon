@@ -3492,31 +3492,15 @@ export function closeEmailLibrary() {
 }
 
 // Make a modal draggable by its header. If `modal` and `fsClass` are
-// provided, dragging to the top edge of the viewport snaps to fullscreen
-// (Aero Snap). Dragging away from the top while fullscreen unsnaps.
+// provided, dragging away from the top while fullscreen (`fsClass`: the
+// `/email` route's full view) unsnaps it. The top edge's fullscreen is
+// `tileManager.js`'s (`B810`: `windowDrag.js`'s own was dead since the fork).
 function _makeDraggable(content, modal, fsClass) {
   if (!content) return;
   const header = content.querySelector('.modal-header');
   if (!header) return;
-  // Per-modal fullscreen behavior — caller supplies fsClass, we apply
-  // the same inline-style fullscreen pattern email-lib + email-window
-  // both use. exitFullscreen restores the default windowed size
-  // (min(720px, 92vw) × 85vh) and centers around the cursor.
-  const enterFullscreen = () => {
-    if (!fsClass || modal.classList.contains(fsClass)) return;
-    modal.classList.add(fsClass);
-    content.style.position = 'fixed';
-    content.style.left = '0';
-    content.style.top = '0';
-    content.style.right = '0';
-    content.style.bottom = '0';
-    content.style.width = '100vw';
-    content.style.maxWidth = '100vw';
-    content.style.height = '100vh';
-    content.style.maxHeight = '100vh';
-    content.style.borderRadius = '0';
-    content.style.transform = 'none';
-  };
+  // exitFullscreen restores the default windowed size (min(720px, 92vw) ×
+  // 85vh) and centers around the cursor.
   const exitFullscreen = (cx, cy) => {
     if (!fsClass || !modal.classList.contains(fsClass)) return;
     modal.classList.remove(fsClass);
@@ -3554,7 +3538,6 @@ function _makeDraggable(content, modal, fsClass) {
       content.style.transform = 'none';
       content.style.margin = '0';
     },
-    onEnterFullscreen: fsClass ? enterFullscreen : null,
     onExitFullscreen: fsClass ? exitFullscreen : null,
   });
 }

@@ -803,9 +803,12 @@ def setup_calendar_routes(upload_handler=None) -> APIRouter:
     # `B1191` (`D-2026-10-26-01` §5): refused, in the door's words, to a person this
     # Tools entry is switched off for (`src/tool_privileges.py`).
     from fastapi import Depends as _Depends
-    from src.tool_privileges import tool_privilege as _tool_privilege
+    from src.tool_privileges import everyone_switch as _everyone_switch, tool_privilege as _tool_privilege
     router = APIRouter(prefix="/api/calendar", tags=["calendar"],
-                       dependencies=[_Depends(_tool_privilege("can_use_calendar"))])
+                       # `B1488`: the switch for everyone first (it refuses everyone, in
+                       # the door's *everyone* words), then the person's.
+                       dependencies=[_Depends(_everyone_switch("can_use_calendar")),
+                                     _Depends(_tool_privilege("can_use_calendar"))])
 
     def _reserve_calendar_uploads(request: Request, *values) -> None:
         missing_id = reserve_upload_references(

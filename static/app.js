@@ -32,7 +32,7 @@ import memoryModule from './js/memory.js?v=20261009census';
 import voiceRecorderModule from './js/voiceRecorder.js';
 import censorModule from './js/censor.js';
 import galleryModule from './js/gallery.js?v=20260708match1';
-import { UI_VIS_DEFAULT_OFF, resolveVisibility, applyToolVisibility, guardRouteOpener, installToolDoorGuard, noteStatusAsked, onToolVisibilityApplied, toolShown, whenToolVisibilityReady } from './js/ui_visibility.js';
+import { UI_VIS_DEFAULT_OFF, resolveVisibility, applyToolVisibility, guardRouteOpener, installToolDoorGuard, noteStatusAsked, noteStatusFailed, onToolVisibilityApplied, toolShown, whenToolVisibilityReady } from './js/ui_visibility.js';
 import tasksModule from './js/tasks.js?v=20261009census';
 import calendarModule from './js/calendar.js';
 import notesModule from './js/notes.js';
@@ -1523,7 +1523,8 @@ function initializeEventListeners() {
         } catch (_) {}
       }
     })
-    .catch(() => {});
+    // `B1525`: an admin-only load waiting on this answer stops waiting; unknown asks.
+    .catch(() => { noteStatusFailed(); });
 
   // Session sort dropdown
   const sortBtn = el('session-sort-btn');

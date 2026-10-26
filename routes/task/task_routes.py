@@ -512,16 +512,21 @@ def _tasks_gate(request: Request) -> None:
     the Workbench's Automations room's, so either switch opens it; a person
     with both off is refused in the Tasks door's words. The notifications poll
     stays open — a paused task's sentence reaches the person there — and the
-    webhook trigger names nobody, so its task's owner is asked at run time."""
+    webhook trigger names nobody, so its task's owner is asked at run time.
+
+    `B1488`: each door is open when its switch for everyone and its person's
+    switch are both on (`refuse_unless` asks the two in that order), so Tasks
+    off for everyone leaves the Automations room its data while the Workbench
+    is on, and both off refuse everyone in the Tasks door's words."""
     from fastapi import HTTPException as _HTTPException
-    from src.tool_privileges import tool_privilege
+    from src.tool_privileges import refuse_unless
     if request.url.path.rstrip("/").endswith("/notifications"):
         return
     try:
-        tool_privilege("can_use_tasks")(request)
+        refuse_unless(request, "can_use_tasks")
     except _HTTPException as refused:
         try:
-            tool_privilege("can_use_workbench")(request)
+            refuse_unless(request, "can_use_workbench")
         except _HTTPException:
             raise refused
 

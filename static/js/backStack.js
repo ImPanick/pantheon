@@ -203,6 +203,7 @@ export function noteOpener(id, from, tab) {
   if (e) {
     e.from = from; e.tab = t;
     _drawBack(e);
+    _syncInert();
     _queueSync();
     return;
   }
@@ -213,6 +214,47 @@ function _drawBack(e) {
   try {
     if (_hooks.drawBack) _hooks.drawBack(e.id, e.from && isOpenNow(e.from) ? e.from : null);
   } catch (_) { /* a header we cannot draw into keeps its own buttons */ }
+}
+
+// `B1221`. A window opened from another leaves its opener beneath it dimmed and
+// off the pointer (`style.css`, read off the `← <opener>` button `_drawBack`
+// draws) — and, until this, on the keyboard: Tab walked from *MCP &
+// Integrations* back into Settings beneath it. The stack knows the pairs, so
+// it sets `inert` on each open opener of an open window, and takes it off when
+// that window closes — before the opener is raised and given the focus. Only
+// what this module set is taken off; an opener that holds the window opened
+// from it is never made inert (that would take the window too).
+const _inerted = new Set();     // ids this module made inert
+
+function _holds(outer, inner) {
+  for (let n = inner; n; n = n.parentNode) if (n === outer) return true;
+  return false;
+}
+
+function _syncInert() {
+  if (typeof document === 'undefined') return;
+  const want = new Set();
+  for (const e of _stack) {
+    if (!e.from || e.from === e.id || !isOpenNow(e.from) || !isOpenNow(e.id)) continue;
+    const opener = _el(e.from);
+    const child = _el(e.id);
+    if (!opener || _holds(opener, child)) continue;
+    want.add(e.from);
+  }
+  for (const id of [..._inerted]) {
+    if (want.has(id)) continue;
+    _inerted.delete(id);
+    const el = _el(id);
+    if (el) { el.inert = false; if (typeof el.removeAttribute === 'function') el.removeAttribute('inert'); }
+  }
+  for (const id of want) {
+    const el = _el(id);
+    if (!el || _inerted.has(id)) continue;
+    if (el.inert === true || (typeof el.hasAttribute === 'function' && el.hasAttribute('inert'))) continue;
+    el.inert = true;
+    if (typeof el.setAttribute === 'function') el.setAttribute('inert', '');
+    _inerted.add(id);
+  }
 }
 
 // ── the stack, read off the page ─────────────────────────────────────────
@@ -233,6 +275,8 @@ function _readPage() {
     _stack.push(e);
     opened.push(e);
   }
+  // `B1221`: before the closed loop raises and focuses an opener.
+  _syncInert();
   for (const e of closed) {
     // Its `←` goes with it; a window it opened loses its way back to it.
     try { if (_hooks.drawBack) _hooks.drawBack(e.id, null); } catch (_) {}
@@ -246,6 +290,7 @@ function _readPage() {
     }
   }
   for (const e of opened) _drawBack(e);
+  _syncInert();
   return { opened, closed };
 }
 
@@ -587,6 +632,7 @@ export function _reset() {
   _stack.length = 0; _pending.clear(); _closing.clear();
   _hooks = {}; _openers = {}; _expect = 0; _booted = false; _restoring = false; _idx = 0;
   _syncQueued = false; _lastEntry = null; _inited = false; _afterPop = null;
+  _inerted.clear();
 }
 
 const backStack = {

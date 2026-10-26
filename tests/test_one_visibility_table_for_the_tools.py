@@ -541,17 +541,30 @@ def test_every_feature_the_table_names_is_enforced_on_the_server_too():
         capture_output=True, text=True, timeout=60)
     assert proc.returncode == 0, proc.stderr
     flags = set(json.loads(proc.stdout))
-    assert flags == {"memory", "deep_research", "gallery", "document_editor", "web_search", "rag"}
+    # `B1488` added the eight Tools entries' switches for everyone.
+    assert flags == {"memory", "deep_research", "gallery", "document_editor", "web_search", "rag",
+                     "assistant", "calendar", "compare", "email", "notes", "tasks", "theme", "workbench"}
 
     from src.settings import DEFAULT_FEATURES
-    from src.tool_security import _FEATURE_TOOLS
+    from src.tool_privileges import TOOL_FEATURES
+    from src.tool_security import _FEATURE_NOTES, _FEATURE_TOOLS
     gated = set()
     for path in ("routes/research/research_routes.py", "routes/gallery/gallery_routes.py",
                  "routes/memory/memory_routes.py", "routes/document/document_routes.py"):
         gated |= set(re.findall(r'require_feature\(\s*"([a-z_]+)"',
                                 (ROOT / path).read_text(encoding="utf-8")))
+    # `B1488`: a Tools entry's router carries `everyone_switch(<privilege>)`
+    # (built and checked in `tests/test_a_tool_switched_off_for_everyone.py`).
+    for path in ROOT.glob("routes/**/*.py"):
+        for key in re.findall(r'_everyone_switch\("(can_use_[a-z]+)"\)', path.read_text(encoding="utf-8")):
+            gated.add(TOOL_FEATURES[key])
     for flag in flags:
         assert flag in DEFAULT_FEATURES, flag
+        if flag == "theme":
+            # The Theme window is the browser's alone — no route, no agent tool —
+            # and the note says so rather than leaving it to be guessed.
+            assert "door alone" in _FEATURE_NOTES["theme"] or "takes that window" in _FEATURE_NOTES["theme"]
+            continue
         assert _FEATURE_TOOLS.get(flag) or flag in gated, f"{flag} is hidden and enforced nowhere"
 
 

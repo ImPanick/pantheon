@@ -954,8 +954,9 @@ function createSessionItem(s) {
   // memory modal for the person to approve. Nothing called it. The only markup
   // that ever pointed at it is `#memory-session-option` — "Memory / Extract
   // memories from this session" — inside a `.dropdown.hidden` in `index.html`
-  // that nothing opens, superseded by this runtime-built menu, which carried
-  // Rename, Archive, Delete and Favorite across and left Memory behind.
+  // that nothing opened (deleted by `B1208`), superseded by this runtime-built
+  // menu, which carried Rename, Archive, Delete and Favorite across and left
+  // Memory behind.
   // Found by `P3-12`'s orphan-id itemisation.
   //
   // `window.memoryModule` rather than an import: `memory.js` imports this

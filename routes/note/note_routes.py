@@ -598,11 +598,14 @@ def setup_note_routes(task_scheduler=None, upload_handler=None):
 
     from fastapi import Depends as _Depends
 
-    from src.tool_privileges import tool_privilege as _tool_privilege
+    from src.tool_privileges import everyone_switch as _everyone_switch, tool_privilege as _tool_privilege
 
     router = APIRouter(prefix="/api/notes", tags=["notes"],
 
-                       dependencies=[_Depends(_tool_privilege("can_use_notes"))])
+                       # `B1488`: the switch for everyone first (it refuses everyone, in
+                       # the door's *everyone* words), then the person's.
+                       dependencies=[_Depends(_everyone_switch("can_use_notes")),
+                                     _Depends(_tool_privilege("can_use_notes"))])
 
     def _owner(request: Request) -> Optional[str]:
         # require_user, not bare get_current_user: a request that reaches
