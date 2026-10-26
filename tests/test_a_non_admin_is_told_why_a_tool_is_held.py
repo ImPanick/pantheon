@@ -132,3 +132,17 @@ def test_a_bearer_token_run_is_told_it_is_a_token_not_a_non_admin(monkeypatch):
                               delegated=True)
     assert "bash" in delegated_credential_blocked_tools()
     assert "API-token callers" in held["reason"], held["reason"]
+
+
+def test_a_steps_own_list_is_still_the_sentence_that_answers(monkeypatch):
+    """A sentence that says something of its own outranks the privilege one: a
+    workflow step limited to `web_search` that calls `bash` is told the call
+    is not one of its step's tools — the constraint the model can act on —
+    even for an owner who could not run `bash` anyway. Only the policy's
+    generic line gives way to the register's reason."""
+    from src.tool_policy import ToolPolicy
+
+    policy = ToolPolicy(allowed_tools=["web_search"])
+    (held,) = _blocked_events(monkeypatch, blocked=NON_ADMIN_BLOCKED_TOOLS,
+                              tool_policy=policy)
+    assert held["reason"] == "“bash” is not one of this step's tools.", held["reason"]

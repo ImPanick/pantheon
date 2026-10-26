@@ -57,6 +57,7 @@ from src.tool_security import (
 )
 from src.tool_policy import (
     CONFIRM_TOOLS_DIRECTIVE,
+    GENERIC_REFUSALS,
     GUIDE_ONLY_DIRECTIVE,
     WEB_TOOL_NAMES,
     ToolPolicy,
@@ -10748,23 +10749,31 @@ async def stream_agent_loop(
                 (blocked_by_tool_policy or blocked_by_disabled_tools)
                 and not _pan_clamped_tool_allowed
             ):
+                # `B1101`. One rule with the dispatcher's backstop: the
+                # called spelling first, so both name the same one.
+                _policy_reason = (
+                    tool_policy.refusal_for(policy_names, called=block.tool_type)
+                    if blocked_by_tool_policy else None
+                )
                 # `B1382`. A name withheld by privilege is answered with the
                 # sentence that says why and who may (`P2-25`'s register),
-                # ahead of the policy layer's generic line: through the chat
-                # route the same name is also in `tool_policy` (as
-                # "disabled for this request"), and either generic sentence
-                # hid the reason the register exists to give.
+                # ahead of the policy layer's *generic* line: through the chat
+                # route the same name is also in `tool_policy` (as "disabled
+                # for this request"), and either generic sentence hid the
+                # reason the register exists to give. A policy sentence that
+                # says something of its own — a step's own list, a guide-only
+                # turn — still answers first: it is the constraint the model
+                # can act on.
                 _privilege_reason = disabled_tools.privilege_refusal(
                     block.tool_type,
                     delegated_credential=bool(delegated_credential),
                 )
-                if _privilege_reason:
+                if _policy_reason and _policy_reason not in GENERIC_REFUSALS:
+                    reason = _policy_reason
+                elif _privilege_reason:
                     reason = _privilege_reason
-                elif blocked_by_tool_policy:
-                    # `B1101`. One rule with the dispatcher's backstop: the
-                    # called spelling first, so both name the same one.
-                    reason = tool_policy.refusal_for(
-                        policy_names, called=block.tool_type)
+                elif _policy_reason:
+                    reason = _policy_reason
                 else:
                     reason = (
                         f"Tool '{block.tool_type}' is disabled by the current "

@@ -244,6 +244,17 @@ def _directive_clauses(message: object) -> list:
     return [clause.strip() for clause in _CLAUSE_SPLIT.split(text) if clause.strip()]
 
 
+#: `B1382`. The two sentences a policy gives when it knows nothing more
+#: specific than *withheld*: a name the route's denylist named, and a name
+#: nothing named at all. A refusal that has the register's reason for the name
+#: (a privilege, `tool_security.non_admin_refusal`) answers ahead of these, and
+#: behind every sentence that says something of its own (a step's own list, a
+#: guide-only turn).
+DISABLED_FOR_REQUEST = "Tool is disabled for this request."
+DISABLED_FOR_TURN = "Tool use is disabled for this turn."
+GENERIC_REFUSALS = frozenset({DISABLED_FOR_REQUEST, DISABLED_FOR_TURN})
+
+
 @dataclass(frozen=True)
 class ToolPolicy:
     """Effective tool behavior for one agent turn."""
@@ -330,7 +341,7 @@ class ToolPolicy:
             return self.reasons[tool_name]
         if self.block_all_tool_calls and self.mode == "guide_only":
             return "Tool use is disabled for this guide-only turn."
-        return "Tool use is disabled for this turn."
+        return DISABLED_FOR_TURN
 
     def refusal_for(self, names, *, called: Optional[str] = None) -> Optional[str]:
         """`B1101`. The sentence a refused call is answered with, asked of
@@ -911,7 +922,7 @@ def build_effective_tool_policy(
 
     disabled = {str(t) for t in (disabled_tools or []) if t}
     hidden: Set[str] = set()
-    reasons = {tool: "Tool is disabled for this request." for tool in disabled}
+    reasons = {tool: DISABLED_FOR_REQUEST for tool in disabled}
 
     guide_reason = detect_guide_only_turn(last_user_message)
     if guide_reason:
