@@ -430,3 +430,25 @@ def test_the_unresolved_count_is_the_one_ci_pins(wiring_report):
     ceiling = int(re.search(r"run: python3 \.pantheon/check-wiring\.py --max (\d+)", ci).group(1))
     found = int(re.search(r"UNRESOLVED (\d+)", wiring_report).group(1))
     assert found <= ceiling, f"{found} unresolved against a ceiling of {ceiling}"
+
+
+def test_the_gate_names_the_paired_landing_rule_where_it_fails(repo):
+    """`B596`. At zero headroom a branch that adds a route without its caller
+    fails the gate on its own, and the agent reading that failure is usually
+    one whose caller is on another branch. The answer — one merge, never a
+    raised ceiling — is written down once, in `ORCHESTRATION.md`, and the
+    failure points at it so nobody has to rediscover it."""
+    r = run(["--max-routes", "0"], cwd=repo)
+    assert r.returncode == 1
+    assert "land in one merge" in r.stdout and "never raise the ceiling" in r.stdout, r.stdout
+    cited = re.search(r"\.pantheon/ORCHESTRATION\.md § ([^,]+), B596", r.stdout)
+    assert cited, r.stdout
+    doc = (ROOT / ".pantheon" / "ORCHESTRATION.md").read_text(encoding="utf-8")
+    heading = f"### {cited.group(1)} (`B596`)"
+    assert heading in doc, heading
+    section = doc.split(heading, 1)[1].split("\n## ", 1)[0].split("\n### ", 1)[0]
+    for rule in ("vertical slice", "merges as a pair", "Never buy the slot",
+                 "only comes down"):
+        assert rule in section, rule
+    agents = " ".join((ROOT / ".pantheon" / "AGENTS.md").read_text(encoding="utf-8").split())
+    assert f"`ORCHESTRATION.md` § *{cited.group(1)}* (`B596`)" in agents

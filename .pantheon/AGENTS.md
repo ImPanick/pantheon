@@ -163,6 +163,11 @@ the ratchet does its job — this sentence said 124 while CI held 40, then 40 wh
 (`B585`). `check-ci-contract.py` now fails on a copy of a ratchet's value that `ci.yml` does
 not hold.
 
+Its twin for routes is `check-unreachable.py`, at a ceiling with no headroom, so **a route and
+its caller land in one merge** — split work by vertical slice, never by layer. The rule, and
+what to do when a pair must be split, is `ORCHESTRATION.md` § *A route and its caller land in
+one merge* (`B596`).
+
 *It said 78 until 2026-08-27, which was the count before wiring run 01 cleared them — the law
 against carrying numbers, carrying a number. Then it said 2, and then 9, and neither number was
 the truth: the checker saw only literal `getElementById`, and this codebase reaches for elements

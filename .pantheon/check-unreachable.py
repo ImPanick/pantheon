@@ -377,9 +377,14 @@ def main() -> int:
                 print(f"        … and {len(rows) - 4} more")
 
     if ceiling is not None and len(findings) > ceiling:
+        # `B596`. The likeliest reader of this message is an agent whose route's
+        # caller is on another branch, and the answer is not in the numbers.
         print(f"\nFAIL — {len(findings)} routes with no frontend caller, ceiling is "
               f"{ceiling}.\nEither wire it, delete it, or add its real caller to "
-              f"ALLOWED with the reason.")
+              f"ALLOWED with the reason.\nIf the caller is on another branch, the two "
+              f"land in one merge and neither lands alone — never raise the ceiling\n"
+              f"for an unwired half (.pantheon/ORCHESTRATION.md § A route and its "
+              f"caller land in one merge, B596).")
         return 1
     if not quiet:
         print("\nThis is an inventory, not an accusation: an API token, a CLI, a "
