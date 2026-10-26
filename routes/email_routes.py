@@ -53,7 +53,7 @@ from routes.email_helpers import (
     _new_compose_token, _remember_compose_name, _compose_name_path, _attachment_name,
     _shown_listed_name,
     _load_settings, _save_settings, _get_email_config,
-    _send_smtp_message, _smtp_security_mode,
+    _send_smtp_message, _smtp_security_mode, _MAIL_CONNECT_SECONDS,
     _IMAP_TIMEOUT_SECONDS, _open_imap_connection,
     _get_valid_google_token, _get_valid_oauth_token, _xoauth2_bytes, _xoauth2_raw,
     make_oauth_state, verify_oauth_state,
@@ -6466,6 +6466,13 @@ def setup_email_routes():
             smtp_user = (body.get("smtp_user") or imap_user).strip()
             smtp_pass = body.get("smtp_password") or imap_pass
             smtp = None
+            # `B1535`, `B1526`'s split on the Test button: the connect, the TLS
+            # handshake, the greeting and STARTTLS get the mail openers' five
+            # seconds (`_MAIL_CONNECT_SECONDS`), and only then the sign-in gets
+            # the ten it always had. smtplib takes one timeout for all of it,
+            # so a server that accepted the connection and never greeted held
+            # the form's Test button for the whole ten.
+            smtp_signin_seconds = 10
             try:
                 if smtp_security == "ssl":
                     smtp_kwargs = (
@@ -6476,11 +6483,11 @@ def setup_email_routes():
                     smtp = smtplib.SMTP_SSL(
                         smtp_host,
                         smtp_port,
-                        timeout=10,
+                        timeout=_MAIL_CONNECT_SECONDS,
                         **smtp_kwargs,
                     )
                 else:
-                    smtp = smtplib.SMTP(smtp_host, smtp_port, timeout=10)
+                    smtp = smtplib.SMTP(smtp_host, smtp_port, timeout=_MAIL_CONNECT_SECONDS)
                     if smtp_security == "starttls":
                         try:
                             if google_ssl_context:
@@ -6496,6 +6503,12 @@ def setup_email_routes():
                                 pass
                             smtp = None
                             raise
+                try:
+                    smtp.sock.settimeout(smtp_signin_seconds)
+                except (AttributeError, OSError):
+                    # No socket left (the server hung up after its greeting):
+                    # the sign-in below raises, and that is the sentence.
+                    pass
                 if oauth_record is not None:
                     token = _oauth_token()
                     smtp.ehlo()
