@@ -13,7 +13,7 @@ from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 from sqlalchemy.orm import relationship, sessionmaker, backref
-from sqlalchemy.pool import Pool
+from sqlalchemy.pool import Pool, StaticPool
 
 from src.runtime_paths import get_app_root
 from core.platform_compat import safe_chmod, IS_WINDOWS
@@ -76,12 +76,6 @@ def _normalize_sqlite_url(url: str) -> str:
 # Get database URL from environment, default to SQLite in DATA_DIR
 DATABASE_URL = _normalize_sqlite_url(os.getenv("DATABASE_URL", _default_database_url()))
 
-# Create engine
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
-)
-
 
 # Sidecar files SQLite can create next to the main DB. -journal is the default
 # rollback journal; -wal/-shm appear once WAL is enabled. Each can hold copies of
@@ -139,6 +133,51 @@ def _sqlite_db_path(url) -> Optional[str]:
         fs_path = f"//{authority}{fs_path}"
 
     return unquote(fs_path)
+
+
+def _pool_for(url: str) -> dict:
+    """`StaticPool` for a SQLite database that lives only in memory.
+
+    `B1410`/`B1491`/`B1085`. An in-memory SQLite database belongs to the ONE
+    connection that opened it, and SQLAlchemy's default pool for one is
+    `SingletonThreadPool`: a connection per thread, at most five kept. So a
+    `:memory:` URL here meant, measured on SQLAlchemy 2.1.1:
+
+      * every thread but the one `init_db()` ran on opened its own EMPTY
+        database — a TestClient's worker, a served request in the threadpool;
+      * past five threads the pool closes connections it holds, picked by
+        `set.pop()` — the schema-holding one among them, at a point decided by
+        object addresses, i.e. by every file that ran earlier. That is the
+        suite whose answer depended on its file set (`no such table:
+        mcp_servers` after six worker threads; `B1180` fixed one way in);
+      * the close runs on the thread that connected sixth, against a
+        connection another thread may be executing on: eight workers
+        connecting at once segfaulted CPython in eight runs of ten.
+
+    One connection for the process is SQLAlchemy's own answer for this case,
+    so `:memory:` is one database for every thread, and nothing closes it. A
+    file-backed URL, and anything that is not SQLite, keeps its default pool.
+    """
+    return {"poolclass": StaticPool} if _in_memory_sqlite(url) else {}
+
+
+def _in_memory_sqlite(url: str) -> bool:
+    """A SQLite URL with no file behind it: `:memory:`, `sqlite://`, or a
+    `mode=memory` URI. Such a database cannot be handed to a second process —
+    the child opens its own, empty one (`B1085`)."""
+    try:
+        parsed = make_url(url)
+    except Exception:
+        return False
+    return parsed.get_backend_name() == "sqlite" and _sqlite_db_path(parsed) is None
+
+
+# Create engine
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
+    **_pool_for(DATABASE_URL),
+)
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

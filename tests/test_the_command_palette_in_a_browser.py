@@ -36,6 +36,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 
@@ -70,16 +71,46 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+class Served(NamedTuple):
+    """`B1085`/`B1423`. What `app_url` started: the data directory it runs in
+    (its `app.log` and `app.db`), and the process group to stop it by — a test
+    that needs the server really down stops it rather than emulating offline,
+    which a service worker's own `fetch` does not obey."""
+    data: Path
+    pgid: int
+
+
+#: Each server `app_url` started, by its URL. The fixture yields only the URL
+#: because thirty files already take it as one; this is where the rest lives.
+SERVED = {}
+
+
 @pytest.fixture(scope="module")
 def app_url(tmp_path_factory):
     data = tmp_path_factory.mktemp("palette-app")
     port = _free_port()
+    # `B1085`. A database FILE in the server's own data directory. Inheriting
+    # `tests/conftest.py`'s `sqlite:///:memory:` gave the server a database
+    # whose tables were on one connection only: measured in this fixture's
+    # `app.log`, `/api/default-chat`, `/api/notes`, `/api/sessions` and
+    # `/api/model-endpoints` answered 500 `no such table` from the first page
+    # load, and seven files each kept a module fixture pointing `DATABASE_URL`
+    # at a file before this one ran. A file is what the product runs on, and
+    # it survives a test that stops and starts the server. A FILE a test chose
+    # before this fixture ran (one it seeded) is kept: only an in-memory URL,
+    # which no second process can share, is replaced.
+    from core.database import _in_memory_sqlite
+
+    inherited = os.environ.get("DATABASE_URL", "")
+    database = (f"sqlite:///{data / 'app.db'}" if not inherited or _in_memory_sqlite(inherited)
+                else inherited)
     env = dict(os.environ, PANTHEON_DATA_DIR=str(data), APP_PORT=str(port),
-               APP_BIND="127.0.0.1", PANTHEON_DISABLE_MCP="1")
+               APP_BIND="127.0.0.1", PANTHEON_DISABLE_MCP="1", DATABASE_URL=database)
     log = open(data / "app.log", "w", encoding="utf-8")
     proc = subprocess.Popen([sys.executable, "app.py"], cwd=ROOT, env=env, stdout=log,
                             stderr=subprocess.STDOUT, start_new_session=True)
     url = f"http://127.0.0.1:{port}"
+    SERVED[url] = Served(data=data, pgid=proc.pid)
     try:
         deadline = time.monotonic() + 120
         while True:
@@ -107,6 +138,7 @@ def app_url(tmp_path_factory):
             except ProcessLookupError:
                 pass
         log.close()
+        SERVED.pop(url, None)
 
 
 _SCRIPT = r"""

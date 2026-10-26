@@ -29,23 +29,8 @@ from test_the_command_palette_in_a_browser import NODE, _SKIP, app_url  # noqa: 
 pytestmark = pytest.mark.skipif(NODE is None, reason=_SKIP or "")
 
 
-@pytest.fixture(scope="module", autouse=True)
-def _a_database_file_for_the_app(tmp_path_factory):
-    """The app under test gets a SQLite file of its own. `tests/conftest.py`
-    sets `DATABASE_URL=sqlite:///:memory:` for this process, and the app's
-    subprocess inherits it: measured, one in-memory database shared across the
-    server's threads intermittently answered "Could not open document." for a
-    document just created, which is the harness and not this row."""
-    import os
-    previous = os.environ.get("DATABASE_URL")
-    os.environ["DATABASE_URL"] = f"sqlite:///{tmp_path_factory.mktemp('app-db') / 'app.db'}"
-    try:
-        yield
-    finally:
-        if previous is None:
-            os.environ.pop("DATABASE_URL", None)
-        else:
-            os.environ["DATABASE_URL"] = previous
+# `B1085`: `app_url` gives the server a database file of its own now, so
+# the autouse fixture this file kept to point `DATABASE_URL` at one is gone.
 
 _SCRIPT = r"""
 const { chromium } = require('playwright');

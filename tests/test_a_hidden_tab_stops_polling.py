@@ -18,7 +18,6 @@ cut out with `js_definition`); the observers in the real app in Chromium.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 from pathlib import Path
 
@@ -287,18 +286,9 @@ const BASE = process.argv[2];
 
 
 @pytest.fixture(scope="module")
-def file_database(tmp_path_factory):
-    before = os.environ.get("DATABASE_URL")
-    os.environ["DATABASE_URL"] = "sqlite:///" + str(tmp_path_factory.mktemp("poll-db") / "app.db")
-    yield
-    if before is None:
-        os.environ.pop("DATABASE_URL", None)
-    else:
-        os.environ["DATABASE_URL"] = before
-
-
-@pytest.fixture(scope="module")
-def page(file_database, app_url, tmp_path_factory):  # noqa: F811
+def page(app_url, tmp_path_factory):  # noqa: F811
+    # `B1085`: `app_url` gives the server a database file of its own now, so
+    # the module fixture this file kept to point `DATABASE_URL` at one is gone.
     script = tmp_path_factory.mktemp("poll-pw") / "poll.cjs"
     script.write_text(_SCRIPT, encoding="utf-8")
     proc = subprocess.run([NODE, str(script), app_url], capture_output=True, text=True,

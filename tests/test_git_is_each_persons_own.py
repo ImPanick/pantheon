@@ -314,17 +314,31 @@ def client(db, monkeypatch):
     import routes.git_routes as R
     monkeypatch.setattr(R, "get_current_user", lambda request: request.headers.get("x-user"))
     monkeypatch.setattr(R, "request_is_a_person", lambda request: request.headers.get("x-token") is None)
+    # `B1491`. The route module binds `SessionLocal` at import
+    # (`routes/git_routes.py:30`), so the `db` fixture's patch of
+    # `core.database` reached it only when this file was the first to import
+    # it. After any earlier importer the route ran on the session's database
+    # from a worker thread, and failed `no such table: git_credentials`.
+    monkeypatch.setattr(R, "SessionLocal", db)
     app = FastAPI()
     app.include_router(R.setup_git_routes())
     return TestClient(app)
 
 
-def test_the_routes_answer_only_the_callers_own(client):
+def test_the_routes_answer_only_the_callers_own(client, db):
     put = client.put("/api/git", headers={"x-user": "alice"},
                      json={"identity": {"name": "Alice", "email": "a@x.org"},
                            "hosts": {"gitlab.com": {"token": "glpat_SECRET"}}})
     assert put.status_code == 200 and "glpat_SECRET" not in put.text
     assert put.json()["hosts"][0]["username"] == "git", "a forge accepts any user name beside a token"
+    # `B1491`: the write is in this test's database, not some other one the
+    # route happened to be bound to.
+    import core.database as cdb
+    check = db()
+    try:
+        assert check.query(cdb.GitIdentity).filter_by(email="a@x.org").count() == 1
+    finally:
+        check.close()
     assert client.get("/api/git", headers={"x-user": "bob"}).json()["hosts"] == []
     bad = client.put("/api/git", headers={"x-user": "alice"}, json={"identity": {"name": "A", "email": "x"}})
     assert bad.status_code == 400 and bad.json()["detail"] == "That is not an email address a commit can carry."

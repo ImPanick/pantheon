@@ -13,7 +13,6 @@ module ran (`domInteractive`).
 """
 
 import json
-import os
 import subprocess
 
 import pytest
@@ -75,18 +74,9 @@ const BASE = process.argv[2];
 
 
 @pytest.fixture(scope="module")
-def file_database(tmp_path_factory):
-    before = os.environ.get("DATABASE_URL")
-    os.environ["DATABASE_URL"] = "sqlite:///" + str(tmp_path_factory.mktemp("early-db") / "app.db")
-    yield
-    if before is None:
-        os.environ.pop("DATABASE_URL", None)
-    else:
-        os.environ["DATABASE_URL"] = before
-
-
-@pytest.fixture(scope="module")
-def drive(file_database, app_url, tmp_path_factory):  # noqa: F811
+def drive(app_url, tmp_path_factory):  # noqa: F811
+    # `B1085`: `app_url` gives the server a database file of its own now, so
+    # the module fixture this file kept to point `DATABASE_URL` at one is gone.
     script = tmp_path_factory.mktemp("early-pw") / "early.cjs"
     script.write_text(_SCRIPT, encoding="utf-8")
     proc = subprocess.run([NODE, str(script), app_url], capture_output=True, text=True,

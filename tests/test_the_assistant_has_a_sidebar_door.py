@@ -18,7 +18,6 @@ reload.
 """
 
 import json
-import os
 import subprocess
 
 import pytest
@@ -150,29 +149,9 @@ const BASE = process.argv[2];
 
 
 @pytest.fixture(scope="module")
-def file_database(tmp_path_factory):
-    """A database file for the server `app_url` boots.
-
-    `tests/conftest.py` sets `DATABASE_URL=sqlite:///:memory:` for the
-    in-process suite, and `app_url` hands the server `os.environ`: an
-    in-memory SQLite is one database per connection, so the server's tables
-    exist on the connection that made them and on no other. Measured in this
-    file's first runs: `GET /api/assistant/session` answered 200, then
-    `no such table: crew_members` (500) a few seconds later. The Assistant
-    lives in that database, so this file gives the server a real one; it is
-    requested before `app_url` so the server is started with it.
-    """
-    before = os.environ.get("DATABASE_URL")
-    os.environ["DATABASE_URL"] = "sqlite:///" + str(tmp_path_factory.mktemp("assistant-db") / "app.db")
-    yield
-    if before is None:
-        os.environ.pop("DATABASE_URL", None)
-    else:
-        os.environ["DATABASE_URL"] = before
-
-
-@pytest.fixture(scope="module")
-def doors(file_database, app_url, tmp_path_factory):  # noqa: F811
+def doors(app_url, tmp_path_factory):  # noqa: F811
+    # `B1085`: `app_url` gives the server a database file of its own now, so
+    # the module fixture this file kept to point `DATABASE_URL` at one is gone.
     if NODE is None:
         pytest.skip(_SKIP or "")
     script = tmp_path_factory.mktemp("assistant-pw") / "assistant.cjs"
