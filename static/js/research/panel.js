@@ -1256,7 +1256,7 @@ async function _chatAboutResearch(researchId, btn) {
   }
 }
 
-// `B866`'s sweep: was a DOM round-trip, which does not escape `"`. `:960`
+// `B866`'s sweep: was a DOM round-trip, which does not escape `"`. `_buildJobCard`
 // interpolates into `src="…"` with a thumbnail URL that came back from a
 // third-party search result.
 function _esc(s) {

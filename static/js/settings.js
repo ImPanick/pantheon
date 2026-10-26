@@ -2927,7 +2927,7 @@ function initAccount() {
  * `initAll` runs lazily on the first `settingsModule.open()`, and five call
  * sites reach past that API entirely — `calendar.js` (four, all of them
  * un-hiding `#settings-modal` and clicking `[data-settings-tab="integrations"]`)
- * and `emailLibrary.js:1299`. A nav built inside `initAll` would not exist for
+ * and `emailLibrary.js`'s `_openSettingsTab`. A nav built inside `initAll` would not exist for
  * any of them, so opening Settings from the calendar would show an empty
  * sidebar until something else had opened it the long way first.
  *
@@ -5175,7 +5175,7 @@ async function initUnifiedIntegrations() {
     _wireProviderCopy(el('uf-oauth-setup'));
     // `B73`. Where an app password comes from is a fact about the PROVIDER,
     // and the provider record is where it is written (`src/providers.py`,
-    // served at `routes/email_routes.py:235`). This table is keyed by preset
+    // served by `routes/email_routes.py`'s `_provider_payload`). This table is keyed by preset
     // and it is the older of the two mechanisms, so the rule is: the record
     // answers wherever there is a record, and the literal below is the answer
     // for presets that have none. Nothing new had to be listed to get from a
@@ -5975,8 +5975,8 @@ async function initUnifiedIntegrations() {
         const servers = await res.json();
         const srv = servers.find(s => (s.id || s.name) === editId);
         if (!srv) { formEl.innerHTML = '<div class="admin-card" style="margin-top:8px">Server not found</div>'; return; }
-        // `Law 14`. This line used to shadow the module's `esc` (`:74`, which
-        // forwards to the canonical `uiModule.esc` at `static/js/ui.js:983`)
+        // `Law 14`. This line used to shadow the module's `esc` (which
+        // forwards to the canonical `uiModule.esc` in `static/js/ui.js`)
         // with a copy that escapes `&` and `<` and **not** `"`, `'` or `>` —
         // inside the one function that put third-party text into an HTML
         // attribute (`title="${esc(t.description)}"`, now gone with the

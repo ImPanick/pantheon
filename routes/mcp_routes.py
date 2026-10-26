@@ -8,7 +8,8 @@ that ``import routes.mcp_routes``, ``from routes.mcp_routes import X``,
 test_security_regressions.py, and the ``monkeypatch.setattr(mcp_routes,
 "MCP_OAUTH_DIR", ...)`` pattern all operate on the *same* object. This also
 makes ``mcp_routes.__file__`` resolve to the canonical file (which the
-source-introspection at line 839 reads). Keeps existing import paths working
+source-introspection in `tests/test_security_regressions.py`'s
+``test_mcp_config_listing_is_admin_gated`` reads). Keeps existing import paths working
 after slice 2o (#4082/#4071).
 """
 

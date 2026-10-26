@@ -38,7 +38,7 @@ otherwise hire an agent with more reach than the turn that asked for it.
 Every refusal is `{detail: "<sentence>"}` (`Law 15`); a body is read by hand,
 under a ceiling, so a malformed one is answered in a sentence too.
 
-**The route ceiling** (`check-unreachable.py --max-routes 37`): every path
+**The route ceiling** (`check-unreachable.py --max-routes`, in `ci.yml`): every path
 here is spelled in `static/js/agents/agentsApi.js`, its one caller.
 """
 

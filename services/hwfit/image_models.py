@@ -289,7 +289,7 @@ def _variant_score(candidate: dict[str, Any], base_repo: str, want: str) -> floa
     # about. `B97` named four boundaries and gave each exactly one owner; this
     # is the fifth producer `B153` found while counting them, and the answer is
     # that it has an owner already and the owner is not us — the same answer
-    # `NOT_OURS` gives for `PATH` and `core/database.py:112` gives for
+    # `NOT_OURS` gives for `PATH` and `core/database.py`'s `_sqlite_db_path` gives for
     # SQLAlchemy's `?uri=true`. Registered in `FOREIGN_PRODUCERS` in
     # `.pantheon/check-env-declared.py`, which fails the build if this site
     # stops reading a yes/no word and the note outlives its call site.

@@ -743,7 +743,7 @@ def setup_mcp_routes(mcp_manager: McpManager):
           splits the qualified name and looks the server id up in
           `self._sessions` (`src/mcp_manager.py`), so a scheduled task whose
           `output_target` is `mcp__<old id>__<tool>` — the scheduler dispatches
-          on exactly that prefix, `src/task_scheduler.py:2956` — silently
+          on exactly that prefix, `TaskScheduler._deliver_task_result` — silently
           stops delivering.
         * `disabled_tools` is a column on the row. Deleting the row deletes the
           list, so every tool the operator had hidden from the agent comes back

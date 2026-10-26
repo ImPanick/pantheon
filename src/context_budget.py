@@ -123,12 +123,12 @@ def budget_is_explicit(configured: int, *, default: int = DEFAULT_BUDGET) -> boo
 # to attachment or injected content on the chat-ingest path, in non-test
 # Python). Six are character counts in `src/document_processor.py`:
 #
-#   24,000  the shared budget one turn's attachments share   (`:29`)
-#   30,000  one text attachment                              (`:933`, first arm)
-#   10,000  one `.log` attachment                            (`:933`, second arm)
-#   15,000  what the PDF extractor keeps                     (`:1033`)
-#   15,000  the Office/EPUB markdown inlined into the turn   (`:1042`)
-#   15,000  the PDF body inlined into the turn               (`:1427`)
+#   24,000  the shared budget one turn's attachments share   (`context_attachment_total_chars`)
+#   30,000  one text attachment                              (`context_text_file_chars`)
+#   10,000  one `.log` attachment                            (`context_log_file_chars`)
+#   15,000  what the PDF extractor keeps                     (`context_pdf_extract_chars`)
+#   15,000  the Office/EPUB markdown inlined into the turn   (`context_office_inline_chars`)
+#   15,000  the PDF body inlined into the turn               (`context_pdf_inline_chars`)
 #
 # The seventh is `skill_max_injected` in `src/agent_loop.py`, a count rather
 # than a character budget, and already a setting.
@@ -387,7 +387,7 @@ def resolve_prompt_budget(key: str, owner=None) -> int:
 # for an unrelated reason is the ambiguity `Law 10` refuses.
 #
 # **`B750` named three defects, and two of the three reproduce exactly.**
-# Measured 2026-09-19 at `src/agent_loop.py:3144-3156`:
+# Measured 2026-09-19 in `src/agent_loop.py`'s `_build_system_prompt`:
 #
 #   1. `_prefs.get("skill_max_injected", get_setting(...))` — a **per-user pref
 #      silently beats everything**, so the role layer was never consulted.

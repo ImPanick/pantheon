@@ -46,7 +46,7 @@ const GLYPHS = { parallel: ICON_PARALLEL, sequential: ICON_SEQUENTIAL };
 /** Escape a caller's string before it goes through `innerHTML`.
  *  The queue's subtitle interpolates a count and a caller could one day
  *  interpolate a query, so the label path is not a place to trust input. */
-// `B866`'s sweep: was missing `'`. `:85` builds `data-mode="…"`.
+// `B866`'s sweep: was missing `'`. `promptRunMode` builds `data-mode="…"`.
 function esc(text) {
   return escapeHtml(String(text == null ? '' : text));
 }

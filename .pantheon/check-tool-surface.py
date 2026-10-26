@@ -39,7 +39,10 @@ missing all three times. It has to be this file.
 The checks, each one derived from a defect that actually shipped:
 
   A. Every tool name the system prompt names in backticks is in `TOOL_TAGS`.
-     (`tail_serve_output`, `manage_rag`.)
+     (`tail_serve_output`, `manage_rag`.) Read from every string constant in
+     `src/agent_loop.py`, so it refuses a name before any prompt is built; the
+     count it reports — and the prompt channel F accepts — is asked of the
+     assembled prompt instead (`B1393`).
   B. Every name in `FUNCTION_TOOL_SCHEMAS` is in `TOOL_TAGS`.
      Both call channels gate on `TOOL_TAGS`; a schema without a tag is a
      function the model is offered and cannot invoke. (The cookbook family.)
@@ -139,6 +142,31 @@ def _module(rel: str) -> ast.Module:
 def _string_constants(tree: ast.AST) -> list:
     return [n.value for n in ast.walk(tree)
             if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+
+
+#: A tool name as a prompt writes it: in backticks (`` `name` ``), as a
+#: register line (```` ```name``` ````) or as the language of a fence opener
+#: (```` ```bash ````). `B1393`: the first spelling alone, with a three-letter
+#: floor, could see neither a fence opener nor `ls`.
+NAMED = re.compile(r"`+([a-z][a-z0-9_]+)(?:`+|[ \t]*\n)")
+
+
+def assembled_prompt_names(universe) -> set:
+    """Tool names the system prompt of a full-prompt turn actually carries.
+
+    `B1393`. *"N named in the prompt"* used to count backticked names in
+    `src/agent_loop.py`'s string constants: it said 72 on `b6a1bbf` and 79 at
+    `ecf4fda`, and the product's prompt was not what moved it — the lines that
+    lane added are built at runtime from the schema register, while the names
+    quoted in `_register_tool_line`'s own docstring are string constants. So
+    the number was not evidence about the prompt, and a docstring could
+    *announce* a tool to rule F. This asks `_assemble_prompt` for the prompt a
+    turn offered every tagged tool is given, and reads that.
+    """
+    from src.agent_loop import _assemble_prompt
+    from src.agent_tools import TOOL_TAGS
+    prompt = _assemble_prompt(set(TOOL_TAGS))
+    return {name for name in NAMED.findall(prompt) if name in universe}
 
 
 def _dispatch_names(rel: str) -> set:
@@ -256,13 +284,17 @@ def main() -> int:
         universe |= names
 
     # ── A. the prompt may only name a tool the fence will accept ────────────
-    prompt_names = set()
-    backticked = re.compile(r"`([a-z][a-z0-9_]{2,})`")
+    # Read from every string constant in `src/agent_loop.py`: a superset of any
+    # prompt it can assemble, which is the right direction for a rule that
+    # refuses. It is NOT a count of what the prompt names (`B1393`) — that is
+    # `prompt_names` below, asked of the assembled prompt itself.
+    source_names = set()
     for text in _string_constants(_module("src/agent_loop.py")):
-        for hit in backticked.findall(text):
+        for hit in NAMED.findall(text):
             if hit in universe:
-                prompt_names.add(hit)
-    for name in sorted(prompt_names - set(TOOL_TAGS)):
+                source_names.add(hit)
+    prompt_names = assembled_prompt_names(universe)
+    for name in sorted(source_names - set(TOOL_TAGS)):
         problems.append(
             f"A  the system prompt names `{name}` but it is not in TOOL_TAGS — "
             f"the fence parser drops the block and nothing reports it")
@@ -331,7 +363,7 @@ def main() -> int:
 
     print(f"tool surface OK — {len(TOOL_TAGS)} tagged names, "
           f"{len(schema_names)} function schemas, {len(server_tools)} built-in servers, "
-          f"{len(prompt_names)} named in the prompt, "
+          f"{len(prompt_names)} named in the assembled prompt, "
           f"{len(set(TOOL_TAGS) & announced)} announced to the model, "
           f"all registered everywhere")
     for sid in sorted(SHADOWED_ON_PURPOSE):

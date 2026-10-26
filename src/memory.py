@@ -962,7 +962,7 @@ class MemoryManager:
         writing moves category and not when a number moves — which is what makes
         it editable at all (a sentence that rewrites itself under somebody is a
         sentence they cannot correct) and what keeps it out of the KV-cache
-        problem `src/user_time.py:216` documents.
+        problem `src/user_time.py`'s `current_datetime_context_message` documents.
 
         **A profile the person has edited is not overwritten**, and that is the
         row's error signal doing its job: *"edits are the only error signal this

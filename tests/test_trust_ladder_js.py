@@ -69,7 +69,7 @@ from test_tool_effect_surfaces_js import (  # noqa: E402
     _run,
     _themes,
 )
-from tests.helpers.source_text import blank, blank_text  # B290
+from tests.helpers.source_text import blank_text  # B290
 from tests.helpers.esc_stub import ui_default_stub  # B874
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -3145,11 +3145,13 @@ def test_both_grant_verbs_and_the_rule_revoke_have_a_visible_caller():
     routes arrived there beside it.
     """
     checker = _checker()
-    code = blank(TRUST_LADDER)
+    # `B720`: the checker's reader now excludes comments itself — it reads the
+    # literals `check-specifiers.py`'s walk reports — so this asks that reader
+    # rather than blanking first and running a regex the checker no longer has.
+    code = TRUST_LADDER.read_text(encoding="utf-8")
     called = set()
-    for match in checker._URLISH.findall(code):
-        idx = match.find("/api/")
-        called.add(checker.normalise(match[idx:] if idx >= 0 else match))
+    for literal in checker.literal_texts(code, "js"):
+        called |= checker.literal_patterns(literal)
 
     # Both verbs share one path, so one pattern answers for both.
     assert checker.normalise("/api/tool-approval-grants/{session_id}") in called

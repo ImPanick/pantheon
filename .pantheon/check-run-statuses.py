@@ -63,6 +63,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT / ".pantheon") not in sys.path:
+    sys.path.insert(0, str(ROOT / ".pantheon"))
+from ledger.source import strip_comments, tracked_files  # noqa: E402  (`B410`, `B571`)
+
 DB = ROOT / "core" / "database.py"
 JS = ROOT / "static" / "js" / "runStatus.js"
 # This file, spelled the way `git ls-files` spells it. Question 4 reads strings
@@ -129,9 +133,10 @@ def _module_constants(path: Path) -> dict[str, object]:
 def _blank_comments(js: str) -> str:
     """`B87`. Every file in this area documents the ladder it used to own, so a
     text search finds the vocabulary in the prose explaining why it is not there
-    any more. Block and line comments go before anything is read."""
-    js = re.sub(r"/\*.*?\*/", "", js, flags=re.S)
-    return re.sub(r"^\s*//.*$", "", js, flags=re.M)
+    any more. Block and line comments go before anything is read — by the one
+    blanker (`B410`), not a `/* … */` regex that cannot tell a comment from a
+    string."""
+    return strip_comments(js, mode="js")
 
 
 def _js_array(js: str, name: str) -> list[str] | None:
@@ -500,9 +505,7 @@ def _python_files() -> list[str]:
     catches a seventh status runs it over a COPY of the tree, because editing
     the tree a suite run is reading is `Law 19`. A copy has no git index.
     """
-    out = subprocess.run(["git", "ls-files", "*.py"], cwd=str(ROOT),
-                         capture_output=True, text=True)
-    tracked = [f for f in out.stdout.split() if f]
+    tracked = tracked_files("*.py", root=ROOT, check=False)
     if tracked:
         return tracked
     found = []

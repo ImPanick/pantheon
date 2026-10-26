@@ -186,7 +186,7 @@ def _jaccard(a: set, b: set) -> float:
 # not by reading it: the indexed token set is median **40** tokens, p90 68,
 # max 150. A query whose every token appears in a median skill therefore
 # scores `n / 40`, so it needs **10** tokens to reach the agent loop's
-# threshold of 0.25 (`src/agent_loop.py:3153`, and again at `:5017`) and 17
+# threshold of 0.25 (`src/agent_loop.py`'s `_build_system_prompt`, and again in `stream_agent_loop`) and 17
 # against a p90 skill. Across 30 hand-labelled natural queries — "deploy to
 # kubernetes", "write pytest tests for my python module" — the best raw score
 # any of the 286 skills reached was **0.200**, **29 of 30 returned nothing at

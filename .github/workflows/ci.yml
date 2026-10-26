@@ -333,8 +333,14 @@ jobs:
       # stats and cleanup, the RAG index's stats, not-spam).
       # 37 -> 29 (`B1482`): six more with no caller retired, and the two
       # device sign-in cancels given their caller.
+      # 29 -> 27 (`B720`, absorbing `B760`/`B804`): the reader takes literals
+      # from `check-specifiers.py`'s walk, so a comment is no longer a caller
+      # and a template whose hole holds a quoted expression is no longer cut
+      # at that quote. No route was reached by prose alone; two were reached by
+      # code the old regex could not read (`/api/workspace/browse`, the design
+      # preview).
       - name: check-unreachable
-        run: python3 .pantheon/check-unreachable.py --max-routes 29
+        run: python3 .pantheon/check-unreachable.py --max-routes 27
       # P0-31. A rename that finishes on one side of a join is invisible: the
       # writers move, the readers do not, and nothing raises. It happened four
       # times from one sweep — the API token prefix a person pastes into

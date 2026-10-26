@@ -1476,7 +1476,7 @@ def _known_tool_names_for_pruning() -> frozenset:
 
     **Not cached for the life of the process, and that is the point.**
     `known_tool_names()` is import-order-sensitive by its own admission
-    (`B830`, documented at `src/tool_policy.py:363`): in a process that reaches
+    (`B830`, documented in `src/tool_policy.py`'s `known_tool_names`): in a process that reaches
     `tool_policy` before `src.agent_loop`, the first call raises inside the
     `tool_schemas`/`agent_tools` cycle, swallows it and answers **82** instead
     of 85, dropping `host_shell` and `manage_rag`. The first call here happens
@@ -2795,7 +2795,7 @@ def _extract_last_user_message(messages: List[Dict]) -> str:
 
     `B1371` (fx10-intent). Pantheon's own per-turn additions are `user`-role
     messages (#2927), so this walk could answer with Pantheon's framing instead
-    of the person's words — `routes/chat_helpers.py:1102` appends the date/time
+    of the person's words — `routes/chat_helpers.py`'s `build_chat_context` appends the date/time
     note at the **end** of the array whenever the last message is not a user
     turn, and `_insert_before_latest_user` is only the other branch. Everything
     downstream reads this as *"what the person asked"*: the intent classifier,
@@ -2827,7 +2827,7 @@ def _user_turn_count(messages: List[Dict]) -> int:
     rather than inventing a second way to tell.
 
     Measured on `b6a1bbf`, one ordinary first message:
-    `routes/chat_helpers.py:1102` inserts the date/time note on the **Chat**
+    `routes/chat_helpers.py`'s `build_chat_context` inserts the date/time note on the **Chat**
     route and deliberately not on the **Agent** one, so the same message
     counted **2** in Chat and **1** in Agent. The only caller is
     `_existing_conversation`, which therefore answered True for a conversation

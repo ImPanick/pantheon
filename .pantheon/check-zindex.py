@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""check-zindex.py — every z-index in the product belongs to a named tier.
+r"""check-zindex.py — every z-index in the product belongs to a named tier.
 
 `P1-10`. The row asked to *"normalise z-index to 7 named tiers"* and measured
 **259 declarations, 64 distinct values** in `static/style.css`, range −1 to

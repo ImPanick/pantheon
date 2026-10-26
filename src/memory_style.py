@@ -272,7 +272,7 @@ PROFILE_MIN_MESSAGES = 20
 # the only error signal this feature can have"*), and the profile is injected as
 # a **system** message, where turn-to-turn text invalidates the KV-cache prefix
 # on every request for exactly the local llama.cpp / LM Studio backends this
-# project exists to serve (`src/user_time.py:216`, issue #2927).
+# project exists to serve (`src/user_time.current_datetime_context_message`, issue #2927).
 #
 # A bucketed trait changes when the person's writing genuinely changes category,
 # which is months, which is what `D-2026-09-09-01` calls this layer.

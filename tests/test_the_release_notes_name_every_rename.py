@@ -6,9 +6,10 @@ breaking renames: env vars, storage keys, vector collections, cookie, CLI
 scripts, systemd unit, bundle id."* The notes are `docs/release-notes/<x.y.z>.md`.
 
 A rename table typed from memory is the document this repository keeps finding
-wrong: `FORBIDDEN.md` still says *"`ODYSSEUS_*` env prefix (99 names)"* and
+wrong: `FORBIDDEN.md` said *"`ODYSSEUS_*` env prefix (99 names)"* and
 *"19 CLI scripts"*; the fork point had **92** `ODYSSEUS_` names and **21**
-`scripts/odysseus*` commands. So every table in the notes is checked against the
+`scripts/odysseus*` commands. Since `B1163` it links these notes and counts
+nothing itself, and the last two tests below hold it to that. So every table in the notes is checked against the
 list that owns the fact, and the lists are **called or parsed, never grepped as
 prose** (`Law 20`):
 
@@ -895,3 +896,62 @@ def test_the_open_gates_are_the_ship_lines_open_blocking_rows(version):
         f"open and blocking, not in the notes: {sorted(blocking - listed)}; "
         f"in the notes and no longer an open gate: {sorted(listed - blocking)}"
     )
+
+
+# ═══ the copy that used to count them ══════════════════════════════════════
+
+FORBIDDEN = ROOT / ".pantheon" / "FORBIDDEN.md"
+FORBIDDEN_RENAMES = "### Renames that ARE happening (P0) — and what they cost"
+
+
+def _github_slug(heading: str) -> str:
+    """The anchor GitHub gives a heading: lower case, punctuation other than
+    `-` and `_` dropped, each space a hyphen."""
+    text = heading.lstrip("#").strip().lower()
+    return re.sub(r"[^\w\- ]", "", text).replace(" ", "-")
+
+
+def test_forbidden_md_links_the_renames_and_counts_none_of_them():
+    """`B1163`. `FORBIDDEN.md`'s *Renames that ARE happening* said *"99
+    names"*, *"19 CLI scripts"*, *"6 vector collections"* and *"4 user-agents"*
+    — typed once, never re-measured, four of them wrong against the tables this
+    file derives — and that the rename *"orphans all memories, RAG and tool
+    index"*, which is true of RAG only. The fix is `Law 7`: the section links
+    the notes' § Breaking renames, where the counts are held, and states none.
+
+    The link is resolved, not trusted: its file exists, its anchor is the
+    anchor GitHub gives a `##` heading the notes really have."""
+    body = section(FORBIDDEN.read_text(encoding="utf-8"), FORBIDDEN_RENAMES)
+    links = re.findall(r"\]\(\.\./(docs/release-notes/[\d.]+\.md)#([\w-]+)\)", body)
+    assert links, "the section does not link the release notes' § Breaking renames"
+    for rel, anchor in links:
+        notes = (ROOT / rel).read_text(encoding="utf-8")
+        headings = [ln for ln in notes.split("\n") if ln.startswith("## ")]
+        assert anchor in {_github_slug(h) for h in headings}, (rel, anchor)
+        assert "Breaking renames" in next(h for h in headings if _github_slug(h) == anchor)
+    # The version the tree reports is the notes it links, so a reader lands on
+    # the release they are running.
+    assert any(rel.endswith(f"/{_app_version()}.md") for rel, _ in links), links
+    # No count outside the link: every digit in the section is in its target.
+    prose = re.sub(r"\]\([^)]*\)", "]", body)
+    prose = re.sub(r"`[^`]*`", "", prose)
+    assert not re.search(r"\d", prose), re.findall(r".{0,30}\d.{0,30}", prose)
+
+
+def test_forbidden_md_says_which_collection_a_rename_orphans():
+    """The consequence, against the code that makes it true: the memory index
+    is rebuilt at boot from the stored memories when it is empty, and the tool
+    index is built when first asked for, so RAG is the one a person re-indexes.
+    The old sentence is wrong anywhere in the file, so its absence is asserted
+    file-wide (`Law 20`'s one licence)."""
+    text = FORBIDDEN.read_text(encoding="utf-8")
+    assert "orphans all memories" not in text
+    body = section(text, FORBIDDEN_RENAMES)
+    assert "RAG starts\nempty — re-index" in body or "RAG starts empty — re-index" in body
+    init = ast.parse((ROOT / "src" / "app_initializer.py").read_text(encoding="utf-8"))
+    rebuilds = [n for n in ast.walk(init) if isinstance(n, ast.Call)
+                and getattr(n.func, "attr", "") == "rebuild"]
+    assert rebuilds, "src/app_initializer.py no longer rebuilds the memory index at boot"
+    tool_index = ast.parse((ROOT / "src" / "tool_index.py").read_text(encoding="utf-8"))
+    assert any(isinstance(n, ast.FunctionDef) and n.name == "get_tool_index"
+               for n in tool_index.body)

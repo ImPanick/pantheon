@@ -84,6 +84,9 @@ from pathlib import Path
 from typing import NamedTuple
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT / ".pantheon") not in sys.path:
+    sys.path.insert(0, str(ROOT / ".pantheon"))
+from ledger.source import tracked_files  # noqa: E402  (`B571`)
 MAP_PATH = ROOT / ".pantheon" / "P11-AUTH-MAP.md"
 
 SKIP_PREFIXES = ("tests/", ".pantheon/")
@@ -174,9 +177,7 @@ class Route(NamedTuple):
 # ── source ──────────────────────────────────────────────────────────────────
 
 def tracked_python(root: Path = ROOT) -> list[str]:
-    out = subprocess.run(["git", "ls-files", "*.py"], cwd=root,
-                         capture_output=True, text=True, check=True).stdout
-    return [f for f in out.split() if not f.startswith(SKIP_PREFIXES)]
+    return [f for f in tracked_files("*.py", root=root) if not f.startswith(SKIP_PREFIXES)]
 
 
 def _parse(root: Path, rel: str, *,
@@ -582,10 +583,8 @@ def route_owned_static_pages(root: Path = ROOT) -> tuple[dict[str, str], int]:
 
 def static_documents(root: Path = ROOT) -> list[str]:
     """Every tracked file under `static/` the mount would serve as a page."""
-    out = subprocess.run(["git", "ls-files", "-z", "--", STATIC_DIR_REL], cwd=root,
-                         capture_output=True, text=True, check=True).stdout
-    return sorted(f for f in out.split("\0")
-                  if f and mimetypes.guess_type(f)[0] in DOCUMENT_TYPES)
+    return sorted(f for f in tracked_files(STATIC_DIR_REL, root=root)
+                  if mimetypes.guess_type(f)[0] in DOCUMENT_TYPES)
 
 
 def other_admin_gates(root: Path = ROOT, rels: list[str] | None = None) -> list[str]:

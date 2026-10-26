@@ -223,11 +223,13 @@ def test_the_blanked_module_is_still_javascript_and_the_naive_one_is_not(name, t
 # Files that still hold a copy, with the row that removes each. This list may
 # only shrink: `test_the_allow_list_has_no_stale_entries` fails if an entry
 # stops being true, so a fixed file cannot be left sitting here.
-STILL_COPIED = {
-    ".pantheon/check-attachment-language.py": "B410",
-    ".pantheon/check-fork-names.py": "B410",
-    ".pantheon/check-run-statuses.py": "B410",
-}
+#
+# `B410` emptied it: `check-attachment-language.py`, `check-fork-names.py` and
+# `check-run-statuses.py` now blank through `ledger.source.strip_comments`,
+# which loads the one in `check-specifiers.py`. Each checker's report was
+# re-measured after the change and did not move (aliases 31 · prose 2 · names
+# 179; 15 deliberate hits across 5 files; 138 status literals in 2,235 files).
+STILL_COPIED: dict = {}
 
 # `B415`. Not a copy of the defect — the one site that reads comments *as the
 # answer* rather than blanking them to reach code.
@@ -333,3 +335,61 @@ def test_the_scan_itself_is_not_a_tautology():
     assert len(_tracked("tests", ".pantheon")) > 200
     for rel in list(STILL_COPIED) + list(READS_COMMENTS_AS_DATA):
         assert _naive_blankers(rel), f"{rel} was expected to hold one"
+
+
+# ── the three checkers `B410` converted ──────────────────────────────────────
+
+
+def _load_checker(name: str):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        f"_b410_{name.replace('-', '_')}", ROOT / ".pantheon" / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+#: A module that defeats both naive rules: a `//` inside a string (the
+#: unanchored rule blanks from it to the end of the line) and a `/*` inside a
+#: string (the block rule runs from it to the next `*/` in the file).
+_TRAP = ("const url = 'https://example.invalid/'; const keptAfterUrl = 1;\n"
+         "input.accept = 'image/*,video/*';\n"
+         "const alsoKept = 'kept-two';\n"
+         "/* a real comment */ const after = 2;\n")
+
+
+def test_check_fork_names_reads_the_code_a_string_used_to_hide():
+    """`check-fork-names.py` carried the unanchored `//` rule as well as the
+    block rule. Both identifiers below are code; the naive pair erased both."""
+    mod = _load_checker("check-fork-names")
+    code = mod._code_text("static/js/x.js", _TRAP)
+    assert "keptAfterUrl" in code and "'kept-two'" in code, code
+    assert "a real comment" not in code
+    assert len(code) == len(_TRAP), "offsets moved, so reported lines would too"
+    # HTML: a `<script>` body is JavaScript, and an HTML comment is blanked.
+    html = "<!-- a gone note -->\n<script>\n" + _TRAP + "</script>\n"
+    code = mod._code_text("static/x.html", html)
+    assert "a gone note" not in code and "keptAfterUrl" in code and "'kept-two'" in code
+
+
+def test_check_run_statuses_reads_the_code_a_string_used_to_hide():
+    mod = _load_checker("check-run-statuses")
+    code = mod._blank_comments(_TRAP)
+    assert "keptAfterUrl" in code and "const alsoKept" in code, code
+    assert "a real comment" not in code
+
+
+def test_check_attachment_language_reads_its_table_through_the_one_blanker(monkeypatch, tmp_path):
+    """`editor_languages()` reads `EDITOR_LANGUAGE` out of the JS. Driven over
+    a module whose comment-looking string sits above the table: the naive
+    block rule ran from `'*/*'`'s `/*` to the real comment's `*/` and the
+    table's first entry went with it."""
+    mod = _load_checker("check-attachment-language")
+    js = tmp_path / "attachmentLanguage.js"
+    js.write_text("const ACCEPT = 'text/*';\n"
+                  "const EDITOR_LANGUAGE = {\n"
+                  "  py: 'python', /* a note */\n"
+                  "  js: 'javascript', // http://example.invalid\n"
+                  "};\n", encoding="utf-8")
+    monkeypatch.setattr(mod, "JS", js)
+    assert mod.editor_languages() == {"py": "python", "js": "javascript"}

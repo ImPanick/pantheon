@@ -114,6 +114,32 @@ Worktree isolation (`isolation: 'worktree'`) gives each agent its own checkout a
 answer when parallel mutation is unavoidable — but merging them back is manual, so use it
 only where the throughput is worth the merge.
 
+### A route and its caller land in one merge (`B596`)
+
+`check-unreachable.py` holds a ceiling on routes no frontend code calls, and it sits at
+zero headroom on purpose — a ratchet with slack is where the next unwired route hides. Its
+second effect is the one to plan around: **a branch that adds a route without the code that
+calls it fails the gate on its own**, however soon the caller is coming. That shaped `P8`
+(`P8-11`, `P8-12` and `P8-16` were built on `manage_skills` actions rather than new routes)
+and `P12-09`, whose endpoint waited a commit for its composer (`B752`).
+
+So, when a wave is cut:
+
+1. **Split work by vertical slice, not by layer.** A route and its `fetch` belong to the
+   same agent and the same branch. A wave that gives the backend to one agent and the page to
+   another has built the failure in.
+2. **If a pair must be split, it merges as a pair.** Both branches name the other in their
+   report; the integrator merges both before running the gate, and neither lands alone.
+   A branch whose other half is not ready does not carry the route — it waits with its
+   caller.
+3. **Never buy the slot.** Raising the ceiling, or putting a browser-called route in
+   `ALLOWED`, makes the ratchet fit an unwired half. `ALLOWED` is for callers that are not
+   the browser, each with its reason.
+4. **The ceiling only comes down.** Wiring or retiring a route is the only way a slot is
+   bought back, and the change that does it lowers the number in `ci.yml` in the same commit.
+
+The checker's failure message points here, so the rule is met where it bites.
+
 ---
 
 ## Non-negotiables for every spawned agent

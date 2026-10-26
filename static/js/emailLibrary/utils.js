@@ -52,7 +52,7 @@ export function _renderEmailSummaryError(container, result) {
 }
 
 // `B866`'s sweep looked at this and left it alone. It escapes `" ' < > \`` and
-// **not** `&`, and that is right here: `_escLinkify` (`:76`) escapes the whole
+// **not** `&`, and that is right here: `_escLinkify` (below) escapes the whole
 // string with `_esc` first and then calls this on a href cut out of the result,
 // so escaping `&` again would turn `?a=1&amp;b=2` into `?a=1&amp;amp;b=2` —
 // which `tests/test_email_linkify_security_js.py` asserts against by name.

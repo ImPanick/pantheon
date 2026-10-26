@@ -1267,7 +1267,7 @@ def _get_email_config(account_id: str | None = None, owner: str = "") -> dict:
         "imap_password": _v("imap_password", "IMAP_PASSWORD"),
         # `B20`. The eleventh field. `H07` converted the ten above and left this
         # one on `settings.get(k, True)`, so `IMAP_STARTTLS` was honoured by
-        # `mcp_servers/email_server.py:312` and ignored here — same host, same
+        # `mcp_servers/email_server.py`'s `_load_config` and ignored here — same host, same
         # mailbox, two answers. Measured with the variable set to `false` and
         # nothing else configured: that resolver said False, this one said True,
         # and `_imap_connect` therefore dialled a plaintext socket at an

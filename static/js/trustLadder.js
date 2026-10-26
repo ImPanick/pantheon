@@ -32,7 +32,7 @@
 //
 // ── WHAT IS NOT ON THE LADDER, AND WHY ──────────────────────────────────────
 //
-// `.pantheon/design/pantheon-v10.html:1719-1727` draws five rungs. Three of them
+// `.pantheon/design/pantheon-v10.html`'s `#rungs` draws five rungs. Three of them
 // are gate settings and exist in `TrustRung` (`src/tool_capabilities.py`); two
 // are not, and this file must not invent them as options:
 //
@@ -654,7 +654,7 @@ export function allowRuleWording(tool, match, pattern) {
  * store stays authoritative for *which* kinds exist — that is read off the wire
  * — and only the reading order is decided here.
  *
- * CORRECTED 2026-08-29. This used to cite `src/tool_allow_rules.py:48` as
+ * CORRECTED 2026-08-29. This used to cite `src/tool_allow_rules.py`'s kinds tuple as
  * saying the tuple is *"ordered widest-first, which is the order a chooser
  * should present them in"*, and staged a disagreement with it. That line was
  * corrected on the same day and now says the opposite — it hands presentation
@@ -1047,7 +1047,7 @@ export function renderAllowRuleList(host, rung) {
 // `P7-09`. The other thing an approval card hands out, and the wider of the
 // two by a long way.
 //
-// `src/tool_approvals.py:361` offers a button labelled **"Allow for this chat
+// `src/tool_approvals.py`'s `PendingToolApproval.public_payload` offers a button labelled **"Allow for this chat
 // session"**, and its own description says what it does: *"stop asking at this
 // gate for later requests in this chat."* That is not a rule about the tool it
 // asked about. `ToolRunSecurityContext.decision_for` tests

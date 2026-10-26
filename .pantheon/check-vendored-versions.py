@@ -77,6 +77,9 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(ROOT / ".pantheon") not in sys.path:
+    sys.path.insert(0, str(ROOT / ".pantheon"))
+from ledger.source import tracked_files  # noqa: E402  (`B571`)
 
 # The root this checker fingerprints. `check-licences.py` scans four roots for
 # *attribution*; this one is about released library versions, and `static/lib/`
@@ -512,11 +515,7 @@ def sha256(path: pathlib.Path) -> str:
 
 
 def tracked_lib_files() -> list[str]:
-    out = subprocess.run(
-        ["git", "ls-files", "-z", FINGERPRINTED_ROOT],
-        cwd=ROOT, capture_output=True, text=True, check=True,
-    ).stdout
-    return [p for p in out.split("\0") if p]
+    return tracked_files(FINGERPRINTED_ROOT, root=ROOT)
 
 
 def credit_lines(credits: str, licence_text: str) -> list[str]:

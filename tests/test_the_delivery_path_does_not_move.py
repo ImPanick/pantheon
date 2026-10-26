@@ -249,3 +249,86 @@ def test_the_doc_does_not_recommend_typing_into_a_terminal():
     # rather than a thing that should work.
     assert "208f60d6" in doc, (
         "the doc claims the route works without saying when it was measured")
+
+
+def _delivery(tmp_path):
+    """An origin two commits ahead of a clone, the second commit adding a
+    file, and the bundle that carries it. Returns `(git, clone, bundle, tip)`."""
+    def git(*args, cwd):
+        run = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True,
+                             text=True, timeout=60)
+        assert run.returncode == 0, run.stdout + run.stderr
+        return run.stdout.strip()
+
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    git("init", "-q", "-b", "main", cwd=origin)
+    git("config", "user.email", "t@example.invalid", cwd=origin)
+    git("config", "user.name", "t", cwd=origin)
+    (origin / "a.txt").write_text("one\n", encoding="utf-8")
+    git("add", "a.txt", cwd=origin)
+    git("commit", "-qm", "one", cwd=origin)
+    first = git("rev-parse", "HEAD", cwd=origin)
+    (origin / "tests").mkdir()
+    (origin / "tests" / "test_new.py").write_text("x = 1\n", encoding="utf-8")
+    git("add", "tests/test_new.py", cwd=origin)
+    git("commit", "-qm", "two", cwd=origin)
+    tip = git("rev-parse", "HEAD", cwd=origin)
+    bundle = tmp_path / "pantheon.bundle"
+    git("bundle", "create", str(bundle), f"{first}..main", cwd=origin)
+
+    clone = tmp_path / "clone"
+    git("clone", "-q", str(origin), str(clone), cwd=tmp_path)
+    git("config", "user.email", "t@example.invalid", cwd=clone)
+    git("config", "user.name", "t", cwd=clone)
+    git("reset", "-q", "--hard", first, cwd=clone)
+    (clone / ".pantheon").mkdir(exist_ok=True)
+    (clone / ".pantheon" / "apply-release.sh").write_text(
+        SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
+    return git, clone, bundle, tip
+
+
+def _apply(clone, bundle):
+    return subprocess.run(["bash", ".pantheon/apply-release.sh", str(bundle)],
+                          cwd=str(clone), capture_output=True, text=True, timeout=120)
+
+
+def test_a_real_divergence_is_named_with_the_commits_that_are_yours(tmp_path):
+    """`B1411`, the first shape: the clone has a commit the bundle does not.
+    The refusal says so and lists that commit — the one case where the old
+    message was the truth."""
+    git, clone, bundle, tip = _delivery(tmp_path)
+    (clone / "mine.txt").write_text("local\n", encoding="utf-8")
+    git("add", "mine.txt", cwd=clone)
+    git("commit", "-qm", "a commit only this clone has", cwd=clone)
+    run = _apply(clone, bundle)
+    assert run.returncode == 1, run.stdout + run.stderr
+    assert "not a fast-forward: your main has commits the bundle does not." in run.stderr
+    assert "a commit only this clone has" in run.stderr, run.stderr
+    assert "not a divergence" not in run.stderr
+    assert git("rev-parse", "HEAD", cwd=clone) != tip
+    assert bundle.exists(), "a refused bundle was deleted"
+
+
+def test_an_untracked_file_in_the_bundles_path_is_named_and_is_not_a_divergence(tmp_path):
+    """`B1411`, the shape that was hit on a real delivery: a previous run that
+    died part-way left one of the bundle's new files behind, untracked. git
+    refuses the fast-forward because it would overwrite it — and the script
+    used to say *"your main has commits the bundle does not"* over an empty
+    list. It now says it was not a divergence and names the path."""
+    git, clone, bundle, tip = _delivery(tmp_path)
+    (clone / "tests").mkdir()
+    (clone / "tests" / "test_new.py").write_text("left by a dead run\n", encoding="utf-8")
+    run = _apply(clone, bundle)
+    assert run.returncode == 1, run.stdout + run.stderr
+    assert "commits the bundle does not" not in run.stderr, run.stderr
+    assert "These are yours alone" not in run.stderr, run.stderr
+    assert "not applied, and not a divergence: your main has no commits the bundle lacks." in run.stderr
+    assert "\n  tests/test_new.py\n" in run.stderr, run.stderr
+    assert git("rev-parse", "HEAD", cwd=clone) != tip
+    assert (clone / "tests" / "test_new.py").read_text(encoding="utf-8") == "left by a dead run\n"
+    # With the path cleared, the same bundle applies.
+    (clone / "tests" / "test_new.py").unlink()
+    run = _apply(clone, bundle)
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert git("rev-parse", "HEAD", cwd=clone) == tip

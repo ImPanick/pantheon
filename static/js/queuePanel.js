@@ -58,7 +58,7 @@
  * `_runToActivityEntry` emits — so pointing the Activity view at the queue is
  * one call there, not a second mapper.
  *
- * ── Status vocabulary (P6-05, documented at core/database.py:810+) ──────────
+ * ── Status vocabulary (P6-05, TASK_RUN_STATUSES in core/database.py) ───────
  * Six values: queued → running → success | error | skipped | aborted.
  * `aborted` is NOT folded into `error` — that is what corrupts error-rate
  * statistics, and it is the whole reason the value exists. A stopped queue

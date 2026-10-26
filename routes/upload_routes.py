@@ -429,7 +429,7 @@ def setup_upload_routes(upload_handler):
         # restart. The handler's own attribute is the built-in default, so a
         # handler configured in code keeps its number — including one that
         # only knows the old name, which is the shape of the stand-in in
-        # `tests/test_upload_multifile.py:59`.
+        # `tests/test_upload_multifile.py`'s `_fake_handler`.
         #
         # The gate is not renamed to something it is not: it reads finished
         # uploads, so it is a burst limit, and the 429 below says which window

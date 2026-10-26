@@ -151,6 +151,12 @@ def repo(tmp_path):
     (dst / "routes").mkdir()
     (dst / "static").mkdir()
     shutil.copy2(CHECKER, dst / ".pantheon" / "check-unreachable.py")
+    # `B720` / `B571`: the checker reads literals through the one blanker and
+    # lists files through the one listing, both in `.pantheon/ledger/source.py`.
+    shutil.copytree(CHECKER.parent / "ledger", dst / ".pantheon" / "ledger",
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copy2(CHECKER.parent / "check-specifiers.py",
+                 dst / ".pantheon" / "check-specifiers.py")
     # No importable app here, so the source scan is what runs — which is also
     # the path a half-configured checkout takes, and it needs to work.
     (dst / "routes" / "widget_routes.py").write_text(
@@ -189,6 +195,56 @@ def test_a_template_string_caller_counts_as_a_caller(repo):
     subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
     r = run(cwd=repo)
     assert "/api/widget/{wid}/rename" not in r.stdout
+
+
+def _report(repo, js: str) -> str:
+    (repo / "static" / "app.js").write_text(js, encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    r = run(cwd=repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    return r.stdout
+
+
+@pytest.mark.parametrize("js", [
+    "/** Renames one: `POST /api/widget/{wid}/rename`. */\nfetch(`/api/widget/list`);\n",
+    "// calls '/api/widget/${id}/rename' once wired\nfetch(`/api/widget/list`);\n",
+    "/* fetch(`${API_BASE}/api/widget/${id}/rename`) */ fetch('/api/widget/list');\n",
+])
+def test_a_route_mentioned_only_in_a_comment_has_no_caller(repo, js):
+    """`B720` (a), `B760`. A backtick was one of the quotes the reader took, so
+    a route written in a JSDoc sentence read as reached exactly as a `fetch`
+    would. A comment is not a caller."""
+    out = _report(repo, js)
+    assert "/api/widget/{wid}/rename" in out, out
+    assert "/api/widget/list" not in out, out
+
+
+@pytest.mark.parametrize("js", [
+    # `B720` (b): a quoted expression inside a hole cut the old regex short
+    "fetch(`/api/widget/${String(wid == null ? '' : wid)}/rename`);\n",
+    # `B804`: a hole appended to the path's last segment is a query string
+    "fetch(`${API_BASE}/api/widget/${wid}/rename${force ? '?force=true' : ''}`);\n",
+    # `B760`: the same with a nested template in the hole
+    "const q = 'a=1';\nfetch(`${API_BASE}/api/widget/${wid}/rename${q ? `?${q}` : ''}`);\n",
+    # a URL inside a fragment of markup a template builds
+    "el.innerHTML = `<a href=\"/api/widget/${wid}/rename\">x</a>`;\n",
+])
+def test_a_template_caller_with_quotes_and_holes_is_a_caller(repo, js):
+    out = _report(repo, js + "fetch('/api/widget/list');\n")
+    assert "/api/widget/{wid}/rename" not in out, out
+
+
+def test_a_hole_that_is_a_whole_segment_stays_a_parameter(repo):
+    """The literal-prefix rule drops a hole appended to a segment, never one
+    that IS the segment: `/api/widget/${x}` reaches `/api/widget/{wid}`, not
+    `/api/widget` with its tail thrown away."""
+    mod = _checker()
+    n = mod.normalise
+    pats = mod.literal_patterns("/api/widget/" + mod._HOLE)
+    assert n("/api/widget/{wid}") in pats
+    assert pats == {n("/api/widget/{wid}"), n("/api/widget")}, pats  # + its prefix
+    pats = mod.literal_patterns("/api/widget/" + mod._HOLE + "/rename" + mod._HOLE)
+    assert n("/api/widget/{wid}/rename") in pats
 
 
 def test_the_ceiling_fails_when_the_count_grows(repo):
@@ -374,3 +430,25 @@ def test_the_unresolved_count_is_the_one_ci_pins(wiring_report):
     ceiling = int(re.search(r"run: python3 \.pantheon/check-wiring\.py --max (\d+)", ci).group(1))
     found = int(re.search(r"UNRESOLVED (\d+)", wiring_report).group(1))
     assert found <= ceiling, f"{found} unresolved against a ceiling of {ceiling}"
+
+
+def test_the_gate_names_the_paired_landing_rule_where_it_fails(repo):
+    """`B596`. At zero headroom a branch that adds a route without its caller
+    fails the gate on its own, and the agent reading that failure is usually
+    one whose caller is on another branch. The answer — one merge, never a
+    raised ceiling — is written down once, in `ORCHESTRATION.md`, and the
+    failure points at it so nobody has to rediscover it."""
+    r = run(["--max-routes", "0"], cwd=repo)
+    assert r.returncode == 1
+    assert "land in one merge" in r.stdout and "never raise the ceiling" in r.stdout, r.stdout
+    cited = re.search(r"\.pantheon/ORCHESTRATION\.md § ([^,]+), B596", r.stdout)
+    assert cited, r.stdout
+    doc = (ROOT / ".pantheon" / "ORCHESTRATION.md").read_text(encoding="utf-8")
+    heading = f"### {cited.group(1)} (`B596`)"
+    assert heading in doc, heading
+    section = doc.split(heading, 1)[1].split("\n## ", 1)[0].split("\n### ", 1)[0]
+    for rule in ("vertical slice", "merges as a pair", "Never buy the slot",
+                 "only comes down"):
+        assert rule in section, rule
+    agents = " ".join((ROOT / ".pantheon" / "AGENTS.md").read_text(encoding="utf-8").split())
+    assert f"`ORCHESTRATION.md` § *{cited.group(1)}* (`B596`)" in agents

@@ -44,6 +44,9 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(ROOT / ".pantheon") not in sys.path:
+    sys.path.insert(0, str(ROOT / ".pantheon"))
+from ledger.source import strip_comments, tracked_files  # noqa: E402  (`B410`, `B571`)
 
 # The old short name, with every separator it was ever spelled with. `_` is the
 # one the row's original regex was missing, and it is where the token prefix
@@ -82,9 +85,7 @@ ALLOWED = {
 
 
 def _tracked():
-    out = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True,
-                         text=True, check=True).stdout
-    for rel in out.splitlines():
+    for rel in tracked_files(root=ROOT):
         if rel.startswith(SKIP_PREFIXES):
             continue
         if pathlib.Path(rel).suffix in CODE_SUFFIXES:
@@ -127,22 +128,23 @@ def _python_code(text):
     return "\n".join(parts)
 
 
-def _strip_c_comments(text):
-    return re.sub(r"(?m)//.*$", " ", re.sub(r"/\*.*?\*/", " ", text, flags=re.S))
-
-
 def _code_text(rel, text):
     suffix = pathlib.Path(rel).suffix
     if suffix == ".py":
         return _python_code(text)
+    # `B410`. The one blanker, by mode. This read JavaScript, CSS and HTML with
+    # `re.sub(r"/\*.*?\*/", …)` and an UNANCHORED `//` rule, so a `//` inside
+    # a string — every URL — blanked the rest of its line (1,112 live lines of
+    # `settings.js` alone), and `'image/*'` opened a comment the next `*/` in
+    # the file closed. `html` blanks `<!-- -->` and reads the bodies of
+    # `<script>` and `<style>` as JavaScript and CSS, which is where `B26`'s
+    # dead selectors lived.
     if suffix in {".js", ".mjs"}:
-        return _strip_c_comments(text)
+        return strip_comments(text, mode="js")
     if suffix == ".css":
-        return re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+        return strip_comments(text, mode="css")
     if suffix == ".html":
-        # HTML comments first, then the CSS and JS comments inside <style> and
-        # <script>, which is where B26's dead selectors lived.
-        return _strip_c_comments(re.sub(r"<!--.*?-->", " ", text, flags=re.S))
+        return strip_comments(text, mode="html")
     if suffix == ".sh":
         return re.sub(r"(?m)#.*$", " ", text)
     return text
@@ -225,9 +227,7 @@ VECTOR_SUFFIXES = CODE_SUFFIXES | {".svg"}
 
 
 def _tracked_all():
-    out = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True,
-                         text=True, check=True).stdout
-    return [rel for rel in out.splitlines() if rel]
+    return tracked_files(root=ROOT)
 
 
 def image_frames(path):

@@ -83,6 +83,9 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(ROOT / ".pantheon") not in sys.path:
+    sys.path.insert(0, str(ROOT / ".pantheon"))
+from ledger.source import tracked_files  # noqa: E402  (`B571`)
 
 # Roots scanned for undeclared files. A vendored asset that lands anywhere else
 # is out of scope here and stays that way until someone adds its root.
@@ -743,11 +746,7 @@ LINK_RE = re.compile(r"licenses/([A-Za-z0-9._+-]+\.txt)")
 
 
 def tracked():
-    out = subprocess.run(
-        ["git", "ls-files", "-z", *ROOTS],
-        cwd=ROOT, capture_output=True, text=True, check=True,
-    ).stdout
-    return [p for p in out.split("\0") if p]
+    return tracked_files(*ROOTS, root=ROOT)
 
 
 def scope_section(credits):

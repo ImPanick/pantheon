@@ -47,7 +47,7 @@ class _InlineScriptCollector(HTMLParser):
 
     `HTMLParser` is used rather than a regex because the thing being read is
     what the *browser* will execute, and the two disagree in ways that matter
-    here. `static/index.html:313` carries the string `<script` inside an HTML
+    here. `static/index.html` carries the string `<script` inside an HTML
     comment; a regex counts eight inline blocks in that file and the browser
     executes seven. A hash list that is one entry long in the wrong direction
     is a page that does not run, so the reading is done by a parser that knows

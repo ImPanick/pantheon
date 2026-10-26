@@ -39,6 +39,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT / ".pantheon") not in sys.path:
+    sys.path.insert(0, str(ROOT / ".pantheon"))
+from ledger.source import tracked_files  # noqa: E402  (`B571`)
 
 # The events that build or advance a card in the agent thread. `metrics`,
 # `ask_user`, `delta` and the rest are not thread cards and have no round.
@@ -63,9 +66,7 @@ SKIP_PREFIXES = ("tests/", ".pantheon/", "scripts/")
 
 
 def _tracked_python() -> list[str]:
-    out = subprocess.run(["git", "ls-files", "*.py"], cwd=ROOT,
-                         capture_output=True, text=True, check=True).stdout
-    return [f for f in out.split() if not f.startswith(SKIP_PREFIXES)]
+    return [f for f in tracked_files("*.py", root=ROOT) if not f.startswith(SKIP_PREFIXES)]
 
 
 def _event_type(node: ast.Dict) -> str | None:

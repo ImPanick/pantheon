@@ -214,7 +214,7 @@ const _LABELS = {
 //
 // **Two jobs, one window, and that is not a corner case — it is the Brain.**
 // `#skills-audit-panel` and `#memory-tidy-btn` are both inside `#memory-modal`
-// (`static/index.html:622` and `:452`), so an audit running while somebody
+// (both in `static/index.html`), so an audit running while somebody
 // presses Tidy is one window with two jobs. A `Map` keyed by modal id alone
 // would have let the second silently overwrite the first and the first's
 // completion then clear the second — a progress indicator that lies about what

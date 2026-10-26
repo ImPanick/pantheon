@@ -181,7 +181,7 @@ def build_enhanced_query(query: str, time_filter: str = None) -> str:
 # Three modules answered this three ways on `3b40a4e`, and 12 of a 27-query
 # corpus got different answers depending on which one you asked:
 #
-#   * `providers.py:126` — this set as a tuple, matched as a **substring** of
+#   * `providers.py`'s `_NEWS_HINTS` — this set as a tuple, matched as a **substring** of
 #     the lowered query, deciding which SearXNG *category* the search goes to.
 #     So *"Newsom California policy"*, *"newsletter signup best practices"* and
 #     *"how to use newsprint for packing"* were news queries because the
@@ -189,7 +189,7 @@ def build_enhanced_query(query: str, time_filter: str = None) -> str:
 #     *"todays-menu at the Blue Moon Inn"* was one because `today` sits inside
 #     `todays`. The index a person's query is searched in was chosen on
 #     orthography — the same mistake `_boost_entities_in_query` made above.
-#   * `ranking.py:49` — the byte-identical set, matched as a **whole token**,
+#   * `ranking.py`'s `_NEWS_HINTS` — the byte-identical set, matched as a **whole token**,
 #     deciding whether news-domain bonuses and penalties move the ordering.
 #   * here — a **different** set, whole-token, deciding the cache duration.
 #

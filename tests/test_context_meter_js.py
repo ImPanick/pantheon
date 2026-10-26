@@ -49,7 +49,6 @@ from pathlib import Path
 import pytest
 
 from test_tool_effect_surfaces_js import _make_sandbox, _run  # noqa: E402
-from tests.helpers.source_text import blank  # B290
 from tests.helpers.esc_stub import ui_default_stub  # B874
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -513,11 +512,13 @@ def test_the_ratchets_caller_is_the_fetch_and_not_the_prose_around_it():
     checker = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(checker)
 
-    code = blank(FILE_HANDLER)          # `B290`'s one comment blanker
+    # `B720` changed the reader this asks: the checker no longer has a regex
+    # that takes a backtick for a quote — it reads the literals the one blanker
+    # walks, comments excluded — so the claim is put to that reader directly.
+    code = FILE_HANDLER.read_text(encoding="utf-8")
     patterns = set()
-    for match in checker._URLISH.findall(code):
-        index = match.find("/api/")
-        patterns.add(checker.normalise(match[index:] if index >= 0 else match))
+    for literal in checker.literal_texts(code, "js"):
+        patterns |= checker.literal_patterns(literal)
     wanted = checker.normalise("/api/upload/context-budget")
     assert wanted in patterns, (
         f"with the comments blanked the composer names no route the checker "

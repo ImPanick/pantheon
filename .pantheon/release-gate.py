@@ -64,6 +64,9 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / ".pantheon") not in sys.path:
+    sys.path.insert(0, str(ROOT / ".pantheon"))
+from ledger.source import tracked_files  # noqa: E402  (`B571`)
 WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 
 # Steps that report but never fail the gate. `P3-20`'s lesson: a ratchet on a
@@ -237,9 +240,7 @@ def _run(label: str, argv: list[str], timeout: int = 1800) -> tuple[bool, float,
 
 
 def _python_files() -> list[str]:
-    out = subprocess.run(["git", "ls-files", "*.py"], cwd=str(ROOT),
-                         capture_output=True, text=True)
-    return [f for f in out.stdout.split() if f]
+    return tracked_files("*.py", root=ROOT, check=False)
 
 
 # `B10`. Vendored roots, spelled the way `.pantheon/check-licences.py` spells
@@ -257,10 +258,8 @@ def _js_files() -> list[str]:
     merge-blocking status check. Widening it is free — all thirteen already
     parse — and it makes the gate's number mean what its name says (`B10`).
     """
-    out = subprocess.run(["git", "ls-files", "*.js", "*.mjs"],
-                         cwd=str(ROOT), capture_output=True, text=True)
-    return [f for f in out.stdout.split()
-            if f and not any(f.startswith(root) for root in _VENDORED)]
+    return [f for f in tracked_files("*.js", "*.mjs", root=ROOT, check=False)
+            if not any(f.startswith(root) for root in _VENDORED)]
 
 
 def _node_check(files: list[str]) -> tuple[bool, str]:

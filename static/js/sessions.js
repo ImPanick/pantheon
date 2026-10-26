@@ -844,7 +844,7 @@ function createSessionItem(s) {
     }
   });
 
-  // Rename is already appended above (line 393)
+  // Rename is already appended above
 
   // "Select" — enter bulk select mode with this session pre-selected
   if (!isOpenClaw) {
@@ -878,7 +878,7 @@ function createSessionItem(s) {
   // Found by `P3-12`'s orphan-id itemisation.
   //
   // `window.memoryModule` rather than an import: `memory.js` imports this
-  // file, and `:2147` already reaches it this way for the same reason.
+  // file, and `createSessionItem` already reaches it this way for the same reason.
   const memoryItem = document.createElement('div');
   memoryItem.className = 'dropdown-item-compact';
   memoryItem.innerHTML = _icon(_memoryIcon) + '<span>Extract memories</span>';

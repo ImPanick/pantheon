@@ -23,7 +23,7 @@
  * classifies a polygon by its SHAPE — three points, two on a common x near the
  * left edge, one on the vertical centre near the right — rather than matching
  * the spellings somebody already knew about, and the `active` task badge at
- * `tasks.js:909` came out of it. A census that matches known spellings is how
+ * `tasks.js`'s `_renderList` came out of it. A census that matches known spellings is how
  * `B12` counted two and `B83` counted seven.
  *
  *     stop square     13 sites in FOUR geometries
@@ -173,12 +173,12 @@ export function stopIcon(opts = {}) {
 //
 //   NINE were invisible. `B83`'s census blanked comments with
 //   `re.sub(r"/\*.*?\*/", …, flags=re.S)`, which cannot tell a comment from a
-//   string: `input.accept = 'image/*,video/*'` at `gallery.js:1202` opens a
+//   string: `input.accept = 'image/*,video/*'` in `gallery.js`'s `_wireUploadTile` opens a
 //   "comment" that the next `*/` in the file closes. Across `static/js/**` that
 //   substitution erases **7,203 lines of live code in 77 modules**. Seven of
 //   the missing chevrons are in `document.js` and two in `gallery.js`, inside
-//   the erased spans — and so were a play triangle (`document.js:4986`) and two
-//   stop squares (`notes.js:4517`, `:4586`), which is `B83`'s own `Verify`
+//   the erased spans — and so were a play triangle (in `document.js`) and two
+//   stop squares (in `notes.js`), which is `B83`'s own `Verify`
 //   being false on the day it was ticked. All twelve are moved here. The
 //   blanker is copied into about twenty test files; that is `B290`.
 //
@@ -333,11 +333,12 @@ export function chevronGlyph(direction = 'down') {
  * content leaves the control with no accessible name. Every one of the 46 is
  * either decoration beside a word — a fold caret next to a section title, a
  * dropdown caret after its label — or the only content of a control that
- * already carries its own `title` or `aria-label`: `sessions.js:686` sets
- * `menuBtn.title = 'Session actions'`, `gallery.js`'s prev/next carry
- * `title` AND `aria-label`, `emailLibrary.js:5224` carries `title="Previous
- * email"`, `section-management.js:13` carries `title="Collapse section"`,
- * `document.js:5018` carries `title="Scroll left"`, and the two queue-panel
+ * already carries its own `title` or `aria-label`: `sessions.js`'s
+ * `createSessionItem` sets `menuBtn.title`, `gallery.js`'s prev/next carry
+ * `title` AND `aria-label`, `emailLibrary.js`'s `_createCard` carries
+ * `title="Previous email"`, `section-management.js` carries
+ * `title="Collapse section"`, `document.js`'s `openPanel` carries
+ * `title="Scroll left"`, and the two queue-panel
  * carets sit inside `<span aria-hidden="true">` in the shell already. A caller
  * that genuinely needs the glyph announced passes `ariaHidden: false` and says
  * why; nothing in the tree does.
