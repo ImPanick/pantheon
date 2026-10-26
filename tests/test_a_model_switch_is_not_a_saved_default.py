@@ -22,8 +22,10 @@ import json
 import shutil
 from pathlib import Path
 
+
 import pytest
 
+from tests.helpers.esc_stub import ui_default_stub
 from tests.helpers.motion_stub import motion_stub
 from test_tool_effect_surfaces_js import _make_sandbox, _run  # noqa: E402
 
@@ -57,7 +59,8 @@ export default {
   remove: (k) => { delete mem[k]; },
 };
 """,
-    "ui.js": "export default { esc: (s) => String(s), showToast: () => {}, el: (id) => document.getElementById(id) };\n",
+    # `B874`: the shipped `esc`, never a stand-in that returns its input.
+    "ui.js": ui_default_stub("  showToast: () => {},\n  el: (id) => document.getElementById(id),"),
     "theme.js": "export default {};\n",
     "markdown.js": "export default {};\n",
     "sessions.js": "export default { getCurrentSessionId: () => '' };\n",

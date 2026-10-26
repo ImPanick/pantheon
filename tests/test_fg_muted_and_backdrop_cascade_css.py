@@ -540,11 +540,14 @@ def test_the_three_populations_hold_at_their_counts():
     # + menu's seven — a row's hint and chevron, a submenu's back row, hint,
     # badge, foot and empty line — and `P25-02` Settings → Git's three (a
     # field's label, a host's user and date, the empty line). All text.
-    assert len(uses) == 141, f"expected 141 uses of --fg-muted, found {len(uses)}"
+    # 141 -> 144, 133 -> 136: the Brain's `B821` fade line (`.memory-item-fades`),
+    # `B820`'s *Still learning* line (`.memory-style-progress`) and `B822`'s
+    # import summary (`.memory-import-summary`). All text.
+    assert len(uses) == 144, f"expected 144 uses of --fg-muted, found {len(uses)}"
 
     bare = [expr for _, expr in uses if not _fallback(expr)]
-    assert len(bare) == 133, (
-        f"expected 133 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
+    assert len(bare) == 136, (
+        f"expected 136 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
         "was legitimately added or removed, move this number and say which in "
         "the commit — do not widen the assertion."
     )
@@ -597,7 +600,8 @@ def test_the_bare_uses_split_across_properties_as_measured():
     # `P24-21`'s `+N` and `P24-09`'s passed check.
     # 116 -> 117: `P24-18`'s *Not measured* badge.
     # 117 -> 119: `P24-26`'s summon picker. 119 -> 127: `P25-01`/`P25-02` (above).
-    assert tally == {"color": 127, "border-color": 4, "background": 2}, tally
+    # 127 -> 130: `B820`, `B821` and `B822`'s three Brain lines (above), all text.
+    assert tally == {"color": 130, "border-color": 4, "background": 2}, tally
 
 
 def test_the_javascript_uses_are_recorded_but_not_this_rows_work():

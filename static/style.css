@@ -15317,10 +15317,6 @@ textarea.memory-add-input {
   border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
   border-radius: 6px;
 }
-.memory-style-line:focus-visible {
-  outline: 2px solid var(--accent, var(--red));
-  outline-offset: 1px;
-}
 .memory-style-forget {
   align-self: flex-start;
 }
