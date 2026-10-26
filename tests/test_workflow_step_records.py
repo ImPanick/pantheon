@@ -76,7 +76,8 @@ def test_a_record_is_capped_by_the_owner_s_role_and_stays_valid_json(db):
     stored_out = json.loads(alice.output)
     assert stored_in["truncated"] is True and stored_in["chars"] > 1000
     assert len(alice.input) <= 1000 and len(alice.output) <= 1000, "what is STORED fits the cap"
-    assert stored_in["summary"].startswith("Continued from Summarise"), "a cut input still says what it was"
+    # `B1096`: a hand-off says where it came from in words ("From “…”"), no ids.
+    assert stored_in["summary"].startswith("From “Summarise”"), "a cut input still says what it was"
     assert stored_out["truncated"] is True and stored_out["chars"] > 5000
     # Bob's role says nothing: the built-in default (16000) keeps his whole.
     assert json.loads(bob.input)["data"]["message_key"] == "x" * 1900

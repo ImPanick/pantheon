@@ -6831,6 +6831,7 @@ class TaskScheduler:
         which `_execute_task_locked` writes as the row's `error`."""
         from src.builtin_actions import (
             NODE_STATUS_ERROR, NODE_STATUS_SKIPPED, NODE_STATUS_SUCCESS, NodeResult,
+            failure_words,
         )
 
         status, text, failed = w.state.outcome()
@@ -6838,8 +6839,9 @@ class TaskScheduler:
             return NodeResult(NODE_STATUS_ERROR, payload=WORKFLOW_DOCUMENT_MISSING)
         if status == NODE_STATUS_ERROR:
             label = failed.label or failed.node_id
+            # `B1096`: the sentence says the error, not the stream's label.
             self._state_for(w.run_id)["run_error"] = (
-                f"“{label}” failed: {failed.error or text}")[:2000]
+                f"“{label}” failed: {failure_words(failed.error or text)}")[:2000]
             return NodeResult(NODE_STATUS_ERROR, payload=text or failed.error or "")
         if status == NODE_STATUS_SKIPPED:
             return NodeResult(NODE_STATUS_SKIPPED, payload=text)

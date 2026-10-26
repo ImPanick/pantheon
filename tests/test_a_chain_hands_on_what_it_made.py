@@ -170,7 +170,8 @@ def test_the_step_log_says_where_the_run_came_from():
         task_name="First step", task_id="t1", run_id="r1", status="success",
         result="the summary", payload=None)
     line = trigger_summary(envelope)
-    assert line.startswith("Continued from First step")
+    # `B1096`: "From “First step” (it worked): …" — where, in words, no ids.
+    assert line.startswith("From “First step” (it worked)")
     assert "the summary" in line
 
 

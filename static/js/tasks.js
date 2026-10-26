@@ -1415,8 +1415,8 @@ function _openStepLogFor(entry) {
  * `=== 'tool' ? 'tool' : 'progress'`. Measured against the writers in
  * `src/task_scheduler.py`, three kinds reach this list and only one of them is
  * progress — `trigger` (`P8-23`: step one of every fired run, *"Triggered by
- * document_updated — …"*, and `P8-29`'s *"Continued from …"* for a chained
- * one), `dry-run` (`P8-33`: every line of a plan), and `progress` itself. So a
+ * document_updated — …"*, and `P8-29`'s *"From “…” (it worked): …"* for a
+ * chained one — `B1096`), `dry-run` (`P8-33`: every line of a plan), and `progress` itself. So a
  * run's cause, and a plan in which nothing ran, both read as work being done.
  * Each kind now has its word (`_STEP_KIND_WORDS`); a kind this file has never
  * heard of is drawn as itself rather than given a word that is not true of it;

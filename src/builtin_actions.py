@@ -960,6 +960,25 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
 # Registry: action name -> async function(owner, **kwargs) -> (result_str, success_bool)
 
 
+# `B1096`. The label `_run_subprocess` puts between a failed command's output
+# and its error output, named once so `failure_words` reads what was written.
+STDERR_LABEL = "STDERR: "
+
+
+def failure_words(text: str) -> str:
+    """`B1096`. What a failed action's sentence says: the error output, when
+    the command printed both, without the stream label. The step's own output
+    keeps both streams and the label (it is raw output, and the model reading
+    a hand-off has read `STDERR:` since before this row)."""
+    text = (text or "").strip()
+    marker = "\n" + STDERR_LABEL
+    if marker in text:
+        return text.rsplit(marker, 1)[1].strip() or text
+    if text.startswith(STDERR_LABEL):
+        return text[len(STDERR_LABEL):].strip() or text
+    return text
+
+
 async def _run_subprocess(argv, *, shell: bool = False, timeout: int = 120, label: str = "Command") -> Tuple[str, bool]:
     """Shared subprocess runner. Wraps the blocking subprocess.run in
     asyncio.to_thread so the event loop stays responsive."""
@@ -970,8 +989,12 @@ async def _run_subprocess(argv, *, shell: bool = False, timeout: int = 120, labe
             subprocess.run, argv, shell=shell, capture_output=True, text=True, timeout=timeout,
         )
         output = (result.stdout or "").strip()
-        if result.returncode != 0 and result.stderr:
-            output += "\nSTDERR: " + result.stderr.strip()
+        error = (result.stderr or "").strip()
+        if result.returncode != 0 and error:
+            # `B1096`. The label tells the two streams apart; with nothing on
+            # stdout there is nothing to tell it from, and a failed step's
+            # sentence read "failed: STDERR: The shared drive … is not mounted."
+            output = f"{output}\n{STDERR_LABEL}{error}" if output else error
         return output or "(no output)", result.returncode == 0
     except subprocess.TimeoutExpired:
         return f"{label} timed out ({timeout}s)", False

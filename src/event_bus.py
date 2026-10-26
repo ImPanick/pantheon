@@ -340,6 +340,57 @@ def build_task_handoff(*, task_name: str, task_id: str, run_id: str,
                          fields=TASK_HANDOFF_FIELDS)
 
 
+def _origin_clause(trigger: dict) -> str:
+    origin = trigger.get("origin") if isinstance(trigger.get("origin"), dict) else None
+    if not (origin and origin.get("task")):
+        return ""
+    # `P22-05`. An event a workflow's step caused says so. `B1077`: and
+    # one a plain task's run caused says that — an envelope from before
+    # `kind` existed was a workflow's, the only kind marked then.
+    what = "task" if origin.get("kind") == ORIGIN_KIND_TASK else "workflow"
+    return f" (caused by the {what} “{origin['task']}”)"
+
+
+# `B1096`. How a hand-off says the way the step before it ended. A status
+# this does not name is left unsaid rather than printed as its wire value.
+_HANDOFF_ENDED = {
+    "success": "it worked",
+    "error": "it failed",
+    "skipped": "it was skipped",
+    "aborted": "it was stopped",
+}
+
+
+def _handoff_summary(name: str, data: dict, origin: str) -> str:
+    """`B1096`. What the step (or task) before this one handed on, in words:
+    *From “Summarise my inbox” (it worked): Five things in your inbox…*.
+
+    It printed the envelope's keys — "Continued from Summarise my inbox —
+    task=…, task_id=e7d3…, run_id=dda7…, status=success, result=…" — so a
+    workflow step's *What it was handed* showed two internal ids and called a
+    step a task. The ids stay in the envelope (`TASK_HANDOFF_FIELDS`), which a
+    panel shows under this line as data; this line is for a person. `P8-29`'s
+    point stands: it names where the run came from, so it cannot read as the
+    task triggering itself.
+    """
+    who = data.get("task") or name
+    lead = f"From “{who}”"
+    ended = _HANDOFF_ENDED.get(str(data.get("status") or ""))
+    if ended:
+        lead = f"{lead} ({ended})"
+    lead += origin
+    said = data.get("result")
+    if not isinstance(said, str) or not said.strip():
+        said = data.get("data")
+        if said in (None, ""):
+            said = None
+        elif not isinstance(said, str):
+            said = json.dumps(said, default=str)
+    if not said:
+        return f"{lead} — no payload"
+    return _clip(f"{lead}: {said}", TRIGGER_FIELD_MAX_CHARS)
+
+
 def trigger_summary(trigger: Optional[dict]) -> str:
     """One line naming what fired a run, for the run's step log."""
     if not isinstance(trigger, dict):
@@ -348,21 +399,15 @@ def trigger_summary(trigger: Optional[dict]) -> str:
     name = trigger.get("event") or "?"
     data = trigger.get("data") if isinstance(trigger.get("data"), dict) else {}
     if source == TRIGGER_SOURCE_TASK:
-        # `P8-29`. "Triggered by <task>" would read as the task triggering
-        # itself. A chained run was continued from somewhere, and the first
-        # line of its step log is the only place that says where.
-        lead = f"Continued from {name}"
-    elif source == TRIGGER_SOURCE_EVENT:
+        # `P8-29`: a chained run was continued from somewhere, and the first
+        # line of its step log is the only place that says where. `B1096`:
+        # said in words, without the envelope's ids.
+        return _handoff_summary(name, data, _origin_clause(trigger))
+    if source == TRIGGER_SOURCE_EVENT:
         lead = f"Triggered by {name}"
     else:
         lead = f"Triggered by {source}"
-    origin = trigger.get("origin") if isinstance(trigger.get("origin"), dict) else None
-    if origin and origin.get("task"):
-        # `P22-05`. An event a workflow's step caused says so. `B1077`: and
-        # one a plain task's run caused says that — an envelope from before
-        # `kind` existed was a workflow's, the only kind marked then.
-        what = "task" if origin.get("kind") == ORIGIN_KIND_TASK else "workflow"
-        lead = f"{lead} (caused by the {what} “{origin['task']}”)"
+    lead += _origin_clause(trigger)
     if not data:
         # Said out loud rather than left blank: "no payload" and "the payload
         # did not survive" look identical in an empty string, and the first is

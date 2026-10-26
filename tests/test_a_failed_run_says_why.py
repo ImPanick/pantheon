@@ -152,7 +152,8 @@ async def test_the_failure_branch_is_handed_the_reason(task_db):
     (branch,) = _runs(task_db, "msg")
     cause = branch["steps"][0]
     assert cause["kind"] == "trigger"
-    assert f"result={WHY}" in cause["detail"]
+    # `B1096`: said in words ("From “…” (it failed): <why>"), not `result=`.
+    assert cause["detail"].endswith(f"(it failed): {WHY}")
     assert "Starting" not in cause["detail"]
 
 

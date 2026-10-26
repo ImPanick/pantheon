@@ -233,7 +233,9 @@ async def test_every_morning_summarise_my_inbox_then_send_me_the_summary(task_db
     handed = records[1]["input"]
     assert handed["source"] == TRIGGER_SOURCE_TASK
     assert handed["data"]["result"] == "Three bills and a letter from Ana."
-    assert records[1]["input_summary"].startswith("Continued from Summarise my inbox")
+    # `B1096`: in words, with no ids.
+    assert records[1]["input_summary"] == (
+        "From “Summarise my inbox” (it worked): Three bills and a letter from Ana.")
     # What the model was given: nothing extra for step one; for step two the
     # hand-off, wrapped, and the tool gate armed.
     assert seen[0]["trigger"] is None
@@ -524,7 +526,7 @@ async def test_a_run_task_step_runs_its_task_as_itself_and_lets_its_claim_go(tas
     assert run["status"] == "success" and run["result"] == "Report: all quiet."
     target_runs = runs_of(task_db, "t2")
     assert [r["status"] for r in target_runs] == ["success"], "its own run, its own history"
-    assert target_runs[0]["steps"][0]["detail"].startswith("Continued from Summarise")
+    assert target_runs[0]["steps"][0]["detail"].startswith("From “Summarise"), "`B1096`"
     assert "t2" not in s._executing and "wf" not in s._executing
     assert held["target"] is None and held["workflow"] is not None, (
         "stopping the target cannot cancel the workflow")

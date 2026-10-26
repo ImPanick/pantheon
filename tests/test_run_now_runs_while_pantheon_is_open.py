@@ -388,7 +388,7 @@ async def test_run_now_with_pantheon_open_runs_the_step_and_its_failure_branch(
     assert head["steps"][-1]["detail"] == "Failed, so continued to Message me"
     assert branch["status"] == "error"
     assert branch["steps"][0]["kind"] == "trigger"
-    assert branch["steps"][0]["detail"].startswith("Continued from Nightly backup")
+    assert branch["steps"][0]["detail"].startswith("From “Nightly backup” (it failed)"), "`B1096`"
     assert not s._executing
 
 
