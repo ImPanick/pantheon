@@ -174,6 +174,15 @@ const BASE = process.argv[2];
   }
 
   // ── back on: the Library as before ─────────────────────────────────────
+  // `B1085`: a chat to manage. With the Library on, a person with no chats
+  // has no Chats section (`sessions.js` `_syncChatsSection` — the Library is
+  // the door then), so *manage* is not there to hover. This passed before
+  // only because the server's in-memory database answered `/api/sessions`
+  // with 500 from its worker threads, the list was never known, and the
+  // section never hid.
+  out.madeChat = (await page.request.post(BASE + '/api/session', { form: {
+    name: 'A chat to manage', endpoint_url: 'http://127.0.0.1:9/v1/chat/completions',
+    model: 'm', skip_validation: '1' } })).status();
   out.on = (await page.request.post(BASE + '/api/auth/features', { data: { document_editor: true } })).status();
   await boot('/');
   asked.length = 0;
