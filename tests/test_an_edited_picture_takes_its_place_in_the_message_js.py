@@ -39,6 +39,8 @@ _GALLERY_STUB = """
 // when told to, answers as *Attach to chat* does: `onDone(editedFile)`.
 export async function openInEditor(url, id, label, opts = {}) {
   globalThis.__opened = { url, id, label, name: opts.name || null, hasDone: typeof opts.onDone === 'function' };
+  // Kept, so a case can press *Attach to chat* later — after the composer moved on.
+  globalThis.__onDone = opts.onDone || null;
   if (globalThis.__attach && typeof opts.onDone === 'function') {
     await opts.onDone(new File([new Uint8Array([9, 9, 9])], 'holiday (edited).png', { type: 'image/png' }));
   }
@@ -109,15 +111,19 @@ def test_an_edit_that_comes_back_after_the_picture_was_removed_goes_nowhere(sand
         const hand = await import('./attachHand.js');
         const original = new File([new Uint8Array([1])], 'gone.png', { type: 'image/png' });
         await fh.addFiles([original], { skipCrop: true });
-        let later;
-        const g = await import('./gallery.js?v=20260708match1');
-        const real = g.openInEditor;
         globalThis.__attach = false;
         await hand.actionsFor(original).find((a) => a.id === 'edit').run();
         fh.removePending(0);
-        console.log(JSON.stringify({ names: fh.getPendingRaw().map((f) => f.name) }));
+        const other = new File([new Uint8Array([2])], 'other.png', { type: 'image/png' });
+        await fh.addFiles([other], { skipCrop: true });
+        // *Attach to chat*, pressed after the picture it was opened for left.
+        const took = await globalThis.__onDone(
+          new File([new Uint8Array([9])], 'gone (edited).png', { type: 'image/png' }));
+        await tick();
+        console.log(JSON.stringify({ took, names: fh.getPendingRaw().map((f) => f.name) }));
     """)
-    assert out["names"] == []
+    assert out["took"] is False
+    assert out["names"] == ["other.png"], "the edit came back in place of a different picture"
 
 
 # ── one open sequence, and the editor's half ───────────────────────────────
