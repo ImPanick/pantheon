@@ -36,3 +36,12 @@ def clear(key: str) -> None:
     """The condition `key` named is over; say it again if it returns."""
     with _lock:
         _said.discard(key)
+
+
+def clear_prefix(prefix: str) -> None:
+    """`B1250`. Every condition whose key starts with `prefix` is over — for a
+    family of keys that carry the failure's own words, which the caller that
+    sees it end cannot spell back exactly."""
+    with _lock:
+        for key in [k for k in _said if k.startswith(prefix)]:
+            _said.discard(key)
