@@ -38,6 +38,7 @@ from test_foreground_model_routing import (  # noqa: E402
 from test_the_qwen3_cap_guards_every_door import wire  # noqa: F401,E402
 
 MINIMAX = "example-org/MiniMax-M2.7-BF16-mlx-4Bit"
+ANTHROPIC = "https://api.anthropic.com/v1/messages"
 LOCAL = "http://192.168.1.22:8091/v1/chat/completions"
 NO_PRESET = SimpleNamespace(temperature=1.0, max_tokens=0, character_name=None,
                             explicit_params=frozenset())
@@ -107,6 +108,10 @@ def _on_the_wire(payload):
         return {"temperature": options.get("temperature"),
                 "max_tokens": options.get("num_predict", 0)}
     seen = {k: payload[k] for k in _RECEIPT_KNOBS if k in payload}
+    # `B1028`: a reasoning model's length rides under `max_completion_tokens`;
+    # the receipt keeps the reply length under its one name.
+    if "max_completion_tokens" in payload:
+        seen["max_tokens"] = payload["max_completion_tokens"]
     seen.setdefault("max_tokens", 0)
     return seen
 
@@ -198,6 +203,17 @@ _CASES = [
      {"temperature": 0.7, "max_tokens": 512}),
     ("ollama-native-minimax", "http://localhost:11434/api/chat", MINIMAX, 1.0, 0,
      frozenset(), {"temperature": 1.0, "max_tokens": 0}),
+    # `B1028`: the native Anthropic builder clamps to 1.0 and fills 4096 — the
+    # row's Verify, a Nietzsche (1.2) chat on Claude, receipted 1.0.
+    ("anthropic-nietzsche", ANTHROPIC, "claude-3-5-sonnet-20241022", 1.2, 0, frozenset(),
+     {"temperature": 1.0, "max_tokens": 4096}),
+    # Opus 4.7 and later are sent no temperature at all.
+    ("anthropic-opus-4-7", ANTHROPIC, "claude-opus-4-7", 0.7, 0, frozenset(),
+     {"max_tokens": 4096}),
+    # A reasoning model is sent none either, its length under
+    # `max_completion_tokens`.
+    ("openai-o3-mini", "https://api.openai.com/v1/chat/completions", "o3-mini", 0.7, 512,
+     frozenset(), {"max_tokens": 512}),
 ]
 
 
