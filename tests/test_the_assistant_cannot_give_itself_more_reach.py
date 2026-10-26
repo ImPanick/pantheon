@@ -90,7 +90,8 @@ _WORDS = {
     "web": "turn on Web search",
     "research": "turn on Deep Research",
     "rag": "turn on the RAG knowledge base",
-    "document_editor": "turn on the Document Editor",
+    # `B898`: `document_editor` is not a chat switch any more — the executor
+    # refuses it (`tests/test_there_is_no_document_editor_switch_in_the_chat.py`).
     "incognito": "turn off Nobody mode",
 }
 _AGENT_WORDS = "switch to Agent mode"
@@ -109,7 +110,6 @@ def test_the_executor_really_does_widen_on_each_of_these():
     "toggle web on",
     "toggle rag on",
     "toggle research on",
-    "toggle document_editor on",
     "toggle incognito off",
     "set_mode agent",
 ])
@@ -155,8 +155,9 @@ _SPELLINGS = [
     # Every alias the executor takes.
     "toggle shell on", "toggle terminal on", "toggle search on",
     "toggle websearch on", "toggle web_search on", "toggle deepresearch on",
-    "toggle deep_research on", "toggle documents on", "toggle doc on",
-    "toggle docs on", "toggle private off",
+    "toggle deep_research on", "toggle private off",
+    # `B898`: `documents`, `doc` and `docs` still resolve, to `document_editor`,
+    # which is refused — it is not a chat switch, so they widen nothing.
     # Casing.
     "TOGGLE BASH ON", "Toggle Shell On", "toggle Web YES", "SET_MODE AGENT",
     "set_mode Agent",
@@ -508,10 +509,7 @@ def test_the_card_ranks_the_switch_by_what_it_hands_over():
         ("toggle bash on", ["bash", "host_shell"]),
         ("toggle web on", sorted(WEB_TOOL_NAMES)),
         ("toggle research on", ["trigger_research"]),
-        (
-            "toggle document_editor on",
-            ["create_document", "edit_document", "update_document", "suggest_document"],
-        ),
+        # `B898`: `toggle document_editor on` moved nothing and is refused now.
     ):
         expected = ui_side.union(*(capabilities_for_tool(tool).effects for tool in tools))
         assert capabilities_for_action("ui_control", content).effects == expected, content

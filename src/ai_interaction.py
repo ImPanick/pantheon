@@ -27,7 +27,7 @@ from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 from src.env_flags import env_flag, tool_arg_truthy
 from src.memory import MemoryStoreUnreadable
 from src.theme_advanced_keys import advanced_keys_prose, is_advanced_key
-from src.ui_switches import SWITCH_ACTIONS, command_parts, switch_request
+from src.ui_switches import SWITCH_ACTIONS, TOGGLES, command_parts, switch_request
 
 logger = logging.getLogger(__name__)
 
@@ -487,7 +487,7 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
       Line 2+: action-specific params
 
     Actions:
-      toggle <name> <on|off>  — Toggle a setting (web, bash, rag, research, incognito, document_editor)
+      toggle <name> <on|off>  — Toggle a setting (web, bash, rag, research, incognito)
       set_mode <agent|chat>   — Switch between agent and chat mode
       switch_model <model>    — Change the model for the current session
       set_theme <preset>      — Apply a built-in theme preset (dark, light, midnight, paper, cyberpunk, retrowave, forest, ocean, ume, copper, terminal, organs, lavender, gpt, claude, cute, guild, codehost, grove, notebook, channel, video, mintchat)
@@ -774,7 +774,9 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
         return {
             "results": (
                 "Toggle states are managed client-side in localStorage. "
-                "Available toggles: web, bash, rag, research, incognito, document_editor. "
+                # `B898`: from the executor's own set, so it cannot name a
+                # switch `toggle` refuses.
+                f"Available toggles: {', '.join(sorted(TOGGLES))}. "
                 "Use 'toggle <name> <on|off>' to change them."
             )
         }

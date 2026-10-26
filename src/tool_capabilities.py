@@ -485,10 +485,8 @@ _REACH_SWITCHES: Mapping[str, tuple[str, frozenset[ToolEffect]]] = MappingProxyT
     # Retrieval is not a tool (`src/tool_security._FEATURE_NOTES["rag"]`): the
     # person's indexed documents are put into the prompt.
     "rag": ("turn on the RAG knowledge base", frozenset({ToolEffect.READ_PRIVATE})),
-    "document_editor": (
-        "turn on the Document Editor",
-        _effects_of("create_document", "edit_document", "update_document", "suggest_document"),
-    ),
+    # `B898`: no `document_editor` — the chat has no such switch, and
+    # `ui_switches` refuses it with a sentence saying where the real one is.
     # *Off* is the widening direction here: the chat is saved again and memory
     # is read and written again — `routes/chat_routes.py` withholds the memory
     # and history tools while Nobody mode is on.
