@@ -108,6 +108,10 @@ the next one is cut.
 
 ### Added
 
+- **A person keeps their own keyboard shortcuts;** an admin's are everyone's default (`B1196`).
+- **A plain API token can be minted** from Settings › Integrations (`B1193`).
+- **A build says which commit it is:** `GET /api/version` carries `commit` (`B453`).
+
 - ***Print as PDF* prints the document as text** a reader can select and search, through the
   same page *Export HTML* builds, instead of a picture of it — 35 KB where a long document was
   1.5 MB (`B1333`).
@@ -197,6 +201,15 @@ the next one is cut.
   button all close it. `/toggle mode [agent|chat]` is the same control, typed.
 
 ### Changed — read this before upgrading
+
+- **`GET /api/ready` answers without a sign-in,** with only `{"ready": bool}` and 200 or 503 to a
+  caller with no session; the compose healthchecks ask it instead of `/api/health` (`B441`).
+- **An auth-exempt path is exempt only for the methods it names:** `POST /api/auth/settings` and
+  `POST /api/auth/features` answer 401 without a session (`B542`).
+- **An unanswered approval is denied when its deadline passes,** by a sweep every five seconds,
+  not when someone next touches the store (`B560`).
+- **The chat's `document_editor` switch is gone;** asking for it says where the switch is
+  (`B898`). A role can set the agent's input-token budget (`B751`).
 
 - **The Library refuses a file it cannot read** — a binary the browser has no type for is checked
   by the server first and refused with its reason, where it used to import as a page of
@@ -310,6 +323,15 @@ the next one is cut.
   arming that a non-empty memory store did on its own.
 
 ### Fixed
+
+- **The kept offline page runs its JavaScript** — cached modules were missed on `Vary: Origin`
+  (`B1508`).
+- **A demoted admin takes the role they are given** (`B680`); a privilege map is the caller's
+  own copy (`B1522`); a guest's page asks for nothing only an admin may have (`B1192`).
+- **The agent's mail tools give up on a silent server in seconds** and read an 8-bit subject
+  (`B1230`, `B1232`); `resolve_contact` reads its person's mail history (`B1182`); deleting an
+  MCP server says which switched-off tools went with it (`B864`); a step limit of 0 is one step,
+  not fifty (`B1030`).
 
 - **A Word export of a document with a control character opens in Word** (`B422`); a new mail's AI
   button says *Draft* (`B1212`); a text document stays text (`B1233`); the Library counts the

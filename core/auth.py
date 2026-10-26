@@ -4,6 +4,7 @@ Authentication module — multi-user password hashing, session tokens, config pe
 Config stored in data/auth.json. Uses bcrypt directly.
 """
 
+import copy
 import enum
 import json
 import os
@@ -526,7 +527,10 @@ class AuthManager:
 
         user = self.users.get(username, {})
         if user.get("is_admin"):
-            return dict(ADMIN_PRIVILEGES)
+            # `B1522`: a copy all the way down. `dict(...)` shared the registry's
+            # own `allowed_models` list, so a caller appending to the answer
+            # edited every later admin's map.
+            return copy.deepcopy(ADMIN_PRIVILEGES)
         stored = user.get("privileges", {})
         if not isinstance(stored, dict):
             # A hand-edited or truncated `auth.json` can put anything here, and
@@ -548,7 +552,9 @@ class AuthManager:
         for key in DEFAULT_PRIVILEGES:
             merged[key] = resolve_privilege(
                 stored, key, role_overrides=role_overrides)
-        return merged
+        # `B1522`: the resolved values are the registry's, the role's or this
+        # user's stored objects themselves; the caller gets its own copy.
+        return copy.deepcopy(merged)
 
     def set_privileges(self, username: str, privileges: Dict[str, Any]) -> bool:
         """Update privileges for a user. Can't modify admin privileges."""

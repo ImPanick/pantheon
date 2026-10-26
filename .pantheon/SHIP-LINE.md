@@ -239,6 +239,10 @@ Re-measured 2026-10-26, after the third wave of three: **91 filed, 257 closed**,
 
 **Direction as of 2026-10-26, after the third wave: the open count is falling.**
 
+Re-measured 2026-10-26, after the fourth wave of three: **93 filed, 299 closed**, open **395 → 189** — falling, by forty in one wave. Forty-eight rows closed; nine filed, and the gate named one unclassified on its first run (`B1522`, a privilege map that shared the registry's own list), which was then closed in the same wave rather than classified. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1489`–`B1528`) block.
+
+**Direction as of 2026-10-26, after the fourth wave: the open count is falling.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
