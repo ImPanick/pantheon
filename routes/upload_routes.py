@@ -6,6 +6,7 @@ import json
 import asyncio
 import shutil
 import uuid
+import hashlib
 import threading
 from collections import OrderedDict
 from pathlib import Path
@@ -84,13 +85,15 @@ UPLOAD_KIND_HEADER = "X-Upload-Kind"
 #
 # The verdict is a pure function of the bytes, so this caches the verdict —
 # a slug or `None`, a few bytes — not the bytes: the pass arm still has to send
-# the file, and the read is not the expensive part. Keyed on the file as the
-# filesystem names it (`realpath`, inode, size, `st_mtime_ns`), so a rewrite is
-# a new key and is judged afresh; a pass is trusted only when the bytes just
-# read are the version the key names (the handle's `fstat` after the read
-# agrees). Process memory, bounded: a restart judges each file once more, and
-# nothing on disk can claim a verdict the gate did not give (`Law 17`: the
-# adversary here is the hostile document, and it cannot write this map).
+# the file, and the read is not the expensive part (a SHA-256 of 5 MiB is about
+# 10 ms against the gate's 125-545). Two keys: the bytes' digest, which is the
+# only key a pass is ever read from — so a rewrite, whatever its timestamp,
+# cannot inherit one — and the file's version as the filesystem names it
+# (`realpath`, inode, size, `st_mtime_ns`), which a refusal is also kept under
+# so a refused file is answered without being read. Process memory, bounded: a
+# restart judges each file once more, and nothing on disk can claim a verdict
+# the gate did not give (`Law 17`: the adversary here is the hostile document,
+# and it cannot write this map).
 _SVG_VERDICT_MAX = 512
 _svg_verdicts: "OrderedDict[tuple, Optional[str]]" = OrderedDict()
 _svg_verdicts_lock = threading.Lock()
@@ -651,33 +654,35 @@ def setup_upload_routes(upload_handler):
                    "Content-Disposition": "attachment"}
         if not thumb:
             return FileResponse(path, media_type="image/svg+xml", headers=headers)
-        # `B403`: a version already judged is not judged again (see
-        # `_svg_verdicts`). A remembered refusal is answered without reading
-        # the file at all — refusing is fail-closed whatever the bytes are now.
+        # `B403`: a file already judged is not judged again (see
+        # `_svg_verdicts`). A remembered refusal is answered from the file's
+        # version (path, inode, size, mtime) without reading it at all —
+        # refusing is fail-closed whatever the bytes are now. A pass is only
+        # ever taken for the exact bytes about to be sent: those are read
+        # anyway, and their digest is the key, so no rewrite can inherit one.
+        # The gate is part of every key: a verdict is the gate's answer about
+        # the bytes, and a different gate (a test's, a reloaded module's) has
+        # given none yet.
+        # Through the module, not a name bound at import time, so there is
+        # demonstrably one gate in the process and this route reaches it.
+        gate = svg_runtime.svg_refusal_reason
         try:
-            key = _svg_version_key(path, os.stat(path))
+            version = (gate,) + _svg_version_key(path, os.stat(path))
         except OSError:
-            key = None
-        known, reason = _svg_cached_verdict(key) if key else (False, None)
+            version = None
+        known, reason = _svg_cached_verdict(version) if version else (False, None)
         refused_before = known and reason is not None
-        content = b""
         if not refused_before:
             try:
                 with open(path, "rb") as fh:
                     content = fh.read(MAX_PREVIEW_SVG_BYTES + 1)
-                    read_key = _svg_version_key(path, os.fstat(fh.fileno()))
             except OSError as e:
                 logger.warning(f"SVG preview read failed for {path}: {e}")
-                content, read_key = b"", None
-            if read_key != key:
-                # Rewritten between the stat and the read: these bytes are a
-                # version nobody judged.
-                known, key = False, read_key
+                content = b""
+            digest = (gate, "sha256", hashlib.sha256(content).hexdigest())
+            known, reason = _svg_cached_verdict(digest)
             if not known:
-                # Through the module, not a name bound at import time, so there
-                # is demonstrably one gate in the process and this route
-                # reaches it.
-                reason = svg_runtime.svg_refusal_reason(
+                reason = gate(
                     content, MAX_PREVIEW_SVG_BYTES, allow_data_images=True,
                     # `B300`. A hyperlink is not a beacon — nothing is fetched
                     # until a click, and inside an `<img>` there is no click —
@@ -687,8 +692,9 @@ def setup_upload_routes(upload_handler):
                     # gain (`B160`'s rule for `allow_data_images`, one row on).
                     allow_hyperlinks=True,
                 )
-                if key is not None:
-                    _svg_remember_verdict(key, reason)
+                _svg_remember_verdict(digest, reason)
+            if reason is not None and version is not None:
+                _svg_remember_verdict(version, reason)
         if reason is not None:
             if not refused_before:
                 logger.info("SVG preview refused (%s): %s", reason, path)

@@ -59,13 +59,27 @@ def _seed(env):  # noqa: F811
         doc(f"loose {i}", "python" if i < 2 else "markdown")
 
 
+@pytest.fixture
+def folders_routed(env, monkeypatch):  # noqa: F811
+    """The folder routes read this test's database and person. `env` patches
+    the modules it imports; `document_folder_routes` binds `SessionLocal` and
+    its two auth helpers when it is first imported, which in a full run is
+    another test's doing."""
+    import routes.document.document_folder_routes as folder_routes
+    from tests.test_an_uploaded_document_keeps_its_name import OWNER
+    monkeypatch.setattr(folder_routes, "SessionLocal", env.Session)
+    monkeypatch.setattr(folder_routes, "get_current_user", lambda request: OWNER)
+    monkeypatch.setattr(folder_routes, "require_privilege", lambda request, priv: OWNER)
+    return env
+
+
 def _library(env, **params):  # noqa: F811
     r = env.client.get("/api/documents/library", params={"limit": 50, **params})
     assert r.status_code == 200, r.text
     return r.json()
 
 
-def test_the_type_counts_are_the_open_folders(env):  # noqa: F811
+def test_the_type_counts_are_the_open_folders(env, folders_routed):  # noqa: F811
     _seed(env)
     everything = _library(env)
     assert everything["languages"] == {"markdown": 13, "text": 2, "python": 2}
@@ -130,7 +144,8 @@ const stats = () => win().querySelector('#doclib-stats').textContent;
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
-def test_inside_a_folder_the_chips_count_it_and_the_empty_state_says_where(live, window_box):  # noqa: F811
+def test_inside_a_folder_the_chips_count_it_and_the_empty_state_says_where(
+        live, folders_routed, window_box):  # noqa: F811
     """`Fix:` scope the type chips to the open folder; name the subfolders that
     hold documents in the empty state."""
     _seed(live)

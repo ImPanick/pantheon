@@ -130,3 +130,25 @@ def test_the_verdict_cache_is_bounded():
         upload_routes._svg_remember_verdict(("/bound-probe", i, 0, 0), None)
     assert len(upload_routes._svg_verdicts) <= upload_routes._SVG_VERDICT_MAX
     assert upload_routes._svg_cached_verdict(key) == (False, None)
+
+
+def test_a_pass_is_never_inherited_by_other_bytes(tmp_path, monkeypatch, gate_calls):
+    """The hard case for a version key: the file rewritten in place with
+    bytes of the same length and its timestamp put back — same path, inode,
+    size and mtime. A pass is keyed on the bytes' digest, so the new bytes are
+    judged, and refused."""
+    good = b'<svg xmlns="http://www.w3.org/2000/svg"><rect width="5" height="5"/></svg>'
+    bad = b'<svg xmlns="http://www.w3.org/2000/svg" onload="x()"><rect/></svg>'
+    bad = bad[:-6] + b" " * (len(good) - len(bad)) + bad[-6:]
+    assert len(bad) == len(good)
+    first, path = _serve(tmp_path, monkeypatch, good)
+    assert first.body == good
+    st = os.stat(path)
+    with open(path, "r+b") as fh:   # in place: the inode is kept
+        fh.write(bad)
+    os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns))
+    after = os.stat(path)
+    assert (after.st_ino, after.st_size, after.st_mtime_ns) == (st.st_ino, st.st_size, st.st_mtime_ns)
+    second = _again(tmp_path, monkeypatch, path, bad)
+    assert len(gate_calls) == 2, gate_calls
+    assert _headers(second)[svg_runtime.SVG_REFUSAL_HEADER.lower()] == "active-content"
