@@ -1395,6 +1395,20 @@ def _text_reach(extracted: str, display_name: str, sent: int, total: int) -> dic
     return None
 
 
+def unread_reason(path: str, ext: str = "") -> str:
+    """Why nothing was read from a file no extractor covers and whose bytes do
+    not read as text — one phrase, two doors.
+
+    `B401`. The chat's attachment note says it ("Not read: …"), and so does
+    the Library when it refuses to import such a file instead of storing its
+    bytes as a document of replacement characters. `B201`'s distinction holds
+    at both: a short legacy-encoded text file is not "a format nothing reads".
+    """
+    if text_refusal_reason(path) == ENCODING_UNIDENTIFIED:
+        return "its text is in an encoding that could not be identified"
+    return f"there is no reader for {ext or 'this kind of'} files"
+
+
 def build_user_content(
     text: str,
     attachment_ids: list[str] | None,
@@ -1771,12 +1785,14 @@ def build_user_content(
             else:
                 content.insert(0, {"type": "text", "text": banner})
             if reach is not None:
+                # `B401`: the two reasons are `unread_reason`'s, which the
+                # Library's import refusal says too.
                 if text_refusal_reason(path) == ENCODING_UNIDENTIFIED:
-                    _note = "Not read: its text is in an encoding that could not be identified."
+                    _note = f"Not read: {unread_reason(path, ext)}."
                 elif mime.startswith("video/") or ext in _VIDEO_EXTS:
                     _note = "Not read: the model can't be given a video."
                 else:
-                    _note = (f"Not read: there is no reader for {ext or 'this kind of'} files, "
+                    _note = (f"Not read: {unread_reason(path, ext)}, "
                              "so the model was not given what is in it.")
                 reach[fid] = {"state": "not_read", "note": _note}
 

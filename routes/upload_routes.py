@@ -588,6 +588,36 @@ def setup_upload_routes(upload_handler):
             logger.error(f"Failed to get upload stats: {e}")
             raise HTTPException(500, "Failed to get upload statistics")
 
+    # `B401`. What the server would make of a file the browser has in hand and
+    # has not uploaded — the Library's import, which stores a document, not an
+    # upload, and so had no verdict: a binary the browser has no type for (a
+    # `.wpd`, a `.pages`, a renamed `.zip`) went through `FileReader.readAsText`
+    # and became a document of U+FFFD with "Imported 1 file". `B232` answered
+    # the same question on the composer path because there is an upload there.
+    # Here the first `TEXT_SNIFF_BYTES` are posted, written to a scratch file
+    # under the name they came with, and asked the one probe every other door
+    # asks (`probe_upload_kind` → `ingest_kind`) — so the browser never holds a
+    # copy of `looks_like_text` (`Law 14`). Nothing is kept. A refusal carries
+    # `unread_reason`, the phrase the chat's attachment note uses.
+    @router.post("/kind")
+    async def upload_kind_probe(request: Request, file: UploadFile = File(...)):
+        """``{kind, reason}`` for a file's name and first bytes; nothing stored."""
+        import tempfile
+        from src.document_processor import (
+            INGEST_KIND_BINARY, TEXT_SNIFF_BYTES, unread_reason,
+        )
+        effective_user(request)   # signed in: the middleware's gate, as every upload route
+        head = await file.read(TEXT_SNIFF_BYTES)
+        name = os.path.basename(str(file.filename or "")) or "file"
+        ext = os.path.splitext(name.lower())[1]
+        with tempfile.TemporaryDirectory(prefix="pantheon-kind-") as scratch:
+            probe_path = os.path.join(scratch, "probe" + (ext if len(ext) <= 16 else ""))
+            with open(probe_path, "wb") as fh:
+                fh.write(head)
+            kind = probe_upload_kind(probe_path, name)
+            reason = unread_reason(probe_path, ext) if kind == INGEST_KIND_BINARY else ""
+        return {"kind": kind, "reason": reason}
+
     def _svg_response(path: str, thumb: bool):
         """Serve an uploaded SVG: sanitised for a preview, intact for a download.
 

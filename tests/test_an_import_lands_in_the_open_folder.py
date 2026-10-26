@@ -139,6 +139,10 @@ _IMPORT = """
     const CONVERTED_TO = { '.docx': 'markdown' };
     const SERVER_EXTRACTED_EXTS = new Set(['.odt', '.doc', '.pptx', '.epub']);
     const documentLanguage = () => 'markdown';
+    // `B401`: a name the register knows is read as text without asking the
+    // server; every file here has one (`c.md`), so no probe is sent.
+    const ingestKindFromName = (n) => (/\.(md|txt)$/i.test(n) ? 'text' : null);
+    const INGEST_KIND_BINARY = 'binary';
     async function ensureXLSX() {}
     window.XLSX = { read: () => ({ SheetNames: ['Q1', 'Q2'], Sheets: { Q1: {}, Q2: {} } }),
                     utils: { sheet_to_csv: () => 'a,b' } };

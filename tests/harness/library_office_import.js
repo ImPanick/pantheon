@@ -57,6 +57,9 @@ global.window = { XLSX: {
 // The language is not this harness's question (`B161`'s harness asks it).
 const documentLanguage = () => 'markdown';
 const ingestKindFromName = () => null;
+// `B401`: the import asks the server about a file the register is silent on,
+// and compares its answer with the shared constant.
+const INGEST_KIND_BINARY = 'binary';
 
 global.fetch = async (url, opts) => {
   let payload = null;
@@ -82,6 +85,7 @@ async function ensureXLSX() {}
   const lift = new Function(
     'API_BASE', 'readFileContent', 'ensureXLSX', 'fetch', 'FormData',
     'SERVER_EXTRACTED_EXTS', 'window', 'documentLanguage', 'ingestKindFromName',
+    'INGEST_KIND_BINARY',
     '"use strict";\n' + block + '\nreturn importFileAsDocuments;');
   // The two register constants are LIFTED OUT OF THE MODULE, not supplied:
   // handing the block a set this harness computed would test the harness.
@@ -102,7 +106,7 @@ async function ensureXLSX() {}
   try {
     const importFileAsDocuments = lift(API_BASE, readFileContent, ensureXLSX, global.fetch,
                                        FormData, SERVER, global.window, documentLanguage,
-                                       ingestKindFromName);
+                                       ingestKindFromName, INGEST_KIND_BINARY);
     // The library imports from All documents here, so there is no folder.
     const made = await importFileAsDocuments(file, { folder: null });
     imported = made.length ? 1 : 0;

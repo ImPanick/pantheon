@@ -7,7 +7,7 @@
 
 import { topPortalZ } from './toolWindowZOrder.js';
 import uiModule from './ui.js';
-import { documentLanguage, ingestKindFromName, OFFICE_EXTS } from './attachmentLanguage.js';
+import { documentLanguage, ingestKindFromName, INGEST_KIND_BINARY, OFFICE_EXTS } from './attachmentLanguage.js';
 import sessionModule from './sessions.js';
 import spinnerModule from './spinner.js';
 import markdownModule from './markdown.js';
@@ -2055,6 +2055,30 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       // Worded to stand alone: the Library's summary does not name the file.
       const what = { image: 'images', audio: 'sound files', video: 'videos' }[media[1].toLowerCase()];
       throw new Error(`${what} can't be opened as documents`);
+    }
+
+    // `B401`. A file neither the shared register nor the browser's own type
+    // says is text — a `.wpd`, a `.pages`, a renamed `.zip`, a file with no
+    // type at all — is asked about before it is read as text: its first bytes
+    // go to the server's one probe (`POST /api/upload/kind`, `ingest_kind`),
+    // never to a browser copy of it. `binary` is refused with the server's
+    // reason; `readAsText` made such a file a document of replacement
+    // characters and the Library said "Imported 1 file". A server that cannot
+    // be asked leaves the import as it was.
+    if (ingestKindFromName(name, file.type) === null) {
+      let verdict = null;
+      try {
+        const fd = new FormData();
+        fd.append('file', file.slice(0, 8192), name);
+        const res = await fetch(`${API_BASE}/api/upload/kind`, { method: 'POST', body: fd });
+        if (res.ok) verdict = await res.json();
+      } catch (_) { /* unasked: read it as before */ }
+      if (verdict && verdict.kind === INGEST_KIND_BINARY) {
+        // The server's phrase, as `B400`'s refusal is worded: each door puts
+        // its own frame round it (the Library's summary, *Import from
+        // device*'s "Couldn't import <name> — ").
+        throw new Error(verdict.reason || "it isn't text, and nothing here reads its format");
+      }
     }
 
     const content = await readFileContent(file);
