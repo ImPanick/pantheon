@@ -345,22 +345,25 @@ async def test_stop_ends_a_waiting_run_and_retires_its_card(world):
     assert rec["status"] == "aborted"
 
 
-async def test_a_plain_task_run_by_a_workflow_step_still_pauses_safely(world):
-    """`Law 1`: a plain task that a workflow's *Run task* step runs is awaited
-    inside that workflow's run, which cannot wait on it — so it keeps today's
-    "paused safely", its card retired on the spot, and the step reads a
-    finished run."""
+async def test_a_plain_task_run_by_a_workflow_step_parks_held_by_the_workflow(world):
+    """`B1173` changed this. It pinned "paused safely" — a plain task that a
+    workflow's *Run task* step runs was awaited inside that workflow's run,
+    which could not wait on it, so its card was retired on the spot and the
+    step read a finished run. Now it parks like any plain run, HELD by the
+    workflow run (which asks the person, on the same card), and nothing runs
+    before the yes. The whole answer, both ways, and the ends are driven in
+    `tests/test_a_task_a_workflow_runs_waits_for_your_yes.py`."""
     w = world
     _plain_task(w)
     seed_workflow(w.factory, [node("go", "Run replies", "run_task", task_id="plain")])
     w.script.append("```bash\nprintf nested\n```")
     await w.s._execute_task("wf", trigger=_webhook())
     [inner] = runs_of(w.factory, "plain")
-    assert inner["status"] == "success"
-    assert inner["result"].startswith("Scheduled task paused safely: bash needs a person")
-    assert records_of(w.factory, inner["id"]) == []
-    assert not tool_approval_store._pending and w.executed == []
-    assert runs_of(w.factory, "wf")[0]["status"] == "success"
+    assert inner["status"] == "waiting", inner
+    [rec] = records_of(w.factory, inner["id"])
+    assert rec["status"] == "waiting" and rec["waiting"]["kind"] == "approval"
+    assert len(tool_approval_store._pending) == 1 and w.executed == []
+    assert runs_of(w.factory, "wf")[0]["status"] == "waiting"
 
 
 async def test_a_message_typed_into_the_tasks_chat_leaves_its_question_waiting(world):

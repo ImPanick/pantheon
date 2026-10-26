@@ -1012,6 +1012,13 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             if (not waiting or waiting.get("kind") != WAITING_APPROVAL
                     or waiting.get("approval_id") != approval_id):
                 raise HTTPException(409, "This run is not waiting on this question any more.")
+            if waiting.get("held_by"):
+                # `B1173`. A workflow's *Run task* step ran this task and asks
+                # this question itself; answered here, the workflow would wait
+                # on a card nobody can answer any more.
+                raise HTTPException(409, (
+                    f"The workflow “{waiting.get('held_by_name') or '?'}” ran this task "
+                    f"and is asking this question — answer it there."))
             owner, tz_name = task.owner, _resolve_task_timezone(db, task)
             session = waiting.get("session_id") or ""
             # `B1111`, as the workflow's door reads it (`integrate-g`).

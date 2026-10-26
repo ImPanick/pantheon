@@ -1233,6 +1233,8 @@ def plain_waiting_list(db, owner: str | None) -> list:
     out = []
     for rec, run, task in q.order_by(TaskRunNode.started_at).all():
         waiting = wr.waiting_of(rec) or {}
+        if waiting.get("held_by"):
+            continue        # `B1173`: the workflow that ran it asks, in its own list
         kind = waiting.get("kind")
         approval = None
         if kind == wr.WAITING_APPROVAL and tool_approval_store.peek(waiting.get("approval_id")):
@@ -3512,9 +3514,15 @@ class TaskScheduler:
                     # LLM task — use agent loop for tool access. `B1102`: a
                     # card parks the run (`TaskWaiting`, handled below as a
                     # workflow's is), and a resumed run is answered here.
+                    # `B1173`. A run a workflow's *Run task* step awaits parks
+                    # too — held by that step, which asks the person and
+                    # resumes it with the answer (`_run_task_node`) — unless
+                    # the step may not wait (a step test).
+                    _inside = (self._runs().get(run_id) or {}).get("inside") if awaited else None
                     status, result = await _bounded(self._run_plain_prompt(
                         task, db, run_id, resume=resume, answer=answer,
-                        may_wait=not awaited))
+                        may_wait=(not awaited) or bool(_inside and _inside.get("may_wait")),
+                        held_by=_inside))
                     run.status = status
                     run.result = result
                     if status == "error":
@@ -4150,7 +4158,11 @@ class TaskScheduler:
         """Every card a waiting step of this run holds is retired — consumed as
         a denial, the way a scheduled run's card always was — so a Stop, a
         switch-off or a time limit leaves no card that could still be
-        answered. Answers how many."""
+        answered. Answers how many.
+
+        `B1173`. A *Run task* step waiting on its target's card holds the
+        target's parked run too, and that run ends here with it: nothing
+        else will ever answer it."""
         from src import workflow_runs as wr
         from src.tool_approvals import tool_approval_store
 
@@ -4168,6 +4180,15 @@ class TaskScheduler:
             except Exception:
                 logger.debug("Could not retire card %s", waiting.get("approval_id"),
                              exc_info=True)
+            if waiting.get("target_run"):
+                name = getattr(task, "name", None) or "?"
+                try:
+                    self._end_held_target(
+                        db, waiting, status="aborted",
+                        sentence=f"Stopped: the workflow “{name}” that was waiting on it ended")
+                except Exception:
+                    logger.warning("Could not end the run %s held by run %s",
+                                   waiting.get("target_run"), run_id, exc_info=True)
         return retired
 
     def _end_parked_run(self, db, task, run, *, status: str, sentence: str) -> None:
@@ -4306,6 +4327,9 @@ class TaskScheduler:
             for run in db.query(TaskRun).filter(TaskRun.status == "waiting").all():
                 if run.task_id in self._executing:
                     continue
+                if self._held_by_a_live_run(db, run.id):
+                    # `B1173`: its holder's step asks, answers and ends it.
+                    continue
                 task = db.query(ScheduledTask).filter(ScheduledTask.id == run.task_id).first()
                 if task is None or task.status != "active":
                     due.append(run.id)
@@ -4333,6 +4357,22 @@ class TaskScheduler:
             if await self.resume_workflow_run(run_id, started_by=STARTED_BY_BACKGROUND):
                 resumed += 1
         return resumed
+
+    def _held_by_a_live_run(self, db, run_id: str) -> bool:
+        """`B1173`. Is this parked run held by a run still in flight (a
+        workflow whose *Run task* step waits on its card)? A held run whose
+        holder has ended is the sweeper's again, so it cannot wait for ever."""
+        from core.database import TaskRun, TASK_RUN_IN_FLIGHT_STATUSES
+        from src import workflow_runs as wr
+
+        for rec in wr.waiting_records(db, run_id):
+            holder = (wr.waiting_of(rec) or {}).get("held_by")
+            if not holder:
+                continue
+            row = db.query(TaskRun.status).filter(TaskRun.id == holder).first()
+            if row is not None and row[0] in TASK_RUN_IN_FLIGHT_STATUSES:
+                return True
+        return False
 
     def _next_resume_at(self):
         """The earliest time a parked step is due, for `_loop`'s sleep."""
@@ -4738,7 +4778,7 @@ class TaskScheduler:
         )
 
     async def _run_plain_prompt(self, task, db, run_id: str, *, resume: bool = False,
-                                answer=None, may_wait: bool = True) -> tuple:
+                                answer=None, may_wait: bool = True, held_by=None) -> tuple:
         """`B1102`. A plain Prompt task's run: `(status, text)` — `success` and
         its output, or `error` and why. Raises `TaskWaiting` when it parks.
 
@@ -4790,7 +4830,7 @@ class TaskScheduler:
             # names its tool as a workflow step's does — in its record, the
             # run's line, the notification and the answer's sentence.
             named = named_question(parked)
-            self._park_plain_run(db, task, run_id, named, rec)
+            self._park_plain_run(db, task, run_id, named, rec, held_by=held_by)
             if named is parked:
                 raise
             raise named from None
@@ -4817,7 +4857,7 @@ class TaskScheduler:
                 .filter(TaskRunNode.run_id == run_id, TaskRunNode.node_id == PLAIN_TASK_NODE)
                 .order_by(TaskRunNode.seq.desc()).first())
 
-    def _park_plain_run(self, db, task, run_id: str, parked, rec) -> None:
+    def _park_plain_run(self, db, task, run_id: str, parked, rec, *, held_by=None) -> None:
         """`B1102`. A plain Prompt task's run parks: its waiting record (the
         walker's shape, one per run, written on its first park), a line in its
         log, and the question to the person — a notification with the card as
@@ -4835,6 +4875,14 @@ class TaskScheduler:
         if isinstance(until, (int, float)):
             waiting["until"] = datetime.fromtimestamp(
                 until, tz=timezone.utc).replace(tzinfo=None).isoformat() + "Z"
+        if held_by:
+            # `B1173`. Held by the workflow run whose *Run task* step ran it:
+            # that step asks the person (its own question, on this card) and
+            # resumes this run with the answer, so this run asks nobody, the
+            # sweeper leaves it to its holder, and the task's own answer door
+            # sends the person to the workflow.
+            waiting["held_by"] = held_by.get("run")
+            waiting["held_by_name"] = held_by.get("name")
         if rec is None:
             rec = wr.record_node_start(
                 db, run_id=run_id,
@@ -4844,7 +4892,7 @@ class TaskScheduler:
         wr.record_node_waiting(db, rec, waiting=waiting, steps=self.run_steps(run_id),
                                model=self.run_model(run_id))
         self._record_run_step(run_id, kind="progress", detail=parked.sentence)
-        if parked.kind != wr.WAITING_APPROVAL:
+        if parked.kind != wr.WAITING_APPROVAL or held_by:
             return
         card = waiting.get("card") if isinstance(waiting.get("card"), dict) else {}
         tool = (waiting.get("tool_label") or waiting.get("tool")
@@ -6449,6 +6497,10 @@ class TaskScheduler:
                 elif verdict.decision == ANSWER_ALLOW or node.get("kind") == wd.NODE_KIND_FOREACH:
                     reruns.append((node, rec, verdict))
                 else:
+                    # `B1173`. A Run task step that waited on its target's
+                    # card: the target's held run ends with the same words.
+                    self._end_held_target(w.db, waiting, status="error",
+                                          sentence=verdict.sentence)
                     # `B1110`. Said once on the run — by `_end_record`'s line
                     # for this step — and once in the step's own log, here.
                     steps = list(json.loads(rec.steps)) if rec.steps else []
@@ -6628,6 +6680,10 @@ class TaskScheduler:
         if kind in (wd.NODE_KIND_PROMPT, wd.NODE_KIND_SKILL):
             return await self._run_model_step(task, workflow_name, node, db, slot, ctx=ctx,
                                               answer=answer, deliver=deliver, may_wait=may_wait)
+        if kind == wd.NODE_KIND_RUN_TASK:
+            # `B1173`: with the person's answer, and whether it may wait.
+            return StepDone(await self._run_task_node(task, node, slot, answer=answer,
+                                                      may_wait=may_wait), None)
         if kind == wd.NODE_KIND_RESEARCH:
             prompt = (node.get("config") or {}).get("prompt") or ""
             if "{{" in prompt:
@@ -6796,11 +6852,15 @@ class TaskScheduler:
                 payload=None if isinstance(item, str) else item)
             item_answer = None
             if prev is not None and prev.status == "waiting":
-                wr.record_node_resumed(walk.db if walk is not None else db, prev)
+                held_waiting = wr.record_node_resumed(walk.db if walk is not None else db, prev)
                 rec = prev
                 if answer is not None and answer.item == index:
                     item_answer = answer
                     if answer.decision != ANSWER_ALLOW:
+                        # `B1173`: an item that ran a task waiting on its card.
+                        self._end_held_target(walk.db if walk is not None else db,
+                                              held_waiting or {}, status="error",
+                                              sentence=answer.sentence)
                         # `B1110`. The step's log already says the answer: the
                         # resumed step's first line is it (`_start_step`).
                         wr.record_node_end(walk.db if walk is not None else db, rec,
@@ -7108,7 +7168,8 @@ class TaskScheduler:
                                       owner=task.owner, body=text)
         await self._deliver_task_result(stand_in, text, db, model=model)
 
-    async def _run_task_node(self, task, node: dict, slot: str):
+    async def _run_task_node(self, task, node: dict, slot: str, *, answer=None,
+                             may_wait: bool = False):
         """A Run task step: run the named task, as itself, and read its run.
 
         The target keeps its own run, its own history, its own delivery and its
@@ -7117,6 +7178,13 @@ class TaskScheduler:
         (the workflow already holds one) and without registering its handle (so
         stopping the target cannot cancel the workflow, `register_handle`), and
         is handed this step's input as its own trigger, wrapped untrusted.
+
+        `B1173`. A target that reaches a card parks — held by this step — and
+        the step parks on that card (`TaskWaiting`, its question the
+        workflow's); `answer` is the person's answer it resumes with, which
+        resumes the target's parked run once (`_held_target_run`). A step
+        that may not wait (`may_wait`, a step test) runs the target as before,
+        its card denied on the spot.
         """
         from core.database import SessionLocal, ScheduledTask, TaskRun
         from src.builtin_actions import (
@@ -7136,18 +7204,39 @@ class TaskScheduler:
         if not usable:
             return NodeResult(NODE_STATUS_ERROR,
                               payload="Did not run it: that task is gone, or is not one of yours.")
+        # `B1079`. The target runs inside this workflow's run (or a test of
+        # this step), and a stop of that reaches it: it is told which, so its
+        # own row can say why instead of "Stopped by user". `B1173`: and
+        # whether it may park on a card, held by this step.
+        inside = {"run": run_of_slot(slot), "name": task.name,
+                  "test": is_test_slot(slot), "may_wait": bool(may_wait)}
+        held = None
+        if answer is not None:
+            held = self._held_target_run(target_id, inside["run"])
+            if held is None:
+                return NodeResult(NODE_STATUS_ERROR, payload=(
+                    f"“{label}”’s waiting run is gone, so the answer could not be "
+                    f"given to it — run the workflow again."))
         if not self._claim_chained(target_id):
             return NodeResult(NODE_STATUS_ERROR,
                               payload=f"Did not run “{label}”: {CHAIN_ALREADY_RUNNING}")
-        self._record_run_step(slot, kind="progress", detail=f"Running the task “{label}”")
-        # `B1079`. The target runs inside this workflow's run (or a test of
-        # this step), and a stop of that reaches it: it is told which, so its
-        # own row can say why instead of "Stopped by user".
-        target_run = await self._execute_task(
-            target_id, bypass_model_slot=True, trigger=self.run_trigger(slot),
-            register_handle=False, started_by=self._run_started_by(slot),
-            inside={"run": run_of_slot(slot), "name": task.name,
-                    "test": is_test_slot(slot)})
+        if held is not None:
+            # The person's answer to the target's own question — the same
+            # verdict, addressed to the target's waiting record.
+            self._record_run_step(slot, kind="progress",
+                                  detail=f"“{label}” goes on with your answer")
+            target_run = await self._execute_task(
+                target_id, bypass_model_slot=True, register_handle=False,
+                started_by=self._run_started_by(slot), inside=inside,
+                resume_run_id=held, answer=StepAnswer(
+                    PLAIN_TASK_NODE, None, answer.decision, answer.sentence,
+                    exact_approval=answer.exact_approval))
+        else:
+            self._record_run_step(slot, kind="progress", detail=f"Running the task “{label}”")
+            target_run = await self._execute_task(
+                target_id, bypass_model_slot=True, trigger=self.run_trigger(slot),
+                register_handle=False, started_by=self._run_started_by(slot),
+                inside=inside)
         current = asyncio.current_task()
         if current is not None and current.cancelling():
             # The target's run answers a cancel by recording it and returning
@@ -7160,8 +7249,16 @@ class TaskScheduler:
             row = lookup.query(TaskRun).filter(TaskRun.id == target_run).first()
             status = row.status if row is not None else None
             said = ((row.result or row.error) if row is not None else None) or ""
+            question = self._held_question(lookup, target_run) if status == "waiting" else None
         finally:
             lookup.close()
+        if question is not None:
+            # `B1173`. The target parked on a card: this step waits on the same
+            # card, so the person is asked once, by the workflow, and the answer
+            # comes back here.
+            self._record_run_step(slot, kind="progress",
+                                  detail=f"“{label}” is waiting for your yes")
+            raise question
         self._record_run_step(slot, kind="progress",
                               detail=f"“{label}” ended: {status or 'it asked to wait'}")
         if status == "success":
@@ -7173,6 +7270,57 @@ class TaskScheduler:
             return NodeResult(NODE_STATUS_ERROR,
                               payload=f"“{label}” was stopped before it finished: {said}".rstrip(": "))
         return NodeResult(NODE_STATUS_ERROR, payload=said or f"“{label}” failed")
+
+    def _held_target_run(self, target_id: str, holder_run: str):
+        """`B1173`. The run of `target_id` parked and held by `holder_run` (a
+        workflow run whose *Run task* step ran it), or `None`."""
+        from core.database import SessionLocal
+        from src import workflow_runs as wr
+
+        db = SessionLocal()
+        try:
+            parked = wr.parked_run(db, target_id)
+            if parked is None:
+                return None
+            rec = self._plain_record(db, parked.id)
+            waiting = (wr.waiting_of(rec) or {}) if rec is not None else {}
+            return parked.id if waiting.get("held_by") == holder_run else None
+        finally:
+            db.close()
+
+    def _held_question(self, db, target_run: str):
+        """`B1173`. A *Run task* step's target that parked on a card: the
+        `TaskWaiting` its step parks on — the target's card, its session and
+        deadline, and the run that holds the answer's other end — or `None`
+        when it waits for anything else."""
+        from src import workflow_runs as wr
+        from src.builtin_actions import TaskWaiting
+
+        rec = self._plain_record(db, target_run)
+        waiting = dict((wr.waiting_of(rec) or {}) if rec is not None else {})
+        if waiting.get("kind") != wr.WAITING_APPROVAL or not waiting.get("approval_id"):
+            return None
+        tool = waiting.get("tool_label") or waiting.get("tool") or "an action"
+        for key in ("kind", "since", "held_by", "held_by_name"):
+            waiting.pop(key, None)
+        return TaskWaiting(f"Waiting for your yes on {tool}", kind=wr.WAITING_APPROVAL,
+                           target_run=target_run, **waiting)
+
+    def _end_held_target(self, db, waiting: dict, *, status: str, sentence: str) -> None:
+        """`B1173`. A step that waited on its target's card is over without
+        running the target again — denied, lapsed, withdrawn, or its run
+        stopped or switched off — so the target's held run ends with it, in
+        the same words."""
+        from core.database import ScheduledTask, TaskRun
+
+        target_run = (waiting or {}).get("target_run")
+        if not target_run:
+            return
+        run = db.query(TaskRun).filter(TaskRun.id == target_run).first()
+        if run is None or run.status != "waiting":
+            return
+        target = db.query(ScheduledTask).filter(ScheduledTask.id == run.task_id).first()
+        self._end_parked_run(db, target, run, status=status, sentence=sentence)
 
     async def test_workflow_node(self, task, workflow_name: str, node: dict, *,
                                  input_envelope=None, timeout=None, graph=None) -> dict:
