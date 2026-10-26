@@ -115,40 +115,22 @@ def _call_provider(provider_name: str, query: str, count: int, time_filter: str 
     return []
 
 
-# If the self-hosted SearXNG instance is up but all enabled engines return
-# empty, fall back to the no-key provider so "search X" still works on fresh
-# installs. Users can override/disable with `search_fallback_chain`.
-_FALLBACK_ORDER = ["duckduckgo"]
+# Found while doing `B1533`: this was `["duckduckgo"]`, read whenever
+# `search_fallback_chain` was empty — which is its shipped value, emptied on
+# 2026-08-31 for `Law 16` (`src/settings.py` says why: on a native install every
+# search went to DuckDuckGo). The setting was emptied and this default refilled
+# it, so a fresh install whose SearXNG answered nothing still sent the query to
+# DuckDuckGo. A fallback is the person's line to add in Settings; with none,
+# the chain is the primary alone.
+_FALLBACK_ORDER: List[str] = []
 
 
-# Where each provider actually lives, so a rate limit reported by one feature is
-# visible to every other feature that calls the same host. Keying the cooldown by
-# provider *name* would let deep research and a plain chat search each keep their
-# own idea of whether Brave is angry with us.
-_PROVIDER_HOSTS = {
-    "brave": "api.search.brave.com",
-    "duckduckgo": "html.duckduckgo.com",
-    "ddg": "html.duckduckgo.com",
-    "google": "www.googleapis.com",
-    "google_pse": "www.googleapis.com",
-    "tavily": "api.tavily.com",
-    "serper": "google.serper.dev",
-}
-
-
-def _note_provider_rate_limited(provider_name: str) -> None:
-    """Put a rate-limited provider into cooldown for everyone, not just us."""
-    host = _PROVIDER_HOSTS.get((provider_name or "").lower())
-    if not host:
-        # SearXNG and anything self-hosted: the host is whatever the operator
-        # configured, and being polite to your own box is not what this is for.
-        return
-    try:
-        from src.rate_limiter import outbound
-
-        outbound.observe(host, 429, {}, body_hint=f"{provider_name} rate limit")
-    except Exception:  # never let politeness break a search
-        logger.debug("could not record rate limit for %s", provider_name, exc_info=True)
+# `B1533`. `_PROVIDER_HOSTS` and `_note_provider_rate_limited` were here: on a
+# `RateLimitError` they told the limiter about the provider's host, so a rate
+# limit one feature met held every other feature too. Every provider now goes
+# through `src/paced_http.py` (`providers._paced_request`), which observes the
+# 429 itself — so the second report doubled one 429 into two cooldown steps
+# (60 s became 120 s), and was removed rather than kept beside the first.
 
 
 def _build_provider_chain(primary: str) -> List[str]:
@@ -332,8 +314,9 @@ def searxng_search_results(query: str, count: int = 10, time_filter: str = None)
                 # not a transient error, so do not re-attempt it: record it and
                 # fall through to the next provider, which is the whole point of
                 # having a chain.
+                # `B1533`: the limiter has already counted it, once, on the
+                # way back through `paced_http`.
                 error_logger.error(f"{provider_name} rate-limited, not retrying: {e}")
-                _note_provider_rate_limited(provider_name)
                 break
             except (NetworkError, ParseError) as e:
                 error_logger.error(f"{provider_name} search error (attempt {attempt + 1}): {e}")

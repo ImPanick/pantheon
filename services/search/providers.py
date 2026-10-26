@@ -10,6 +10,7 @@ from urllib.parse import urljoin, urlparse, parse_qs
 import httpx
 from bs4 import BeautifulSoup
 
+from src import paced_http
 from src.constants import SEARXNG_INSTANCE, REQUEST_TIMEOUT, WEB_FETCH_USER_AGENT
 from .analytics import RateLimitError, error_logger
 from .query import NEWS_TERMS, is_news_query
@@ -26,6 +27,31 @@ PROVIDER_INFO = {
     "serper":   ("Serper",            True,  False),
     "disabled": ("Disabled",          False, False),
 }
+
+
+# ── `B1533` · every provider through the outbound limiter ──
+#
+# Brave, Google PSE, Tavily and Serper were called through module-level
+# `httpx.get`/`post`, outside `FORBIDDEN.md` Part 2's limiter — no pacing, and
+# a host in cooldown called anyway. And a 429 was counted twice where it was
+# counted at all: `paced_http` observed it on the way back, then
+# `core._note_provider_rate_limited` observed it again, so a 60 s first
+# cooldown became 120 s. Now each request goes through `paced_http`, which
+# paces it, refuses a host still in cooldown before anything is sent, and
+# observes the answer once; the provider only says what happened, as a
+# `RateLimitError` the chain moves past without retrying.
+def _paced_request(method: str, url: str, label: str, **kwargs):
+    """One paced request to a search provider. Raises `RateLimitError` for a
+    429 and for a host the limiter is holding; anything else is the caller's."""
+    from src.rate_limiter import OutboundRateLimited
+    send = paced_http.get_sync if method == "GET" else paced_http.post_sync
+    try:
+        response = send(url, **kwargs)
+    except OutboundRateLimited as e:
+        raise RateLimitError(f"{label} is not being called: {e}") from e
+    if response.status_code == 429:
+        raise RateLimitError(f"{label} rate limit hit")
+    return response
 
 
 # ── Settings helpers ──
@@ -239,7 +265,7 @@ def searxng_search_api(query: str, count: Optional[int] = None, categories: str 
             ]
 
         def _run(search_params):
-            response = httpx.get(
+            response = paced_http.get_sync(   # `B1533`
                 f"{instance}/search",
                 params=search_params,
                 headers=headers or None,
@@ -337,7 +363,7 @@ def searxng_search(query, max_results=10):
     if api_key:
         req_headers["Authorization"] = f"Bearer {api_key}"
     try:
-        response = httpx.get(
+        response = paced_http.get_sync(   # `B1533`
             f"{instance}/search",
             params={"q": query, "safesearch": _safesearch_for("searxng")},
             headers=req_headers,
@@ -404,20 +430,15 @@ def _brave_search_impl(query: str, count: int, time_filter: Optional[str] = None
 
     logger.info(f"Executing Brave search with query: {query}")
     try:
-        response = httpx.get(
-            "https://api.search.brave.com/res/v1/web/search",
+        response = _paced_request(
+            "GET", "https://api.search.brave.com/res/v1/web/search", "Brave",
             headers=headers,
             params=params,
             timeout=REQUEST_TIMEOUT,
         )
-        if response.status_code == 429:
-            raise RateLimitError("Brave rate limit hit")
         response.raise_for_status()
     except httpx.RequestError as e:
         error_logger.error(f"NetworkError during Brave search: {e}")
-        return []
-    except RateLimitError as e:
-        error_logger.error(str(e))
         return []
 
     try:
@@ -481,7 +502,6 @@ def duckduckgo_search(query: str, count: Optional[int] = None, time_filter: Opti
             # keyless fallback every install shares, and it is the endpoint most
             # likely to be scraping-detected. `core.py` was already reporting a
             # 429 here; nothing was honouring the cooldown it recorded.
-            from src import paced_http
             response = paced_http.get_sync(
                 "https://html.duckduckgo.com/html/",
                 params={"q": query, "kp": _safesearch_for("duckduckgo_html")},
@@ -581,19 +601,14 @@ def google_pse_search(query: str, count: Optional[int] = None, time_filter: Opti
             params["dateRestrict"] = time_map[time_filter]
 
     try:
-        response = httpx.get(
-            "https://www.googleapis.com/customsearch/v1",
+        response = _paced_request(
+            "GET", "https://www.googleapis.com/customsearch/v1", "Google PSE",
             params=params,
             timeout=REQUEST_TIMEOUT,
         )
-        if response.status_code == 429:
-            raise RateLimitError("Google PSE rate limit hit")
         response.raise_for_status()
     except httpx.RequestError as e:
         error_logger.error(f"Google PSE search failed: {e}")
-        return []
-    except RateLimitError as e:
-        error_logger.error(str(e))
         return []
 
     try:
@@ -638,20 +653,15 @@ def tavily_search(query: str, count: Optional[int] = None, time_filter: Optional
             payload["days"] = {"day": 1, "week": 7, "month": 30, "year": 365}[time_filter]
 
     try:
-        response = httpx.post(
-            "https://api.tavily.com/search",
+        response = _paced_request(
+            "POST", "https://api.tavily.com/search", "Tavily",
             json=payload,
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             timeout=REQUEST_TIMEOUT,
         )
-        if response.status_code == 429:
-            raise RateLimitError("Tavily rate limit hit")
         response.raise_for_status()
     except httpx.RequestError as e:
         error_logger.error(f"Tavily search failed: {e}")
-        return []
-    except RateLimitError as e:
-        error_logger.error(str(e))
         return []
 
     try:
@@ -699,20 +709,15 @@ def serper_search(query: str, count: Optional[int] = None, time_filter: Optional
             payload["tbs"] = time_map[time_filter]
 
     try:
-        response = httpx.post(
-            "https://google.serper.dev/search",
+        response = _paced_request(
+            "POST", "https://google.serper.dev/search", "Serper",
             json=payload,
             headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
             timeout=REQUEST_TIMEOUT,
         )
-        if response.status_code == 429:
-            raise RateLimitError("Serper rate limit hit")
         response.raise_for_status()
     except httpx.RequestError as e:
         error_logger.error(f"Serper search failed: {e}")
-        return []
-    except RateLimitError as e:
-        error_logger.error(str(e))
         return []
 
     try:

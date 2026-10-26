@@ -39,8 +39,12 @@ def _offline(monkeypatch):
     monkeypatch.setenv("SERPER_API_KEY", "k")
     monkeypatch.setenv("GOOGLE_API_KEY", "k")
     monkeypatch.setenv("GOOGLE_PSE_CX", "cx")
-    monkeypatch.setattr(providers.httpx, "post", lambda *a, **k: _BadJSONResponse())
-    monkeypatch.setattr(providers.httpx, "get", lambda *a, **k: _BadJSONResponse())
+    # `B1533` moved every provider onto `paced_http`, the limiter's seam, so
+    # the transport is replaced there; stubbing `providers.httpx` would stub
+    # functions nothing calls any more.
+    from src import paced_http
+    monkeypatch.setattr(paced_http, "post_sync", lambda *a, **k: _BadJSONResponse())
+    monkeypatch.setattr(paced_http, "get_sync", lambda *a, **k: _BadJSONResponse())
 
 
 def test_tavily_malformed_json_returns_empty():

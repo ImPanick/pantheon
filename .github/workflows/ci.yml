@@ -313,8 +313,10 @@ jobs:
       # unpaced inventory (104 -> 91). The ledger's `fan-out` claim no longer
       # repeats this number (`B411` moved its repro to the budget it states),
       # so nothing holds it high.
+      # 91 -> 85 and `--max-env` 33 -> 27 (`B1533`): Brave, Google PSE,
+      # Tavily, Serper and SearXNG's two calls moved onto `paced_http`.
       - name: check-outbound
-        run: python3 .pantheon/check-outbound.py --max 91 --max-env 33
+        run: python3 .pantheon/check-outbound.py --max 85 --max-env 27
       # P3-15. The other half of the same disease check-wiring measures: an
       # element id with no markup and a route with no caller are both something
       # that was built and never wired, and nothing in CI noticed because
