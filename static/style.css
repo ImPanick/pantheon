@@ -33165,6 +33165,16 @@ button .spinner-whirlpool {
   transition: background 0.1s;
   font-size: 11px;
   color: var(--fg);
+  /* `B1218`. The row holds a handle, the eye, the name, a 70px slider and
+     four buttons (84px): 245px of content in a panel that is 200px wide, so
+     the name — the only thing that says which layer this is — was squeezed
+     to nothing (measured 0px for "Edit (empty)" at 1440 with the Gallery at
+     820×828; the row that filed this saw "F") and the last button was cut
+     off at the panel's edge. When the panel cannot hold the row, the buttons
+     take a second line, right-aligned; a panel dragged wide enough holds it
+     all on one, as before. */
+  flex-wrap: wrap;
+  row-gap: 2px;
 }
 /* Row-hover tint removed — kept the layer row's background stable so
    it doesn't shift visually as the user reaches for the opacity slider. */
@@ -33196,11 +33206,14 @@ button .spinner-whirlpool {
 .ge-layer-vis.visible { opacity: 0.9; }
 .ge-layer-vis.visible:hover { opacity: 1; }
 .ge-layer-name {
-  flex: 1;
+  /* `B1218`: never under six characters, and the line is laid out from that
+     rather than from the name's own length, so every row breaks the same way
+     whatever its layer is called. */
+  flex: 1 1 6ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0;
+  min-width: 6ch;
 }
 .ge-layer-name-input {
   flex: 1;
@@ -33270,7 +33283,10 @@ button .spinner-whirlpool {
   width: 70px;
   height: 6px;
   accent-color: var(--red);
-  flex-shrink: 0;
+  /* `B1218`: gives way before the name does, down to a track a thumb can
+     still travel along. */
+  flex: 0 1 70px;
+  min-width: 32px;
   -webkit-appearance: none;
   appearance: none;
   background: color-mix(in srgb, var(--fg) 25%, transparent);
@@ -33325,6 +33341,7 @@ button .spinner-whirlpool {
   display: flex;
   gap: 2px;
   flex-shrink: 0;
+  margin-left: auto;   /* `B1218`: on the row's second line, under the slider */
 }
 /* Left-edge drag handle on each layer row. */
 .ge-layer-drag {
