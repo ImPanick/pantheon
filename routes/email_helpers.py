@@ -1109,6 +1109,19 @@ def _init_scheduled_db():
             conn.execute("ALTER TABLE scheduled_emails ADD COLUMN account_id TEXT")
         if "pantheon_kind" not in cols:
             conn.execute("ALTER TABLE scheduled_emails ADD COLUMN pantheon_kind TEXT")
+        if "odysseus_kind" in cols:
+            # `B1161`. The column was `odysseus_kind` before the rename, and
+            # adding `pantheon_kind` beside it copied nothing, so a row queued
+            # before the upgrade — a reminder, an alert — went out as
+            # `X-Pantheon-Kind: scheduled`. Carried across on every start
+            # rather than only the one that adds the column, because an
+            # install that has already upgraded holds such rows now; a row
+            # Pantheon queued has its own kind and is left alone.
+            conn.execute(
+                "UPDATE scheduled_emails SET pantheon_kind = odysseus_kind "
+                "WHERE (pantheon_kind IS NULL OR pantheon_kind = '') "
+                "AND odysseus_kind IS NOT NULL AND odysseus_kind != ''"
+            )
         if "owner" not in cols:
             conn.execute("ALTER TABLE scheduled_emails ADD COLUMN owner TEXT DEFAULT ''")
         conn.execute("CREATE INDEX IF NOT EXISTS ix_scheduled_emails_owner_status ON scheduled_emails(owner, status)")

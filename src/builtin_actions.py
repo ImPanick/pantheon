@@ -2777,8 +2777,12 @@ async def action_check_email_urgency(owner: str, **kwargs) -> Tuple[str, bool]:
                             # doesn't classify its own emails as urgent and
                             # trigger a feedback loop. Match on either the
                             # stamped headers OR the subject prefix.
-                            _pan_origin = (msg.get("X-Pantheon-Origin") or "").strip().lower()
-                            _pan_kind = (msg.get("X-Pantheon-Kind") or "").strip().lower()
+                            #
+                            # `B1161`: under both names — a reminder Odysseus
+                            # sent before the rename (`X-Odysseus-Kind`,
+                            # "Reminder (Odysseus):") is this install's own
+                            # mail too (`src/mail_headers`, the one list).
+                            from src.mail_headers import is_own_origin, is_reminder
                             _raw_subj = (msg.get("Subject") or "").lower()
                             # MCP path drops custom headers (email_server's
                             # schema doesn't accept them), so we ALSO match the
@@ -2786,8 +2790,7 @@ async def action_check_email_urgency(owner: str, **kwargs) -> Tuple[str, bool]:
                             # always stamps. Anything that looks self-generated
                             # is dropped before classification to prevent the
                             # scanner from labelling its own emails "urgent".
-                            if (_pan_origin == "pantheon-ui" or _pan_kind == "reminder"
-                                    or _raw_subj.startswith("reminder (pantheon):")
+                            if (is_own_origin(msg) or is_reminder(msg)
                                     or _raw_subj.startswith("reminder:")
                                     or _raw_subj.startswith("[task]")):
                                 # Drop this candidate entirely — don't list it

@@ -2184,9 +2184,13 @@ def setup_email_routes():
                 # Prefer the Pantheon marker header, but include the subject
                 # fallback too. The fallback uses a distinct Pantheon prefix
                 # so ordinary emails containing "Reminder" don't get mixed in.
+                # `B1161`: both marks under both names — a reminder sent
+                # before the rename carries `X-Odysseus-Kind` and
+                # "Reminder (Odysseus):" (`src/mail_headers`, the one list).
+                from src.mail_headers import imap_any, reminder_search_keys
                 status, data = _imap_uid_search(
                     conn,
-                    f'(OR HEADER X-Pantheon-Kind "reminder" SUBJECT "Reminder (Pantheon):"{from_clause})',
+                    f'({imap_any(reminder_search_keys())}{from_clause})',
                 )
             elif filter_ == "pending_30d":
                 # "What's pending in the last month" — UNANSWERED + delivered
@@ -4274,7 +4278,8 @@ def setup_email_routes():
         permanent: bool = Query(False),
         owner: str = Depends(require_owner),
     ):
-        """Delete email messages stamped as Pantheon reminders."""
+        """Delete email messages stamped as Pantheon (or, before the rename,
+        Odysseus) reminders."""
         if account_id:
             _assert_owns_account(account_id, owner)
         deleted = 0
@@ -4312,11 +4317,15 @@ def setup_email_routes():
                         # Match the Reminders filter: new messages have the
                         # explicit kind header, and subject fallback catches
                         # clients/providers that stripped custom headers.
-                        uids.update(_search_uids(conn, f'(HEADER X-Pantheon-Kind {_search_quote("reminder")})'))
-                        uids.update(_search_uids(conn, f'(SUBJECT {_search_quote("Reminder (Pantheon):")})'))
+                        # `B1161`: under both names (`src/mail_headers`), so a
+                        # reminder Odysseus sent is cleared with the rest.
+                        from src.mail_headers import REMINDER_SUBJECT_PREFIXES, reminder_search_keys
+                        for key in reminder_search_keys():
+                            uids.update(_search_uids(conn, f'({key})'))
                         for addr in own_addrs:
                             addr_q = _search_quote(addr)
-                            uids.update(_search_uids(conn, f'(FROM {addr_q} SUBJECT {_search_quote("Reminder (Pantheon):")})'))
+                            for prefix in REMINDER_SUBJECT_PREFIXES:
+                                uids.update(_search_uids(conn, f'(FROM {addr_q} SUBJECT {_search_quote(prefix)})'))
                             # Legacy reminders created before the Pantheon
                             # prefix still came from this mailbox as
                             # "Reminder: ..."; include them in Clear without
