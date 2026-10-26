@@ -42,6 +42,15 @@ ROOT = Path(__file__).resolve().parents[1]
 CHECKER = ROOT / ".pantheon" / "check-vendored-versions.py"
 
 
+def _freshness():
+    """`B437`: the weekly job's asking and deciding, as a module."""
+    path = ROOT / ".pantheon" / "vendored-freshness.py"
+    spec = importlib.util.spec_from_file_location("_vendored_freshness_vv", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def load(path=CHECKER):
     spec = importlib.util.spec_from_file_location(f"_cvv_{id(path)}", path)
     mod = importlib.util.module_from_spec(spec)
@@ -332,12 +341,29 @@ def test_the_json_the_freshness_workflow_reads_is_complete():
             assert field in rec, (rec.get("entry"), field)
         assert rec["registry"] in {"npm", "sheetjs"}, rec
 
-    workflow = (ROOT / ".github" / "workflows" / "vendored-freshness.yml").read_text(
-        encoding="utf-8")
     # The workflow must not be the thing that decides a library is exempt; the
-    # record is, next to the version it excuses.
-    assert 'rec["behind_ok"]' in workflow
-    assert 'rec["osv_known"]' in workflow
+    # record is, next to the version it excuses. `B437`: the deciding moved from
+    # the workflow's heredoc into `.pantheon/vendored-freshness.py`, so this
+    # drives it over the real record instead of grepping the YAML for the field
+    # names: every npm library answered "something newer exists" lands in
+    # *filed* exactly when its record names a row, and every advisory id the
+    # record explains is excused.
+    vf = _freshness()
+    npm = [r for r in records if r["registry"] == "npm"]
+    found = vf.ask(npm, lambda pkg: {"latest": "999.0.0", **{
+        r.get("dist_tag") or "latest": "999.0.0" for r in npm}},
+        lambda pkg, ver: [])
+    owned = {r["entry"] for r in npm if r["behind_ok"]}
+    assert {line.split(":")[0] for line in found["filed"] if " ⊃ " not in line} == owned
+    assert {line.split(":")[0] for line in found["behind"] if " ⊃ " not in line} == \
+        {r["entry"] for r in npm} - owned
+    explained = next(r for r in records if r["osv_known"])
+    gid = next(iter(explained["osv_known"]))
+    found = vf.ask([explained], lambda pkg: {"latest": explained["version"],
+                                             explained.get("dist_tag") or "latest":
+                                             explained["version"]},
+                   lambda pkg, ver: [{"id": gid}] if pkg == explained["package"] else [])
+    assert found["vulnerable"] == [] and len(found["excused"]) == 1
 
 
 def test_the_offline_checker_never_reaches_the_network():
@@ -366,7 +392,7 @@ def test_the_offline_checker_never_reaches_the_network():
         assert forbidden not in code.split(), (
             f"{forbidden!r} is a name in the offline checker's code — the "
             "network half belongs in "
-            ".github/workflows/vendored-freshness.yml"
+            ".pantheon/vendored-freshness.py (`B437`)"
         )
 
     # And the shipped application never learns about any of this: nothing under
@@ -468,10 +494,13 @@ def test_the_freshness_workflow_is_handed_the_inner_packages():
     assert inner["jspdf"]["behind_ok"], "being behind here needs a row that owns it"
     assert len(inner["dompurify"]["osv_known"]) == 18
 
-    workflow = (ROOT / ".github" / "workflows"
-                / "vendored-freshness.yml").read_text(encoding="utf-8")
-    assert 'rec.get("contains"' in workflow, (
-        "the workflow no longer asks OSV about the packages inside a bundle")
+    # `B437`: driven, not grepped — the job asks OSV about the packages inside
+    # the bundle, at the versions the record carries.
+    asked = []
+    _freshness().ask([records["html2pdf.js"]], lambda pkg: {"latest": "0"},
+                     lambda pkg, ver: asked.append((pkg, ver)) or [])
+    assert ("jspdf", "4.0.0") in asked and ("dompurify", "3.3.1") in asked, (
+        "the freshness job no longer asks OSV about the packages inside a bundle")
 
 
 def test_a_version_line_names_which_dist_tag_to_compare_against():
@@ -487,10 +516,15 @@ def test_a_version_line_names_which_dist_tag_to_compare_against():
     records = {r.entry: r for r in mod.VENDORED}
     assert records["Pyodide"].dist_tag == "stable-0.27", records["Pyodide"].dist_tag
     assert records["Mermaid"].dist_tag == "latest"
-    workflow = (ROOT / ".github" / "workflows"
-                / "vendored-freshness.yml").read_text(encoding="utf-8")
-    assert 'rec.get("dist_tag")' in workflow, (
-        "the workflow still asks npm for `latest` whatever the record says")
+    # `B437`: driven against the freshness script, not grepped from the YAML.
+    rec = {"entry": "Pyodide", "package": "pyodide", "version": records["Pyodide"].version,
+           "registry": "npm", "dist_tag": records["Pyodide"].dist_tag, "source": "",
+           "behind_ok": "", "osv_known": {}}
+    found = _freshness().ask(
+        [rec], lambda pkg: {"latest": "314.0.7", "stable-0.27": rec["version"]},
+        lambda pkg, ver: [])
+    assert not found["behind"] and not found["filed"], (
+        "the freshness job still asks npm for `latest` whatever the record says")
 
 
 # ── rule 7: a self-built artifact states its own inputs (B339) ─────────────
