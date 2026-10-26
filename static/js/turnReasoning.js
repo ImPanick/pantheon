@@ -241,6 +241,23 @@ export function settleTurnReasoning(bubble) {
   return true;
 }
 
+/**
+ * `B1251` (P23 acceptance, round 2). What a step's live fold says once its
+ * thinking has closed and the step streams on. A step whose bubble carries the
+ * turn's fold (the earlier steps, shut) drew its own open one under it, and
+ * both were headed *View thinking process*, one over the other, until the step
+ * ended and they became the turn's one fold. The live one is not something to
+ * view yet: it is the step happening, so it keeps the *Thinking…* it opened
+ * with until then. A bubble that carries nothing has one fold, and it reads as
+ * it always did.
+ */
+export const LIVE_FOLD_HEADER = 'Thinking\u2026';
+export const DONE_FOLD_HEADER = 'View thinking process';
+
+export function liveFoldHeader(bubble) {
+  return bubble && bubble._carriedReasoning ? LIVE_FOLD_HEADER : DONE_FOLD_HEADER;
+}
+
 /** The bubble a turn's footer goes under when neither its step bubble nor its
  *  first one is shown: the last one it shows, from `first` to the foot. */
 export function lastShownStep(first) {
@@ -257,5 +274,5 @@ export function lastShownStep(first) {
 
 export default {
   bubbleParts, isReasoningOnly, reasoningAbove, reasoningAtFoot, threadAbove,
-  carryTurnReasoning, settleTurnReasoning, lastShownStep,
+  carryTurnReasoning, settleTurnReasoning, lastShownStep, liveFoldHeader,
 };

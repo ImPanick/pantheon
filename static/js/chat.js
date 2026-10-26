@@ -32,7 +32,7 @@ import { applyAgentThreadNode, verifierCardOptions, blockedCardOptions,
 // `B1247` (fx2-chat). One turn, one reply: a step that only thought hands its
 // reasoning on to the next bubble, and its rows go above the bubble that holds it.
 import { reasoningAbove, reasoningAtFoot, carryTurnReasoning, settleTurnReasoning,
-         lastShownStep } from './turnReasoning.js';
+         lastShownStep, liveFoldHeader } from './turnReasoning.js';
 // `B918` / `B916`. A tool card's life on screen, and the spinner a new step
 // opens with, shared with a compare pane.
 import { startToolCard as _startToolCard, drawToolProgress as _drawToolProgress,
@@ -3872,7 +3872,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           accumulated = accumulated.replace(/<think>/i, '<think time="' + elapsed + '">');
           roundText = roundText.replace(/<think>/i, '<think time="' + elapsed + '">');
         }
-        if (_liveThinkHeader) _liveThinkHeader.textContent = 'View thinking process';
+        // `B1251`: beside the turn's fold the step's own still says *Thinking…*.
+        if (_liveThinkHeader) _liveThinkHeader.textContent = liveFoldHeader(roundHolder || holder);
         if (_liveThinkSpinnerSlot) _liveThinkSpinnerSlot.remove();
         if (_liveThinkTimerEl && elapsed) {
           _liveThinkTimerEl.textContent = _formatThinkStats(elapsed, _liveThinkTokenCount);
