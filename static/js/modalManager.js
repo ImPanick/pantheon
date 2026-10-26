@@ -1617,6 +1617,9 @@ export function unregister(id) {
 }
 
 export function isRegistered(id)  { return _state.has(id); }
+/** `B1544`. Whether this manager wires the window's `_` itself (`_AUTO_WIRE`),
+ *  so `app.js`'s older dock leaves it alone instead of racing it. */
+export function isAutoWired(id) { return !!(id && Object.prototype.hasOwnProperty.call(_AUTO_WIRE, id)); }
 export function isMinimized(id)   { return _state.get(id)?.isMinimized === true; }
 
 export function minimize(id) {

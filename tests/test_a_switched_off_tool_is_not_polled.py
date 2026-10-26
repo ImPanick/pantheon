@@ -65,6 +65,10 @@ let _timer = null, _refreshedAt = 0, _visibilityHooked = false, _lastCount = 0;
 const _bind = () => true;
 // notes.js
 let _notes = [], _showingArchived = false, _loading = false;
+// `B1228`: the list is read through `appConfig.getNotes`, shared at boot.
+let _activeNotesRead = false;
+const getNotes = ({ archived = false } = {}) =>
+  fetch('/api/notes' + (archived ? '?archived=true' : '')).then((r) => r.json());
 const markUnreached = (p) => p, quietIfUnreached = () => true;
 const _updateRailBadge = () => {}, _startReminderLoop = () => {};
 // assistant.js

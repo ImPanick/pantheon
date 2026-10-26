@@ -3192,7 +3192,13 @@ function initializeEventListeners() {
       // .modal-minimize-btn and chips via the .minimized-dock-chip system.
       // Skip them entirely so we don't double-up minimize buttons or chips.
       if (modal.id && /^email-reader-/.test(modal.id)) return;
-      if (modal.id && window.Modals && window.Modals.isRegistered && window.Modals.isRegistered(modal.id)) return;
+      // `B1544`. This read `window.Modals`, which nothing assigns, so it never
+      // skipped anything: Settings, Calendar and every other window the
+      // manager wires got whichever `_` was injected first — this dock's
+      // `.minimize-btn` or the manager's `.modal-minimize-btn` — and which won
+      // depended on load timing. A reload could therefore minimise Settings
+      // into this older dock, where `B1185`'s kept chips never see it.
+      if (modal.id && (WindowManager.isAutoWired(modal.id) || WindowManager.isRegistered(modal.id))) return;
       const header = modal.querySelector('.modal-header');
       if (!header) return;
       if (header.querySelector('.minimize-btn, .modal-minimize-btn')) return;

@@ -30,7 +30,9 @@ def _status_block() -> str:
     end_marker = ".catch(() => { noteStatusFailed(); });"
     end = src.index(end_marker, start) + len(end_marker)
     block = src[start:end]
-    assert "/api/auth/status" in block, "the cut is not the status block"
+    # `B1228`: the block reads the status through `appConfig.getAuthStatus`,
+    # the one request `init.js` shares, instead of its own `fetch`.
+    assert "getAuthStatus()" in block, "the cut is not the status block"
     return block
 
 
@@ -46,7 +48,7 @@ def _run(tmp_path: Path, status: dict) -> dict:
         "const API_BASE = '';\n"
         "const el = () => null;\n"
         "const asked = [];\n"
-        f"globalThis.fetch = async (url) => {{ asked.push(url); return {{ json: async () => ({json.dumps(status)}) }}; }};\n"
+        f"const getAuthStatus = async () => {{ asked.push('/api/auth/status'); return ({json.dumps(status)}); }};\n"
         + _status_block() + "\n"
         "await new Promise((r) => setTimeout(r, 20));\n"
         "console.log(JSON.stringify({ asked, isAdmin: V.toolVisibilityState().isAdmin,\n"
