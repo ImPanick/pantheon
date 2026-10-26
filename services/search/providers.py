@@ -466,6 +466,12 @@ def _brave_search_impl(query: str, count: int, time_filter: Optional[str] = None
 
 # ── DuckDuckGo (free, no key) ──
 
+# `B1541`. The limiter's name for DuckDuckGo: the host the HTML fallback calls
+# and that carries the strict `HostPolicy`, under which the `ddgs` library's
+# calls are paced and held too.
+DDG_HOST = "html.duckduckgo.com"
+
+
 def _is_duckduckgo_host(host: str) -> bool:
     """True only for duckduckgo.com and its subdomains."""
     host = (host or "").lower()
@@ -535,19 +541,35 @@ def duckduckgo_search(query: str, count: Optional[int] = None, time_filter: Opti
     except ImportError:
         logger.warning("duckduckgo-search package not installed; using HTML fallback")
         return _html_fallback()
+    try:
+        from ddgs.exceptions import RatelimitException as _LibraryRateLimited
+    except ImportError:          # a `ddgs` without it: no exception means "slow down"
+        _LibraryRateLimited = ()
 
     timelimit = None
     if time_filter:
         time_map = {"day": "d", "week": "w", "month": "m", "year": "y"}
         timelimit = time_map.get(time_filter)
 
+    from src.rate_limiter import OutboundRateLimited
     try:
         ddgs = DDGS()
-        raw = ddgs.text(
+        # `B1541`. The library speaks to DuckDuckGo through a client of its
+        # own, so this call bypassed `paced_http` (and `check-outbound`): it
+        # went out while the host cooled down, unpaced, and a rate limit it met
+        # never reached the limiter. `paced_http.call_sync` gives it the ritual,
+        # on the HTML fallback's host — one service, one cooldown, whichever
+        # path met it. And `backend="duckduckgo"`: `ddgs` 9 is a metasearch
+        # library whose default backend may ask other engines, and the person
+        # chose DuckDuckGo (`Law 16`: the call nobody chose).
+        raw = paced_http.call_sync(
+            DDG_HOST, ddgs.text,
             query,
             max_results=count,
             timelimit=timelimit,
             safesearch=_safesearch_for("duckduckgo_lib"),
+            backend="duckduckgo",
+            rate_limited=_LibraryRateLimited,
         )
         results = []
         for item in raw:
@@ -561,6 +583,12 @@ def duckduckgo_search(query: str, count: Optional[int] = None, time_filter: Opti
             })
         logger.info(f"DuckDuckGo search returned {len(results)} results")
         return results or _html_fallback()
+    except OutboundRateLimited as e:
+        # Held before anything was sent; the HTML fallback is the same service.
+        raise RateLimitError(f"DuckDuckGo is not being called: {e}") from e
+    except _LibraryRateLimited as e:
+        # Counted once by `call_sync`; the chain moves on without the fallback.
+        raise RateLimitError(f"DuckDuckGo rate limit hit: {e}") from e
     except Exception as e:
         logger.warning(f"DuckDuckGo search failed: {e}")
         return _html_fallback()

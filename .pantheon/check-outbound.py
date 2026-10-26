@@ -85,7 +85,18 @@ _LIMITER_CALLS = frozenset({"acquire", "acquire_async"})
 _PACED_MODULE = "paced_http"
 # The calls in `src/paced_http.py` that pace (`B1014`): the module also holds
 # `direct_mounts` and the `NO_PROXY` guard, which pace nothing.
-_PACED_CALLS = frozenset({"request", "get", "post", "request_sync", "get_sync", "post_sync"})
+_PACED_CALLS = frozenset({"request", "get", "post", "request_sync", "get_sync", "post_sync",
+                          # `B1541`: a library's own call, run inside the ritual.
+                          "call_sync"})
+
+# `B1541`. Libraries that make their own HTTP calls, and the methods that do:
+# a call to one leaves the process as surely as `httpx.get` does, and none of
+# the rules below could see it — `ddgs.text(…)` went to DuckDuckGo, the most
+# throttled host in the table, unpaced and unlisted. A call counts when its
+# receiver's chain names the library (`DDGS().text`, `ddgs.text`).
+_LIBRARY_CALLS = {
+    "ddgs": frozenset({"text", "images", "news", "videos", "books"}),
+}
 
 # `B1014`: an httpx client, and the module-level calls that build one inside.
 _CLIENT_CLASSES = frozenset({"Client", "AsyncClient"})
@@ -144,10 +155,15 @@ def _outbound_label(call):
     product reads as a network call. Both mistakes were made on the first run.
     """
     func = call.func
-    if not isinstance(func, ast.Attribute) or func.attr not in _HTTP_METHODS:
+    if not isinstance(func, ast.Attribute):
         return None
     chain = _root_chain(func.value)
     if not chain:
+        return None
+    for library, methods in _LIBRARY_CALLS.items():   # `B1541`, before the ALL-CAPS rule:
+        if func.attr in methods and library in chain.lower():   # `DDGS().text` is one
+            return f"{chain}.{func.attr}"
+    if func.attr not in _HTTP_METHODS:
         return None
     tail = chain.rsplit(".", 1)[-1]
     if tail.isupper() or (tail.startswith("_") and tail.lstrip("_").isupper()):

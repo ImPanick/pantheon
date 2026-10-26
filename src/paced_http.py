@@ -320,3 +320,29 @@ def get_sync(url: str, **kwargs) -> Any:
 
 def post_sync(url: str, **kwargs) -> Any:
     return request_sync("POST", url, **kwargs)
+
+
+def call_sync(host: str, fn, *args, rate_limited: tuple = (), authenticated: bool = False,
+              **kwargs) -> Any:
+    """`B1541`. The same ritual for a library that makes its own HTTP calls.
+
+    `ddgs` speaks to DuckDuckGo through a client of its own, so its requests
+    never passed `request_sync`: not paced, not refused while the host cools
+    down, and its rate limit never told the limiter. This acquires for `host`
+    (raising `OutboundRateLimited` before anything is sent, as a request does),
+    runs `fn`, and feeds the outcome back — an exception in `rate_limited` as a
+    429, any other as a transport failure, a return as a 200, which is what
+    clears a cooldown ladder. The library's exceptions propagate unchanged."""
+    from src.rate_limiter import outbound
+
+    outbound.acquire(host, authenticated=authenticated)
+    try:
+        result = fn(*args, **kwargs)
+    except rate_limited:
+        outbound.observe(host, 429)
+        raise
+    except Exception:
+        outbound.note_failure(host)
+        raise
+    outbound.observe(host, 200)
+    return result
