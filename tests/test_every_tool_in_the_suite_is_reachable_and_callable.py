@@ -539,6 +539,17 @@ def test_a_call_to_a_name_nobody_registered_is_not_routed(scratch):
             assert row.verdict != "routed", row.detail
             assert "dispatched" not in row.detail
             assert row.verdict in probe.CALL_VERDICTS
+            # `B1383`. The sentence the person reads. Measured on `0bd089d` it
+            # was *"The model returned an empty response. Please try again or
+            # switch to a different model."* — the model had asked for a tool
+            # that does not exist, and switching models is the wrong remedy.
+            # Now the refusal names the tool and says nothing ran, and the
+            # model is handed the round back (the probe's script answers
+            # "Done." on it).
+            assert row.verdict == "refused", row.detail
+            assert "empty response" not in row.detail, row.detail
+            assert "'definitely_not_a_pantheon_tool'" in row.detail, row.detail
+            assert "nothing ran" in row.detail, row.detail
 
     _run(go())
 

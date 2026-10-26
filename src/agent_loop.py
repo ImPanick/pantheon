@@ -5377,6 +5377,48 @@ def _resolve_tool_blocks(
     return tool_blocks, used_native, converted_calls
 
 
+def _unknown_native_call_names(native_tool_calls, converted_calls) -> list:
+    """`B1383`. The names this round's native calls asked for that nothing
+    routes — a hallucinated tool, not a malformed call to a real one.
+
+    `_resolve_tool_blocks` refuses such a call (`function_call_to_tool_block`
+    → `dispatch_name_for` is `None`), and that refusal is the control: an
+    unknown name is never dispatched. What it did not do is say so anywhere a
+    person reads, so a round whose only content was that call ended the turn
+    as *"The model returned an empty response. Please try again or switch to a
+    different model."* — the wrong fact and the wrong remedy. Asked of
+    `dispatch_name_for`, the one statement of *"will anything route this
+    name"* (`B1354`), so a call that failed for its arguments is not counted
+    here. In call order, each name once.
+    """
+    from src.tool_schemas import dispatch_name_for
+
+    names: list = []
+    for tc in native_tool_calls or []:
+        if not isinstance(tc, dict) or any(tc is c for c in (converted_calls or [])):
+            continue
+        name = str(tc.get("name") or "").strip()
+        if name and name not in names and dispatch_name_for(name) is None:
+            names.append(name)
+    return names
+
+
+def _unknown_tool_refusal(name: str) -> str:
+    """`B1383`. What the person reads on the refused row: the fact, and that
+    nothing ran (`Law 15`)."""
+    return (
+        f"No tool named '{name}' exists in this install, so nothing ran. "
+        "The model asked for a tool it was never given."
+    )
+
+
+#: `B1383`. How many rounds a turn whose model asked only for tools that do
+#: not exist is handed back, told so, before it ends. Two, like the
+#: intent-without-action supervisor's cap: enough for a model that misspelled
+#: a name to correct it, and a bound on one that cannot.
+_MAX_UNKNOWN_TOOL_NUDGES = 2
+
+
 def _append_tool_results(
     messages: List[Dict],
     round_response: str,
@@ -8292,6 +8334,9 @@ async def stream_agent_loop(
     # that *can't* call the tool from looping forever.
     _intent_nudge_count = 0
     _MAX_INTENT_NUDGES = 2
+    # `B1383`. Rounds handed back because every call named a tool that does
+    # not exist; capped by `_MAX_UNKNOWN_TOOL_NUDGES`.
+    _unknown_tool_nudges = 0
     # `B1327`. The intent supervisor's mirror image. It catches a turn that
     # announced an action and did not take it; this catches a turn that **asked
     # whether to take it**. Measured on `a5ee5f8` over five multi-step tasks
@@ -9582,6 +9627,48 @@ async def stream_agent_loop(
             is_api_model=(_is_api_model and not guide_only),
             allow_fenced_for_api=_pan_doc_finetune_mode,
         )
+        # `B1383`. A call for a name nothing routes was refused above and
+        # never reaches the dispatcher — that control does not move. What
+        # changes is that the refusal is said: a `tool_blocked` row naming the
+        # tool, live and on the persisted record (`P4-20`'s shape), and the
+        # model is told (below) instead of the turn ending as "an empty
+        # response". Not on a force-answer round, which discards every call.
+        _unknown_tool_names = (
+            [] if _force_answer
+            else _unknown_native_call_names(native_tool_calls, converted_calls)
+        )
+        for _unknown_name in _unknown_tool_names:
+            _unknown_reason = _unknown_tool_refusal(_unknown_name)
+            logger.info(
+                "[agent] round %s asked for a tool nothing registers: %s",
+                round_num, _unknown_name,
+            )
+            yield (
+                "data: "
+                + json.dumps({
+                    "type": "tool_blocked",
+                    "tool": _unknown_name,
+                    "round": round_num,
+                    "command": "",
+                    "reason": _unknown_reason,
+                    "policy": "unknown_tool",
+                })
+                + "\n\n"
+            )
+            tool_events.append({
+                "round": round_num,
+                "model": _round_actual_model,
+                "endpoint_id": _round_actual_endpoint_id,
+                "endpoint_label": _round_actual_endpoint_label,
+                "tool": _unknown_name,
+                "desc": f"{_unknown_name}: BLOCKED",
+                "command": "",
+                "status": tool_outcome({"error": _unknown_reason}),
+                "blocked": True,
+                "policy": "unknown_tool",
+                "output": _unknown_reason,
+                "exit_code": 1,
+            })
         if _pan_doc_stream_create_mode and tool_blocks:
             create_idx = next(
                 (idx for idx, block in enumerate(tool_blocks) if block.tool_type == "create_document"),
@@ -9799,6 +9886,37 @@ async def stream_agent_loop(
         round_endpoint_labels.append(_round_actual_endpoint_label)
         if _pan_qwen_finetune_model and not tool_blocks and cleaned_round:
             yield f'data: {json.dumps({"delta": cleaned_round})}\n\n'
+
+        if not tool_blocks and _unknown_tool_names:
+            # `B1383`. Every call this round named a tool that does not exist.
+            # Hand the round back with the fact, the way the intent supervisor
+            # below hands back a promise with no call — capped, so a model that
+            # cannot stop inventing names does not pin the loop.
+            if _unknown_tool_nudges < _MAX_UNKNOWN_TOOL_NUDGES:
+                _unknown_tool_nudges += 1
+                _listed = ", ".join(f"`{n}`" for n in _unknown_tool_names)
+                messages.append(_in_turn({
+                    "role": "system",
+                    "content": (
+                        f"You called {_listed}, but no tool by that name exists "
+                        "here, so nothing ran. Use one of the tools you were "
+                        "given, by its exact name, or answer without a tool."
+                    ),
+                }))
+                _step = _next_step_frame(round_num)   # `B906`
+                if _step:
+                    yield _step
+                continue
+            if not _strip_think_blocks(cleaned_round).strip():
+                # Told and still inventing: the turn ends on what happened,
+                # not on "the model returned an empty response".
+                _listed = ", ".join(f"'{n}'" for n in _unknown_tool_names)
+                _unknown_close = (
+                    f"The model kept asking for a tool that does not exist "
+                    f"({_listed}), so nothing ran and it gave no answer."
+                )
+                full_response += _unknown_close
+                yield f'data: {json.dumps({"delta": _unknown_close})}\n\n'
 
         if not tool_blocks:
             # ── Completion verifier (mechanism 3a) ────────────────────
@@ -11213,6 +11331,18 @@ async def stream_agent_loop(
                              tool_results, tool_result_texts, used_native, round_num,
                              round_reasoning=round_reasoning,
                              tool_result_records=tool_result_records)
+        if _unknown_tool_names:
+            # `B1383`. The calls that did run are answered above; the ones
+            # that named nothing get a line too, or the model is left waiting
+            # on a result that will never come.
+            _listed = ", ".join(f"`{n}`" for n in _unknown_tool_names)
+            messages.append(_in_turn({
+                "role": "system",
+                "content": (
+                    f"You also called {_listed}, but no tool by that name "
+                    "exists here, so nothing ran for it."
+                ),
+            }))
 
         # Emit agent_step event — only when there is a next step (`B906`)
         _step = _next_step_frame(round_num)
