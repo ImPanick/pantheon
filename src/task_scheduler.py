@@ -1457,6 +1457,27 @@ def dry_run_lines(task) -> list:
 # person they had stopped it.
 STOPPED_BY_USER = "Stopped by user"
 FOREGROUND_TAKEOVER = "Paused because Pantheon became active"
+
+
+def takeover_inside_words(inside: dict) -> str:
+    """`B1079`. The row of a *Run task* step's target the foreground gate
+    stopped by stopping the workflow it ran inside. Not re-queued itself: the
+    step that ran it is what goes on."""
+    return (f"{FOREGROUND_TAKEOVER}. It was a step of the workflow "
+            f"“{(inside or {}).get('name') or '?'}”, which runs it again from the "
+            f"start when the workflow goes on.")
+
+
+def stopped_inside_words(inside: dict) -> str:
+    """`B1079`. The row of a *Run task* step's target stopped because what it
+    ran inside stopped, when nobody said why for this run — the workflow's own
+    time limit, or a step test that ended. It read "Stopped by user"."""
+    name = (inside or {}).get("name") or "?"
+    if (inside or {}).get("test"):
+        return f"Stopped because the test of its step in the workflow “{name}” ended"
+    return f"Stopped because the workflow “{name}” that ran it stopped"
+
+
 # `B1047`. The row of a run a person started while a chat reply is being
 # written, beside `_execute_task`'s "Queued — waiting for a free slot…" and the
 # background gate's "Queued — waiting for Pantheon to be idle…".
@@ -2862,7 +2883,12 @@ class TaskScheduler:
                             dry: bool = False,
                             started_by: str = STARTED_BY_BACKGROUND,
                             register_handle: bool = True,
-                            resume_run_id: str | None = None, answer=None):
+                            resume_run_id: str | None = None, answer=None,
+                            inside: dict | None = None):
+        # `B1079`. `inside` is the run this one runs inside — a workflow's
+        # *Run task* step's: `{"run": its run id, "name": the workflow's name}`
+        # — so a stop that reaches this run through the workflow's can say why.
+        #
         # `P22-11`. `resume_run_id` is a parked (`waiting`) workflow run going
         # on: no new row — the run is the one that parked — and every gate is
         # asked again (paused, admin, B1060's idle wait for background work,
@@ -2916,6 +2942,7 @@ class TaskScheduler:
                         waited_for_idle=waited,
                         may_requeue=takeovers + 1 < FOREGROUND_STOPS_LIMIT,
                         resume=resume, answer=answer, awaited=not register_handle,
+                        inside=inside,
                     )
                 else:
                     sem, waited = await self._take_model_slot(
@@ -2931,6 +2958,7 @@ class TaskScheduler:
                             waited_for_idle=waited,
                             may_requeue=takeovers + 1 < FOREGROUND_STOPS_LIMIT,
                             resume=resume, answer=answer, awaited=not register_handle,
+                            inside=inside,
                         )
                     finally:
                         sem.release()
@@ -3070,6 +3098,7 @@ class TaskScheduler:
         resume: bool = False,
         answer=None,
         awaited: bool = False,
+        inside: dict | None = None,
     ):
         """Run one queued run to its end. Answers `REQUEUED` when the
         foreground gate stopped it while it ran and it goes back in the queue
@@ -3215,6 +3244,8 @@ class TaskScheduler:
             slot = self._state_for(run_id)
             slot["started_by"] = started_by
             slot["waits_for"] = ("chat" if gate_foreground else None) if person else "idle"
+            if inside:
+                slot["inside"] = dict(inside)        # `B1079`
             if gate_foreground and person:
                 from src.interactive_gate import chat_in_progress, wait_for_chat_quiet
                 if chat_in_progress() and self._task_needs_model_slot(task_id):
@@ -3506,13 +3537,25 @@ class TaskScheduler:
                 # branch's own guess is for the monitor above, which writes
                 # nothing first, and for a cancel nobody explained.
                 said = self._stopped_as(run_id)
+                # `B1079`. A run inside another — a workflow's *Run task* step's
+                # target — is stopped by the stop that reached the workflow: the
+                # gate marks only the workflow's run (`B1138`), Stop writes only
+                # its row, and the time limit is the workflow's. Nobody spoke
+                # for this run, so it fell back to "Stopped by user" — `B1047`'s
+                # mislabel one level down — while the workflow's own row said
+                # it was paused and would run again. The outer run is asked.
+                inside = self._runs().get(run_id, {}).get("inside") or None
+                takeover_inside = bool(inside) and self._is_takeover(inside.get("run"))
                 # `B1138`. The gate leaves a workflow run's row alone and says
                 # so in the run's slot instead (`_is_takeover` reads both).
-                msg = said or (
-                    FOREGROUND_TAKEOVER
-                    if foreground_cancel.get("hit") or self._is_takeover(run_id)
-                    else STOPPED_BY_USER
-                )
+                if said:
+                    msg = said
+                elif foreground_cancel.get("hit") or self._is_takeover(run_id) or takeover_inside:
+                    msg = FOREGROUND_TAKEOVER
+                elif inside:
+                    msg = self._stopped_as(inside.get("run")) or stopped_inside_words(inside)
+                else:
+                    msg = STOPPED_BY_USER
                 takeover = msg == FOREGROUND_TAKEOVER
                 logger.info("Task '%s' %s", task.name, msg)
                 # `B1060`. A run the foreground gate stopped goes back in the
@@ -3554,7 +3597,12 @@ class TaskScheduler:
                     self._retire_cards(db, run_id, task)
                     from src import workflow_runs as _wr
                     _wr.end_waiting_records(db, run_id, status="aborted", error=msg)
-                if takeover:
+                if takeover and inside:
+                    # `B1079`. Not re-queued: the workflow's step that ran it
+                    # is what runs again (`_stop_steps` leaves it `waiting
+                    # {kind: idle}`), and re-queuing here as well ran it twice.
+                    said = takeover_inside_words(inside)
+                elif takeover:
                     try:
                         db.refresh(task)     # switched off while it ran?
                         why_not = (None if task.status == "active"
@@ -6982,9 +7030,14 @@ class TaskScheduler:
             return NodeResult(NODE_STATUS_ERROR,
                               payload=f"Did not run “{label}”: {CHAIN_ALREADY_RUNNING}")
         self._record_run_step(slot, kind="progress", detail=f"Running the task “{label}”")
+        # `B1079`. The target runs inside this workflow's run (or a test of
+        # this step), and a stop of that reaches it: it is told which, so its
+        # own row can say why instead of "Stopped by user".
         target_run = await self._execute_task(
             target_id, bypass_model_slot=True, trigger=self.run_trigger(slot),
-            register_handle=False, started_by=self._run_started_by(slot))
+            register_handle=False, started_by=self._run_started_by(slot),
+            inside={"run": run_of_slot(slot), "name": task.name,
+                    "test": str(slot).startswith(TEST_SLOT_PREFIX + NODE_SLOT_SEPARATOR)})
         current = asyncio.current_task()
         if current is not None and current.cancelling():
             # The target's run answers a cancel by recording it and returning
