@@ -8,7 +8,7 @@
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
 //   - API / non-GET: never cached.
 // Bump CACHE_NAME whenever the precache list or SW logic changes.
-const CACHE_NAME = 'pantheon-v476-third-wave';
+const CACHE_NAME = 'pantheon-v477-offline-modules';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them
 // gives offline math fallback glyphs instead of proper typesetting.
@@ -824,14 +824,18 @@ self.addEventListener('fetch', (e) => {
           if (!tag || HELD_ETAGS.get(e.request.url) !== tag) {
             const copy = res.clone();
             caches.open(CACHE_NAME).then(async cache => {
-              const held = tag ? await cache.match(e.request) : null;
+              const held = tag ? await cache.match(e.request, { ignoreVary: true }) : null;
               if (!(held && etagOf(held) === tag)) await cache.put(e.request, copy);
               if (tag) HELD_ETAGS.set(e.request.url, tag);
             }).catch(() => {});
           }
         }
         return res;
-      }).catch(() => caches.match(e.request))
+      // `B1508`. The responses carry `Vary: Origin` (the CORS middleware); the
+      // precache's plain fetch sends no `Origin` and a module import does, so a
+      // lookup that honours Vary missed every cached module offline and the
+      // kept page ran none of its JavaScript. The URL is the identity here.
+      }).catch(() => caches.match(e.request, { ignoreVary: true }))
     );
     return;
   }
@@ -840,7 +844,7 @@ self.addEventListener('fetch', (e) => {
   if (url.pathname.startsWith('/static/')) {
     e.respondWith(
       caches.open(CACHE_NAME).then(async cache => {
-        const cached = await cache.match(e.request);
+        const cached = await cache.match(e.request, { ignoreVary: true });
         const fetching = fetch(e.request).then(res => {
           if (res && res.ok) cache.put(e.request, res.clone());
           return res;

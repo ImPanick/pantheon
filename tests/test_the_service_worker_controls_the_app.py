@@ -181,19 +181,16 @@ def test_an_offline_reload_draws_the_app(drive):
         assert got["drawn"] is True, (path, got)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "B1508: measured with the server stopped — every module the page imports is "
-    "in the worker's cache under its exact URL, stored with `Vary: Origin` (the "
-    "CORS middleware's), and precached by a plain `fetch` that sends no Origin. A "
-    "module request is CORS-mode and sends one, so `caches.match(e.request)` "
-    "honours the Vary and misses: `net::ERR_FAILED`, 33 of 36 failed requests, "
-    "`import()` fails while `fetch()` of the same URL gets the cached 200. "
-    "`static/sw.js`'s two cache lookups need `{ ignoreVary: true }` (measured: the "
-    "app then starts with the server down, 0 module failures). That file is the "
-    "coordinator's; this case turns red when the fix lands — remove this mark."))
 def test_offline_the_apps_javascript_runs(drive):
     """`B1508`. `test_an_offline_reload_draws_the_app` passes on the static HTML's
-    `#tool-workbench-btn` alone; this is the claim that the app itself ran."""
+    `#tool-workbench-btn` alone; this is the claim that the app itself ran.
+
+    Measured with the server stopped before the fix: every module was in the
+    worker's cache under its exact URL, stored with `Vary: Origin` (the CORS
+    middleware's) by a precache `fetch` that sends no Origin, while a module
+    request is CORS-mode and sends one — so the lookup honoured the Vary and
+    missed (`net::ERR_FAILED`, 33 of 36 failed requests). `static/sw.js` now
+    looks up with `{ ignoreVary: true }`."""
     for path in ("/", "/tasks"):
         assert drive["offline"][path]["started"] is True, (path, drive["offline"][path])
 
