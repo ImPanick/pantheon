@@ -14,18 +14,20 @@ import re
 import logging
 from typing import Optional, Dict
 
-from src.env_flags import tool_arg_truthy
 from src.tool_capabilities import TrustRung, rung_move_sentence
 from src.run_limits import (
-    LOOP_CAP_ALIASES,
     configured_cap,
     loop_cap_request,
     raise_for_current_run,
     raises,
 )
 
+from src.settings_requests import (
+    coerce_setting_value,
+    resolve_setting_key,
+    tool_toggle_targets,
+)
 from src.tool_utils import get_mcp_manager, _parse_tool_args
-from src.tool_security import BUILTIN_EMAIL_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -948,46 +950,20 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
             )
 
         # Friendly aliases → real keys, so natural phrasing resolves.
-        _ALIASES_SET = {
-            "voice": "tts_voice", "tts voice": "tts_voice", "tts": "tts_enabled",
-            "text to speech": "tts_enabled", "tts provider": "tts_provider",
-            "speech speed": "tts_speed", "voice speed": "tts_speed",
-            "stt": "stt_enabled", "speech to text": "stt_enabled", "transcription": "stt_enabled",
-            "search engine": "search_provider", "search provider": "search_provider",
-            "search results": "search_result_count", "result count": "search_result_count",
-            "default model": "default_model", "chat model": "default_model",
-            "default endpoint": "default_endpoint_id",
-            "task model": "task_model", "background model": "task_model",
-            "teacher model": "teacher_model", "teacher": "teacher_enabled",
-            "utility model": "utility_model", "research model": "research_model",
-            "research max tokens": "research_max_tokens",
-            "vision model": "vision_model", "vision": "vision_enabled",
-            "image model": "image_model", "image quality": "image_quality",
-            "image gen": "image_gen_enabled", "image generation": "image_gen_enabled",
-            "reminder channel": "reminder_channel", "reminders": "reminder_channel",
-            "ntfy topic": "reminder_ntfy_topic",
-            "webhook integration": "reminder_webhook_integration_id",
-            "webhook template": "reminder_webhook_payload_template", "webhook payload": "reminder_webhook_payload_template",
-            # `P7-12`: the loop caps' friendly names live in `src/run_limits.py`,
-            # where the approval gate reads a call through the same table.
-            **LOOP_CAP_ALIASES,
-            "agent timeout": "agent_stream_timeout_seconds", "stream timeout": "agent_stream_timeout_seconds",
-            "token budget": "agent_input_token_budget", "input budget": "agent_input_token_budget",
-            "hard max": "agent_input_token_hard_max",
-            "token budget cap": "agent_input_token_hard_max",
-            "input budget cap": "agent_input_token_hard_max",
-        }
-        def _resolve(k):
-            k2 = (k or "").strip().lower()
-            if k2 in DEFAULT_SETTINGS:
-                return k2
-            return _ALIASES_SET.get(k2, (k or "").strip())
+        # `B897`: the table lives in `src/settings_requests.py`, where the
+        # approval gate reads a call through the same reading, so an alias
+        # cannot mean one key here and another (or nothing) to the gate.
+        _resolve = resolve_setting_key
 
         def _is_managed_key(key):
             return key in DEFAULT_SETTINGS and key not in RETIRED_SETTING_KEYS
 
         _ENUMS = {
             "image_quality": ["low", "medium", "high"],
+            # `B897`: `routes/image_proxy_routes.VALID_MODES`. `'allow'` was
+            # stored and read back as `ask`, so the reply said a mode was set
+            # that nothing implements.
+            "remote_images": ["ask", "proxy", "block"],
             "reminder_channel": ["browser", "email", "ntfy", "webhook"],
             # The trust rung is the one entry here with a security consequence.
             # `coerce_trust_rung` falls back to the *default* rather than the
@@ -997,18 +973,8 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
             # protection they asked for is on, when it is not.
             "trust_rung": [rung.value for rung in TrustRung],
         }
-        def _coerce(value, default):
-            if isinstance(default, bool):
-                # `B97`. This was one of three vocabularies the tree used for
-                # "what did the model mean by yes", and the widest — it is the
-                # one `tool_arg_truthy`'s ON set was mostly derived from. The
-                # model writes this value, so `"enabled"` has to be a yes here
-                # even though an operator typing it into `.env` is told it is
-                # not a spelling we take.
-                return tool_arg_truthy(value)
-            if isinstance(default, int):
-                return int(value)
-            return value
+        # `B897`: the executor's coercion, shared with the gate's reading.
+        _coerce = coerce_setting_value
 
         def _model_slug(value: str) -> str:
             import re as _re
@@ -1277,47 +1243,9 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
             # "documents" -> the document tool set, "memory" ->
             # manage_memory, etc.
             from src.settings import get_setting, save_settings, load_settings
-            _ALIASES = {
-                "shell": ["bash", "host_shell", "shell_with_login"],  # `P17-11`, `P27-07`
-                "host": ["host_shell"],
-                # `P20-04`. The workstation's screen, mouse and keyboard; the
-                # bare name `computer` needs no alias.
-                "desktop": ["computer"],
-                "computer_use": ["computer"],
-                # `P25-03`: the bare name `git` needs no alias.
-                "version_control": ["git"],
-                # `P25-05`. Not "browser": that word already means the built-in
-                # Playwright server above.
-                "agent_browser": ["agent_browser"],
-                "workstation_browser": ["agent_browser"],
-                # `P16-20`. What network the workstation is on, and reach checks.
-                "network": ["network"],
-                "connectivity": ["network"],
-                "terminal": ["bash"],
-                "search": ["web_search", "web_fetch"],
-                "web": ["web_search", "web_fetch"],
-                "browser": ["builtin_browser"],
-                "documents": ["create_document", "edit_document", "update_document", "suggest_document"],
-                "doc": ["create_document", "edit_document", "update_document", "suggest_document"],
-                "memory": ["manage_memory"],
-                "rag": ["manage_rag"],  # `B66`
-                "skills": ["manage_skills"],
-                "images": ["generate_image"],
-                "image": ["generate_image"],
-                "tasks": ["manage_tasks"],
-                "notes": ["manage_notes"],
-                "calendar": ["manage_calendar"],
-                # The full built-in email tool set, in BOTH spellings: the
-                # qualified mcp__email__* names drive MCP schema hiding, the
-                # bare names drive function-schema hiding, and the runtime
-                # gate accepts either — deriving from BUILTIN_EMAIL_TOOLS
-                # keeps the toggle covering every tool the email server
-                # exposes instead of a hand-picked subset.
-                "email": sorted(BUILTIN_EMAIL_TOOLS)
-                         + [f"mcp__email__{t}" for t in sorted(BUILTIN_EMAIL_TOOLS)],
-                "research": ["web_search", "web_fetch"],  # research is a per-request flag, not a tool (closest analog)
-            }
-
+            # `B912`: the table lives in `src/settings_requests.py`, read by
+            # the approval gate too, so `enable_tool` asks about exactly the
+            # names it would take out of `disabled_tools`.
             if action == "list_tools":
                 current = get_setting("disabled_tools", []) or []
                 return {
@@ -1333,7 +1261,7 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
             tool_name = (args.get("tool") or args.get("name") or "").strip().lower()
             if not tool_name:
                 return {"error": "tool name required (e.g. 'shell', 'search', 'bash')", "exit_code": 1}
-            targets = _ALIASES.get(tool_name, [tool_name])
+            targets = list(tool_toggle_targets(tool_name))
 
             settings = load_settings()
             current = list(settings.get("disabled_tools") or [])

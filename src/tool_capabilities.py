@@ -23,6 +23,7 @@ from src.tool_security import (
     is_delegated_credential_blocked_tool,
 )
 from src.ui_switches import switch_request
+from src.settings_requests import settings_call
 from src.run_limits import (
     cap_label,
     configured_cap,
@@ -517,10 +518,12 @@ def self_escalation_for(tool_name: Any, content: Any) -> SelfEscalation | None:
     fallback being the one a person ever reads.
 
     `P7-12`: and `manage_settings` raising a loop cap the owner typed
-    (`_loop_cap_escalation`).
+    (`_loop_cap_escalation`). `B897`/`B912`: and `manage_settings` switching a
+    capability on, moving a destination, or turning back on a tool that is
+    switched off in Settings (`_settings_escalation`).
     """
     if tool_name == "manage_settings":
-        return _loop_cap_escalation(content)
+        return _loop_cap_escalation(content) or _settings_escalation(content)
     if tool_name != "ui_control":
         return None
     request = switch_request(content)
@@ -579,6 +582,192 @@ def _loop_cap_escalation(content: Any) -> SelfEscalation | None:
         grants=frozenset({ToolEffect.ADMIN_CHANGE}),
         only_you="Only you can raise a limit you set",
     )
+
+
+# ── `manage_settings` and the assistant's own reach (`B897`, `B912`) ────────
+#
+# `D-2026-10-25-01`, the owner answering `B700`: *"self switch is good with user
+# consent"* — the assistant may propose giving itself more reach, and each such
+# switch stops and asks; the yes is for that one switch. `P7-02` built that for
+# `ui_control`'s chat switches. `manage_settings` writes the server's settings,
+# and through it the same widening went through unasked: measured against a
+# scratch data dir at the default rung in a clean run, `image_gen_enabled`,
+# `teacher_enabled`, `teacher_tier2_enabled` and `stt_enabled` went `False →
+# True`, `allow_model_download` and `metrics_enabled` `None → 'true'`,
+# `remote_images` `'ask' → 'allow'`, four destinations took an address nobody
+# configured, and `enable_tool shell` took `bash`/`host_shell` out of the
+# `disabled_tools` an admin wrote (`B912`).
+#
+# **The adversary (`Law 17`)** is the one `B42` names: a page, a document or a
+# mail the assistant was asked to read, whose instruction arrives as the same
+# tool call the person's would — and, in a clean chat, the model acting alone on
+# its own reading of a request. Neither is a person choosing to hand the
+# assistant more. So these ask every time, through `P7-02`'s one mechanism
+# (`Law 14`): at every rung, tainted or clean, and under any blanket yes. They
+# are not refused (that is `B42`'s list, for gates whose purpose is "a human
+# must confirm"): the person keeps the ability to ask for them from chat.
+#
+# One-directional, as `P7-02` is: switching a capability off, clearing a
+# destination and `disable_tool` only narrow, and stay unasked. A destination
+# is the address *is* the switch (`Law 16`: "the destination is configured by
+# the person running it"), so any new non-empty address asks.
+#
+# Each entry: (words for the card, what it hands over). The words take the new
+# address for a destination. `D-2026-10-25-01` records why these keys and not
+# `forge_model_hubs` (`src/settings.py` says why the agent may set that one).
+_SETTING_SWITCHES: Mapping[str, tuple[str, frozenset[ToolEffect]]] = MappingProxyType({
+    "image_gen_enabled": ("turn on image generation", _effects_of("generate_image")),
+    # `src/teacher_escalation.py`: a failed turn goes to another model, and
+    # what it writes back is saved as a skill.
+    "teacher_enabled": (
+        "turn on the teacher model, which is sent a failed turn and saves a skill",
+        frozenset({ToolEffect.NETWORK_EGRESS, ToolEffect.WRITE_PRIVATE}),
+    ),
+    "teacher_tier2_enabled": (
+        "turn on the teacher model's self-check, which sends turns to it to grade",
+        frozenset({ToolEffect.NETWORK_EGRESS, ToolEffect.WRITE_PRIVATE}),
+    ),
+    "stt_enabled": ("turn on speech to text", frozenset({ToolEffect.READ_PRIVATE})),
+    "allow_model_download": (
+        "let Pantheon download models from the internet",
+        frozenset({ToolEffect.NETWORK_EGRESS}),
+    ),
+    "metrics_enabled": (
+        "serve this instance's readings at /metrics to anything that asks",
+        frozenset({ToolEffect.READ_PRIVATE}),
+    ),
+    # `P16-10`: the retry that drops the pinned engines hands the query to
+    # SearXNG's defaults.
+    "searxng_widen_engines": (
+        "let a failed search retry on SearXNG's default engines",
+        frozenset({ToolEffect.NETWORK_EGRESS}),
+    ),
+    "agent_lan_reach": (
+        "let its web tools reach your local network",
+        frozenset({ToolEffect.NETWORK_EGRESS}),
+    ),
+    # Its three modes are an order, `block` < `ask` < `proxy`
+    # (`routes/image_proxy_routes.py`); a move up the order is the widening.
+    "remote_images": (
+        "fetch remote images in content you did not write",
+        frozenset({ToolEffect.NETWORK_EGRESS}),
+    ),
+})
+
+_SETTING_DESTINATIONS: Mapping[str, str] = MappingProxyType({
+    "otlp_endpoint": "push this instance's metrics to",
+    "search_url": "send every web search to the search server at",
+    "search_provider": "send every web search to",
+    "research_search_provider": "send Deep Research's searches to",
+    "reminder_email_to": "email your reminders to",
+    "reminder_ntfy_topic": "post your reminders to the ntfy topic",
+    "netagent_url": "send network-agent commands, and its token, to",
+    "issue_tracker_url": "point the diagnostic bundle's report link at",
+    "source_url": "point the source-code link at",
+})
+
+_DESTINATION_GRANTS = frozenset({ToolEffect.NETWORK_EGRESS, ToolEffect.EXTERNAL_SIDE_EFFECT})
+
+# `routes/image_proxy_routes.VALID_MODES`, in the order of what each lets out;
+# a value outside it is read as `ask` there, and refused by `manage_settings`.
+_REMOTE_IMAGE_ORDER = MappingProxyType({"block": 0, "ask": 1, "proxy": 2})
+
+
+def _stored_settings() -> dict | None:
+    try:
+        from src.settings import load_settings
+        stored = load_settings()
+    except Exception:
+        return None
+    return stored if isinstance(stored, dict) else None
+
+
+def _switch_is_on(key: str, settings: dict) -> bool:
+    """A switch's effective state, read the way its readers read it: the three
+    tri-state flags through `env_backed_flag` (stored → environment →
+    default), the rest as the bool they are stored as."""
+    try:
+        from src.settings import ENV_BACKED_FLAGS, env_backed_flag
+        if key in ENV_BACKED_FLAGS:
+            env_name, default = ENV_BACKED_FLAGS[key]
+            return bool(env_backed_flag(settings, key, env_name, default))
+    except Exception:
+        return False
+    return bool(settings.get(key))
+
+
+def _remote_image_rank(value: Any) -> int | None:
+    return _REMOTE_IMAGE_ORDER.get(str(value if value is not None else "").strip().lower())
+
+
+def _settings_escalation(content: Any) -> SelfEscalation | None:
+    """`B897`/`B912`. A `manage_settings` call that widens the assistant's own
+    reach: a capability switched on, a destination moved to a new address, or
+    `enable_tool` for a tool in `disabled_tools`. `None` for anything else.
+
+    Read through `src/settings_requests.settings_call`, the executor's own
+    reading of the call. Compared with what is stored, so a call that moves
+    nothing asks nothing; a store that cannot be read fails *high* (every one
+    of these is then treated as a widening). The grants depend on the call
+    alone, never on the store, so the effects an approval seals are the ones it
+    is claimed against.
+    """
+    call = settings_call(content)
+    if call is None:
+        return None
+    stored = _stored_settings()
+    if call.action == "enable_tool":
+        if stored is None:
+            freed = list(call.targets)
+        else:
+            disabled = stored.get("disabled_tools")
+            disabled = disabled if isinstance(disabled, list) else []
+            freed = [t for t in call.targets if t in disabled]
+        if not freed:
+            return None
+        grants = frozenset({ToolEffect.ADMIN_CHANGE}).union(
+            *(capabilities_for_tool(name).effects for name in call.targets))
+        return SelfEscalation(
+            switch=f"enable_tool:{call.tool}",
+            words=(f"turn {call.tool} back on ({', '.join(freed)}), which is switched "
+                   "off for it in Settings"),
+            grants=grants,
+        )
+    key = call.key
+    before = stored if stored is not None else {}
+    after = dict(before)
+    after[key] = call.value
+    if key in _SETTING_SWITCHES:
+        words, grants = _SETTING_SWITCHES[key]
+        if key == "remote_images":
+            new_rank = _remote_image_rank(call.value)
+            old_rank = _remote_image_rank(before.get(key))
+            if new_rank is None:
+                return None  # refused by the executor: moves nothing
+            widens = stored is None or new_rank > (old_rank if old_rank is not None else 1)
+            if call.value is not None and str(call.value).strip().lower() == "ask":
+                words = "show remote images in content you did not write on a click"
+        else:
+            widens = _switch_is_on(key, after) and (stored is None or not _switch_is_on(key, before))
+        if not widens:
+            return None
+        return SelfEscalation(
+            switch=key, words=words,
+            grants=frozenset(grants | {ToolEffect.ADMIN_CHANGE}),
+        )
+    if key in _SETTING_DESTINATIONS:
+        new = str(call.value if call.value is not None else "").strip()
+        old = str(before.get(key) if before.get(key) is not None else "").strip()
+        if not new or (stored is not None and new == old):
+            return None
+        shown = new if len(new) <= 120 else new[:117] + "…"
+        return SelfEscalation(
+            switch=key,
+            words=f"{_SETTING_DESTINATIONS[key]} “{shown}”",
+            grants=frozenset(_DESTINATION_GRANTS | {ToolEffect.ADMIN_CHANGE}),
+            only_you="Only you can choose where Pantheon sends things",
+        )
+    return None
 
 
 _PRIVATE_ACTION_READS: Mapping[str, frozenset[str]] = MappingProxyType(
