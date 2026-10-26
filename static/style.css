@@ -1668,12 +1668,29 @@ body.bg-pattern-sparkles {
        the eye without being shouty. Vertical alignment stays with the
        inherited .sidebar-notif-dot rule so it lines up with chats/assistant. */
     #email-unread-dot.sidebar-notif-dot {
-      animation: email-notif-breathe 2.2s ease-in-out infinite;
       /* Nudge in from the far-right edge so it doesn't crowd the corner. */
       margin-right: 4px;
       /* Tiny vertical nudge to center with the email label. */
       position: relative;
       top: 0.1px;
+    }
+    /* `B812`: the glow is for mail new since the person last looked; the dot
+       itself now stays while there is unread mail, carrying the count. */
+    #email-unread-dot.sidebar-notif-dot.is-new {
+      animation: email-notif-breathe 2.2s ease-in-out infinite;
+    }
+    #email-unread-dot.sidebar-notif-dot.has-count {
+      width: auto;
+      height: auto;
+      min-width: 16px;
+      padding: 0 5px;
+      border-radius: 8px;
+      box-sizing: border-box;
+      font-size: 10px;
+      font-weight: 600;
+      line-height: 16px;
+      text-align: center;
+      color: var(--on-accent, #fff);
     }
     @keyframes email-notif-breathe {
       0%, 100% {
@@ -1686,7 +1703,8 @@ body.bg-pattern-sparkles {
       }
     }
     @media (prefers-reduced-motion: reduce) {
-      #email-unread-dot.sidebar-notif-dot { animation: none; }
+      #email-unread-dot.sidebar-notif-dot,
+      #email-unread-dot.sidebar-notif-dot.is-new { animation: none; }
     }
     @media (max-width: 768px) {
       /* Nudge the sidebar notification dot up 1px on mobile so it lines

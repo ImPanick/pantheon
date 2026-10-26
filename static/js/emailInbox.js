@@ -10,7 +10,7 @@ import { initEmailLibrary, openEmailLibrary, closeEmailLibrary, isOpen as isLibO
 import * as Modals from './modalManager.js?v=20261009census';
 import { applyEdgeDock } from './modalSnap.js';
 import { buildReplyAllCc, extractEmail } from './emailLibrary/replyRecipients.js';
-import { emailApiUrl, emailAccountQuery } from './emailShared.js';
+import { emailApiUrl, emailAccountQuery, paintUnreadDot } from './emailShared.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { chevronIcon } from './icons.js';
 import { esc } from './util/escapeHtml.js';
@@ -337,18 +337,21 @@ function _urgencyColor(score) {
 let _unreadCheckedAt = 0;   // `P23-07`: when the dot last looked
 async function _refreshUnreadCount() {
   _unreadCheckedAt = Date.now();
-  // Default the dot to hidden — only the verified "new mail above threshold"
-  // path below should turn it on. Without this, a fetch error or a backend
-  // returning malformed data left a stale dot from a previous account/session.
+  // A fetch error or a backend returning malformed data hides the dot (below,
+  // and in the `catch`) rather than leaving a stale one from a previous
+  // account/session. `B812`: it is no longer hidden first and redrawn after,
+  // because it now carries a number that is up while the poll runs.
   const dot = document.getElementById('email-unread-dot');
-  if (dot && !dot._stickyState) dot.style.display = 'none';
   try {
     // Parallel: cheap unread state + urgency state.
     const [stateRes, urgRes] = await Promise.all([
       fetch(emailApiUrl('/api/email/unread-state', { folder: 'INBOX' })),
       fetch(`${API_BASE}/api/email/urgency-state`, { credentials: 'same-origin' }).catch(() => null),
     ]);
-    if (!stateRes || !stateRes.ok) return;
+    if (!stateRes || !stateRes.ok) {
+      paintUnreadDot(dot, { unreadCount: 0 });
+      return;
+    }
     const data = await stateRes.json();
 
     // `P15-11`. This response has carried `sync.source: "unavailable"` and a
@@ -363,7 +366,7 @@ async function _refreshUnreadCount() {
 
     const unreadCount = Number(data.unread_count || 0);
     if (unreadCount <= 0) {
-      dot.style.display = 'none';
+      paintUnreadDot(dot, { unreadCount: 0 });
       return;
     }
 
@@ -371,29 +374,28 @@ async function _refreshUnreadCount() {
     const lastSeen = parseInt(localStorage.getItem('pantheon-email-last-seen-uid') || '0', 10);
     const maxUid = parseInt(data.max_uid || '0', 10) || 0;
 
-    // Only show dot if there's a new email above the threshold
+    // `B812`: the count shows whenever there is unread mail; the glow
+    // (`is-new`) only for mail above the last-seen mark, which is what the dot
+    // alone used to mean.
     const hasNewUnread = maxUid > lastSeen;
-    dot.style.display = hasNewUnread ? '' : 'none';
     if (hasNewUnread && !isLibOpen()) {
       prewarmUnreadEmails({ limit: Math.min(10, Math.max(1, unreadCount)), maxUid }).catch(() => {});
     }
 
     // Color the dot by urgency tier. Cache the per-uid map so the per-row
     // renderer can reuse it without a second fetch.
-    if (dot.style.display !== 'none' && urgRes && urgRes.ok) {
+    let tint = '';
+    if (urgRes && urgRes.ok) {
       try {
         const ud = await urgRes.json();
         window._emailUrgencyState = ud;
-        const tint = _urgencyColor(ud.max_score || 0);
-        if (tint) dot.style.backgroundColor = tint;
-        else dot.style.backgroundColor = '';
+        tint = _urgencyColor(ud.max_score || 0);
       } catch (_) {}
-    } else if (dot.style.display !== 'none') {
-      dot.style.backgroundColor = '';
     }
+    paintUnreadDot(dot, { unreadCount, isNew: hasNewUnread, tint });
   } catch (e) {
-    // Network/parse error — keep the dot hidden (default at the top).
-    if (dot) dot.style.display = 'none';
+    // Network/parse error — hide the dot rather than keep a stale number.
+    paintUnreadDot(dot, { unreadCount: 0 });
   }
 }
 
@@ -408,8 +410,9 @@ export function markInboxAsSeen() {
         if (maxUid > 0) {
           localStorage.setItem('pantheon-email-last-seen-uid', String(maxUid));
         }
-        const dot = document.getElementById('email-unread-dot');
-        if (dot) dot.style.display = 'none';
+        // `B812`: seen is not read — the count stays, the "new" glow goes.
+        paintUnreadDot(document.getElementById('email-unread-dot'),
+          { unreadCount: Number(data.unread_count || 0), isNew: false });
       })
       .catch(() => {});
   } catch (e) {}
