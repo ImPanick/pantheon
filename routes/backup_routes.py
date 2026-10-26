@@ -115,6 +115,10 @@ NOT_CARRIED = "Workflow versions, task runs and their step records are not in a 
 TASKS_UNREADABLE = "Tasks and workflows could not be read, so they are not in this backup."
 # A task's columns a backup never restores as given: when it was written.
 _TASK_STAMPS = ("created_at", "updated_at")
+# `B1075`. An event queued on the row for its next run (`pending_trigger`) is
+# run data — what fired it, a document's id and title — and, like a pinned
+# sample, is not carried; a restored task runs on its next event.
+_TASK_RUN_STATE = ("pending_trigger",)
 
 
 def _plain(value):
@@ -129,7 +133,7 @@ def backup_tasks(db, user) -> list:
     q = db.query(ScheduledTask)
     if user:
         q = q.filter(ScheduledTask.owner == user)
-    columns = [c.name for c in ScheduledTask.__table__.columns]
+    columns = [c.name for c in ScheduledTask.__table__.columns if c.name not in _TASK_RUN_STATE]
     return [{name: _plain(getattr(t, name)) for name in columns}
             for t in q.order_by(ScheduledTask.created_at, ScheduledTask.id).all()]
 
@@ -186,7 +190,7 @@ def restore_tasks(db, user, tasks) -> int:
         if item["id"] in existing:
             continue
         values = {name: _column_value(columns[name], item.get(name)) for name in columns
-                  if name in item and name not in _TASK_STAMPS}
+                  if name in item and name not in _TASK_STAMPS + _TASK_RUN_STATE}
         values["owner"] = user if user else values.get("owner")
         edges.append((item["id"], values.pop("then_task_id", None), values.pop("else_task_id", None)))
         session_id = values.get("session_id")

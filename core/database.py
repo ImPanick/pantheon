@@ -1241,6 +1241,15 @@ class ScheduledTask(TimestampMixin, Base):
     # run of it next starts. NULL for every row that exists.
     deferred_until = Column(DateTime, nullable=True)
     defer_reason   = Column(Text, nullable=True)
+    # `B1075`. The trigger envelope (`event_bus.build_trigger`, JSON) of the
+    # event that wrote this row's `next_run = now`, kept with it so the run
+    # that `next_run` starts is handed what fired it. An event fired where no
+    # scheduler runs — the email MCP server's subprocess merging a draft into
+    # a document (`document_updated`), or making one (`document_created`) —
+    # left only `next_run`, and the main process ran the task with no payload.
+    # Taken (read and cleared) when the task's next run starts. NULL for every
+    # row that exists.
+    pending_trigger = Column(Text, nullable=True)
 
     session = relationship("Session", backref=backref("scheduled_tasks", cascade="save-update, merge"))
     then_task = relationship("ScheduledTask", remote_side=[id], foreign_keys=[then_task_id])
@@ -2362,9 +2371,11 @@ def _migrate_add_scheduled_task_execution_columns():
     # `B1475`'s `networks` rides the same loop: one more nullable column a run
     # reads about its own execution, NULL for every row that exists. So do
     # `B675`'s `deferred_until` and `defer_reason`.
+    # `B1075`'s `pending_trigger` too.
     wanted = (("tz_name", "TEXT"), ("max_retries", "INTEGER"),
               ("timeout_seconds", "INTEGER"), ("networks", "TEXT"),
-              ("deferred_until", "DATETIME"), ("defer_reason", "TEXT"))
+              ("deferred_until", "DATETIME"), ("defer_reason", "TEXT"),
+              ("pending_trigger", "TEXT"))
     conn = None
     try:
         conn = sqlite3.connect(db_path)

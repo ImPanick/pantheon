@@ -633,6 +633,12 @@ async def _handle_event(event_name: str, owner: Optional[str] = None,
                 # survive reboot instead of losing the event after the counter
                 # has already reset.
                 task.next_run = datetime.utcnow()
+                # `B1075`. And WHAT fired it, with it: in a process with no
+                # scheduler (the email MCP server's subprocess) `next_run` was
+                # all that crossed to the main process, whose loop then ran the
+                # task as a plain due task with no payload. The run that starts
+                # takes this (`TaskScheduler._take_pending_trigger`).
+                task.pending_trigger = json.dumps(trigger, default=str)
                 db.commit()
                 # Fire the task
                 if _task_scheduler:

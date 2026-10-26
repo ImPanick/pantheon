@@ -2965,6 +2965,31 @@ class TaskScheduler:
                 raise
         await self._execute_task(task_id)
 
+    def _take_pending_trigger(self, task_id: str) -> dict | None:
+        """`B1075`. Read and clear the trigger an event queued on the row
+        (`ScheduledTask.pending_trigger`), or `None`. Cleared in the same
+        commit it is read in, so one queued event is handed to one run."""
+        from core.database import SessionLocal, ScheduledTask
+        db = SessionLocal()
+        try:
+            row = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
+            raw = getattr(row, "pending_trigger", None) if row is not None else None
+            if not raw:
+                return None
+            row.pending_trigger = None
+            db.commit()
+        except Exception:
+            logger.warning("Could not read the queued trigger of task %s", task_id, exc_info=True)
+            return None
+        finally:
+            db.close()
+        try:
+            envelope = json.loads(raw)
+        except (TypeError, ValueError):
+            logger.warning("Task %s's queued trigger is not JSON; it runs without it", task_id)
+            return None
+        return envelope if isinstance(envelope, dict) else None
+
     def _new_queued_run(self, task_id: str) -> str:
         """Write a `queued` run row and answer its id.
 
@@ -3077,6 +3102,15 @@ class TaskScheduler:
                 self._started_by_map()[task_id] = started_by
 
         _hold_handle()
+        # `B1075`. What an event queued on the row (`pending_trigger`) is taken
+        # by the run that starts now, and handed to it when nothing else was:
+        # the main loop's due run of a task an event in another process fired.
+        # A run handed its own trigger (`run_task_now` from the bus in this
+        # process) takes it too — it is that event — so it is not handed twice.
+        if resume_run_id is None and not dry:
+            pending = self._take_pending_trigger(task_id)
+            if trigger is None:
+                trigger = pending
         run_id = resume_run_id or self._new_queued_run(task_id)
         resume = resume_run_id is not None
         # `B1060`. Background work waits for Pantheon to be idle BEFORE it takes
