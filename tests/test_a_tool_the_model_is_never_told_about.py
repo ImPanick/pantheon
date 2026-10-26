@@ -170,6 +170,43 @@ def test_the_checker_passes_on_this_tree():
         "whether it ran")
 
 
+def test_the_prompt_count_is_asked_of_an_assembled_prompt(monkeypatch):
+    """`B1393`. The reported *"named in the prompt"* was a count of backticked
+    names in `src/agent_loop.py`'s string constants — docstrings included — so
+    a docstring moved it and runtime-built lines did not. It is asked of
+    `_assemble_prompt` now: replace the assembler and the answer follows it,
+    which a scan of the source could not do. The three spellings a prompt uses
+    are read — backticks, a register line, a fence opener — and a two-letter
+    name (`ls`) is a name."""
+    import src.agent_loop as agent_loop
+    checker = _checker()
+    monkeypatch.setattr(agent_loop, "_assemble_prompt", lambda names, *a, **k: (
+        "Use `alpha`, or a register line:\n- ```beta``` — does a thing\n"
+        "```gamma\nargs\n```\nPrefer `ls`. `not_a_tool` is prose."))
+    universe = {"alpha", "beta", "gamma", "ls", "delta"}
+    assert checker.assembled_prompt_names(universe) == {"alpha", "beta", "gamma", "ls"}
+
+
+def test_the_reported_count_is_the_assembled_prompts():
+    """The CLI's figure, against the prompt a turn offered every tagged tool is
+    given, counted here independently."""
+    import re
+    import src.agent_loop as agent_loop
+    prompt = agent_loop._assemble_prompt(set(TOOL_TAGS))
+    universe = set(TOOL_TAGS) | set(TOOL_HANDLERS) | set(BUILTIN_EMAIL_TOOLS)
+    from src.builtin_mcp import _BUILTIN_SERVERS
+    checker = _checker()
+    for rel, _label in _BUILTIN_SERVERS.values():
+        universe |= checker._mcp_server_tool_names(rel)
+    named = {n for n in universe
+             if re.search(rf"`+{re.escape(n)}(?:`+|[ \t]*\n)", prompt)}
+    result = subprocess.run(
+        [sys.executable, str(ROOT / ".pantheon" / "check-tool-surface.py")],
+        cwd=str(ROOT), capture_output=True, text=True, timeout=300)
+    assert f"{len(named)} named in the assembled prompt" in result.stdout, (
+        len(named), result.stdout)
+
+
 # ── the census the row asked for, re-measured ────────────────────────────────
 
 
