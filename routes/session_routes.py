@@ -850,7 +850,10 @@ def setup_session_routes(
 
     @router.post("/sessions/bulk-delete")
     async def bulk_delete_sessions(request: Request):
-        """Delete multiple sessions (for compare cleanup via sendBeacon)."""
+        """Delete multiple sessions: compare cleanup (via sendBeacon) and the
+        sidebar's *Delete all unsorted* (`B1225`, every one of them, in one
+        request). Each id is checked as the caller's; a starred chat is kept,
+        as the one-chat delete keeps it; ``deleted`` is how many went."""
         from core.database import ChatMessage as _CM
         try:
             body = await request.json()

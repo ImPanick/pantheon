@@ -390,6 +390,89 @@ function _removeSessionFromLocalState(sid) {
   _deselectCurrentSession(id);
 }
 
+/**
+ * `B1225` (fx-ops). Every chat of this person's the server lists, every page of
+ * it (`GET /api/sessions` pages `list_page`), or `null` when a page could not
+ * be read. The first page also carries the pinned and foldered chats past its
+ * cut, so the pages are joined by id.
+ */
+const _EVERY_CHAT_PAGE = 1000;
+async function _everyChatOnServer() {
+  const out = [];
+  for (let offset = 0; offset < 100000; offset += _EVERY_CHAT_PAGE) {
+    let res;
+    try {
+      res = await fetch(`${API_BASE}/api/sessions?limit=${_EVERY_CHAT_PAGE}&offset=${offset}`);
+    } catch (_) { return null; }
+    if (!res || !res.ok) return null;
+    let page;
+    try { page = await res.json(); } catch (_) { return null; }
+    if (!Array.isArray(page)) return null;
+    out.push(...page);
+    const more = !!(res.headers && typeof res.headers.get === 'function' && res.headers.get('X-More-Chats') === '1');
+    if (!more || !page.length) break;
+  }
+  return _normalizeSessionsList(out);
+}
+
+/**
+ * `B1225` (fx-ops). The Unsorted group's ×. It asked "Delete all N unsorted
+ * chats?" about the chats this page holds and deleted those, one request each
+ * — and the page is one page of a person's chats (`list_page`, 100), so with
+ * more on the server it said N, deleted N, and every older unsorted chat
+ * stayed. Now, when the server has more, the whole list is asked for first, so
+ * the number in the question is the number deleted; a starred chat stays (the
+ * one-chat delete refuses it too) and the question says so; the delete is one
+ * request (`/api/sessions/bulk-delete`, which checks each chat is the
+ * person's), and a count short of the ask is said, not swallowed.
+ * `shown` is the group as drawn. Returns whether anything was asked to go.
+ */
+export async function deleteAllUnsorted(shown) {
+  let unfiled = Array.isArray(shown) ? shown : [];
+  if (_moreChats) {
+    const every = await _everyChatOnServer();
+    if (!every) {
+      uiModule.showError('Could not list all your unsorted chats, so nothing was deleted. Try again.');
+      return false;
+    }
+    unfiled = every.filter((c) => !c.folder && !c.archived);
+  }
+  const doomed = unfiled.filter((c) => !c.is_important);
+  const starred = unfiled.length - doomed.length;
+  if (!doomed.length) {
+    if (starred) uiModule.showToast('Starred chats are not deleted. Unstar a chat to delete it.');
+    return false;
+  }
+  const n = doomed.length;
+  const question = `Delete all ${n} unsorted chat${n === 1 ? '' : 's'}?`
+    + (starred ? ` ${starred} starred chat${starred === 1 ? '' : 's'} will stay.` : '');
+  if (!await uiModule.styledConfirm(question, { confirmText: 'Delete', danger: true })) return false;
+  const ids = doomed.map((c) => String(c.id));
+  let deleted = null;
+  try {
+    const res = await fetch(`${API_BASE}/api/sessions/bulk-delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+    if (res && res.ok) deleted = Number((await res.json()).deleted) || 0;
+  } catch (_) { deleted = null; }
+  if (deleted === null) {
+    uiModule.showError('Could not reach Pantheon to delete those chats. Nothing was deleted; try again.');
+    return true;
+  }
+  const wasOpen = currentSessionId && ids.includes(String(currentSessionId)) ? currentSessionId : null;
+  if (wasOpen && deleted >= n) _deselectCurrentSession(wasOpen);
+  await loadSessions();
+  if (wasOpen && !sessions.some((c) => String(c.id) === String(wasOpen))) _deselectCurrentSession(wasOpen);
+  if (deleted < n) {
+    uiModule.showError(`Deleted ${deleted} of ${n} unsorted chats. The rest are still in the list; try again.`);
+  } else {
+    uiModule.showToast(`Deleted ${n} unsorted chat${n === 1 ? '' : 's'}`);
+  }
+  return true;
+}
+
 function _normalizeSessionsList(fetched) {
   if (!Array.isArray(fetched)) return [];
   const seen = new Set();
@@ -1477,7 +1560,8 @@ function _renderSessionListImpl() {
     unsortedHeader.appendChild(nameSpan);
     const countSpan = document.createElement('span');
     countSpan.className = 'folder-count';
-    countSpan.textContent = `(${unfiled.length})`;
+    // `B1225`: older unsorted chats are on the server past this page.
+    countSpan.textContent = _moreChats ? `(${unfiled.length}+)` : `(${unfiled.length})`;
     unsortedHeader.appendChild(countSpan);
 
     const deleteBtn = document.createElement('button');
@@ -1486,16 +1570,7 @@ function _renderSessionListImpl() {
     deleteBtn.title = 'Delete all unsorted chats';
     deleteBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      if (!await uiModule.styledConfirm(`Delete all ${unfiled.length} unsorted chat${unfiled.length === 1 ? '' : 's'}?`, { confirmText: 'Delete', danger: true })) return;
-      for (const s of unfiled) {
-        try {
-          await fetch(`${API_BASE}/api/session/${s.id}`, { method: 'DELETE' });
-          _deselectCurrentSession(s.id);
-        } catch (err) {
-          console.error('Failed to delete session:', s.id, err);
-        }
-      }
-      await loadSessions();
+      await deleteAllUnsorted(unfiled);
     });
     unsortedHeader.appendChild(deleteBtn);
 
