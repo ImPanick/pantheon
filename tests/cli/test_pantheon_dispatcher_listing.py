@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`pantheon` with no arguments prints one name per row — `B881`.
+r"""`pantheon` with no arguments prints one name per row — `B881`.
 
 `scripts/pantheon:66` used to strip the leading `pantheon-<name> — ` noise
 with `re.sub(r"^pantheon-\w+\s*—\s*", ...)`. `\w` excludes `-`, so the first

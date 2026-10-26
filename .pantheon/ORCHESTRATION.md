@@ -155,6 +155,12 @@ Put these in every prompt. Not a reference to a file — the actual text.
    not finished.
 5. **The static-asset facts** — no bind mount, bump the cache-buster, nonce inline
    scripts, add zero external requests.
+6. **No `git stash` in a worktree.** Every worktree of one repository shares one
+   `refs/stash` stack, so a `pop` in one takes whatever another pushed last. Measured
+   2026-10-26: two agents stashing in the same minute each popped the other's work —
+   three `src/` files for nineteen checker files — and only the patches they had saved
+   by hand put it back. Set work aside with `git diff > file` and `git apply`, or a
+   commit on your own branch.
 
 ---
 

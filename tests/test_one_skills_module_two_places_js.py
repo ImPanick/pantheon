@@ -205,7 +205,7 @@ def test_each_place_keeps_its_own_search_scope_and_selection(box):
         fire(ops.querySelector('.skills-side-pick'), 'click');
         const scoped = { win: names('skills-list'), room: names('wb-skills-list'),
           active: [$('skills-side'), $('wb-skills-side')].map((side) => side.querySelectorAll('.skills-side-row')
-            .filter((r) => r.className.includes('is-active')).map((r) => r.textContent.replace(/\d+$/, ''))) };
+            .filter((r) => r.className.includes('is-active')).map((r) => r.textContent.replace(/\\d+$/, ''))) };
         fire($('wb-skills-select-btn'), 'click');
         const selecting = { room: $('wb-skills-bulk-bar').classList.contains('hidden'),
                             win: $('skills-bulk-bar').classList.contains('hidden'),

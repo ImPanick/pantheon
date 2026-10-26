@@ -108,6 +108,11 @@ the next one is cut.
 
 ### Added
 
+- ***Print as PDF* prints the document as text** a reader can select and search, through the
+  same page *Export HTML* builds, instead of a picture of it — 35 KB where a long document was
+  1.5 MB (`B1333`).
+- **A waiting document tidy survives a restart** — plans are kept in the database (`B1018`).
+
 - **A reply that failed before a word is kept,** and a reload draws it as the model's bubble
   with one sentence and *Retry* (`B1200`).
 - **The Brain shows how you write** — each line editable, and *Forget how I write* — and says
@@ -192,6 +197,12 @@ the next one is cut.
   button all close it. `/toggle mode [agent|chat]` is the same control, typed.
 
 ### Changed — read this before upgrading
+
+- **The Library refuses a file it cannot read** — a binary the browser has no type for is checked
+  by the server first and refused with its reason, where it used to import as a page of
+  replacement characters (`B401`).
+- **A workflow's start waits for Save with its steps** instead of saving the moment the form
+  closes (`B1209`).
 
 - **A task's type is one of three.** `POST`/`PUT /api/tasks` and `manage_tasks` refuse a
   `task_type` other than `llm`, `research` or `action`, with a sentence; a workflow is made in the
@@ -299,6 +310,15 @@ the next one is cut.
   arming that a non-empty memory store did on its own.
 
 ### Fixed
+
+- **A Word export of a document with a control character opens in Word** (`B422`); a new mail's AI
+  button says *Draft* (`B1212`); a text document stays text (`B1233`); the Library counts the
+  folder it is in (`B1219`) and leaves Deep Research's tab when Deep Research is switched off
+  (`B1275`); a reloaded research card says why it stopped (`B1188`).
+- **An event fired from the mail server reaches its task with its payload** (`B1075`); a
+  hand-off between steps says what it was in words (`B1096`); each task form's labels name its
+  own fields when two are open (`B1041`); *Test this step* offers only what the step can be
+  handed (`B1082`).
 
 - **A task you made is never called built-in,** offered *Revert to default*, or converted into a
   housekeeping action because of its name (`B1493`, `B1495`); a crew-linked task reads on its
