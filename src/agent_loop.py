@@ -4360,7 +4360,14 @@ def _build_system_prompt(
     _datetime_message = None
     try:
         from src.user_time import current_datetime_context_message
-        _datetime_message = current_datetime_context_message()
+        # `B1169`. Its scheduling sentences name `manage_calendar` and
+        # `manage_tasks`, and are said only to a turn that has them: the set
+        # the prompt's own tool list is built from (`_build_base_prompt`).
+        _dt_access = turn_tool_access(disabled_tools)
+        _dt_available = _dt_access.allowed_among(
+            _prompt_tool_names(relevant_tools, _dt_access, needs_admin)
+            if relevant_tools is not None else set(TOOL_SECTIONS))
+        _datetime_message = current_datetime_context_message(available=_dt_available)
     except Exception as e:
         logger.warning("Failed to build datetime context message", exc_info=e)
 

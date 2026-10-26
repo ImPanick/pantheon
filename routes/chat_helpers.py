@@ -1109,7 +1109,9 @@ async def build_chat_context(
     if not agent_mode:
         try:
             from src.user_time import current_datetime_context_message
-            _dt_msg = current_datetime_context_message()
+            # `B1169`: a chat-mode turn is offered no tools, so it is told
+            # how to call none.
+            _dt_msg = current_datetime_context_message(available=())
             if messages and messages[-1].get("role") == "user":
                 messages.insert(len(messages) - 1, _dt_msg)
             else:
