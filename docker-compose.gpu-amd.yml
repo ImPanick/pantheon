@@ -193,7 +193,10 @@ services:
       - -c
       - |
         set -eu
-        if [ ! -s /etc/searxng/settings.yml ] || grep -q 'pantheon-local-searxng-json-2026-05-30\|__SEARXNG_SECRET__' /etc/searxng/settings.yml; then
+        # `B1164`: each marker is a file this stack generated, never one a person wrote —
+        # Pantheon's, and Odysseus's fixed secret that a kept `searxng-data` volume carries
+        # across the upgrade — so both are regenerated from the template.
+        if [ ! -s /etc/searxng/settings.yml ] || grep -q 'pantheon-local-searxng-json-2026-05-30\|odysseus-local-searxng-json-2026-05-30\|__SEARXNG_SECRET__' /etc/searxng/settings.yml; then
           secret="$${SEARXNG_SECRET:-}"
           if [ -z "$$secret" ]; then
             secret="$$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"

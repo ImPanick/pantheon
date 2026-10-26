@@ -1066,6 +1066,20 @@ from a real server and Pantheon backs off exactly as it would for anyone else.
 If you deliberately want a LAN host paced — an old machine that falls over under
 load, say — give it an explicit policy and that wins over the local shortcut.
 
+### Behind an outbound proxy: exempt IPv6 destinations
+
+Pantheon's HTTP client reads `HTTPS_PROXY`/`HTTP_PROXY` and `NO_PROXY` from the
+environment. One limitation, measured 2026-10-26 with the pinned httpx 0.28.1 and
+httpcore 1.0.9: a request to an **IPv6 address** through an HTTP proxy is sent as
+`CONNECT fd00::5:7040 HTTP/1.1` — without the brackets RFC 9110 asks for
+(`[fd00::5]:7040`). A strict proxy refuses it; a lenient one may split the address
+at the wrong colon. So list an IPv6 model server or workstation in `NO_PROXY` by
+its single address (`fd00::5` — every client honours that; a range such as
+`fd00::/8` is honoured only by the clients Pantheon builds itself), or reach it by a
+hostname. IPv4 addresses and names are unaffected. This is httpcore's to fix;
+`tests/test_an_ipv6_connect_through_a_proxy_is_said.py` records the line it sends
+and fails once it is bracketed, so this paragraph goes when it does.
+
 ---
 
 ### Nothing recurring fires on an exact boundary

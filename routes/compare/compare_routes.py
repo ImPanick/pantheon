@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 import logging
 
 from core.database import Comparison, SessionLocal
@@ -29,6 +29,28 @@ class RecordVoteRequest(BaseModel):
     # complete one — which is the whole defect.
     costs: Optional[List[Optional[float]]] = None
     mode: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _winner_is_a_verdict(self):
+        """`B642`. A vote names one of the models it compared, or `"tie"`.
+
+        `winner` was a bare `str`, so `""` validated and a row was stored with
+        `voted_at` set and no verdict — a comparison that reads as never voted
+        on while carrying a vote's timestamp (`Law 10`: an emptiness with two
+        readings gets read both ways). A name the comparison did not include is
+        the same defect in another shape: the Scoreboard cannot credit it to
+        any pane. The browser only ever sends a pane's display name or `"tie"`
+        (`compare/vote.js` `_saveVote`), so this refuses nothing it sends.
+        """
+        names = [m for m in self.models if m.strip()]
+        if not names:
+            raise ValueError(
+                "A comparison vote names the models it compared; this one named none.")
+        if self.winner != "tie" and self.winner not in names:
+            raise ValueError(
+                f"A comparison vote's winner is one of the models it compared "
+                f"({', '.join(names)}) or \"tie\"; {self.winner!r} is neither.")
+        return self
 
 
 def _vote_meta(body) -> Dict[str, Any]:
