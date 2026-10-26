@@ -1399,6 +1399,9 @@ const _STEP_KIND_WORDS = {
   // § 2.4): "step · Summarise my inbox — worked". "node" is a word a person
   // never meets (§ 6.6).
   node: 'step',
+  // `B612`. The log's last line when it hit the scheduler's step cap
+  // (`STEP_KIND_CAPPED`): it says how many steps were not recorded.
+  capped: 'log full',
 };
 const _TOOL_STEP_STATUS_WORDS = {
   ok: 'done',
@@ -1435,8 +1438,15 @@ function _renderRunSteps(run, opts = {}) {
     return `<li class="task-run-step task-run-step-${kind}${statusClass}">${head}${detail}${output}</li>`;
   }).join('');
   const failed = steps.filter(s => s && (s.status === 'error' || s.status === 'blocked')).length;
+  // `B612`. A log that hit the scheduler's cap ends with one `capped` line,
+  // which is not a step: the count is the steps kept, and the summary says how
+  // many more there were — it read "200 steps" as though that were all.
+  const capped = steps.find(s => s && s.kind === 'capped');
+  const kept = steps.length - (capped ? 1 : 0);
+  const dropped = capped ? Math.max(0, Number(capped.dropped) || 0) : 0;
   const summary = opts.summary
-    || (`${steps.length} step${steps.length === 1 ? '' : 's'}`
+    || (`${kept} step${kept === 1 ? '' : 's'}`
+      + (dropped ? ` · ${dropped} more not recorded` : '')
       + (failed ? ` · ${failed} did not finish` : ''));
   return `<details class="task-run-steps"${opts.open ? ' open' : ''}>
       <summary>${_escHtml(summary)}</summary>

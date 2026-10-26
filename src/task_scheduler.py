@@ -1287,6 +1287,33 @@ def dry_run_declined(task, db=None) -> str | None:
     return None
 
 
+def clip_step_text(value, max_detail: int = 400):
+    """A step's `detail` or `output`, cut at `max_detail` with "…" saying so.
+
+    `B612`. The one clip both step-log writers use. `_close_run_step` cut the
+    same tool output at the same 400 characters and appended nothing, so
+    whether a person could tell they were missing the tail depended on whether
+    the tool's `tool_output` arrived while its `tool_start` was still open —
+    the common path, and invisible from the UI (`Law 10`).
+    """
+    if isinstance(value, str) and len(value) > max_detail:
+        return value[:max_detail].rstrip() + "\u2026"
+    return value
+
+
+#: `B612`. The kind of the one line a step log carries when it hit
+#: `TaskScheduler._MAX_RUN_STEPS`: the log stops there and says how many steps
+#: after it were not recorded. `static/js/tasks.js` draws it and leaves it out
+#: of the run's step count.
+STEP_KIND_CAPPED = "capped"
+
+
+def capped_step_words(cap: int, dropped: int) -> str:
+    """`B612`. What the capped line says."""
+    more = "1 more step was" if dropped == 1 else f"{dropped} more steps were"
+    return f"The step log stops here: it keeps {cap} steps, and {more} not recorded."
+
+
 def shape_run_step(fields: dict, *, max_detail: int = 400) -> dict:
     """One step as a run's step log holds it: long text clipped, `at` stamped.
 
@@ -1295,9 +1322,8 @@ def shape_run_step(fields: dict, *, max_detail: int = 400) -> dict:
     shape the head's recorded run does (`Law 7`).
     """
     for key in ("detail", "output"):
-        value = fields.get(key)
-        if isinstance(value, str) and len(value) > max_detail:
-            fields[key] = value[:max_detail].rstrip() + "\u2026"
+        if key in fields:
+            fields[key] = clip_step_text(fields[key], max_detail)
     fields.setdefault("at", _utcnow().isoformat() + "Z")
     return fields
 
@@ -1889,10 +1915,29 @@ class TaskScheduler:
         """
         steps = self._state_for(run_id)["steps"]
         if len(steps) >= self._MAX_RUN_STEPS:
+            self._note_step_dropped(steps)
             return None
         fields = shape_run_step(fields, max_detail=self._MAX_STEP_DETAIL)
         steps.append(fields)
         return fields
+
+    def _note_step_dropped(self, steps: list) -> None:
+        """`B612`. A step past `_MAX_RUN_STEPS` is not recorded — and the log
+        says so, once, as its last line, counting every step it did not keep.
+
+        The cap is right (a forty-round run's log is JSON in a row somebody
+        loads to read a summary); what was wrong is that it applied in silence,
+        so the log simply stopped and the Activity summary said "200 steps" as
+        though that were all of them. The line is found by kind rather than
+        held on the slot, because a resumed run's log is read back from its row
+        (`resume`), carrying the line its earlier segment wrote.
+        """
+        note = steps[-1] if steps and steps[-1].get("kind") == STEP_KIND_CAPPED else None
+        if note is None:
+            note = shape_run_step({"kind": STEP_KIND_CAPPED, "dropped": 0})
+            steps.append(note)
+        note["dropped"] = int(note.get("dropped") or 0) + 1
+        note["detail"] = capped_step_words(self._MAX_RUN_STEPS, note["dropped"])
 
     def _close_run_step(self, run_id, *, tool, round_, status, output):
         """Finish the most recent open step for this tool and round.
@@ -1907,8 +1952,15 @@ class TaskScheduler:
                     and step.get("tool") == tool and step.get("round") == round_):
                 step["status"] = status
                 if output:
-                    step["output"] = output[: self._MAX_STEP_DETAIL]
+                    # `B612`. The same clip, and the same "…", as a step that
+                    # was recorded already finished (`clip_step_text`).
+                    step["output"] = clip_step_text(output, self._MAX_STEP_DETAIL)
                 return
+        if state and state["steps"] and state["steps"][-1].get("kind") == STEP_KIND_CAPPED:
+            # `B612`. The log is full, and the step this output would close was
+            # counted as not recorded when its `tool_start` was: one tool call
+            # is one step, here as below the cap.
+            return
         self._record_run_step(run_id, kind="tool", tool=tool or "?", round=round_,
                               status=status, output=output or "")
 
