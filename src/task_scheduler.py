@@ -2710,12 +2710,18 @@ class TaskScheduler:
         db = SessionLocal()
         try:
             now = _utcnow()
-            foreground_active = False
-            try:
-                from src.interactive_gate import has_foreground_activity
-                foreground_active = has_foreground_activity()
-            except Exception:
-                foreground_active = False
+            # `B1094`. A due task is dispatched whether or not somebody is
+            # using Pantheon. This read `has_foreground_activity()` and, when it
+            # answered yes, moved the task's `next_run` fifteen minutes on with
+            # no row and no word — and again at the next tick while the person
+            # stayed — so "every morning at 08:00" ran at 08:15, 08:30 … for a
+            # person at their desk, and Activity showed nothing until it ran.
+            # Since `B1060` a background run waits for Pantheon to be idle
+            # while it is QUEUED (`_execute_task` → `_wait_until_idle`), holding
+            # no model slot and saying so in its row ("Queued — waiting for
+            # Pantheon to be idle…"), so the dispatch is that: a row at its
+            # time, the run once Pantheon is idle, and `next_run` left where
+            # the schedule put it until the run itself moves it.
             async with self._executing_lock:
                 # Snapshot under the lock so we don't race with mid-iteration adds.
                 executing_snapshot = set(self._executing)
@@ -2729,17 +2735,12 @@ class TaskScheduler:
                 for task in due:
                     if task.id in self._executing:
                         continue
-                    if foreground_active:
-                        task.next_run = now + timedelta(minutes=15)
-                        continue
                     self._executing.add(task.id)
                     to_dispatch.append((
                         task.id,
                         dispatch_hold(task, now=now,
                                       tz_name=_resolve_task_timezone(db, task)),
                     ))
-                if foreground_active and due:
-                    db.commit()
             for task_id, hold in to_dispatch:
                 asyncio.create_task(self._dispatch_after(task_id, hold))
         finally:

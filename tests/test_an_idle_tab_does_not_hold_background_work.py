@@ -176,20 +176,42 @@ async def test_a_tab_left_open_and_idle_does_not_stop_the_0800_run(task_db, gate
 
 
 @pytest.mark.asyncio
-async def test_a_person_at_the_tab_still_holds_a_due_run_back(task_db, gate, monkeypatch):
-    """Unchanged (`Law 1`): a person using Pantheon still defers the run —
-    which `B1094` says is moved 15 minutes with nothing said, a separate row."""
+async def test_a_person_at_the_tab_still_holds_a_due_run_back_and_its_row_says_so(
+        task_db, gate, monkeypatch):
+    """A person using Pantheon still holds the run back (`Law 1`) — and since
+    `B1094` it is held as a run, not hidden as a time: this was `next_run =
+    now + 15 min` with no row, again at every tick while the person stayed, so
+    an 08:00 run became 08:15, 08:30 … and Activity showed nothing. Now the
+    due run has a *Queued — waiting for Pantheon to be idle…* row at its time,
+    `next_run` is where the schedule put it, a later tick adds nothing beside
+    it, and it runs once Pantheon is idle."""
+    from test_a_background_run_waits_for_idle_with_its_trigger import _runs, _tab_closes
+
     monkeypatch.setattr(ts, "dispatch_hold", lambda *a, **k: 0)
     now = ts._utcnow()
     _seed(task_db, _morning(now))
+    due_at = _task(task_db, "morning").next_run
     ran = []
     s = _scheduler(ran)
     await ig.on_heartbeat(b"{}", s.stop_background_tasks_for_foreground)
     await s._check_due_tasks()
+    await _until(lambda: [r["result"] for r in _runs(task_db, "morning")] == [ts.WAITING_FOR_IDLE],
+                 "the due run's row says it waits for Pantheon to be idle")
+    await s._check_due_tasks()                      # the next tick, the person still there
     for _ in range(50):
         await asyncio.sleep(0)
-    assert ran == []
-    assert _task(task_db, "morning").next_run > now + timedelta(minutes=14)
+    assert ran == [], "it ran while the person was using Pantheon"
+    assert [r["status"] for r in _runs(task_db, "morning")] == ["queued"], "one row, not one per tick"
+    assert _task(task_db, "morning").next_run == due_at, "its time was moved"
+
+    await _tab_closes()
+    await _until(lambda: ran, "it ran once Pantheon was idle")
+    assert [task_id for task_id, _ in ran] == ["morning"]
+    await _until(lambda: [r["status"] for r in _runs(task_db, "morning")] == ["success"],
+                 "the same row ends as the run")
+    (run,) = _runs(task_db, "morning")
+    assert any(st["detail"].endswith("for Pantheon to be idle, then started")
+               for st in run["steps"]), run["steps"]
 
 
 # ── the real route ──────────────────────────────────────────────────────────
