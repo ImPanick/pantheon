@@ -33,6 +33,28 @@ from src.runtime_paths import get_app_root, get_default_data_dir
 # tag waits for the owner's word. `scripts/_lib/cli.py` carries the same string.
 APP_VERSION = "0.2.0"
 
+
+#: `B453`. Which commit this instance was built from — a label beside
+#: `APP_VERSION`, never a second version: the version answers *which release
+#: line*, this answers *which commit*, and everybody tracking `main` sits on a
+#: commit between tags. `.git` is not in the image, so a build stamps it
+#: (`Dockerfile`'s `ARG`, set by `docker-publish.yml`, `scripts/pantheon-deploy`
+#: and the compose files) and the process reads it here. `Law 16`: a label, it
+#: reaches nothing.
+BUILD_COMMIT_ENV = "PANTHEON_BUILD_COMMIT"
+
+
+def build_commit():
+    """The commit this build was stamped with, or None when it was not.
+
+    Only a hex object name (7–40 characters) is an answer. Anything else —
+    unset, empty, a branch name, a typo — is `None`: an unstamped build says so
+    rather than reporting whatever text happened to be in the environment."""
+    raw = (os.environ.get("PANTHEON_BUILD_COMMIT") or "").strip().lower()
+    if 7 <= len(raw) <= 40 and all(c in "0123456789abcdef" for c in raw):
+        return raw
+    return None
+
 # Base paths
 BASE_DIR = os.path.join(get_app_root(), "")
 STATIC_DIR = os.path.join(BASE_DIR, "static")

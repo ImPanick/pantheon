@@ -107,6 +107,16 @@ RUN pip install --no-cache-dir --no-deps /tmp/pantheon-wheels/*.whl \
 # Copy app code
 COPY . .
 
+# `B453`. The commit this image was built from, read by `GET /api/version`
+# (`src/constants.build_commit`). `.git` is not copied in, so the build has to
+# say it: `docker-publish.yml` passes `github.sha`, `scripts/pantheon-deploy`
+# passes the checkout's HEAD, and a plain `docker compose build` passes
+# whatever `PANTHEON_BUILD_COMMIT` holds in its environment — nothing, by
+# default, and the app then answers `commit: null` rather than guessing.
+# Declared after `COPY . .` so a new commit does not bust the dependency layers.
+ARG PANTHEON_BUILD_COMMIT=""
+ENV PANTHEON_BUILD_COMMIT=${PANTHEON_BUILD_COMMIT}
+
 # Create data directory (mount a volume here for persistence)
 RUN mkdir -p data logs services/cache/search
 

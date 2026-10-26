@@ -106,13 +106,16 @@ def _auth_route_endpoint(path: str, method: str):
     raise AssertionError(f"{method} {path} route not registered")
 
 
-def _fake_auth_request(token="session-token"):
+def _fake_auth_request(token="session-token", *, auth):
+    """`B543`: the admin routes ask `require_admin`, which reads what
+    `AuthMiddleware` stamps — so the request is stamped by its rule."""
     from routes.auth_routes import SESSION_COOKIE
+    from tests.helpers.signed_in import through_the_middleware
 
     req = SimpleNamespace()
     req.cookies = {SESSION_COOKIE: token}
     req.client = SimpleNamespace(host="127.0.0.1")
-    return req
+    return through_the_middleware(req, auth)
 
 
 def test_set_signup_enabled_true_is_idempotent():
@@ -122,7 +125,7 @@ def test_set_signup_enabled_true_is_idempotent():
     auth.get_username_for_token.return_value = "admin"
     auth.is_admin.return_value = True
 
-    request = _fake_auth_request()
+    request = _fake_auth_request(auth=auth)
     auth.signup_enabled = False
 
     out = asyncio.run(target(body=SetOpenRegistrationRequest(enabled=True),request=request))
@@ -142,7 +145,7 @@ def test_set_signup_enabled_false_is_idempotent():
     auth.get_username_for_token.return_value = "admin"
     auth.is_admin.return_value = True
 
-    request = _fake_auth_request()
+    request = _fake_auth_request(auth=auth)
     auth.signup_enabled = True
 
     out = asyncio.run(target(body=SetOpenRegistrationRequest(enabled=False), request=request))
@@ -164,7 +167,7 @@ def test_set_signup_enabled_requires_admin():
     auth.signup_enabled = False
 
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(target(body=SetOpenRegistrationRequest(enabled=True), request=_fake_auth_request()))
+        asyncio.run(target(body=SetOpenRegistrationRequest(enabled=True), request=_fake_auth_request(auth=auth)))
 
     assert exc.value.status_code == 403
     assert auth.signup_enabled is False

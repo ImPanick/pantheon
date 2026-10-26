@@ -48,10 +48,13 @@ def _route_post(monkeypatch, store):
     monkeypatch.setattr(auth_routes, "_load_settings", lambda: dict(store))
     monkeypatch.setattr(auth_routes, "_save_settings",
                         lambda updated: (store.clear(), store.update(updated)))
-    router = auth_routes.setup_auth_routes(_AuthManager())
+    from tests.helpers.signed_in import through_the_middleware
+    manager = _AuthManager()
+    router = auth_routes.setup_auth_routes(manager)
     post = next(r.endpoint for r in router.routes
                 if r.path == "/api/auth/settings" and "POST" in r.methods)
-    return lambda body: asyncio.run(post(_Request(body)))
+    # `B543`: the route asks `require_admin`, which reads the middleware's stamp.
+    return lambda body: asyncio.run(post(through_the_middleware(_Request(body), manager)))
 
 
 # ── the row's Verify ────────────────────────────────────────────────────────

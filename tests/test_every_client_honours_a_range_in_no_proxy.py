@@ -223,11 +223,14 @@ def test_an_integrations_test_button_is_paced_and_reached_direct(proxy, lan, mon
     monkeypatch.setattr(auth_routes, "get_integration",
                         lambda i: {"id": i, "preset": preset, "base_url": base})
     monkeypatch.setattr(auth_routes, "_load_settings", lambda: {"reminder_ntfy_topic": "reminders"})
-    router = auth_routes.setup_auth_routes(SimpleNamespace(
-        get_username_for_token=lambda token: "admin", is_admin=lambda user: True))
+    manager = SimpleNamespace(
+        get_username_for_token=lambda token: "admin", is_admin=lambda user: True)
+    router = auth_routes.setup_auth_routes(manager)
     endpoint = next(r.endpoint for r in router.routes
                     if r.path.endswith("/integrations/{integration_id}/test"))
-    result = asyncio.run(endpoint("i1", SimpleNamespace(cookies={})))
+    # `B543`: stamped as `AuthMiddleware` stamps it; the route asks `require_admin`.
+    from tests.helpers.signed_in import through_the_middleware
+    result = asyncio.run(endpoint("i1", through_the_middleware(SimpleNamespace(cookies={}), manager)))
     assert result["ok"] is True, result
     assert [(m, p) for m, p, _ in lan.RequestHandlerClass.seen] == [("POST", path)]
     assert paced == ["127.0.0.2"], "the limiter did not see the send"

@@ -359,18 +359,33 @@ install_role_layer(auth_manager)
 # CORS preflight; a bearer token is a sign-in of its own.
 warn_ignored_auth_switches(logger)
 
+# `B542`. **An exemption is a method on a path, not a path.** Each entry names
+# the methods that answer before a sign-in, and every other method on the same
+# path meets the middleware like any route. Until 2026-10-26 this was a set of
+# paths, so `/api/auth/features` and `/api/auth/settings` — listed for the
+# pre-login page's *reads* (feature flags, keybinds) — exempted the POSTs that
+# rewrite the feature toggles and every app setting, credentials included, and
+# only each handler's own admin check stood in front of an unauthenticated
+# write. The adversary (`Law 17`): anyone who can reach the port, the day a
+# refactor of either handler drops that check. The only writes left here are
+# the sign-in doors themselves, which must answer to a person who has no
+# session yet; `tests/test_an_exemption_answers_only_the_methods_it_names.py`
+# walks the real routing table and fails on any other.
 AUTH_EXEMPT_EXACT = {
-    "/api/auth/setup",
-    "/api/auth/signup",
-    "/api/auth/login",
-    "/api/auth/logout",
-    "/api/auth/status",
-    "/api/auth/features",
-    "/api/auth/settings",
-    "/api/auth/integrations/presets",
-    "/api/health",
-    "/api/version",
-    "/login",
+    "/api/auth/setup": {"POST"},
+    "/api/auth/signup": {"POST"},
+    "/api/auth/login": {"POST"},
+    "/api/auth/logout": {"POST"},
+    "/api/auth/status": {"GET", "HEAD"},
+    "/api/auth/features": {"GET", "HEAD"},
+    "/api/auth/settings": {"GET", "HEAD"},
+    "/api/auth/integrations/presets": {"GET", "HEAD"},
+    "/api/health": {"GET", "HEAD"},
+    # `B441`. The readiness probe an orchestrator asks, which cannot sign in.
+    # A caller with no session is told `ready` and nothing else (the handler).
+    "/api/ready": {"GET", "HEAD"},
+    "/api/version": {"GET", "HEAD"},
+    "/login": {"GET", "HEAD"},
 }
 # **What `/static` hands a caller with no session, written down (`B370`).**
 # Assets: the stylesheet, the modules, the fonts, the icons, the manifest —
@@ -400,9 +415,14 @@ AUTH_EXEMPT_PATTERNS = [
     _re.compile(r"^/api/tasks/[^/]+/webhook/[^/]+/?$"),
 ]
 
-def _is_auth_exempt(path: str) -> bool:
-    if path in AUTH_EXEMPT_EXACT:
-        return True
+def _is_auth_exempt(path: str, method: str) -> bool:
+    """Whether `method` on `path` answers before a sign-in (`B542`: both, not
+    the path alone). The prefix and the pattern arms are path-only on purpose:
+    the `/static` mount answers only reads whatever is asked, and the webhook
+    path carries its own credential for whichever method its route takes."""
+    methods = AUTH_EXEMPT_EXACT.get(path)
+    if methods is not None:
+        return str(method or "").upper() in methods
     if any(path_is_route_or_child(path, p) for p in AUTH_EXEMPT_PREFIXES):
         return True
     return any(p.match(path) for p in AUTH_EXEMPT_PATTERNS)
@@ -490,7 +510,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # header; never a credentialed request).
         if is_cors_preflight(request.method, request.headers):
             return await call_next(request)
-        if _is_auth_exempt(path):
+        if _is_auth_exempt(path, request.method):
             return await call_next(request)
         # In-process internal-tool token bypass. Used by the agent
         # tool layer when it HTTP-loopbacks to admin-gated routes
@@ -1542,8 +1562,13 @@ async def serve_redoc(request: Request):
 
 @app.get("/api/version")
 async def get_version():
-    from core.constants import APP_VERSION
-    return {"version": APP_VERSION}
+    """The release line and, beside it, the commit the build was stamped with.
+
+    `B453`. `commit` is `null` on a build nobody stamped (a native install, a
+    `docker compose build` with no `PANTHEON_BUILD_COMMIT`): it says so rather
+    than guessing. One version string still (`tests/test_one_version_string.py`)."""
+    from src.constants import APP_VERSION, build_commit
+    return {"version": APP_VERSION, "commit": build_commit()}
 
 @app.get("/api/health")
 async def health_check() -> Dict[str, str]:
@@ -1578,15 +1603,26 @@ async def client_perf(request: Request):
     return {"ok": True}
 
 @app.get("/api/ready")
-async def readiness_check() -> JSONResponse:
+async def readiness_check(request: Request) -> JSONResponse:
     """Readiness / integrity self-check — DB, data dir, local-first storage.
 
     Unlike /api/health (liveness), this returns 503 unless every critical
     subsystem is whole, so an orchestrator can gate traffic on real readiness.
+
+    `B441`. It answers before a sign-in (`AUTH_EXEMPT_EXACT`), because the
+    caller it was written for is an orchestrator's probe and cannot sign in —
+    it answered that probe 401 until 2026-10-26. A caller with no session is
+    told the verdict and nothing else: the full report carries the data
+    directory's path and a failing database's own error text, which say more
+    about the box than a stranger at the port needs. Signed in, it is whole.
     """
     from src.readiness import check_readiness
     result = check_readiness()
-    return JSONResponse(status_code=200 if result.get("ready") else 503, content=result)
+    status = 200 if result.get("ready") else 503
+    token = request.cookies.get(SESSION_COOKIE)
+    if not (token and auth_manager.get_username_for_token(token)):
+        return JSONResponse(status_code=status, content={"ready": bool(result.get("ready"))})
+    return JSONResponse(status_code=status, content=result)
 
 @app.get("/api/runtime")
 async def runtime_info() -> Dict[str, object]:

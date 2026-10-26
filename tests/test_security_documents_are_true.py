@@ -322,13 +322,17 @@ def _get_version() -> dict:
     return asyncio.run(namespace[handler.name]())
 
 
-def test_the_policy_names_what_the_version_route_returns(security_md):
+def test_the_policy_names_what_the_version_route_returns(security_md, monkeypatch):
     """`B452`'s `Verify:` first clause. The answer is taken from the route, and
     the policy has to print that answer verbatim — so cutting a release that
     moves `APP_VERSION` without this page fails here. Fails on the tree as it
     stood: the policy never mentioned `/api/version`."""
+    # `B453` added `commit` beside the version: `null` on a build nobody
+    # stamped, which is the answer the policy prints.
+    monkeypatch.delenv("PANTHEON_BUILD_COMMIT", raising=False)
     answer = _get_version()
-    assert set(answer) == {"version"} and answer["version"], answer
+    assert set(answer) == {"version", "commit"} and answer["version"], answer
+    assert answer["commit"] is None, answer
     which = next((p for p in _supported_versions(security_md)
                   if "Which version am I running?" in p), None)
     assert which, _supported_versions(security_md)

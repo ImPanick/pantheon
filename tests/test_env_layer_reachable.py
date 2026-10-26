@@ -103,7 +103,9 @@ def test_one_admin_save_materialises_every_shipped_default(datadir, monkeypatch)
             return username == "admin"
 
     monkeypatch.setattr(auth_routes, "migrate_from_settings", lambda: None)
-    router = auth_routes.setup_auth_routes(_AdminOnly())
+    from tests.helpers.signed_in import through_the_middleware
+    manager = _AdminOnly()
+    router = auth_routes.setup_auth_routes(manager)
     endpoint = next(r.endpoint for r in router.routes
                     if r.path == "/api/auth/settings" and "POST" in r.methods)
 
@@ -112,7 +114,9 @@ def test_one_admin_save_materialises_every_shipped_default(datadir, monkeypatch)
             return {"agent_max_rounds": 42}
 
     assert not os.path.exists(S.SETTINGS_FILE), "precondition: nothing saved yet"
-    asyncio.run(endpoint(_Request(cookies={auth_routes.SESSION_COOKIE: "admin-session"})))
+    # `B543`: stamped as `AuthMiddleware` stamps it; the route asks `require_admin`.
+    asyncio.run(endpoint(through_the_middleware(
+        _Request(cookies={auth_routes.SESSION_COOKIE: "admin-session"}), manager)))
     S._invalidate_caches()
 
     on_disk = json.load(open(S.SETTINGS_FILE, encoding="utf-8"))

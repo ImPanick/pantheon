@@ -419,7 +419,10 @@ def _settings_endpoint():
     for route in router.routes:
         if getattr(route, "path", "") == "/api/auth/settings" \
                 and "POST" in getattr(route, "methods", set()):
-            return route.endpoint
+            # `B543`: the route asks `require_admin`, which reads the stamp
+            # `AuthMiddleware` puts on a request whose cookie validates.
+            from tests.helpers.signed_in import stamped_endpoint
+            return stamped_endpoint(route.endpoint, auth_manager)
     raise AssertionError("POST /api/auth/settings is not registered")
 
 

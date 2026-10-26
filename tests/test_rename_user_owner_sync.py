@@ -43,6 +43,13 @@ def _route(router, name):
     raise AssertionError(name)
 
 
+def _stamped(endpoint, am):
+    """`B543`: the route asks `require_admin`, which reads the stamp
+    `AuthMiddleware` puts on a request whose session cookie validates."""
+    from tests.helpers.signed_in import stamped_endpoint
+    return stamped_endpoint(endpoint, am)
+
+
 @pytest.fixture
 def rename_endpoint(monkeypatch, tmp_path):
     import routes.auth_routes as ar
@@ -68,7 +75,7 @@ def rename_endpoint(monkeypatch, tmp_path):
     am.get_username_for_token.return_value = "admin"
     am.users = {"alice": {}}
     am.rename_user.return_value = True
-    return _route(ar.setup_auth_routes(am), "rename_user"), am, tmp_path
+    return _stamped(_route(ar.setup_auth_routes(am), "rename_user"), am), am, tmp_path
 
 
 def _request(
@@ -392,7 +399,7 @@ def test_rename_research_respects_custom_data_dir(monkeypatch, tmp_path):
     am.get_username_for_token.return_value = "admin"
     am.users = {"alice": {}}
     am.rename_user.return_value = True
-    endpoint = _route(ar.setup_auth_routes(am), "rename_user")
+    endpoint = _stamped(_route(ar.setup_auth_routes(am), "rename_user"), am)
 
     asyncio.run(endpoint("alice", SimpleNamespace(username="alice2"), _request(tmp_path)))
 
@@ -652,7 +659,7 @@ def test_owner_migration_failure_rolls_back_auth_rename(monkeypatch, tmp_path):
     am = _auth_manager_for_rollback_test(monkeypatch, tmp_path)
     admin_token = am.create_session_trusted("admin")
     alice_token = am.create_session_trusted("alice")
-    endpoint = _route(ar.setup_auth_routes(am), "rename_user")
+    endpoint = _stamped(_route(ar.setup_auth_routes(am), "rename_user"), am)
 
     with pytest.raises(HTTPException) as exc:
         asyncio.run(
@@ -680,7 +687,7 @@ def test_self_rename_owner_migration_failure_rolls_back_auth_session(monkeypatch
     db = _force_sql_owner_migration_failure(monkeypatch)
     am = _auth_manager_for_rollback_test(monkeypatch, tmp_path)
     admin_token = am.create_session_trusted("admin")
-    endpoint = _route(ar.setup_auth_routes(am), "rename_user")
+    endpoint = _stamped(_route(ar.setup_auth_routes(am), "rename_user"), am)
 
     with pytest.raises(HTTPException) as exc:
         asyncio.run(
@@ -743,7 +750,7 @@ def test_rejected_rename_does_not_mutate_files(monkeypatch, tmp_path):
     am.get_username_for_token.return_value = "admin"
     am.users = {"alice": {}}
     am.rename_user.return_value = False
-    endpoint = _route(ar.setup_auth_routes(am), "rename_user")
+    endpoint = _stamped(_route(ar.setup_auth_routes(am), "rename_user"), am)
 
     with pytest.raises(Exception):
         asyncio.run(endpoint("alice", SimpleNamespace(username="api"), _request(tmp_path)))

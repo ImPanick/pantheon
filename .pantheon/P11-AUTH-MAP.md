@@ -30,29 +30,30 @@ live lines.
 
 ### The finding that outranks both counts
 
-`require_admin` is **not** the admin surface. It is the biggest of **four**
-implementations of "is this person an admin", and a refactor that maps only the 107
-below will walk past the other three:
+`require_admin` was **not** the admin surface when this map was first drawn. It was
+the biggest of **four** implementations of "is this person an admin", and a refactor
+that mapped only the 107 below would have walked past the other three. `B543`
+(2026-10-26) folded two of them into it; the table keeps what each was:
 
 | where | how | sites |
 |---|---|---|
-| `core/middleware.require_admin` | the real one: honours the internal-tool token (and asks about the person it names, `B1175`), raises 403 — it honoured `auth_disabled()` too until there was none (`D-2026-10-07-02` §2) | 107 |
-| `routes/auth_routes.py` | `_get_current_user(request)` + `auth_manager.is_admin(user)`, written out inline | 22 of rule C's 43 — all but one a hard 403; the exception is the scrub decision in `GET /api/auth/settings` |
-| `routes/shell_routes.py:_require_admin` | its own reimplementation, with its own rules — it also refuses the literal user `api`, which the real one does not | 1 of rule C's 43, called from 6 routes |
-| `owner_is_admin_or_single_user` | a policy helper that answers the same question a different way | 8 of rule C's 43, across 6 files |
+| `core/middleware.require_admin` | the real one: honours the internal-tool token (and asks about the person it names, `B1175`), refuses a request sentinel such as a bearer token's `api` (`B543`), raises 403 — it honoured `auth_disabled()` too until there was none (`D-2026-10-07-02` §2) | every site in § A |
+| `routes/auth_routes.py` | was `_get_current_user(request)` + `auth_manager.is_admin(user)`, written out inline at 22 places. Since `B543` its 21 gates are `require_admin`; what is left is the scrub decision in `GET /api/auth/settings`, an exempt read that answers everybody and blanks secrets for a non-admin — not a gate | 1 of rule C's |
+| `routes/shell_routes.py:_require_admin` | was its own reimplementation, which also refused the literal user `api`. Gone since `B543`: its five routes ask `require_admin`, which now says that refusal itself | 0 |
+| `owner_is_admin_or_single_user` | a policy helper that answers the same question a different way, for callers with no request (policy, tools) and for chat's workspace binding | 8 of rule C's, across 6 files |
 
 Only the first consulted `auth_disabled()`. Measured by calling both with
 `AUTH_ENABLED=false` and no session: `core.middleware.require_admin` returned, and
 `routes/shell_routes.py:_require_admin` raised `403 Admin only`. `B543` was that, and
-`B1181` its cost; both ended with auth-off itself (`D-2026-10-07-02` §2) — today both
-refuse a request with nobody on it, and the shell's also refuses when the app holds no
-auth manager.
+`B1181` its cost; both ended with auth-off itself (`D-2026-10-07-02` §2), and the two
+are one since `B543` — `require_admin` refuses a request with nobody on it, and refuses
+when the app holds no auth manager.
 
 Rule C of the checker counts the second and fourth rows directly — every `is_admin(...)`
 and `owner_is_admin_or_single_user(...)` call outside `require_admin` itself — and ratchets
 them. The count, and the share of it that is one file, are derived:
 
-derived-others: 43 across 16 files, 22 in routes/auth_routes.py
+derived-others: 21 across 15 files, 1 in routes/auth_routes.py
 
 It may fall as they move onto `P11-02`'s role model. It may not rise.
 
@@ -77,18 +78,18 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 109 · Depends 21 · total 130
+derived: direct 135 · Depends 21 · total 156
 
 ### tier summary
 
 | tier | sites |
 |---|---|
-| `superuser` | 50 |
-| `operator` | 56 |
+| `superuser` | 68 |
+| `operator` | 64 |
 | `power-user` | 3 |
 | `only-because-nothing-finer-existed` | 21 |
 
-### `superuser` — **50 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
+### `superuser` — **68 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -140,10 +141,28 @@ derived: direct 109 · Depends 21 · total 130
 | `routes/auth_routes.py` | `upsert_role` | `PUT /api/auth/roles/{name}` | defines what a role grants — an escalation surface: a role is a privilege grant to everyone holding it. `P11-02` |
 | `routes/auth_routes.py` | `remove_role` | `DELETE /api/auth/roles/{name}` | removes a role and revokes it from every user holding it. `P11-02` |
 | `routes/auth_routes.py` | `set_user_role` | `PUT /api/auth/users/{username}/role` | grants somebody else a role. `P11-02` |
+| `routes/auth_routes.py` | `list_users` | `GET /api/auth/users` | every account, whether it is an admin, its role and its resolved privileges — the map of who may do what on this instance. `B543` |
+| `routes/auth_routes.py` | `admin_create_user` | `POST /api/auth/users` | creates an account, an admin account included. `B543` |
+| `routes/auth_routes.py` | `update_user_privileges` | `PUT /api/auth/users/{username}/privileges` | grants or takes away somebody else's privileges — `can_use_bash` among them. `B543` |
+| `routes/auth_routes.py` | `rename_user` | `PUT /api/auth/users/{username}/rename` | renames an account and moves everything it owns. `B543` |
+| `routes/auth_routes.py` | `set_user_admin` | `PUT /api/auth/users/{username}/admin` | promotes or demotes an administrator — the superuser role itself. `B543` |
+| `routes/auth_routes.py` | `toggle_signup` | `POST /api/auth/signup-toggle` | opens or closes registration to anyone who can reach the port (deprecated toggle form). `B543` |
+| `routes/auth_routes.py` | `set_signup_enabled` | `PUT /api/auth/open-signup` | opens or closes registration, the one switch `D-2026-10-07-02` §2 leaves. `B543` |
+| `routes/auth_routes.py` | `admin_delete_user` | `DELETE /api/auth/users` | deletes an account and revokes its sessions and tokens. `B543` |
+| `routes/auth_routes.py` | `set_settings` | `POST /api/auth/settings` | writes every app setting, credentials included. Not auth-exempt since `B542`; on this gate since `B543` |
+| `routes/auth_routes.py` | `list_integrations_route` | `GET /api/auth/integrations` | the API integrations and their (masked) credentials. `B543` |
+| `routes/auth_routes.py` | `create_integration` | `POST /api/auth/integrations` | stores a new integration with its credential. `B543` |
+| `routes/auth_routes.py` | `update_integration_route` | `PUT /api/auth/integrations/{integration_id}` | rewrites one, credential included. `B543` |
+| `routes/auth_routes.py` | `delete_integration_route` | `DELETE /api/auth/integrations/{integration_id}` | removes one. `B543` |
+| `routes/auth_routes.py` | `test_integration_route` | `POST /api/auth/integrations/{integration_id}/test` | calls the integration's service with its stored credential. `B543` |
+| `routes/shell_routes.py` | `shell_exec` | `POST /api/shell/exec` | runs a shell command on the serving host — "RCE-after-signup" if it were anyone's. On this gate since `B543` folded the file's own `_require_admin` into it |
+| `routes/shell_routes.py` | `shell_stream` | `POST /api/shell/stream` | the same, streamed. `B543` |
+| `routes/shell_routes.py` | `install_system_deps` | `POST /api/cookbook/install-system-deps` | installs OS packages, locally or over SSH, from an allowlist. `B543` |
+| `routes/shell_routes.py` | `rebuild_engine` | `POST /api/cookbook/rebuild-engine` | deletes the Forge-managed llama.cpp build, locally or on the selected server. `B543` |
 | `routes/workstation_routes.py` | `_watched` | `—` | not a route: `GET /api/workstation/screen` and `GET /api/workstation/control` ask it when a `person` is named — an admin may watch another person's workstation screen and who holds it, and only watch (the input, take-over and reset routes take no `person`). Without `person` the caller's own screen, open to anyone the workstation answers. Another person's screen is their data, so this stays the owner's. `B1424` |
 | `routes/person_network_routes.py` | `everyones_networks` | `GET /api/networks/people` | every person's own networks — names, hosts, ranges, trust — and of a linked vault login only that one is linked, never which item or anything in it. Other people's data: the owner's omni-sight (`D-2026-10-25-04` §5). `B1475` |
 
-### `operator` — **56 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
+### `operator` — **64 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -184,7 +203,7 @@ derived: direct 109 · Depends 21 · total 130
 | `routes/personal_routes.py` | `remove_directory_from_rag` | `DELETE /api/personal/remove_directory` | un-points it |
 | `routes/personal_routes.py` | `add_directory_to_rag` | `POST /api/personal/add_directory` | points the indexer at a host directory — filesystem reach, not document management |
 | `routes/personal_routes.py` | `api_personal_reload` | `POST /api/personal/reload` | re-indexes the whole corpus |
-| `routes/shell_routes.py` | `tmux_attach` | `GET /api/shell/tmux-attach` | the command that opens one of the instance's tmux sessions in a terminal (or, `action=list`, lists them — `B913`): whether the server runs in a container, the uid its sessions belong to, the login name on a native install. It runs nothing — `B909`; the Forge's tasks are operator work and this is how they are reached. The one site in this file on the real gate: the file's own `_require_admin` is `B543`'s |
+| `routes/shell_routes.py` | `tmux_attach` | `GET /api/shell/tmux-attach` | the command that opens one of the instance's tmux sessions in a terminal (or, `action=list`, lists them — `B913`): whether the server runs in a container, the uid its sessions belong to, the login name on a native install. It runs nothing — `B909`; the Forge's tasks are operator work and this is how they are reached. Every route in this file is on this gate since `B543` |
 | `routes/skills_routes.py` | `list_builtin_skills` | `GET /api/skills/builtin` | the inventory of every built-in tool the agent has, with the first 240 characters of the instruction block each one is given. Gated by `P2-21` on 2026-09-18; until then it made no auth call at all, beside the PUT and DELETE below it |
 | `routes/skills_routes.py` | `get_builtin_skill` | `GET /api/skills/builtin/{name}` | the whole instruction block, override included — the same text the model is given. The read half of the pair below, gated at the same height for the same reason |
 | `routes/skills_routes.py` | `reset_builtin_override` | `DELETE /api/skills/builtin/{name}` | puts it back |
@@ -203,6 +222,14 @@ derived: direct 109 · Depends 21 · total 130
 | `routes/workstation_routes.py` | `workstation_machine_act` | `POST /api/workstation/machines/{service}/{action}` | start, stop or restart one of the workstation's services, through the host's Docker where the operator gave Pantheon it; only those services, only those three acts. Running the box. `B1478` |
 | `routes/workstation_routes.py` | `workstation_machine_logs` | `GET /api/workstation/machines/{service}/logs` | the last lines one workstation service wrote. Logs. `B1478` |
 | `routes/workstation_routes.py` | `workstation_backend` | `POST /api/workstation/backend` | the backend switch: saves the choice and starts that backend's services and stops the other's, where Pantheon has the host's Docker. Running the box. `B1478` |
+| `routes/auth_routes.py` | `set_features` | `POST /api/auth/features` | the instance's UI feature toggles. Not auth-exempt since `B542`; on this gate since `B543` |
+| `routes/auth_routes.py` | `settings_flag_sources` | `GET /api/auth/settings/flag-sources` | which layer — setting, environment, default — answers each tri-state flag. `B543` |
+| `routes/auth_routes.py` | `check_networks` | `POST /api/auth/networks/check` | validates a proposed `networks` value and says what it claims; saves nothing. `B543` |
+| `routes/auth_routes.py` | `network_agent_health` | `GET /api/auth/networks/agent` | whether the network agent is there and is the agent. `B543` |
+| `routes/auth_routes.py` | `host_guard_rules` | `GET /api/auth/networks/guard` | the agent's permanent guard list, read-only. `B543` |
+| `routes/auth_routes.py` | `network_devices` | `GET /api/auth/networks/devices` | the LAN device inventory, refreshed from the agent. `B543` |
+| `routes/auth_routes.py` | `name_network_device` | `POST /api/auth/networks/devices/name` | names a device by its MAC. `B543` |
+| `routes/shell_routes.py` | `list_packages` | `GET /api/cookbook/packages` | which optional serving packages are installed, locally or on the selected server. `B543` |
 
 ### `power-user` — **3 power-user sites.** Reads a capable user needs in order to work, gated as if they were instance control. All three are the model picker's inventory (a fourth, `GET /api/providers`, had no caller and went with `B1482`): a non-admin can be given `allowed_models` in `DEFAULT_PRIVILEGES` today and still cannot see which endpoints exist.
 
@@ -249,10 +276,10 @@ The `gate` column is derived, never asserted, and reads as a chain:
 
 - **`middleware`** — `AuthMiddleware` in `app.py` and nothing else. A session or a
   bearer token is required; **any** signed-in user gets through.
-- **`exempt`** — the path is in `AUTH_EXEMPT_EXACT` (or matches a pattern or the
-  `/static` prefix), so no authentication is required at all. `_is_auth_exempt` takes
-  **one argument and it is the path**: an exemption covers every method on that path,
-  which is `B542`.
+- **`exempt`** — the route's method on its path is in `AUTH_EXEMPT_EXACT` (or the
+  path matches a pattern or the `/static` prefix), so no authentication is required at
+  all. Since `B542` `_is_auth_exempt` takes **the method and the path**: an entry names
+  the methods it exempts, and a write on a path listed for its read meets the middleware.
 - **`+ name`** — the handler reaches that auth function, directly or through a helper
   in the same module, or the router carries it as a `Depends`. Reachability, because
   the call is usually one helper away: `assistant_routes.py` calls `get_current_user`
@@ -261,7 +288,7 @@ The `gate` column is derived, never asserted, and reads as a chain:
 
 The `intended` column is a verdict and must begin `yes` or `no`. A `no` must name a
 `Bxxx`; the checker fails on one that does not, so a hole cannot sit in this table
-unfiled. **There are two `no`s and both are `B542`.** `B540` and `B541` were the other five until 2026-10-02.
+unfiled. **There are no `no`s.** The last two were `B542`'s, closed 2026-10-26; `B540` and `B541` were the other five until 2026-10-02.
 
 #### `routes/assistant_routes.py`
 
@@ -280,9 +307,9 @@ routes: 6
 
 #### `routes/auth_routes.py`
 
-The largest file in the fifteen and the one that matters most. Every row below whose gate ends `+ is_admin` is admin-gated **by hand** — `_get_current_user` + `auth_manager.is_admin`, written out — rather than by `require_admin`. That is why a `require_admin` audit sees nothing in this file, and why `B543` exists.
+The largest file in the fifteen and the one that matters most. Until `B543` (2026-10-26) every admin route here but the four role routes was gated **by hand** — `_get_current_user` + `auth_manager.is_admin`, written out — so a `require_admin` audit saw nothing in the whole user-administration surface. All of them are `require_admin` now, which is why § A gained 21 rows from this file and rule C's ratchet fell by 21. The one `+ is_admin` left is `GET /api/auth/settings`: an exempt read whose handler hands an admin the full set and everyone else a scrubbed copy, which is a decision about what to show, not a gate.
 
-**The four role routes at the bottom are the exception, deliberately** (`P11-02`). They gate with `core.middleware.require_admin`, which was the only one of the four implementations that consulted `auth_disabled()` — the hand-rolled one refused the single operator of an auth-disabled box (moot since `D-2026-10-07-02` §2: there is always authentication). They are also the reason § A's superuser tier moved from 37 to 41 and this file's count from 35 to 39. Rule C's ratchet did not move: `require_admin` is not one of the gates it counts, which is the point.
+The four role routes (`P11-02`) were the first here on `require_admin`, and they are the reason § A's superuser tier moved from 37 to 41 and this file's count from 35 to 39.
 
 routes: 39
 
@@ -299,34 +326,34 @@ routes: 39
 | `POST /api/auth/2fa/confirm` | `totp_confirm` | `middleware + _get_current_user` | yes — self-service. |
 | `POST /api/auth/2fa/disable` | `totp_disable` | `middleware + _get_current_user` | yes — self-service. |
 | `GET /api/auth/2fa/status` | `totp_status` | `middleware + _get_current_user` | yes — self-service. |
-| `GET /api/auth/users` | `list_users` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
-| `POST /api/auth/users` | `admin_create_user` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
-| `PUT /api/auth/users/{username}/privileges` | `update_user_privileges` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
-| `PUT /api/auth/users/{username}/rename` | `rename_user` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
+| `GET /api/auth/users` | `list_users` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `POST /api/auth/users` | `admin_create_user` | `middleware + get_current_user + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `PUT /api/auth/users/{username}/privileges` | `update_user_privileges` | `middleware + get_current_user + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `PUT /api/auth/users/{username}/rename` | `rename_user` | `middleware + get_current_user + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
 | `GET /api/auth/roles` | `list_roles` | `middleware + require_admin` | yes — the role catalogue plus the two key registries a panel needs to render an editor. `P11-02`. |
 | `PUT /api/auth/roles/{name}` | `upsert_role` | `middleware + get_current_user + require_admin` | yes — defining a role is granting a privilege to everyone who holds it. `P11-02`. |
 | `DELETE /api/auth/roles/{name}` | `remove_role` | `middleware + get_current_user + require_admin` | yes — deleting a role revokes it from every user holding it, in one write. `P11-02`. |
 | `PUT /api/auth/users/{username}/role` | `set_user_role` | `middleware + get_current_user + require_admin` | yes — assigning somebody else's role. `P11-02`. |
-| `PUT /api/auth/users/{username}/admin` | `set_user_admin` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
-| `POST /api/auth/signup-toggle` | `toggle_signup` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
-| `PUT /api/auth/open-signup` | `set_signup_enabled` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
-| `DELETE /api/auth/users` | `admin_delete_user` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
+| `PUT /api/auth/users/{username}/admin` | `set_user_admin` | `middleware + get_current_user + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `POST /api/auth/signup-toggle` | `toggle_signup` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `PUT /api/auth/open-signup` | `set_signup_enabled` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `DELETE /api/auth/users` | `admin_delete_user` | `middleware + get_current_user + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
 | `GET /api/auth/features` | `get_features` | `exempt` | yes — the feature flags the pre-login page renders from. Read only, no secrets. |
-| `POST /api/auth/features` | `set_features` | `exempt + _get_current_user + is_admin` | no — `B542`. The exemption is matched on path alone, so the **write** is exempt too; only the handler's own `is_admin` stands between an unauthenticated caller and the instance's feature flags. |
+| `POST /api/auth/features` | `set_features` | `middleware + require_admin` | yes — `B542`: the exemption names GET only now, so the write meets the middleware like any route, and `require_admin` (`B543`) behind it. It was exempt with only the handler's own check in front of the instance's feature flags. |
 | `GET /api/auth/settings` | `get_settings` | `exempt + _get_current_user + is_admin` | yes — exempt on purpose, and it scrubs: an admin gets the full set, everyone else a copy with secrets blanked. The scrub is the control, and it is in the handler where it belongs. |
-| `POST /api/auth/networks/check` | `check_networks` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
-| `GET /api/auth/networks/agent` | `network_agent_health` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
-| `GET /api/auth/networks/guard` | `host_guard_rules` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
-| `GET /api/auth/networks/devices` | `network_devices` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
-| `POST /api/auth/networks/devices/name` | `name_network_device` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
-| `GET /api/auth/settings/flag-sources` | `settings_flag_sources` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
-| `POST /api/auth/settings` | `set_settings` | `exempt + _get_current_user + is_admin` | no — `B542`. Same path-only exemption, and this one writes every app setting, credentials included. |
-| `GET /api/auth/integrations` | `list_integrations_route` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
+| `POST /api/auth/networks/check` | `check_networks` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `GET /api/auth/networks/agent` | `network_agent_health` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `GET /api/auth/networks/guard` | `host_guard_rules` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `GET /api/auth/networks/devices` | `network_devices` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `POST /api/auth/networks/devices/name` | `name_network_device` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `GET /api/auth/settings/flag-sources` | `settings_flag_sources` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `POST /api/auth/settings` | `set_settings` | `middleware + require_admin` | yes — `B542`: exempt for GET only now, so the write that sets every app setting, credentials included, needs a session, and `require_admin` (`B543`) behind it. |
+| `GET /api/auth/integrations` | `list_integrations_route` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
 | `GET /api/auth/integrations/presets` | `list_presets` | `exempt` | yes — preset templates with `api_key` stripped in the comprehension; nothing instance-specific. |
-| `POST /api/auth/integrations` | `create_integration` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
-| `PUT /api/auth/integrations/{integration_id}` | `update_integration_route` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
-| `DELETE /api/auth/integrations/{integration_id}` | `delete_integration_route` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
-| `POST /api/auth/integrations/{integration_id}/test` | `test_integration_route` | `middleware + _get_current_user + is_admin` | yes — admin is right for this. The *mechanism* is not: it is hand-rolled rather than `require_admin`, so no `require_admin` audit sees it. `B543`. |
+| `POST /api/auth/integrations` | `create_integration` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `PUT /api/auth/integrations/{integration_id}` | `update_integration_route` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `DELETE /api/auth/integrations/{integration_id}` | `delete_integration_route` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `POST /api/auth/integrations/{integration_id}/test` | `test_integration_route` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
 
 #### `routes/chat_routes.py`
 
@@ -490,11 +517,11 @@ this file's hand-rolled pattern, so the population that this map covers grew by 
 the number of admin decisions added — which is the behaviour the map was built to give.
 The paragraph above is about the 107 that predate roles; the counts below are live.
 
-- **50 superuser sites do not move.** They are already right.
-- **56 operator sites are the phase's return.** Today the only way to let someone keep
+- **68 superuser sites do not move.** They are already right.
+- **64 operator sites are the phase's return.** Today the only way to let someone keep
   the instance up is to make them the owner. An `operator` overlay on
-  `DEFAULT_PRIVILEGES` retires the 56 operator sites without touching any of the
-  50 superuser sites. (Both counts in the one spelling `check-auth-map.py` checks
+  `DEFAULT_PRIVILEGES` retires the 64 operator sites without touching any of the
+  68 superuser sites. (Both counts in the one spelling `check-auth-map.py` checks
   wherever it appears: this sentence said *"48 gates … the 37"* through every gate
   added after it was written, and it is the sentence this section concludes from —
   `B1143`.)
@@ -505,10 +532,12 @@ The paragraph above is about the 107 that predate roles; the counts below are li
   owner scope. Changing the gate before the store has an owner would swap one wrong
   answer for another.
 
-And before any of it: **the other three admin gates in § A's preamble.** `P11-02c`
+And before any of it: **the other admin gates in § A's preamble.** `P11-02c`
 already exists for the `_ADMIN_TOOLS` name collision *"one grep away from a serious
-mistake during an RBAC refactor"*. These are the same hazard in a different spelling,
-and `B543` is filed for them.
+mistake during an RBAC refactor"*. These were the same hazard in a different spelling;
+`B543` folded the user-administration surface and the shell's copy into `require_admin`,
+and what rule C still counts is `owner_is_admin_or_single_user` and the `is_admin`
+calls outside a request.
 
 ## E · a host the caller names is the operator's to reach (`B541`)
 

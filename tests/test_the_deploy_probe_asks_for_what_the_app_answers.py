@@ -13,13 +13,13 @@ pulls the whole thing up — and asks for exactly the paths the probe asks for.
 If a route starts answering something else, this fails here, in the suite,
 rather than there.
 
-It also records the finding the table carries a comment about. **`/api/ready`
-answers 401.** `src/readiness.py`'s own docstring says it is "suitable for an
-orchestrator readiness probe (200 only when every critical check passes)", and
-`app.py`'s `AUTH_EXEMPT_EXACT` does not list it, so with the shipped defaults an
-orchestrator gets 401 and never sees either 200 or 503. That is why the compose
-healthcheck probes `/api/health` — liveness — rather than the endpoint written
-for the job. The row is `B441`; this test pins the measurement it rests on.
+It also pins what `B441` changed. `/api/ready` answered 401 until 2026-10-26:
+`src/readiness.py`'s own docstring calls it "suitable for an orchestrator
+readiness probe (200 only when every critical check passes)", and `app.py`'s
+`AUTH_EXEMPT_EXACT` did not list it, so an orchestrator never saw either 200 or
+503 and the compose healthcheck probed `/api/health` — liveness — instead. It is
+exempt for GET now, the healthcheck asks it, and a caller with no session is
+told the verdict and nothing else.
 """
 import json
 import os
@@ -130,11 +130,14 @@ def test_the_gated_routes_are_still_gated(answered):
         assert answered[path]["location"] == "/login"
 
 
-def test_the_readiness_endpoint_is_behind_auth(answered):
-    """`B441`, measured. Written to be an orchestrator's readiness probe and
-    unreachable by one. Asserted rather than merely noted so that the day it is
-    fixed, this fails and the row gets closed instead of forgotten."""
-    assert answered["/api/ready"]["status"] == 401, (
-        "/api/ready no longer answers 401 — if it is now exempt, the compose "
-        "healthcheck can move from /api/health (liveness) to /api/ready "
-        "(readiness), which is what B441 asks for")
+def test_the_readiness_endpoint_answers_a_probe_with_the_verdict_only(answered):
+    """`B441`. Written to be an orchestrator's readiness probe and, until
+    2026-10-26, unreachable by one (401). It answers a caller with no session
+    now — 200 here, where the database and data directory are whole — and the
+    answer is `ready` alone: no data path, no database error text, no version.
+    It flipped from the 401 this test used to pin."""
+    ready = answered["/api/ready"]
+    assert ready["status"] == 200, (
+        f"/api/ready answered {ready['status']} to a caller with no session; the "
+        "compose healthcheck asks it and cannot sign in")
+    assert json.loads(ready["body"]) == {"ready": True}

@@ -113,3 +113,79 @@ def sign_in(app_module, client, name: str = ADMIN):
         assert auth.setup(name, PASSWORD)
     client.cookies.set(SESSION_COOKIE, auth.create_session_trusted(name))
     return client
+
+
+def through_the_middleware(request, auth_manager):
+    """Give a hand-built request what `AuthMiddleware` gives a real one before
+    any route sees it: the person its session cookie names, on
+    ``request.state.current_user``, and the app's auth manager on
+    ``request.app.state.auth_manager``. Returns ``request``.
+
+    `B543`. The user-administration routes in `routes/auth_routes.py` read the
+    session cookie themselves until 2026-10-26 (`_get_current_user` +
+    `is_admin`), so their tests handed them a bare object with a cookie on it.
+    They ask `core.middleware.require_admin` now, which reads what the
+    middleware stamped — so the stamp is added here, by the middleware's own
+    rule (``get_username_for_token`` of the session cookie), and each test
+    keeps the cookie and the manager it was written with. A stand-in manager
+    with no ``is_configured`` is given one: a manager that names an admin is
+    one on an install that has accounts."""
+    from types import SimpleNamespace
+
+    from routes.auth_routes import SESSION_COOKIE
+
+    cookies = getattr(request, "cookies", None) or {}
+    user = auth_manager.get_username_for_token(cookies.get(SESSION_COOKIE))
+    state = getattr(request, "state", None)
+    if state is None:
+        state = SimpleNamespace()
+        request.state = state
+    state.current_user = user
+    state.api_token = False
+    app = getattr(request, "app", None)
+    if app is None:
+        app = SimpleNamespace(state=SimpleNamespace())
+        request.app = app
+    if getattr(app, "state", None) is None:
+        app.state = SimpleNamespace()
+    app.state.auth_manager = auth_manager
+    if not hasattr(auth_manager, "is_configured"):
+        try:
+            auth_manager.is_configured = True
+        except (AttributeError, TypeError):
+            pass
+    return request
+
+
+def with_session_stamp(app, auth_manager):
+    """:func:`through_the_middleware` for a bare app built from routers and
+    served for real: the app holds ``auth_manager``, and each request is
+    stamped with the person its session cookie names — `AuthMiddleware`'s rule,
+    and nothing else of it (no 401, no exemptions). For tests that drive a
+    router over HTTP with cookies, as the browser does (`B543`). Returns ``app``."""
+    from routes.auth_routes import SESSION_COOKIE
+
+    app.state.auth_manager = auth_manager
+
+    @app.middleware("http")
+    async def _stamp_the_session(request, call_next):
+        request.state.current_user = auth_manager.get_username_for_token(
+            request.cookies.get(SESSION_COOKIE))
+        request.state.api_token = False
+        return await call_next(request)
+
+    return app
+
+
+def stamped_endpoint(endpoint, auth_manager):
+    """A route function that stamps, as :func:`through_the_middleware` does,
+    whichever argument is the request (the one carrying ``cookies``) before it
+    is called. For tests that call a router's endpoints directly with a
+    hand-built request (`B543`)."""
+    def call(*args, **kwargs):
+        args = tuple(through_the_middleware(a, auth_manager) if hasattr(a, "cookies") else a
+                     for a in args)
+        if "request" in kwargs:
+            kwargs["request"] = through_the_middleware(kwargs["request"], auth_manager)
+        return endpoint(*args, **kwargs)
+    return call

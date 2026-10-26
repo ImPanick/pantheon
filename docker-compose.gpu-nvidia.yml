@@ -139,9 +139,13 @@ services:
     # like one that is fine.
     #
     # The probe is an HTTP request this app answered, not a process check.
-    # `/api/health` is in `app.py`'s `AUTH_EXEMPT_EXACT`, so it answers 200
-    # before anyone signs in; parsing the body is what makes a
-    # login redirect or an error page *fail* the check rather than pass it.
+    # `/api/ready` is in `app.py`'s `AUTH_EXEMPT_EXACT` for GET, so it answers
+    # before anyone signs in: 200 with `{"ready": true}` when the database
+    # answers and the data directory takes a write, 503 when either does not
+    # (`B441` — it probed `/api/health` until 2026-10-26, which proves the app
+    # is serving and not that it can keep anything, so a broken data mount
+    # read `healthy`). Parsing the body is what makes a login redirect or an
+    # error page *fail* the check rather than pass it.
     # `127.0.0.1`, not `localhost`: uvicorn binds `0.0.0.0`, which is IPv4
     # only, and `localhost` can resolve to `::1` first.
     #
@@ -155,7 +159,7 @@ services:
     # `docker ps`, to `scripts/pantheon-deploy`, to any
     # `depends_on: condition: service_healthy` - it does not clear one.
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import json,sys,urllib.request as u; sys.exit(0 if json.load(u.urlopen('http://127.0.0.1:7000/api/health', timeout=5)).get('status') == 'healthy' else 1)\""]
+      test: ["CMD-SHELL", "python -c \"import json,sys,urllib.request as u; sys.exit(0 if json.load(u.urlopen('http://127.0.0.1:7000/api/ready', timeout=5)).get('ready') is True else 1)\""]
       interval: 15s
       timeout: 10s
       retries: 3

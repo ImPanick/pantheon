@@ -369,12 +369,14 @@ def _collect_otlp(out: _Out) -> None:
 
 def _collect_build(out: _Out) -> None:
     try:
-        from src.constants import APP_VERSION
+        from src.constants import APP_VERSION, build_commit
+        commit = build_commit() or "unstamped"
     except Exception:
-        APP_VERSION = "unknown"
+        APP_VERSION, commit = "unknown", "unstamped"
     out.metric("pantheon_build_info", "gauge",
-               "Always 1. The version is in the label.")
-    out.add("pantheon_build_info", 1, {"version": APP_VERSION})
+               "Always 1. The version and the build's commit are in the labels.")
+    # `B453`: the commit beside the version, `unstamped` when the build was not.
+    out.add("pantheon_build_info", 1, {"version": APP_VERSION, "commit": commit})
 
 
 def _collect_search(out: _Out) -> None:

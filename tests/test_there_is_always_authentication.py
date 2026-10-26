@@ -381,11 +381,17 @@ def test_require_admin_wants_an_admin(every_door_open):
     assert require_admin(PersonRequest(ADMIN, every_door_open)) is None
 
 
-def test_the_shells_own_gate_wants_an_admin_and_an_auth_manager(every_door_open):
-    from routes.shell_routes import _require_admin
-    assert _refused(lambda: _require_admin(_nobody(every_door_open))) == 403
-    assert _refused(lambda: _require_admin(PersonRequest(ADMIN, None))) == 403
-    assert _require_admin(PersonRequest(ADMIN, every_door_open)) is None
+def test_the_shells_gate_wants_an_admin_and_an_auth_manager(every_door_open):
+    # `B543`: the shell's own `_require_admin` is gone; its routes ask
+    # `require_admin`, which keeps both of the copy's refusals — no auth
+    # manager, and a bearer token's `api`.
+    import routes.shell_routes as shell_routes
+    from core.middleware import require_admin
+    assert not hasattr(shell_routes, "_require_admin")
+    assert _refused(lambda: require_admin(_nobody(every_door_open))) == 403
+    assert _refused(lambda: require_admin(PersonRequest(ADMIN, None))) == 403
+    assert _refused(lambda: require_admin(PersonRequest("api", every_door_open))) == 403
+    assert require_admin(PersonRequest(ADMIN, every_door_open)) is None
 
 
 @pytest.mark.parametrize("gate, status", [

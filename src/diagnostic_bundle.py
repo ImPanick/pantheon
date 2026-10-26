@@ -150,11 +150,14 @@ def collect_settings() -> Dict[str, Any]:
 
 def collect_environment() -> Dict[str, Any]:
     try:
-        from src.constants import APP_VERSION
+        from src.constants import APP_VERSION, build_commit
+        commit = build_commit()
     except Exception:
-        APP_VERSION = "unknown"
+        APP_VERSION, commit = "unknown", None
     return {
         "pantheon": APP_VERSION,
+        # `B453`: which commit, beside which release line; None when unstamped.
+        "pantheon_commit": commit,
         "python": sys.version.split()[0],
         "platform": platform.platform(terse=True),
         "machine": platform.machine(),

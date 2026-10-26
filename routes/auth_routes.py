@@ -403,16 +403,13 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
     # Admin-only routes
     @router.get("/users")
     async def list_users(request: Request):
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
         return {"users": auth_manager.list_users()}
 
     @router.post("/users")
     async def admin_create_user(body: CreateUserRequest, request: Request):
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
+        user = get_current_user(request)
         if len(body.password) < PASSWORD_MIN_LENGTH:
             raise HTTPException(400, f"Password must be at least {PASSWORD_MIN_LENGTH} characters")
         if len(body.username.strip()) < 1:
@@ -431,9 +428,8 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
 
     @router.put("/users/{username}/privileges")
     async def update_user_privileges(username: str, request: Request):
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
+        user = get_current_user(request)
         body = await request.json()
         ok = auth_manager.set_privileges(username, body)
         if not ok:
@@ -534,9 +530,8 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
 
     @router.put("/users/{username}/rename")
     async def rename_user(username: str, body: RenameUserRequest, request: Request):
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
+        user = get_current_user(request)
         old_username = (username or "").strip().lower()
         new_username = (body.username or "").strip().lower()
         if not new_username:
@@ -815,9 +810,8 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         is allowed while another admin exists; the `self` flag tells the UI to
         reload the acting user into the normal-user view.
         """
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
+        user = get_current_user(request)
         result = auth_manager.set_admin(username, body.is_admin, user)
         if result is not SetAdminResult.OK:
             record_auth_event("admin_change", actor=user, subject=username,
@@ -849,26 +843,21 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
 
         This endpoint is kept for backward compatibility and may be removed in future versions.
         """
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
         auth_manager.signup_enabled = not auth_manager.signup_enabled
         return {"ok": True, "signup_enabled": auth_manager.signup_enabled}
 
     @router.put("/open-signup")
     async def set_signup_enabled(body: SetOpenRegistrationRequest, request: Request):
         """Set open signup enabled state. Admin only."""
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
         auth_manager.signup_enabled = body.enabled
         return {"ok": True,"signup_enabled": auth_manager.signup_enabled}
 
     @router.delete("/users")
     async def admin_delete_user(body: DeleteUserRequest, request: Request):
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
+        user = get_current_user(request)
 
         def _invalidate_api_token_cache():
             try:
@@ -909,9 +898,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
     @router.post("/features")
     async def set_features(request: Request):
         """Admin only: update feature toggles."""
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
         body = await request.json()
         current = _load_features()
         for key in current:
@@ -947,9 +934,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         saved here — the panel asks about what is on screen, before the operator
         commits to it.
         """
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
         body = await request.json()
         value = body.get("networks", [])
         probe = str(body.get("probe") or "").strip()
@@ -969,9 +954,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         reporting that as a healthy agent sends the operator hunting the wrong
         fault. `netagent_client.health()` checks the name.
         """
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
         from src import netagent_client
         if not netagent_client.configured():
             return {"configured": False, "reachable": False,
@@ -991,9 +974,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         falling back to this build's copy when it is not, rather than showing
         nothing and letting the page imply there is no boundary.
         """
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
         from src import netagent_client
         if netagent_client.configured():
             answer = await netagent_client.call("guard")
@@ -1014,9 +995,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         and its name, because *"where is the printer"* has an answer even on a
         day the printer has not spoken.
         """
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
         from src import device_inventory, netagent_client
 
         refreshed = None
@@ -1041,9 +1020,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         It is hung on the MAC, which is the identity, so it survives by
         construction rather than by anybody remembering to move it.
         """
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
         body = await request.json()
         from src import device_inventory
         mac = str(body.get("mac") or "")
@@ -1068,18 +1045,14 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         Admin-only for the same reason the full settings read is: it reports
         what the process environment says, which is deployment configuration.
         """
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
         from src.settings import env_backed_flag_report
         return {"flags": env_backed_flag_report()}
 
     @router.post("/settings")
     async def set_settings(request: Request):
         """Admin only: update app settings."""
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
         body = await request.json()
         # A COPY. `load_settings()` hands back its two-second cache itself, and
         # this loop assigns into it key by key before a later key can be
@@ -1314,9 +1287,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
     @router.get("/integrations")
     async def list_integrations_route(request: Request):
         """List all integrations (admin only, keys masked)."""
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
         items = load_integrations()
         # Mask API keys for frontend display
         safe = [mask_integration_secret(item) for item in items]
@@ -1330,9 +1301,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
     @router.post("/integrations")
     async def create_integration(request: Request):
         """Create a new integration (admin only)."""
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
         body = await request.json()
         item = add_integration(body)
         return {"ok": True, "integration": mask_integration_secret(item)}
@@ -1340,9 +1309,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
     @router.put("/integrations/{integration_id}")
     async def update_integration_route(integration_id: str, request: Request):
         """Update an existing integration (admin only)."""
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
         body = await request.json()
         item = update_integration(integration_id, body)
         if not item:
@@ -1352,9 +1319,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
     @router.delete("/integrations/{integration_id}")
     async def delete_integration_route(integration_id: str, request: Request):
         """Delete an integration (admin only)."""
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
         ok = delete_integration(integration_id)
         if not ok:
             raise HTTPException(404, "Integration not found")
@@ -1363,9 +1328,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
     @router.post("/integrations/{integration_id}/test")
     async def test_integration_route(integration_id: str, request: Request):
         """Test connectivity to an integration (admin only)."""
-        user = _get_current_user(request)
-        if not user or not auth_manager.is_admin(user):
-            raise HTTPException(403, "Admin only")
+        require_admin(request)
         integ = get_integration(integration_id)
         if not integ:
             raise HTTPException(404, "Integration not found")

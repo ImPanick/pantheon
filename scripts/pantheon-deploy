@@ -81,18 +81,17 @@ SERVICE = "pantheon"
 # an unsigned probe now always meets the 302; the 200 stays accepted so a probe
 # run against an older install still reads it right.
 ROUTES = (
-    ("/api/health", (200,), "the healthcheck's own route; auth-exempt"),
+    ("/api/health", (200,), "liveness; auth-exempt"),
     ("/api/version", (200,), "auth-exempt"),
     ("/api/auth/status", (200,), "the first call the login page makes"),
     ("/login", (200,), "where an unauthenticated visitor lands"),
     ("/", (200, 302), "302 -> /login when auth is on"),
     ("/docs", (200, 302), "`B212`'s vendored Swagger UI"),
     ("/static/js/theme.js", (200,), "the /static mount answers files"),
-    # `B441`. 401 is what this answers today with the compose defaults, and its
-    # own docstring calls it "suitable for an orchestrator readiness probe".
-    # Accepted here rather than asserted at 200 because this script is not the
-    # place to fix it; the row is.
-    ("/api/ready", (200, 401, 503), "`B441` — auth-gated today"),
+    # `B441`. The healthcheck's route since 2026-10-26: exempt for GET, 200 when
+    # the instance is whole and 503 when it is not, `{"ready": bool}` and
+    # nothing else to a caller with no session. It answered 401 before that.
+    ("/api/ready", (200, 503), "`B441` — the healthcheck's own route; auth-exempt for GET"),
 )
 
 # Tracked roots whose bytes end up in the image. `.dockerignore` drops `docs/`,
@@ -209,7 +208,7 @@ def wait_for_healthy(docker: Docker, service: str = SERVICE, timeout: float = 30
         if status == "unhealthy":
             raise DeployError(
                 f"{service} went unhealthy after {waited:.0f}s. The healthcheck asks "
-                "127.0.0.1:7000/api/health for a JSON body saying healthy; see "
+                "127.0.0.1:7000/api/ready for a JSON body saying ready; see "
                 "`docker inspect --format '{{json .State.Health}}'` for the last outputs.")
         state = _out(docker.run(["inspect", fmt_state, cid])).strip()
         if state and state not in ("running", "created", "restarting"):
@@ -558,6 +557,20 @@ def _tag_previous(docker: Docker, service: str) -> str:
     return image_ref
 
 
+def checkout_commit(cwd: str | os.PathLike = REPO_ROOT) -> str:
+    """`B453`. The checkout's HEAD, which the build stamps into the image so a
+    running instance can say which commit it is (`GET /api/version`). "" when
+    there is no git or no repository here: the image is then built unstamped
+    and says so, rather than carrying a guess."""
+    try:
+        proc = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(cwd),
+                              capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    sha = (proc.stdout or "").strip().lower()
+    return sha if proc.returncode == 0 and re.fullmatch(r"[0-9a-f]{7,40}", sha) else ""
+
+
 def cmd_run(args) -> None:
     docker = Docker()
     timings = {}
@@ -565,7 +578,10 @@ def cmd_run(args) -> None:
 
     if not args.no_build:
         t0 = time.monotonic()
-        proc = docker.compose(["build", args.service], capture=False, timeout=7200)
+        stamp = checkout_commit(getattr(docker, "cwd", REPO_ROOT))
+        build = ["build", *(["--build-arg", f"PANTHEON_BUILD_COMMIT={stamp}"] if stamp else []),
+                 args.service]
+        proc = docker.compose(build, capture=False, timeout=7200)
         if proc.returncode != 0:
             raise DeployError(f"`docker compose build {args.service}` exited {proc.returncode}")
         timings["build"] = time.monotonic() - t0

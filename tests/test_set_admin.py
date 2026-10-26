@@ -232,13 +232,16 @@ def _auth_route_endpoint(path, method):
     raise AssertionError(f"{method} {path} route not registered")
 
 
-def _fake_auth_request(token="session-token"):
+def _fake_auth_request(token="session-token", *, auth):
+    """`B543`: the route asks `require_admin`, which reads what `AuthMiddleware`
+    stamps — so the request is stamped by the middleware's own rule."""
     from routes.auth_routes import SESSION_COOKIE
+    from tests.helpers.signed_in import through_the_middleware
 
     req = SimpleNamespace()
     req.cookies = {SESSION_COOKIE: token}
     req.client = SimpleNamespace(host="127.0.0.1")
-    return req
+    return through_the_middleware(req, auth)
 
 
 def _result_enum():
@@ -256,7 +259,7 @@ def test_route_requires_admin():
 
     with pytest.raises(HTTPException) as exc:
         asyncio.run(target(username="carol", body=SetAdminRequest(is_admin=True),
-                           request=_fake_auth_request()))
+                           request=_fake_auth_request(auth=auth)))
 
     assert exc.value.status_code == 403
     auth.set_admin.assert_not_called()
@@ -273,7 +276,7 @@ def test_route_last_admin_returns_400():
 
     with pytest.raises(HTTPException) as exc:
         asyncio.run(target(username="admin", body=SetAdminRequest(is_admin=False),
-                           request=_fake_auth_request()))
+                           request=_fake_auth_request(auth=auth)))
 
     assert exc.value.status_code == 400
 
@@ -289,7 +292,7 @@ def test_route_user_not_found_returns_404():
 
     with pytest.raises(HTTPException) as exc:
         asyncio.run(target(username="ghost", body=SetAdminRequest(is_admin=True),
-                           request=_fake_auth_request()))
+                           request=_fake_auth_request(auth=auth)))
 
     assert exc.value.status_code == 404
 
@@ -304,7 +307,7 @@ def test_route_success_returns_envelope():
     auth.set_admin.return_value = R.OK
 
     out = asyncio.run(target(username="bob", body=SetAdminRequest(is_admin=True),
-                             request=_fake_auth_request()))
+                             request=_fake_auth_request(auth=auth)))
 
     assert out == {"ok": True, "is_admin": True, "self": False}
 
@@ -319,6 +322,6 @@ def test_route_self_flag_true_when_targeting_own_account():
     auth.set_admin.return_value = R.OK
 
     out = asyncio.run(target(username="Admin", body=SetAdminRequest(is_admin=False),
-                             request=_fake_auth_request()))
+                             request=_fake_auth_request(auth=auth)))
 
     assert out == {"ok": True, "is_admin": False, "self": True}

@@ -31,12 +31,16 @@ def integrations_routes(tmp_path, monkeypatch):
         def is_admin(self, user):
             return user == "admin"
 
-    router = auth_routes.setup_auth_routes(_AuthManager())
+    from tests.helpers.signed_in import stamped_endpoint
+    manager = _AuthManager()
+    router = auth_routes.setup_auth_routes(manager)
 
     def endpoint(path, method):
         for route in router.routes:
             if getattr(route, "path", "") == path and method in getattr(route, "methods", set()):
-                return route.endpoint
+                # `B543`: the route asks `require_admin`, which reads the stamp
+                # `AuthMiddleware` puts on a request whose cookie validates.
+                return stamped_endpoint(route.endpoint, manager)
         raise AssertionError(f"{method} {path} route not registered")
 
     return endpoint, auth_routes.SESSION_COOKIE, fastapi.HTTPException

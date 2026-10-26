@@ -63,7 +63,9 @@ async def test_generic_settings_hide_and_preserve_retired_fallbacks(monkeypatch)
         store.update(updated)
 
     monkeypatch.setattr(auth_routes, "_save_settings", save_settings)
-    router = auth_routes.setup_auth_routes(_AuthManager())
+    from tests.helpers.signed_in import through_the_middleware
+    manager = _AuthManager()
+    router = auth_routes.setup_auth_routes(manager)
     get_settings = _route(router, "/api/auth/settings", "GET")
     set_settings = _route(router, "/api/auth/settings", "POST")
 
@@ -74,10 +76,11 @@ async def test_generic_settings_hide_and_preserve_retired_fallbacks(monkeypatch)
     assert "default_model_fallbacks" not in admin
     assert store["default_model_fallbacks"] == LEGACY_VALUE
 
-    response = await set_settings(_Request({
+    # `B543`: the POST asks `require_admin`, which reads the middleware's stamp.
+    response = await set_settings(through_the_middleware(_Request({
         "default_model_fallbacks": [],
         "tts_enabled": False,
-    }, admin=True))
+    }, admin=True), manager))
 
     assert "default_model_fallbacks" not in response
     assert store["default_model_fallbacks"] == LEGACY_VALUE

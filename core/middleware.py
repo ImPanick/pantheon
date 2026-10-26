@@ -11,7 +11,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from starlette.routing import get_route_path
 
-from src.owner_identity import INTERNAL_TOOL_USER
+from src.owner_identity import INTERNAL_TOOL_USER, REQUEST_SENTINEL_OWNERS
 
 
 # Per-process token that lets the in-app tool layer hit admin-gated
@@ -47,6 +47,21 @@ def with_asgi_root_path(scope: Mapping[str, object], path: str) -> str:
     mount ``app_root_path`` is absent — Starlette sets it only when a mount
     matches — so every existing caller, `AuthMiddleware` included, reads the
     same ``root_path`` it always has.
+
+    **Supported: `uvicorn --root-path`. Not supported: Pantheon mounted inside
+    another Starlette app** (`B371`). `Mount.matches` sets
+    ``"app_root_path": scope.get("app_root_path", root_path)``, so the *outer*
+    mount records the outer app's own prefix (``""``) on the scope it hands
+    Pantheon, and a redirect built here — the sign-in redirect and the
+    ``/static`` page redirects alike — drops ``/pantheon``. The row that found
+    this said Starlette's own ``Request.url_for`` was wrong in the same shape;
+    measured on Starlette 1.10.0 it is not (it resolves through the outermost
+    router), so this is a limitation of this helper, written down rather than
+    answered with a second derivation of "what prefix is this deployment
+    behind" (`Law 14`) for a shape nobody deploys. `docs/setup.md` § *Serving
+    under a path prefix* tells the operator to put a proxy in front, and
+    `tests/test_a_nested_mount_is_written_down_as_unsupported.py` drives both
+    shapes.
 
     **Presence and not truthiness**, and the difference is the whole bug. On a
     deployment with no prefix at all, ``Mount`` still sets
@@ -143,7 +158,15 @@ def require_admin(request: Request):
     if not auth_mgr or not auth_mgr.is_configured:
         raise HTTPException(403, "Admin only")
     user = person if internal else getattr(request.state, "current_user", None)
-    if not user or not auth_mgr.is_admin(user):
+    # `B543`. A request sentinel is never an admin, whatever the store says:
+    # `api` is what `AuthMiddleware` names a bearer-token request (`B70` — a
+    # credential its owner handed to something else), and the others name no
+    # person either. `routes/shell_routes.py` kept its own copy of this gate
+    # for that one refusal; it is here now, so the shell asks this function
+    # like every other admin route and there is one answer to "is this an
+    # admin". All are reserved usernames, so no account can hold one — this
+    # is the refusal said where it is decided, not a new one.
+    if not user or user in REQUEST_SENTINEL_OWNERS or not auth_mgr.is_admin(user):
         raise HTTPException(403, "Admin only")
 
 
