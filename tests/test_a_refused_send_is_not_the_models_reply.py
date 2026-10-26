@@ -73,16 +73,11 @@ def test_the_refusal_is_a_note_with_no_sender(sandbox):
 
 
 def test_the_refused_arm_says_it_through_the_note():
-    """Scoped to `handleChatSubmit`, then to its `if (!res.ok) {` arm."""
+    """Scoped to `handleChatSubmit` (`js_function`, comments blanked): the
+    refusal goes through the note, and nothing there types into the holder."""
     src = (JS / "chat.js").read_text(encoding="utf-8")
     body = blank_text(js_function(src, "export async function handleChatSubmit("), "js")
-    start = body.index("if (!res.ok) {")
-    depth, i = 0, body.index("{", start)
-    while True:
-        depth += {"{": 1, "}": -1}.get(body[i], 0)
-        if depth == 0:
-            break
-        i += 1
-    arm = body[start:i]
-    assert "_sayRefused(document, errText, holder)" in arm
-    assert "typewriterInto(holder" not in arm
+    refused = body.index("if (!res.ok) {")
+    assert body.index("_sayRefused(document, errText, holder)", refused) < body.index(
+        "const streamRunId", refused), "the note is not drawn in the refused arm"
+    assert "typewriterInto(holder" not in body

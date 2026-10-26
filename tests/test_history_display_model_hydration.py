@@ -131,10 +131,16 @@ def test_paginated_history_reads_only_count_and_requested_page(monkeypatch):
 
     # One COUNT for the total plus one page read — never a full-transcript
     # select. The page bounds are asserted through the response above rather
-    # than by matching SQL text.
+    # than by matching SQL text. `B1332` adds the third: the ids of the rows
+    # nobody reads (a compaction's `hidden` summary), so the page is cut from
+    # the displayed rows — asked only of rows whose metadata names the key,
+    # and only for their id and metadata.
     chat_selects = _chat_message_selects(statements)
-    assert len(chat_selects) == 2, chat_selects
+    assert len(chat_selects) == 3, chat_selects
     assert sum("count(" in statement for statement in chat_selects) == 1
+    [hidden] = [s for s in chat_selects if " like " in s]
+    assert hidden.startswith("select chat_messages.id as chat_messages_id, "
+                             "chat_messages.metadata as chat_messages_metadata from chat_messages "), hidden
 
 
 def test_production_router_order_reaches_bounded_canonical_history(monkeypatch):

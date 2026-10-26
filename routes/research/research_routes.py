@@ -3,7 +3,9 @@
 # pipeline adapted from Tongyi DeepResearch (Alibaba-NLP / Tongyi Lab),
 # licensed Apache-2.0. It is NOT Tongyi's original: it has been changed.
 # Changed by Odysseus, and further by Pantheon on 2026-08-27, and since: the
-# status probe a chat switch makes answers 200 (`P23-04`).
+# status probe a chat switch makes answers 200 (`P23-04`); an unreadable
+# privilege store refuses a delegated owner's research (`B531`), and that
+# check reads through the one privilege rule (`B530`).
 #
 # Upstream licence text (Tongyi DeepResearch): licenses/DeepResearch-Apache-2.0.txt
 # Attribution: CREDITS.md

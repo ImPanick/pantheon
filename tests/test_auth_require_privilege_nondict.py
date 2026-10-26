@@ -92,7 +92,8 @@ def test_the_research_loopback_refuses_on_an_unreadable_store_too():
     """The loopback's own check had a bare `except: pass` that granted."""
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1] / "routes" / "research" / "research_routes.py").read_text()
-    i = src.index('privs.get("can_use_research", True)')
+    # `B530`: the check reads through `resolve_privilege` now.
+    i = src.index('resolve_privilege(privs, "can_use_research")')
     window = src[i - 600:i]
     assert "privileges_or_refuse(auth_mgr, tool_owner)" in window and "except Exception" not in window
 
