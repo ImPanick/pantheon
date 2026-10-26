@@ -26,6 +26,11 @@ async def do_resolve_contact(content: str, owner: Optional[str] = None) -> Dict:
         return {"error": "name is required", "exit_code": 1}
 
     contacts = {}  # email_or_phone -> {name, source, phone?}
+    # `B1528`. What could not be searched, and why — said with the answer,
+    # because "No contacts found" is a claim about every source, and an
+    # assistant that reads it will tell the person the name is unknown when
+    # the mail history was never asked.
+    not_searched = []  # sentences
 
     # 1. CardDAV (Radicale) — structured contacts. Call in-process: a
     # server-side httpx GET to /api/contacts/search carries no session
@@ -52,8 +57,8 @@ async def do_resolve_contact(content: str, owner: Optional[str] = None) -> Dict:
                     phone = (phone or "").strip()
                     if phone:
                         contacts[phone] = {"name": c.get("name") or phone, "source": "contacts", "phone": phone}
-    except Exception:
-        pass
+    except Exception as e:
+        not_searched.append(f"The address book could not be read ({type(e).__name__}).")
 
     async with httpx.AsyncClient(timeout=30,
                                  mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
@@ -64,19 +69,40 @@ async def do_resolve_contact(content: str, owner: Optional[str] = None) -> Dict:
         # from their own mailbox. With no headers at all the middleware
         # answered 401, the `200` check below dropped it, and an admin's
         # assistant never resolved a name from their mail history.
+        #
+        # `B1528`. Only a 200 that carries no `error` is a search: the route
+        # answers `{"contacts": [], "error": ...}` when the mail server cannot
+        # be reached, and that empty list is not "nobody by that name".
         try:
             resp = await client.get(f"{_INTERNAL_BASE}/api/email/resolve-contact",
                                     params={"name": name},
                                     headers=_internal_headers(owner))
-            if resp.status_code == 200:
-                for c in (resp.json().get("contacts") or []):
+            body = resp.json() if resp.status_code == 200 else {}
+            if resp.status_code != 200:
+                not_searched.append(
+                    f"The mail history was not searched: the mail route answered "
+                    f"HTTP {resp.status_code}.")
+            elif not isinstance(body, dict) or body.get("error"):
+                why = str((body or {}).get("error") or "the mail route said nothing").strip()
+                not_searched.append(f"The mail history was not searched: {why.rstrip('.')}.")
+            else:
+                for c in (body.get("contacts") or []):
                     email = (c.get("email") or "").strip().lower()
                     if email and email not in contacts:
                         contacts[email] = {"name": c.get("name") or email, "source": "email history"}
-        except Exception:
-            pass
+        except Exception as e:
+            not_searched.append(
+                f"The mail history was not searched: the mail route could not be asked "
+                f"({type(e).__name__}).")
 
     if not contacts:
+        if not_searched:
+            return {"output": " ".join(
+                [f"No contacts found matching '{name}' in what could be searched."]
+                + not_searched
+                + ["So this is not an answer that nobody by that name exists — ask the "
+                   "person for the address, or try again once mail is reachable."]),
+                "exit_code": 0}
         return {"output": f"No contacts found matching '{name}'.", "exit_code": 0}
 
     lines = [f"Contacts matching '{name}':"]
@@ -85,6 +111,7 @@ async def do_resolve_contact(content: str, owner: Optional[str] = None) -> Dict:
             lines.append(f"- {info['name']} — phone: {info['phone']} ({info['source']})")
         else:
             lines.append(f"- {info['name']} <{key}> ({info['source']})")
+    lines.extend(not_searched)
     return {"output": "\n".join(lines), "exit_code": 0}
 
 

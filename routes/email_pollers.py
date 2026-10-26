@@ -392,34 +392,32 @@ async def _run_auto_summarize_once(do_summary: bool = True, do_reply: bool = Tru
                                    account_id: str | None = None,
                                    max_process: int | None = None,
                                    progress_cb=None) -> str:
-    """One iteration of the email scan. Temporarily flips settings flags
-    so the existing background-loop logic runs exactly once for the requested ops."""
-    settings = _load_settings()
-    prev = {k: settings.get(k, False) for k in
-            ("email_auto_summarize", "email_auto_reply", "email_auto_tag",
-             "email_auto_spam", "email_auto_calendar", "_email_auto_reply_draft_only")}
-    settings["email_auto_summarize"] = bool(do_summary)
-    settings["email_auto_reply"] = bool(do_reply)
-    settings["_email_auto_reply_draft_only"] = bool(do_reply)
-    settings["email_auto_tag"] = bool(do_tag)
-    settings["email_auto_spam"] = bool(do_spam)
-    settings["email_auto_calendar"] = bool(do_calendar)
-    _save_settings(settings)
-    try:
-        return await _auto_summarize_pass(
-            days_back=days_back,
-            account_id=account_id,
-            max_process=max_process,
-            progress_cb=progress_cb,
-        )
-    finally:
-        s2 = _load_settings()
-        for k, v in prev.items():
-            if v is None and k.startswith("_"):
-                s2.pop(k, None)
-            else:
-                s2[k] = v
-        _save_settings(s2)
+    """One iteration of the email scan, for the requested ops only.
+
+    `B801`. This used to flip six of the person's email-automation settings
+    on disk (`_save_settings`, so `data/settings.json`), run the background
+    loop's pass, and flip them back in a `finally` — and a `finally` does not
+    run in a killed process, while two of these overlapping interleave their
+    save-and-restore so the second restore writes the first's temporary
+    values as the person's own. The shared state was the defect, not the
+    restore: the flags are now handed to the pass as `flags` and laid over the
+    settings it reads, in memory, and nothing is written.
+    """
+    flags = {
+        "email_auto_summarize": bool(do_summary),
+        "email_auto_reply": bool(do_reply),
+        "_email_auto_reply_draft_only": bool(do_reply),
+        "email_auto_tag": bool(do_tag),
+        "email_auto_spam": bool(do_spam),
+        "email_auto_calendar": bool(do_calendar),
+    }
+    return await _auto_summarize_pass(
+        days_back=days_back,
+        account_id=account_id,
+        max_process=max_process,
+        progress_cb=progress_cb,
+        flags=flags,
+    )
 
 
 def _latest_inbox_fallback_uids(conn, reconnect):
@@ -452,11 +450,15 @@ def _latest_inbox_fallback_uids(conn, reconnect):
         return [], reconnect()
 
 
-async def _auto_summarize_pass(days_back: int = 1, account_id: str | None = None, max_process: int | None = None, progress_cb=None, away_only: bool = False) -> str:
+async def _auto_summarize_pass(days_back: int = 1, account_id: str | None = None, max_process: int | None = None, progress_cb=None, away_only: bool = False, flags: dict | None = None) -> str:
     """Single pass of the auto-summarize/reply scan.
 
     When account_id is None, iterates over every enabled account in
     email_accounts and runs one pass per account, concatenating the results.
+
+    `flags` (`B801`): which ops this pass runs, laid over the stored settings
+    for this pass only — the task path's; the background loop passes none and
+    reads the person's own.
     """
     # Multi-account fan-out: if the caller didn't pick an account, hit them all.
     if account_id is None:
@@ -485,6 +487,7 @@ async def _auto_summarize_pass(days_back: int = 1, account_id: str | None = None
                 max_process=max_process,
                 progress_cb=progress_cb,
                 away_only=away_only,
+                flags=flags,
             )
         outs = []
         for idx, aid in enumerate(ids, start=1):
@@ -496,6 +499,7 @@ async def _auto_summarize_pass(days_back: int = 1, account_id: str | None = None
                     max_process=max_process,
                     progress_cb=progress_cb,
                     away_only=away_only,
+                    flags=flags,
                 )
                 outs.append(f"[{names.get(aid, aid[:8])}] {result}")
             except Exception as e:
@@ -508,10 +512,11 @@ async def _auto_summarize_pass(days_back: int = 1, account_id: str | None = None
         max_process=max_process,
         progress_cb=progress_cb,
         away_only=away_only,
+        flags=flags,
     )
 
 
-async def _auto_summarize_pass_single(days_back: int = 1, account_id: str | None = None, max_process: int | None = None, progress_cb=None, away_only: bool = False) -> str:
+async def _auto_summarize_pass_single(days_back: int = 1, account_id: str | None = None, max_process: int | None = None, progress_cb=None, away_only: bool = False, flags: dict | None = None) -> str:
     """Single pass of the auto-summarize/reply scan for ONE account.
 
     `B1191`: held for an account whose owner Email is switched off for.
@@ -521,17 +526,22 @@ async def _auto_summarize_pass_single(days_back: int = 1, account_id: str | None
         return paused_sentence("can_use_email")
     return await _auto_summarize_pass_single_inner(
         days_back=days_back, account_id=account_id, max_process=max_process,
-        progress_cb=progress_cb, away_only=away_only)
+        progress_cb=progress_cb, away_only=away_only, flags=flags)
 
 
-async def _auto_summarize_pass_single_inner(days_back: int = 1, account_id: str | None = None, max_process: int | None = None, progress_cb=None, away_only: bool = False) -> str:
+async def _auto_summarize_pass_single_inner(days_back: int = 1, account_id: str | None = None, max_process: int | None = None, progress_cb=None, away_only: bool = False, flags: dict | None = None) -> str:
     """Single pass of the auto-summarize/reply scan for ONE account.
-    Reads current settings flags."""
+    Reads current settings flags — with `flags` laid over them (`B801`)."""
     import asyncio
     import sqlite3 as _sql3
     from src.llm_core import _uses_max_completion_tokens
 
-    settings = _effective_settings_for_email_account(_load_settings(), account_id)
+    # `B801`: laid over before the account's own overrides apply, in memory —
+    # the order the old on-disk flip produced, without the write.
+    stored = _load_settings()
+    if flags:
+        stored = {**stored, **flags}
+    settings = _effective_settings_for_email_account(stored, account_id)
     auto_sum = settings.get("email_auto_summarize", False)
     auto_reply = settings.get("email_auto_reply", False)
     auto_reply_draft = bool(auto_reply and settings.get("_email_auto_reply_draft_only", False))

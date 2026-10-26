@@ -168,18 +168,30 @@ def _collection_item_to_model(item: dict[str, Any], collection_title: str = "", 
     return out
 
 
+def _kept_image_collection_models() -> list[dict[str, Any]]:
+    """`B1260`. The rows a fetch wrote to `data/hwfit/`, or `[]` — a file that
+    is missing or unreadable is the list being empty (`_load_cache`), which is
+    what it was before these rows were kept; the Forge's line says why."""
+    from services.hwfit import hf_discovery
+
+    rows = hf_discovery.load_cached_image_collection_models()
+    return [r for r in rows if isinstance(r, dict) and r.get("id")]
+
+
 def _fetch_hf_image_collection_models() -> list[dict[str, Any]]:
     from src import model_hubs
 
     if not model_hubs.allowed():
         # `B1229`: what this process already fetched, and nothing new. The
-        # registry above is empty by design, so on an install that never had
-        # the hubs on the Image list is empty — the Forge's line says why.
-        # The TTL is left alone, so switching on fetches at the next ask.
-        return list(_HF_COLLECTION_CACHE.get("models") or [])
+        # TTL is left alone, so switching on fetches at the next ask.
+        # `B1260`: and, when this process fetched nothing, the rows the last
+        # fetch kept in `data/hwfit/` beside the LLM catalog — the registry
+        # above is empty by design, so without them the Image list was empty
+        # on any process that had not fetched since it started.
+        return list(_HF_COLLECTION_CACHE.get("models") or []) or _kept_image_collection_models()
     now = time.time()
     if now - float(_HF_COLLECTION_CACHE.get("ts") or 0) < _HF_COLLECTION_TTL:
-        return list(_HF_COLLECTION_CACHE.get("models") or [])
+        return list(_HF_COLLECTION_CACHE.get("models") or []) or _kept_image_collection_models()
     models: list[dict[str, Any]] = []
     for slug, mlx_only in [(slug, False) for slug in HF_IMAGE_COLLECTIONS] + [(slug, True) for slug in HF_MLX_IMAGE_COLLECTIONS]:
         url = f"https://huggingface.co/api/collections/{slug}"
@@ -197,6 +209,19 @@ def _fetch_hf_image_collection_models() -> list[dict[str, Any]]:
                     models.append(model)
     _HF_COLLECTION_CACHE["ts"] = now
     _HF_COLLECTION_CACHE["models"] = models
+    if not models:
+        # `B1260`: every collection failed (down, throttled). The kept rows
+        # answer until the TTL lets the next fetch try, and are not
+        # overwritten with nothing.
+        return _kept_image_collection_models()
+    try:
+        from services.hwfit import hf_discovery
+        hf_discovery.write_cached_image_collection_models(models)
+    except OSError as e:
+        # The list in memory still answers this process; only a later one
+        # with the hubs off loses it, which is the state before `B1260`.
+        import logging
+        logging.getLogger(__name__).warning("Image model rows not kept on disk: %s", e)
     return list(models)
 
 

@@ -136,6 +136,9 @@ class ChatContext:
     preset: PresetInfo
     preprocessed: PreprocessedMessage
     context_trimmed: bool = False
+    # `B1287`. Why retrieval did not run for this turn, when it was asked for
+    # and no index answered (`ChatProcessor._last_rag_off`); `""` otherwise.
+    rag_off: str = ""
     context_messages_before_trim: int = 0
     context_messages_after_trim: int = 0
     context_tokens_before_trim: int = 0
@@ -1069,6 +1072,7 @@ async def build_chat_context(
 
     # Capture used memories immediately
     used_memories = getattr(chat_processor, '_last_used_memories', [])
+    rag_off = str(getattr(chat_processor, '_last_rag_off', '') or '')   # `B1287`
 
     # Inject pre-fetched search context (compare mode)
     if search_context and allow_tool_preprocessing and not casual_low_signal:
@@ -1175,6 +1179,7 @@ async def build_chat_context(
         preset=preset,
         preprocessed=preprocessed,
         context_trimmed=_context_trimmed,
+        rag_off=rag_off,
         context_messages_before_trim=_before_trim_messages,
         context_messages_after_trim=_after_trim_messages,
         context_tokens_before_trim=_before_trim_tokens,

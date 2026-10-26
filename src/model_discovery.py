@@ -2,8 +2,8 @@
 import subprocess
 import json
 import time
-import httpx
 import logging
+from src import paced_http  # `B1022`
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Optional
@@ -186,7 +186,11 @@ class ModelDiscovery:
     def _fingerprint_provider(self, host: str, port: int) -> Optional[str]:
         """Identify the server software via its native API, independent of port."""
         try:
-            r = httpx.get(f"http://{host}:{port}/api/v1/models", timeout=1.5)
+            # `B1022`: paced and routed (`paced_http`, `NO_PROXY` ranges read
+            # as ranges); a LAN host costs nothing there. Redirects are not
+            # followed, as `httpx.get` did not follow them.
+            r = paced_http.get_sync(f"http://{host}:{port}/api/v1/models", timeout=1.5,
+                                    follow_redirects=False)
             if r.is_success:
                 models = (r.json() or {}).get("models")
                 if (
@@ -203,7 +207,8 @@ class ModelDiscovery:
         # describing the loaded model, slots, and chat template — distinct from
         # LM Studio (/api/v1/models) and vLLM (/version, /metrics).
         try:
-            r = httpx.get(f"http://{host}:{port}/props", timeout=1.5)
+            r = paced_http.get_sync(f"http://{host}:{port}/props", timeout=1.5,
+                                    follow_redirects=False)   # `B1022`
             if r.is_success:
                 props = r.json() or {}
                 if isinstance(props, dict) and (
@@ -220,7 +225,8 @@ class ModelDiscovery:
         """Check a single host:port for models."""
         base = f"http://{host}:{port}/v1"
         try:
-            r = httpx.get(f"{base}/models", timeout=3)
+            r = paced_http.get_sync(f"{base}/models", timeout=3,
+                                    follow_redirects=False)   # `B1022`
             if not r.is_success:
                 return None
             data = r.json()

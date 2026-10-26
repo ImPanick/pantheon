@@ -129,7 +129,12 @@ class VectorRAG:
             return True
 
         except Exception as e:
-            logger.error(f"VectorRAG init failed: {e}")
+            # `B1250`: a standing condition, retried every 30 s by
+            # `rag_singleton` — said once until the index comes up.
+            from src.log_once import log_once
+            from src.rag_singleton import LOG_ONCE_PREFIX
+            log_once(logger, logging.ERROR, f"{LOG_ONCE_PREFIX}vector:{type(e).__name__}:{e}",
+                     "VectorRAG init failed: %s", e)
             self._healthy = False
             return False
 

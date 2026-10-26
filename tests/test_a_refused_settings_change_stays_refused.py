@@ -324,13 +324,21 @@ def test_an_email_scan_whose_flag_save_fails(store, monkeypatch):
     """`_run_auto_summarize_once` read `settings.json` through a door of its own
     until `B988`, so it never saw the cache and never leaked through it. It
     reads through `src.settings` now, so this is the `B957` copy holding for one
-    more writer."""
+    more writer.
+
+    `B801` changed what this pins: the scan no longer saves its flags at all
+    (they are handed to the pass), so a save that would fail is never reached —
+    the scan runs, and nothing moved."""
     import routes.email_pollers as P
     S = store
     before = S.get_setting("email_auto_summarize")
     monkeypatch.setattr(P, "_save_settings", _refuse)
-    with pytest.raises(_DiskFull):
-        asyncio.run(P._run_auto_summarize_once(do_summary=not before))
+
+    async def one_pass(**kw):
+        return "ok"
+
+    monkeypatch.setattr(P, "_auto_summarize_pass", one_pass)
+    assert asyncio.run(P._run_auto_summarize_once(do_summary=not before)) == "ok"
     _nothing_moved(S, "email_auto_summarize", before)
 
 

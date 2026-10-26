@@ -17,6 +17,9 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
 logger = logging.getLogger(__name__)
 
+# `B1250`. The `log_once` key family for this module's standing conditions.
+_LANES_LOG_ONCE = "embedding-lanes:"
+
 LANE_FASTEMBED = "fastembed"
 LANE_CUSTOM = "custom"
 
@@ -387,13 +390,24 @@ def index_client():
         # no ChromaDB to reach and never was, so this is the normal path rather
         # than a fault. It still says which store answered, because `B61` is
         # about never letting that be a guess.
-        logger.info("ChromaDB unreachable (%s); using the in-process vector index", e)
+        # `B1250`: once per process per reason — every retry of a dead index
+        # (`rag_singleton`, each 30 s) passes through here.
+        from src.log_once import log_once
+        log_once(logger, logging.INFO, f"{_LANES_LOG_ONCE}chroma:{type(e).__name__}:{e}",
+                 "ChromaDB unreachable (%s); using the in-process vector index", e)
         _INDEX_BACKEND = INDEX_LOCAL
         return LocalIndexClient(os.path.join(DATA_DIR, "vectors"))
 
 
 def build_embedding_lanes(base_name: str) -> List[EmbeddingLane]:
-    """Return healthy lanes in retrieval preference order: custom, fastembed."""
+    """Return healthy lanes in retrieval preference order: custom, fastembed.
+
+    `B1250`: a lane that cannot be built is a standing condition — the index
+    is retried every 30 s while it is down — so each reason is said once per
+    process (`log_once`) and again only after the lanes have come back.
+    """
+    from src.log_once import clear_prefix, log_once
+
     chroma_client = index_client()
     lanes: List[EmbeddingLane] = []
 
@@ -402,7 +416,8 @@ def build_embedding_lanes(base_name: str) -> List[EmbeddingLane]:
         if custom is not None:
             lanes.append(_create_lane(chroma_client, base_name, LANE_CUSTOM, custom))
     except Exception as e:
-        logger.warning("Custom embedding lane unavailable for %s: %s", base_name, e)
+        log_once(logger, logging.WARNING, f"{_LANES_LOG_ONCE}custom:{base_name}:{e}",
+                 "Custom embedding lane unavailable for %s: %s", base_name, e)
 
     # `_build_fastembed_client` refuses rather than downloading when the model is
     # absent and nobody has permitted a fetch (`P16-05`). Until 2026-09-01 it
@@ -418,12 +433,18 @@ def build_embedding_lanes(base_name: str) -> List[EmbeddingLane]:
         # Not a failure — a choice. Memory and RAG degrade to unavailable, which
         # `memory_vector` and `rag_vector` already handle, and the log says which
         # of the two remedies to apply.
-        (logger.warning if not lanes else logger.info)(
-            "No fastembed lane for %s: %s", base_name, e
-        )
+        log_once(logger, logging.WARNING if not lanes else logging.INFO,
+                 f"{_LANES_LOG_ONCE}no-fastembed:{base_name}:{bool(lanes)}",
+                 "No fastembed lane for %s: %s", base_name, e)
     except Exception as e:
-        logger.warning("FastEmbed lane unavailable for %s: %s", base_name, e)
+        log_once(logger, logging.WARNING, f"{_LANES_LOG_ONCE}fastembed:{base_name}:{e}",
+                 "FastEmbed lane unavailable for %s: %s", base_name, e)
 
+    if lanes:
+        # An index that has lanes again: a later loss of them is news.
+        clear_prefix(f"{_LANES_LOG_ONCE}custom:{base_name}:")
+        clear_prefix(f"{_LANES_LOG_ONCE}no-fastembed:{base_name}:")
+        clear_prefix(f"{_LANES_LOG_ONCE}fastembed:{base_name}:")
     return lanes
 
 

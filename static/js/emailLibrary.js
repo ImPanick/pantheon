@@ -26,7 +26,7 @@ import {
 import { state } from './emailLibrary/state.js';
 import { getSettings } from './appConfig.js';
 import { collapseSidebarToRail } from './modalSnap.js';
-import { emailApiUrl } from './emailShared.js';
+import { emailApiUrl, unreadLabel } from './emailShared.js';
 // `P15-11`. The words for a destination we have stopped calling come from
 // the one vocabulary module, never from this renderer — six places in the
 // product already know what a throttle is and a seventh is the defect
@@ -969,7 +969,9 @@ function _toggleUnreadEmails() {
 }
 
 function _syncUnreadTabBadge(count) {
-  const label = count > 999 ? '999+ unread' : `${count} unread`;
+  // `B812`: the words are `emailShared.unreadLabel`'s, which the sidebar dot
+  // says too — the minimized chip is one of three places the count shows.
+  const label = unreadLabel(count);
   document.querySelectorAll('.minimized-dock-chip[data-modal-id="email-lib-modal"]').forEach(chip => {
     if (count > 0) {
       chip.dataset.emailUnreadLabel = label;

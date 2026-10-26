@@ -9,7 +9,9 @@ memory, which a test fills with `deliver` and empties with `expunge`.
 
 It answers what Pantheon's client sends — CAPABILITY, LOGIN, LIST, SELECT /
 EXAMINE, STATUS, UID SEARCH, UID FETCH (UID FLAGS RFC822.HEADER RFC822.SIZE,
-BODY.PEEK[…]), NOOP, CLOSE, LOGOUT — and nothing more. `refuse_logins` makes
+BODY.PEEK[…]), NOOP, CLOSE, LOGOUT — and nothing more. SEARCH judges the flag
+keys, `OR`/`NOT`/parentheses and `HEADER`/`SUBJECT`/`FROM`/`TO` (`B1161`); the
+date and size keys and a bare sequence set match every message. `refuse_logins` makes
 LOGIN answer NO, the way a provider answers a stale password; `log` keeps every
 command line, so a test can count logins.
 """
@@ -48,15 +50,109 @@ class Mailbox:
 
 
 def message(*, frm: str, subject: str, mid: str, to: str = "rowan@example.test",
-            body: str = "Hello.") -> bytes:
+            body: str = "Hello.", headers: dict | None = None) -> bytes:
+    extra = "".join(f"{k}: {v}\r\n" for k, v in (headers or {}).items())
     return (f"From: {frm}\r\nTo: {to}\r\nSubject: {subject}\r\n"
-            f"Date: {formatdate(localtime=False)}\r\nMessage-ID: <{mid}>\r\n"
+            f"Date: {formatdate(localtime=False)}\r\nMessage-ID: <{mid}>\r\n{extra}"
             f"MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{body}\r\n").encode()
 
 
 def _header(raw: bytes) -> bytes:
     i = raw.find(b"\r\n\r\n")
     return raw if i < 0 else raw[:i + 4]
+
+
+_FLAG_KEYS = {
+    "SEEN": ("\\Seen", True), "UNSEEN": ("\\Seen", False),
+    "ANSWERED": ("\\Answered", True), "UNANSWERED": ("\\Answered", False),
+    "FLAGGED": ("\\Flagged", True), "UNFLAGGED": ("\\Flagged", False),
+    "DELETED": ("\\Deleted", True), "UNDELETED": ("\\Deleted", False),
+}
+# Keys taking one argument that this server does not judge: every message
+# matches them, as every message matched any criteria before `B1161`.
+_LENIENT_ONE_ARG = {"SINCE", "BEFORE", "ON", "SENTSINCE", "SENTBEFORE", "SENTON",
+                    "UID", "LARGER", "SMALLER", "KEYWORD", "UNKEYWORD", "CHARSET"}
+
+
+def _search_tokens(text: str) -> list:
+    """`B1161`. A SEARCH criteria line as tokens: quoted strings (with `\\`
+    escapes) and parentheses kept apart from atoms."""
+    out, i = [], 0
+    while i < len(text):
+        c = text[i]
+        if c.isspace():
+            i += 1
+        elif c in "()":
+            out.append(c)
+            i += 1
+        elif c == '"':
+            j, buf = i + 1, []
+            while j < len(text) and text[j] != '"':
+                if text[j] == "\\" and j + 1 < len(text):
+                    j += 1
+                buf.append(text[j])
+                j += 1
+            out.append(("str", "".join(buf)))
+            i = j + 1
+        else:
+            j = i
+            while j < len(text) and not text[j].isspace() and text[j] not in '()"':
+                j += 1
+            out.append(text[i:j])
+            i = j
+    return out
+
+
+def _header_value(raw: bytes, field: str) -> str:
+    from email import message_from_bytes
+    return str(message_from_bytes(_header(raw)).get(field) or "")
+
+
+def _matches(tokens: list, m: dict) -> bool:
+    """`B1161`. Evaluate SEARCH keys against one message, the way a server
+    does for what Pantheon sends: an implicit AND of keys, `OR a b`, `NOT a`,
+    parenthesised lists, the flag keys, and `HEADER`/`SUBJECT`/`FROM`/`TO` as
+    case-insensitive substrings. A bare sequence set and the date and size
+    keys match everything, as this server always answered them."""
+    pos = [0]
+
+    def arg():
+        t = tokens[pos[0]]
+        pos[0] += 1
+        return t[1] if isinstance(t, tuple) else t
+
+    def key():
+        t = tokens[pos[0]]
+        pos[0] += 1
+        if t == "(":
+            ok = True
+            while tokens[pos[0]] != ")":
+                ok = key() and ok
+            pos[0] += 1
+            return ok
+        word = (t[1] if isinstance(t, tuple) else t).upper()
+        if word == "OR":
+            a = key()
+            b = key()
+            return a or b
+        if word == "NOT":
+            return not key()
+        if word in _FLAG_KEYS:
+            flag, wanted = _FLAG_KEYS[word]
+            return (flag in m["flags"]) is wanted
+        if word == "HEADER":
+            field, value = arg(), arg()
+            return value.lower() in _header_value(m["raw"], field).lower()
+        if word in ("SUBJECT", "FROM", "TO", "CC"):
+            return arg().lower() in _header_value(m["raw"], word.title()).lower()
+        if word in _LENIENT_ONE_ARG:
+            arg()
+        return True
+
+    ok = True
+    while pos[0] < len(tokens):
+        ok = key() and ok
+    return ok
 
 
 class _Handler(socketserver.StreamRequestHandler):
@@ -118,13 +214,7 @@ class _Handler(socketserver.StreamRequestHandler):
                 if sub == "SEARCH":
                     with self.box.lock:
                         found = list(self.box.messages)
-                    crit = more.upper()
-                    if "UNSEEN" in crit:
-                        found = [m for m in found if "\\Seen" not in m["flags"]]
-                    if "UNANSWERED" in crit:
-                        found = [m for m in found if "\\Answered" not in m["flags"]]
-                    if "FLAGGED" in crit:
-                        found = [m for m in found if "\\Flagged" in m["flags"]]
+                    found = [m for m in found if _matches(_search_tokens(more), m)]
                     self._send(("* SEARCH " + " ".join(str(m["uid"]) for m in found)).rstrip().encode()
                                + b"\r\n")
                     self._send(f"{tag} OK SEARCH done\r\n".encode())

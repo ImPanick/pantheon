@@ -813,6 +813,58 @@ def dropped_disabled_tools_sentence(name: str, dropped: List[str]) -> str:
     )
 
 
+def dropped_tool_overrides(raw) -> Dict[str, Dict[str, Any]]:
+    """`B1527`. The operator's answers a server row's `tool_overrides` column
+    holds, as the map a delete hands back — the shape
+    `PATCH /api/mcp/servers/{id}/tools` takes as `{"overrides": ...}`, so a
+    caller that re-adds the server can send it straight back. `{}` for none.
+    """
+    return normalize_tool_overrides(raw)
+
+
+def _override_said(entry: Dict[str, Any]) -> str:
+    parts = []
+    if entry.get("read_only") is True:
+        parts.append("marked read-only")
+    elif entry.get("read_only") is False:
+        parts.append("marked as making changes")
+    if entry.get("description"):
+        parts.append("given your own description")
+    return " and ".join(parts)
+
+
+def dropped_tool_choices_sentence(name: str, dropped: List[str],
+                                  overrides: Optional[Dict[str, Dict[str, Any]]] = None) -> str:
+    """`B864` and `B1527`. Everything deleting a server took with it, in words.
+
+    `dropped_disabled_tools_sentence` says the switched-off tools, unchanged.
+    `B1527` adds the second column the row carries, `tool_overrides`
+    (`P8-48`): an operator's read-only answers and the descriptions the model
+    is shown. Both went with the row and nothing said so — a lost "makes
+    changes" lets plan mode run a tool the operator said writes, a lost
+    "read-only" refuses one they said only reads, and a lost description is
+    lost work. Every door that deletes a server hands the map back as
+    `dropped_tool_overrides`; this is the same fact for a person, written once
+    so the browser and the agent say one thing (`Law 7`). Empty when there was
+    nothing to say.
+    """
+    said = dropped_disabled_tools_sentence(name, dropped)
+    overrides = overrides or {}
+    answers = [(tool, _override_said(entry)) for tool, entry in sorted(overrides.items())]
+    answers = [(tool, what) for tool, what in answers if what]
+    if not answers:
+        return said
+    n = len(answers)
+    tools = f"{n} tool{'s' if n != 1 else ''}"
+    listed = "; ".join(f"{tool} {what}" for tool, what in answers)
+    again = (f"added again, {'they take' if n != 1 else 'it takes'} the server's own "
+             f"answers, so set {'them' if n != 1 else 'it'} again after adding it.")
+    if said:
+        return f"{said} Your answers for {tools} went with it too ({listed}): {again}"
+    return (f"'{name}' had your answers for {tools} ({listed}). "
+            f"They went with the server: {again}")
+
+
 def load_tool_overrides(server_id: Optional[str] = None) -> Dict[str, Dict[str, Dict[str, Any]]]:
     """`{server_id: {tool_name: {...}}}` straight from the database.
 

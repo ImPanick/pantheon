@@ -17,6 +17,12 @@ HF_COLLECTIONS_URL = "https://huggingface.co/api/collections"
 HW_FIT_CACHE_DIR = Path(DATA_DIR) / "hwfit"
 MLX_COMMUNITY_CACHE = HW_FIT_CACHE_DIR / "mlx_community_models.json"
 HF_COLLECTION_MODELS_CACHE = HW_FIT_CACHE_DIR / "hf_collection_models.json"
+# `B1260`. The Image type's rows, fetched from Hugging Face's image collections
+# by `image_models._fetch_hf_image_collection_models`. They lived only in that
+# module's memory, so with the hubs off an install that never had them on —
+# or any process after a restart — showed an empty Image list, while the LLM
+# catalog beside it was read from these files. Same directory, same shape.
+IMAGE_COLLECTION_MODELS_CACHE = HW_FIT_CACHE_DIR / "image_collection_models.json"
 HF_COLLECTION_TTL_SECONDS = 24 * 3600
 
 # Politeness budget for one catalogue refresh (`P15-05`).
@@ -405,6 +411,16 @@ def load_cached_mlx_community_models():
 
 def load_cached_hf_collection_models():
     return _load_cache(HF_COLLECTION_MODELS_CACHE)
+
+
+def load_cached_image_collection_models():
+    """`B1260`. The image collection rows last fetched, from disk."""
+    return _load_cache(IMAGE_COLLECTION_MODELS_CACHE)
+
+
+def write_cached_image_collection_models(rows):
+    """`B1260`. Keep what a fetch found, for when the hubs are off."""
+    _write_cache(IMAGE_COLLECTION_MODELS_CACHE, HF_COLLECTIONS_URL, rows)
 
 
 def _cache_fresh(path):

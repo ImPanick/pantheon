@@ -142,7 +142,11 @@ class STTService:
             data["language"] = language
 
         try:
-            r = httpx.post(url, headers=headers, files=files, data=data, timeout=60)
+            # `B1022`: paced and routed (`paced_http`) — a hosted STT API is a
+            # third party the limiter keeps polite; a local one costs nothing.
+            from src import paced_http
+            r = paced_http.post_sync(url, headers=headers, files=files, data=data, timeout=60,
+                                     follow_redirects=False)
             r.raise_for_status()
             result = r.json()
             text = result.get("text", "")

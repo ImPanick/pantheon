@@ -179,6 +179,22 @@ def _empty_result(url: str, error: str = "") -> dict:
 # ----------------------------------------------------------------------
 # Main content fetcher
 # ----------------------------------------------------------------------
+# `B1337`. How many more times a page is asked for after a failure that may
+# not happen twice, and which failures those are. `retry_attempt` was a
+# parameter that only ever reached three log lines: every fetch was submitted
+# with `0` and nothing resubmitted, so a page that timed out once was
+# `Not fetched … NetworkError` for that search — and with two of three pages
+# bot-blocked, one transient failure left the search with nothing. One retry,
+# for the transient classes only: a transport failure (connect, read timeout,
+# a reset — `httpx.TransportError`; the SSRF refusals raise the bare
+# `RequestError` and are never retried) and a server or gateway error. Never a
+# 429 — the provider chain in `core.py` treats one as "do not re-attempt", and
+# asking again while a host says stop is how a ban is earned (`FORBIDDEN.md`
+# Part 2) — and never a 403 or any other 4xx, which will not change.
+_FETCH_RETRIES = 1
+_TRANSIENT_STATUSES = frozenset({500, 502, 503, 504})
+
+
 def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
                           max_bytes: int = None) -> dict:
     """Fetch and extract meaningful content from a webpage with caching.
@@ -187,6 +203,10 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
     cap); the default is the soft cap. When the body is cut short the result
     carries ``truncated``/``fetched_bytes``/``total_bytes`` so callers can
     tell the model the content is partial (#3812).
+
+    ``retry_attempt`` is which attempt this is (`B1337`): a transient failure
+    on attempt 0 asks once more as attempt 1, and the log lines name the
+    attempt that failed. Callers pass 0.
     """
     effective_cap = min(max_bytes or WEB_FETCH_SOFT_MAX_BYTES, WEB_FETCH_HARD_MAX_BYTES)
     # The cap is part of the cache identity: a truncated soft-cap fetch must
@@ -237,9 +257,18 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
         error_logger.warning(f"Refused oversized body for {url}: {e}")
         return _empty_result(url, f"TooLarge: {e}")
     except httpx.HTTPStatusError as e:
-        error_logger.warning(f"HTTP {e.response.status_code} fetching {url}: {e}")
-        return _empty_result(url, f"HTTP {e.response.status_code}: {e}")
+        status = e.response.status_code
+        if status in _TRANSIENT_STATUSES and retry_attempt < _FETCH_RETRIES:
+            error_logger.warning(
+                f"HTTP {status} fetching {url} (attempt {retry_attempt}); asking once more")
+            return fetch_webpage_content(url, timeout, retry_attempt + 1, max_bytes)
+        error_logger.warning(f"HTTP {status} fetching {url} (attempt {retry_attempt}): {e}")
+        return _empty_result(url, f"HTTP {status}: {e}")
     except httpx.RequestError as e:
+        if isinstance(e, httpx.TransportError) and retry_attempt < _FETCH_RETRIES:
+            error_logger.warning(
+                f"NetworkError fetching {url} (attempt {retry_attempt}); asking once more: {e}")
+            return fetch_webpage_content(url, timeout, retry_attempt + 1, max_bytes)
         error_logger.error(f"NetworkError fetching {url} (attempt {retry_attempt}): {e}")
         return _empty_result(url, f"NetworkError: {e}")
     except RateLimitError as e:
