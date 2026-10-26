@@ -10,6 +10,10 @@ import src.model_context as model_context
 from src.model_context import is_local_endpoint, estimate_tokens, _lookup_known
 
 
+# `B1022`: the model probes and lookups go through `paced_http` now, so the
+# fakes stand in at that seam (`paced_http.get_sync` / `post_sync`) rather
+# than at `httpx.get` / `httpx.post`, which those calls no longer use.
+
 class _Column:
     def __init__(self, name):
         self.name = name
@@ -266,7 +270,7 @@ class TestGetContextLength:
         def fake_get(*args, **kwargs):
             raise AssertionError("/models must not be queried for a known proxy model")
 
-        monkeypatch.setattr(model_context.httpx, "get", fake_get)
+        monkeypatch.setattr(model_context.paced_http, "get_sync", fake_get)
 
         endpoint = "http://100.117.136.97:34521/v1/chat/completions"
         assert model_context.get_context_length(endpoint, "gpt-4o") == 128000
@@ -285,7 +289,7 @@ class TestGetContextLength:
                 {"id": "tiny-proxy-model", "context_length": 8192},
             ]})
 
-        monkeypatch.setattr(model_context.httpx, "get", fake_get)
+        monkeypatch.setattr(model_context.paced_http, "get_sync", fake_get)
 
         endpoint = "http://100.117.136.97:34521/v1/chat/completions"
         assert model_context.get_context_length(endpoint, "owl-alpha") == 1048576
@@ -301,7 +305,7 @@ class TestGetContextLength:
         def fake_get(url, *args, **kwargs):
             return _FakeResp({"data": [{"id": "some-other-model", "context_length": 4096}]})
 
-        monkeypatch.setattr(model_context.httpx, "get", fake_get)
+        monkeypatch.setattr(model_context.paced_http, "get_sync", fake_get)
 
         endpoint = "http://100.117.136.97:34521/v1/chat/completions"
         assert model_context.get_context_length(endpoint, "absent-model") == model_context.DEFAULT_CONTEXT
@@ -313,7 +317,7 @@ class TestGetContextLength:
         def fake_get(url, *args, **kwargs):
             raise RuntimeError("network down")
 
-        monkeypatch.setattr(model_context.httpx, "get", fake_get)
+        monkeypatch.setattr(model_context.paced_http, "get_sync", fake_get)
 
         endpoint = "http://100.117.136.97:34521/v1/chat/completions"
         assert model_context.get_context_length(endpoint, "unknown-proxy-model") == model_context.DEFAULT_CONTEXT

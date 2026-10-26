@@ -49,6 +49,10 @@ INDEX_HTML = ROOT / "static" / "index.html"
 _FIELD = "uf-"
 
 
+# `B1022`: the OAuth and device-flow calls go through `paced_http` now, so
+# the fakes stand in at that seam (`paced_http.get_sync` / `post_sync`)
+# rather than at `httpx.get` / `httpx.post`, which those calls no longer use.
+
 def _account_form_template() -> str:
     text = SETTINGS_JS.read_text(encoding="utf-8")
     start = text.index("async function showEmailForm")
@@ -113,8 +117,8 @@ def _linked_row(provider_id="google", email="alice@nyu.edu"):
         if r.path == "/api/email/oauth/{provider_id}/callback"
     )
     state = make_oauth_state("acct-blank", "alice")
-    with mock.patch("httpx.post", return_value=token_resp), \
-         mock.patch("httpx.get", return_value=userinfo_resp), \
+    with mock.patch("src.paced_http.post_sync", return_value=token_resp), \
+         mock.patch("src.paced_http.get_sync", return_value=userinfo_resp), \
          mock.patch("core.database.SessionLocal", Factory):
         resp = asyncio.run(
             callback(provider_id=provider_id, code="4/code", state=state,

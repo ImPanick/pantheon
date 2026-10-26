@@ -11,6 +11,12 @@ import socket
 import time as _time
 import logging
 import httpx
+# `B1022`: the probes go through `paced_http` — routed (a `NO_PROXY` range is
+# honoured, `B982`) and paced (a cloud API cooling down is refused before the
+# call; the operator's own servers cost nothing). Each keeps `httpx.get`'s
+# `follow_redirects=False`: `_ping_endpoint` reads a redirect to tell a model
+# server from this app's own login page.
+from src import paced_http
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse, urlunparse
@@ -762,7 +768,8 @@ def _probe_single_model(base: str, api_key: str, model_id: str, timeout: int = 1
 
     try:
         t0 = _time.time()
-        r = httpx.post(target_url, headers=h, json=payload, timeout=timeout, verify=llm_verify())
+        r = paced_http.post_sync(target_url, headers=h, json=payload, timeout=timeout, verify=llm_verify(),
+                                 follow_redirects=False)   # `B1022`
         latency = round((_time.time() - t0) * 1000)
         if r.is_success:
             return {"status": "ok", "latency_ms": latency}
@@ -960,7 +967,8 @@ def _probe_google_models(base_url: str, api_key: str = None, timeout: int = 5, p
         request_params = dict(params)
         if page_token:
             request_params["pageToken"] = page_token
-        r = httpx.get(url, headers=headers, params=request_params, timeout=timeout, verify=llm_verify())
+        r = paced_http.get_sync(url, headers=headers, params=request_params, timeout=timeout,
+                                verify=llm_verify(), follow_redirects=False)   # `B1022`
         r.raise_for_status()
         data = r.json()
         for item in data.get("models") or []:
@@ -1037,7 +1045,8 @@ def _probe_endpoint(base_url: str, api_key: str = None, timeout: int = 5,
         if api_key:
             headers["x-api-key"] = api_key
         try:
-            r = httpx.get(url, headers=headers, timeout=timeout, verify=llm_verify())
+            r = paced_http.get_sync(url, headers=headers, timeout=timeout, verify=llm_verify(),
+                                    follow_redirects=False)   # `B1022`
             r.raise_for_status()
             return _answered(_openai_model_ids(r.json()))
         except httpx.HTTPStatusError as e:
@@ -1085,7 +1094,8 @@ def _probe_endpoint(base_url: str, api_key: str = None, timeout: int = 5,
         parsed = urlparse(base)
         if parsed.port == 11434 or "ollama" in (parsed.hostname or "").lower():
             root = base[:-3].rstrip("/") if base.endswith("/v1") else base
-            r = httpx.get(root + "/api/tags", timeout=timeout, verify=llm_verify())
+            r = paced_http.get_sync(root + "/api/tags", timeout=timeout, verify=llm_verify(),
+                                    follow_redirects=False)   # `B1022`
             r.raise_for_status()
             data = r.json()
             models = _ollama_model_names(data)
@@ -1160,7 +1170,8 @@ def _ping_endpoint(base_url: str, api_key: str = None, timeout: float = 1.5) -> 
                     break
             for path in ("/api/version", "/api/tags"):
                 try:
-                    r = httpx.get(root + path, headers=headers, timeout=timeout, verify=llm_verify())
+                    r = paced_http.get_sync(root + path, headers=headers, timeout=timeout,
+                                            verify=llm_verify(), follow_redirects=False)   # `B1022`
                     result = _result_from_response(r)
                     if result["reachable"]:
                         return result
@@ -1171,7 +1182,8 @@ def _ping_endpoint(base_url: str, api_key: str = None, timeout: float = 1.5) -> 
         pass
 
     try:
-        r = httpx.get(base, headers=headers, timeout=timeout, verify=llm_verify())
+        r = paced_http.get_sync(base, headers=headers, timeout=timeout, verify=llm_verify(),
+                                follow_redirects=False)   # `B1022`: a redirect is read, not followed
         result = _result_from_response(r)
         if result["reachable"]:
             return result
@@ -1179,7 +1191,8 @@ def _ping_endpoint(base_url: str, api_key: str = None, timeout: float = 1.5) -> 
         if 400 <= sc < 500 and sc not in (401, 403):
             models_url = _safe_build_models_url(base)
             try:
-                r2 = httpx.get(models_url, headers=headers,timeout=timeout, verify=llm_verify())
+                r2 = paced_http.get_sync(models_url, headers=headers, timeout=timeout,
+                                         verify=llm_verify(), follow_redirects=False)   # `B1022`
                 result2 = _result_from_response(r2)
                 if result2["reachable"]:
                     return result2

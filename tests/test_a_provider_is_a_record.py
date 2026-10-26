@@ -56,6 +56,10 @@ ACME = providers.Provider(
 )
 
 
+# `B1022`: the OAuth and device-flow calls go through `paced_http` now, so
+# the fakes stand in at that seam (`paced_http.get_sync` / `post_sync`)
+# rather than at `httpx.get` / `httpx.post`, which those calls no longer use.
+
 @pytest.fixture()
 def acme(monkeypatch):
     """`acme` exists for the duration of one test, and nothing else changes."""
@@ -322,7 +326,7 @@ def test_a_rotated_refresh_token_is_persisted(monkeypatch, tmp_path):
         "refresh_token": "rotated-refresh",
         "expires_in": 3600,
     }
-    with mock.patch("httpx.post", return_value=resp) as posted, \
+    with mock.patch("src.paced_http.post_sync", return_value=resp) as posted, \
          mock.patch("core.database.SessionLocal", Factory):
         token = mail_auth.refresh_oauth_token("microsoft", "acct-ms")
 
@@ -372,7 +376,7 @@ def test_a_refresh_that_returns_no_new_token_keeps_the_old_one(monkeypatch):
     resp = mock.MagicMock()
     resp.raise_for_status = mock.MagicMock()
     resp.json.return_value = {"access_token": "a", "expires_in": 3600}
-    with mock.patch("httpx.post", return_value=resp), \
+    with mock.patch("src.paced_http.post_sync", return_value=resp), \
          mock.patch("core.database.SessionLocal", Factory):
         assert mail_auth.refresh_oauth_token("google", "acct-g") == "a"
 

@@ -8,6 +8,10 @@ from src import copilot
 
 # ── Provider detection ─────────────────────────────────────────────────────
 
+# `B1022`: the OAuth and device-flow calls go through `paced_http` now, so
+# the fakes stand in at that seam (`paced_http.get_sync` / `post_sync`)
+# rather than at `httpx.get` / `httpx.post`, which those calls no longer use.
+
 @pytest.mark.parametrize("url,expected", [
     ("https://api.githubcopilot.com", True),
     ("https://api.githubcopilot.com/chat/completions", True),
@@ -126,7 +130,7 @@ def test_fetch_models_filters_picker(monkeypatch):
         {"id": "claude-3.5", "model_picker_enabled": True,
          "capabilities": {"supports": {"tool_calls": True}}},
     ]}
-    monkeypatch.setattr(copilot.httpx, "get", lambda *a, **k: _fake_response(payload))
+    monkeypatch.setattr(copilot.paced_http, "get_sync", lambda *a, **k: _fake_response(payload))
     models = copilot.fetch_models("https://api.githubcopilot.com", "TOK")
     ids = {m["id"] for m in models}
     assert ids == {"gpt-4o", "claude-3.5"}
@@ -139,7 +143,7 @@ def test_fetch_models_fallback_when_no_picker(monkeypatch):
         {"id": "m1", "capabilities": {"supports": {}}},
         {"id": "m2", "capabilities": {"supports": {}}},
     ]}
-    monkeypatch.setattr(copilot.httpx, "get", lambda *a, **k: _fake_response(payload))
+    monkeypatch.setattr(copilot.paced_http, "get_sync", lambda *a, **k: _fake_response(payload))
     models = copilot.fetch_models("https://api.githubcopilot.com", "TOK")
     assert {m["id"] for m in models} == {"m1", "m2"}
 
@@ -149,14 +153,14 @@ def test_fetch_models_fallback_when_no_picker(monkeypatch):
 def test_request_device_code(monkeypatch):
     captured = {}
 
-    def fake_post(url, headers=None, json=None, timeout=None):
+    def fake_post(url, headers=None, json=None, timeout=None, **_kw):
         captured["url"] = url
         captured["json"] = json
         return _fake_response({"device_code": "DC", "user_code": "ABCD-1234",
                                "verification_uri": "https://github.com/login/device",
                                "interval": 5, "expires_in": 900})
 
-    monkeypatch.setattr(copilot.httpx, "post", fake_post)
+    monkeypatch.setattr(copilot.paced_http, "post_sync", fake_post)
     data = copilot.request_device_code()
     assert data["device_code"] == "DC"
     assert captured["url"] == "https://github.com/login/device/code"
@@ -167,11 +171,11 @@ def test_request_device_code(monkeypatch):
 def test_poll_access_token(monkeypatch):
     captured = {}
 
-    def fake_post(url, headers=None, json=None, timeout=None):
+    def fake_post(url, headers=None, json=None, timeout=None, **_kw):
         captured["json"] = json
         return _fake_response({"access_token": "GHTOKEN"})
 
-    monkeypatch.setattr(copilot.httpx, "post", fake_post)
+    monkeypatch.setattr(copilot.paced_http, "post_sync", fake_post)
     data = copilot.poll_access_token("github.com", "DC")
     assert data["access_token"] == "GHTOKEN"
     assert captured["json"]["grant_type"] == "urn:ietf:params:oauth:grant-type:device_code"

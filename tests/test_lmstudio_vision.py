@@ -6,6 +6,10 @@ import pytest
 from src import chat_helpers
 
 
+# `B1022`: the model probes and lookups go through `paced_http` now, so the
+# fakes stand in at that seam (`paced_http.get_sync` / `post_sync`) rather
+# than at `httpx.get` / `httpx.post`, which those calls no longer use.
+
 class _FakeResponse:
     def __init__(self, payload, ok=True):
         self._payload = payload
@@ -44,8 +48,8 @@ class TestLmStudioSupportsVision:
         # silently returned nothing and every assertion in this class read
         # `None`. The one test expecting `None` kept passing, which is why it
         # looked like two isolated failures rather than a dead stub.
-        monkeypatch.setattr(chat_helpers.httpx, "get",
-                            lambda url, timeout=None, headers=None: _FakeResponse(payload))
+        monkeypatch.setattr("src.paced_http.get_sync",
+                            lambda url, timeout=None, headers=None, **_kw: _FakeResponse(payload))
 
     def test_vision_true_from_capabilities(self, monkeypatch):
         self._serve(monkeypatch, self.PAYLOAD)
@@ -74,11 +78,11 @@ class TestLmStudioSupportsVision:
     def test_remote_endpoint_never_probed(self, monkeypatch):
         calls = {"n": 0}
 
-        def tracking_get(url, timeout=None):
+        def tracking_get(url, timeout=None, **_kw):
             calls["n"] += 1
             return _FakeResponse(self.PAYLOAD)
 
-        monkeypatch.setattr(chat_helpers.httpx, "get", tracking_get)
+        monkeypatch.setattr("src.paced_http.get_sync", tracking_get)
         # A cloud provider host must short-circuit to None with no network probe.
         assert chat_helpers.lmstudio_supports_vision(
             "https://api.openai.com/v1/chat/completions", "gpt-4o") is None

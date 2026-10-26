@@ -189,3 +189,58 @@ def test_the_embedding_endpoint_check_reaches_a_lan_server_direct(world, monkeyp
         set_endpoint(url=f"http://127.0.0.1:{world['port']}/v1/embeddings", model="m", api_key="")
     assert ("POST", "/v1/embeddings") in world["asked"]["origin"]
     assert world["asked"]["proxy"] == []
+
+
+# ── wave t: the rest of the model probes, and the OAuth and device flows ────
+#
+# 27 → 3. The model probes the row named first (`model_routes` ×7,
+# `model_context` ×3, `llm_core`'s model list ×2, `chat_helpers` ×1) and the
+# OAuth and device flows (ChatGPT ×5, Copilot ×3, the mailbox's token refresh
+# and callback ×3) moved onto `paced_http`. The three left are named, with their
+# reasons, beside `--max-env 3` in `ci.yml`.
+
+def test_the_endpoint_probes_reach_a_lan_model_server_direct(world, monkeypatch):
+    import routes.model_routes as M
+    import src.endpoint_resolver as R
+
+    monkeypatch.setattr(R, "resolve_url", lambda url: url, raising=False)
+    base = f"http://127.0.0.1:{world['port']}/v1"
+    assert M._probe_endpoint(base, None) == ["alpha-7b"]
+    assert M._ping_endpoint(base)["reachable"] is True
+    assert M._probe_single_model(base, None, "alpha-7b")["status"] == "ok"
+    assert {("GET", "/v1/models"), ("POST", "/v1/chat/completions")} <= set(world["asked"]["origin"])
+    assert world["asked"]["proxy"] == []
+
+
+def test_the_context_window_lookup_and_the_model_list_reach_it_direct(world, monkeypatch):
+    import src.endpoint_resolver as R
+    import src.llm_core as L
+    import src.model_context as C
+
+    monkeypatch.setattr(R, "resolve_url", lambda url: url, raising=False)
+    monkeypatch.setattr(C, "_configured_endpoint_kind", lambda url: None)
+    monkeypatch.setattr(L, "_configured_cached_model_ids", lambda url, **k: [])
+    base = f"http://127.0.0.1:{world['port']}/v1"
+    C._query_context_length(base, "alpha-7b")
+    assert L.list_model_ids(base, timeout=3) == ["alpha-7b"]
+    assert ("GET", "/slots") in world["asked"]["origin"]
+    assert world["asked"]["proxy"] == []
+
+
+def test_the_lm_studio_probe_reaches_it_direct(world):
+    from src import chat_helpers
+
+    chat_helpers._lmstudio_models_cache.clear()
+    chat_helpers._probe_lmstudio_models(f"http://127.0.0.1:{world['port']}/v1/chat/completions")
+    assert ("GET", "/api/v1/models") in world["asked"]["origin"]
+    assert world["asked"]["proxy"] == []
+
+
+def test_a_device_flow_on_a_host_in_the_range_goes_direct(world):
+    """GitHub Enterprise on the LAN is the case: Copilot's device flow and
+    model list against a host `NO_PROXY` puts in a range."""
+    from src import copilot
+
+    copilot.fetch_models(f"http://127.0.0.1:{world['port']}", "tok", timeout=3)
+    assert ("GET", "/models") in world["asked"]["origin"]
+    assert world["asked"]["proxy"] == []

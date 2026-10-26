@@ -937,7 +937,12 @@ def _kimi_says_so(url: str, r):
 
 
 def httpx_get_kimi_aware(url: str, headers: Optional[Dict], **kwargs):
-    return _kimi_says_so(url, httpx.get(url, headers=apply_kimi_code_headers(headers, url), **kwargs))
+    # `B1022`: a model list is asked through `paced_http` (routed and paced),
+    # with `httpx.get`'s `follow_redirects=False` kept.
+    from src import paced_http
+    kwargs.setdefault("follow_redirects", False)
+    return _kimi_says_so(url, paced_http.get_sync(url, headers=apply_kimi_code_headers(headers, url),
+                                                  **kwargs))
 
 
 def httpx_post_kimi_aware(url: str, headers: Optional[Dict], **kwargs):
@@ -2150,7 +2155,8 @@ def list_model_ids(
         try:
             if ":11434" in base_chat_url or "ollama" in base_chat_url.lower():
                 root = base_chat_url.replace("/v1/chat/completions", "").replace("/chat/completions", "").rstrip("/")
-                r = httpx.get(root + "/api/tags", timeout=timeout)
+                from src import paced_http   # `B1022`
+                r = paced_http.get_sync(root + "/api/tags", timeout=timeout, follow_redirects=False)
                 r.raise_for_status()
                 return [m.get("name") or m.get("model") for m in (r.json().get("models") or []) if m.get("name") or m.get("model")]
         except Exception as e:

@@ -65,6 +65,10 @@ with preserve_import_state("core.database", "src.database", "core.session_manage
 
 # ── speech endpoint settings ──
 
+# `B1022`: the model probes and lookups go through `paced_http` now, so the
+# fakes stand in at that seam (`paced_http.get_sync` / `post_sync`) rather
+# than at `httpx.get` / `httpx.post`, which those calls no longer use.
+
 def test_speech_endpoint_dependents_include_stt():
     settings = {"stt_provider": "endpoint:voice"}
     assert _speech_settings_using_endpoint(settings, "voice") == ["Speech to Text"]
@@ -285,7 +289,7 @@ class TestProbeZaiCoding:
             return httpx.Response(200, json={"data": server_models},
                                  request=httpx.Request("GET", url))
 
-        monkeypatch.setattr(model_routes.httpx, "get", fake_get)
+        monkeypatch.setattr(model_routes.paced_http, "get_sync", fake_get)
         result = _probe_endpoint("https://z.ai/api/coding", "key")
         assert "glm-5.1" in result
         assert "custom-finetune" in result
@@ -302,7 +306,7 @@ class TestProbeZaiCoding:
             return httpx.Response(200, json={"data": server_models},
                                  request=httpx.Request("GET", url))
 
-        monkeypatch.setattr(model_routes.httpx, "get", fake_get)
+        monkeypatch.setattr(model_routes.paced_http, "get_sync", fake_get)
         result = _probe_endpoint("https://z.ai/api/coding", "key")
         assert result == ["glm-5.1"]
 
@@ -314,7 +318,7 @@ class TestProbeZaiCoding:
             return httpx.Response(200, json={"data": [{"id": "glm-5.1"}]},
                                  request=httpx.Request("GET", url))
 
-        monkeypatch.setattr(model_routes.httpx, "get", fake_get)
+        monkeypatch.setattr(model_routes.paced_http, "get_sync", fake_get)
         result = _probe_endpoint("https://z.ai/api/coding", "key")
         base_only = set(_PROVIDER_CURATED.get("zai", [])) - set(_PROVIDER_CURATED.get("zai-coding", []))
         for model in base_only:
@@ -528,7 +532,7 @@ class TestClassifyEndpoint:
             return httpx.Response(200, request=request)
 
         monkeypatch.setattr(model_routes.httpx, "head", fake_head)
-        monkeypatch.setattr(model_routes.httpx, "get", fake_get)
+        monkeypatch.setattr(model_routes.paced_http, "get_sync", fake_get)
 
         result = _ping_endpoint("http://100.117.136.97:34521/v1", "fake-key", timeout=1)
 
@@ -549,7 +553,7 @@ class TestClassifyEndpoint:
                 return httpx.Response(200, request=request)
             return httpx.Response(404, request=request)
 
-        monkeypatch.setattr(model_routes.httpx, "get", fake_get)
+        monkeypatch.setattr(model_routes.paced_http, "get_sync", fake_get)
 
         result = _ping_endpoint("http://172.17.0.1:8081/v1", timeout=1)
 
@@ -570,7 +574,7 @@ class TestClassifyEndpoint:
             request = httpx.Request("GET", url)
             return httpx.Response(401, request=request)
 
-        monkeypatch.setattr(model_routes.httpx, "get", fake_get)
+        monkeypatch.setattr(model_routes.paced_http, "get_sync", fake_get)
 
         result = _ping_endpoint("http://10.0.0.1:8080/v1", "bad-key", timeout=1)
 
@@ -600,7 +604,7 @@ class TestSetupProbeSafety:
             response = httpx.Response(401, request=request)
             raise httpx.HTTPStatusError("unauthorized", request=request, response=response)
 
-        monkeypatch.setattr(model_routes.httpx, "get", fake_get)
+        monkeypatch.setattr(model_routes.paced_http, "get_sync", fake_get)
 
         assert _probe_endpoint("https://api.groq.com/openai/v1", "bad-key") == []
 
@@ -614,7 +618,7 @@ class TestSetupProbeSafety:
         def fake_get(url, headers=None, timeout=None, verify=None, **kwargs):
             raise httpx.ConnectError("offline")
 
-        monkeypatch.setattr(model_routes.httpx, "get", fake_get)
+        monkeypatch.setattr(model_routes.paced_http, "get_sync", fake_get)
 
         outcome = {}
         assert _probe_endpoint("https://api.groq.com/openai/v1", outcome=outcome) == []
@@ -668,7 +672,7 @@ class TestSetupProbeSafety:
                 },
             )
 
-        monkeypatch.setattr(model_routes.httpx, "get", fake_get)
+        monkeypatch.setattr(model_routes.paced_http, "get_sync", fake_get)
 
         assert _probe_endpoint("https://generativelanguage.googleapis.com/v1beta/openai", "google-key") == [
             "gemini-page-one",
@@ -693,7 +697,7 @@ class TestSetupProbeSafety:
             response = httpx.Response(401, request=request)
             raise httpx.HTTPStatusError("unauthorized", request=request, response=response)
 
-        monkeypatch.setattr(model_routes.httpx, "get", fake_get)
+        monkeypatch.setattr(model_routes.paced_http, "get_sync", fake_get)
 
         assert _probe_endpoint("https://generativelanguage.googleapis.com/v1beta/openai", "bad-key") == []
 
@@ -704,7 +708,7 @@ class TestSetupProbeSafety:
         def fake_get(url, headers=None, timeout=None, verify=None, **kwargs):
             raise httpx.ConnectError("offline")
 
-        monkeypatch.setattr(model_routes.httpx, "get", fake_get)
+        monkeypatch.setattr(model_routes.paced_http, "get_sync", fake_get)
 
         assert _probe_endpoint("https://api.anthropic.com/v1", "bad-key") == []
 
@@ -723,7 +727,7 @@ class TestSetupProbeSafety:
             )
             return response
 
-        monkeypatch.setattr(model_routes.httpx, "get", fake_get)
+        monkeypatch.setattr(model_routes.paced_http, "get_sync", fake_get)
 
         assert _probe_endpoint("https://api.anthropic.com/v1", "good-key") == ["claude-sonnet-4-5"]
         assert seen == ["https://api.anthropic.com/v1/models"]
@@ -743,7 +747,7 @@ class TestSetupProbeSafety:
             )
             return response
 
-        monkeypatch.setattr(model_routes.httpx, "get", fake_get)
+        monkeypatch.setattr(model_routes.paced_http, "get_sync", fake_get)
 
         assert _probe_endpoint("https://ollama.com/api", "ollama-key") == ["gpt-oss:120b", "qwen3:235b"]
         assert seen == [("https://ollama.com/api/tags", {"Authorization": "Bearer ollama-key"})]
@@ -759,7 +763,7 @@ class TestSetupProbeSafety:
         def fake_get(url, headers=None, timeout=None, verify=None, **kwargs):
             raise httpx.ConnectError("offline")
 
-        monkeypatch.setattr(model_routes.httpx, "get", fake_get)
+        monkeypatch.setattr(model_routes.paced_http, "get_sync", fake_get)
 
         assert _probe_endpoint("https://api.anthropic.com/v1") == []
 
@@ -1198,7 +1202,7 @@ def test_reprobe_chatgpt_subscription_does_not_hide_models(monkeypatch):
     monkeypatch.setattr(model_routes, "_is_chat_model", lambda m: True)
     # Any completion probe would be a bug for this provider.
     monkeypatch.setattr(
-        model_routes.httpx, "post",
+        model_routes.paced_http, "post_sync",
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not probe chatgpt-subscription")),
     )
     endpoint = _get_route("/api/model-endpoints/{ep_id}/probe", "GET")
@@ -1994,7 +1998,7 @@ def test_llm_core_list_model_ids_uses_cached_configured_proxy(monkeypatch):
 
     monkeypatch.setattr(src_database, "ModelEndpoint", _RouteModelEndpoint)
     monkeypatch.setattr(src_database, "SessionLocal", lambda: db)
-    monkeypatch.setattr(llm_core.httpx, "get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("/models should not be fetched")))
+    monkeypatch.setattr("src.paced_http.get_sync", lambda *a, **k: (_ for _ in ()).throw(AssertionError("/models should not be fetched")))
 
     assert llm_core.list_model_ids("http://100.117.136.97:34521/v1/chat/completions", timeout=1) == ["cached-model"]
 

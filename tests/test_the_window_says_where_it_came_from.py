@@ -48,6 +48,10 @@ from src.tool_index import ToolSuite, plan_tool_suite
 ROOT = Path(__file__).resolve().parent.parent
 
 
+# `B1022`: the model probes and lookups go through `paced_http` now, so the
+# fakes stand in at that seam (`paced_http.get_sync` / `post_sync`) rather
+# than at `httpx.get` / `httpx.post`, which those calls no longer use.
+
 @pytest.fixture(autouse=True)
 def _clean_cache():
     mc._context_cache.clear()
@@ -78,7 +82,7 @@ def test_a_dead_port_and_a_famous_name_still_answer_but_now_say_which(monkeypatc
     def no_server(*a, **k):
         raise OSError("connection refused")
 
-    monkeypatch.setattr(mc.httpx, "get", no_server)
+    monkeypatch.setattr(mc.paced_http, "get_sync", no_server)
 
     # Derived from the table's own matcher, not from a key spelled here: the
     # row quotes `"gemma"` and the key is actually `gemma-4`, which is the
@@ -103,7 +107,7 @@ def test_a_reporting_endpoint_is_labelled_reported(monkeypatch):
         def json():
             return [{"n_ctx": 24576}]
 
-    monkeypatch.setattr(mc.httpx, "get", lambda url, **k: _R())
+    monkeypatch.setattr(mc.paced_http, "get_sync", lambda url, **k: _R())
     ctx, known, basis = mc.get_context_length_basis("http://127.0.0.1:8080/v1", "nameless-model")
     assert (ctx, known, basis) == (24576, True, mc.BASIS_REPORTED)
 
@@ -116,7 +120,7 @@ def test_nothing_anywhere_is_labelled_fallback(monkeypatch):
     def no_server(*a, **k):
         raise OSError("connection refused")
 
-    monkeypatch.setattr(mc.httpx, "get", no_server)
+    monkeypatch.setattr(mc.paced_http, "get_sync", no_server)
     ctx, known, basis = mc.get_context_length_basis("https://nowhere.example/v1", "mystery")
     assert (ctx, known, basis) == (mc.DEFAULT_CONTEXT, False, mc.BASIS_FALLBACK)
 
@@ -133,7 +137,7 @@ def test_an_api_or_proxy_endpoint_with_a_name_hit_is_still_the_name(monkeypatch)
     def no_server(*a, **k):
         raise AssertionError("the api/proxy branch must not call the endpoint")
 
-    monkeypatch.setattr(mc.httpx, "get", no_server)
+    monkeypatch.setattr(mc.paced_http, "get_sync", no_server)
     ctx, known, basis = mc.get_context_length_basis("https://aggregator.example/v1", "famous")
     assert (ctx, known) == (200_000, True)
     assert basis == mc.BASIS_KNOWN_TABLE
@@ -165,7 +169,7 @@ def test_the_basis_follows_the_number_that_won(monkeypatch, api_ctx, table,
         def json():
             return {"data": [{"id": "dual", "context_length": api_ctx}]}
 
-    monkeypatch.setattr(mc.httpx, "get", lambda url, **k: _R())
+    monkeypatch.setattr(mc.paced_http, "get_sync", lambda url, **k: _R())
     ctx, known, basis = mc.get_context_length_basis("https://cloud.example/v1", "dual")
     assert (ctx, known, basis) == (expect_ctx, True, expect_basis)
 

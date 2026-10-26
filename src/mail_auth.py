@@ -182,7 +182,10 @@ def refresh_oauth_token(provider_id: str, account_id: str) -> Optional[str]:
         secret = providers.client_secret(provider)
         if secret:
             form["client_secret"] = secret
-        resp = httpx.post(providers.token_url(provider), data=form, timeout=10)
+        # `B1022`: routed and paced, a redirect not followed (as `httpx.post`).
+        from src import paced_http
+        resp = paced_http.post_sync(providers.token_url(provider), data=form, timeout=10,
+                                    follow_redirects=False)
         resp.raise_for_status()
         data = resp.json()
         access_token = data["access_token"]
