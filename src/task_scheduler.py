@@ -5552,10 +5552,18 @@ class TaskScheduler:
             task.session_id = session_id
             db.commit()
             if self._session_manager:
+                # `B1171`. Asked the way the other two task sites ask
+                # (`ensure_task_session`, which loads the stored row since
+                # `B1140`). This called `_db_to_session(sess)` with one of its
+                # two arguments, so it raised `TypeError` into the bare
+                # `except` below on every run and registered nothing.
                 try:
-                    self._session_manager.sessions[session_id] = self._session_manager._db_to_session(sess)
+                    self._session_manager.ensure_task_session(
+                        session_id, sess.name, endpoint_url, model,
+                        owner=task.owner, task=task)
                 except Exception:
-                    pass
+                    logger.debug("Could not register research chat %s", session_id,
+                                 exc_info=True)
 
         # Persist scheduled research in the same on-disk shape used by the
         # Research panel. Without this, task research had Markdown output but
