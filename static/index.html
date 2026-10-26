@@ -3357,9 +3357,19 @@
                work on a cheaper or a local model had to hand-edit JSON. -->
           <div class="admin-card" style="margin-bottom:12px;">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Model for scheduled tasks</h2>
+            <!-- `B1197`, measured: a Prompt task or step that names no model
+                 (`TaskScheduler._usable_route` → `_resolve_defaults`) and the
+                 built-in housekeeping and e-mail work (`resolve_task_candidates`)
+                 read these, then Utility, then the default chat model. A task
+                 that names a model — or whose crew member does — runs on that;
+                 a Research task reads the Research Model instead
+                 (`_execute_research_task`). Pinned by
+                 tests/test_the_scheduled_task_model_line_says_who_reads_it.py. -->
             <div class="admin-toggle-sub" style="margin-bottom:8px">
-              What background and scheduled work runs on. Leave both empty to
-              use the utility model, or the chat model if none is set.
+              What scheduled tasks and the built-in housekeeping run on when a
+              task names no model of its own (a Research task uses the Research
+              Model). Leave both empty to use the utility model, or the chat
+              model if none is set.
             </div>
             <div class="settings-col">
               <div class="settings-row">

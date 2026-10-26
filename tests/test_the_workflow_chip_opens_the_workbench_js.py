@@ -82,12 +82,14 @@ def test_the_chip_and_the_kebab_open_it_the_same_way(box):
         await tick();
         card('a').querySelector('.memory-item-btn').dispatchEvent({ type: 'click', ...ev });
         const menu = document.querySelectorAll('.task-dropdown').slice(-1)[0];
-        menu.children.find((b) => b.textContent === 'Workflow').dispatchEvent({ type: 'click', ...ev });
+        // `B1092`: ⋮ says *Chain* on a chained task, as its chip does.
+        menu.children.find((b) => b.textContent === 'Chain').dispatchEvent({ type: 'click', ...ev });
         await tick();
         console.log(JSON.stringify({ opened: globalThis.__opened,
           labels: document.querySelectorAll('.task-dropdown').slice(-1)[0].children.map((b) => b.textContent) }));
     """)
     assert o["opened"] == [{"focusId": "a", "words": "Webhook"}, {"focusId": "a", "words": "Webhook"}]
+    assert "Chain" in o["labels"] and "Workflow" not in o["labels"], o["labels"]   # `B1092`
 
 
 def test_a_lone_task_has_no_chip(box):

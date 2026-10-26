@@ -694,6 +694,25 @@ def failure_backoff_seconds(failures: int) -> float:
 # both mean "no ceiling", which is what every run has had until this row.
 MIN_TASK_TIMEOUT_SECONDS = 30
 MAX_TASK_TIMEOUT_SECONDS = 24 * 60 * 60
+# `B1039`. The most retries a task may ask for. It was a literal `10` inside
+# the route's validator and a copy of it in the task form.
+MAX_TASK_RETRIES = 10
+
+
+def task_limits() -> dict:
+    """`B1039`. The numbers the task form states, served (`GET
+    /api/tasks/meta/limits`) rather than copied into the browser: a run's time
+    limit's bounds, and how retries are spaced — the first gap is the backoff
+    ladder's first rung held to the interval floor (`failure_next_run`), each
+    later one about twice the one before, up to the ladder's cap."""
+    return {
+        "timeout": {"min_seconds": MIN_TASK_TIMEOUT_SECONDS,
+                    "max_seconds": MAX_TASK_TIMEOUT_SECONDS},
+        "retries": {"max": MAX_TASK_RETRIES,
+                    "first_gap_seconds": max(FAILURE_BACKOFF_BASE_SECONDS,
+                                             min_task_interval_seconds()),
+                    "cap_seconds": FAILURE_BACKOFF_CAP_SECONDS},
+    }
 
 
 def task_timeout_seconds(task) -> int:
@@ -706,6 +725,22 @@ def task_timeout_seconds(task) -> int:
     if value <= 0:
         return 0
     return max(MIN_TASK_TIMEOUT_SECONDS, min(MAX_TASK_TIMEOUT_SECONDS, value))
+
+
+#: `B1494`. The key on a failed event/webhook run's plan step (its row's step
+#: log) that holds the retry it planned: `{at, trigger}` while it is pending,
+#: then `taken` (or `gave_up`) and no envelope once it has been dispatched.
+RETRY_PLAN_KEY = "retry"
+
+
+def pending_retry_plan(steps) -> dict | None:
+    """`B1494`. The retry a failed run's step log says is still to come — the
+    plan dict itself, so a caller can mark it — or `None`."""
+    for step in reversed(steps if isinstance(steps, list) else []):
+        plan = step.get(RETRY_PLAN_KEY) if isinstance(step, dict) else None
+        if isinstance(plan, dict) and not plan.get("taken") and not plan.get("gave_up"):
+            return plan
+    return None
 
 
 class FailureSchedule(NamedTuple):
@@ -781,6 +816,24 @@ def failure_next_run(db, task, *, run_id: str, now=None) -> FailureSchedule:
                 None, False, attempt, wait,
                 f"Failed — {budget} retry attempt(s) used up. It runs again on its "
                 f"next trigger.")
+        return FailureSchedule(None, False, attempt, delay, "")
+    if scheduled is None and (getattr(task, "schedule", None) or "") == "once":
+        # `B1492`. A one-off has no next occurrence to fall back to — its date
+        # has passed, which is why `scheduled` is None — and this answered "no
+        # retry" for it, so "retry twice" on a *Once* task (the form offers the
+        # box for it, and the API took the count) failed once and was marked
+        # completed. Its retries come back on the same ladder a schedule's do;
+        # when they are used up it ends, as it always did, and says so.
+        if attempt <= budget:
+            return FailureSchedule(
+                backed_off, True, attempt, delay,
+                f"Failed — retrying (attempt {attempt} of {budget}) in "
+                f"{_human_gap(delay)}, at {backed_off.isoformat()}Z")
+        if budget:
+            return FailureSchedule(
+                None, False, attempt, delay,
+                f"Failed — {budget} retry attempt(s) used up. It was a one-off, "
+                f"so it does not run again.")
         return FailureSchedule(None, False, attempt, delay, "")
     if scheduled is None:
         return FailureSchedule(None, False, attempt, delay, "")
@@ -988,16 +1041,41 @@ def _resolve_task_timezone(db, task) -> str | None:
     own = valid_timezone(getattr(task, "tz_name", None))
     if own:
         return own
+    cm = _task_crew_member(db, task)
+    if cm and cm.timezone:
+        return cm.timezone
+    return None
+
+
+def _task_crew_member(db, task):
+    """The crew member a task is linked to, or `None`."""
     if not getattr(task, "crew_member_id", None):
         return None
     try:
         from core.database import CrewMember
-        cm = db.query(CrewMember).filter(CrewMember.id == task.crew_member_id).first()
-        if cm and cm.timezone:
-            return cm.timezone
+        return db.query(CrewMember).filter(CrewMember.id == task.crew_member_id).first()
     except Exception:
-        pass
-    return None
+        return None
+
+
+def followed_crew_zone(db, task) -> dict | None:
+    """`B1040`. `_resolve_task_timezone`'s second answer, said with whose it
+    is: `{tz_name, crew_member}` when the task has no zone of its own and
+    fires on its crew member's — or `None`.
+
+    Served on the task (`_task_to_dict`) because the form and the card could
+    not know it: for a crew-linked task with no zone they showed "Not set: …
+    kept in UTC" and converted the browser's clock, while the scheduler fired
+    it at that `HH:MM` on the crew member's. A crew zone `zoneinfo` does not
+    know is not one `compute_next_run` honours (it falls back to UTC), so it
+    is not said either."""
+    if valid_timezone(getattr(task, "tz_name", None)):
+        return None
+    cm = _task_crew_member(db, task)
+    zone = valid_timezone(getattr(cm, "timezone", None)) if cm is not None else None
+    if not zone:
+        return None
+    return {"tz_name": zone, "crew_member": cm.name or "the crew member"}
 
 
 # `P8-30`. The event names below are `src.event_bus` constants, not strings
@@ -1037,6 +1115,34 @@ def housekeeping_default_names(action) -> frozenset:
     if not defs:
         return frozenset()
     return frozenset({defs["name"], *(defs.get("legacy_names") or ())})
+
+
+def housekeeping_builtin_ids(rows) -> set:
+    """`B1493`. Which of these task rows are a built-in housekeeping task —
+    the reconcile's answer (`ensure_defaults`), not a second one.
+
+    Per owner and action: the action rows under one of the built-in's names
+    (`housekeeping_default_names`) — or, where no row of that action carries
+    one, its only row: a built-in the person renamed, which still stands in
+    for it (no second is seeded while a row of that action exists). A task a
+    person made with the action beside the built-in is neither. `rows` must be
+    every such row of the owners asked about, not a filtered page of them."""
+    groups: dict = {}
+    for row in rows:
+        if (getattr(row, "task_type", None) or "") != "action":
+            continue
+        if getattr(row, "action", None) not in HOUSEKEEPING_DEFAULTS:
+            continue
+        groups.setdefault((row.owner, row.action), []).append(row)
+    out = set()
+    for (_owner, action), group in groups.items():
+        names = housekeeping_default_names(action)
+        named = [row.id for row in group if (row.name or "") in names]
+        if named:
+            out.update(named)
+        elif len(group) == 1:
+            out.add(group[0].id)
+    return out
 
 RETIRED_HOUSEKEEPING_ACTIONS = frozenset({
     "tidy_calendar",
@@ -1544,6 +1650,23 @@ def _human_ms(seconds: float) -> int:
 # path's notification); a workflow — the person's own steps, producing their
 # result — notifies as a Prompt task does. One tuple, both places (`Law 7`).
 NOTIFY_ON_SUCCESS_TASK_TYPES = ("llm", "research", "workflow")
+
+#: `B1076`. The kinds of task a person makes at the task doors — `POST
+#: /api/tasks`, its edit, and `manage_tasks` — as stored in `task_type`
+#: (`FORBIDDEN.md` Part 1). A workflow's start (`workflow`) is the fourth
+#: stored value and is made in the Workbench, refused at those doors in its own
+#: words (`P22-05`). The Forge's download and serve jobs are not task rows.
+PERSON_TASK_TYPES = ("llm", "research", "action")
+
+
+def task_type_problem(value) -> str | None:
+    """`B1076`. The sentence that refuses a `task_type` no task can be, or
+    `None`. These doors stored whatever they were sent, and an unknown word ran
+    as a Prompt task with no prompt (`_execute_task_locked`'s `else`)."""
+    if value in PERSON_TASK_TYPES:
+        return None
+    return (f"“{value}” is not a kind of task. A task is a Prompt (llm), a Research "
+            f"(research) or an Action (action); a workflow is made in the Workbench.")
 
 # `P22-05` / `P8-27`. A workflow step runs under its own slot in `_run_state`,
 # `"<run id>:<step id>"`, created when the step starts and dropped when it ends
@@ -2538,6 +2661,9 @@ class TaskScheduler:
         # start-up log line report the cap the first dispatch will actually use.
         self._refresh_concurrency_cap()
         self._sweep_runs_left_by_a_restart()
+        # `B1494`. An event or webhook task's retry that the last process was
+        # holding when it stopped is armed again, from its run's row.
+        self._rearm_pending_retries()
 
         # Advance next_run for active tasks whose next_run is already in the
         # past. Without this, a restart hits _check_due_tasks() with an empty
@@ -2755,7 +2881,7 @@ class TaskScheduler:
 
     async def _check_due_tasks(self):
         # `P6-08`. The settings-change path for this cap is every tick, not a
-        # hook on one writer. `save_settings` has ~20 call sites (the admin
+        # hook on one writer. `save_settings` has many call sites (the admin
         # endpoint, the agent's own `manage_settings`, a backup restore) and
         # `data/settings.json` is also hand-edited — a listener on any one of
         # them is `Law 13`'s defect class. Re-resolving here costs one cached
@@ -3053,27 +3179,67 @@ class TaskScheduler:
     RETRY_BUSY_SECONDS = 30
     RETRY_BUSY_TRIES = 20
 
-    def _retry_with_trigger(self, task_id: str, run_id: str, delay: float) -> None:
+    def _say_failure_plan(self, task_id: str, run_id: str, run, plan) -> None:
+        """What a failed run's plan (`failure_next_run`) says on its row, and —
+        for an event or webhook task with retries left — the retry itself.
+
+        One place for the three failure paths that ask (a run that returned a
+        failure, a scheduled one that raised, an event one that raised), which
+        each spelled these lines out (`Law 14`).
+
+        `B1494`. An event or webhook task's retry is the trigger that started
+        the failed run, again (`B805`), and it was held only in this process:
+        a restart before it was due dropped it, payload and all, while the
+        row still said a retry was coming. The plan — when it is due and the
+        envelope it runs with — is written on the failed run's own row now,
+        on the step that says it (`RETRY_PLAN_KEY`), so the run table holds it
+        as it holds everything else about the run; `start` re-arms any plan a
+        restart left untaken (`_rearm_pending_retries`)."""
+        retry = None
+        if plan.is_retry and plan.next_run is None:
+            due = _utcnow() + timedelta(seconds=max(0.0, float(plan.delay_seconds or 0)))
+            retry = {"at": due.isoformat() + "Z", "trigger": self.run_trigger(run_id)}
+        if plan.note:
+            logger.warning("Task %s: %s", task_id, plan.note)
+            fields = {"kind": "progress", "detail": plan.note}
+            if retry is not None:
+                fields[RETRY_PLAN_KEY] = retry
+            if self._record_run_step(run_id, **fields) is None and retry is not None:
+                # The log was at its cap (`B612`), which drops a step; this
+                # one carries the retry, so it is kept past the cap.
+                self._state_for(run_id)["steps"].append(
+                    shape_run_step(fields, max_detail=self._MAX_STEP_DETAIL))
+            self._attach_run_steps(run_id, run)
+        if retry is not None:
+            self._retry_with_trigger(task_id, run_id, plan.delay_seconds,
+                                     trigger=retry["trigger"])
+
+    def _retry_with_trigger(self, task_id: str, run_id: str, delay: float,
+                            trigger=None) -> None:
         """`B805`. An event- or webhook-triggered task's retry: the SAME
         trigger — the envelope the failed run was handed — dispatched again
         after `delay` (`failure_next_run`'s backoff), as background work.
 
-        Held in this process, as the trigger itself is (`run_trigger` lives on
-        the run's slot), so a restart before it is due drops it — the failed
-        run's row says a retry was coming and the next trigger runs the task
-        as always. The attempt count is the run history's
-        (`consecutive_failures`), so a retry that fails again plans the next
-        one, and one that works ends the streak."""
-        trigger = self.run_trigger(run_id)
+        The attempt count is the run history's (`consecutive_failures`), so a
+        retry that fails again plans the next one, and one that works ends the
+        streak. `B1494`: the wait is held here and the plan on the failed
+        run's row (`_say_failure_plan`); when the retry is dispatched, or gives
+        up, the plan is marked taken (`_retry_plan_taken`), so a restart after
+        that does not run it twice. `trigger` is the plan's envelope; omitted,
+        it is read off the failed run's slot."""
+        if trigger is None:
+            trigger = self.run_trigger(run_id)
 
         async def _later():
             await asyncio.sleep(max(0.0, float(delay or 0)))
             for _ in range(self.RETRY_BUSY_TRIES):
                 if await self.run_task_now(task_id, trigger=trigger):
+                    self._retry_plan_taken(run_id)
                     return
                 await asyncio.sleep(self.RETRY_BUSY_SECONDS)
             logger.warning("Task %s: a retry with its trigger gave up — the task stayed busy",
                            task_id)
+            self._retry_plan_taken(run_id, gave_up=True)
 
         pending = getattr(self, "_pending_retries", None)
         if pending is None:
@@ -3081,6 +3247,69 @@ class TaskScheduler:
         job = asyncio.create_task(_later())
         pending.add(job)
         job.add_done_callback(pending.discard)
+
+    def _retry_plan_taken(self, run_id: str, *, gave_up: bool = False) -> None:
+        """`B1494`. The retry a failed run planned has been dispatched (or gave
+        up): its plan says so, and lets go of the envelope it no longer needs
+        to keep."""
+        from core.database import SessionLocal, TaskRun
+        try:
+            db = SessionLocal()
+            try:
+                row = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+                steps = json.loads(row.steps) if row is not None and row.steps else []
+                plan = pending_retry_plan(steps)
+                if plan is None:
+                    return
+                plan.pop("trigger", None)
+                plan["gave_up" if gave_up else "taken"] = _utcnow().isoformat() + "Z"
+                row.steps = json.dumps(steps)
+                db.commit()
+            finally:
+                db.close()
+        except Exception:
+            logger.warning("Could not mark run %s's retry as taken", run_id, exc_info=True)
+
+    def _rearm_pending_retries(self) -> int:
+        """`B1494`. On start: every event or webhook task's retry that a
+        restart left untaken — its plan on the failed run's row — is armed
+        again, due when it was due (at once, if that has passed), with the
+        envelope it was planned with. Answers how many."""
+        from core.database import SessionLocal, ScheduledTask, TaskRun
+        armed = 0
+        try:
+            db = SessionLocal()
+            try:
+                rows = (db.query(TaskRun.id, TaskRun.task_id, TaskRun.steps)
+                        .join(ScheduledTask, TaskRun.task_id == ScheduledTask.id)
+                        .filter(TaskRun.status == "error",
+                                ScheduledTask.trigger_type.in_(("event", "webhook")),
+                                TaskRun.steps.like(f'%"{RETRY_PLAN_KEY}": {{%'))
+                        .all())
+            finally:
+                db.close()
+        except Exception:
+            logger.warning("Could not read the retries a restart left pending", exc_info=True)
+            return 0
+        now = _utcnow()
+        for run_id, task_id, raw in rows:
+            try:
+                plan = pending_retry_plan(json.loads(raw) if raw else [])
+            except (TypeError, ValueError):
+                plan = None
+            if plan is None:
+                continue
+            try:
+                due = datetime.fromisoformat(str(plan.get("at") or "").rstrip("Z"))
+            except ValueError:
+                due = now
+            self._retry_with_trigger(task_id, run_id, max(0.0, (due - now).total_seconds()),
+                                     trigger=plan.get("trigger"))
+            armed += 1
+        if armed:
+            logger.info("Re-armed %d event/webhook retr%s a restart left pending",
+                        armed, "y" if armed == 1 else "ies")
+        return armed
 
     def _restate_stopped_by_user(self, run_id: str) -> None:
         """`B1060`. A run the gate stopped said it would run again; the person
@@ -3808,12 +4037,7 @@ class TaskScheduler:
                 # is now the one place either shape is answered (`Law 14`).
                 plan = failure_next_run(db, task, run_id=run_id)
                 task.next_run = plan.next_run
-                if plan.note:
-                    logger.warning("Task %s: %s", task_id, plan.note)
-                    self._record_run_step(run_id, kind="progress", detail=plan.note)
-                    self._attach_run_steps(run_id, run)
-                if plan.is_retry and plan.next_run is None:
-                    self._retry_with_trigger(task_id, run_id, plan.delay_seconds)   # `B805`
+                self._say_failure_plan(task_id, run_id, run, plan)   # `B805`, `B1494`
                 if (task.next_run is None and task.schedule == "once"
                         and (task.trigger_type or "schedule") == "schedule"):
                     task.status = "completed"
@@ -3947,14 +4171,14 @@ class TaskScheduler:
                         # wired.
                         plan = failure_next_run(db, task_obj, run_id=run_id)
                         task_obj.next_run = plan.next_run
-                        if plan.note:
-                            logger.warning("Task %s: %s", task_id, plan.note)
-                            self._record_run_step(run_id, kind="progress",
-                                                  detail=plan.note)
-                            self._attach_run_steps(run_id, run_obj)
-                        if plan.is_retry and plan.next_run is None:
-                            # `B805`
-                            self._retry_with_trigger(task_id, run_id, plan.delay_seconds)
+                        if task_obj.next_run is None and task_obj.schedule == "once":
+                            # `B1492`. A one-off that RAISED ends as one that
+                            # returned a failure does (above): it has no next
+                            # time, so it is completed — once its retries, if
+                            # it has any, are used up. It was left `active`
+                            # with nothing ever to run it.
+                            task_obj.status = "completed"
+                        self._say_failure_plan(task_id, run_id, run_obj, plan)
                     except Exception as exc:
                         # `P3-17`. `last_run` was set on the line above, so
                         # swallowing this leaves `next_run` at a time that has
@@ -3977,12 +4201,7 @@ class TaskScheduler:
                     # it was: that column means "deferred" on these.
                     try:
                         plan = failure_next_run(db, task_obj, run_id=run_id)
-                        if plan.note:
-                            logger.warning("Task %s: %s", task_id, plan.note)
-                            self._record_run_step(run_id, kind="progress", detail=plan.note)
-                            self._attach_run_steps(run_id, run_obj)
-                        if plan.is_retry:
-                            self._retry_with_trigger(task_id, run_id, plan.delay_seconds)
+                        self._say_failure_plan(task_id, run_id, run_obj, plan)
                     except Exception as exc:
                         logger.warning("Could not plan a retry for task %s: %s", task_id, exc)
                 try:
@@ -7847,6 +8066,20 @@ class TaskScheduler:
             for task in legacy_named:
                 action = name_to_action.get(task.name)
                 if not action:
+                    continue
+                # `B1495`. Only a row that carries nothing of its own to run —
+                # no action but this built-in's, and, with no action, no prompt
+                # either: the shape a built-in had before `task_type` /
+                # `action` were written — is the stale built-in this repairs. It took every row of the
+                # owner's under one of those names, whatever it was, so a
+                # Prompt task a person called "Memory Tidy" was turned into the
+                # housekeeping action on the next reconcile and its prompt
+                # stopped running, and an action task of theirs by that name
+                # had its action swapped. A person's task by any name is
+                # theirs (`B1063`).
+                own_action = bool(task.action) and task.action != action
+                own_prompt = not task.action and bool((task.prompt or "").strip())
+                if own_action or own_prompt or (task.task_type or "llm") == "workflow":
                     continue
                 task.task_type = "action"
                 task.action = action

@@ -12,26 +12,21 @@ made a chat, "[Task] Morning inbox brief", in the Tasks folder — empty, before
 the workflow had ever run, and kept on its trigger.
 
 Now the route awaits the test only while the request is waiting for it, and a
-test removes the chat it made. Driven (`Law 20`): the real app out of process
-(its real request ceiling, set to one second, its real middleware stack, the
-real route and scheduler — the model scripted and slower than the ceiling),
-and in process the real `test_workflow_node`, the real Prompt executor and
-agent loop, and a real `SessionManager` on one SQLite file.
+test removes the chat it made. Driven (`Law 20`): the real route helper
+(`_while_the_request_waits`), the real `test_workflow_node`, the real Prompt
+executor and agent loop, and a real `SessionManager` on one SQLite file. (The
+out-of-process drive through the request ceiling moved to
+`tests/test_a_slow_step_test_waits_for_its_answer.py` when `B1496` exempted
+the route from that ceiling.)
 """
 from __future__ import annotations
 
 import json
-import os
-import subprocess
-import sys
-import textwrap
-from pathlib import Path
 
 import pytest
 
 from tests.helpers.walker_harness import make_db, node, seed_workflow
 
-_REPO = Path(__file__).resolve().parents[1]
 ENDPOINT = dict(model="scripted", endpoint_url="http://127.0.0.1:9/v1")
 
 
@@ -110,75 +105,55 @@ async def test_a_workflow_that_has_a_chat_keeps_it_through_a_test(world):
     assert _trigger(factory).session_id == chat
 
 
-# ── the request ceiling ─────────────────────────────────────────────────────
+# ── the page that asked stops waiting ───────────────────────────────────────
+#
+# `B1496` changed how this is reached. The out-of-process case here drove the
+# request ceiling: a step test slower than it answered 504 and — since this
+# row — did not run on. The step-test route is exempt from that ceiling now (a
+# slow model's step can be tested, within the test's own budget), so that
+# case moved to `tests/test_a_slow_step_test_waits_for_its_answer.py`, which
+# holds the new answer. What still ends a test early is the page that asked
+# for it going away, and that is what `_while_the_request_waits` watches for:
+# driven here with the real route helper, the real `test_workflow_node` and
+# the real agent loop, the model scripted and slower than the page's patience.
 
-_PROBE = textwrap.dedent(
-    """
-    import asyncio, json, time
-    import app as app_module
+class _PageThatLeaves:
+    """A request whose `receive` answers `http.disconnect` after `after` s —
+    what a closed tab or a cancelled fetch looks like to the endpoint."""
+
+    def __init__(self, after):
+        self.after = after
+
+    async def receive(self):
+        import asyncio
+        await asyncio.sleep(self.after)
+        return {"type": "http.disconnect"}
+
+
+@pytest.mark.asyncio
+async def test_a_test_whose_page_stopped_waiting_does_not_run_on(world, monkeypatch):
+    import asyncio
     import src.agent_loop as agent_loop
-    import src.task_endpoint as task_endpoint
-    from tests.helpers.signed_in import sign_in
-    from fastapi.testclient import TestClient
+    from routes.workflow.workflow_routes import TEST_REQUEST_GONE, _while_the_request_waits
+    from src.workflow_store import WorkflowRefused
 
-    app_module.REQUEST_HARD_TIMEOUT = 1.0          # the ceiling, at one second
+    factory, s, manager = world
     rounds = {"started": 0, "completed": 0}
 
-    async def model(candidates, messages, **kwargs):
+    async def slow_model(candidates, messages, **kwargs):
         rounds["started"] += 1
-        await asyncio.sleep(3)                     # a local model, slower than the ceiling
+        await asyncio.sleep(1.5)               # a local model, slower than the page waits
         rounds["completed"] += 1
-        yield "data: " + json.dumps({"delta": "The summary."}) + "\\n\\n"
-        yield "data: [DONE]\\n\\n"
+        yield f"data: {json.dumps({'delta': 'The summary.'})}\n\n"
+        yield "data: [DONE]\n\n"
 
-    agent_loop.stream_llm_with_fallback = model
-    agent_loop.get_mcp_manager = lambda: None
-    agent_loop.estimate_tokens = lambda *a, **k: 10
-    task_endpoint.resolve_task_candidates = lambda **kw: []
-    STEP = __STEP__
-    out = {}
-    with TestClient(app_module.app) as client:
-        sign_in(app_module, client)
-        from core.database import SessionLocal, ModelEndpoint, ScheduledTask, Workflow, Session
-        db = SessionLocal()
-        db.add(ModelEndpoint(id="local", name="Local", is_enabled=True, endpoint_kind="local",
-                             base_url="http://127.0.0.1:9/v1", cached_models='["scripted"]'))
-        db.add(ScheduledTask(id="wf", owner="ada", name="Morning inbox brief",
-                             task_type="workflow", trigger_type="webhook", status="active"))
-        db.add(Workflow(id="w1", owner="ada", name="Morning inbox brief", task_id="wf", version=1,
-                        graph=json.dumps({"v": 1, "nodes": [STEP], "edges": []})))
-        db.commit()
-        db.close()
-        t0 = time.monotonic()
-        r = client.post("/api/workflows/w1/nodes/n1/test", json={"node": STEP, "source": "none"})
-        out["answer"] = [r.status_code, r.json(), round(time.monotonic() - t0, 2)]
-        time.sleep(3.5)                            # past when the round would have finished
-        out["rounds"] = dict(rounds)
-        db = SessionLocal()
-        out["chats"] = [s.name for s in db.query(Session).all()]
-        db.close()
-    print("RESULT " + json.dumps(out))
-    """
-)
-
-
-def test_a_test_the_ceiling_cut_off_does_not_run_on_afterwards(tmp_path):
-    env = os.environ.copy()
-    env.update({
-        "CHROMADB_CONNECT_TIMEOUT": "0.01", "CHROMADB_HOST": "127.0.0.1", "CHROMADB_PORT": "9",
-        "DATABASE_URL": f"sqlite:///{tmp_path / 'app.db'}", "PANTHEON_DATA_DIR": str(tmp_path),
-        "PANTHEON_DISABLE_MCP": "1", "PYTHONPATH": str(_REPO), "PYTHON_DOTENV_DISABLED": "1",
-        "BACKGROUND_TASK_FOREGROUND_GATE": "0",
-    })
-    probe = _PROBE.replace("__STEP__", repr(STEP))
-    done = subprocess.run([sys.executable, "-c", probe], cwd=_REPO, env=env,
-                          capture_output=True, text=True, timeout=240)
-    line = next((ln for ln in done.stdout.splitlines() if ln.startswith("RESULT ")), None)
-    assert line, done.stderr[-4000:]
-    out = json.loads(line[len("RESULT "):])
-    status, body, took = out["answer"]
-    assert status == 504, out                      # what the person is told
-    assert out["rounds"] == {"started": 1, "completed": 0}, \
-        f"the test they were told did not run, ran: {out}"
-    assert took < 2.9, f"the request was held until the round ended: {out}"
-    assert out["chats"] == [], out
+    monkeypatch.setattr(agent_loop, "stream_llm_with_fallback", slow_model)
+    seed_workflow(factory, [STEP], [], name="Morning inbox brief")
+    test = s.test_workflow_node(_trigger(factory), "Morning inbox brief", STEP)
+    with pytest.raises(WorkflowRefused) as told:
+        await _while_the_request_waits(_PageThatLeaves(0.3), test)
+    assert told.value.status == 503 and told.value.sentence == TEST_REQUEST_GONE
+    await asyncio.sleep(2.0)                   # past when the round would have finished
+    assert rounds == {"started": 1, "completed": 0}, \
+        f"the test they were told did not run, ran: {rounds}"
+    assert _chats(factory) == [], "the cancelled test left a chat"

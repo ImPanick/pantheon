@@ -533,7 +533,7 @@ def test_the_kebab_offers_the_workbench_and_keeps_the_diagram(tasks_box):
     o = _run(tasks_box, _KEBAB, """
         kebab('a').dispatchEvent({ type: 'click', ...ev });
         const labels = menu().children.map((b) => b.textContent);
-        item('Workflow').dispatchEvent({ type: 'click', ...ev });
+        item('Chain').dispatchEvent({ type: 'click', ...ev });   // `B1092`: a task's is its chain
         await tick();
         const opened = globalThis.__opened.slice();
         kebab('a').dispatchEvent({ type: 'click', ...ev });
@@ -541,9 +541,11 @@ def test_the_kebab_offers_the_workbench_and_keeps_the_diagram(tasks_box):
         await tick();
         console.log(JSON.stringify({ labels, opened, diagram: body.innerHTML }));
     """)
-    i = o["labels"].index("Workflow")
+    i = o["labels"].index("Chain")   # `B1092` changed the word: a task's is its chain
     assert o["labels"][i - 1] == "History" and o["labels"][i + 1] == "Read as a diagram"
     # The Workbench, on that task, with the Tasks window's own schedule words.
     assert o["opened"] == [{"focusId": "a", "words": "Webhook"}]
     assert '<div class="mermaid-container"><pre class="mermaid"' in o["diagram"]
     assert "Nightly backup" in o["diagram"]
+    # `B1092`: the drawing of a task's chain is called its chain.
+    assert " — Chain</span>" in o["diagram"] and " — Workflow</span>" not in o["diagram"]

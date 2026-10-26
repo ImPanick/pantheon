@@ -655,6 +655,11 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
             refused = _workflow_refusal(db, None, args)
             if refused:
                 return refused
+            # `B1076`. The route's one allowlist: an unknown word was stored
+            # and ran as a Prompt task with no prompt.
+            from src.task_scheduler import task_type_problem
+            if task_type_problem(task_type):
+                return {"error": task_type_problem(task_type), "exit_code": 1}
             refused = _admin_refusal(owner, task_type, args.get("action_name"))
             if refused:
                 return refused
@@ -725,6 +730,13 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
             refused = _workflow_refusal(db, task, args)
             if refused:
                 return refused
+            # `B1076`. As on create — a workflow's start keeping its kind is
+            # `_workflow_refusal`'s to judge, and it did above.
+            from src.task_scheduler import task_type_problem
+            wanted = args.get("task_type")
+            if (wanted is not None and wanted != (task.task_type or "llm")
+                    and task_type_problem(wanted)):
+                return {"error": task_type_problem(wanted), "exit_code": 1}
             # `B1038`. With the type and action the edit would leave, as the
             # route's update asks.
             refused = _admin_refusal(

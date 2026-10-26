@@ -103,6 +103,7 @@ def test_the_tasks_all_chip_leaves_the_count_to_the_tab(tmp_path):
         const _categoryFor = (t) => t.c;
         const _categoryOrder = () => ['calendar', 'email'];
         const _renderList = () => {};
+        const _CATEGORY_ICONS = {};   // `B610`: the chips read their glyphs here
         function _renderTaskChips() %s
         _renderTaskChips();
         console.log(JSON.stringify({ chips: bar.kids.map((c) => c.textContent) }));

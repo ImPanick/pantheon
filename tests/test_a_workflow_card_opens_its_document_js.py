@@ -136,7 +136,7 @@ def test_an_ordinary_tasks_doors_are_unchanged(tasks_box):
     o = _run(tasks_box, _CARDS, """
         openMenu('a');
         const labels = menu().children.map((b) => b.textContent);
-        item('Workflow').dispatchEvent({ type: 'click', ...ev });
+        item('Chain').dispatchEvent({ type: 'click', ...ev });   // `B1092`: a task's is its chain
         await tick();
         const opened = globalThis.__opened.slice();
         openMenu('a');
@@ -145,6 +145,7 @@ def test_an_ordinary_tasks_doors_are_unchanged(tasks_box):
         console.log(JSON.stringify({ labels, opened, form: formShown(), after: globalThis.__opened.length }));
     """)
     assert "Edit" in o["labels"] and "Edit in the Workbench" not in o["labels"]
+    assert "Chain" in o["labels"] and "Workflow" not in o["labels"]   # `B1092`
     assert o["opened"] == [{"focusId": "a", "workflowId": None, "words": "Webhook"}]
     assert o["form"] is True and o["after"] == 1, "Edit on a task is still the task form"
 

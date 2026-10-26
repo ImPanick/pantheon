@@ -38,8 +38,9 @@ import {
 // `B78`. `runStatusTone` was defined in this file and re-exported here instead,
 // because `queuePanel.js` needs the same derivation and cannot import this
 // module (see `runStatus.js`'s header). Kept on this module's surface because
-// four call sites and two tests already import it from here, and taking an
-// export away to move a function is a subtraction (`Law 1`).
+// callers and tests already import it from here (`B891`: a count of them was
+// written here, and a count in a comment is a measurement nothing re-takes),
+// and taking an export away to move a function is a subtraction (`Law 1`).
 export { runStatusTone };
 
 const API_BASE = window.location.origin;
@@ -325,8 +326,11 @@ function _scheduleLabel(task) {
   // `P22-03`. A task with its own zone stores its time on that zone's clock
   // (`compute_next_run`), so the card says it that way — "Daily at 09:00
   // Sydney time" — instead of converting a UTC time that was never stored. A
-  // task with no zone is drawn exactly as before.
-  const zone = task.tz_name || '';
+  // task with no zone is drawn exactly as before. `B1040`: one linked to a
+  // crew member, with no zone of its own, fires on the crew member's clock
+  // (`crew_zone`) and is drawn on it — it was converted from UTC to this
+  // browser's, three hours or more from when it runs.
+  const zone = task.tz_name || task.crew_zone?.tz_name || '';
   const zoneWords = zone ? ` ${_zonePlace(zone)} time` : '';
   if (task.schedule === 'cron') {
     const said = _cronWords(task.cron_expression);
@@ -686,10 +690,20 @@ function _renderTaskChips() {
   bar.style.display = cats.length > 1 ? 'flex' : 'none';
   // Exact library style: .memory-cat-chip, an "all (N)" chip, then one per
   // category with its count. Clicking "all" clears the filter.
+  // `B610`. A category's chip carries its glyph (`_CATEGORY_ICONS`), as the
+  // document library's folder chips beside these carry theirs. The glyphs
+  // were drawn nowhere — their one reader was a test checking the names
+  // agree — and "all" stays bare, as it is everywhere.
   const mkChip = (label, value, active) => {
     const b = document.createElement('button');
     b.className = 'memory-cat-chip' + (active ? ' active' : '');
-    b.textContent = label;
+    const glyph = value ? _CATEGORY_ICONS[value] : '';
+    if (glyph) {
+      b.innerHTML = `<svg class="task-cat-chip-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px;margin-right:4px;">${glyph}</svg>`;
+      b.appendChild(document.createTextNode(label));
+    } else {
+      b.textContent = label;
+    }
     b.addEventListener('click', () => { _taskFilter = value; _renderList(); });
     bar.appendChild(b);
   };
@@ -824,7 +838,10 @@ function _renderList() {
       // ways — History is what this task did, Workflow is what it is part of.
       // `P22-02`: Workflow opens the Workbench on this task's workflow, and the
       // Mermaid drawing stays one item down as *Read as a diagram*.
-      items.push({ label: 'Workflow', icon: WORKFLOW_GLYPH, action: () => _openInWorkbench(task) });
+      // `B1092`: one word per thing — a task's chain is a chain (the chip says
+      // "Part of a 4-step chain"); "Workflow" is a workflow's start only, the
+      // named document on the Workbench's shelf.
+      items.push({ label: task.task_type === 'workflow' ? 'Workflow' : 'Chain', icon: WORKFLOW_GLYPH, action: () => _openInWorkbench(task) });
       items.push({ label: 'Read as a diagram', icon: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>', action: () => _showWorkflowDiagram(task.id, task.name) });
       if (task.is_builtin && task.is_modified) {
         items.push({ label: 'Revert to default', icon: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>', action: () => _doRevert(task.id) });
@@ -1462,7 +1479,11 @@ function _renderRunSteps(run, opts = {}) {
   // which is not a step: the count is the steps kept, and the summary says how
   // many more there were — it read "200 steps" as though that were all.
   const capped = steps.find(s => s && s.kind === 'capped');
-  const kept = steps.length - (capped ? 1 : 0);
+  // `B1081`. A workflow's run says how many of its steps it reached
+  // (`node_count`), as the Activity chip does; its log also holds a
+  // "Continued to …" line between two steps, which is not a step.
+  const kept = (run && run.node_count != null && Number.isFinite(Number(run.node_count)))
+    ? Number(run.node_count) : steps.length - (capped ? 1 : 0);
   const dropped = capped ? Math.max(0, Number(capped.dropped) || 0) : 0;
   const summary = opts.summary
     || (`${kept} step${kept === 1 ? '' : 's'}`
@@ -1635,6 +1656,13 @@ function _workflowView(taskId) {
  * call are `markdown.js`'s, the same pair a mermaid fence in a chat message
  * goes through. Nothing here loads or initialises Mermaid.
  */
+/** `B1092`. What a task's drawing is called: a workflow's start is a
+ *  workflow's; every other task's is its chain. */
+function _chainOrWorkflowWord(taskId) {
+  const task = _tasks.find((t) => String(t.id) === String(taskId));
+  return task && task.task_type === 'workflow' ? 'Workflow' : 'Chain';
+}
+
 function _showWorkflowDiagram(taskId, taskName) {
   _viewingWorkflow = taskId;
   const modal = document.getElementById('tasks-modal');
@@ -1669,7 +1697,7 @@ function _showWorkflowDiagram(taskId, taskName) {
   body.innerHTML = `
     <div class="task-history-header">
       <button id="task-workflow-back" class="task-btn">← Back</button>
-      <span style="font-size:13px;opacity:0.7;">${_escHtml(taskName || '')} — Workflow</span>
+      <span style="font-size:13px;opacity:0.7;">${_escHtml(taskName || '')} — ${_chainOrWorkflowWord(taskId)}</span>
     </div>
     <div style="flex:1;overflow:auto;min-height:0;">
       <p class="memory-desc" style="margin:0 0 8px;">${_escHtml(sentence)}</p>
@@ -1963,8 +1991,11 @@ function _runToActivityEntry(r) {
     // `P8-25`. `/runs/recent` serves `step_count` with `steps` emptied — 200
     // runs of up to 200 steps is a response in megabytes for a list drawing one
     // line each. The count is enough for the row; the log is one click away in
-    // the task's own history.
-    stepCount: Number(r.step_count) || 0,
+    // the task's own history. `B1081`: a workflow's run counts the steps it
+    // reached (`node_count`), not its log's lines — "Continued to …" between
+    // two steps made a two-step workflow read "3 steps".
+    stepCount: (r.node_count != null && Number.isFinite(Number(r.node_count))
+      ? Number(r.node_count) : Number(r.step_count)) || 0,
   };
 }
 
@@ -3132,11 +3163,11 @@ function _stoppedWords(result) {
 }
 
 // `B611`, closed by `B866`'s sweep. This file had two escapers and every
-// builder in it picked one by habit: `_esc` (`:1214`) was a DOM round-trip,
-// which the serialiser leaves `"` and `'` alone in, and `_escHtml` was five
-// replaces. Three of `_esc`'s call sites were attributes — the task-name field
-// at `:1384` and the search box at `:3586`, both holding what the user typed,
-// and `title="${_esc(run.status)}"` at `:2141`. There is one now, and it is
+// builder in it picked one by habit: `_esc` was a DOM round-trip, which the
+// serialiser leaves `"` and `'` alone in, and `_escHtml` was five replaces.
+// Three of `_esc`'s call sites were attributes — the task-name field and the
+// search box, both holding what the user typed, and a run's
+// `title="${_esc(run.status)}"`. There is one now, and it is
 // `ui.js:esc` (`& < > " '`). `String(...)` first so a `0` still renders as `0`
 // rather than as the empty string `esc`'s own `(s || '')` would give it.
 function _escHtml(s) {

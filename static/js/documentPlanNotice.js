@@ -27,6 +27,7 @@
  */
 
 import uiModule from './ui.js';
+import { toolShown, whenToolVisibilityReady } from './ui_visibility.js';
 
 const API_BASE = window.location.origin;
 const NOTICE_MS = 20000;
@@ -119,9 +120,18 @@ export function offerDocumentPlan(review) {
 }
 
 /** The proposals still waiting, offered again after a reload — the queue
- *  says a thing once, and a person may not have been looking. */
+ *  says a thing once, and a person may not have been looking.
+ *
+ *  `B1273`. Not asked while the documents are switched off for this person
+ *  (the Library tool — *Document Editor* for everyone, *Document editor* for
+ *  them, or hidden in this browser): the Tidy's proposal is a documents
+ *  feature, its route is behind `require_feature("document_editor")`, and
+ *  every page load asked anyway and was refused — 8 of 8 loads measured, a
+ *  403 in the console each time. Asked once the switches are known. */
 export async function offerWaitingDocumentPlans() {
   try {
+    await whenToolVisibilityReady();
+    if (!toolShown('library')) return 0;
     const res = await fetch(`${API_BASE}/api/document-folders/plans`, { credentials: 'same-origin' });
     if (!res.ok) return 0;
     const data = await res.json();

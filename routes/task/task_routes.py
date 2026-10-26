@@ -182,19 +182,21 @@ class TaskCreate(BaseModel):
     character_id: Optional[str] = None             # built-in persona id (PERSONAS) — biases output voice
     # Assign the task to a crew member (personal assistant / custom crew).
     # The executor already honours this — verified against the source, not
-    # assumed: `_execute_llm_task` loads the row and takes its `personality`
-    # as the system prompt, plus `model`, `endpoint_url` and the
-    # `enabled_tools` allowlist (src/task_scheduler.py:1625-1636, :1685-1686,
-    # :1719-1727); `_deliver_task_result` resolves the delivery session's
-    # model/endpoint from it (:1817-1824); `_resolve_task_timezone` reads its
-    # IANA timezone so the schedule fires in the crew member's local time.
-    # Empty string clears the link.
+    # assumed: `TaskScheduler._execute_llm_task` loads the row and takes its
+    # `personality` as the system prompt, plus `model`, `endpoint_url` and the
+    # `enabled_tools` allowlist; `TaskScheduler._deliver_task_result` resolves
+    # the delivery session's model/endpoint from it; `_resolve_task_timezone`
+    # reads its IANA timezone so the schedule fires in the crew member's local
+    # time. Empty string clears the link.
     #
     # `P8-32`, 2026-09-19: **every line number in this block was stale** and
-    # one of them by three weeks — `_resolve_task_timezone` was cited at
-    # `:316-327` and measured at `:593`. Names are cited above and numbers are
-    # not, because a number copied into prose is a number that goes stale the
-    # next time anybody adds a function (`Law 6`).
+    # one of them by three weeks. `B807`: the other four, which `P8-32` left,
+    # pointed at a stale-run branch, a comment, the foreground gate and a
+    # notify comment — none of them what the sentence claimed. Every one is a
+    # name now (`src/task_scheduler.py`), because a number copied into prose
+    # is a number that goes stale the next time anybody adds a function
+    # (`Law 6`); `tests/test_task_comments_cite_names_not_line_numbers.py`
+    # holds the task code to that.
     crew_member_id: Optional[str] = None
     # `P8-32`. The three things a task could not say about its own execution.
     # All three are optional and all three mean "no opinion" when omitted,
@@ -270,8 +272,48 @@ def _task_networks(t: ScheduledTask):
     return scope_names(getattr(t, "networks", None))
 
 
+def _housekeeping_rows(session, owner=_ASK):
+    """`B1493`. Every housekeeping-action row of `owner` (of everyone, when
+    no owner is given) — what `housekeeping_builtin_ids` reads, in one query,
+    unfiltered by status so a paused built-in still counts."""
+    q = session.query(ScheduledTask).filter(
+        ScheduledTask.task_type == "action",
+        ScheduledTask.action.in_(list(HOUSEKEEPING_DEFAULTS.keys())))
+    if owner is not _ASK:
+        q = q.filter(ScheduledTask.owner.is_(None) if owner is None
+                     else ScheduledTask.owner == owner)
+    return q.all()
+
+
+def _is_builtin(t: ScheduledTask) -> bool:
+    """`B1493`. Is this row a built-in housekeeping task — asked of one row.
+    It was `action in HOUSEKEEPING_DEFAULTS`, so a task a person made with one
+    of those actions ("Tidy memories", `consolidate_memory`, on a webhook) was
+    served `is_builtin: true`: its card said *built-in* and offered *Revert to
+    default*, which renamed it to the built-in's name — a copy the reconcile
+    then collapsed into one (`B1063`)."""
+    if (t.task_type or "") != "action" or t.action not in HOUSEKEEPING_DEFAULTS:
+        return False
+    from sqlalchemy.orm import object_session
+    from src.task_scheduler import housekeeping_builtin_ids, housekeeping_default_names
+    session = object_session(t)
+    if session is None:
+        return (t.name or "") in housekeeping_default_names(t.action)
+    return t.id in housekeeping_builtin_ids(_housekeeping_rows(session, t.owner))
+
+
+def _crew_zone(t: ScheduledTask):
+    """`B1040`. The crew member's zone this task follows, asked of one row."""
+    if not getattr(t, "crew_member_id", None):
+        return None
+    from sqlalchemy.orm import object_session
+    from src.task_scheduler import followed_crew_zone
+    session = object_session(t)
+    return followed_crew_zone(session, t) if session is not None else None
+
+
 def _task_to_dict(t: ScheduledTask, include_last_run_result: bool = False,
-                  last_run=_ASK, workflow_id=_ASK) -> dict:
+                  last_run=_ASK, workflow_id=_ASK, builtin=_ASK) -> dict:
     defs = HOUSEKEEPING_DEFAULTS.get(t.action) if t.action else None
     d = {
         "id": t.id,
@@ -299,6 +341,10 @@ def _task_to_dict(t: ScheduledTask, include_last_run_result: bool = False,
         # fields above use one: a row read through a model that predates the
         # column must not take a list endpoint down.
         "tz_name": getattr(t, "tz_name", None),
+        # `B1040`. A crew-linked task with no zone of its own fires on its
+        # crew member's (`_resolve_task_timezone`), and the form and the card
+        # could not know it: `{tz_name, crew_member}`, or None.
+        "crew_zone": _crew_zone(t),
         "max_retries": getattr(t, "max_retries", None),
         "timeout_seconds": getattr(t, "timeout_seconds", None),
         "networks": _task_networks(t),
@@ -330,10 +376,13 @@ def _task_to_dict(t: ScheduledTask, include_last_run_result: bool = False,
         # whole list (`list_tasks`) or looked up for one row.
         "workflow_id": _workflow_id_of(t) if workflow_id is _ASK else workflow_id,
     }
-    # Built-in housekeeping tasks (identified by their action) are flagged so
-    # the UI can mark them and offer "revert to default" once altered.
-    d["is_builtin"] = defs is not None
-    if defs:
+    # Built-in housekeeping tasks are flagged so the UI can mark them and
+    # offer "revert to default" once altered. `B1493`: which rows those are is
+    # the reconcile's answer (`housekeeping_builtin_ids`), not "has one of
+    # their actions" — handed in by the list, asked here for one row.
+    builtin = _is_builtin(t) if builtin is _ASK else bool(builtin)
+    d["is_builtin"] = builtin
+    if builtin and defs:
         default_names = {defs["name"], *set(defs.get("legacy_names") or [])}
         d["is_modified"] = (
             (t.name or "") not in default_names
@@ -380,7 +429,15 @@ def _run_steps(r: TaskRun) -> list:
     return parsed if isinstance(parsed, list) else []
 
 
-def _run_to_dict(r: TaskRun) -> dict:
+def _run_node_count(steps: list) -> int:
+    """`B1081`. How many of a workflow's steps a run reached — the distinct
+    steps its log has a `kind: "node"` line for (a step that waited and then
+    ended has two lines, and is one step)."""
+    return len({str(s.get("node")) for s in steps
+                if isinstance(s, dict) and s.get("kind") == "node" and s.get("node") is not None})
+
+
+def _run_to_dict(r: TaskRun, *, is_workflow: bool = False) -> dict:
     steps = _run_steps(r)
     return {
         "id": r.id,
@@ -399,6 +456,13 @@ def _run_to_dict(r: TaskRun) -> dict:
         # shipping six step bodies per row.
         "steps": steps,
         "step_count": len(steps),
+        # `B1081`. A workflow run's step log holds a line per step AND a
+        # "Continued to …" between them, so `step_count` (the log's length)
+        # read "3 steps" on a two-step workflow's run in Activity. A person
+        # who built two steps counts two: `node_count` is that, for a
+        # workflow's run, and None for any other run. `step_count` is still
+        # the log's length (`Law 1`).
+        "node_count": _run_node_count(steps) if is_workflow else None,
     }
 
 
@@ -542,10 +606,15 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             # query — the card says whose they are.
             from src.agents.hires import labels_for_tasks
             agent_labels = labels_for_tasks(db, [t.id for t in tasks])
+            # `B1493`. Which listed rows are a built-in, in one query.
+            from src.task_scheduler import housekeeping_builtin_ids
+            builtin_ids = housekeeping_builtin_ids(
+                _housekeeping_rows(db, user) if user else _housekeeping_rows(db))
             return {
                 "tasks": [{**_task_to_dict(t, include_last_run_result=include_last_run,
                                            last_run=last_runs.get(t.id),
-                                           workflow_id=workflow_ids.get(t.id)),
+                                           workflow_id=workflow_ids.get(t.id),
+                                           builtin=t.id in builtin_ids),
                            "agent": agent_labels.get(t.id)}
                           for t in tasks],
                 "graph": build_task_graph(tasks),
@@ -721,7 +790,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         which zones exist, and the executor reads the same one (`Law 7`).
         """
         from src.task_scheduler import (
-            MAX_TASK_TIMEOUT_SECONDS, MIN_TASK_TIMEOUT_SECONDS, valid_timezone,
+            MAX_TASK_RETRIES, MAX_TASK_TIMEOUT_SECONDS, MIN_TASK_TIMEOUT_SECONDS, valid_timezone,
         )
         out = {}
         if req.tz_name is not None:
@@ -736,8 +805,8 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 out["tz_name"] = raw
         if req.max_retries is not None:
             value = int(req.max_retries)
-            if not 0 <= value <= 10:
-                raise HTTPException(400, "max_retries must be between 0 and 10")
+            if not 0 <= value <= MAX_TASK_RETRIES:
+                raise HTTPException(400, f"max_retries must be between 0 and {MAX_TASK_RETRIES}")
             out["max_retries"] = value or None
         if req.timeout_seconds is not None:
             value = int(req.timeout_seconds)
@@ -787,6 +856,12 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         if req.task_type == "workflow":
             from src.workflow_store import WORKFLOW_MADE_IN_WORKBENCH
             raise HTTPException(400, WORKFLOW_MADE_IN_WORKBENCH)
+        # `B1076`. Any other word was stored as given and ran as a Prompt task
+        # with no prompt.
+        from src.task_scheduler import task_type_problem
+        problem = task_type_problem(req.task_type)
+        if problem:
+            raise HTTPException(400, problem)
 
         # Validate
         if req.task_type in ("llm", "research") and not req.prompt:
@@ -1166,6 +1241,13 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                         400, workflow_store.trigger_is_renamed_with_its_workflow(task.name, wf_name))
             elif req.task_type == "workflow":
                 raise HTTPException(400, workflow_store.WORKFLOW_MADE_IN_WORKBENCH)
+            elif req.task_type is not None and req.task_type != (task.task_type or "llm"):
+                # `B1076`. As on create: one of the kinds a task can be. (A row
+                # already stored with another word is not refused for keeping it.)
+                from src.task_scheduler import task_type_problem
+                problem = task_type_problem(req.task_type)
+                if problem:
+                    raise HTTPException(400, problem)
 
             next_task_type = req.task_type if req.task_type is not None else task.task_type
             next_action = req.action if req.action is not None else task.action
@@ -1382,6 +1464,13 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             defs = HOUSEKEEPING_DEFAULTS.get(task.action) if task.action else None
             if not defs:
                 raise HTTPException(400, "Not a built-in task")
+            if not _is_builtin(task):
+                # `B1493`. A task a person made with a housekeeping action has
+                # no default to go back to; "reverting" it renamed it to the
+                # built-in's name, and the reconcile then collapsed the two.
+                raise HTTPException(400, (
+                    f"“{task.name}” is a task you made, not the built-in "
+                    f"“{defs['name']}”, so it has no default to go back to."))
             task.name = defs["name"]
             task.schedule = defs["schedule"]
             task.scheduled_time = defs["scheduled_time"]
@@ -1485,7 +1574,8 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 try:
                     run = db.query(TaskRun).filter(TaskRun.id == started).first()
                     out["run_id"] = started
-                    out["run"] = _run_to_dict(run) if run is not None else None
+                    out["run"] = (_run_to_dict(run, is_workflow=is_workflow)
+                                  if run is not None else None)
                     if is_workflow:
                         # `P22-05`. A workflow's plan is per step, in that run's
                         # dry node records — read back here in the shape of
@@ -1568,8 +1658,8 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 if len(deduped) >= limit:
                     break
 
-            def _clip_run(r: TaskRun) -> dict:
-                d = _run_to_dict(r)
+            def _clip_run(r: TaskRun, t: ScheduledTask) -> dict:
+                d = _run_to_dict(r, is_workflow=(t.task_type or "") == "workflow")
                 for key in ("result", "error"):
                     val = d.get(key)
                     if isinstance(val, str) and len(val) > max_result_chars:
@@ -1588,7 +1678,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 "has_more": len(rows) > len(deduped),
                 "runs": [
                     {
-                        **_clip_run(r),
+                        **_clip_run(r, t),
                         "task_name": _display_task_name(t),
                         "task_type": t.task_type or "llm",
                         "action": t.action,
@@ -1622,7 +1712,9 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 .order_by(TaskRun.started_at.desc())\
                 .offset(offset).limit(limit).all()
             total = db.query(TaskRun).filter(TaskRun.task_id == task_id).count()
-            return {"runs": [_run_to_dict(r) for r in runs], "total": total}
+            is_workflow = (task.task_type or "") == "workflow"
+            return {"runs": [_run_to_dict(r, is_workflow=is_workflow) for r in runs],
+                    "total": total}
         finally:
             db.close()
 
@@ -1701,6 +1793,9 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             "actions": build_action_palette(
                 include_admin_only=_is_admin(_owner(request))),
             "categories": list(ACTION_CATEGORY_ORDER),
+            # `B614`. A fact about triggers, so it is `/meta/events`' now and
+            # the task form reads it there; kept here for anything that read
+            # it from this door (`Law 1`). The same constant, not a copy.
             "default_trigger_count": DEFAULT_TRIGGER_COUNT,
         }
 
@@ -1715,7 +1810,26 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         a document being edited.
         """
         _owner(request)
-        return {"events": [dict(entry) for entry in EVENT_CATALOGUE]}
+        # `B614`. The count an event trigger fires on when nobody says rides
+        # here, beside the events it is about. It shipped on `/meta/actions`
+        # only, so the form's event branch fetched the whole action palette
+        # for this one number — on a Prompt task, which has no action at all.
+        return {"events": [dict(entry) for entry in EVENT_CATALOGUE],
+                "default_trigger_count": DEFAULT_TRIGGER_COUNT}
+
+    @router.get("/meta/limits")
+    async def list_limits(request: Request):
+        """`B1039`. The numbers every task form states — a run's time limit's
+        bounds, the most retries, and how they are spaced — from the
+        scheduler's own constants (`src.task_scheduler.task_limits`). The form
+        wrote them out as copies (30 s, 24 h, 10) and could say only "about
+        twice as long as the one before", because the backoff's first gap and
+        its cap were on no wire. Its own door, not `/meta/actions` or
+        `/meta/events`: these are about every task, whatever runs it and
+        whatever starts it (`B614`)."""
+        _owner(request)
+        from src.task_scheduler import task_limits
+        return task_limits()
 
     # `P8-23`. Which request headers a webhook payload carries.
     #

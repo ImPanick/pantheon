@@ -68,7 +68,7 @@ export const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 // `B873`. The two branches a task can have, as the form's `<select>` id, the
 // payload field, and the condition the wire calls it.
 //
-// `src/task_scheduler.py:112` is the server's own table —
+// `src/task_scheduler.py`'s `EDGE_COLUMNS` is the server's own table —
 // `{success: "then_task_id", error: "else_task_id"}` — and the browser's half of
 // it is `workflowDiagram.js:EDGE_COLUMNS`, which the Workbench's canvas writes
 // an edge with. `B1045`: this spelled the same pairing a second time; it reads
@@ -170,9 +170,8 @@ export async function _fetchActions() {
     if (Array.isArray(data.categories) && data.categories.length) {
       _actionCategories = data.categories.slice();
     }
-    if (Number.isFinite(data.default_trigger_count)) {
-      _servedTriggerCount = data.default_trigger_count;
-    }
+    // `B614`: `default_trigger_count` is read off `/meta/events` now
+    // (`_fetchEvents`), the door about triggers; this one still carries it.
   } catch (e) {
     _builtinActions = [];
   }
@@ -218,8 +217,9 @@ function _actionPromptValue(action, root = document) {
  * The form used to write `5` in two places in front of an API that had no
  * opinion and a bus that has always read a missing count as one. The served
  * number is the answer; the `1` here is only what the bus does with a NULL
- * (`task.trigger_count or 1`), used for the window before `/meta/actions`
- * answers, and the field is refreshed when it does.
+ * (`task.trigger_count or 1`), used for the window before `/meta/events`
+ * answers (`B614`: it was `/meta/actions`), and the field is refreshed when
+ * it does.
  */
 function _defaultTriggerCount() {
   return Number.isFinite(_servedTriggerCount) && _servedTriggerCount > 0
@@ -349,6 +349,10 @@ async function _fetchEvents() {
     const res = await fetch(`${API_BASE}/api/tasks/meta/events`, { credentials: 'same-origin' });
     const data = await res.json();
     _triggerEvents = data.events || [];
+    // `B614`. The trigger's own default rides with the triggers.
+    if (Number.isFinite(data.default_trigger_count)) {
+      _servedTriggerCount = data.default_trigger_count;
+    }
   } catch (e) {
     _triggerEvents = [];
   }
@@ -604,14 +608,73 @@ function _getDatePickerValue(containerId, root = document) {
 // hour every day — so with a zone the time goes out exactly as typed and comes
 // back exactly as stored, and without one nothing changes (`Law 1`).
 
-/** The bounds `_validate_execution_settings` (`routes/task/task_routes.py`)
- *  enforces, from `MIN_TASK_TIMEOUT_SECONDS` / `MAX_TASK_TIMEOUT_SECONDS` and
- *  the `0 <= max_retries <= 10` check. Repeated here only so the person is told
- *  in words before the request rather than handed the API's field names after
- *  it; the server stays the judge, and its refusal is shown if they disagree. */
-const _TIMEOUT_MIN_SECONDS = 30;
-const _TIMEOUT_MAX_SECONDS = 24 * 60 * 60;
-const _RETRIES_MAX = 10;
+/** `B1039`. The bounds `_validate_execution_settings` (`routes/task/task_routes.py`)
+ *  enforces, and how retries are spaced — served by `GET /api/tasks/meta/limits`
+ *  (`task_limits`, from the scheduler's own constants) so the person is told in
+ *  words before the request, and told the gaps. These were the only copies;
+ *  they stay as what the form says in the window before the door answers (as
+ *  `_defaultTriggerCount`'s `1` does). The server stays the judge, and its
+ *  refusal is shown if they disagree. */
+const _LIMITS_BEFORE_SERVED = Object.freeze({
+  timeout: Object.freeze({ min_seconds: 30, max_seconds: 24 * 60 * 60 }),
+  retries: Object.freeze({ max: 10, first_gap_seconds: 300, cap_seconds: 6 * 60 * 60 }),
+});
+let _servedLimits = null;
+
+/** `B1039`. The served limits, fetched once per window opening. */
+async function _fetchLimits() {
+  if (_servedLimits) return _servedLimits;
+  try {
+    const res = await fetch(`${API_BASE}/api/tasks/meta/limits`, { credentials: 'same-origin' });
+    const data = res.ok ? await res.json() : null;
+    if (data && data.timeout && data.retries) _servedLimits = data;
+  } catch (_) { /* the words below stay what they were before the answer */ }
+  return _limits();
+}
+
+/** `B1039`. The limits as served, each number falling back on its own. */
+function _limits() {
+  const num = (v, d) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
+  const t = (_servedLimits && _servedLimits.timeout) || {};
+  const r = (_servedLimits && _servedLimits.retries) || {};
+  const T = _LIMITS_BEFORE_SERVED.timeout;
+  const R = _LIMITS_BEFORE_SERVED.retries;
+  return {
+    timeout: { min_seconds: num(t.min_seconds, T.min_seconds), max_seconds: num(t.max_seconds, T.max_seconds) },
+    retries: { max: num(r.max, R.max), first_gap_seconds: num(r.first_gap_seconds, R.first_gap_seconds),
+      cap_seconds: num(r.cap_seconds, R.cap_seconds) },
+  };
+}
+
+/** A whole number of seconds as a person says it: `300` → `5 minutes`,
+ *  `86400` → `24 hours`, `45` → `45 seconds`. */
+function _durationWords(seconds) {
+  const s = Math.round(Number(seconds) || 0);
+  const say = (n, unit) => `${n} ${unit}${n === 1 ? '' : 's'}`;
+  if (s >= 3600 && s % 3600 === 0) return say(s / 3600, 'hour');
+  if (s >= 60 && s % 60 === 0) return say(s / 60, 'minute');
+  return say(s, 'second');
+}
+
+/** `B1039`. What the retry box says under it — with the gaps it was never
+ *  told: "the first retry waits about 5 minutes". */
+function _retryHint() {
+  const r = _limits().retries;
+  return 'After a failure it tries again, this many times at most — an event or webhook task with what started it. '
+    + `The first retry waits about ${_durationWords(r.first_gap_seconds)}, and each one after about twice as long, `
+    + `up to ${_durationWords(r.cap_seconds)}.`;
+}
+
+/** `B1039`. A form drawn before the limits arrived says them once they have. */
+function _syncLimitWords(root) {
+  const r = _limits().retries;
+  const box = _byId(root, 'task-form-retries');
+  if (box) box.setAttribute('max', String(r.max));
+  const most = _byId(root, 'task-form-retries-most');
+  if (most) most.textContent = `(optional — up to ${r.max} times)`;
+  const hint = _byId(root, 'task-form-retries-hint');
+  if (hint) hint.textContent = _retryHint();
+}
 
 /** The browser's own zone, or `''` if it will not say. */
 function _browserZone() {
@@ -684,15 +747,29 @@ function _instantOfWallClock(zone, y, mo, d, h, mi) {
   return new Date(guess);
 }
 
-/** What the zone means for the time above it, in words. */
-function _zoneNote(zone, schedule) {
+/** What the zone means for the time above it, in words. `followed` is the
+ *  row's `crew_zone` (`B1040`): with no zone of its own, a task linked to a
+ *  crew member fires on that crew member's clock, not in UTC. */
+function _zoneNote(zone, schedule, followed = null) {
   const cron = schedule === 'cron';
   if (zone) {
     return cron ? `The cron times are ${_zonePlace(zone)} time.`
       : `The time above is ${_zonePlace(zone)} time.`;
   }
+  if (followed && followed.tz_name) {
+    const whose = `${followed.crew_member || 'its crew member'}’s zone, ${followed.tz_name}`;
+    return cron ? `Not set: the cron times follow ${whose}.`
+      : `Not set: this task follows ${whose}, and the time above is on that clock.`;
+  }
   return cron ? 'Not set: the cron times are UTC.'
     : 'Not set: the time is read on this browser’s clock and kept in UTC, so it will not move for daylight saving.';
+}
+
+/** `B1040`. The crew member's zone a row follows when it has none of its own
+ *  (`crew_zone`, served by `_task_to_dict`), if this browser can draw it. */
+function _followedZone(row) {
+  const followed = row && !row.tz_name ? row.crew_zone : null;
+  return followed && followed.tz_name && _zoneDrawable(followed.tz_name) ? followed : null;
 }
 
 /** A stored time limit as a number and a unit the box can show. */
@@ -709,10 +786,11 @@ function _timeLimitParts(seconds) {
  *  `TaskScheduler._retry_with_trigger`). It was drawn for a schedule only —
  *  and the API took a count on any task, which did nothing on the others. */
 function _retryBoxHtml(existing) {
+  const most = _limits().retries.max;
   return `
-        <label class="task-form-label" for="task-form-retries">Retry a failed run <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — up to ${_RETRIES_MAX} times)</span></label>
-        <input type="number" id="task-form-retries" class="task-form-input task-form-number" min="0" max="${_RETRIES_MAX}" step="1" inputmode="numeric" placeholder="0" value="${_escHtml(Number(existing?.max_retries) > 0 ? String(existing.max_retries) : '')}" />
-        <div class="task-form-hint">After a failure it tries again, this many times at most — an event or webhook task with what started it. Each retry waits about twice as long as the one before.</div>`;
+        <label class="task-form-label" for="task-form-retries">Retry a failed run <span id="task-form-retries-most" style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — up to ${most} times)</span></label>
+        <input type="number" id="task-form-retries" class="task-form-input task-form-number" min="0" max="${most}" step="1" inputmode="numeric" placeholder="0" value="${_escHtml(Number(existing?.max_retries) > 0 ? String(existing.max_retries) : '')}" />
+        <div id="task-form-retries-hint" class="task-form-hint">${_escHtml(_retryHint())}</div>`;
 }
 
 /** The retry box, read: `{ value }` or `{ error }`. Blank is no retries. */
@@ -720,8 +798,9 @@ function _readRetries(root) {
   const raw = String(_byId(root, 'task-form-retries')?.value ?? '').trim();
   if (!raw) return { value: 0 };
   const n = Number(raw);
-  if (!Number.isInteger(n) || n < 0 || n > _RETRIES_MAX) {
-    return { error: `Retries must be a whole number from 0 to ${_RETRIES_MAX}` };
+  const most = _limits().retries.max;
+  if (!Number.isInteger(n) || n < 0 || n > most) {
+    return { error: `Retries must be a whole number from 0 to ${most}` };
   }
   return { value: n };
 }
@@ -772,19 +851,22 @@ function _readTimeLimit(root) {
   }
   const seconds = Math.round(amount * unit);
   if (seconds === 0) return { value: 0 };
-  if (seconds < _TIMEOUT_MIN_SECONDS || seconds > _TIMEOUT_MAX_SECONDS) {
-    return { error: 'The time limit must be between 30 seconds and 24 hours' };
+  const { min_seconds: least, max_seconds: most } = _limits().timeout;
+  if (seconds < least || seconds > most) {
+    return { error: `The time limit must be between ${_durationWords(least)} and ${_durationWords(most)}` };
   }
   return { value: seconds };
 }
 
 /** `openTasks` refetches the three served lists each time the window opens, so
  *  a palette, an event or a delivery target added since is offered. They live
- *  here now, so the reset does too. */
+ *  here now, so the reset does too. (`B1039`: and the limits — the interval
+ *  floor under the first retry is a setting.) */
 export function resetTaskFieldCaches() {
   _outputTargets = null;
   _builtinActions = null;
   _triggerEvents = null;
+  _servedLimits = null;
 }
 
 /** The forms mounted right now, by host — so a second mount into the same host
@@ -1233,7 +1315,10 @@ ${(isNode && taskType === 'research') ? '' : `
         }
         tzSel.value = existing?.tz_name || '';
       }
-      const storedZone = existing?.tz_name || '';
+      // `B1040`. With no zone of its own, a crew-linked task's time is on its
+      // crew member's clock — drawn and saved as such, as an own zone is.
+      const followed = _followedZone(existing);
+      const storedZone = existing?.tz_name || followed?.tz_name || '';
 
       // Build time picker
       let initH = 9, initM = 0;
@@ -1262,7 +1347,7 @@ ${(isNode && taskType === 'research') ? '' : `
       const schedOpts = $('task-form-schedule-opts');
       const syncZoneNote = () => {
         const note = $('task-form-tz-note');
-        if (note) note.textContent = _zoneNote($('task-form-tz')?.value || '', schedSelect?.value);
+        if (note) note.textContent = _zoneNote($('task-form-tz')?.value || '', schedSelect?.value, followed);
       };
       tzSel?.addEventListener('change', syncZoneNote);
 
@@ -1355,17 +1440,16 @@ ${(isNode && taskType === 'research') ? '' : `
       // nobody chose, in front of an API that had no default and a bus that
       // reads a missing count as one. It reads the served
       // `default_trigger_count` now; this refresh covers the case where the
-      // palette has not landed yet, and stops the moment the person types.
+      // events have not landed yet, and stops the moment the person types.
+      // `B614`: off the events fetch this branch already makes. It fetched the
+      // whole action palette for that one number, on a Prompt task too.
       const countEl = $('task-form-trigger-count');
-      if (countEl) {
-        countEl.addEventListener('input', () => { countEl.dataset.touched = '1'; });
-        if (!existing?.trigger_count) {
-          _fetchActions().then(() => {
-            if (!countEl.dataset.touched) countEl.value = String(_defaultTriggerCount());
-          });
+      if (countEl) countEl.addEventListener('input', () => { countEl.dataset.touched = '1'; });
+      _populateEventPicker(existing?.trigger_event, host).then(() => {
+        if (countEl && !existing?.trigger_count && !countEl.dataset.touched) {
+          countEl.value = String(_defaultTriggerCount());
         }
-      }
-      _populateEventPicker(existing?.trigger_event, host);
+      });
     } else if (triggerType === 'webhook') {
       if (existing?.webhook_token) {
         const url = `${API_BASE}/api/tasks/${existing.id}/webhook/${existing.webhook_token}`;
@@ -1441,6 +1525,12 @@ ${(isNode && taskType === 'research') ? '' : `
     renderTriggerOpts();
   });
   renderTriggerOpts();
+  // `B1039`. The served limits — the most retries, the gaps between them, a
+  // time limit's bounds — said in the boxes once they arrive. A step's form
+  // has neither box, and asks for nothing.
+  if ($('task-form-retries') || $('task-form-timeout')) {
+    _fetchLimits().then(() => { if (alive) _syncLimitWords(host); });
+  }
 
   // `P22-05`. Whether the served lists have arrived: a step's Done before they
   // do keeps what the step had rather than reading the placeholder.
@@ -1714,6 +1804,11 @@ ${(isNode && taskType === 'research') ? '' : `
         // `P22-03`. The zone the time means; `''` clears one (the API reads an
         // empty string as "no zone of its own").
         const zone = $('task-form-tz')?.value || '';
+        // `B1040`. The clock the time is on: the task's own zone, else — for a
+        // crew-linked task — its crew member's, which the server fires it on.
+        // `tz_name` still goes out as chosen; the crew's zone is not written
+        // onto the task.
+        const clock = zone || _followedZone(existing)?.tz_name || '';
 
         if (payload.schedule === 'cron') {
           const cronVal = $('task-form-cron')?.value?.trim();
@@ -1726,7 +1821,7 @@ ${(isNode && taskType === 'research') ? '' : `
           const timeVal = _getTimePickerValue('task-form-time-wrap', host);
           // With a zone the server reads this as that zone's clock, so it goes
           // out as typed; without one it is UTC, as it always was.
-          payload.scheduled_time = zone ? timeVal : _localTimeToUtc(timeVal);
+          payload.scheduled_time = clock ? timeVal : _localTimeToUtc(timeVal);
 
           const dayInput = $('task-form-day');
           if (dayInput) payload.scheduled_day = parseInt(dayInput.value, 10);
@@ -1734,13 +1829,13 @@ ${(isNode && taskType === 'research') ? '' : `
           if (payload.schedule === 'once' && $('task-form-date')) {
             const pickedDate = _getDatePickerValue('task-form-date', host);
             const [h, m] = timeVal.split(':').map(Number);
-            if (zone) {
-              if (!_zoneDrawable(zone)) {
-                if (uiModule) uiModule.showError(`This browser cannot place a date in ${zone}. Pick another time zone.`);
+            if (clock) {
+              if (!_zoneDrawable(clock)) {
+                if (uiModule) uiModule.showError(`This browser cannot place a date in ${clock}. Pick another time zone.`);
                 return false;
               }
               payload.scheduled_date = _instantOfWallClock(
-                zone, pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate(), h, m,
+                clock, pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate(), h, m,
               ).toISOString();
             } else {
               pickedDate.setHours(h, m, 0, 0);
@@ -1759,7 +1854,7 @@ ${(isNode && taskType === 'research') ? '' : `
         payload.trigger_event = evSel.value;
         // `P8-31`. The second of the two fives. The served default is the answer
         // when the field is blank; `DEFAULT_TRIGGER_COUNT` lives beside the bus
-        // that reads it and ships on `/meta/actions`.
+        // that reads it and ships on `/meta/events` (`B614`).
         payload.trigger_count = parseInt(countInput?.value || String(_defaultTriggerCount()), 10);
       }
       // webhook: no extra fields needed, token is auto-generated server-side
@@ -1823,7 +1918,7 @@ ${(isNode && taskType === 'research') ? '' : `
     // Chain — both branches. `B873`.
     //
     // Sent unconditionally, including empty: `''` is how the API clears an
-    // edge (`task_routes.py:927-929` — `is not None` is the guard, so an
+    // edge (`update_task` in `routes/task/task_routes.py` — `is not None` is the guard, so an
     // omitted key leaves the stored edge alone), and a person who sets a
     // failure branch and then changes their mind has to be able to remove it.
     // With no Chain section (`chain: false`) the edges are the canvas's, and

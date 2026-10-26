@@ -250,12 +250,33 @@ _TIMEOUT_EXEMPT_PREFIXES = (
     "/api/image",           # diffusion proxies (inpaint/harmonize/upscale/etc.) — own 120s httpx timeout
     "/api/memory/audit",    # retains own 120s LLM inactivity timeout
 )
+# `B1496`. Paths with an id in the middle, which a prefix cannot name.
+#
+# *Test this step* (`POST /api/workflows/{id}/nodes/{node}/test`) runs one step
+# — often a model round — and a local model slower than this ceiling could
+# never be tested: the 504 said "Request exceeded 45s timeout", which nobody
+# can act on (`Law 15`), and `B1093` made it at least honest (the test is
+# cancelled with the request). It is exempt now because it is bounded twice
+# already: by the test's own budget (`TaskScheduler.test_workflow_node` — the
+# workflow's time limit, else five minutes, said as "Timed out after …") and
+# by the person waiting (`_while_the_request_waits` cancels it the moment the
+# page stops waiting). Anything else under `/api/workflows` keeps the ceiling.
+import re as _re_ceiling
+_TIMEOUT_EXEMPT_PATTERNS = (
+    _re_ceiling.compile(r"^/api/workflows/[^/]+/nodes/[^/]+/test/?$"),
+)
+
+
+def _exempt_from_request_ceiling(path: str) -> bool:
+    """Is this request path one the request ceiling leaves alone?"""
+    return (any(path.startswith(p) for p in _TIMEOUT_EXEMPT_PREFIXES)
+            or any(p.match(path) for p in _TIMEOUT_EXEMPT_PATTERNS))
 
 
 class _RequestTimeoutMiddleware(_BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         path = request.url.path or ""
-        if any(path.startswith(p) for p in _TIMEOUT_EXEMPT_PREFIXES):
+        if _exempt_from_request_ceiling(path):
             return await call_next(request)
         try:
             return await _asyncio.wait_for(call_next(request), timeout=REQUEST_HARD_TIMEOUT)

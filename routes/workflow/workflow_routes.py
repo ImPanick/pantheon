@@ -565,7 +565,7 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             graph, kept = store.graph_of_version(db, wf, version)
             cleared = not recs and store.records_were_cleared(run)
             return {
-                "run": _run_to_dict(run),
+                "run": _run_to_dict(run, is_workflow=True),
                 "version": version,
                 "version_kept": kept,
                 "graph": graph,

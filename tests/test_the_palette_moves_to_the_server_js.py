@@ -357,7 +357,10 @@ def test_the_fetch_keeps_the_two_keys_beside_the_actions(tasks_sandbox):
     assert [u for u in out["urls"] if u.endswith("/meta/actions")], out["urls"]
     assert out["names"] == ["tidy_sessions", "run_local", "cookbook_serve"]
     assert out["order"] == ["System", "Forge", "Other"]
-    assert out["count"] == 3
+    # `B614` changed this: the trigger default is a fact about triggers and is
+    # read off `/meta/events` (`_fetchEvents`); the palette still serves the
+    # key for anything that read it there, and the form no longer does.
+    assert out["count"] == 1
 
 
 def test_a_palette_that_never_answers_still_draws_a_list(tasks_sandbox):
@@ -454,12 +457,22 @@ def test_neither_five_is_left_in_the_trigger_count_field(tasks_sandbox):
 
 def test_the_served_default_is_what_the_form_offers(tasks_sandbox):
     """`DEFAULT_TRIGGER_COUNT` lives beside the bus that reads it and ships on
-    `/meta/actions`. The number a person is handed is that one, or — before the
-    palette lands — the one the bus applies to a NULL. Never five."""
-    out = _tasks(tasks_sandbox, _PALETTE_STORE + """
-        console.log(JSON.stringify({ served: __t._defaultTriggerCount() }));
+    `/meta/events` (`B614` — it was `/meta/actions`). The number a person is
+    handed is that one, or — before the events land — the one the bus applies
+    to a NULL. Never five."""
+    out = _tasks(tasks_sandbox, """
+        mockFetch((url) => {
+          if (url.includes('/meta/events')) return res(200, { events: [], default_trigger_count: 3 });
+          return res(200, {});
+        });
+        seedForm(['task-form-event', 'task-form-event-desc']);
+        const before = __t._defaultTriggerCount();
+        await __t._populateEventPicker('');
+        console.log(JSON.stringify({ before, served: __t._defaultTriggerCount(),
+          urls: calls.fetch.map(c => c.url) }));
     """)
-    assert out["served"] == 3
+    assert out["before"] == 1 and out["served"] == 3
+    assert not [u for u in out["urls"] if "/meta/actions" in u], out["urls"]
 
 
 # ── P8-30 · an event's own sentence, where it is being chosen ──────────────

@@ -6,14 +6,16 @@
 // **What this file is not.** It is not a drag-and-drop editor and it does not
 // own a graph library. `P8-26` put the graph on the wire — `GET /api/tasks`
 // answers `{ tasks, graph: { nodes, edges, conditions, max_depth } }`, derived
-// from the two successor columns by `task_edges` (`src/task_scheduler.py:130`)
+// from the two successor columns by `task_edges` (`src/task_scheduler.py`)
 // — and Mermaid is already vendored at `static/lib/mermaid.min.js` with its
-// licence recorded. `Law 14`: the renderer is `markdown.js:renderMermaid`
-// (`:1035`), which loads the bundle on first use, finds
+// licence recorded. `Law 14`: the renderer is `markdown.js:renderMermaid`,
+// which loads the bundle on first use, finds
 // `pre.mermaid:not([data-processed])` in a container and calls
-// `mermaid.run({ nodes })`. Three surfaces already call it — `chatRenderer.js`,
-// `document.js` and `slashCommands.js` — so this is a fourth caller and not a
-// fourth renderer. Nothing here loads, initialises or configures Mermaid.
+// `mermaid.run({ nodes })`. Other surfaces already call it — the chat, the
+// document editor, the slash commands among them — so this is one more caller
+// and not a second renderer. Nothing here loads, initialises or configures
+// Mermaid. (`B891`: this said "three surfaces … a fourth caller", and the
+// count was wrong the day it was written; a caller count is not kept here.)
 //
 // **What it does own:** turning a graph document plus a set of tasks into the
 // Mermaid source text, and the words around it. That is all pure — no DOM, no
@@ -238,13 +240,13 @@ export function longestChain(component) {
 // **The theme directive that used to live here is gone, and that is the fix.**
 //
 // `P8-34` shipped a `themeDirective(scheme)` that this module prepended to
-// every diagram it generated, because `markdown.js:94` pinned `theme: 'dark'`
+// every diagram it generated, because `markdown.js`'s Mermaid setup pinned `theme: 'dark'`
 // for all sixteen palettes and four of them are light. It said in its own
 // comment that a per-surface workaround was not the fix, and reported the rest
 // as `B872`.
 //
 // `B872` is now closed: `markdown/mermaidTheme.js` decides, `ensureMermaid`
-// applies it, and all four callers of `renderMermaid` get it — so this module
+// applies it, and every caller of `renderMermaid` gets it — so this module
 // has nothing to say about colour at all any more. Leaving the directive in
 // would be worse than redundant: a `%%{init: {"theme": …}}%%` line is applied
 // per diagram and re-derives the whole theme from that one key, which would

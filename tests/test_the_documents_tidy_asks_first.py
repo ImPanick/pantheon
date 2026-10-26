@@ -478,19 +478,25 @@ _UI = ui_default_stub(
 def notice_sandbox(tmp_path_factory):
     box = tmp_path_factory.mktemp("plan_notice")
     shutil.copy(ROOT / "static" / "js" / "documentPlanNotice.js", box / "documentPlanNotice.js")
+    # `B1273`: the notice asks the tool switches before it asks for plans.
+    shutil.copy(ROOT / "static" / "js" / "ui_visibility.js", box / "ui_visibility.js")
     (box / "ui.js").write_text(_UI, encoding="utf-8")
     return box
 
 
-def _node(box, script):
+def _node(box, script, switches=None):
     entry = box / "case.mjs"
     entry.write_text(
-        "globalThis.window = { location: { origin: '' }, focus() {} };\n"
+        (f"globalThis.__switches = {json.dumps(switches)};\n" if switches else "")
+        + "globalThis.window = { location: { origin: '' }, focus() {} };\n"
         "const sent = [];\n"
         "globalThis.fetch = async (url, init) => { sent.push({ url, init: init || null });\n"
         "  if (url.endsWith('/plans')) return { ok: true, json: async () => ({ plans: globalThis.__waiting || [] }) };\n"
         "  return { ok: globalThis.__ok !== false, json: async () => globalThis.__reply || {} }; };\n"
         "const ui = await import('./ui.js');\n"
+        "const vis = await import('./ui_visibility.js');\n"
+        "vis.applyToolVisibility(globalThis.__switches || { features: {}, auth: true, isAdmin: true,"
+        " privileges: {} }, null);\n"
         "const notice = await import('./documentPlanNotice.js');\n"
         + script, encoding="utf-8")
     proc = subprocess.run(["node", str(entry)], cwd=box, capture_output=True, text=True, timeout=30)
