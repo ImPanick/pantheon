@@ -593,6 +593,23 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             # them (NULL = legacy rows that predate the column = not archived).
             _arch_cond = (Document.archived == True) if archived else or_(
                 Document.archived == False, Document.archived.is_(None))
+            # `P21-01` — one folder, or Unfiled. A path is normalised the way
+            # it was stored, so "Clients/ Acme/" finds "Clients/Acme". One
+            # scope, applied to the list and (`B1219`) to its type counts.
+            folder_cond = None
+            if unfiled:
+                folder_cond = or_(Document.folder.is_(None), Document.folder == "")
+            elif folder is not None:
+                from src.document_folders import FolderError, normalize_folder_path
+                try:
+                    wanted = normalize_folder_path(folder)
+                except FolderError as e:
+                    raise HTTPException(400, e.message)
+                if wanted is None:
+                    folder_cond = or_(Document.folder.is_(None), Document.folder == "")
+                else:
+                    folder_cond = Document.folder == wanted
+
             # Language facet counts (owner-filtered). PDF documents are stored
             # as markdown wrappers, so group by the library display language
             # instead of the raw stored language.
@@ -602,8 +619,19 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 .filter(Document.is_active == True).filter(_arch_cond)
             )
             lang_q = _owner_session_filter(lang_q, user)
+            # `B1219`. Inside a folder the type chips counted the whole
+            # library — `all (17) markdown (10)` over a folder showing none —
+            # while the folder chip counts what opening it shows (`P23-06`).
+            # They count the open folder now; `library_total` keeps the
+            # library's own number for the "3 of 17" heading (`B1241`).
+            library_total = None
+            if folder_cond is not None:
+                library_total = sum(int(n or 0) for _l, n in lang_q.group_by(library_language_expr).all())
+                lang_q = lang_q.filter(folder_cond)
             lang_rows = lang_q.group_by(library_language_expr).all()
             languages = _aggregate_language_facets(lang_rows)
+            if library_total is None:
+                library_total = sum(languages.values())
 
             # Session count (owner-filtered)
             sc_q = (
@@ -642,20 +670,8 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                         | Document.source_name.ilike(term)
                     )
 
-            # `P21-01` — one folder, or Unfiled. A path is normalised the way
-            # it was stored, so "Clients/ Acme/" finds "Clients/Acme".
-            if unfiled:
-                q = q.filter(or_(Document.folder.is_(None), Document.folder == ""))
-            elif folder is not None:
-                from src.document_folders import FolderError, normalize_folder_path
-                try:
-                    wanted = normalize_folder_path(folder)
-                except FolderError as e:
-                    raise HTTPException(400, e.message)
-                if wanted is None:
-                    q = q.filter(or_(Document.folder.is_(None), Document.folder == ""))
-                else:
-                    q = q.filter(Document.folder == wanted)
+            if folder_cond is not None:   # `P21-01`, scoped above
+                q = q.filter(folder_cond)
 
             # Language filter. "pdf" is a display language derived from the
             # source marker; "markdown" excludes those wrappers.
@@ -705,6 +721,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 "documents": documents,
                 "total": total,
                 "languages": languages,
+                "library_total": library_total,   # `B1219`
                 "session_count": session_count,
             }
         except HTTPException:

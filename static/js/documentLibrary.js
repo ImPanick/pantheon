@@ -19,7 +19,7 @@ import { chevronIcon } from './icons.js';
 import {
   folderApi, renderFolderBar, showFolderPicker, showFolderMenu, removeFolderFlow,
   describeRemovalOutcome, describeFiled, applyViewParams, startDocumentDrag,
-  viewAfterRelocate, joinPath, folderName, parentOf, VIEW_ALL, importFolder,
+  viewAfterRelocate, joinPath, folderName, parentOf, VIEW_ALL, importFolder, folderView,
 } from './documentFolders.js';
 
 // ── Injected references from documentModule ──
@@ -66,6 +66,9 @@ let _libraryTotal = 0;
 let _libraryOffset = 0;
 let _docsVisibleLimit = 20;  // chunked reveal (matches the Chats tab's 20)
 let _libraryLanguages = {};
+// `B1219`: the type chips count the open folder; this is the library's own
+// total, for the "3 of 17" heading.
+let _libraryLibraryTotal = 0;
 let _librarySessionCount = 0;
 let _libraryActiveLanguage = null;
 let _librarySort = 'recent';
@@ -368,6 +371,8 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       }
       _libraryTotal = data.total;
       _libraryLanguages = data.languages;
+      _libraryLibraryTotal = Number.isFinite(data.library_total) ? data.library_total
+        : Object.values(data.languages || {}).reduce((a, b) => a + b, 0);
       _librarySessionCount = data.session_count;
 
       libraryRenderStats();
@@ -401,7 +406,8 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
   function libraryRenderStats() {
     const el = document.getElementById('doclib-stats');
     if (!el) return;
-    const totalAll = Object.values(_libraryLanguages).reduce((a, b) => a + b, 0);
+    // `B1219`: the library's total, not the open folder's (the chips are).
+    const totalAll = _libraryLibraryTotal;
     // `B1241` (round 2). The heading is bare unless something narrows the
     // list: the "all (17)" chip below it says the total, and "Documents 17
     // documents" said it a second time (measured on `a936b5c`). Narrowed, it
@@ -412,6 +418,14 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     } else {
       el.textContent = '';
     }
+  }
+
+  /** `B1219`. The open folder's direct subfolders that hold documents
+   *  (`total` counts their own subfolders too), fullest first. */
+  function _subfoldersHolding(path) {
+    return _libraryFolders
+      .filter((f) => (f.parent || null) === path && Number(f.total || 0) > 0)
+      .sort((a, b) => Number(b.total) - Number(a.total) || String(a.path).localeCompare(String(b.path)));
   }
 
   function libraryRenderLangChips() {
@@ -459,6 +473,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     _libraryDocs = _libraryDocs.filter(d => String(d.id) !== String(docId));
     _librarySelectedIds.delete(docId);
     _libraryTotal = Math.max(0, _libraryTotal - 1);
+    _libraryLibraryTotal = Math.max(0, _libraryLibraryTotal - 1);
 
     const lang = removed && (removed.language || 'text');
     if (lang && Object.prototype.hasOwnProperty.call(_libraryLanguages, lang)) {
@@ -791,11 +806,18 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       } else if (_libraryFolderView.kind === 'folder') {
         // `P21-01`. An empty folder is not an empty library, and saying "No
         // documents yet" inside one would tell a person their documents are gone.
+        // `B1219`: and when its documents are in its subfolders, it says where
+        // — "7 in Lumen 2.0" — and opens the fullest of them.
+        const held = _subfoldersHolding(_libraryFolderView.path);
         uiModule.renderEmptyState(grid, {
           kind: 'empty',
           className: 'doclib-empty',
           title: 'No documents here.',
-          action: { label: 'Show all documents', onClick: () => libraryOpenFolder(VIEW_ALL) },
+          message: held.length
+            ? held.map((f) => `${f.total} in ${folderName(f.path)}`).join(', ') + '.' : undefined,
+          action: held.length
+            ? { label: `Open ${folderName(held[0].path)}`, onClick: () => libraryOpenFolder(folderView(held[0].path)) }
+            : { label: 'Show all documents', onClick: () => libraryOpenFolder(VIEW_ALL) },
         });
       } else if (_libraryFolderView.kind === 'unfiled') {
         uiModule.renderEmptyState(grid, {
