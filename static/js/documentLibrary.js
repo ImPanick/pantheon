@@ -1900,9 +1900,9 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       const wb = window.XLSX.read(buf, { type: 'array' });
       // Convert each sheet to CSV, join with a header per sheet
       const parts = [];
-      for (const sheetName of wb.SheetNames) {
+      for (const [sheetName, csv] of workbookSheetsCsv(window.XLSX, wb)) {
         if (wb.SheetNames.length > 1) parts.push(`# Sheet: ${sheetName}`);
-        parts.push(window.XLSX.utils.sheet_to_csv(wb.Sheets[sheetName]));
+        parts.push(csv);
       }
       return parts.join('\n\n');
     }
@@ -1949,6 +1949,42 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     // makes it land. The label is unchanged and is now true.
     '.doc': 'markdown',
   };
+
+  /**
+   * `[[sheet name, CSV]]` for a workbook SheetJS has read, in workbook order —
+   * the one place the Library turns a sheet into text. Kept beside
+   * `importFileAsDocuments` (its caller, with `readFileContent`), inside the
+   * block the import harnesses lift.
+   *
+   * `B1549`. SheetJS 0.20.3 reads an OpenDocument cell carrying
+   * `table:number-columns-repeated` and content into every column it covers,
+   * and leaves the sheet's `!ref` at the columns before the repeat, so
+   * `sheet_to_csv` (which walks `!ref`) dropped the copies past it: a row
+   * `Repeat` + `7` ×6 came out `Repeat,7,7,7,7`. The cells are in the sheet;
+   * only the range is short. It is widened here to every cell the sheet
+   * holds, which is the used range the server's reader
+   * (`src/ooxml_native.py:ods_sheets`, `_csv_of`) reads — so one `.ods` is one
+   * text at the Library and at the server doors. Never narrowed: a range
+   * SheetJS already has is kept.
+   */
+  function workbookSheetsCsv(XLSX, wb) {
+    return wb.SheetNames.map((sheetName) => {
+      const ws = wb.Sheets[sheetName];
+      if (ws && ws['!ref']) {
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        for (const key of Object.keys(ws)) {
+          if (key.charAt(0) === '!') continue;
+          const at = XLSX.utils.decode_cell(key);
+          if (at.r < range.s.r) range.s.r = at.r;
+          if (at.c < range.s.c) range.s.c = at.c;
+          if (at.r > range.e.r) range.e.r = at.r;
+          if (at.c > range.e.c) range.e.c = at.c;
+        }
+        ws['!ref'] = XLSX.utils.encode_range(range);
+      }
+      return [sheetName, ws ? XLSX.utils.sheet_to_csv(ws) : ''];
+    });
+  }
 
   /**
    * `B400`. One file in, the document(s) it became out — the one place the
@@ -2054,8 +2090,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       const buf = await file.arrayBuffer();
       const wb = window.XLSX.read(buf, { type: 'array' });
       const made = [];
-      for (const sheetName of wb.SheetNames) {
-        const csv = window.XLSX.utils.sheet_to_csv(wb.Sheets[sheetName]);
+      for (const [sheetName, csv] of workbookSheetsCsv(window.XLSX, wb)) {
         if (!csv.trim()) continue;
         const sheetTitle = wb.SheetNames.length > 1
           ? `${baseTitle} - ${sheetName}` : baseTitle;

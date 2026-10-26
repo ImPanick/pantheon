@@ -166,8 +166,11 @@ _IMPORT = """
 def _import_case(sandbox, tail):  # noqa: F811
     # `B400` moved each file's branches into `importFileAsDocuments`, which
     # *Import from device* calls too; `libraryImportFiles` is the loop over it.
+    # `B1549`: the spreadsheet branch turns each sheet into text through
+    # `workbookSheetsCsv`, so it is lifted with it.
     body = (_cut("async function importFileAsDocuments(",
                  "async function importFileAsDocuments(file, { folder = null, sessionId = null } = {})")
+            + "\n" + _cut("function workbookSheetsCsv(", "function workbookSheetsCsv(XLSX, wb)")
             + "\n" + _cut("async function libraryImportFiles(",
                            "async function libraryImportFiles(fileList, folder = null)"))
     return _js(sandbox, _IMPORT.replace("__IMPORT__", body) + tail)
