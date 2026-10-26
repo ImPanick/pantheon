@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """`B320`/`B322` — every Python dependency is pinned, and every accepted risk explains itself.
 
+(Rule 3, `B1548`: every runtime pin is imported by something, or says on the
+page why it is installed without an import — see `unimported_problems`.)
+
 Two rules, both offline, both about the same disease: a dependency decision that
 nobody made.
 
@@ -308,6 +311,128 @@ def dependabot_problems() -> list[str]:
     return problems
 
 
+# `B1548` — Rule 3: every pin in the runtime file is imported, or says why not.
+# `pydantic-settings` stayed pinned for a month after `B550` removed the last
+# `BaseSettings`, and nothing could tell: a pin with no importer looks exactly
+# like one with forty. Some are genuinely installed for something other than an
+# `import` — a framework loads it, a dialect imports it inside a library, another
+# pin requires it — and those carry the reason on the page, in the comment block
+# directly above the pin, as a line starting `Not imported:`. A pin with neither
+# fails; so does a `Not imported:` note on a pin something does import, because a
+# reason that has stopped being true is the drift this rule is for.
+RUNTIME_REQUIREMENTS = "requirements.txt"
+NOT_IMPORTED = "Not imported:"
+
+# Distributions whose import name is not their name lower-cased with `-` → `_`.
+IMPORT_NAMES = {
+    "beautifulsoup4": "bs4",
+    "chromadb-client": "chromadb",
+    "psycopg2-binary": "psycopg2",
+    "python-dateutil": "dateutil",
+    "python-dotenv": "dotenv",
+    "python-multipart": "multipart",
+}
+
+_SCAN_SKIP = {"venv", ".venv", "node_modules", ".git", "__pycache__", "build", "dist"}
+
+
+def import_name(distribution: str) -> str:
+    key = distribution.lower()
+    return IMPORT_NAMES.get(key, key.replace("-", "_").replace(".", "_"))
+
+
+def _python_sources() -> list[pathlib.Path]:
+    return [p for p in ROOT.rglob("*.py")
+            if not any(part in _SCAN_SKIP for part in p.relative_to(ROOT).parts)]
+
+
+def _imports_of(path: pathlib.Path) -> set[str]:
+    """Top-level module names `path` imports, by import statement (`Law 20`):
+    a docstring that says "import foo" is prose, not an import."""
+    import ast
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (SyntaxError, UnicodeDecodeError, ValueError):
+        return set()
+    out: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            out |= {a.name.split(".")[0] for a in node.names}
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            out.add(node.module.split(".")[0])
+    return out
+
+
+def importers(modules, sources=None) -> dict[str, str]:
+    """`{module: first file that imports it}` for each module something imports.
+
+    A regex finds the candidate files and `ast` confirms each one, so the
+    whole tree is read but only the files that look like importers are parsed."""
+    wanted = set(modules)
+    found: dict[str, str] = {}
+    parsed: dict[pathlib.Path, set[str]] = {}
+    for path in sorted(sources if sources is not None else _python_sources()):
+        if not wanted - set(found):
+            break
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for module in sorted(wanted - set(found)):
+            if not re.search(rf"(?m)^\s*(?:import|from)\s+[^#\n]*\b{re.escape(module)}\b", text):
+                continue
+            if path not in parsed:
+                parsed[path] = _imports_of(path)
+            if module in parsed[path]:
+                found[module] = _rel(path)
+    return found
+
+
+def _rel(path: pathlib.Path) -> str:
+    try:
+        return path.relative_to(ROOT).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _comment_block_above(lines: list[str], number: int) -> str:
+    """The run of `#` lines directly above line `number` (1-based)."""
+    block = []
+    index = number - 2
+    while index >= 0 and lines[index].lstrip().startswith("#"):
+        block.insert(0, lines[index].lstrip()[1:].strip())
+        index -= 1
+    return " ".join(block)
+
+
+def unimported_problems(path: pathlib.Path | None = None, sources=None) -> list[str]:
+    """Pins in the runtime requirements that nothing imports and that do not
+    say why they are installed anyway — and `Not imported:` notes on pins that
+    something does import."""
+    path = path or ROOT / RUNTIME_REQUIREMENTS
+    if not path.exists():
+        return []
+    rel = _rel(path)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    pins = [(number, name) for number, _line, name, _spec in parse_requirements(path) if name]
+    found = importers({import_name(name) for _n, name in pins}, sources)
+    problems = []
+    for number, name in pins:
+        module = import_name(name)
+        note = _comment_block_above(lines, number)
+        says_why = NOT_IMPORTED.lower() in note.lower()
+        if module in found and says_why:
+            problems.append(
+                f"{rel}:{number}: `{name}` says `{NOT_IMPORTED}` and "
+                f"{found[module]} imports `{module}` — the reason is no longer true")
+        elif module not in found and not says_why:
+            problems.append(
+                f"{rel}:{number}: `{name}` is pinned and nothing imports `{module}` — "
+                f"drop the pin, or say why it is installed in a `# {NOT_IMPORTED}` "
+                f"line directly above it")
+    return problems
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--verbose", action="store_true",
@@ -318,7 +443,8 @@ def main() -> int:
     requirements = sum(len(parse_requirements(p)) for p in files)
     entries, _ = load_advisories()
 
-    problems = unpinned_problems() + advisory_problems() + dependabot_problems()
+    problems = (unpinned_problems() + advisory_problems() + dependabot_problems()
+                + unimported_problems())
 
     if args.verbose:
         for path in files:
