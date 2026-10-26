@@ -134,6 +134,8 @@ const answers = {
   '/api/git': { hosts: [{ host: HOSTILE_NAME, username: HOSTILE_NAME, since: null }] },
 };
 globalThis.fetch = async (url) => ({ ok: true, json: async () => answers[url] });
+// `B1192`: `fetchAll` asks the admin-only lists only for an admin; this is one.
+const viewerMayAdminister = async () => true;
 """ % {"name": json.dumps(HOSTILE_NAME), "url": json.dumps(HOSTILE_URL), "id": json.dumps(HOSTILE_ID)}
 
 

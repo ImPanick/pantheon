@@ -2,7 +2,7 @@
 """User preferences API — per-user key/value store backed by a JSON file."""
 import json
 from typing import Optional
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from core.atomic_io import atomic_write_json
 from src.auth_helpers import get_current_user
 from src.constants import USER_PREFS_FILE
@@ -108,6 +108,35 @@ def _save_for_user(user: Optional[str], prefs: dict):
     _save(all_prefs)
 
 
+#: `B1196`. A person's own keyboard shortcuts — `{action: combo}` — over the
+#: instance's (`POST /api/auth/settings` `keybinds`, an admin's, which is the
+#: platform's default: `D-2026-10-25-04` §2, "a person's own pick still wins
+#: for them"). Keybinds were instance-only, so a non-admin's rebind was refused
+#: "Admin only." and could not be made at all. Held to a shape here because the
+#: page merges this map over the defaults on every load.
+KEYBINDS_PREF = "keybinds"
+_KEYBIND_MAX_ENTRIES = 200
+_KEYBIND_MAX_LEN = 64
+
+
+def _checked_keybinds(value):
+    """The stored map, or a 400 saying what is wrong with it."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise HTTPException(400, "Your shortcuts are an object of action → key combination.")
+    if len(value) > _KEYBIND_MAX_ENTRIES:
+        raise HTTPException(400, f"That is more than {_KEYBIND_MAX_ENTRIES} shortcuts.")
+    clean = {}
+    for action, combo in value.items():
+        if not isinstance(action, str) or not action.strip() or len(action) > _KEYBIND_MAX_LEN:
+            raise HTTPException(400, f"'{str(action)[:40]}' is not a shortcut's name.")
+        if not isinstance(combo, str) or len(combo) > _KEYBIND_MAX_LEN:
+            raise HTTPException(400, f"The key combination for '{action}' is not one.")
+        clean[action] = combo.strip().lower()
+    return clean
+
+
 def setup_prefs_routes():
     router = APIRouter(prefix="/api/prefs", tags=["preferences"])
 
@@ -126,7 +155,10 @@ def setup_prefs_routes():
     async def set_pref(request: Request, key: str, body: dict):
         user = get_current_user(request)
         prefs = _load_for_user(user)
-        prefs[key] = body.get("value")
+        value = body.get("value")
+        if key == KEYBINDS_PREF:
+            value = _checked_keybinds(value)   # `B1196`
+        prefs[key] = value
         _save_for_user(user, prefs)
         return {"key": key, "value": prefs[key]}
 

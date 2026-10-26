@@ -431,10 +431,12 @@ def _pictures_in_turn(entry):
     return [i["sha256"] for i in demo_model.images_sent(msgs) if i["message"] == last_user]
 
 
-# A PDF opens in the document viewer, whose frame is sandboxed without
-# `allow-same-origin`; something in it reads `navigator.serviceWorker`, which
-# Chromium answers with this error. It predates this file and is not about
-# what reaches the model (filed by fx5-vision); every other page error fails.
+# A PDF opens in the document viewer, whose preview frame is sandboxed without
+# `allow-same-origin`. What reads `navigator.serviceWorker` in it is this
+# drive's own `serviceWorkers: 'block'` (Playwright injects a script that does,
+# into every frame) — measured by `B1288`, whose test opens the same document
+# in a context that leaves service workers to the page and sees no error. Not
+# about what reaches the model; every other page error fails.
 _KNOWN = ("Service worker is disabled because the context is sandboxed",)
 
 

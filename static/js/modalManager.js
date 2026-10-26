@@ -89,6 +89,30 @@ function _emitModalOpened(id, modal) {
   } catch (_) {}
 }
 
+/** `B721`. Announce that a wired window opened, from the first time it does.
+ *  `pantheon:modal-opened` came only from `register()`'s observer, and a window
+ *  is registered when it is first minimised — so Settings, which opens by
+ *  dropping `.hidden` (`settings/lifecycle.js`, and five callers that un-hide it
+ *  themselves), opened in silence until somebody had minimised it once, and a
+ *  panel inside it showing live state could only poll or be stale. This
+ *  observer only announces: no registration, so no dock chip or badge a window
+ *  nobody minimised never had. `register()` takes over (and disconnects this)
+ *  when the window is registered, so each opening is announced once. */
+function _watchOpens(id, modal) {
+  if (!modal || modal._mmAutoStackObs || modal._mmOpenWatch) return;
+  if (typeof MutationObserver === 'undefined') return;
+  const shown = () => !modal.classList.contains('hidden')
+      && getComputedStyle(modal).display !== 'none';
+  let last = shown();
+  const obs = new MutationObserver(() => {
+    const vis = shown();
+    if (vis && !last) _emitModalOpened(id, modal);
+    last = vis;
+  });
+  obs.observe(modal, { attributes: true, attributeFilter: ['class', 'style'] });
+  modal._mmOpenWatch = obs;
+}
+
 function _captureRestoreHeight(modal, state) {
   if (!modal || !state) return;
   const content = modal.querySelector('.modal-content');
@@ -1416,6 +1440,10 @@ export function register(id, { restoreFn, closeFn, railBtnId, sidebarBtnId, labe
     const _isVisible = () => !_modalEl.classList.contains('hidden')
         && getComputedStyle(_modalEl).display !== 'none';
     _modalEl._mmAutoStackLast = _isVisible();
+    // `B721`: this observer takes over from `_watchOpens`, which already
+    // announced the opening the window is in, if it is open now.
+    const _announced = !!_modalEl._mmOpenWatch && _modalEl._mmAutoStackLast;
+    if (_modalEl._mmOpenWatch) { _modalEl._mmOpenWatch.disconnect(); _modalEl._mmOpenWatch = null; }
     const obs = new MutationObserver(() => {
       const vis = _isVisible();
       if (vis && !_modalEl._mmAutoStackLast) {
@@ -1432,7 +1460,7 @@ export function register(id, { restoreFn, closeFn, railBtnId, sidebarBtnId, labe
     if (_modalEl._mmAutoStackLast) {
       _bringToFront(_modalEl);
       _applyRememberedDock(id);
-      _emitModalOpened(id, _modalEl);
+      if (!_announced) _emitModalOpened(id, _modalEl);
     }
   }
   // Allow callers to supply their own chip label/icon (path d="..." or
@@ -1976,6 +2004,7 @@ function _scanAndWire() {
     const modal = document.getElementById(id);
     if (!modal) continue;
     injectMinimizeButton(modal, id);
+    _watchOpens(id, modal);   // `B721`
   }
 }
 // `P23-07` (PERF-M-12). This was `setInterval(_scanAndWire, 1000)`: a wake-up

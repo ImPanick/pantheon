@@ -13,6 +13,7 @@ import { portOf, nextFreePort } from './cookbookPorts.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 import { PLAY_GLYPH, STOP_GLYPH, chevronIcon, stopIcon } from './icons.js';
 import { prefetchTmuxAttach, copyTmuxAttach, renderTmuxAttach } from './tmuxAttach.js';
+import { viewerMayAdminister, whenToolVisibilityReady } from './ui_visibility.js';
 
 // Human-friendly badge label for a task's internal status. Avoids surfacing
 // the word "error" in the sidebar — a server the user stopped or one that
@@ -1432,6 +1433,7 @@ function _syncToServer() {
         const favorites = JSON.parse(localStorage.getItem(SERVE_FAVORITES_KEY) || '[]');
         state.serveFavorites = Array.isArray(favorites) ? favorites.filter(Boolean).map(String) : [];
       } catch {}
+      if (!(await viewerMayAdminister())) return;   // `B1192`
       await fetch('/api/cookbook/state', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
@@ -1472,6 +1474,9 @@ function _normalizeState(state) {
 
 export async function _syncFromServer() {
   try {
+    // `B1192`: the Forge's state is an admin's; a guest's page load asked for
+    // it and was answered 403.
+    if (!(await viewerMayAdminister())) return false;
     const res = await fetch('/api/cookbook/state', { credentials: 'same-origin' });
     if (!res.ok) return false;
     const state = _normalizeState(await res.json());
@@ -4200,7 +4205,8 @@ async function _pollBackgroundStatus() {
     // yet (e.g. agent-spawned downloads/serves). Without this merge,
     // _syncToServer keeps clobbering server-added tasks on every poll.
     try {
-      const stateRes = await fetch('/api/cookbook/state', { credentials: 'same-origin' });
+      const stateRes = (await viewerMayAdminister())   // `B1192`
+        ? await fetch('/api/cookbook/state', { credentials: 'same-origin' }) : { ok: false };
       if (stateRes.ok) {
         const serverState = await stateRes.json();
         const serverTasks = (serverState && Array.isArray(serverState.tasks)) ? serverState.tasks : [];
@@ -4510,6 +4516,10 @@ export function initRunning(shared) {
   // unconditionally made a plain Forge open keep probing stale tmux/SSH
   // sessions, which is expensive when a saved remote host is unreachable.
   (async () => {
+    // `B1192`. This runs as `cookbook.js` is imported — before the page has
+    // asked who is signed in — so it waits for that answer (at most a few
+    // seconds), and a guest's load no longer asks for the Forge's state.
+    await whenToolVisibilityReady();
     try {
       await _syncFromServer();
     } catch {}
