@@ -217,6 +217,9 @@ def sandbox(tmp_path_factory):
     for name, src in _STUBS.items():
         (d / name).write_text(src, encoding="utf-8")
     shutil.copy2(ASSISTANT, d / "assistant.js")
+    # `B1542`: the header gear asks the real visibility table whether the
+    # Assistant may be asked; the cases below run with it on.
+    shutil.copy2(ROOT / "static" / "js" / "ui_visibility.js", d / "ui_visibility.js")
     return d
 
 
@@ -225,6 +228,8 @@ def _run(sandbox, script: str) -> dict:
     entry.write_text(
         "import { calls, railButton, fire, tick } from './shim.js';\n"
         "import assistant from './assistant.js';\n"
+        "import { applyToolVisibility } from './ui_visibility.js';\n"
+        "applyToolVisibility({ features: {} }, null);\n"
         + textwrap.dedent(script), encoding="utf-8")
     proc = subprocess.run(["node", str(entry)], cwd=sandbox,
                           capture_output=True, text=True, timeout=30)

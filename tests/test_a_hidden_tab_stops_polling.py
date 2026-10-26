@@ -66,6 +66,10 @@ const advance = async (ms) => {
   now = end;
 };
 const count = (part) => asked.filter(u => u.includes(part)).length;
+// `B1542`: a look now awaits whether the tool may be asked (`toolPollMayAsk`)
+// before it fetches, so a count read right after an event lets the microtasks
+// run first.
+const flush = () => new Promise((r) => setImmediate(r));
 """
 
 
@@ -165,15 +169,18 @@ const noteMailboxSync = () => {};
 const _maybeOpenFromHash = () => {}, openEmailLibrary = () => {}, markInboxAsSeen = () => {}, _composeNew = () => {};
 // `B812`: the dot is painted by `emailShared.paintUnreadDot`; this case counts requests.
 const paintUnreadDot = () => {};
+// `B1542`: whether a switched-off tool is asked is its own file's question
+// (`test_a_switched_off_tool_is_not_polled.py`); here Email is on.
+const toolPollMayAsk = async () => true;
 """ + fns + r"""
 (async () => {
   _bindEvents();
   await advance(15000);
   const out = { atLoad: count('unread-state') };
   setVisible(false); await advance(200000); out.hidden200s = count('unread-state') - out.atLoad;
-  const before = count('unread-state'); setVisible(true); out.onReturn = count('unread-state') - before;
+  const before = count('unread-state'); setVisible(true); await flush(); out.onReturn = count('unread-state') - before;
   const b2 = count('unread-state'); await advance(130000); out.visible130s = count('unread-state') - b2;
-  setVisible(false); setVisible(true); out.quickReturn = count('unread-state') - b2 - out.visible130s;
+  setVisible(false); setVisible(true); await flush(); out.quickReturn = count('unread-state') - b2 - out.visible130s;
   console.log(JSON.stringify(out));
 })();
 """
@@ -201,15 +208,16 @@ def held_drafts(tmp_path_factory) -> dict:
 const POLL_MS = 60000;
 let _timer = null, _refreshedAt = 0, _visibilityHooked = false, _lastCount = 0;
 const _bind = () => true;
+const toolPollMayAsk = async () => true;   // `B1542`: Email is on in this case
 """ + fns + r"""
 (async () => {
   start();
   await advance(5000);
   const out = { atLoad: count('email/pending') };
   setVisible(false); await advance(200000); out.hidden200s = count('email/pending') - out.atLoad;
-  const before = count('email/pending'); setVisible(true); out.onReturn = count('email/pending') - before;
+  const before = count('email/pending'); setVisible(true); await flush(); out.onReturn = count('email/pending') - before;
   const b2 = count('email/pending'); await advance(130000); out.visible130s = count('email/pending') - b2;
-  setVisible(false); setVisible(true); out.quickReturn = count('email/pending') - b2 - out.visible130s;
+  setVisible(false); setVisible(true); await flush(); out.quickReturn = count('email/pending') - b2 - out.visible130s;
   console.log(JSON.stringify(out));
 })();
 """

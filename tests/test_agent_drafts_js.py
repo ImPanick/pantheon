@@ -173,6 +173,9 @@ def sandbox(tmp_path_factory):
     d = tmp_path_factory.mktemp("draftsjs")
     (d / "shim.js").write_text(_SHIM.replace("__PANEL_IDS__", json.dumps(_panel_ids())))
     shutil.copy(MODULE, d / "agentDrafts.js")
+    # `B1542`: the poll asks the real visibility table whether Email may be
+    # asked; the cases below run with the switches known and Email on.
+    shutil.copy(ROOT / "static" / "js" / "ui_visibility.js", d / "ui_visibility.js")
     return d
 
 
@@ -182,6 +185,8 @@ def _run(sandbox, script: str) -> dict:
         "import { calls, mockFetch, res, boom, panel, list, byId, rows, "
         "clickButton, tick, setConfirm, document } from './shim.js';\n"
         "import drafts from './agentDrafts.js';\n"
+        "import { applyToolVisibility } from './ui_visibility.js';\n"
+        "applyToolVisibility({ features: {} }, null);\n"
         + textwrap.dedent(script)
     )
     proc = subprocess.run(["node", str(entry)], cwd=sandbox,

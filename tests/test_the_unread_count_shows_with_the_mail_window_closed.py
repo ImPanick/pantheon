@@ -89,6 +89,9 @@ def _node(tmp_path: Path, script: str) -> dict:
         const noteMailboxSync = () => {{}};
         const emailApiUrl = (p) => 'http://pantheon.test' + p;
         const API_BASE = '';
+        // `B1542`: the look asks the real visibility table first; Email is on.
+        const {{ toolPollMayAsk, applyToolVisibility }} = await import({json.dumps((ROOT / "static/js/ui_visibility.js").as_uri())});
+        applyToolVisibility({{ features: {{}} }}, null);
         {_cut('function _urgencyColor(')}
         {_cut('async function _refreshUnreadCount(')}
         {_cut('export function markInboxAsSeen(').removeprefix('export ')}

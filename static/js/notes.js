@@ -17,6 +17,7 @@ import { chevronIcon, stopIcon } from './icons.js';
 import { markUnreached, quietIfUnreached } from './presets.js';   // `B1256`
 
 import { scrollBehavior } from './motion.js';
+import { toolPollMayAsk } from './ui_visibility.js';   // `B1542`
 const API_BASE = window.location.origin;
 let _open = false;
 let _notes = [];
@@ -1258,7 +1259,9 @@ function _updateRailBadge() {
 export async function refreshDueBadge(opts = {}) {
   // Usually lightweight, but callers that just created a note reminder can
   // force a refresh so the background reminder loop sees it immediately.
-  if (opts.force || _notes.length === 0) {
+  // `B1542`: `app.js` calls this every five minutes, and with Notes switched
+  // off for this person or everyone each load was a 403 — so it does not ask.
+  if ((opts.force || _notes.length === 0) && await toolPollMayAsk('notes')) {
     try {
       const wasArchived = _showingArchived;
       _showingArchived = false;
@@ -5721,6 +5724,8 @@ async function _commitNoteReorder() {
 
 // Background reminder loop — runs whether panel is open or not
 async function _initReminders() {
+  // `B1542`: not for a person whose Notes are switched off — the load is a 403.
+  if (!(await toolPollMayAsk('notes'))) return;
   try {
     const res = await fetch(`${API_BASE}/api/notes`, { credentials: 'same-origin' });
     if (res.ok) {

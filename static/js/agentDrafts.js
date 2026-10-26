@@ -54,6 +54,8 @@
  * a subject line and a body the model wrote from content that arrived by email.
  */
 
+import { toolPollMayAsk } from './ui_visibility.js';   // `B1542`
+
 const POLL_MS = 60000;
 const PREVIEW_CHARS = 400;
 
@@ -267,6 +269,9 @@ function _sentence(count, oldestSeconds) {
 export async function refresh() {
   if (!_bind()) return;
   _refreshedAt = Date.now();
+  // `B1542`: `/api/email/pending` is the Email router's, refused while Email is
+  // switched off for this person or everyone; the poll does not ask then.
+  if (!(await toolPollMayAsk('email'))) return;
   let payload = null;
   try {
     const res = await fetch('/api/email/pending');

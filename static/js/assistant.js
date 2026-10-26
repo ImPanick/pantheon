@@ -9,6 +9,7 @@
 import uiModule from './ui.js';
 import { selectSession } from './sessions.js';
 import { sortModelIds } from './modelSort.js';
+import { toolPollMayAsk } from './ui_visibility.js';   // `B1542`
 
 const API = '/api/assistant';
 
@@ -433,6 +434,10 @@ export async function openAssistantSettings() {
 // ── Chat-header affordances when the assistant session is active ───────────
 
 async function _ensureHeaderAffordances(sessionId) {
+  // `B1542`. Asked at load and on every chat switch, and with the Assistant
+  // switched off for this person or everyone each ask was a 403 (and, failing,
+  // was never cached, so the next switch asked again).
+  if (!(await toolPollMayAsk('assistant'))) return;
   try {
     const settings = await _getSettings();
     if (settings?.crew?.session_id !== sessionId) return;

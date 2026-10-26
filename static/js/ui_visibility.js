@@ -513,6 +513,37 @@ export async function viewerMayAdminister(ms = 20000) {
   return _state.isAdmin !== false;
 }
 
+// `B1542`. The columns the server enforces too: the switch for everyone
+// (`require_feature`), Forge's admin rule, and the person's switch
+// (`tool_privilege`). The browser's Appearance switch hides doors and refuses
+// nothing, so a tool hidden only there still answers.
+const _SERVER_REFUSES = new Set(['everyone', 'admin', 'person']);
+let _settleFeatures = null;
+const _featuresDone = new Promise((resolve) => { _settleFeatures = resolve; });
+
+/** `B1542`. Whether a page's own background ask of a tool's routes — a poll, a
+ *  prewarm, a badge — should go out. `false` when a column the server enforces
+ *  has the tool off, since every such ask is a 403: `emailInbox.js` asked
+ *  `/api/email/unread-state` every 60 s with Email switched off, and the
+ *  Notes and Assistant loads likewise. A door a person presses keeps asking
+ *  `toolDoor` and saying why; this is for the asks nobody pressed.
+ *
+ *  Waits (up to `ms`) for the switches, and for the person's status when the
+ *  page has asked for it — a background ask is not in a hurry, and one sent
+ *  ahead of the answer is the 403 this is here to stop. A status that failed
+ *  ends the wait (`noteStatusFailed`), and unknown asks. */
+export async function toolPollMayAsk(key, ms = 20000) {
+  const waits = [];
+  if (!_known.features) waits.push(_featuresDone);
+  if (_statusAsked && !_known.auth && !_statusSettled) waits.push(_statusDone);
+  if (waits.length) {
+    let timer = null;
+    await Promise.race([Promise.all(waits), new Promise((r) => { timer = setTimeout(r, ms); })]);
+    clearTimeout(timer);
+  }
+  return !_SERVER_REFUSES.has(toolOff(key));
+}
+
 /**
  * The URL door. Wraps a deep-link opener so a path that names a hidden tool
  * says why instead of opening it — after the switches are known, because a
@@ -552,7 +583,10 @@ function _ids(def) {
  */
 export function applyToolVisibility(patch = {}, doc = (typeof document !== 'undefined' ? document : null)) {
   const p = patch || {};
-  if ('features' in p) { _state.features = p.features || null; _known.features = true; }
+  if ('features' in p) {
+    _state.features = p.features || null; _known.features = true;
+    if (_settleFeatures) { _settleFeatures(); _settleFeatures = null; }   // `B1542`
+  }
   if ('privileges' in p) _state.privileges = p.privileges || null;
   if ('isAdmin' in p) _state.isAdmin = p.isAdmin === null || p.isAdmin === undefined ? null : !!p.isAdmin;
   if ('shell' in p) _state.shell = p.shell || null;

@@ -14,6 +14,7 @@ import { emailApiUrl, emailAccountQuery, paintUnreadDot } from './emailShared.js
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { chevronIcon } from './icons.js';
 import { esc } from './util/escapeHtml.js';
+import { toolPollMayAsk } from './ui_visibility.js';   // `B1542`
 
 const API_BASE = window.location.origin;
 const _acct = () => emailAccountQuery('&');
@@ -196,7 +197,8 @@ export function init(documentModule) {
       }
     },
   });
-  prewarmEmailLibrary({ delay: 1800 });
+  // `B1542`: not for a person whose Email is switched off — every ask is a 403.
+  toolPollMayAsk('email').then((ask) => { if (ask) prewarmEmailLibrary({ delay: 1800 }); });
   _watchDocOpenToReDockEmail();
 }
 
@@ -337,6 +339,10 @@ function _urgencyColor(score) {
 let _unreadCheckedAt = 0;   // `P23-07`: when the dot last looked
 async function _refreshUnreadCount() {
   _unreadCheckedAt = Date.now();
+  // `B1542`. Every 60 s, on the tab coming back, and once at load — and with
+  // Email switched off for this person (`B1191`) or everyone (`B1488`) each one
+  // was a 403. The switch is asked at each look, so turning it back on resumes.
+  if (!(await toolPollMayAsk('email'))) return;
   // A fetch error or a backend returning malformed data hides the dot (below,
   // and in the `catch`) rather than leaving a stale one from a previous
   // account/session. `B812`: it is no longer hidden first and redrawn after,
