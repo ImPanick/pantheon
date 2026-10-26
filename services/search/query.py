@@ -243,6 +243,74 @@ def wants_fresh_results(query) -> bool:
     return bool(_query_tokens(query) & FRESH_TERMS)
 
 
+# ----------------------------------------------------------------------
+# "How fresh should this search be?" — the agent's ladder (`B1335`)
+# ----------------------------------------------------------------------
+# `src/agent_tools/web_tools.py` picked a `time_filter` — day, week, month —
+# from its own term lists, matched as SUBSTRINGS: a fourth vocabulary for
+# "this query is about news", and one that reached the other three, because
+# `providers._searxng_params` sends any query with a `time_filter` to the news
+# category. So *"currently reading list"* became a day-filtered news search
+# (`currently`), and *"todays-menu at the Blue Moon Inn"* another (`today`) —
+# the orthography mistake `NEWS_TERMS` was built to stop, back in by a side door.
+#
+# It answers a different question from `is_news_query` — *how fresh*, a ladder,
+# not *is it news*, a yes or no — so `Law 7` keeps it (`Law 1`), here beside the
+# set it now cites, whole-token like the rest. Its words:
+#
+#   * **day** — a `NEWS_TERMS` word that means *now* (`_NOW_TERMS`), or one of
+#     the two phrases the old list had (`this morning`, `right now`).
+#   * **week** / **month** — the old list's phrases, matched as whole words in
+#     order (`this week`, `past week`, `last few days`, `recent news`;
+#     `this month`, `past month`).
+#   * **week** — any other `NEWS_TERMS` word: the old `" news"` rule, widened to
+#     the shared set, so a word added there reaches this ladder too.
+#
+# **The one difference, named**: `_FRESH_ONLY_TERMS` (`current`, `updates`,
+# `happening`) set no rung. They ask the cache for a short life, which is cheap
+# when wrong; a rung here moves the query into SearXNG's news category, which
+# is not — *"current mortgage rates"* is not a news search. The old list's
+# `currently` is gone with the substring matcher it depended on.
+_NOW_TERMS = frozenset({"today", "idag", "latest", "breaking"})
+_FRESHNESS_PHRASES = (
+    ("day", (("this", "morning"), ("right", "now"))),
+    ("week", (("this", "week"), ("past", "week"), ("last", "few", "days"),
+              ("recent", "news"))),
+    ("month", (("this", "month"), ("past", "month"))),
+)
+
+
+def _token_sequence(query) -> list:
+    if not isinstance(query, str):
+        return []
+    return [t.lower() for t in re.findall(r"\b\w+\b", query)]
+
+
+def _has_phrase(tokens: list, phrase: tuple) -> bool:
+    n = len(phrase)
+    return any(tuple(tokens[i:i + n]) == phrase for i in range(len(tokens) - n + 1))
+
+
+def freshness_for(query):
+    """`"day"`, `"week"`, `"month"` or `None`: how recent the agent's web
+    search asks results to be when the model did not say. `B1335`.
+
+    Whole-token, from `NEWS_TERMS` and the ladder's own phrases — see above.
+    """
+    tokens = _token_sequence(query)
+    if not tokens:
+        return None
+    words = set(tokens)
+    if words & _NOW_TERMS & NEWS_TERMS:
+        return "day"
+    for rung, phrases in _FRESHNESS_PHRASES:
+        if any(_has_phrase(tokens, phrase) for phrase in phrases):
+            return rung
+    if words & NEWS_TERMS:
+        return "week"
+    return None
+
+
 # Kept name (`Law 1`): the private predicate two test files and any older
 # caller reach for. It is the news question, which is what the name says.
 _is_news_query = is_news_query
