@@ -1044,18 +1044,20 @@ export function createWorkflowPanels({
   function start(host, { triggerTask = null, tasks = [], onSaved, onCancel } = {}) {
     const wrap = _el('div', 'wf-start');
     host.appendChild(wrap);
+    // `B1209`. The start is part of the draft: its Done hands the source what
+    // changed (`onSaved(patch)`, the fields `PUT /api/tasks/{id}` takes), and
+    // the toolbar's Save sends it with the steps. A Done with nothing touched
+    // hands nothing, so opening the start and closing it is not an edit.
+    let touched = false;
+    for (const type of ['input', 'change']) wrap.addEventListener(type, () => { touched = true; });
     const form = typeof mountTaskFields === 'function'
       ? mountTaskFields(wrap, {
         mode: 'trigger',
         task: triggerTask,
         tasks,
-        // The start is saved through `PUT /api/tasks/{id}` when its own Save
-        // is pressed (it is not part of the draft), so the canvas says so.
-        onSaved: (row) => {
+        onSaved: (patch) => {
           if (typeof onSaved !== 'function') return undefined;
-          const saved = row && typeof row === 'object' ? { ...row } : {};
-          saved.sentence = 'Saved what starts this workflow.';
-          return onSaved(saved);
+          return onSaved(touched && patch && typeof patch === 'object' ? { ...patch } : null);
         },
         onCancel: () => { if (typeof onCancel === 'function') onCancel(); },
       })

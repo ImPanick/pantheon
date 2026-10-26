@@ -223,6 +223,12 @@ export function createWorkflowApi({ fetch } = {}) {
       return call('POST', `/api/workflows/${enc(id)}/nodes/${enc(nodeId)}/test`,
         given({ node, source, input, confirm: !!confirm }));
     },
+    /** `B1209`. A workflow's start, written to its trigger task through the
+     *  door every task is edited by (`PUT /api/tasks/{id}`) — the fields the
+     *  start's form hands over and nothing else. → `{ ok, task }` */
+    updateTrigger(taskId, patch) {
+      return call('PUT', `/api/tasks/${enc(taskId)}`, patch);
+    },
     /** The person's tasks — what a run-task step can be pointed at. The
      *  route every task surface reads; an addition beside `C3`'s list. */
     listTasks() {

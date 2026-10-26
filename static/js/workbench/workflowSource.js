@@ -320,6 +320,10 @@ export function createWorkflowSource({
     palette: null, paletteError: null, fresh: new Set(),
     // `B1136`. The step panel open now, so a palette read again reaches it.
     openStep: null,
+    // `B1209`. What the start's Done changed and Save has not sent: the fields
+    // `PUT /api/tasks/{id}` takes, or null. Part of the draft — it makes the
+    // workflow dirty, Save sends it with the steps, Discard drops it.
+    startPatch: null,
   };
   const isRun = mode === 'run';
   const describe = (task) => {
@@ -330,9 +334,17 @@ export function createWorkflowSource({
   // ── state ────────────────────────────────────────────────────────────────
 
   const readOnly = () => isRun || !!S.viewing;
-  const dirty = () => !isRun && !!S.doc && !!S.draft
+  const stepsDirty = () => !isRun && !!S.doc && !!S.draft
     && contentOf(S.draft.name, S.draft.graph) !== contentOf(S.doc.name, S.doc.graph);
-  const trigger = () => (S.doc && S.doc.trigger_task) || null;
+  const dirty = () => stepsDirty() || (!isRun && !!S.startPatch);
+  /** The start as saved (`trigger_task`). */
+  const savedTrigger = () => (S.doc && S.doc.trigger_task) || null;
+  /** `B1209`. The start as the draft has it: the saved one with what its
+   *  Done changed laid over it — what the canvas and the start's form show. */
+  const trigger = () => {
+    const t = savedTrigger();
+    return t && S.startPatch ? { ...t, ...S.startPatch } : t;
+  };
   const isOn = () => !!S.doc && S.doc.trigger_status === 'active';
   const shown = () => (isRun ? (S.run && S.run.graph) : S.viewing ? S.viewing.graph : S.draft && S.draft.graph) || {};
   const draftNode = (id) => nodesOf(S.draft && S.draft.graph).find((n) => String(n.id) === String(id)) || null;
@@ -921,13 +933,21 @@ export function createWorkflowSource({
       return panels.start(host, {
         triggerTask: trigger(),
         tasks: S.tasks,
-        onSaved: (task) => {
-          if (task && S.doc) {
-            S.doc.trigger_task = task;
-            if (task.status) S.doc.trigger_status = task.status;
+        // `B1209`. The start's Done writes into the draft, as a step's does;
+        // the toolbar's Save sends it (`save`). It was written at once
+        // through `PUT /api/tasks/{id}` while the steps waited for Save.
+        onSaved: (patch) => {
+          if (readOnly()) { saved({ id: START_ID, name: 'Starts', sentence: READ_ONLY }); return; }
+          const was = savedTrigger() || {};
+          const changed = {};
+          for (const [k, v] of Object.entries(patch && typeof patch === 'object' ? patch : {})) {
+            if (String(was[k] == null ? '' : was[k]) !== String(v == null ? '' : v)) changed[k] = v;
           }
-          emit();
-          saved({ id: START_ID, name: 'Starts', sentence: 'Saved when it starts. That is the start’s own setting, so it is saved already.' });
+          const before = JSON.stringify(S.startPatch);
+          if (Object.keys(changed).length) S.startPatch = { ...(S.startPatch || {}), ...changed };
+          if (JSON.stringify(S.startPatch) !== before) edited();
+          saved({ id: START_ID, name: 'Starts', sentence: Object.keys(changed).length
+            ? 'Changed what starts it. Save the workflow to keep it.' : 'Nothing about the start changed.' });
         },
         onCancel,
       });
@@ -1122,7 +1142,8 @@ export function createWorkflowSource({
       return answer(err);
     }
     const plans = new Map();
-    const t = trigger();
+    // The plan is of the SAVED workflow, so its start is the saved one (`B1209`).
+    const t = savedTrigger();
     plans.set(START_ID, {
       steps: [{ kind: 'dry-run', detail: `Would start: ${describe(t) || 'when its start says'}.` }],
       declined: null, when: null, depth: 0,
@@ -1157,9 +1178,28 @@ export function createWorkflowSource({
     if (readOnly() || !S.draft) return { ok: false, sentence: READ_ONLY };
     const gen = S.gen;
     const sent = clone(S.draft);
+    const startSent = S.startPatch ? clone(S.startPatch) : null;
     S.busy = true;
     emit();
     try {
+      // `B1209`. The start first, through the door every task is edited by:
+      // what its Done changed, and nothing else. A refusal is the answer and
+      // the draft — start and steps — is kept.
+      if (startSent) {
+        const t = savedTrigger();
+        if (!t || t.id == null) return { ok: false, sentence: 'This workflow has no start to save.' };
+        const put = await api.updateTrigger(t.id, startSent);
+        const row = put && typeof put === 'object' ? (put.task || put) : null;
+        if (S.doc && row && typeof row === 'object') {
+          S.doc.trigger_task = { ...(S.doc.trigger_task || {}), ...row };
+          if (row.status) S.doc.trigger_status = row.status;
+        }
+        if (JSON.stringify(S.startPatch) === JSON.stringify(startSent)) S.startPatch = null;
+        if (contentOf(sent.name, sent.graph) === contentOf(S.doc.name, S.doc.graph)) {
+          S.problem = null;
+          return { ok: true, saved: 'start', sentence: 'Saved what starts this workflow.' };
+        }
+      }
       const out = await api.saveWorkflow(workflowId, { name: sent.name, graph: sent.graph, baseVersion: S.base });
       // An edit made while the save was on its way stays in the draft.
       takeDoc(out.workflow, { force: gen === S.gen });
@@ -1198,6 +1238,7 @@ export function createWorkflowSource({
     S.problem = null;
     S.stale = false;
     S.checks = [];
+    S.startPatch = null;     // `B1209`: the start's unsaved change goes with the steps'
     edited();
     return { ok: true };
   }

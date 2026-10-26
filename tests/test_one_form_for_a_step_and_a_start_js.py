@@ -19,9 +19,10 @@ drifted from them: the `P22-03` incident. So `mountTaskFields` takes a `mode`
     saved. A Run task step picks the task from the person's own, never a
     workflow.
   * `'trigger'` — a workflow's start: the Trigger section, Time limit and
-    Notifications only, saved through the door every task is saved through,
-    `PUT /api/tasks/{id}`, carrying none of `task_type`, output, model, chain,
-    prompt or name — so a start's Save cannot change what the task is.
+    Notifications only, carrying none of `task_type`, output, model, chain,
+    prompt or name — so a start cannot change what the task is. Since `B1209`
+    its button is Done and it hands the fields `PUT /api/tasks/{id}` takes to
+    its owner without a request: the workflow's toolbar Save sends them.
 
 Driven: the real `mountTaskFields`, in the form test's own sandbox and route
 table (`Law 14`), with the DOM shim's HTML parser so the form's own markup is
@@ -207,7 +208,7 @@ def test_a_run_task_step_picks_one_of_the_persons_tasks_and_never_a_workflow(san
     assert out["writes"] == []
 
 
-def test_a_starts_form_is_the_trigger_and_saves_only_the_trigger(sandbox):
+def test_a_starts_form_is_the_trigger_and_hands_over_only_the_trigger(sandbox):
     trigger = {"id": "tw", "name": "Morning brief", "task_type": "workflow", "status": "paused",
                "trigger_type": "schedule", "schedule": "daily", "scheduled_time": "08:00",
                "tz_name": "Europe/London", "max_retries": 0, "timeout_seconds": 0,
@@ -227,17 +228,19 @@ def test_a_starts_form_is_the_trigger_and_saves_only_the_trigger(sandbox):
         console.log(JSON.stringify({ d, writes: writes(), got, errors: ui.errors }));
     """ % json.dumps(trigger))
     d = out["d"]
-    assert d["heading"] == "What starts it" and d["button"] == "Save"
+    # `B1209`: the start is part of the workflow's draft. Its button is Done,
+    # and it hands its owner the fields `PUT /api/tasks/{id}` takes WITHOUT a
+    # request; the toolbar's Save sends them (`workflowSource.save`). It saved
+    # itself on its own Save, while a step waited for the toolbar's.
+    assert d["heading"] == "What starts it" and d["button"] == "Done"
     assert (d["trigger"], d["timeout"], d["notif"]) == (True, True, True)
     assert (d["name"], d["type"], d["output"], d["model"], d["chain"]) == (False, False, False, False, False), d
     assert out["errors"] == []
-    (write,) = out["writes"]
-    assert write["method"] == "PUT" and write["url"].endswith("/api/tasks/tw")
-    body = write["body"]
+    assert out["writes"] == [], "Done writes nothing"
+    (body,) = out["got"]
     assert set(body) <= _TRIGGER_KEYS, sorted(set(body) - _TRIGGER_KEYS)
     assert body["trigger_type"] == "schedule" and body["scheduled_time"] == "07:30"
     assert body["timeout_seconds"] == 300 and body["notifications_enabled"] is True
-    assert out["got"] and out["got"][0]["scheduled_time"] == "07:30", "the owner gets the saved row"
 
 
 def test_a_start_on_an_event_says_which_step_is_handed_it(sandbox):

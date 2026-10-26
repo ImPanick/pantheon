@@ -303,7 +303,8 @@ export function createWorkflowSource({ api, workflowId, mode = 'edit', runId = n
       W.opened = (W.opened || []).concat([[mode, item ? item.id : null]]);
       if (item && item.id === '__start__') {
         return panels.start(host, { triggerTask: doc.trigger_task, tasks: W.tasks,
-          onSaved: (task) => { if (task) doc.trigger_task = task; emit(); onSaved({ id: '__start__', name: 'Starts', sentence: 'Saved when it starts.' }); },
+          // `B1209`: the start's Done hands what changed into the draft; Save sends it.
+          onSaved: (patch) => { if (patch) { doc.trigger_task = { ...doc.trigger_task, ...patch }; touch(); } onSaved({ id: '__start__', name: 'Starts', sentence: 'Changed what starts it. Save the workflow to keep it.' }); },
           onCancel });
       }
       if (mode === 'run') return panels.record(host, { node: copy(exec.graph.nodes.find((n) => n.id === item.id) || null), record: copy(recOf(item.id) || null), run: copy(exec.run) });

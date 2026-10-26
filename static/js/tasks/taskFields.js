@@ -929,8 +929,13 @@ export function mountTaskFields(host, {
   //               until the workflow is saved. `task` is the step in the task
   //               form's field names: `{ name: label, task_type: kind, ...config }`.
   //   'trigger' — a workflow's start: the Trigger section, Time limit and
-  //               Notifications only, saved by `PUT /api/tasks/{id}` with none
-  //               of task_type, output, model, chain or prompt.
+  //               Notifications only — none of task_type, output, model, chain
+  //               or prompt. `B1209`: its button is Done, and it calls
+  //               `onSaved(patch)` with the fields `PUT /api/tasks/{id}` takes,
+  //               WITHOUT a request, as 'node' does: the start lives in the
+  //               workflow's draft and the toolbar's Save sends it with the
+  //               steps. (It saved itself on its own Save while a step waited
+  //               for the toolbar's, and closing asked about the steps only.)
   //
   // `P22-09`/`P22-16` (wf-canvas) — three hooks, read in `'node'` mode only,
   // so the other two draw what they always drew:
@@ -956,9 +961,9 @@ export function mountTaskFields(host, {
     : (existing?.id ? 'Edit task' : 'New task');
   const lede = isNode
     ? `${_escHtml(KIND_WORDS[curTaskType] || 'Prompt')} step. Done here, then Save above.`
-    : isTrigger ? 'When it runs.' : '';
+    : isTrigger ? 'When it runs. Done here, then Save above.' : '';
   const namePlaceholder = isNode ? _escHtml(KIND_WORDS[curTaskType] || 'Step') : (existing?.id ? '' : 'Auto-generated if blank');
-  const saveWord = isNode ? 'Done' : isTrigger ? 'Save' : (existing?.id ? 'Save' : 'Create');
+  const saveWord = isNode || isTrigger ? 'Done' : (existing?.id ? 'Save' : 'Create');
   const sections = {
     head: `
     <div class="admin-card" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
@@ -1765,26 +1770,21 @@ ${(isNode && taskType === 'research') ? '' : `
   };
 
   // `P22-05` (wf-ui). A workflow's start: its trigger, time limit and
-  // notifications, written to its trigger task through the door every task
-  // is edited by — and nothing else, so a start's save cannot change what
-  // the task is (`task_type`), what it says (`prompt`), where it delivers,
-  // its model or a chain.
+  // notifications — the fields its trigger task is edited by, and nothing
+  // else, so a start cannot change what the task is (`task_type`), what it
+  // says (`prompt`), where it delivers, its model or a chain. `B1209`: handed
+  // to the owner (`onSaved(patch)`) for the workflow's draft; the toolbar's
+  // Save writes it through `PUT /api/tasks/{id}` with the steps.
   const _saveTrigger = async (readTrigger) => {
     if (!existing || !existing.id) {
-      if (uiModule) uiModule.showError('This workflow has no start to save yet.');
+      if (uiModule) uiModule.showError('This workflow has no start to change yet.');
       return;
     }
     const payload = { trigger_type: triggerType };
     if (!readTrigger(payload)) return;
     const notifEl = $('task-form-notif');
     if (notifEl) payload.notifications_enabled = !!notifEl.checked;
-    try {
-      const saved = await _updateTask(existing.id, payload);
-      if (uiModule) uiModule.showToast('Start saved');
-      if (typeof onSaved === 'function') await onSaved((saved && saved.task) || saved);
-    } catch (e) {
-      if (uiModule) uiModule.showError(e.message);
-    }
+    if (typeof onSaved === 'function') await onSaved(payload);
   };
 
   // Save
