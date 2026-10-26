@@ -32,6 +32,25 @@ from test_the_command_palette_in_a_browser import NODE, _SKIP, app_url  # noqa: 
 
 pytestmark = pytest.mark.skipif(NODE is None, reason=_SKIP or "")
 
+
+@pytest.fixture(scope="module", autouse=True)
+def _a_database_file_for_the_app(tmp_path_factory):
+    """The app under test gets a SQLite file of its own. `tests/conftest.py`
+    sets `DATABASE_URL=sqlite:///:memory:` for this process, and the app's
+    subprocess inherits it: measured, one in-memory database shared across the
+    server's threads intermittently answered "Could not open document." for a
+    document just created, which is the harness and not this row."""
+    import os
+    previous = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = f"sqlite:///{tmp_path_factory.mktemp('app-db') / 'app.db'}"
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = previous
+
 _SCRIPT = r"""
 const { chromium } = require('playwright');
 const BASE = process.argv[2];
@@ -51,16 +70,20 @@ const PDF_PATH = process.argv[3];
   await page.goto(BASE + '/', { waitUntil: 'load' });
   await page.waitForFunction(() => window.__pantheonAppStarted === true, null, { timeout: 90000 });
   await page.waitForTimeout(1500);
-  const mk = async (data) => (await (await page.request.post(BASE + '/api/document', { data })).json()).id;
+  const mkTitled = async (data) => (await (await page.request.post(BASE + '/api/document', { data })).json()).id;
+  // Opened when the editor shows it — its tab is the active one — not after a
+  // fixed pause alone, which a loaded machine outruns.
   const open = async (id) => {
     await page.evaluate(async (id) => { await window.documentModule.loadDocument(id); }, id);
-    await page.waitForTimeout(1200);
+    await page.waitForFunction((id) => !!document.querySelector(`.doc-tab.active[data-doc-id="${id}"]`),
+      id, { timeout: 30000 });
+    await page.waitForTimeout(800);
   };
 
   // ── B1333 ──────────────────────────────────────────────────────────────
   const lines = [];
   for (let i = 1; i <= 120; i++) lines.push(`Line ${i}: the ferry timetable WORDPROBE${i} lists departures.`);
-  const printId = await mk({ title: 'Export probe', language: 'markdown',
+  const printId = await mkTitled({ title: 'Export probe', language: 'markdown',
     content: '# Export probe\n\n```python\nprint("FENCEDPROBE")\n```\n\n' + lines.join('\n\n') });
   await open(printId);
   await page.evaluate(() => {
@@ -111,8 +134,8 @@ const PDF_PATH = process.argv[3];
     return { value: s.value, shown: s.selectedIndex >= 0 ? s.options[s.selectedIndex].textContent : null,
       mdToggle: t ? getComputedStyle(t).display !== 'none' : null };
   });
-  const textId = await mk({ title: 'packing-list.txt', language: 'text', content: 'socks\ntoothbrush\n**not bold**' });
-  const mdId = await mk({ title: 'notes', language: 'markdown', content: '# hi' });
+  const textId = await mkTitled({ title: 'packing-list.txt', language: 'text', content: 'socks\ntoothbrush\n**not bold**' });
+  const mdId = await mkTitled({ title: 'notes', language: 'markdown', content: '# hi' });
   await open(textId);
   out.text = await pick();
   await open(mdId);
@@ -125,8 +148,8 @@ const PDF_PATH = process.argv[3];
     const b = document.getElementById('doc-email-ai-reply-btn');
     return { label: b.textContent.trim(), title: b.title, shown: getComputedStyle(b).display !== 'none' };
   });
-  const newMail = await mk({ title: 'New mail', language: 'email', content: 'To: a@example.com\nSubject: Hello\n---\n' });
-  const reMail = await mk({ title: 'Re: mail', language: 'email',
+  const newMail = await mkTitled({ title: 'New mail', language: 'email', content: 'To: a@example.com\nSubject: Hello\n---\n' });
+  const reMail = await mkTitled({ title: 'Re: mail', language: 'email',
     content: 'To: a@example.com\nSubject: Re: Hello\nIn-Reply-To: <abc@example.com>\n---\n' });
   await open(newMail);
   out.newMail = await ai();
