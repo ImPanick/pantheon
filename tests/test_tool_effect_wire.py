@@ -70,7 +70,10 @@ TOOL_OUTPUT_BASE_KEYS = frozenset(
     {"type", "tool", "command", "full_command", "round", "output", "exit_code",
      "status"})
 APPROVED_START_BASE_KEYS = TOOL_START_BASE_KEYS | {"approved"}
-APPROVED_OUTPUT_BASE_KEYS = TOOL_OUTPUT_BASE_KEYS | {"approved"}
+# `B1257` added `approval_digest` to the streamed approved result: the persisted
+# twin carried it and the stream did not, so neither live stream could match the
+# result to the row that asked for it.
+APPROVED_OUTPUT_BASE_KEYS = TOOL_OUTPUT_BASE_KEYS | {"approved", "approval_digest"}
 
 
 def _events(generator):

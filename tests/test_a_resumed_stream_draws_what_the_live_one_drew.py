@@ -307,10 +307,23 @@ _MODULE_LEVEL = (
 )
 
 
+def _renderer_defn(name: str) -> str:
+    """One whole declaration cut out of `chatRenderer.js`, the way `_defn`
+    cuts `chat.js`."""
+    src = (JS / "chatRenderer.js").read_text(encoding="utf-8")
+    code = blank_text(src, "js")
+    return js_definition(src, code.index(f"function {name}("))
+
+
 def _module_level() -> str:
     parts = [_defn(name) for name in _MODULE_LEVEL]
     parts.append(_defn("resumeStream", "async function "))
     parts.append(js_binding(_chat(), "_RESUME_RELOAD_TYPES") + ";")
+    # `B1257`. Both streams' `tool_output` arms take away the row that asked
+    # for an approved call, through the renderer's own `dropAskedTwin` — the
+    # real function, cut out of `chatRenderer.js`, not a stand-in.
+    parts.append(_renderer_defn("dropAskedTwin"))
+    parts.append("chatRenderer.dropAskedTwin = dropAskedTwin;")
     return "\n".join(parts)
 
 
@@ -1231,3 +1244,80 @@ def test_leaving_again_keeps_the_replay_in_charge(sandbox):
         console.log(JSON.stringify({ kept, newSend: _backgroundStreams.get('s1').resumedView }));
     """ % _defn("detachCurrentStream", "export function ").replace("export function", "function", 1))
     assert out == {"kept": True, "newSend": False}
+
+
+# ── `B1257`: one row per call while an approved turn streams ────────────────
+# A page reloaded mid-turn after an approval draws the paused reply from
+# history — its row for the call that asked (*… · waiting*) — and then
+# `resumeStream` replays the continuation over it, whose first act is the
+# approved call. Both rows stood one above the other until the run ended and
+# the canonical reload dropped the asked one (`dropAskedTwin`, `P23-04`
+# CHAT-M-8), because the streamed approved result carried no `approval_digest`
+# (the persisted twin did) and neither live arm looked for one.
+
+APPROVED_CONTINUATION = [
+    {"type": "tool_start", "tool": "manage_documents", "command": "list_folders",
+     "round": 1, "approved": True},
+    {"type": "tool_output", "tool": "manage_documents", "command": "list_folders",
+     "round": 1, "exit_code": 0, "status": "ok", "output": "9 folders",
+     "approved": True, "approval_digest": "abc123def4567890"},
+    {"delta": "There are nine folders."},
+    "[DONE]",
+]
+
+_ASKED_ROW = """
+function drawPausedReply() {
+  // The paused reply as the history renderer drew it: its words, then the
+  // thread holding the row that asked for the call, waiting on the card.
+  const reply = document.createElement('div');
+  reply.className = 'msg msg-ai';
+  reply.innerHTML = '<div class="role">test-model</div><div class="body"><p>Allow this task to continue?</p></div>';
+  history.appendChild(reply);
+  const thread = document.createElement('div');
+  thread.className = 'agent-thread';
+  const node = document.createElement('div');
+  applyAgentThreadNode(node, { tool: 'manage_documents', state: 'done', ok: true, round: 1,
+                               command: 'list_folders', approvalDigest: 'abc123def4567890' });
+  thread.appendChild(node);
+  history.appendChild(thread);
+}
+function rows() {
+  return history.querySelectorAll('.agent-thread-node').map((n) => ({
+    asked: !!(n.dataset && n.dataset.approvalDigest),
+  }));
+}
+"""
+
+
+def test_a_replay_after_an_approval_draws_one_row_for_the_call(sandbox):
+    out = _page(sandbox, _ASKED_ROW + """
+        const events = %s;
+        drawPausedReply();
+        const before = rows();
+        await runResumed(events, []);
+        const resumed = rows();
+        clear();
+        drawPausedReply();
+        runLive(events, []);
+        const live = rows();
+        console.log(JSON.stringify({ before, resumed, live }));
+    """ % json.dumps(APPROVED_CONTINUATION))
+    assert out["before"] == [{"asked": True}]
+    # The approved result took the asked row's place: one row, the call that ran.
+    assert out["resumed"] == [{"asked": False}], out["resumed"]
+    assert out["live"] == [{"asked": False}], out["live"]
+
+
+def test_a_result_with_no_approval_leaves_every_row_where_it_is(sandbox):
+    """Nothing is taken away for a call nobody approved."""
+    plain = [dict(e) if isinstance(e, dict) else e for e in APPROVED_CONTINUATION]
+    for e in plain:
+        if isinstance(e, dict):
+            e.pop("approval_digest", None)
+            e.pop("approved", None)
+    out = _page(sandbox, _ASKED_ROW + """
+        drawPausedReply();
+        await runResumed(%s, []);
+        console.log(JSON.stringify({ rows: rows() }));
+    """ % json.dumps(plain))
+    assert out["rows"] == [{"asked": True}, {"asked": False}], out["rows"]

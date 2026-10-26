@@ -4933,6 +4933,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                   // Reset so thinking spinner between tools says "Thinking" not the old tool's label
                   _lastToolName = '';
                 }
+                // `B1257`. An approved call's result names the card it answers
+                // (`approval_digest`), so the row that asked goes now, as the
+                // history renderer drops it after a reload (`P23-04`, CHAT-M-8)
+                // — one row per call while the turn streams, not two.
+                if (json.approval_digest) chatRenderer.dropAskedTwin(box, json.approval_digest);
                 // --- Render generated images inline ---
                 if (json.image_url) {
                   _rememberGeneratedImage(json);
@@ -6887,6 +6892,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
               _finishToolCard(toolNode, json);
               toolName = '';
             }
+            // `B1257`. The replay is drawn over the history the reload drew,
+            // which holds the paused reply's asked row: the approved result
+            // takes its place, as in the live arm and the history renderer.
+            if (json.approval_digest) chatRenderer.dropAskedTwin(box, json.approval_digest);
             if (json.image_url) _appendGeneratedImageBubble(json);
             // The card is finished; a later event with no card of its own
             // must not be handed this one (`P4-20`).

@@ -8954,6 +8954,14 @@ async def stream_agent_loop(
             # key set and is what caught it.
             "status": tool_outcome(approved_result),
             "approved": approved_ran,
+            # `B1257`. The card this result answers, by the same fingerprint
+            # the persisted twin carries (`approved_tool_event` below) and the
+            # asked row was drawn with (`ask_user.action.digest`). Without it
+            # neither live stream could match the result to the row that asked,
+            # so a page reloaded mid-turn showed both until the run ended and
+            # the canonical reload dropped the asked one (`P23-04`'s
+            # `dropAskedTwin`).
+            "approval_digest": approved.digest[:16],
             **approved_effects,
         }
         for key in (
