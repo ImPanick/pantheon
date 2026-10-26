@@ -3,6 +3,7 @@
  * Deep Research side panel — open/close, form, job rendering, library.
  */
 import * as jobs from './jobs.js?v=20260630researchthumb';
+import { getBackgroundWork, onBackgroundWork } from '../modalManager.js?v=20261009census';   // `B813`
 import themeModule from '../theme.js';
 import createResearchSynapse from '../researchSynapse.js';
 import spinnerModule from '../spinner.js';
@@ -105,31 +106,41 @@ function _clearBadge() {
   if (dot) dot.remove();
 }
 
-// Live sidebar/rail feedback — mirrors the cookbook pattern. While
-// research jobs are running, the rail button pulses; errors flag red;
-// nothing running clears it. Panel-independent so it works with the
-// modal closed. Called from _renderJobs on every job-state change.
+// Live sidebar/rail feedback — panel-independent, so it works with the modal
+// closed. Called on every job-state change (`_renderJobs`), on every change to
+// the background-work store, and by `sessions.js` when a chat starts or stops
+// researching in place.
+//
+// `B813`. *Is research running* is one answer: `getBackgroundWork(
+// 'research-overlay')`, the entry `jobs.js:_syncResearchChip` writes for the
+// panel's running and queued jobs. The dock chip draws it, and so do the rail
+// dot and the sidebar's `R2` here — three drawings, not three counts. A chat
+// researching in place lights the rail too (from `sessions.js`'s
+// `researchingInChat`) and gets no chip: it has no window to own one. A FAILED
+// job is this tool's own (`B813`, option b): it is not running work, so it is
+// not on the dock, and the rail says it in red until the job is dismissed.
+// This is the only painter of `#rail-research`; it replaced the
+// `window._researchJobsActive` flag `sessions.js` used to OR with.
 function _syncResearchRail() {
-  let running = 0, errored = 0, runningJob = null;
+  let errored = 0, runningJob = null;
   try {
     for (const j of jobs.getJobs()) {
-      if (j.status === 'running' || j.status === 'queued') {
-        running++;
-        if (j.status === 'running' && !runningJob) runningJob = j;
-      } else if (j.status === 'error') errored++;
+      if (j.status === 'error') errored++;
+      else if (j.status === 'running' && !runningJob) runningJob = j;
     }
   } catch { return; }
+  const running = !!getBackgroundWork('research-overlay');
+  const inChat = (_sessionModule && typeof _sessionModule.researchingInChat === 'function')
+    ? _sessionModule.researchingInChat() : 0;
   const railBtn = document.getElementById('rail-research');
   const toolBtn = document.getElementById('tool-research-btn');
-  const active = running > 0 || errored > 0;
-  // Shared flag so sessions.js:_updateRailNotifs (which lights the same
-  // rail button for INLINE research mode) ORs with us instead of
-  // clobbering — otherwise a session re-render would clear our dot.
-  window._researchJobsActive = active;
+  const active = running || errored > 0;
   if (railBtn) {
     railBtn.classList.remove('rail-notify', 'rail-notify-success', 'rail-notify-error', 'research-notif-active');
     if (active) {
       railBtn.classList.add('rail-notify', errored ? 'rail-notify-error' : 'rail-notify-success', 'research-notif-active');
+    } else if (inChat > 0) {
+      railBtn.classList.add('rail-notify');
     }
   }
   if (toolBtn) {
@@ -138,7 +149,7 @@ function _syncResearchRail() {
     // Sidebar feedback while running — a small pulsing dot + round text,
     // same style as Forge's running indicator (no glow).
     let wrap = toolBtn.querySelector('.research-sb-running');
-    if (running > 0) {
+    if (running) {
       if (!wrap) {
         wrap = document.createElement('span');
         wrap.className = 'research-sb-running';
@@ -158,7 +169,7 @@ function _syncResearchRail() {
   // (ambient). The rAF loop in _ensureOrbit drives --research-orbit-angle on
   // the pane element — CSS-only @property animation silently no-op'd in some
   // browsers, so JS drives it for universal compatibility.
-  _orbitSpeedDegPerSec = running > 0 ? 60 : 22;  // 6s/rev vs ~16s/rev
+  _orbitSpeedDegPerSec = running ? 60 : 22;  // 6s/rev vs ~16s/rev
   _ensureOrbit();
   if (window._syncRailDynamic) window._syncRailDynamic();
 }
@@ -236,6 +247,10 @@ export function init(apiBase, markdownMod, sessionMod) {
   jobs.init(apiBase);
   jobs.setRenderCallback(_renderJobs);
   jobs.onComplete(() => { if (!_open) _showBadge(); });
+  // `B813`: the door redraws when the store's answer changes, and is the
+  // research rail's one painter for in-chat research too.
+  onBackgroundWork((id) => { if (id === 'research-overlay') _syncResearchRail(); });
+  if (sessionMod && typeof sessionMod.setResearchDoor === 'function') sessionMod.setResearchDoor(_syncResearchRail);
 }
 
 export function isOpen() { return _open; }

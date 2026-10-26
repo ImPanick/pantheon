@@ -248,6 +248,37 @@ const _LABELS = {
 // one.
 const _work = new Map(); // modalId -> Map(jobKey -> { label, detail })
 
+// `B813`. Who else draws this answer. The dock was the only reader, so the two
+// tools that had built their own indicator before `P9-11` — the Forge's sidebar
+// text and rail dot, Research's rail and `R2` — kept computing *is something
+// running* themselves, and Research's needed a `window._researchJobsActive`
+// handshake with `sessions.js` so one re-render did not erase the other. Now a
+// door subscribes and renders running work from this store: the rail dot, the
+// sidebar text and the dock chip are three drawings of one answer. What is NOT
+// here, by decision (`B813`, option b): a job that *finished* or *failed*. That
+// stays with each tool, so `P9-11`'s rule — a work chip has no `×` and leaves
+// when its job ends — holds.
+const _workListeners = new Set();
+
+/**
+ * Be told when any window's background work changes. `fn(id)` is called with
+ * the modal id after the dock has redrawn, once per real change (a poll that
+ * re-states the same job calls nobody). Returns the unsubscribe.
+ */
+export function onBackgroundWork(fn) {
+  if (typeof fn !== 'function') return () => false;
+  _workListeners.add(fn);
+  return () => _workListeners.delete(fn);
+}
+
+function _workChanged(id) {
+  _renderDock();
+  for (const fn of [..._workListeners]) {
+    // One door that throws must not leave the others drawing the old answer.
+    try { fn(id); } catch (e) { console.warn('[modalManager] a background-work door failed to redraw', e); }
+  }
+}
+
 /**
  * Say that this window has work running, or clear it.
  *
@@ -276,7 +307,7 @@ export function setBackgroundWork(id, work) {
     if (!prev) return false;
     jobs.delete(key);
     if (!jobs.size) _work.delete(id);
-    _renderDock();
+    _workChanged(id);
     return true;
   }
   const next = {
@@ -289,7 +320,7 @@ export function setBackgroundWork(id, work) {
   if (prev && prev.label === next.label && prev.detail === next.detail && prev.open === next.open) return false;
   if (jobs) jobs.set(key, next);
   else _work.set(id, new Map([[key, next]]));
-  _renderDock();
+  _workChanged(id);
   return true;
 }
 
@@ -2197,6 +2228,7 @@ document.addEventListener('click', (e) => {
 }, true);
 
 export default { register, unregister, isRegistered, isMinimized, minimize, restore, toggle, close,
-  injectMinimizeButton, setBackgroundWork, getBackgroundWork, listBackgroundWork, openClosedWindow,
+  injectMinimizeButton, setBackgroundWork, getBackgroundWork, listBackgroundWork, onBackgroundWork,
+  openClosedWindow,
   listWindows, showWindow, windowState, doorShown, closeWindow, raiseWindow, drawBackButton,
   focusWindowHandle, tabHooks, setTabHooks, labelOf };

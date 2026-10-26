@@ -14,6 +14,7 @@ import { topPortalZ } from './toolWindowZOrder.js';
 import { PLAY_GLYPH, STOP_GLYPH, chevronIcon, stopIcon } from './icons.js';
 import { prefetchTmuxAttach, copyTmuxAttach, renderTmuxAttach } from './tmuxAttach.js';
 import { viewerMayAdminister, whenToolVisibilityReady } from './ui_visibility.js';
+import { setBackgroundWork, getBackgroundWork, onBackgroundWork } from './modalManager.js?v=20261009census';   // `B813`
 
 // Human-friendly badge label for a task's internal status. Avoids surfacing
 // the word "error" in the sidebar — a server the user stopped or one that
@@ -1276,34 +1277,92 @@ function _startWaveSync() {
 function _registerWaveEl(el) { _waveEls.add(el); _startWaveSync(); }
 
 // ── Notifications ──
+//
+// `B813`. The Forge's door — the dot on its sidebar button, the
+// `#cookbook-bg-status` text beside it, and the rail highlight — is drawn by
+// `_renderForgeDoor` alone, from answers that each have one owner:
+//   * RUNNING work is the background-work store's: `_publishForgeWork` puts the
+//     server's running and ready tasks there (`setBackgroundWork('cookbook-
+//     modal', …)`) from the background poll, and the dock chip draws the same
+//     entry. The door used to compute it a second time, beside the chip;
+//   * a task that FINISHED or FAILED is this tool's own (`B813`, option b — a
+//     work chip has no `×` and leaves when its job ends, `P9-11`): the
+//     highlight `_showCookbookNotif` / `_clearCookbookNotif` set and clear, and
+//     the `done` / `error` word the poll reads off the server's tasks.
+const FORGE_WINDOW = 'cookbook-modal';
+const FORGE_JOB = 'forge-tasks';
+let _forgeOutcome = null;      // null | 'done' | 'error' — the highlight's colour
+let _forgeOutcomeWord = null;  // null | 'done' | 'error' — the sidebar's word
 
-function _showCookbookNotif(isError = false) {
+function _renderForgeDoor() {
+  const work = getBackgroundWork(FORGE_WINDOW);
+  const lit = !!work || !!_forgeOutcome;
+  const isError = _forgeOutcome === 'error';
   const dot = document.getElementById('cookbook-notif-dot');
   if (dot) {
-    dot.style.display = '';
+    dot.style.display = lit ? '' : 'none';
     dot.classList.toggle('cookbook-notif-error', isError);
   }
   const btn = document.getElementById('tool-cookbook-btn');
-  if (btn) { btn.style.opacity = '1'; btn.classList.add('cookbook-notif-active'); }
+  if (btn) { btn.style.opacity = lit ? '1' : ''; btn.classList.toggle('cookbook-notif-active', lit); }
   const railBtn = document.getElementById('rail-cookbook');
   if (railBtn) {
-    railBtn.classList.remove('rail-notify-success', 'rail-notify-error');
-    railBtn.classList.add('rail-notify', isError ? 'rail-notify-error' : 'rail-notify-success', 'cookbook-notif-active');
+    railBtn.classList.remove('rail-notify', 'rail-notify-success', 'rail-notify-error', 'cookbook-notif-active');
+    if (lit) railBtn.classList.add('rail-notify', isError ? 'rail-notify-error' : 'rail-notify-success', 'cookbook-notif-active');
+  }
+  const statusEl = document.getElementById('cookbook-bg-status');
+  if (statusEl) {
+    if (work) {
+      statusEl.textContent = work.label;
+      statusEl.style.color = '';
+      statusEl.style.display = '';
+    } else if (_forgeOutcomeWord) {
+      statusEl.textContent = _forgeOutcomeWord;
+      statusEl.style.color = _forgeOutcomeWord === 'error'
+        ? 'var(--color-error, #f44)' : 'var(--color-success, #4caf50)';
+      statusEl.style.display = '';
+    } else {
+      statusEl.style.display = 'none';
+      statusEl.style.color = '';
+    }
   }
   if (window._syncRailDynamic) window._syncRailDynamic();
 }
 
-export function _clearCookbookNotif() {
-  const dot = document.getElementById('cookbook-notif-dot');
-  if (dot) dot.style.display = 'none';
-  const btn = document.getElementById('tool-cookbook-btn');
-  if (btn) { btn.style.opacity = ''; btn.classList.remove('cookbook-notif-active'); }
-  const railBtn = document.getElementById('rail-cookbook');
-  if (railBtn) {
-    railBtn.classList.remove('rail-notify', 'rail-notify-success', 'cookbook-notif-active');
+// The words a running task shows, as the sidebar always said them.
+function _forgeTaskWords(t) {
+  if (t.type === 'serve') {
+    // Serve phase from the backend ("loading 45%", "warming up", "12.5 tok/s").
+    if (t.progress) return t.progress;
+    return t.status === 'ready' ? 'ready' : 'cooking';
   }
-  if (window._syncRailDynamic) window._syncRailDynamic();
+  const dl = _downloadBadgeText(t.progress);
+  return dl === 'downloading' ? 'downloading' : `downloading ${dl}`;
 }
+
+/** `B813`. Running work, said once, to the store every door reads. */
+function _publishForgeWork(activeTasks) {
+  if (!activeTasks.length) return setBackgroundWork(FORGE_WINDOW, { key: FORGE_JOB });
+  return setBackgroundWork(FORGE_WINDOW, {
+    key: FORGE_JOB,
+    label: _forgeTaskWords(activeTasks[0]),
+    detail: activeTasks.map(t => `${t.model || t.session_id || 'Forge task'}: ${_forgeTaskWords(t)}`).join('\n'),
+  });
+}
+
+function _showCookbookNotif(isError = false) {
+  _forgeOutcome = isError ? 'error' : 'done';
+  _renderForgeDoor();
+}
+
+export function _clearCookbookNotif() {
+  _forgeOutcome = null;
+  _renderForgeDoor();
+}
+
+// The door redraws when the store's answer for this window changes — the poll
+// writing it, or anything else that does.
+onBackgroundWork((id) => { if (id === FORGE_WINDOW) _renderForgeDoor(); });
 
 // ── Presets helper (for save-from-task) ──
 
@@ -4154,8 +4213,10 @@ function _stopBackgroundMonitor() {
     clearInterval(_bgMonitorInterval);
     _bgMonitorInterval = null;
   }
-  const statusEl = document.getElementById('cookbook-bg-status');
-  if (statusEl) statusEl.style.display = 'none';
+  // `B813`: nothing left to watch is nothing running, said to the store (the
+  // door redraws from it), and no word left on the sidebar.
+  _forgeOutcomeWord = null;
+  if (!_publishForgeWork([])) _renderForgeDoor();
 }
 
 // Retry-probe a freshly-added endpoint until its model server answers.
@@ -4351,7 +4412,6 @@ async function _pollBackgroundStatus() {
       }
     } catch (_) { /* non-fatal: background status should never break polling */ }
 
-    const statusEl = document.getElementById('cookbook-bg-status');
     const activeTasks = tasks.filter(t => t.status === 'running' || t.status === 'ready');
     const errorTasks = tasks.filter(t => t.status === 'error');
     const completedTasks = tasks.filter(t => t.status === 'completed');
@@ -4430,51 +4490,23 @@ async function _pollBackgroundStatus() {
         .catch(() => {});
     }
 
+    // `B813`. Running work goes to the store, which the dock chip and this
+    // tool's door both draw; finished and failed stay with the tool.
+    _forgeOutcomeWord = errorTasks.length ? 'error' : (completedTasks.length ? 'done' : null);
+    _publishForgeWork(activeTasks);
     if (errorTasks.length > 0) {
       _showCookbookNotif(true);
     } else if (completedTasks.length > 0) {
       _showCookbookNotif(false);
-    } else if (activeTasks.length > 0) {
-      _showCookbookNotif(false);
-    } else {
+    } else if (!activeTasks.length) {
       _clearCookbookNotif();
       _stopBackgroundMonitor();
-    }
-
-    if (statusEl) {
-      if (activeTasks.length > 0) {
-        const t = activeTasks[0];
-        if (t.type === 'serve') {
-          if (t.progress) {
-            // Show serve phase from backend (e.g. "loading 45%", "warming up", "idle", "12.5 tok/s")
-            statusEl.textContent = t.progress;
-          } else if (t.status === 'ready') {
-            statusEl.textContent = 'ready';
-          } else {
-            statusEl.textContent = 'cooking';
-          }
-        } else {
-          const _dlText = _downloadBadgeText(t.progress);
-          statusEl.textContent = _dlText === 'downloading' ? 'downloading' : `downloading ${_dlText}`;
-        }
-        statusEl.style.display = '';
-      } else if (errorTasks.length > 0) {
-        statusEl.textContent = 'error';
-        statusEl.style.display = '';
-        statusEl.style.color = 'var(--color-error, #f44)';
-      } else if (completedTasks.length > 0) {
-        statusEl.textContent = 'done';
-        statusEl.style.display = '';
-        statusEl.style.color = 'var(--color-success, #4caf50)';
-      } else {
-        statusEl.style.display = 'none';
-        statusEl.style.color = '';
-      }
     }
     // Also clear the sidebar/rail icon highlight when no tasks are alive.
     // Without this, the cookbook icon stays at full opacity ("highlighted")
     // indefinitely once any task fires the notif, because the modal-open
-    // clear only runs when the user actually reopens Forge.
+    // clear only runs when the user actually reopens Forge. (The `done` word
+    // stays; the highlight is for what is alive or failed.)
     if (!activeTasks.length && !errorTasks.length) {
       _clearCookbookNotif();
     }
