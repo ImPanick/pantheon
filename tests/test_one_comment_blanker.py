@@ -352,9 +352,9 @@ def _load_checker(name: str):
 #: A module that defeats both naive rules: a `//` inside a string (the
 #: unanchored rule blanks from it to the end of the line) and a `/*` inside a
 #: string (the block rule runs from it to the next `*/` in the file).
-_TRAP = ("const url = 'https://example.invalid/'; const ody_kept = 1;\n"
+_TRAP = ("const url = 'https://example.invalid/'; const keptAfterUrl = 1;\n"
          "input.accept = 'image/*,video/*';\n"
-         "const alsoKept = 'ody-two';\n"
+         "const alsoKept = 'kept-two';\n"
          "/* a real comment */ const after = 2;\n")
 
 
@@ -363,19 +363,19 @@ def test_check_fork_names_reads_the_code_a_string_used_to_hide():
     block rule. Both identifiers below are code; the naive pair erased both."""
     mod = _load_checker("check-fork-names")
     code = mod._code_text("static/js/x.js", _TRAP)
-    assert "ody_kept" in code and "'ody-two'" in code, code
+    assert "keptAfterUrl" in code and "'kept-two'" in code, code
     assert "a real comment" not in code
     assert len(code) == len(_TRAP), "offsets moved, so reported lines would too"
     # HTML: a `<script>` body is JavaScript, and an HTML comment is blanked.
-    html = "<!-- ody-gone -->\n<script>\n" + _TRAP + "</script>\n"
+    html = "<!-- a gone note -->\n<script>\n" + _TRAP + "</script>\n"
     code = mod._code_text("static/x.html", html)
-    assert "ody-gone" not in code and "ody_kept" in code and "'ody-two'" in code
+    assert "a gone note" not in code and "keptAfterUrl" in code and "'kept-two'" in code
 
 
 def test_check_run_statuses_reads_the_code_a_string_used_to_hide():
     mod = _load_checker("check-run-statuses")
     code = mod._blank_comments(_TRAP)
-    assert "ody_kept" in code and "const alsoKept" in code, code
+    assert "keptAfterUrl" in code and "const alsoKept" in code, code
     assert "a real comment" not in code
 
 

@@ -22,7 +22,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # (it insists every entry still describes a site).
 NEEDED = (".pantheon/check-run-statuses.py", "core/database.py",
           "static/js/runStatus.js", "src/workflow_runs.py",
-          "tests/test_run_status_is_one_vocabulary.py")
+          "tests/test_run_status_is_one_vocabulary.py",
+          # `B410` / `B571`: the checker blanks comments with the one blanker
+          # and lists files with the one listing, both shared.
+          ".pantheon/ledger/__init__.py", ".pantheon/ledger/source.py",
+          ".pantheon/check-specifiers.py")
 
 
 def _tree(tmp_path: Path) -> Path:

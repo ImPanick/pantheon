@@ -45,6 +45,9 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(ROOT / ".pantheon") not in sys.path:
+    sys.path.insert(0, str(ROOT / ".pantheon"))
+from ledger.source import tracked_files  # noqa: E402  (`B571`)
 
 LICENCE = "AGPL-3.0-or-later"
 TAG = "SPDX-License-Identifier"
@@ -87,9 +90,7 @@ DOCTYPE = re.compile(r"^\s*<!doctype", re.I)
 
 
 def _tracked():
-    out = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True,
-                         text=True, check=True).stdout
-    return out.splitlines()
+    return tracked_files(root=ROOT)
 
 
 def in_scope(rel):

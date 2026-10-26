@@ -46,7 +46,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 if str(ROOT / ".pantheon") not in sys.path:
     sys.path.insert(0, str(ROOT / ".pantheon"))
-from ledger.source import strip_comments  # noqa: E402  (`B410`)
+from ledger.source import strip_comments, tracked_files  # noqa: E402  (`B410`, `B571`)
 
 # The old short name, with every separator it was ever spelled with. `_` is the
 # one the row's original regex was missing, and it is where the token prefix
@@ -85,9 +85,7 @@ ALLOWED = {
 
 
 def _tracked():
-    out = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True,
-                         text=True, check=True).stdout
-    for rel in out.splitlines():
+    for rel in tracked_files(root=ROOT):
         if rel.startswith(SKIP_PREFIXES):
             continue
         if pathlib.Path(rel).suffix in CODE_SUFFIXES:
@@ -229,9 +227,7 @@ VECTOR_SUFFIXES = CODE_SUFFIXES | {".svg"}
 
 
 def _tracked_all():
-    out = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True,
-                         text=True, check=True).stdout
-    return [rel for rel in out.splitlines() if rel]
+    return tracked_files(root=ROOT)
 
 
 def image_frames(path):

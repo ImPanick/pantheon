@@ -32,6 +32,9 @@ def _tree(tmp_path: Path, files: dict) -> Path:
     root = tmp_path / "repo"
     (root / ".pantheon").mkdir(parents=True)
     shutil.copy(CHECKER, root / ".pantheon" / "check-wiring.py")
+    # `B571`: the file list comes from the shared `ledger.source.tracked_files`.
+    shutil.copytree(CHECKER.parent / "ledger", root / ".pantheon" / "ledger",
+                    ignore=shutil.ignore_patterns("__pycache__"))
     for rel, text in files.items():
         p = root / rel
         p.parent.mkdir(parents=True, exist_ok=True)

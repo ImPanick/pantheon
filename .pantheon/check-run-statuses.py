@@ -65,7 +65,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT / ".pantheon") not in sys.path:
     sys.path.insert(0, str(ROOT / ".pantheon"))
-from ledger.source import strip_comments  # noqa: E402  (`B410`)
+from ledger.source import strip_comments, tracked_files  # noqa: E402  (`B410`, `B571`)
 
 DB = ROOT / "core" / "database.py"
 JS = ROOT / "static" / "js" / "runStatus.js"
@@ -505,9 +505,7 @@ def _python_files() -> list[str]:
     catches a seventh status runs it over a COPY of the tree, because editing
     the tree a suite run is reading is `Law 19`. A copy has no git index.
     """
-    out = subprocess.run(["git", "ls-files", "*.py"], cwd=str(ROOT),
-                         capture_output=True, text=True)
-    tracked = [f for f in out.stdout.split() if f]
+    tracked = tracked_files("*.py", root=ROOT, check=False)
     if tracked:
         return tracked
     found = []

@@ -57,6 +57,9 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(ROOT / ".pantheon") not in sys.path:
+    sys.path.insert(0, str(ROOT / ".pantheon"))
+from ledger.source import tracked_files  # noqa: E402  (`B571`)
 
 IMPORT_RE = re.compile(
     r"""(?:^|[^\w.])(?:import\s*\(?\s*|from\s+)['"]([^'"]+\.js(?:\?[^'"]*)?)['"]"""
@@ -77,9 +80,7 @@ PRECACHE_RE = re.compile(r"""["'](/static/[^"']+\.js(?:\?[^"']*)?)["']""")
 
 
 def tracked():
-    out = subprocess.run(["git", "ls-files", "static"], capture_output=True,
-                         text=True, cwd=ROOT).stdout.split()
-    return [f for f in out
+    return [f for f in tracked_files("static", root=ROOT, check=False)
             if f.endswith((".js", ".html")) and not f.startswith("static/lib/")]
 
 

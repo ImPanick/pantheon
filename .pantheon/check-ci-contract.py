@@ -99,6 +99,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / ".pantheon") not in sys.path:
+    sys.path.insert(0, str(ROOT / ".pantheon"))
+from ledger.source import tracked_files  # noqa: E402  (`B571`)
 WORKFLOWS = ROOT / ".github" / "workflows"
 README = ROOT / "README.md"
 SECURITY_CI = ROOT / "docs" / "security-ci.md"
@@ -558,9 +561,7 @@ def rule_one_file_list() -> list[str]:
         gate = _load_gate()
     except Exception as exc:  # pragma: no cover
         return problems + [f"{GATE.name} does not import: {exc}"]
-    tracked = subprocess.run(["git", "ls-files", "*.py"], cwd=str(ROOT),
-                             capture_output=True, text=True)
-    missing = sorted(set(f for f in tracked.stdout.split() if f)
+    missing = sorted(set(tracked_files("*.py", root=ROOT, check=False))
                      - set(gate._python_files()))
     if missing:
         problems.append(

@@ -41,6 +41,9 @@ import tokenize
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT / ".pantheon") not in sys.path:
+    sys.path.insert(0, str(ROOT / ".pantheon"))
+from ledger.source import tracked_files  # noqa: E402  (`B571`)
 SKIP_PREFIXES = ("tests/", ".pantheon/")
 
 # A `try` that only tears things down is *supposed* to swallow: the file is
@@ -58,9 +61,7 @@ MUTATION = (
 
 
 def _tracked() -> list[str]:
-    out = subprocess.run(["git", "ls-files", "*.py"], cwd=ROOT,
-                         capture_output=True, text=True, check=True).stdout
-    return [f for f in out.split() if not f.startswith(SKIP_PREFIXES)]
+    return [f for f in tracked_files("*.py", root=ROOT) if not f.startswith(SKIP_PREFIXES)]
 
 
 def _comment_lines(src: str) -> set[int]:

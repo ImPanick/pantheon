@@ -34,6 +34,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT / ".pantheon") not in sys.path:
+    sys.path.insert(0, str(ROOT / ".pantheon"))
+from ledger.source import tracked_files  # noqa: E402  (`B571`)
 
 # The one helper. Its own internals are the implementation the rule points at.
 HELPER = "static/js/ui.js"
@@ -55,8 +58,7 @@ WINDOW = 40
 
 
 def tracked() -> list[str]:
-    out = subprocess.run(["git", "ls-files", "static/js"], capture_output=True,
-                         text=True, cwd=ROOT).stdout.split()
+    out = tracked_files("static/js", root=ROOT, check=False)
     return [f for f in out if f.endswith(".js") and "/lib/" not in f]
 
 

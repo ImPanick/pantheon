@@ -48,12 +48,13 @@ import subprocess
 from collections import Counter
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(ROOT / ".pantheon") not in sys.path:
+    sys.path.insert(0, str(ROOT / ".pantheon"))
+from ledger.source import tracked_files  # noqa: E402  (`B571`)
 
 
 def tracked(*globs):
-    out = subprocess.run(["git", "ls-files", *globs], capture_output=True,
-                         text=True, cwd=ROOT).stdout.split()
-    return [f for f in out if "/lib/" not in f]
+    return [f for f in tracked_files(*globs, root=ROOT, check=False) if "/lib/" not in f]
 
 
 def read(f):

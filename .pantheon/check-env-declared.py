@@ -142,6 +142,9 @@ from functools import lru_cache
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT / ".pantheon") not in sys.path:
+    sys.path.insert(0, str(ROOT / ".pantheon"))
+from ledger.source import tracked_files  # noqa: E402  (`B571`)
 ENV_EXAMPLE = ROOT / ".env.example"
 SKIP_PREFIXES = ("tests/", ".pantheon/")
 # Parsed, never imported. Importing `src.settings` to read `DEFAULT_SETTINGS`
@@ -179,9 +182,7 @@ _ENV_NAME = re.compile(r"^\s*#?\s*([A-Z][A-Z0-9_]*)\s*=")
 
 
 def _tracked(pattern: str | None = None) -> list[str]:
-    args = ["git", "ls-files"] + ([pattern] if pattern else [])
-    out = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, check=True).stdout
-    return out.split()
+    return tracked_files(*([pattern] if pattern else []), root=ROOT)
 
 
 def declared() -> dict[str, int]:
