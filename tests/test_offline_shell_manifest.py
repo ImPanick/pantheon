@@ -39,12 +39,10 @@ these execute it (`Law 20`).
 import hashlib
 import importlib.util
 import json
-import os
 import re
 import shutil
 import subprocess
 import sys
-import textwrap
 from pathlib import Path
 
 import pytest
@@ -521,64 +519,42 @@ def test_a_conditional_request_is_actually_cheap_on_this_server(tmp_path):
     fetches (`Law 20`: the worker's fetch mode is worth nothing if the server
     has stopped sending validators).
 
-    Run out-of-process because importing `app` pulls the whole application up;
-    same shape as `test_auth_root_path.py`.
+    **`B372`: a projection of `probe_served_surface`, not a third boot.** This
+    ran its own subprocess and booted the whole application to ask six URLs
+    the question the probe already asks of every URL it enumerates — status,
+    validator, the `If-None-Match` answer — so the file booted the app twice
+    for one question asked two ways. The probe records `cache_control` for it
+    now, and the six URLs are the ones `index.html` itself asks for: the
+    `app.js` URL here used to be a literal carrying a cache-buster the page had
+    long stopped requesting.
     """
-    env = os.environ.copy()
-    env.update({
-        "CHROMADB_CONNECT_TIMEOUT": "0.01",
-        "CHROMADB_HOST": "127.0.0.1",
-        "CHROMADB_PORT": "9",
-        "DATABASE_URL": f"sqlite:///{tmp_path / 'app.db'}",
-        "PANTHEON_DATA_DIR": str(tmp_path),
-        "PANTHEON_DISABLE_MCP": "1",
-        "PYTHONPATH": str(_REPO),
-        "PYTHON_DOTENV_DISABLED": "1",
-    })
-    # The stylesheet URL is resolved HERE and interpolated, because the probe
-    # below runs in a subprocess with `python3 -c` and has none of this
-    # module's helpers. Interpolated as a repr so a URL containing a quote
-    # could not break out of the literal.
-    probe = textwrap.dedent(
-        """
-        import json
-        import app as app_module
-        from fastapi.testclient import TestClient
-        from tests.helpers.signed_in import sign_in
-
-        # Signed in, as the install's admin: `/` is a person's page
-        # (`D-2026-10-07-02` §2; this booted with `AUTH_ENABLED=false` until then).
-        client = sign_in(app_module, TestClient(app_module.app))
-        out = {}
-        for label, url in [
-            ("js", "/static/app.js?v=20260815toolapproval4"),
-            ("css", __CSS_URL__),
-            ("woff2", "/static/fonts/FiraCode-Regular.woff2"),
-            ("png", "/static/icons/icon-192.png"),
-            ("json", "/static/manifest.json"),
-            ("root", "/"),
-        ]:
-            first = client.get(url)
-            etag = first.headers.get("etag")
-            second = (client.get(url, headers={"If-None-Match": etag})
-                      if etag else first)
-            out[label] = {
-                "status": first.status_code,
-                "cache_control": first.headers.get("cache-control"),
-                "etag": bool(etag),
-                "full_bytes": len(first.content),
-                "revalidated_status": second.status_code,
-                "revalidated_bytes": len(second.content),
-            }
-        print("RESULT=" + json.dumps(out, sort_keys=True))
-        """
-    ).replace("__CSS_URL__", repr(_shell_stylesheet()))
-    result = subprocess.run([sys.executable, "-c", probe], cwd=str(_REPO), env=env,
-                            capture_output=True, text=True, timeout=300, check=False)
-    assert result.returncode == 0, result.stderr
-    line = next((l for l in result.stdout.splitlines() if l.startswith("RESULT=")), None)
-    assert line is not None, result.stdout
-    got = json.loads(line.removeprefix("RESULT="))
+    surface = probe_served_surface(tmp_path)
+    rows = {**surface["refs"], **surface["pages"]}
+    app_js = [u for u in _shell_requests(_REPO / "static" / "index.html")
+              if u.split("?", 1)[0] == "/static/app.js"]
+    assert len(app_js) == 1, app_js
+    urls = {
+        "js": app_js[0],
+        "css": _shell_stylesheet(),
+        "woff2": "/static/fonts/FiraCode-Regular.woff2",
+        "png": "/static/icons/icon-192.png",
+        "json": "/static/manifest.json",
+        "root": "/",
+    }
+    missing = {label: url for label, url in urls.items() if url not in rows}
+    assert not missing, f"the probe did not reach {missing} — the shell stopped naming them"
+    got = {}
+    for label, url in urls.items():
+        row = rows[url]
+        again = row.get("conditional") or {}
+        got[label] = {
+            "status": row["status"],
+            "cache_control": row.get("cache_control"),
+            "etag": bool(row["etag"]),
+            "full_bytes": row["bytes"],
+            "revalidated_status": again.get("status", row["status"]),
+            "revalidated_bytes": again.get("bytes", row["bytes"]),
+        }
 
     # Every class install fetches answers a conditional request with an empty
     # 304 — including the fonts, icons and manifest, which carry no

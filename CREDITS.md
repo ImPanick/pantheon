@@ -865,9 +865,10 @@ nothing:
 
 *Re-read on 2026-09-18 from `package.json`, from `package-lock.json`'s recorded
 `"license": "MIT"` for the pinned 0.7.6, and from the npm registry metadata —
-still MIT, still zero runtime dependencies, still types-only. Nothing checks
-that this row and `package.json` agree, so a bump has to change both by hand
-(`B623`).*
+still MIT, still zero runtime dependencies, still types-only. The range in
+this row is the one `package.json` declares: `check-licences.py` rule 9 fails
+when the two disagree, so a bump that moves one side and not the other is red in
+CI (`B623`).*
 
 ---
 

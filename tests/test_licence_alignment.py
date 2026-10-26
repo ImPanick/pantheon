@@ -11,6 +11,7 @@ Each mutation test breaks exactly one thing in a temporary copy of the repo and
 asserts the checker notices. If a rule is ever weakened into a tautology, the
 test for it goes red.
 """
+import json
 import shutil
 import subprocess
 import sys
@@ -34,7 +35,8 @@ def repo(tmp_path):
     """A copy of the parts the checker reads, as a git repo so `git ls-files` works."""
     dst = tmp_path / "repo"
     dst.mkdir()
-    for rel in ("CREDITS.md", "NOTICE", "README.md"):
+    # `package.json` since `B623`: rule 9 compares CREDITS.md's npm table to it.
+    for rel in ("CREDITS.md", "NOTICE", "README.md", "package.json"):
         src = ROOT / rel
         if src.is_file():
             shutil.copy2(src, dst / rel)
@@ -211,3 +213,48 @@ def test_pnpms_store_directory_is_not_reported_as_a_package(repo):
     out = run(repo).stdout + run(repo).stderr
     assert "UNBUNDLED   one" in out and "UNBUNDLED   three" in out, out
     assert ".pnpm" not in out, out
+
+
+# ── `B623`: rule 9, the npm range CREDITS.md prints ─────────────────────────
+
+
+def _npm(repo):
+    pkg = repo / "package.json"
+    data = json.loads(pkg.read_text(encoding="utf-8"))
+    name, declared = next(iter(data["devDependencies"].items()))
+    return pkg, data, name, declared
+
+
+def test_a_bump_to_package_json_alone_fails(repo):
+    """What the Dependabot npm entry does: one side of the fact moves."""
+    pkg, data, name, declared = _npm(repo)
+    data["devDependencies"][name] = "^9.9.9"
+    pkg.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    r = run(repo)
+    assert r.returncode == 1
+    assert f"NPM VERSION {name}" in r.stdout and "'^9.9.9'" in r.stdout, r.stdout
+
+
+def test_a_bump_to_the_credit_alone_fails(repo):
+    _, _, name, declared = _npm(repo)
+    c = repo / "CREDITS.md"
+    text = c.read_text(encoding="utf-8")
+    assert f"`{declared}`" in text
+    c.write_text(text.replace(f"`{declared}`", "`^0.0.1`", 1), encoding="utf-8")
+    r = run(repo)
+    assert r.returncode == 1
+    assert f"NPM VERSION {name}" in r.stdout and "'^0.0.1'" in r.stdout, r.stdout
+
+
+def test_a_new_npm_package_with_no_row_fails(repo):
+    pkg, data, _, _ = _npm(repo)
+    data["devDependencies"]["left-pad"] = "^1.3.0"
+    pkg.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    r = run(repo)
+    assert r.returncode == 1
+    assert "NPM UNCREDITED left-pad ^1.3.0" in r.stdout, r.stdout
+
+
+def test_the_two_agree_on_the_real_tree():
+    r = run()
+    assert "NPM " not in r.stdout, r.stdout

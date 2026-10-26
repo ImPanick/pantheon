@@ -94,6 +94,8 @@ def record(url):
         "content_type": ctype,
         "csp": res.headers.get("content-security-policy", ""),
         "etag": res.headers.get("etag"),
+        # `B372`: the directive a conditional request is worth anything under.
+        "cache_control": res.headers.get("cache-control"),
         "bytes": len(res.content),
         "body": res.text if textual else "",
         "is_html": "text/html" in ctype,
@@ -156,11 +158,14 @@ _SURFACE_JSON: str = ""
 def probe_served_surface(tmp_path) -> dict:
     """Boot the real app and return `{"pages": {...}, "refs": {...}}`.
 
-    `pages` is url → `{status, content_type, csp, etag, bytes, body, is_html,
-    location, body_repeats}` for every parameter-free GET route plus every HTML
+    `pages` is url → `{status, content_type, csp, etag, cache_control, bytes,
+    body, is_html, location, body_repeats, conditional}` for every
+    parameter-free GET route plus every HTML
     document under the `/static` mount. `refs` is the same for every
     same-origin `src`/`href` those documents name, minus the body, plus
-    `referenced_by`. `body_repeats` is absent on `/api/` URLs and only there.
+    `referenced_by`. `body_repeats` is absent on `/api/` URLs and only there;
+    `conditional` (`status`, `bytes`, `csp` of an `If-None-Match` re-ask) is
+    present exactly where the first answer carried an `etag`.
     """
     global _SURFACE_JSON
     if _SURFACE_JSON:

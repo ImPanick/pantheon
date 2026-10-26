@@ -17,7 +17,7 @@ adding its licence here, which means having read it.
     python3 .pantheon/check-licences.py          # report
     python3 .pantheon/check-licences.py --quiet  # findings only
 
-Eight rules, each one a way attribution has actually rotted somewhere:
+Nine rules, each one a way attribution has actually rotted somewhere:
 
   1. No undeclared file under a vendored root.        (OpenMoji, 2026-09-01)
   2. Every declared licence text exists in licenses/.
@@ -42,6 +42,9 @@ Eight rules, each one a way attribution has actually rotted somewhere:
      file existed. There is no default: a vendored script whose entry does not
      say which answer applies fails, which is what stops the next esbuild,
      rollup or Vite artifact from arriving the same way.)
+  9. The range CREDITS.md prints for each npm package is the one package.json
+     declares, and every declared package has a row. (B623, 2026-09-18: the
+     `^0.6.1` -> `^0.7.6` bump had to change both by hand.)
 
 CONTENTS: how a vendored script's contents are known (rule 8). Four answers,
 each one checkable against the bytes rather than taken on trust:
@@ -72,7 +75,8 @@ Scope (Law 5, so the pass means something): files tracked by git under
 static/lib/, static/fonts/, static/icons/ and library/. Python and JavaScript
 package dependencies are NOT in scope -- they are declared in requirements*.txt
 and package.json, resolved by a package manager, and their licences travel with
-the wheels. This checks what THIS repository copies into itself.
+the wheels. This checks what THIS repository copies into itself -- and, rule 9,
+the one thing CREDITS.md says about an npm package that package.json also says.
 """
 import fnmatch
 import json
@@ -757,6 +761,51 @@ def scope_section(credits):
     return credits[start:end if end > 0 else len(credits)]
 
 
+# `B623`. The npm table's rows: a linked package name, then its range in
+# backticks — `| [`@scope/pkg`](url) `^1.2.3` | …`.
+NPM_HEADING = "## JavaScript dependencies"
+_NPM_ROW = re.compile(r"^\|\s*\[`(?P<name>[^`]+)`\]\([^)]*\)\s*`(?P<range>[^`]+)`\s*\|", re.M)
+_NPM_FIELDS = ("dependencies", "devDependencies", "optionalDependencies", "peerDependencies")
+
+
+def npm_version_problems(credits: str, package: dict) -> list:
+    """`B623`. The range CREDITS.md prints for each npm package is package.json's.
+
+    The two were copies of one fact with nothing holding them equal (`Law 7`),
+    and the Dependabot npm entry opens pull requests that touch one side: the
+    `^0.6.1` -> `^0.7.6` bump had to change both by hand. Rule 1's scope is the
+    vendored roots and says package dependencies are out of it; this is the one
+    claim about them CREDITS.md makes, so it is checked where it is made.
+    """
+    declared = {}
+    for field in _NPM_FIELDS:
+        declared.update((package or {}).get(field) or {})
+    start = credits.find(NPM_HEADING)
+    section = ""
+    if start >= 0:
+        end = credits.find("\n## ", start + 1)
+        section = credits[start:end if end > 0 else len(credits)]
+    printed = {m.group("name"): m.group("range") for m in _NPM_ROW.finditer(section)}
+    problems = []
+    for name, wanted in sorted(declared.items()):
+        if name not in printed:
+            problems.append(
+                f"NPM UNCREDITED {name} {wanted}\n"
+                f"            package.json declares it; CREDITS.md's "
+                f"{NPM_HEADING!r} table has no row for it.")
+        elif printed[name] != wanted:
+            problems.append(
+                f"NPM VERSION {name}: CREDITS.md prints {printed[name]!r}, "
+                f"package.json declares {wanted!r}.\n"
+                f"            A bump changes both, or the credit describes a "
+                f"release nobody installs.")
+    for name in sorted(set(printed) - set(declared)):
+        problems.append(
+            f"NPM STALE   {name}: CREDITS.md credits {printed[name]!r}; "
+            f"package.json no longer declares it.")
+    return problems
+
+
 def main() -> int:
     quiet = "--quiet" in sys.argv
     credits = (ROOT / "CREDITS.md").read_text(encoding="utf-8")
@@ -878,6 +927,13 @@ def main() -> int:
     # vendored script whose entry does not say which of CONTENTS_ANSWERS
     # applies fails, and each answer is then checked against the bytes.
     problems.extend(check_contents(files))
+
+    # 9 — `B623`. The npm range CREDITS.md prints is the one package.json
+    # declares. No package.json declares nothing, so a row then is stale.
+    package_json = ROOT / "package.json"
+    package = (json.loads(package_json.read_text(encoding="utf-8"))
+               if package_json.is_file() else {})
+    problems.extend(npm_version_problems(credits, package))
 
     if not quiet:
         copyleft = [e.name for e in INVENTORY if e.copyleft]

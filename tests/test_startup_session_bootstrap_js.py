@@ -25,6 +25,10 @@ _SESSIONS = _REPO / "static" / "js" / "sessions.js"
 _LIVE_BUSTER = re.search(
     r"chatRenderer\.js\?v=([A-Za-z0-9._-]+)",
     _SESSIONS.read_text(encoding="utf-8")).group(1)
+# `B814`: read from `sessions.js`, as the line above reads chatRenderer's.
+_MODEL_PICKER_BUSTER = re.search(
+    r"modelPicker\.js\?v=([A-Za-z0-9._-]+)",
+    _SESSIONS.read_text(encoding="utf-8")).group(1)
 _SHELL_URL = (_REPO / "static" / "js" / "startupShell.js").as_uri()
 _HAS_NODE = shutil.which("node") is not None
 
@@ -55,7 +59,7 @@ _IMPORT_REWRITES = {
     "import { providerLogo } from './providers.js';": (
         "import { providerLogo } from './providers.mjs';"
     ),
-    "import { initModelPicker, updateModelPicker } from './modelPicker.js?v=20260722ctxheader1';": (
+    f"import {{ initModelPicker, updateModelPicker }} from './modelPicker.js?v={_MODEL_PICKER_BUSTER}';": (
         "import { initModelPicker, updateModelPicker } from './modelPicker.mjs';"
     ),
     "import themeModule from './theme.js';": "import themeModule from './theme.mjs';",

@@ -21,6 +21,7 @@ had. Getting that wrong burns the only first run they get, silently.
 """
 
 import json
+import re
 import shutil
 import subprocess
 import textwrap
@@ -145,11 +146,17 @@ def sandbox(tmp_path_factory):
 _PREAMBLE = """
 import { installDom, openModal, byId, bySelector, El } from './dom.js';
 installDom();
-const slash = await import('./slashCommands.js?v=20261009approvalcensus');
+const slash = await import('__SLASH_SPECIFIER__');
 const ui = await import('./ui.js');
 const tours = await import('./tourAutoplay.js');
 const settle = () => new Promise(r => setTimeout(r, 0));
 """
+# `B814`. The specifier `tourAutoplay.js` imports `slashCommands.js` under,
+# READ from it: a module imported under two query strings is two modules, so
+# the stub this file hands the tours has to be the one they import — and a
+# cache-buster written down here went red the next time it moved.
+_PREAMBLE = _PREAMBLE.replace("__SLASH_SPECIFIER__", re.search(
+    r"from '(\./slashCommands\.js(?:\?v=[^']*)?)'", _SRC.read_text(encoding="utf-8")).group(1))
 
 
 def _run(sandbox: Path, script: str) -> dict:

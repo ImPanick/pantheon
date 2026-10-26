@@ -20,6 +20,7 @@ the real table beside them; the server's sentence is produced by the real
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import textwrap
@@ -335,8 +336,12 @@ def test_the_slash_catalogue_does_not_offer_a_hidden_tool(tmp_path):
         ".map(([k, v]) => [k, { ...v, handler: h }]));\n"
         "export const LEGACY_ALIASES = { memories: { parent: 'brain', sub: 'list' } };\n")
     text = (tmp_path / "js" / "slashAutocomplete.js").read_text()
-    (tmp_path / "js" / "slashAutocomplete.js").write_text(
-        text.replace("./slashCommands.js?v=20261009approvalcensus", "./slashCommands.js"))
+    # `B814`: whatever buster the import carries today, read rather than
+    # written down — a literal here stopped matching the day it moved, and the
+    # sandbox then imported the real `slashCommands.js` instead of this stub.
+    unbusted, n = re.subn(r"\./slashCommands\.js\?v=[A-Za-z0-9._-]+", "./slashCommands.js", text)
+    assert n == 1, "slashAutocomplete.js no longer imports slashCommands.js under a buster"
+    (tmp_path / "js" / "slashAutocomplete.js").write_text(unbusted)
     out = _node(tmp_path, """
         globalThis.document = { addEventListener() {}, getElementById: () => null };
         const T = await import('./js/ui_visibility.js');
