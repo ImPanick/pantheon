@@ -13,6 +13,8 @@
 // box means "leave it alone"; Remove is the one way to clear it. Admin-only: the
 // card stays hidden unless that route answers, and it answers admins only.
 
+import { invalidateSettings } from './appConfig.js';
+
 const $ = (id) => document.getElementById(id);
 
 function _say(text, ok) {
@@ -65,6 +67,7 @@ async function _write(value) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ github_token: value }),
   });
+  invalidateSettings();   // the shared settings snapshot holds the old value
   if (!res.ok) {
     let detail = `Not saved (${res.status}).`;
     try {

@@ -594,6 +594,8 @@ def _switch_case(tmp_path: Path, script: str) -> dict:
         const posted = [];
         globalThis.fetch = async (url, init) => {{ posted.push({{ url, body: init && init.body }}); return answer(url); }};
         const res = (status, body) => ({{ ok: status < 400, status, json: async () => body }});
+        // `B1228`: a saved switch drops the page's shared features read.
+        const invalidateAuthFeatures = () => {{ said.invalidated = (said.invalidated || 0) + 1; }};
         {js_binding(src, "featureLabels")};
         {_admin_fn("_hidesLine")}
         {_admin_fn("_saveFeature")}
@@ -613,7 +615,7 @@ def test_a_feature_switch_applies_on_the_admins_page_and_says_so(tmp_path):
     assert out["ok"] is True and out["checked"] is False
     assert out["gallery"] is False, "the admin's own page still showed it until a reload (SET-M-12)"
     assert out["said"] == {"toasts": ["Gallery off for everyone. Others see it after their next reload."],
-                           "errors": []}
+                           "errors": [], "invalidated": 1}
 
 
 def test_a_refused_switch_goes_back_and_says_the_servers_sentence(tmp_path):

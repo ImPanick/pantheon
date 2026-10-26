@@ -81,12 +81,15 @@ def _assert_quiet_offline_loud_when_garbled(out, what):
 
 
 def test_the_notes_loader(tmp_path):
+    # `B1228`: the list is read through `appConfig.getNotes` (the real module,
+    # which has no imports), and a read is remembered in `_activeNotesRead`.
     out = _node(tmp_path, """
-        let _loading = false, _notes = null, _showingArchived = false;
+        let _loading = false, _notes = null, _showingArchived = false, _activeNotesRead = false;
+        const { getNotes } = await import(%s);
         const API_BASE = 'http://x';
         async function _fetchNotes() %s
         await both(_fetchNotes);
-    """ % _cut("notes.js", "async function _fetchNotes("))
+    """ % (json.dumps((JS / "appConfig.js").as_uri()), _cut("notes.js", "async function _fetchNotes(")))
     _assert_quiet_offline_loud_when_garbled(out, "notes")
 
 

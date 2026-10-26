@@ -298,6 +298,10 @@ def test_the_boot_check_drops_the_pages_copy_when_the_server_says_the_default_is
         globalThis.window.__pantheonDefaultChat = { endpoint_url: 'u', model: 'gone-70b' };
         globalThis.fetch = async () => ({ json: async () => ({ endpoint_id: 'office', endpoint_url: '', model: '',
           reason: "Office LLM isn't answering. Pick another from the model menu." }) });
+        // `B1228`: app.js reads it through `appConfig.getDefaultChat` (its
+        // sharing is `tests/test_app_config_shared_fetch_js.py`'s); here, the
+        // one request it makes.
+        const getDefaultChat = () => fetch('/api/default-chat').then((r) => r.json());
         %s
         await _refreshDefaultChat();
         console.log(JSON.stringify({ cache: localStorage.getItem('pantheon-default-chat-cache'),

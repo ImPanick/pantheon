@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/censor.js
+import { getAuthFeatures } from './appConfig.js';
 /**
  * Sensitive Information Censor Module
  * Detects emails, passwords, API keys, tokens, etc. in chat responses
@@ -59,9 +60,8 @@ export function init() {
 }
 
 function _loadState() {
-  // Check admin feature flag
-  fetch('/api/auth/features', { credentials: 'same-origin' })
-    .then(r => r.json())
+  // Check admin feature flag — `B1228`: the one features read `app.js` shares.
+  getAuthFeatures()
     .then(features => {
       _enabled = features.sensitive_filter !== false && _prefEnabled();
       // Start observer after loading state

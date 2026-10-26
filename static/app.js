@@ -73,7 +73,7 @@ import * as researchPanelModule from './js/research/panel.js?v=20261009census';
 import ttsModule from './js/tts-ai.js';
 import spinnerModule from './js/spinner.js';
 import { initKeyboardShortcuts, KEYBIND_DEFAULTS, formatKeybind, ariaKeyshortcuts } from './js/keyboard-shortcuts.js';
-import { getSettings } from './js/appConfig.js';
+import { getSettings, getAuthStatus, getAuthFeatures, getDefaultChat } from './js/appConfig.js';
 // `syncRailSide` is not named here: initSidebarLayout() publishes it as
 // window.syncRailSide, which is how the two call sites left in this file reach
 // it. The direct binding existed only for the rail-gear handler that P1-05
@@ -272,7 +272,7 @@ try {
 } catch (_) {}
 async function _refreshDefaultChat() {
   try {
-    const d = await (await fetch('/api/default-chat')).json();
+    const d = await getDefaultChat();   // `B1228`: shared with the other boot readers
     if (d && d.endpoint_url && d.model) {
       _defaultChat = d;
       try {
@@ -1481,8 +1481,8 @@ function initializeEventListeners() {
   }
   // Fetch auth status — populate the user bar
   noteStatusAsked();   // `B1192`: admin-only loads wait for this answer
-  fetch(`${API_BASE}/api/auth/status`, { credentials: 'same-origin' })
-    .then(r => r.json())
+  // `B1228`: `getAuthStatus` is the one read `init.js` shares.
+  getAuthStatus()
     .then(d => {
       window._isAdmin = !!d.is_admin;
       const userBarName = el('user-bar-name');
@@ -1634,12 +1634,9 @@ function initializeEventListeners() {
   // again on the next mode change (`SET-M-4/5`). The table names every
   // feature's doors; the applier hides them and keeps them hidden through
   // every later pass (`H05`'s precedence, kept: `applyUIVis` cannot undo it).
-  const _prefetchedFeatures = sessionStorage.getItem('pan-prefetch-features');
-  sessionStorage.removeItem('pan-prefetch-features');
-  window._initFeaturesReady = (_prefetchedFeatures
-    ? Promise.resolve(JSON.parse(_prefetchedFeatures))
-    : fetch(`${API_BASE}/api/auth/features`, { credentials: 'same-origin' }).then(r => r.json())
-  ).then(features => {
+  // `B1228`: `getAuthFeatures` consumes `login.html`'s snapshot itself, and
+  // is the one read `censor.js` shares.
+  window._initFeaturesReady = getAuthFeatures().then(features => {
       applyToolVisibility({ features: features || {} });
       return features;
     })

@@ -1687,9 +1687,12 @@
             var dc = JSON.parse(localStorage.getItem('pantheon-default-chat-cache') || 'null');
             if (applyDefault(dc)) return;
           } catch (_) {}
-          fetch('/api/default-chat', { credentials: 'same-origin' })
-            .then(function(r){ return r.ok ? r.json() : null; })
-            .then(function(dc){
+          // `B1228`: the promise is left for `appConfig.getDefaultChat`, so the
+          // modules that ask next adopt this request instead of making their own.
+          var boot = fetch('/api/default-chat', { credentials: 'same-origin' })
+            .then(function(r){ return r.ok ? r.json() : null; });
+          window.__pantheonDefaultChatBoot = boot;
+          boot.then(function(dc){
               if (!applyDefault(dc)) return;
               try { localStorage.setItem('pantheon-default-chat-cache', JSON.stringify(dc)); } catch (_) {}
             })

@@ -7,7 +7,7 @@ import settingsModule from './settings.js?v=20261009census';
 import { providerLogo, providerLogoFromUrl } from './providers.js';
 import { sortModelObjects } from './modelSort.js';
 import { PROVIDER_DEVICE_FLOWS, formatDeviceFlowError, runProviderDeviceFlow } from './providerDeviceFlow.js';
-import { getSettings, getTools, invalidateSettings, invalidateTools } from './appConfig.js';
+import { getSettings, getTools, invalidateSettings, invalidateTools, invalidateAuthFeatures } from './appConfig.js';
 import { chevronIcon } from './icons.js';
 // C-ERR: a refused response is read once, by the one reader.
 import { readRefusal } from './workbench/refusal.js';
@@ -2581,6 +2581,7 @@ async function _saveFeature(toggle) {
       return false;
     }
     const now = await r.json().catch(() => null);
+    invalidateAuthFeatures();   // `B1228`: the shared read is stale now
     if (typeof window.applyFeatureFlags === 'function') window.applyFeatureFlags(now || { [key]: toggle.checked });
     uiModule.showToast(`${featureLabels[key] || key} ${toggle.checked ? 'on' : 'off'} for everyone. Others see it after their next reload.`);
     return true;

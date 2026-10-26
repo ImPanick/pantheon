@@ -89,6 +89,10 @@ _IMPORT_REWRITES = {
     "import approvalModeModule from './approvalMode.js';   // `D-2026-10-09-01` §2": (
         "import approvalModeModule from './approvalMode.mjs';   // `D-2026-10-09-01` §2"
     ),
+    # `B1228`: the default chat is the page's one shared read.
+    "import { getDefaultChat } from './appConfig.js';   // `B1228`": (
+        "import { getDefaultChat } from './appConfig.mjs';   // `B1228`"
+    ),
 }
 
 # Modules with no dependencies of their own, copied into the sandbox whole
@@ -109,6 +113,8 @@ _VERBATIM = {
     # `D-2026-10-09-01` §2. No imports of its own, and every top-level
     # reference to `window` is guarded, so the real module loads under node.
     "approvalMode.mjs": _REPO / "static" / "js" / "approvalMode.js",
+    # `B1228`. No imports of its own; the real shared reads.
+    "appConfig.mjs": _REPO / "static" / "js" / "appConfig.js",
 }
 
 _STUBS = {

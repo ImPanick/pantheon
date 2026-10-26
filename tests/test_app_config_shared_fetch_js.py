@@ -199,6 +199,8 @@ def test_login_prefetch_is_used_once_and_then_consumed():
 _WRITE_ENDPOINTS = {
     "/api/auth/settings": "invalidateSettings",
     "/api/tools": "invalidateTools",
+    # `B1228`: the features read is shared now too.
+    "/api/auth/features": "invalidateAuthFeatures",
 }
 # login.html is the pre-app login page: it has no module graph and its only call
 # is the prefetch GET, so it is not a writer and cannot import appConfig.js.
@@ -374,3 +376,64 @@ def test_appconfig_is_precached_by_the_service_worker():
     """PRECACHE is hand-maintained; a module missing from it breaks offline."""
     sw = (_REPO / "static" / "sw.js").read_text(encoding="utf-8")
     assert "'/static/js/appConfig.js'" in sw
+
+
+# ── `B1228`: the boot reads that were asked twice ──────────────────────────
+
+@pytest.mark.skipif(not _HAS_NODE, reason="node binary not on PATH")
+def test_status_and_features_are_one_request_each_until_a_writer_invalidates():
+    body = """
+    __queue(__json({ username: 'ada', is_admin: true }));
+    __queue(__json({ gallery: true }));
+    __queue(__json({ gallery: false }));
+    const [a, b] = await Promise.all([getAuthStatus(), getAuthStatus()]);
+    const [f1, f2] = await Promise.all([getAuthFeatures(), getAuthFeatures()]);
+    invalidateAuthFeatures();
+    const f3 = await getAuthFeatures();
+    console.log(JSON.stringify({ a: a.username, same: a === b, f1: f1.gallery, f2: f2.gallery,
+      f3: f3.gallery, urls: __calls().map(c => c[0]) }));
+    """
+    out = json.loads(_run(body))
+    assert out == {"a": "ada", "same": True, "f1": True, "f2": True, "f3": False,
+                   "urls": ["/api/auth/status", "/api/auth/features", "/api/auth/features"]}
+
+
+@pytest.mark.skipif(not _HAS_NODE, reason="node binary not on PATH")
+def test_the_login_features_snapshot_is_used_once():
+    body = """
+    sessionStorage.setItem('pan-prefetch-features', JSON.stringify({ memory: false }));
+    const f = await getAuthFeatures();
+    console.log(JSON.stringify({ memory: f.memory, left: sessionStorage.getItem('pan-prefetch-features'),
+      calls: __calls().length }));
+    """
+    assert json.loads(_run(body)) == {"memory": False, "left": None, "calls": 0}
+
+
+@pytest.mark.skipif(not _HAS_NODE, reason="node binary not on PATH")
+def test_notes_are_shared_in_flight_and_never_kept():
+    """A list that changes under the person's hands: two readers at once are
+    one request; the next read after it settles is a new one."""
+    body = """
+    __queue(__json({ notes: [1] }));
+    __queue(__json({ notes: [1, 2] }));
+    const [a, b] = await Promise.all([getNotes(), getNotes()]);
+    const c = await getNotes();
+    console.log(JSON.stringify({ a: a.notes, b: b.notes, c: c.notes, n: __calls().length }));
+    """
+    assert json.loads(_run(body)) == {"a": [1], "b": [1], "c": [1, 2], "n": 2}
+
+
+@pytest.mark.skipif(not _HAS_NODE, reason="node binary not on PATH")
+def test_the_default_chat_adopts_the_inline_read_and_a_settings_write_drops_it():
+    body = """
+    globalThis.window = { __pantheonDefaultChatBoot: Promise.resolve({ model: 'qwen3', endpoint_url: 'u' }) };
+    const first = await getDefaultChat();           // the composer's inline read, adopted
+    const again = await getDefaultChat();           // within the reuse window
+    __queue(__json({ model: 'llama3', endpoint_url: 'u' }));
+    invalidateSettings();                           // a default saved in Settings
+    const after = await getDefaultChat();
+    console.log(JSON.stringify({ first: first.model, again: again.model, after: after.model,
+      left: window.__pantheonDefaultChatBoot, urls: __calls().map(c => c[0]) }));
+    """
+    assert json.loads(_run(body)) == {"first": "qwen3", "again": "qwen3", "after": "llama3",
+                                      "left": None, "urls": ["/api/default-chat"]}

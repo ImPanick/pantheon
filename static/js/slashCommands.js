@@ -937,6 +937,8 @@ async function handleSetupWizard(mode, input) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(features),
         });
+        // `B1228`: the page's shared features read is stale now.
+        import('./appConfig.js').then((m) => m.invalidateAuthFeatures()).catch(() => {});
         await typewriterReply(`${name}: ${features[name] ? 'on' : 'off'}`);
       } else {
         await typewriterReply(`Unknown feature "${name}". Available: ${Object.keys(features).join(', ')}`);

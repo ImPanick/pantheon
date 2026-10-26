@@ -124,7 +124,9 @@ _ADMIN_STUBS.update({
     "appConfig.js": "export async function getSettings(){ return {}; }\n"
                     "export async function getTools(){ return {}; }\n"
                     "export function invalidateSettings(){}\n"
-                    "export function invalidateTools(){}\n",
+                    "export function invalidateTools(){}\n"
+                    # `B1228`: a saved feature switch drops the shared read.
+                    "export function invalidateAuthFeatures(){}\n",
 })
 
 _PREAMBLE = (

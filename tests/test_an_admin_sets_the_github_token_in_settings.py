@@ -146,7 +146,8 @@ def _drive_panel(tmp_path, *, state_status=200, state=None, then=""):
     from test_tool_effect_surfaces_js import _DOM
 
     (tmp_path / "dom.js").write_text(_DOM)
-    shutil.copy(ROOT / "static" / "js" / "githubToken.js", tmp_path / "githubToken.js")
+    for name in ("githubToken.js", "appConfig.js"):
+        shutil.copy(ROOT / "static" / "js" / name, tmp_path / name)
     state = state or {"configured": False, "source": "", "env_var": "PANTHEON_GITHUB_TOKEN",
                       "rate_without": 60, "rate_with": 5000}
     case = """

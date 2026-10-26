@@ -8,6 +8,7 @@ import settingsModule from './settings.js?v=20261009census';
 import { sortModelObjects } from './modelSort.js';
 import spinnerModule from './spinner.js';
 import { chevronIcon } from './icons.js';
+import { getDefaultChat } from './appConfig.js';   // `B1228`
 
 const API_BASE = window.location.origin;
 
@@ -140,8 +141,9 @@ async function _ensureDefaultPendingChat() {
     } catch (_) {}
     if (!dc || !dc.endpoint_url || !dc.model) {
       try {
-        const res = await fetch(`${API_BASE}/api/default-chat`, { credentials: 'same-origin' });
-        if (res.ok) dc = await res.json();
+        // `B1228`: shared with the page's other default-chat readers.
+        const got = await getDefaultChat();
+        if (got && !got.detail) dc = got;
       } catch (_) {}
     }
     // `D-2026-10-07-02` §1. The saved default is not listed now (its endpoint
