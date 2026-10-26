@@ -124,6 +124,7 @@ from src.agent_tools import (
     ToolBlock,
     MAX_AGENT_ROUNDS,
 )
+from src.active_plan import ActivePlan, bind_active_plan   # `B1415`
 from src.agent_tools.computer_tools import (
     ACTIONS as _COMPUTER_ACTIONS,
     command_line as _computer_command_line,
@@ -8629,6 +8630,14 @@ async def stream_agent_loop(
     # on such turns and at most _VERIFIER_MAX_ROUNDS times.
     _effectful_used = False
     _verifier_rounds = 0
+    # `B1415`. The plan this turn executes, as `update_plan` last accepted it
+    # (the tool refuses a write that would silently delete steps), and whether
+    # steps were ticked with no effectful call behind them this turn — the
+    # owner's transcript ticked six with none, and the verifier, gated on
+    # `_effectful_used` alone, waved that turn through.
+    _plan_holder = ActivePlan(approved_plan)
+    _effectful_ever = False
+    _ticked_without_work = False
     # `P4-17`. Every verdict this turn, in order, for the metrics envelope —
     # the verifier can run twice, and a reloaded thread has to show both.
     _verifier_findings: list = []
@@ -9047,6 +9056,7 @@ async def stream_agent_loop(
             # binding is the approved call's and ends with it.
             bind_run_limits(_run_limits)
             bind_tool_call_started_by(workload)  # `B1061`
+            bind_active_plan(_plan_holder)       # `B1415`
             try:
                 return await execute_tool_block(
                     approved_block,
@@ -9321,6 +9331,7 @@ async def stream_agent_loop(
         tool_events.append(approved_tool_event)
         if approved.tool_name in _VERIFIER_EFFECTFUL_TOOLS:
             _effectful_used = True
+            _effectful_ever = True
         formatted_approved_result = format_tool_result(desc, approved_result)
         approved_record = {
             "tool_name": approved.tool_name,
@@ -10338,7 +10349,10 @@ async def stream_agent_loop(
             # to re-trigger). Skipped on force-answer rounds (no tools to
             # fix with), pure Q&A, and when the toggle is off.
             _claimed_done = bool(_strip_think_blocks(cleaned_round).strip())
-            if (_effectful_used and not _force_answer
+            # `B1415`: and a turn that ticked plan steps with nothing
+            # effectful behind them — "claimed done, did nothing" is the one
+            # case this check exists for.
+            if ((_effectful_used or _ticked_without_work) and not _force_answer
                     and _claimed_done
                     and _verifier_rounds < _VERIFIER_MAX_ROUNDS
                     # Default OFF: on weak local models the verifier can't judge
@@ -10383,6 +10397,7 @@ async def stream_agent_loop(
                     # Require fresh effectful work before verifying again, so we
                     # never re-verify an unchanged state in a loop.
                     _effectful_used = False
+                    _ticked_without_work = False
                     continue
             # ── Intent-without-action supervisor ─────────────────────
             # Catch "Let me tail the output" / "I'll check the logs" /
@@ -11108,6 +11123,7 @@ async def stream_agent_loop(
                     # this task's context is a copy, so it ends with the call.
                     bind_run_limits(_run_limits)
                     bind_tool_call_started_by(workload)  # `B1061`
+                    bind_active_plan(_plan_holder)       # `B1415`
                     try:
                         return await execute_tool_block(
                             block,
@@ -11671,6 +11687,9 @@ async def stream_agent_loop(
             tool_events.append(tool_event)
             if block.tool_type in _VERIFIER_EFFECTFUL_TOOLS:
                 _effectful_used = True
+                _effectful_ever = True
+            if result.get("plan_ticked") and not _effectful_ever:
+                _ticked_without_work = True   # `B1415`
 
             formatted = format_tool_result(desc, result)
             tool_results.append(formatted)
