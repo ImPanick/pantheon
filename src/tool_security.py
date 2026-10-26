@@ -291,6 +291,37 @@ def blocked_tool_reason(tool_name) -> str:
     return ""
 
 
+def non_admin_refusal(tool_name: str) -> str:
+    """The sentence a non-admin's refused call is answered with (`P2-25`).
+
+    Says that it was refused, **why** — the register's own sentence, from
+    `blocked_tool_reason` — and who may do it (`Law 15`). `B1382` lifted it
+    out of the dispatcher so the loop's own refusal says the same thing: the
+    loop's `tool_blocked` arm answers first for a name `blocked_tools_for_owner`
+    put in the turn's cap, and it used to answer *"disabled by the current
+    request policy"*, so this sentence was never reached.
+    """
+    why = blocked_tool_reason(tool_name)
+    return (
+        f"Tool '{tool_name}' is restricted to admin users on this deployment. "
+        + (f"It {why}. " if why else "")
+        + "Ask an admin to perform this action or grant the needed permission."
+    )
+
+
+def delegated_credential_refusal(tool_name: str) -> str:
+    """The sentence a bearer-token run's refused call is answered with (`B70`).
+
+    One copy (`B1382`, `Law 7`): `ToolRunSecurityContext.decision_for` and the
+    loop's own refusal both read it, so a token's run is told the same thing
+    whichever of the two answers first.
+    """
+    return (
+        f"Tool '{tool_name}' is not available to API-token callers. "
+        "It requires an interactive session."
+    )
+
+
 # Plan mode: the agent may investigate but must not mutate anything. Only these
 # read-only/inspection tools stay enabled; everything else (writes, sends,
 # manage_*, model serving, MCP, etc.) is blocked. Allowlist rather than blocklist

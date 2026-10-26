@@ -217,7 +217,11 @@ def test_what_the_cap_withheld_after_the_plan_is_named_not_lost(measured, who):
     assert capped, "the names the clamp withheld after the plan are not recorded"
     assert len(capped) == order.plan_candidates - int(order.receipt["candidates"])
     from src.tool_policy import known_tool_names
-    assert set(capped) <= set(known_tool_names())
+    # `B1397` widened the clamp by the turn's own MCP names, so what it
+    # withheld after the plan is the built-in register plus `mcp__*` spellings
+    # and nothing else.
+    assert {n for n in set(capped) - set(known_tool_names())
+            if not n.startswith("mcp__")} == set()
 
 
 @pytest.mark.parametrize("who", ["admin", "user"])
@@ -356,6 +360,27 @@ def test_the_general_no_tool_clamp_still_withholds_every_known_tool(measured, wh
     from src.tool_policy import known_tool_names
     order = measured[("general", who, "up")]
     assert order.cap_at_prompt >= len(set(known_tool_names()))
+
+
+def test_the_general_no_tool_clamp_withholds_the_operators_mcp_tools_too(measured):
+    """`B1397`. `known_tool_names()` holds no `mcp__*` spelling, so with a real
+    MCP server up the clamp's cap held 85 names and neither probe tool — the
+    route clamp's literal was the only thing withholding them. Red before the
+    clamp withheld the turn's own MCP names as well.
+
+    The MCP names are read off the control turn (same admin, same server, no
+    clamp), where the whole suite is offered, so the test does not name them
+    itself.
+    """
+    control = measured[("control", "admin", "up")]
+    mcp_names = {n for n in control.prompt_tool_names if n.startswith("mcp__")}
+    assert mcp_names, "the probe's MCP server offered nothing on the control turn"
+    order = measured[("general", "admin", "up")]
+    assert mcp_names <= set(order.cap_at_prompt_names), (
+        f"the no-tool clamp left {sorted(mcp_names - set(order.cap_at_prompt_names))} "
+        "outside the turn's cap")
+    # And still nothing is offered (`Law 1`: a narrowing of nothing).
+    assert order.array == []
 
 
 def test_the_notes_clamp_still_cannot_lift_a_privilege(measured):

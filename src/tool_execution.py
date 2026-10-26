@@ -24,9 +24,9 @@ from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
 from src.tool_security import (
     BUILTIN_EMAIL_TOOLS,
-    blocked_tool_reason,
     email_tool_policy_names,
     is_public_blocked_tool,
+    non_admin_refusal,
     owner_is_admin_or_single_user,
 )
 from src.tool_capabilities import ToolRunSecurityContext, blocked_tool_result
@@ -1354,13 +1354,10 @@ async def _execute_tool_block_impl(
         # maintainers, a reason in the refusal is documentation for the user
         # (`Law 15`). It is also what stops the register going stale: a name
         # whose reason nobody ever sees is a name whose reason nobody checks.
-        why = blocked_tool_reason(tool)
+        # `B1382`: the sentence lives in `tool_security.non_admin_refusal`,
+        # which the loop's own refusal reads too.
         result = {
-            "error": (
-                f"Tool '{tool}' is restricted to admin users on this deployment. "
-                + (f"It {why}. " if why else "")
-                + "Ask an admin to perform this action or grant the needed permission."
-            ),
+            "error": non_admin_refusal(tool),
             "exit_code": 1,
         }
         logger.warning("Public tool policy blocked owner=%r tool=%s", owner, tool)

@@ -2163,6 +2163,42 @@ _API_HOSTS = frozenset([
 ])
 _MCP_KEYWORDS = frozenset(["mcp", "browse", "browser", "website", "calendar", "event", "email",
                            "gmail", "screenshot", "navigate", "click", "miniflux", "rss", "feed"])
+
+
+def _mcp_intent_pattern():
+    """`B1388`. `_MCP_KEYWORDS` as one compiled alternation, built from the set
+    so the words live in one place (`Law 7`).
+
+    The fenced route asked `keyword in text` — a raw substring — so
+    *"eventually"*, *"feedback"* and *"clicking"* opened the only door to a
+    `tools` array on an Ollama endpoint. Each keyword now has to start a word
+    and end one, allowing only its own inflections (`calendars`, `browsing`,
+    `browser`, `emailed`), the shape `_SUGGEST_INTENT_RE` uses on the left edge
+    with a right edge added — a left edge alone still matches `event` inside
+    `eventually`. The edges are "not a letter or digit" rather than `\b`, so
+    an underscore still separates: `mcp__probe__echo` and `send_email` keep
+    matching as they did.
+    """
+    alternatives = []
+    for keyword in sorted(_MCP_KEYWORDS, key=len, reverse=True):
+        if keyword.endswith("e"):
+            # browse → browse/browses/browsed/browsing/browser/browsers
+            alternatives.append(re.escape(keyword[:-1]) + r"(?:e|es|ed|ing|er|ers)")
+        else:
+            alternatives.append(re.escape(keyword) + r"(?:s|es|ed|ing|er|ers)?")
+    return re.compile(
+        r"(?<![A-Za-z0-9])(?:" + "|".join(alternatives) + r")(?![A-Za-z0-9])",
+        re.IGNORECASE,
+    )
+
+
+_MCP_INTENT_RE = _mcp_intent_pattern()
+
+
+def _wants_mcp_schemas(text: str) -> bool:
+    """`B1388`: does this turn's text ask for something an MCP server serves?
+    The fenced route's one door to a `tools` array."""
+    return bool(_MCP_INTENT_RE.search(str(text or "")))
 _ADMIN_SCHEMA_NAMES = frozenset([
     "manage_session", "manage_skills", "manage_tasks",
     "manage_endpoints", "manage_mcp", "manage_webhooks", "manage_tokens",
@@ -2949,16 +2985,13 @@ def _strip_think_blocks(text: str) -> str:
 
 
 _LOW_SIGNAL_RE = re.compile(r"^[\W_]*$", re.UNICODE)
-_CASUAL_OPENING_RE = re.compile(
-    r"^\s*(?:h+i+|hey+|hello+|yo+|sup+|what'?s up|wass?up|hiya|howdy|"
-    r"lol|lmao|haha+|hehe+|thanks?|thank you|ty|idk|dunno|meh|bruh|bro)\b(?P<tail>.*)$",
-    re.IGNORECASE,
-)
-_CASUAL_BLOCKLIST_RE = re.compile(
-    r"\b(?:cookbook|serve|serving|launch|start|vllm|sglang|llama\.?cpp|ollama|"
-    r"download|model|email|document|doc|note|calendar|task|search|web|research|"
-    r"file|folder|repo|git|settings?|endpoint|api|token|mcp)\b",
-    re.IGNORECASE,
+# `B823`: the casual-opening pair and its predicate live in one leaf module,
+# shared with `routes/chat_helpers.py` — two byte-identical copies gating two
+# different things would drift the day one blocklist grew a word.
+from src.casual_signal import (  # noqa: E402
+    _CASUAL_BLOCKLIST_RE,
+    _CASUAL_OPENING_RE,
+    _is_casual_low_signal,
 )
 _EXPLICIT_CONTINUATION_RE = re.compile(
     r"^\s*(?:"
@@ -2988,22 +3021,6 @@ _COOKBOOK_CONTEXT_RE = re.compile(
 def _is_explicit_continuation(text: str) -> bool:
     """Only these terse replies may inherit older user turns for tool retrieval."""
     return bool(_EXPLICIT_CONTINUATION_RE.match(str(text or "").strip()))
-
-
-def _is_casual_low_signal(text: str) -> bool:
-    """True for short greetings/slang that should not inherit stale context."""
-    s = str(text or "").strip()
-    m = _CASUAL_OPENING_RE.match(s)
-    if not m:
-        return False
-    tail = m.group("tail") or ""
-    if _CASUAL_BLOCKLIST_RE.search(tail):
-        return False
-    # Allow a short vocative/address after the opener without hardcoding the
-    # address term itself: "hey man", "yo dude", "sup <name>". Longer tails are
-    # more likely to be an actual request and should get normal context/tooling.
-    tail_words = re.findall(r"[A-Za-z0-9_'-]+", tail)
-    return len(tail_words) <= 2
 
 
 def _is_small_talk_turn(text: str) -> bool:
@@ -5672,6 +5689,58 @@ def _resume_paused_turn(
     return True
 
 
+# `B741`. The six timing keys a backend's usage event may carry (llama.cpp's
+# `timings` block, surfaced by `llm_core`). Named once so the agent path and the
+# direct one-shot path read the same event the same way; the direct path read
+# only the token counts and stepped over a speed the backend had reported.
+_BACKEND_TIMING_KEYS = (
+    "gen_tps", "prefill_tps", "prefill_ms", "decode_ms",
+    "prefill_tokens", "decode_tokens",
+)
+
+
+def _backend_phase_metrics(
+    *,
+    prefill_tps: float = 0,
+    prefill_ms: float = 0,
+    decode_ms: float = 0,
+    prefill_tokens: int = 0,
+    decode_tokens: int = 0,
+) -> dict:
+    """The turn-level prefill/decode figures a backend measured, each present
+    exactly when it was reported.
+
+    `B741` lifted this out of `_compute_final_metrics` so the direct
+    low-signal path builds the same keys under the same absence contract
+    instead of a second copy of the rules."""
+    out: dict = {}
+    if isinstance(prefill_tps, (int, float)) and not isinstance(prefill_tps, bool) and prefill_tps > 0:
+        out["prefill_tps"] = round(prefill_tps, 2)
+    # `P4-14`. Prefill and decode as *durations* and *token counts*, so the two
+    # phases are separable in time and the rates above are checkable against
+    # something. `response_time` and `time_to_first_token` stay wall clocks and
+    # keep meaning what they meant: no backend reports a time to first token,
+    # and a wall clock that includes prep, queueing and network is the honest
+    # figure for the question "how long until I saw something".
+    #
+    # Each key is present exactly when a backend measured it. Absence means
+    # "not reported" — the same contract the prompt-cache counters use, for the
+    # same reason a zero would be a claim rather than a measurement.
+    for _key, _value in (
+        ("prefill_ms", prefill_ms),
+        ("decode_ms", decode_ms),
+    ):
+        if isinstance(_value, (int, float)) and not isinstance(_value, bool) and _value > 0:
+            out[_key] = round(float(_value), 2)
+    for _key, _value in (
+        ("prefill_tokens", prefill_tokens),
+        ("decode_tokens", decode_tokens),
+    ):
+        if isinstance(_value, int) and not isinstance(_value, bool) and _value > 0:
+            out[_key] = _value
+    return out
+
+
 def _compute_final_metrics(
     messages: List[Dict],
     full_response: str,
@@ -5753,30 +5822,13 @@ def _compute_final_metrics(
         "usage_source": "real" if has_real_usage else "estimated",
         "model": model,
     }
-    if backend_prefill_tps and backend_prefill_tps > 0:
-        metrics["prefill_tps"] = round(backend_prefill_tps, 2)
-    # `P4-14`. Prefill and decode as *durations* and *token counts*, so the two
-    # phases are separable in time and the rates above are checkable against
-    # something. `response_time` and `time_to_first_token` stay wall clocks and
-    # keep meaning what they meant: no backend reports a time to first token,
-    # and a wall clock that includes prep, queueing and network is the honest
-    # figure for the question "how long until I saw something".
-    #
-    # Each key is present exactly when a backend measured it. Absence means
-    # "not reported" — the same contract the prompt-cache counters use, for the
-    # same reason a zero would be a claim rather than a measurement.
-    for _key, _value in (
-        ("prefill_ms", backend_prefill_ms),
-        ("decode_ms", backend_decode_ms),
-    ):
-        if isinstance(_value, (int, float)) and not isinstance(_value, bool) and _value > 0:
-            metrics[_key] = round(float(_value), 2)
-    for _key, _value in (
-        ("prefill_tokens", backend_prefill_tokens),
-        ("decode_tokens", backend_decode_tokens),
-    ):
-        if isinstance(_value, int) and not isinstance(_value, bool) and _value > 0:
-            metrics[_key] = _value
+    metrics.update(_backend_phase_metrics(
+        prefill_tps=backend_prefill_tps,
+        prefill_ms=backend_prefill_ms,
+        decode_ms=backend_decode_ms,
+        prefill_tokens=backend_prefill_tokens,
+        decode_tokens=backend_decode_tokens,
+    ))
     if prep_timings:
         prep_total = round(sum(prep_timings.values()), 3)
         metrics["agent_prep_time"] = prep_total
@@ -6952,6 +7004,11 @@ async def stream_agent_loop(
         real_input_tokens = 0
         real_output_tokens = 0
         direct_has_real_usage = False
+        # `B741`. The backend's own timing figures for this one call, read from
+        # the same usage event the token counts come from. Before this the
+        # branch took the counts and stepped over `gen_tps`, so a local
+        # llama.cpp that reported a decode speed read as one that had not.
+        direct_timings: dict = {}
 
         def _direct_candidate_request(_index, _url, candidate_model, _headers):
             candidate_is_qwen = _is_pantheon_qwen_model(candidate_model)
@@ -6990,6 +7047,10 @@ async def stream_agent_loop(
                     else max(len(direct_response + direct_reasoning) // 4, 0)
                 ),
                 usage_source="real" if direct_has_real_usage else "estimated",
+                gen_tps=direct_timings.get("gen_tps", 0),
+                prefill_tps=direct_timings.get("prefill_tps", 0),
+                prefill_ms=direct_timings.get("prefill_ms", 0),
+                decode_ms=direct_timings.get("decode_ms", 0),
             )
             failure_note = f"[Agent stopped: {failure_message}]"
             terminal_round = (
@@ -7059,6 +7120,11 @@ async def stream_agent_loop(
                         real_input_tokens += normalized_usage["input_tokens"]
                         real_output_tokens += normalized_usage["output_tokens"]
                         direct_has_real_usage = True
+                        # `B741`: the agent path's reader keeps a key only
+                        # when the backend reported it; so does this one.
+                        for _timing_key in _BACKEND_TIMING_KEYS:
+                            if usage.get(_timing_key):
+                                direct_timings[_timing_key] = usage[_timing_key]
                         continue
                     if data.get("type") == "model_actual":
                         direct_actual_model = data.get("model") or direct_actual_model
@@ -7167,6 +7233,10 @@ async def stream_agent_loop(
                 else max(len(direct_response) // 4, 1)
             ),
             usage_source="real" if direct_has_real_usage else "estimated",
+            gen_tps=direct_timings.get("gen_tps", 0),
+            prefill_tps=direct_timings.get("prefill_tps", 0),
+            prefill_ms=direct_timings.get("prefill_ms", 0),
+            decode_ms=direct_timings.get("decode_ms", 0),
         )
         metrics = {
             "model": direct_actual_model,
@@ -7184,6 +7254,24 @@ async def stream_agent_loop(
             "direct_low_signal": True,
             **_usage_bucket_summary([direct_usage]),
         }
+        # `B741`. The same speed figures, under the same keys and absence
+        # contract, an agent turn on the same model reports: the backend's
+        # decode rate when it measured one, tokens over wall clock otherwise.
+        _direct_gen_tps = direct_timings.get("gen_tps", 0)
+        _direct_output = metrics["output_tokens"]
+        if isinstance(_direct_gen_tps, (int, float)) and not isinstance(_direct_gen_tps, bool) and _direct_gen_tps > 0:
+            metrics["tokens_per_second"] = round(float(_direct_gen_tps), 2)
+            metrics["tps_source"] = "backend"
+        else:
+            metrics["tokens_per_second"] = round(_direct_output / duration, 2) if duration > 0 else 0
+            metrics["tps_source"] = "computed"
+        metrics.update(_backend_phase_metrics(
+            prefill_tps=direct_timings.get("prefill_tps", 0),
+            prefill_ms=direct_timings.get("prefill_ms", 0),
+            decode_ms=direct_timings.get("decode_ms", 0),
+            prefill_tokens=direct_timings.get("prefill_tokens", 0),
+            decode_tokens=direct_timings.get("decode_tokens", 0),
+        ))
         if isinstance(direct_actual_endpoint_cost_tracked, bool):
             metrics["endpoint_cost_tracked"] = direct_actual_endpoint_cost_tracked
         yield f"data: {json.dumps({'type': 'metrics', 'data': metrics})}\n\n"
@@ -7745,7 +7833,16 @@ async def stream_agent_loop(
     elif _pan_general_no_tool_mode:
         try:
             from src.tool_policy import known_tool_names
-            disabled_tools.withhold(known_tool_names(), because=WITHHELD_BY_TURN)
+            # `B1397`. `known_tool_names()` is the built-in register and holds
+            # no `mcp__*` spelling, so the operator's MCP tools stayed outside
+            # the cap on the one turn meant to have no tools — withheld only
+            # by a literal in the route clamp. The turn's own MCP names (built
+            # above for the suite planner) go into the same cap, for the same
+            # reason, so the access object is what withholds them.
+            disabled_tools.withhold(
+                set(known_tool_names()) | set(_suite_mcp_names or ()),
+                because=WITHHELD_BY_TURN,
+            )
         except Exception as exc:
             # `P3-17`, and this one fails **open**: the set being built is
             # `disabled_tools`, so an import that quietly does nothing leaves
@@ -8417,7 +8514,9 @@ async def stream_agent_loop(
                 ]
             return _filter_route_tool_schemas(schemas)
 
-        wants_mcp = any(keyword in _last_user.lower() for keyword in _MCP_KEYWORDS)
+        # `B1388`: word-anchored, not a raw substring — "eventually" and
+        # "feedback" no longer open the fenced route's only door to an array.
+        wants_mcp = _wants_mcp_schemas(_last_user)
         schemas = route_mcp_schemas if wants_mcp and route_mcp_schemas else []
         return _filter_route_tool_schemas(schemas)
 
@@ -10271,7 +10370,19 @@ async def stream_agent_loop(
                 (blocked_by_tool_policy or blocked_by_disabled_tools)
                 and not _pan_clamped_tool_allowed
             ):
-                if blocked_by_tool_policy:
+                # `B1382`. A name withheld by privilege is answered with the
+                # sentence that says why and who may (`P2-25`'s register),
+                # ahead of the policy layer's generic line: through the chat
+                # route the same name is also in `tool_policy` (as
+                # "disabled for this request"), and either generic sentence
+                # hid the reason the register exists to give.
+                _privilege_reason = disabled_tools.privilege_refusal(
+                    block.tool_type,
+                    delegated_credential=bool(delegated_credential),
+                )
+                if _privilege_reason:
+                    reason = _privilege_reason
+                elif blocked_by_tool_policy:
                     # `B1101`. One rule with the dispatcher's backstop: the
                     # called spelling first, so both name the same one.
                     reason = tool_policy.refusal_for(

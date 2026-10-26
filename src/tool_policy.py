@@ -691,6 +691,27 @@ class TurnToolAccess(set):
             out |= self._why.get(spelling, set())
         return frozenset(out)
 
+    def privilege_refusal(self, tool_name, *, delegated_credential=False) -> Optional[str]:
+        """The sentence for a call this turn withholds **by privilege**, or
+        ``None`` when privilege is not one of the reasons.
+
+        `B1382`. `blocked_tools_for_owner` writes a non-admin's names into this
+        cap before any call is made, so the loop's own `tool_blocked` arm
+        answers first — and it answered *"disabled by the current request
+        policy"*, never reaching the dispatcher's `P2-25` sentence, which says
+        what the tool reaches and who may run it. The reason is recorded here
+        (`WITHHELD_BY_PRIVILEGE`), so the sentence is chosen from it rather
+        than guessed from the owner again. A bearer-token run's cap is a
+        privilege too (`B70`), and it gets the token's own sentence. Nothing is
+        lifted or changed about what is blocked; this only reads.
+        """
+        if WITHHELD_BY_PRIVILEGE not in self.reasons_for(tool_name):
+            return None
+        from src.tool_security import delegated_credential_refusal, non_admin_refusal
+        if delegated_credential:
+            return delegated_credential_refusal(tool_name)
+        return non_admin_refusal(tool_name)
+
 
     # ── the writers ───────────────────────────────────────────────────────
     def withhold(self, names, *, because=WITHHELD_UNATTRIBUTED) -> set:

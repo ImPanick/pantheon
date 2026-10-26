@@ -19,6 +19,7 @@ from typing import Any, Iterable, Mapping
 from src.tool_approval_scopes import CHAT_SESSION_APPROVAL_CONTEXT_MARKER
 from src.tool_security import (
     BUILTIN_EMAIL_TOOLS,
+    delegated_credential_refusal,
     is_delegated_credential_blocked_tool,
 )
 from src.ui_switches import switch_request
@@ -1960,10 +1961,8 @@ class ToolRunSecurityContext:
             # controls rather than the only one.
             return ToolGateDecision(
                 False,
-                (
-                    f"Tool '{tool_name}' is not available to API-token callers. "
-                    "It requires an interactive session."
-                ),
+                # `B1382`: one copy of the sentence, shared with the loop.
+                delegated_credential_refusal(tool_name),
                 classification=TOOL_CLASSIFICATION_UNAVAILABLE,
             )
         vault = self._vault_use_decision_for(tool_name, content)

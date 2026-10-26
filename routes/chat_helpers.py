@@ -26,30 +26,13 @@ from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
-_CASUAL_OPENING_RE = re.compile(
-    r"^\s*(?:h+i+|hey+|hello+|yo+|sup+|what'?s up|wass?up|hiya|howdy|"
-    r"lol|lmao|haha+|hehe+|thanks?|thank you|ty|idk|dunno|meh|bruh|bro)\b(?P<tail>.*)$",
-    re.IGNORECASE,
+# `B823`: one copy, shared with `src/agent_loop.py` — short greetings/slang
+# should not pull memory, skills, RAG, or docs.
+from src.casual_signal import (  # noqa: E402
+    _CASUAL_BLOCKLIST_RE,
+    _CASUAL_OPENING_RE,
+    _is_casual_low_signal,
 )
-_CASUAL_BLOCKLIST_RE = re.compile(
-    r"\b(?:cookbook|serve|serving|launch|start|vllm|sglang|llama\.?cpp|ollama|"
-    r"download|model|email|document|doc|note|calendar|task|search|web|research|"
-    r"file|folder|repo|git|settings?|endpoint|api|token|mcp)\b",
-    re.IGNORECASE,
-)
-
-
-def _is_casual_low_signal(text: str) -> bool:
-    """Short greetings/slang should not pull memory, skills, RAG, or docs."""
-    s = str(text or "").strip()
-    m = _CASUAL_OPENING_RE.match(s)
-    if not m:
-        return False
-    tail = m.group("tail") or ""
-    if _CASUAL_BLOCKLIST_RE.search(tail):
-        return False
-    tail_words = re.findall(r"[A-Za-z0-9_'-]+", tail)
-    return len(tail_words) <= 2
 
 
 # Strong references to in-flight fire-and-forget tasks scheduled from this

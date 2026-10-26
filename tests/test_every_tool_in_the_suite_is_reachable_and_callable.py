@@ -472,13 +472,22 @@ def test_a_tool_a_gate_holds_is_held_with_a_sentence_not_silence(scratch):
             assert any(word in lowered for word in
                        ("disabled", "restricted", "admin", "not available",
                         "requires")), said[:200]
-            # Measured on `0bd089d`: the sentence a non-admin actually reads is
+            # Measured on `0bd089d`: the sentence a non-admin actually reads was
             # *"Tool 'bash' is disabled by the current request policy."* — the
             # loop's generic one, because `blocked_tools_for_owner` put the
             # name in `disabled_tools` before the dispatcher's own refusal,
-            # which would have said *why*. Filed; what is kept here is that it
-            # is a refusal naming the tool and the command did not run.
+            # which would have said *why*. `B1382` closed it: the loop reads
+            # the privilege reason off the turn's cap and answers with
+            # `P2-25`'s register sentence — *"Tool 'bash' is restricted to
+            # admin users on this deployment. It runs arbitrary commands as the
+            # app user on the host. Ask an admin to perform this action or
+            # grant the needed permission."* — so it now says why and who may.
             assert "exit_code" not in lowered
+            from src.tool_security import NON_ADMIN_BLOCKED_REASONS
+            assert "restricted to admin users" in lowered, said[:300]
+            assert NON_ADMIN_BLOCKED_REASONS["bash"] in said, said[:300]
+            assert "ask an admin" in lowered, said[:300]
+            assert "disabled by the current request policy" not in lowered, said[:300]
 
     _run(go())
 
