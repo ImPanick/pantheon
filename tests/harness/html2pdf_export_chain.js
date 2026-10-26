@@ -152,10 +152,14 @@ const recordingHtml2pdf = () => {
   };
 };
 
+// `B1333`: *Print as PDF* prints the document's HTML in a frame now
+// (`printFrame.js`), and the html2pdf call lives in `_rasterisePdf`, the path
+// kept for a browser whose frame cannot print. It sits in the same span, so
+// the span is still what is evaluated; the raster function is what is called.
 const runExport = new Function(
   'document', 'window', 'activeDocId', 'ensureHtml2Pdf', 'uiModule',
   'markdownModule', '_getExportBaseName',
-  exportAsPdfSource + '\nreturn exportAsPdf();'
+  exportAsPdfSource + '\nreturn _rasterisePdf();'
 );
 
 const el = new El('div');

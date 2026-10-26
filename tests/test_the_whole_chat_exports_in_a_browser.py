@@ -323,11 +323,12 @@ const out = { errors: [], downloads: [] };
     lang: (document.getElementById('doc-language-select') || {}).value ?? null,
     exportBtn: !!document.getElementById('doc-footer-export-btn')?.getClientRects().length,
   }));
+  // `B1333`: *Print as PDF* prints the document's HTML in a frame (the same
+  // `printFrame.js` frame as the chat's item above) instead of rasterising it
+  // into a download, so the step reads the frame the way step 3 does.
   await step('docPdf', async () => {
     const t0 = Date.now();
-    const pdf = page.waitForEvent('download', { timeout: 180000 })
-      .then((d) => ({ file: d.suggestedFilename(), ms: Date.now() - t0 }),
-            () => ({ file: null, ms: Date.now() - t0 }));
+    await page.evaluate(() => { window.__printed = null; });
     await page.click('#doc-footer-export-btn', { timeout: 15000 });
     await page.waitForTimeout(400);
     out.docMenu = await page.evaluate(() => {
@@ -336,7 +337,13 @@ const out = { errors: [], downloads: [] };
       if (item) item.click();
       return items.map((b) => b.textContent);
     });
-    return pdf;
+    await page.waitForFunction(() => window.__printed !== null, null, { timeout: 60000 }).catch(() => {});
+    return page.evaluate((t0) => {
+      const p = window.__printed;
+      if (!p || typeof p === 'string') return { printed: p, ms: Date.now() - t0 };
+      return { title: p.title, fenced: p.text.includes("print('a fenced code block')"),
+               body: p.text.includes('Some more body text'), ms: Date.now() - t0 };
+    }, t0);
   });
   out.docErrors = await page.evaluate(() =>
     [...document.querySelectorAll('.toast-error, .toast')].map((n) => n.textContent));
@@ -441,11 +448,19 @@ def test_a_document_with_a_code_block_exports_as_pdf(driven):
     """`B1322`. On `99134cf` this item produced no file at all and said
     nothing: html2canvas threw `Attempting to parse an unsupported color
     function "color"` on `.code-block-header`'s computed background, and
-    nothing awaited the call."""
+    nothing awaited the call.
+
+    `B1333` changed what the item does: it prints the document's standalone
+    HTML in a frame — real text, no rasteriser — so this asserts the frame
+    printed the document, code block included, rather than a download. (The
+    raster path is kept for a frame that cannot print; its options are pinned
+    by `tests/test_vendored_libraries_still_work.py`.)"""
     assert driven["docPane"]["exportBtn"] is True
     assert "Print as PDF" in driven["docMenu"], driven["docMenu"]
-    assert _step(driven, "docPdf")["file"] == "Export probe_v1.pdf", driven["docPdf"]
-    assert driven["docPdf"]["ms"] < 180000
+    got = _step(driven, "docPdf")
+    assert got.get("title") == "Export probe", got
+    assert got["fenced"] and got["body"], got
+    assert got["ms"] < 60000
 
 
 def test_the_page_logged_no_unhandled_error_while_exporting(driven):

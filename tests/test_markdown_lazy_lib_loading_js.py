@@ -437,16 +437,26 @@ def test_detached_container_math_typesets_with_the_real_renderer(node_available)
 
 
 def test_pdf_export_typesets_its_container_before_html2pdf():
-    """Ordering in a call site, so pin the call site. No node needed."""
+    """Ordering in a call site, so pin the call site. No node needed.
+
+    `B1333`: *Print as PDF* prints the document's HTML in a frame, and the
+    html2pdf call moved to `_rasterisePdf` (the path kept for a frame that
+    cannot print). Both typeset before they hand the page on."""
     source = (_REPO / "static/js/document.js").read_text(encoding="utf-8")
-    match = re.search(r"\n  async function exportAsPdf\(\) \{(.*?)\n  \}\n", source, re.S)
-    assert match, "exportAsPdf not found"
+    match = re.search(r"\n  async function _rasterisePdf\(\) \{(.*?)\n  \}\n", source, re.S)
+    assert match, "_rasterisePdf not found"
     body = match.group(1)
 
     render = "await markdownModule.renderMath(container);"
     assert render in body, "the export never typesets its detached container"
     assert body.index("container.innerHTML = html;") < body.index(render)
     assert body.index(render) < body.index("window.html2pdf()")
+
+    match = re.search(r"\n  async function exportAsPdf\(\) \{(.*?)\n  \}\n", source, re.S)
+    assert match, "exportAsPdf not found"
+    body = match.group(1)
+    assert render in body, "the printed page never typesets its formulas"
+    assert body.index(render) < body.index("printHtmlInFrame(")
 
 
 def test_md_to_html_renders_inline_once_katex_is_loaded(node_available):
