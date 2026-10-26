@@ -2532,7 +2532,23 @@ function initWebhookForm() {
 const featureLabels = {
   web_search: 'Web Search', deep_research: 'Deep Research',
   memory: 'Brain (memories)', document_editor: 'Document Editor', rag: 'RAG Knowledge Base', sensitive_filter: 'Sensitive Info Filter',
-  gallery: 'Gallery'
+  gallery: 'Gallery',
+  // `B1488`, the owner's ruling: the eight Tools entries `B1191` gave a
+  // person's switch have one for everyone too (`src/tool_privileges.py`).
+  assistant: 'Assistant', calendar: 'Calendar', compare: 'Compare', email: 'Email',
+  notes: 'Notes', tasks: 'Tasks', theme: 'Theme', workbench: 'Workbench',
+};
+
+// `B1488`. What a switch for everyone holds besides its door — the everyone
+// column of `PRIV_TAKES` above: held, never deleted, and running again once
+// it is back on (`tool_privileges.paused_sentence`).
+const FEATURE_TAKES = {
+  assistant: 'Off also holds the Assistant\'s check-ins.',
+  calendar: 'Off also holds the calendar work in scheduled tasks.',
+  email: 'Off also holds every inbox check, mail scheduled to send, and email actions.',
+  notes: 'Off also holds note reminders.',
+  tasks: 'Off also holds every scheduled task; each says why, and runs again once it is back on.',
+  workbench: 'Off also holds every workflow.',
 };
 
 /** `P23-03` (SET-U-1). "Off hides Brain." — the Tools entries (and composer
@@ -2582,7 +2598,7 @@ async function loadFeatures() {
     const res = await fetch('/api/auth/features', { credentials: 'same-origin' });
     const features = await res.json();
     container.innerHTML = Object.entries(featureLabels).map(([key, label]) => {
-      const hides = _hidesLine({ feature: key });
+      const hides = [_hidesLine({ feature: key }), FEATURE_TAKES[key]].filter(Boolean).join(' ');
       return `
       <div class="admin-toggle-row" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">
         <div class="admin-toggle-label">${label}${hides ? `<div class="admin-toggle-sub" style="font-size:11px;opacity:0.6;">${esc(hides)}</div>` : ''}</div>

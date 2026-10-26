@@ -464,6 +464,13 @@ _FEATURE_TOOLS: dict = {
     "rag": {"manage_rag"},  # see _FEATURE_NOTES
     "gallery": {"generate_image", "edit_image"},
 }
+# `B1488`. The Tools entries with a switch for everyone and agent tools of their
+# own — Calendar, Email, Notes, Tasks — take the tools their person's switch
+# takes (`tool_privileges.TOOL_PRIVILEGES`, the one list), so the two columns
+# can never withhold different sets.
+from src.tool_privileges import feature_tools as _tool_entry_feature_tools  # noqa: E402
+
+_FEATURE_TOOLS.update(_tool_entry_feature_tools())
 
 # Why a flag maps to nothing, written down rather than left as an empty set for
 # the next reader to guess at.
@@ -480,6 +487,25 @@ _FEATURE_NOTES = {
     "sensitive_filter": (
         "A display filter, not a capability. It redacts what is shown and "
         "removes nothing the agent can do."
+    ),
+    # `B1488`. Four Tools entries whose switch for everyone has no agent tool to
+    # take; each is still enforced — its door, its routes, its background work.
+    "assistant": (
+        "The Assistant is a chat and its check-ins, not a tool the model calls: "
+        "off holds the check-ins (`tool_privileges.held_by_switch`) and its routes."
+    ),
+    "compare": (
+        "Compare runs the same prompt on several models from its own window; no "
+        "agent tool starts one, so off is its door and its routes."
+    ),
+    "theme": (
+        "Theme is the window that edits the look. Off takes that window, not the "
+        "look: the applied theme stays, and `ui_control` — which also switches "
+        "panels and modes — is not this switch's to take, as it is not the person's."
+    ),
+    "workbench": (
+        "The Workbench's agent-facing work is its workflows, which run as "
+        "scheduled tasks: off holds them (`held_by_switch`) and refuses its routes."
     ),
 }
 
