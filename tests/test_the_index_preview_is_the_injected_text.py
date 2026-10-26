@@ -99,14 +99,24 @@ def library(tmp_path, monkeypatch):
     return SkillsManager(str(tmp_path), library_root="")
 
 
+def _no_trim(monkeypatch):
+    """A budget of 0 — *no trimming*. `B751`: the loop reads the budget on the
+    role chain (`context_budget.resolve_agent_input_budget_setting`) rather
+    than through `agent_loop.get_setting`, so that is where 0 is set."""
+    import src.context_budget as context_budget
+    from src.limit_policy import ResolvedLimit
+
+    monkeypatch.setattr(context_budget, "resolve_agent_input_budget_setting",
+                        lambda owner=None: ResolvedLimit(value=0, source="setting"))
+
+
 async def _block_the_loop_injects(monkeypatch):
     """The skills catalogue out of one real agent request, not a reconstruction."""
     # `B1425`: no trim. On an endpoint that reports no window the loop trims to
     # 6,000 tokens and sheds the skills block to keep the tools' prompt whole;
     # what this file compares is the text, not what survives a small window.
-    monkeypatch.setattr(agent_loop, "get_setting",
-                        lambda k, d=None: 0 if k == "agent_input_token_budget" else d,
-                        raising=False)
+    _no_trim(monkeypatch)
+    monkeypatch.setattr(agent_loop, "get_setting", lambda k, d=None: d, raising=False)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None, raising=False)
     monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *a, **k: 10, raising=False)
     monkeypatch.setattr(agent_loop, "blocked_tools_for_owner", lambda o: set(), raising=False)
@@ -242,10 +252,9 @@ def _write_needing(root: Path, name: str, tool: str):
 async def _injected_with(monkeypatch, settings: dict):
     """`_block_the_loop_injects`, with the install's settings as given."""
     def get_setting(k, d=None):
-        if k == "agent_input_token_budget":
-            return 0
         return settings.get(k, d)
 
+    _no_trim(monkeypatch)          # `B751`: where the budget is read now
     monkeypatch.setattr(agent_loop, "get_setting", get_setting, raising=False)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None, raising=False)
     monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *a, **k: 10, raising=False)

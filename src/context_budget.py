@@ -69,7 +69,41 @@ def compute_input_token_budget(
     return configured if configured > 0 else default
 
 
-def agent_input_budget(context_length: int, get_setting) -> int:
+#: `B751`. The setting, the role-profile key and the resolver's label — one
+#: name for one limit (`Law 7`).
+AGENT_INPUT_BUDGET_SETTING = "agent_input_token_budget"
+#: Sanity, not policy: ten million tokens is past any model's window, and a
+#: typo rather than a decision. A role is held to `1 .. this` (`role_limit_ranges`);
+#: the instance setting may also be 0, which means *no trim* (Settings' "Off").
+MAX_AGENT_INPUT_BUDGET = 10_000_000
+
+
+def resolve_agent_input_budget_setting(owner=None):
+    """`B751`. The configured `agent_input_token_budget`, and the layer that set it.
+
+    Resolved **role profile → instance setting → built-in default** by
+    `limit_policy.resolve_int_limit` — the chain `skill_max_injected` (`B750`)
+    and the six character budgets above already use. Both readers —
+    `src/agent_loop.py`'s trim and the composer's context meter, through
+    `agent_input_budget` — read it here; they read
+    `get_setting("agent_input_token_budget", 6000)`, so no role could set it
+    and an operator had no way to give one team a bigger window than another.
+
+    The floor is 0 for the instance layer because 0 is a documented value
+    there (*no trimming — the whole chat is sent*); a role cannot store it —
+    `roles._check_limit_value` refuses anything under 1, so a role cannot
+    switch somebody's trimming off through a limit. No environment leg: the
+    setting never had a variable (`env_name=None`, as the budgets above).
+    """
+    from src.limit_policy import resolve_int_limit
+
+    return resolve_int_limit(
+        AGENT_INPUT_BUDGET_SETTING, default=DEFAULT_BUDGET, env_name=None,
+        owner=owner, minimum=0, maximum=MAX_AGENT_INPUT_BUDGET,
+    )
+
+
+def agent_input_budget(context_length: int, get_setting, *, owner=None) -> int:
     """The input-token budget the agent loop trims one request to; 0 = no trim.
 
     `P23-04` (CHAT-M-4). One computation for the two places that need it: the
@@ -81,10 +115,12 @@ def agent_input_budget(context_length: int, get_setting) -> int:
     stays; what the wheel draws is this.
 
     ``context_length`` is the *proven* window (0 when unknown — never the bare
-    fallback, the review's point on #4122); ``get_setting(key, default)`` reads
-    the two settings the loop reads.
+    fallback, the review's point on #4122). The budget is
+    `resolve_agent_input_budget_setting(owner)` (`B751`: a role profile's
+    number wins); ``get_setting(key, default)`` reads the auto ceiling,
+    `agent_input_token_hard_max`.
     """
-    soft = _int_or_zero(get_setting("agent_input_token_budget", DEFAULT_BUDGET))
+    soft = _int_or_zero(resolve_agent_input_budget_setting(owner).value)
     if soft <= 0:
         return 0
     try:
@@ -850,7 +886,7 @@ def tool_schema_tokens(schemas) -> int:
 
 
 def tool_suite_room(context_length: int, get_setting, *,
-                    share: float = TOOL_SUITE_SHARE) -> dict:
+                    share: float = TOOL_SUITE_SHARE, owner=None) -> dict:
     """How many tokens of tool definitions this turn may carry, and on what.
 
     `context_length` is the **proven** window and nothing else — pass what
@@ -866,7 +902,7 @@ def tool_suite_room(context_length: int, get_setting, *,
     whether it narrowed against a measured window or an unknown one.
     """
     window = _int_or_zero(context_length)
-    budget = agent_input_budget(window, get_setting)
+    budget = agent_input_budget(window, get_setting, owner=owner)   # `B751`
     if window > 0:
         return {"room": max(0, int(window * share)), "window": window,
                 "window_known": True, "budget": budget, "basis": "proven_window"}

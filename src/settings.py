@@ -1002,6 +1002,8 @@ def role_limit_ranges() -> dict[str, tuple[int, int]]:
     # derivation for the same reason the four above it do. Bounds imported from
     # the module that owns it, never restated (`Law 7`).
     from src.context_budget import (
+        AGENT_INPUT_BUDGET_SETTING,
+        MAX_AGENT_INPUT_BUDGET,
         MAX_SKILL_INJECTION,
         MIN_SKILL_INJECTION,
         SKILL_INJECTION_LIMIT,
@@ -1030,6 +1032,12 @@ def role_limit_ranges() -> dict[str, tuple[int, int]]:
     ranges[UPLOAD_BURST_WINDOW_SETTING] = (
         MIN_UPLOAD_BURST_WINDOW_SECONDS, MAX_UPLOAD_BURST_WINDOW_SECONDS)
     ranges[SKILL_INJECTION_LIMIT] = (MIN_SKILL_INJECTION, MAX_SKILL_INJECTION)
+    # `B751`. The agent's input-token budget, which ships a real default and
+    # resolves with an owner (`context_budget.resolve_agent_input_budget_setting`)
+    # — `B750`'s shape, named beside it in `P12-04` and `P12-09`. A role's floor
+    # is 1, as every key's here; the instance setting's 0 (*no trim*) is not a
+    # role's to set.
+    ranges[AGENT_INPUT_BUDGET_SETTING] = (1, MAX_AGENT_INPUT_BUDGET)
     return ranges
 
 

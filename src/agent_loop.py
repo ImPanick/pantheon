@@ -1284,6 +1284,7 @@ def plan_turn_tool_suite(
     within_allowed=None,
     get_setting_fn=None,
     pinned_tools: Iterable[str] = (),
+    owner: Optional[str] = None,
 ):
     """This turn's tool set: the whole suite, or a deterministic part of it.
 
@@ -1370,7 +1371,7 @@ def plan_turn_tool_suite(
     # number came from, so the receipt can say whether this turn's room was
     # measured off a server's answer or guessed from the model's name.
     window, window_basis = budget_context_basis(endpoint_url or "", model or "", fallback=0)
-    room = tool_suite_room(window, get_setting_fn or get_setting)
+    room = tool_suite_room(window, get_setting_fn or get_setting, owner=owner)  # `B751`
 
     domains = [str(d) for d in (domains or ())]
     # Rule 4: *"If the person's words name a tool, a domain or an MCP server,
@@ -7849,6 +7850,7 @@ async def stream_agent_loop(
                 mcp_by_server=_suite_mcp_servers,
                 within_allowed=_within_allowed,
                 pinned_tools=pinned_tools or (),
+                owner=owner,
             )
 
         def _log_the_plan(label):
@@ -8334,7 +8336,9 @@ async def stream_agent_loop(
 
         try:
             from src.context_compactor import trim_for_context
-            from src.context_budget import DEFAULT_BUDGET, agent_input_budget
+            from src.context_budget import (
+                agent_input_budget, resolve_agent_input_budget_setting,
+            )
             from src.model_context import budget_context_for_model
 
             candidate_context = budget_context_for_model(
@@ -8343,7 +8347,9 @@ async def stream_agent_loop(
                 fallback=context_length,
             )
             _route_context_lengths[(candidate_url, candidate_model)] = candidate_context
-            soft_budget = int(get_setting("agent_input_token_budget", DEFAULT_BUDGET) or 0)
+            # `B751`: role profile → instance setting → default, the one
+            # resolver the context meter reads too.
+            soft_budget = int(resolve_agent_input_budget_setting(owner).value or 0)
             if soft_budget <= 0:
                 return _without_protection(route_messages)
             before_trim_tokens = estimate_tokens(route_messages)
@@ -8358,7 +8364,7 @@ async def stream_agent_loop(
                                * tool_result_images.IMAGE_TOKEN_RESERVE)
             # `P23-04` (CHAT-M-4): the one computation the context wheel
             # draws too (`src/context_budget.py`).
-            effective_budget = agent_input_budget(candidate_context, get_setting)
+            effective_budget = agent_input_budget(candidate_context, get_setting, owner=owner)
             trimmed_messages = trim_for_context(
                 route_messages,
                 effective_budget,
