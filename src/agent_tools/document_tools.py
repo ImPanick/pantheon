@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
+from src.document_provenance import after_agent_edit  # `B1325`
 from typing import Any, Dict, List, Optional
 import logging
 import re
@@ -326,6 +327,7 @@ def _create_pdf_text_derivative(db, *, source_doc, content: str, owner: Optional
         version_count=1,
         is_active=True,
         owner=owner if owner is not None else getattr(source_doc, "owner", None),
+        provenance="derived",   # `B1325`: the agent's text, from a PDF
     )
     ver = DocumentVersion(
         id=ver_id,
@@ -442,6 +444,9 @@ class CreateDocumentTool:
                 version_count=1,
                 is_active=True,
                 owner=_owner,
+                # `B1325`: the agent wrote it — not the person's own material,
+                # however the request was worded.
+                provenance="derived",
             )
             ver = DocumentVersion(
                 id=ver_id,
@@ -542,6 +547,7 @@ class UpdateDocumentTool:
             )
             doc.current_content = new_content
             doc.version_count = new_ver
+            after_agent_edit(doc)   # `B1325`: no longer only the person's text
             db.add(ver)
             db.commit()
 
@@ -626,6 +632,7 @@ class EditDocumentTool:
                     )
                     doc.current_content = updated_content
                     doc.version_count = new_ver
+                    after_agent_edit(doc)   # `B1325`: no longer only the person's text
                     db.add(ver)
                     db.commit()
                     return {
@@ -694,6 +701,7 @@ class EditDocumentTool:
             )
             doc.current_content = updated_content
             doc.version_count = new_ver
+            after_agent_edit(doc)   # `B1325`: no longer only the person's text
             db.add(ver)
             db.commit()
 

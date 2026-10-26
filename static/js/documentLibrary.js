@@ -1526,6 +1526,9 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
           // (the backend also sniffs, but this keeps the tab label correct).
           language: src.language || doc.language || 'markdown',
           content: src.current_content || '',
+          // `B1325`: a copy is made the way its source was; unknown stays
+          // unknown (the server reads it as not the person's own).
+          provenance: src.provenance || undefined,
         }),
       });
       if (!res.ok) throw new Error('Failed to create document');

@@ -3936,6 +3936,7 @@ def setup_email_routes():
                         version_count=1, is_active=True,
                         owner=_doc_user or owner or None,
                         source_name=source_name,
+                        provenance="imported",   # `B1325`: a mail attachment's text
                     ))
                     _db.add(_DV(
                         id=ver_id, document_id=doc_id, version_number=1,

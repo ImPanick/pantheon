@@ -457,6 +457,13 @@ class ChatProcessor:
                         )
                         if len(rag_content) > 10000:
                             rag_content = rag_content[:10000] + "\n[Truncated]"
+                        # `B1325` named this site with the open document, and
+                        # re-measured it is not the library: `rag_manager`
+                        # holds the personal-documents FILES (`personal_routes`
+                        # indexes them, `rag_vector` chunks them), not
+                        # `Document` rows, so there is no provenance to read —
+                        # a file put there is an import by construction, and
+                        # the untrusted envelope is the right one.
                         preface.append(untrusted_context_message(
                             "retrieved documents",
                             rag_content,

@@ -4945,7 +4945,8 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ session_id: sessionId, title: '', content }),
+        // `B1325`: typed in this editor — the person's own text.
+        body: JSON.stringify({ session_id: sessionId, title: '', content, provenance: 'authored_here' }),
       });
       if (!res.ok) throw new Error(`Document create failed: HTTP ${res.status}`);
       const doc = await res.json();
@@ -7244,6 +7245,7 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
           title: '',
           content: '',
           language: 'markdown',
+          provenance: 'authored_here',   // `B1325`: a blank page the person types into
         }),
       });
       if (!res.ok) throw new Error(`Document create failed: HTTP ${res.status}`);

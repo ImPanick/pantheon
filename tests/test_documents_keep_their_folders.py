@@ -444,6 +444,7 @@ def test_an_old_database_gains_the_column_and_its_documents_start_unfiled(tmp_pa
     # (that one goes through the module's engine, not `DATABASE_URL`).
     monkeypatch.setattr(cdb, "engine", engine)
     cdb._migrate_add_document_source_name_column()
+    cdb._migrate_add_document_provenance_column()   # `B1325`, also in `init_db`
     ts = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     monkeypatch.setattr(droutes, "SessionLocal", ts)
     monkeypatch.setattr(froutes, "SessionLocal", ts)

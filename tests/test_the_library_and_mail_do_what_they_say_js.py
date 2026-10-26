@@ -347,7 +347,9 @@ def test_the_first_keystroke_stores_it_in_the_chat_that_was_open(page):
         console.log(JSON.stringify({ docs: posted('/api/document').map((c) => c[2]),
           sessions: posted('/api/session').length, active: activeDocId, tabs: tabs() }));
     """)
-    assert out["docs"] == [{"session_id": "chat-a", "title": "", "content": "Packing list"}]
+    # `B1325`: typed in the editor, so the person's own text.
+    assert out["docs"] == [{"session_id": "chat-a", "title": "", "content": "Packing list",
+                            "provenance": "authored_here"}]
     assert out["sessions"] == 0 and out["active"] == "doc-1"
     assert "doc-tab-ghost" not in out["tabs"]
 

@@ -47,6 +47,7 @@ from src.prompt_security import (
     own_context_message,
     untrusted_context_message,
 )
+from src.document_provenance import document_context_message  # `B1325`
 from src.tool_security import (
     blocked_tools_for_owner,
     delegated_credential_blocked_tools,
@@ -3831,7 +3832,10 @@ def _minimal_pantheon_doc_messages(messages: List[Dict], active_document, stream
         else:
             content_for_prompt = content
             content_note = "Content:\n"
-        active_document_message = untrusted_context_message(
+        # `B1325`: the envelope the document's provenance earns — the
+        # person's own text (typed here) is their material; everything else,
+        # and anything whose making is not known, keeps the armed gate.
+        active_document_message = document_context_message(
             "active editor document",
             (
                 "Active document:\n"
@@ -3840,6 +3844,7 @@ def _minimal_pantheon_doc_messages(messages: List[Dict], active_document, stream
                 f"{content_note}"
                 f"{content_for_prompt}"
             ),
+            active_document,
         )
         active_document_message["_agent_injected"] = "context"
         out.append(active_document_message)
@@ -4503,9 +4508,11 @@ def _build_system_prompt(
                         "rewriting for style. You may still make ordinary requested edits that do not depend on "
                         "knowing the user's personal style."
                     )
-        _doc_message = untrusted_context_message(
+        # `B1325`: own material only when the person wrote it here.
+        _doc_message = document_context_message(
             "active editor document",
             doc_ctx,
+            active_document,
         )
         _doc_message["_protected"] = True
 

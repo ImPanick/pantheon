@@ -676,6 +676,13 @@ class Document(TimestampMixin, Base):
     # document nobody uploaded, and for every document from before the column
     # existed (`_migrate_add_document_source_name_column`).
     source_name              = Column(String, nullable=True)
+    # `B1325`. How this document's text was made — `authored_here` (typed in
+    # this editor), `imported` (a file's text) or `derived` (the agent, a chat
+    # saved to documents, a reply quoting an email). It picks the envelope the
+    # open document reaches the model in (`src/document_provenance.py`): only
+    # `authored_here` is the person's own material. NULL — every document from
+    # before the column — is read as `imported`, the safe side.
+    provenance               = Column(String, nullable=True)
 
     session  = relationship("Session", backref=backref("documents", cascade="save-update, merge"))
     versions = relationship("DocumentVersion", back_populates="document",
@@ -3069,6 +3076,25 @@ def _migrate_add_document_folder_column():
             pass
 
 
+def _migrate_add_document_provenance_column():
+    """Add `provenance` to documents (`B1325`). Guarded + idempotent.
+
+    Additive and nullable, and NULL on every existing row on purpose: how an
+    old document was made cannot be known now, and `document_provenance.is_own`
+    reads NULL as not the person's own — the envelope those documents already
+    had. Backfilling `authored_here` would hand an imported PDF the trusted one.
+    """
+    try:
+        with engine.connect() as conn:
+            cols = {r[1] for r in conn.execute(text("PRAGMA table_info(documents)"))}
+            if "provenance" not in cols:
+                conn.execute(text("ALTER TABLE documents ADD COLUMN provenance VARCHAR"))
+                conn.commit()
+                logging.getLogger(__name__).info("Added provenance column to documents")
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"documents.provenance migration: {e}")
+
+
 def _migrate_add_document_source_name_column():
     """Add `source_name` to documents (`P21-03`). Guarded + idempotent.
 
@@ -3674,6 +3700,7 @@ def init_db():
 
 
     _migrate_add_document_source_name_column()
+    _migrate_add_document_provenance_column()   # `B1325`
     _migrate_add_oauth_config()
     _migrate_add_email_oauth_columns()
     _migrate_add_task_automation_columns()
