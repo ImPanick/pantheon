@@ -5,8 +5,9 @@ The DB owner-rename loop in the rename_user route updates every SQL-backed
 owner column, but three file-backed / in-memory stores are left stale:
 
 1. session_manager.sessions  — in-memory session objects carry s.owner set at
-   load time; get_sessions_for_user does an exact `s.owner == username` check,
-   so the renamed user's sidebar empties until a server restart.
+   load time; `list_page` lists a chat with no message yet only when that
+   cached owner is exactly the person (`B1510` retired the cache-only
+   `get_sessions_for_user` this sentence used to name).
 
 2. data/deep_research/*.json  — each report JSON has an `owner` field;
    research_routes filters by `d.get("owner") == user`, making every report

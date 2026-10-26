@@ -94,6 +94,14 @@ class _Manager:
     def save_sessions(self):
         pass
 
+    def replace_messages(self, session_id, messages):
+        # `B1506`: the route persists the compacted history through this seam
+        # (one ordered write) instead of adding two rows by hand.
+        _Db.added = [SimpleNamespace(role=m.role, content=m.content, meta_data=json.dumps(m.metadata))
+                     for m in messages]
+        self.session.history = list(messages)
+        return True
+
 
 def test_the_route_writes_chat_compacted(monkeypatch):
     import routes.history_routes as history_routes
@@ -117,7 +125,9 @@ def test_the_route_writes_chat_compacted(monkeypatch):
     app = FastAPI()
     app.include_router(history_routes.setup_history_routes(_Manager(_Session(history))))
     assert TestClient(app).post("/api/session/s-1/compact").status_code == 200
-    [visible] = [r for r in _Db.added if r.role == "assistant"]
+    # `B1506`: the whole history is written now, kept rows too; the marker is
+    # the assistant row that carries the flag.
+    [visible] = [r for r in _Db.added if r.role == "assistant" and "compacted" in (json.loads(r.meta_data or "null") or {})]
     assert visible.content == "**Chat compacted** — 4 messages summarized, 4 kept."
     assert json.loads(visible.meta_data)["compacted"] is True
 

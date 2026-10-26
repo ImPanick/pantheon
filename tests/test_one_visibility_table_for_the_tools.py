@@ -754,13 +754,15 @@ def test_a_result_names_a_group_only_to_someone_who_can_see_it(tmp_path):
     src = SEARCH_JS.read_text(encoding="utf-8")
     body = js_function(src, "function groupLabelFor")
     out = _node(tmp_path, f"""
-        const {{ SETTINGS_GROUPS, getSettingsPanel }} = await import({json.dumps(REGISTRY_JS.as_uri())});
+        const {{ SETTINGS_GROUPS, getSettingsPanel, settingsGroupHeading }} = await import({json.dumps(REGISTRY_JS.as_uri())});
         function groupLabelFor(panel, isAdmin = true) {body}
         const ws = getSettingsPanel('workstation');
         console.log(JSON.stringify({{ guest: groupLabelFor(ws, false), admin: groupLabelFor(ws, true),
           email: groupLabelFor(getSettingsPanel('email'), false) }}));
     """)
-    assert out == {"guest": "", "admin": "Administration", "email": "Communications"}
+    # `B1206` changed the words, not the rule: a group is named by the heading
+    # the nav draws (*Admin*), and *Communications* has none, so it is unnamed.
+    assert out == {"guest": "", "admin": "Admin", "email": ""}
 
 
 def test_a_browser_switch_an_admin_overrode_says_why_instead_of_flipping(tmp_path):

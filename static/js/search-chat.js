@@ -47,7 +47,7 @@ import { doorShown, isMinimized, listWindows, showWindow } from './modalManager.
 import { openSkillsWindow } from './skills.js';
 import { slashCatalog, insertSlashToken, loadSkillEntries, mergeSkillEntries } from './slashAutocomplete.js';
 import { toolKeyFor, toolShown, toolGuide, viewerIsAdmin } from './ui_visibility.js';
-import { SETTINGS_GROUPS, searchSettingsPanels } from './settings/registry.js';
+import { searchSettingsPanels, settingsGroupHeading } from './settings/registry.js';
 import { controlTextFor } from './settings/search.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 import { KEYBIND_DEFAULTS, KEYBIND_TOOL_DOORS, ariaKeyshortcuts, formatKeybind } from './keyboard-shortcuts.js';
@@ -354,10 +354,10 @@ function _settingsEntries(q) {
   return panels.map((panel) => ({
     kind: 'settings', key: 'settings:' + panel.id, label: panel.label,
     // `SET-U-13`: a group the viewer's nav hides is not named to them.
-    detail: (() => {
-      const g = SETTINGS_GROUPS.find((x) => x.id === panel.group) || {};
-      return g.adminOnly && !viewerIsAdmin() ? '' : (g.label || '');
-    })(),
+    // `B1206`: and a group is named by the heading the nav draws, or not at
+    // all — *Models & AI* and its three siblings were hints here that the
+    // Settings window never shows.
+    detail: settingsGroupHeading(panel, { isAdmin: viewerIsAdmin() }),
     run: () => settingsModule.open(panel.id),
   }));
 }

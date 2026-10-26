@@ -2534,6 +2534,18 @@ def setup_chat_routes(
             # knew about at all.
             yield f"data: {json.dumps({'type': 'stream_steerable', 'steerable': bool(_turn_is_steerable)})}\n\n"
 
+            # `B1507`. The person's row id, for the bubble the composer drew.
+            # Only the reply got one (`message_saved`), so deleting a turn
+            # before a reload named the reply alone and the person's message
+            # stayed — on the page after the next reload, and in the prompt.
+            # Read here, not when the context was built: a compaction there
+            # rewrites every row and gives this message its new id.
+            _user_row = getattr(ctx, "user_message", None)
+            _user_row_id = ((getattr(_user_row, "metadata", None) or {}).get("_db_id")
+                            if _user_row is not None else None)
+            if _user_row_id:
+                yield f"data: {json.dumps({'type': 'user_message_saved', 'id': _user_row_id})}\n\n"
+
             # The client sent a workspace the server refused to bind (deleted
             # folder, file path, sensitive dir, filesystem root). Tell it up
             # front so the UI can clear the pill instead of displaying a

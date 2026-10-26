@@ -162,6 +162,12 @@ class ChatContext:
     # retained only when explicit foreground fallbacks are enabled so each
     # concrete candidate can apply its own context budget independently.
     route_messages: list = field(default_factory=list)
+    # `B1507`. The person's message as this turn stored it, or ``None`` when it
+    # stored none (incognito, an approval's continuation). The object itself,
+    # not its id: a compaction while the context is built rewrites every row
+    # (`replace_messages`) and sets the new id on this same message, so the id
+    # is read when the stream announces it.
+    user_message: Optional[Any] = None
 
 
 # ── Helpers ────────────────────────────────────────────────────────────── #
@@ -490,9 +496,13 @@ def add_user_message(sess, chat_handler, preprocessed: PreprocessedMessage, inco
     it is true the message carries the server's seal that a person said it,
     here, now (`tool_approval_scopes.seal_person_message`) — the only thing a
     document plan accepts as the person's answer. Off by default, so a caller
-    that has not asked the question stamps nothing."""
+    that has not asked the question stamps nothing.
+
+    `B1507`. Returns the message it added (``None`` for incognito): its
+    ``metadata['_db_id']`` is the row the browser's bubble must name to edit or
+    delete it, and the stream announces it (``user_message_saved``)."""
     if incognito:
-        return
+        return None
     user_meta = {"attachments": preprocessed.attachment_meta} if preprocessed.attachment_meta else None
     if from_person:
         from src.attachment_refs import persistable_message_content
@@ -504,8 +514,10 @@ def add_user_message(sess, chat_handler, preprocessed: PreprocessedMessage, inco
         )
         if seal:
             user_meta = {**(user_meta or {}), PERSON_MESSAGE_SEAL_FIELD: seal}
-    sess.add_message(ChatMessage("user", preprocessed.user_content, metadata=user_meta))
+    message = ChatMessage("user", preprocessed.user_content, metadata=user_meta)
+    sess.add_message(message)
     chat_handler.update_session_name_if_needed(sess, preprocessed.text_for_context)
+    return message
 
 
 def fire_message_event(request, webhook_manager, session_id: str, sess, message: str, compare_mode: bool = False):
@@ -966,12 +978,13 @@ async def build_chat_context(
     # Add user message to history. Nobody/incognito uses a request-local
     # transcript store instead of session history so stale saved chats cannot
     # bleed into context and the turn is not persisted.
+    user_message = None
     if persist_user_message and incognito:
         user_meta = {"attachments": preprocessed.attachment_meta} if preprocessed.attachment_meta else None
         _append_incognito_message(session_id, "user", preprocessed.user_content, user_meta)
     elif persist_user_message:
-        add_user_message(sess, chat_handler, preprocessed, incognito=False,
-                         from_person=request_is_a_person(request))
+        user_message = add_user_message(sess, chat_handler, preprocessed, incognito=False,
+                                        from_person=request_is_a_person(request))
 
     # Fire events
     if persist_user_message and not incognito:
@@ -1173,6 +1186,7 @@ async def build_chat_context(
         auto_opened_docs=auto_opened_docs,
         uploaded_files=uploaded_files,
         route_messages=route_messages,
+        user_message=user_message,
     )
 
 

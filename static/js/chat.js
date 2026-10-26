@@ -96,6 +96,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   let _sendInFlight = false;   // covers the window from click → streaming start
   let _displayOverride = null; // Override visible user bubble text (hides injected prompts)
   let _hideUserBubble = false; // Skip user bubble entirely (e.g. continue after stop)
+  // `B1507`. The bubble an edit or a regenerate keeps and sends again: its old
+  // row is trimmed away and the send stores a new one, whose id it takes.
+  let _resendUserBubble = null;
   let _contextHeaderSeq = 0;
   let _contextHeaderData = null;
   let _contextHeaderBound = false;
@@ -2808,7 +2811,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       const userDisplay = _displayOverride || msg;
       _displayOverride = null;
       const skipBubble = _hideUserBubble || !!approvalForSend;
+      // `B1507`: only a re-send names a bubble it kept (continue-after-stop
+      // hides its prompt, which no bubble shows).
+      const _resendBubble = (_hideUserBubble && !approvalForSend) ? _resendUserBubble : null;
       _hideUserBubble = false;
+      _resendUserBubble = null;
       // Auto-recovery counter: carries across a turn's auto-continues, but resets
       // when the user genuinely sends a new message (so each task gets a fresh cap).
       // A real user turn (visible bubble) ALWAYS resets the budget — even if a
@@ -4953,6 +4960,17 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 // `B892`. The reply is stored now, and with it what its
                 // request was spent on — the wheel reads that back.
                 refreshChatContextHeader('saved');
+
+              } else if (json.type === 'user_message_saved') {
+                // `B1507`. The person's row, for the bubble this send stands
+                // on: the one it drew, or the one an edit or a regenerate kept
+                // (their trim removed the old row, so its old id names
+                // nothing). Without it a delete before a reload named only the
+                // reply, and the person's message stayed in the chat and the
+                // prompt.
+                if (_isBg) continue;
+                const _ownBubble = _userMsgEl || _resendBubble;
+                if (_ownBubble && _ownBubble.isConnected !== false && json.id) _ownBubble.dataset.dbId = json.id;
 
               } else if (json.type === 'tool_start') {
                 _closeOpenThinkingMarkup(_isBg);
@@ -7838,6 +7856,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           sibling = next;
         }
         _hideUserBubble = true;
+        _resendUserBubble = userMsgElement;   // `B1507`
       }
       _pendingRegenAttachments = _ids;
 
@@ -7960,6 +7979,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       aiMsgElement.remove();
 
       _hideUserBubble = true;
+      _resendUserBubble = userMsgEl || null;   // `B1507`
       const messageInput = uiModule.el('message');
       messageInput.value = userText;
       const submitBtn = document.querySelector('.send-btn');

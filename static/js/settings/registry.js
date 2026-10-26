@@ -315,6 +315,23 @@ export function getSettingsPanel(id) {
   return _panelsById.get(String(id || '')) || null;
 }
 
+/**
+ * `B1206`. The heading the Settings nav draws over `panel`'s group, or `''`.
+ * The nav draws one heading, *Admin*; the other four groups are set apart by a
+ * rule and nothing else (`renderSettingsNav`). A hint that named a group by its
+ * `label` — *Models & AI*, *Communications*, *Experience*, *Administration* —
+ * named something the Settings window never shows, so the palette's rows and
+ * the Settings finder's results say the nav's heading or nothing, and a group
+ * a viewer's nav hides is named to nobody who cannot see it (`SET-U-13`).
+ * The labels stay: they are the groups' names in this registry, not text.
+ */
+export function settingsGroupHeading(panel, { isAdmin = true } = {}) {
+  const group = SETTINGS_GROUPS.find(candidate => candidate.id === (panel && panel.group));
+  if (!group || !group.heading) return '';
+  if (group.adminOnly && !isAdmin) return '';
+  return group.heading;
+}
+
 export function getSettingsPanelsForGroup(groupId) {
   return SETTINGS_PANELS.filter(panel => panel.group === groupId);
 }

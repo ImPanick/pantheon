@@ -1110,53 +1110,20 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                 metadata={"compacted": True, "messages_removed": len(older)},
             )
             new_history = [system_summary, summary_msg] + list(recent)
-            session.history = new_history
-            session.message_count = len(session.history)
-            logger.info(f"Compact: session {session_id} history now has {len(session.history)} messages (was {msg_count_before})")
 
-            # Update DB: delete old messages, insert summary
-            db = SessionLocal()
-            try:
-                db_msgs = db.query(DbChatMessage).filter(
-                    DbChatMessage.session_id == session_id
-                ).order_by(DbChatMessage.timestamp).all()
-
-                # Delete all but the last keep_count
-                for m in db_msgs[:-keep_count]:
-                    db.delete(m)
-
-                # Insert system summary (hidden, for AI context) and visible summary
-                import json as _json
-                import uuid
-                from datetime import datetime, timezone
-                now = datetime.now(timezone.utc)
-                db_sys_summary = DbChatMessage(
-                    id=str(uuid.uuid4()),
-                    session_id=session_id,
-                    role="system",
-                    content=system_summary.content,
-                    meta_data=_json.dumps(system_summary.metadata),
-                    timestamp=now,
-                )
-                db.add(db_sys_summary)
-                db_summary = DbChatMessage(
-                    id=str(uuid.uuid4()),
-                    session_id=session_id,
-                    role="assistant",
-                    content=summary_msg.content,
-                    meta_data=_json.dumps(summary_msg.metadata),
-                    timestamp=now,
-                )
-                db.add(db_summary)
-
-                # Update session record
-                db_session = db.query(DbSession).filter(DbSession.id == session_id).first()
-                if db_session:
-                    db_session.message_count = len(session.history)
-                    db_session.updated_at = datetime.now(timezone.utc)
-                db.commit()
-            finally:
-                db.close()
+            # `B1506`. The stored order is the order in memory. This wrote the
+            # summary and the marker as two new rows stamped *now*, after the
+            # kept rows it left in place — so memory said [summary, marker,
+            # kept…] and the database [kept…, summary, marker], and after a
+            # reload the marker drew under the messages it introduced and the
+            # model was replayed its summary after them. `replace_messages` is
+            # the seam the other two compactions persist through
+            # (`session_routes`' compact, `context_compactor`): the whole
+            # history in one transaction, in order, each row's id set on the
+            # message it stores, and the cached session given the same list.
+            if not session_manager.replace_messages(session_id, new_history):
+                raise HTTPException(500, "Could not save the compacted chat. Nothing was changed; try again.")
+            logger.info(f"Compact: session {session_id} history now has {len(new_history)} messages (was {msg_count_before})")
 
             session_manager.save_sessions()
 
@@ -1165,11 +1132,13 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
 
             return {
                 "status": "ok",
-                "message": f"Compacted: {msg_count_before} msgs → {len(session.history)} msgs ({pct_before}% → {pct_after}%)",
+                "message": f"Compacted: {msg_count_before} msgs → {len(new_history)} msgs ({pct_before}% → {pct_after}%)",
                 "before": pct_before,
                 "after": pct_after,
             }
 
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Manual compact error {session_id}: {e}")
             raise HTTPException(500, str(e))

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
-  SETTINGS_GROUPS,
   getSettingsPanel,
   harvestSettingsControlText,
   searchSettingsPanels,
+  settingsGroupHeading,
 } from './registry.js';
 
 const _boundModals = new WeakSet();
@@ -37,11 +37,10 @@ export function controlTextFor(modalEl) {
 
 /** `SET-U-13` (P23-03). A non-admin's result said "Workstation ·
  *  Administration" — a group whose heading their nav hides. The group is named
- *  only to someone who can see it. */
+ *  only to someone who can see it. `B1206`: and by the heading the nav draws
+ *  (*Admin*), never by a label it does not. */
 function groupLabelFor(panel, isAdmin = true) {
-  const group = SETTINGS_GROUPS.find(candidate => candidate.id === panel.group);
-  if (group?.adminOnly && !isAdmin) return '';
-  return group?.label || '';
+  return settingsGroupHeading(panel, { isAdmin });
 }
 
 function clearResults(resultsEl) {

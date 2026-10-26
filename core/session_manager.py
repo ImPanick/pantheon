@@ -761,14 +761,11 @@ class SessionManager:
         finally:
             db.close()
 
-    def get_sessions_for_user(self, username: Optional[str] = None) -> Dict[str, Session]:
-        """Return sessions for a specific user (or all if username is None)."""
-        if username is None:
-            return self.sessions
-        return {
-            sid: s for sid, s in self.sessions.items()
-            if s.owner == username
-        }
+    # (`B1510`: `get_sessions_for_user` was here. It filtered `self.sessions` —
+    # the boot cache of the newest 100 chats of every owner — by owner, and
+    # after `B1224` moved Tidy and the agent's `list_sessions` to `list_page`
+    # nothing called it. A person's chats are `list_page`'s answer; a second
+    # door that answered from the cache is how both of those were wrong.)
 
     def save_sessions(self):
         """No-op for DB compatibility."""

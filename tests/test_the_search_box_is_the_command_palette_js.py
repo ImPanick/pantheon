@@ -496,7 +496,8 @@ def test_a_settings_panel_comes_from_the_registry_with_its_admin_rule(box):
     assert "Settings" not in out["member"]["labels"]
     group = out["admin"]["groups"][out["admin"]["labels"].index("Settings")]
     assert group["options"][0]["label"] == "Networks"
-    assert group["options"][0]["detail"] == "Administration"
+    # `B1206`: the hint is the heading the Settings nav draws over the group.
+    assert group["options"][0]["detail"] == "Admin"
     assert out["after"]["settings"] == ["networks"]
     assert out["after"]["open"] is False
 

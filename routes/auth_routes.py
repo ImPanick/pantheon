@@ -784,9 +784,11 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
 
         # The in-memory session cache (session_manager.sessions) stores each
         # session's owner at load time. Without this patch the renamed user's
-        # sessions are invisible on the next /api/sessions call because
-        # get_sessions_for_user does an exact `s.owner == username` comparison
-        # against stale in-memory values.
+        # chats that have no message yet are missing from the next
+        # /api/sessions call: `list_page` lists such a chat only when the cache
+        # says it is this person's (an exact `s.owner == username`), and the
+        # cache still holds the old name. (`B1510`: this comment named
+        # `get_sessions_for_user`, which nothing called after `B1224`.)
         sm = getattr(request.app.state, "session_manager", None)
         if sm is not None:
             for sess in list(getattr(sm, "sessions", {}).values()):
