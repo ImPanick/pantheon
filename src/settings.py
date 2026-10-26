@@ -199,6 +199,15 @@ DEFAULT_SETTINGS = {
     # removed rather than left as decoration. Retention is not a boot-time
     # concern; Settings is the place to change it.
     "events_retention_days": 90,
+    # `B685`. How many days of the auth audit trail (`P11-08`'s `kind="auth"`
+    # rows: logins, role changes, refusals) to keep, when that should differ
+    # from the window above. Unset (`None`) follows `events_retention_days`,
+    # which is what every install did before this key; `0` keeps the audit
+    # trail forever. A year of *who was made an admin* used to cost a year of
+    # every model round, because one window pruned both.
+    #
+    # SETTINGS-ONLY for the reason above: no environment variable beneath it.
+    "auth_events_retention_days": None,
     # ── `P12` · limits that were constants ──────────────────────────────────
     #
     # `P12-06`. The per-client upload burst gate: at most N uploads in the last

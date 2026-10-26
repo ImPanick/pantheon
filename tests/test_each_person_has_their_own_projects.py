@@ -193,7 +193,7 @@ def test_get_workspace_through_the_dispatcher_names_the_callers_folder(datadir, 
     import src.tool_execution as te
     from src.agent_tools import ToolBlock
     from src.tool_execution import NO_TOOL_SECURITY_CONTEXT, execute_tool_block, projects_root
-    monkeypatch.setattr(te, "owner_is_admin_or_single_user", lambda owner: owner == ADMIN)
+    monkeypatch.setattr(te, "owner_is_admin", lambda owner: owner == ADMIN)
     monkeypatch.setattr("src.tool_execution._works_in_workstation", lambda owner: False,
                         raising=False)
     out = run(execute_tool_block(ToolBlock("get_workspace", ""), owner=ADMIN,
@@ -225,7 +225,7 @@ def test_the_picker_opens_on_the_callers_own_folder(datadir, monkeypatch):
 
     application.include_router(wr.setup_workspace_routes())
     monkeypatch.setattr(wr, "_in_workstation", lambda request, owner: False)
-    monkeypatch.setattr(wr, "owner_is_admin_or_single_user", lambda owner: owner == ADMIN)
+    monkeypatch.setattr(wr, "owner_is_admin", lambda owner: owner == ADMIN)
     r = TestClient(application).get("/api/workspace/browse", headers={"x-test-user": ADMIN})
     assert r.status_code == 200, r.text
     assert r.json()["path"] == os.path.realpath(projects_root(ADMIN))

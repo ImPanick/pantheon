@@ -15,7 +15,7 @@ from typing import Dict, Optional
 from fastapi import APIRouter, Request, HTTPException, Query
 
 from src.auth_helpers import get_current_user
-from src.tool_security import owner_is_admin_or_single_user
+from src.tool_security import owner_is_admin
 
 # Cap entries returned per directory (mirrors filesystem_tools._CODENAV_MAX_HITS).
 # A huge directory shouldn't dump thousands of rows into the picker; the user can
@@ -110,7 +110,7 @@ def setup_workspace_routes():
         owner = get_current_user(request)
         if _in_workstation(request, owner):
             return _from_loop(_browse_workstation, owner, path)
-        if not owner_is_admin_or_single_user(owner):
+        if not owner_is_admin(owner):
             raise HTTPException(status_code=403, detail="Workspace browsing is admin-only")
 
         # Resolve symlinks so the reported path is canonical and the UI navigates
@@ -177,7 +177,7 @@ def setup_workspace_routes():
         owner = get_current_user(request)
         if _in_workstation(request, owner):
             return _from_loop(_vet_workstation, owner, path)
-        if not owner_is_admin_or_single_user(owner):
+        if not owner_is_admin(owner):
             raise HTTPException(status_code=403, detail="Workspace selection is admin-only")
         from src.tool_execution import vet_workspace
         resolved = vet_workspace(path)

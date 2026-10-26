@@ -846,7 +846,12 @@ FUNCTION_TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "plan": {"type": "string", "description": "The full updated plan as a GitHub-style markdown checklist — one step per line, `- [ ]` for pending and `- [x]` for done. Always send the whole list."}
+                    "plan": {"type": "string", "description": "The full updated plan as a GitHub-style markdown checklist — one step per line, `- [ ]` for pending and `- [x]` for done. Always send the whole list."},
+                    # `B1415`. Served by `UpdatePlanTool`: a checklist with
+                    # fewer steps than the plan is refused unless the steps it
+                    # drops are named here.
+                    "removing_steps": {"type": "array", "items": {"type": "string"},
+                                       "description": "Only when the user asked to drop steps: the text of each step removed. A shorter checklist without this is refused."}
                 },
                 "required": ["plan"]
             }

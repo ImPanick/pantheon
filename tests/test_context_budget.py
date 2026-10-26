@@ -90,13 +90,14 @@ def test_default_settings_registers_hard_max_key():
 
 
 def test_alias_map_registers_friendly_names():
-    """`manage_settings` should accept 'hard max' and friends."""
-    from pathlib import Path
-    # manage_settings (and its alias map) moved to agent_tools/admin_tools.py in #3629.
-    src = Path("src/agent_tools/admin_tools.py").read_text()
-    assert '"hard max": "agent_input_token_hard_max"' in src
-    assert '"token budget cap": "agent_input_token_hard_max"' in src
-    assert '"input budget cap": "agent_input_token_hard_max"' in src
+    """`manage_settings` should accept 'hard max' and friends.
+
+    `B897` moved the alias map out of `do_manage_settings` into
+    `src/settings_requests.py`, where the approval gate reads it too, so this
+    asks the resolver both of them use instead of reading a source file."""
+    from src.settings_requests import resolve_setting_key
+    for alias in ("hard max", "token budget cap", "input budget cap", "Hard Max"):
+        assert resolve_setting_key(alias) == "agent_input_token_hard_max", alias
 
 
 def test_agent_loop_reads_hard_max_setting(tmp_path, monkeypatch):

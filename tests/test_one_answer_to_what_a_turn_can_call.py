@@ -127,7 +127,7 @@ def run_turn(monkeypatch, tmp_path, *, owner, user="what is the capital of franc
     """Drive `stream_agent_loop` once. Nothing is inherited from the container.
 
     `signed_in` is the one way a test in this tree is a person
-    (`D-2026-10-07-02` §2), so `owner_is_admin_or_single_user` in the loop and
+    (`D-2026-10-07-02` §2), so `owner_is_admin` in the loop and
     `_owner_is_admin` in the dispatcher answer about the same two accounts.
     `owner=None` is the anonymous turn — nobody signed in — which is what the
     brief's own measurement drove.

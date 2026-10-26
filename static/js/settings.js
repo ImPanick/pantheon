@@ -7099,7 +7099,7 @@ async function initUnifiedIntegrations() {
 function syncAdminVisibility() {
   if (!modalEl) return;
   // `P23-03`. The table's answer (`viewerIsAdmin`): the status's `is_admin`;
-  // `B1523`, a page the status called a non-admin is not shown admin panels.
+  // `B1523`/`B1271`, a page the status called a non-admin is not shown admin panels.
   const isAdmin = viewerIsAdmin();
   modalEl.querySelectorAll('.admin-only').forEach(el => {
     el.style.display = isAdmin ? '' : 'none';

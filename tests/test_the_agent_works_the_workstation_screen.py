@@ -86,7 +86,7 @@ def configure(monkeypatch, station, **overrides):
     settings.update(overrides)
     monkeypatch.setattr(wc, "_setting", lambda key, default="": settings.get(key, default))
     monkeypatch.delenv(P.URL_ENV, raising=False)
-    monkeypatch.setattr(tool_security, "owner_is_admin_or_single_user",
+    monkeypatch.setattr(tool_security, "owner_is_admin",
                         lambda owner: owner == ADMIN)
     monkeypatch.setattr(core.auth, "AuthManager", _Auth)
     return settings

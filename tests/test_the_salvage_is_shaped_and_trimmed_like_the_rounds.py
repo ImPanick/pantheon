@@ -254,8 +254,13 @@ def _says_it_cannot_see(payload):
 @pytest.mark.asyncio
 async def test_a_model_that_cannot_see_is_not_sent_the_pictures(chain, monkeypatch, ceiling):
     """The rounds put a tool picture into words for a model that cannot see; so
-    does its salvage, which used to send the picture itself."""
+    does its salvage, which used to send the picture itself.
+
+    `B1281`: "cannot see" is the endpoint's own *no* now — a name the list
+    does not know is sent the picture, as a person's is (`B1279`)."""
     ceiling(None)
+    monkeypatch.setattr(chat_helpers, "vision_answer",
+                        lambda name, url="": False if name == OTHER else None)
     sent = await _forced_turn_with_a_picture(chain, monkeypatch, OTHER)
     rounds = _tool_rounds(sent)
     (salvage,) = [p for kind, _h, p, _hd in sent if kind == "post"]

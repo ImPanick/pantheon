@@ -27,7 +27,7 @@ from src.tool_security import (
     email_tool_policy_names,
     is_public_blocked_tool,
     non_admin_refusal,
-    owner_is_admin_or_single_user,
+    owner_is_admin,
 )
 from src.tool_capabilities import ToolRunSecurityContext, blocked_tool_result
 from src.tool_approvals import ExactToolApproval
@@ -506,7 +506,7 @@ _ADMIN_ONLY_TOOLS = {
 
 def _owner_is_admin(owner: Optional[str]) -> bool:
     """Mirror route-level admin behavior for agent tool execution."""
-    return owner_is_admin_or_single_user(owner)
+    return owner_is_admin(owner)
 
 
 def _runs_in_workstation(tool: Any, owner: Optional[str]) -> bool:

@@ -437,7 +437,12 @@ def test_an_owner_less_task_judges_no_one(world):
     run = run_task(world, "nobody", "run-n")
     assert run["status"] == "skipped" and "judged no one's documents" in run["result"], run
     assert everything(world) == before
-    assert F.waiting_reviews(F.EVERY_OWNER) == []
+    # `B1271`: `EVERY_OWNER` went with auth-off; the table itself is asked.
+    db = world.db()
+    try:
+        assert db.query(cdb.DocumentPlan).count() == 0
+    finally:
+        db.close()
     assert world.scheduler.pop_notifications() == []
 
 

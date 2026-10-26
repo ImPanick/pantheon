@@ -424,7 +424,7 @@ def selectable_tool_names() -> Set[str]:
     Why those four and no others: `builtin_browser` is a **server id**
     (`FORBIDDEN.md` Part 1 lists it under *built-in MCP server ids*), earning
     its place in the denylist register because it is the word the browser
-    toggle accepts (`admin_tools._ALIASES["browser"]`) and the intent marker
+    toggle accepts (`settings_requests.TOOL_TOGGLE_ALIASES["browser"]`) and the intent marker
     `_expand_browser_mcp_tools` turns into that server's real qualified tool
     names — neither of which is an offer. The three `vault_*` names are a real
     admin capability whose surface is Settings: `require_admin` on every

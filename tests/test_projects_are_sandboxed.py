@@ -191,7 +191,7 @@ def test_the_picker_opens_on_the_projects_folder_not_the_install(data_dir, monke
     import routes.workspace_routes as wr
 
     monkeypatch.setattr(wr, "get_current_user", lambda request: "admin")
-    monkeypatch.setattr(wr, "owner_is_admin_or_single_user", lambda owner: True)
+    monkeypatch.setattr(wr, "owner_is_admin", lambda owner: True)
     monkeypatch.setattr(wr, "_in_workstation", lambda request, owner: False)
     app = FastAPI()
     builder = getattr(wr, "setup_workspace_routes", None) or getattr(wr, "create_router")

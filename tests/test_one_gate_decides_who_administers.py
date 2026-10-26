@@ -7,7 +7,7 @@ was written four times. `core.middleware.require_admin` was one;
 by hand at 21 gates — the whole user-administration surface, invisible to any
 audit that greps for `require_admin`; `routes/shell_routes.py` kept its own
 `_require_admin`, which also refused a bearer token's `api`; and
-`owner_is_admin_or_single_user` answered the same question for callers with no
+`owner_is_admin` answered the same question for callers with no
 request. The first two are folded into `require_admin` now, which says the
 shell's `api` refusal itself.
 

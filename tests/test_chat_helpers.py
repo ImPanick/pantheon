@@ -540,10 +540,11 @@ async def _build_context_owner_probe(monkeypatch, request_state):
 
     import src.user_time as user_time
 
+    # `B1169`: the chat path now passes `available=` (the turn's tools).
     monkeypatch.setattr(
         user_time,
         "current_datetime_context_message",
-        lambda now_utc=None: {"role": "user", "content": "[Context - current date/time]"},
+        lambda now_utc=None, available=None: {"role": "user", "content": "[Context - current date/time]"},
         raising=False,
     )
 
@@ -683,7 +684,7 @@ async def _shaping_probe(monkeypatch, *, compact_to=None, trim_to=None):
     import src.user_time as user_time
     monkeypatch.setattr(
         user_time, "current_datetime_context_message",
-        lambda now_utc=None: {"role": "user", "content": "[Context - current date/time]"},
+        lambda now_utc=None, available=None: {"role": "user", "content": "[Context - current date/time]"},
         raising=False,
     )
 

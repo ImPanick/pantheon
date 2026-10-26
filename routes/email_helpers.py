@@ -2116,8 +2116,8 @@ def _pre_retrieve_context(
         # single-user owner. Non-admin owners still get their own (owner-scoped)
         # IMAP history below, just not the shared contacts.
         try:
-            from src.tool_security import owner_is_admin_or_single_user
-            contacts_allowed = owner_is_admin_or_single_user(owner or None)
+            from src.tool_security import owner_is_admin
+            contacts_allowed = owner_is_admin(owner or None)
         except Exception:
             contacts_allowed = not bool(owner)
         is_known = False

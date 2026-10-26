@@ -36,7 +36,7 @@ def client(wf_db, sched, admins, monkeypatch, tmp_path):
     monkeypatch.setattr(task_routes, "record_admin_refusal", tap.record_admin_refusal)
     monkeypatch.setattr(prefs, "_load_for_user", lambda user=None: {})
     monkeypatch.setattr(constants, "DATA_DIR", str(tmp_path))
-    monkeypatch.setattr(ts, "owner_is_admin_or_single_user", lambda owner: owner in admins)
+    monkeypatch.setattr(ts, "owner_is_admin", lambda owner: owner in admins)
     import src.workstation_access as wa
     monkeypatch.setattr(wa, "may_use", lambda owner, **kw: owner in admins)
     app = FastAPI()

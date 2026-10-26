@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone, tzinfo
-from typing import Dict, Optional
+from typing import Dict, Iterable, Optional
 
 from src.prompt_security import turn_note_message
 
@@ -124,8 +124,28 @@ def timezone_label(dt: Optional[datetime] = None) -> str:
     return offset_label
 
 
-def current_datetime_prompt(now_utc: Optional[datetime] = None) -> str:
-    """Build reusable system prompt text for date/time reasoning."""
+# `B1169`. The two sentences below name a tool each, and they went to every
+# turn — an AI step limited to `web_search`, a plain chat with no tools — so the
+# model was told how to call tools it had not been given. Each is said only
+# when its tool is in the turn's set.
+_SCHEDULING_SENTENCES = (
+    ("manage_calendar",
+     "When scheduling calendar events with manage_calendar, pass local ISO "
+     "datetimes resolved against this user-local date/time.\n"),
+    ("manage_tasks",
+     "When scheduling a task with manage_tasks, scheduled_time is in UTC: "
+     "convert the user's stated local time using the UTC offset above.\n"),
+)
+
+
+def current_datetime_prompt(now_utc: Optional[datetime] = None,
+                            available: Optional[Iterable[str]] = None) -> str:
+    """Build reusable system prompt text for date/time reasoning.
+
+    `available` is the turn's own tool set (`B1169`): a scheduling sentence
+    naming a tool outside it is left out. `None` is a caller that does not
+    know, and keeps both, as before.
+    """
     if now_utc is None:
         utc_now = datetime.now(timezone.utc)
     elif now_utc.tzinfo is None:
@@ -133,6 +153,7 @@ def current_datetime_prompt(now_utc: Optional[datetime] = None) -> str:
     else:
         utc_now = now_utc.astimezone(timezone.utc)
 
+    tools = frozenset(available) if available is not None else frozenset()
     local_now = now_user_local(utc_now)
     tomorrow = local_now + timedelta(days=1)
     return (
@@ -145,10 +166,9 @@ def current_datetime_prompt(now_utc: Optional[datetime] = None) -> str:
         "Use this for any 'today', 'tomorrow', 'tonight', 'this week', or other "
         "relative-date reasoning. Do not ask for an exact date just because the "
         "user used a relative date.\n"
-        "When scheduling calendar events with manage_calendar, pass local ISO "
-        "datetimes resolved against this user-local date/time.\n"
-        "When scheduling a task with manage_tasks, scheduled_time is in UTC: "
-        "convert the user's stated local time using the UTC offset above.\n\n"
+        + "".join(sentence for tool, sentence in _SCHEDULING_SENTENCES
+                  if available is None or tool in tools)
+        + "\n"
     )
 
 
@@ -209,7 +229,9 @@ def current_datetime_context_message_for_tz(
     return turn_note_message(prompt)
 
 
-def current_datetime_context_message(now_utc: Optional[datetime] = None) -> Dict[str, str]:
+def current_datetime_context_message(now_utc: Optional[datetime] = None,
+                                     available: Optional[Iterable[str]] = None
+                                     ) -> Dict[str, str]:
     """Build the current-date/time context as a standalone chat message.
 
     This intentionally returns a ``user``-role message rather than a
@@ -232,4 +254,4 @@ def current_datetime_context_message(now_utc: Optional[datetime] = None) -> Dict
     joined to the person's own question with ``\n\n`` and the model received
     one turn. One header, read by the merge, keeps them apart.
     """
-    return turn_note_message(current_datetime_prompt(now_utc))
+    return turn_note_message(current_datetime_prompt(now_utc, available))

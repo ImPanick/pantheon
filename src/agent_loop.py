@@ -124,6 +124,7 @@ from src.agent_tools import (
     ToolBlock,
     MAX_AGENT_ROUNDS,
 )
+from src.active_plan import ActivePlan, bind_active_plan   # `B1415`
 from src.agent_tools.computer_tools import (
     ACTIONS as _COMPUTER_ACTIONS,
     command_line as _computer_command_line,
@@ -4360,7 +4361,14 @@ def _build_system_prompt(
     _datetime_message = None
     try:
         from src.user_time import current_datetime_context_message
-        _datetime_message = current_datetime_context_message()
+        # `B1169`. Its scheduling sentences name `manage_calendar` and
+        # `manage_tasks`, and are said only to a turn that has them: the set
+        # the prompt's own tool list is built from (`_build_base_prompt`).
+        _dt_access = turn_tool_access(disabled_tools)
+        _dt_available = _dt_access.allowed_among(
+            _prompt_tool_names(relevant_tools, _dt_access, needs_admin)
+            if relevant_tools is not None else set(TOOL_SECTIONS))
+        _datetime_message = current_datetime_context_message(available=_dt_available)
     except Exception as e:
         logger.warning("Failed to build datetime context message", exc_info=e)
 
@@ -8622,6 +8630,17 @@ async def stream_agent_loop(
     # on such turns and at most _VERIFIER_MAX_ROUNDS times.
     _effectful_used = False
     _verifier_rounds = 0
+    # `B1415`. The plan this turn executes, as `update_plan` last accepted it
+    # (the tool refuses a write that would silently delete steps), and whether
+    # steps were ticked with no effectful call behind them this turn — the
+    # owner's transcript ticked six with none, and the verifier, gated on
+    # `_effectful_used` alone, waved that turn through.
+    _plan_holder = ActivePlan(approved_plan)
+    # `B1281`. Set when a round is refused for a tool's picture: every request
+    # after it, this turn, carries the pictures in words.
+    _pictures_refused = False
+    _effectful_ever = False
+    _ticked_without_work = False
     # `P4-17`. Every verdict this turn, in order, for the metrics envelope —
     # the verifier can run twice, and a reloaded thread has to show both.
     _verifier_findings: list = []
@@ -9040,6 +9059,7 @@ async def stream_agent_loop(
             # binding is the approved call's and ends with it.
             bind_run_limits(_run_limits)
             bind_tool_call_started_by(workload)  # `B1061`
+            bind_active_plan(_plan_holder)       # `B1415`
             try:
                 return await execute_tool_block(
                     approved_block,
@@ -9314,6 +9334,7 @@ async def stream_agent_loop(
         tool_events.append(approved_tool_event)
         if approved.tool_name in _VERIFIER_EFFECTFUL_TOOLS:
             _effectful_used = True
+            _effectful_ever = True
         formatted_approved_result = format_tool_result(desc, approved_result)
         approved_record = {
             "tool_name": approved.tool_name,
@@ -9392,14 +9413,21 @@ async def stream_agent_loop(
             tool_call_limit_source=_run_limits.tool_call_limit_source,
         )
 
+    _redo_round: list = []   # `B1281`: a step to ask again (`_round_numbers`)
+
     def _round_numbers():
         """`range(1, max_rounds + 1)`, except that it reads `max_rounds` at
         every step: a raise granted mid-run (`P7-12`) lengthens the run it was
         granted in, and the `for ... else` below still means "every allowed
         round ran"."""
         n = 0
-        while n < max_rounds:
-            n += 1
+        while n < max_rounds or _redo_round:
+            if _redo_round:
+                # `B1281`. A round refused for a tool's picture is asked
+                # again, as the same step, once.
+                n = _redo_round.pop()
+            else:
+                n += 1
             yield n
 
     def _next_step_frame(current_round: int) -> Optional[str]:
@@ -9529,8 +9557,10 @@ async def stream_agent_loop(
                 # cannot. Per candidate, because a fallback may be another
                 # model; before the trim, so the trim reserves room for exactly
                 # the pictures that will be sent.
-                candidate_messages = await tool_result_images.for_model(
-                    state["messages"], candidate_model, candidate_url)
+                candidate_messages = (
+                    tool_result_images.in_words(state["messages"]) if _pictures_refused
+                    else await tool_result_images.for_model(
+                        state["messages"], candidate_model, candidate_url))
                 request_messages = _trim_route_request_messages(
                     candidate_url,
                     candidate_model,
@@ -9672,6 +9702,7 @@ async def stream_agent_loop(
             bool(all_tool_schemas),
             agent_stream_timeout,
         )
+        _retry_round_in_words = False   # `B1281`
         async for chunk in stream_llm_with_fallback(
             _candidates,
             messages,
@@ -9713,6 +9744,22 @@ async def stream_agent_loop(
                     time.time() - _round_start,
                     chunk[:500],
                 )
+                # `B1281`. Refused for a tool's picture, before a word of this
+                # round: the round is asked again with the pictures in words,
+                # every later request this turn carries words, and the chat
+                # says so once — rather than the turn ending on the refusal
+                # and the next round carrying the picture into it again.
+                if (not _pictures_refused
+                        and not round_response.strip() and not native_tool_calls
+                        and tool_result_images.refused_for_its_picture(
+                            chunk, _last_route_request_messages)):
+                    _pictures_refused = True
+                    _retry_round_in_words = True
+                    _refused_note = ("\n\n" if full_response.strip() else "") \
+                        + tool_result_images.PICTURES_REFUSED_NOTE + "\n\n"
+                    full_response += _refused_note
+                    yield f'data: {json.dumps({"delta": _refused_note})}\n\n'
+                    break
                 terminal_status = None
                 try:
                     error_line = next(
@@ -10004,6 +10051,11 @@ async def stream_agent_loop(
                 yield chunk
             # Intercept [DONE] — don't forward until all rounds finish
 
+        if _retry_round_in_words:
+            # `B1281`: the same step, asked again with the pictures in words —
+            # not a step of its own (`_round_numbers` does not count it).
+            _redo_round.append(round_num)
+            continue
         logger.info(
             "[agent-timing] round_stream_done round=%s elapsed=%.3fs text_chars=%s tool_calls=%s first_event=%s first_token=%s",
             round_num,
@@ -10191,7 +10243,8 @@ async def stream_agent_loop(
                     # prompt), so the turn ended on the apology below.
                     _synth_messages = _trim_route_request_messages(
                         endpoint_url, model,
-                        await tool_result_images.for_model(_synth_messages, model, endpoint_url))
+                        tool_result_images.in_words(_synth_messages) if _pictures_refused
+                        else await tool_result_images.for_model(_synth_messages, model, endpoint_url))
                     # `B1050`. Asked of the candidate that answered: once a
                     # fallback answers, the pin rebinds `endpoint_url`, `model`
                     # and `headers` to it, so the call already went there — but
@@ -10331,7 +10384,10 @@ async def stream_agent_loop(
             # to re-trigger). Skipped on force-answer rounds (no tools to
             # fix with), pure Q&A, and when the toggle is off.
             _claimed_done = bool(_strip_think_blocks(cleaned_round).strip())
-            if (_effectful_used and not _force_answer
+            # `B1415`: and a turn that ticked plan steps with nothing
+            # effectful behind them — "claimed done, did nothing" is the one
+            # case this check exists for.
+            if ((_effectful_used or _ticked_without_work) and not _force_answer
                     and _claimed_done
                     and _verifier_rounds < _VERIFIER_MAX_ROUNDS
                     # Default OFF: on weak local models the verifier can't judge
@@ -10376,6 +10432,7 @@ async def stream_agent_loop(
                     # Require fresh effectful work before verifying again, so we
                     # never re-verify an unchanged state in a loop.
                     _effectful_used = False
+                    _ticked_without_work = False
                     continue
             # ── Intent-without-action supervisor ─────────────────────
             # Catch "Let me tail the output" / "I'll check the logs" /
@@ -11101,6 +11158,7 @@ async def stream_agent_loop(
                     # this task's context is a copy, so it ends with the call.
                     bind_run_limits(_run_limits)
                     bind_tool_call_started_by(workload)  # `B1061`
+                    bind_active_plan(_plan_holder)       # `B1415`
                     try:
                         return await execute_tool_block(
                             block,
@@ -11664,6 +11722,9 @@ async def stream_agent_loop(
             tool_events.append(tool_event)
             if block.tool_type in _VERIFIER_EFFECTFUL_TOOLS:
                 _effectful_used = True
+                _effectful_ever = True
+            if result.get("plan_ticked") and not _effectful_ever:
+                _ticked_without_work = True   # `B1415`
 
             formatted = format_tool_result(desc, result)
             tool_results.append(formatted)

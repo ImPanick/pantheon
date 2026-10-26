@@ -1035,34 +1035,54 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
 
     @router.post("/api/session/{session_id}/compact")
     async def compact_session(request: Request, session_id: str):
-        """Manually trigger context compaction for a session."""
+        """Summarize a chat's older messages; keep a recent tail verbatim.
+
+        `B1529`. Two handlers answered this path, and `app.py` includes
+        `session_routes` first, so its compact was the one that ran and this
+        one — `B1214`'s visible *Chat compacted* marker, `B1506`'s order — was
+        shadowed: a compacted chat lost its earlier messages with no line
+        saying why. One handler now, this one, keeping the better of each for
+        the person (the owner's blanket authority, coordinator's brief):
+
+          * from here: the summary is a `hidden` system row the model reads
+            first, then a visible marker saying what happened, then the kept
+            messages, written in that order through `replace_messages`;
+          * from `session_routes`: the adaptive tail — four messages on a short
+            chat, up to eight on a long one, because a fixed four "made manual
+            compaction look like it did nothing" there — and a refusal a person
+            can read for a chat too short to compact, where this one answered
+            200 and the composer said *Context compacted*;
+          * the response carries both shapes: `summarized`/`kept` (what
+            `slashCommands.js` prints) and `before`/`after`/`message`.
+        """
         _verify_session_owner(request, session_id)
         from src.auth_helpers import effective_user
-        owner = effective_user(request)
         try:
             session = session_manager.get_session(session_id)
         except KeyError:
             raise HTTPException(404, CHAT_GONE)
         _reject_compact_during_active_run(session_id)
+        # The chat's owner's models write its summary — `session_routes`' rule,
+        # which `tests/test_history_compact_tool_calls.py` drives — and the
+        # caller's when a chat names nobody.
+        owner = getattr(session, "owner", None) or effective_user(request)
+
+        history = list(session.history or [])
+        if len(history) < 6:
+            raise HTTPException(400, "Not enough messages to compact yet — a chat needs six.")
+        keep_count = min(8, max(4, len(history) // 4))
+        older = history[:-keep_count]
+        recent = history[-keep_count:]
 
         try:
             from src.model_context import estimate_tokens, get_context_length
             from src.llm_core import llm_call_async
             from src.endpoint_resolver import resolve_endpoint
 
-            if len(session.history) < 6:
-                return {"status": "ok", "message": "Not enough messages to compact"}
-
             ctx_len = get_context_length(session.endpoint_url, session.model)
-            messages_before = session.get_context_messages()
-            used_before = estimate_tokens(messages_before)
+            used_before = estimate_tokens(session.get_context_messages())
             pct_before = round((used_before / ctx_len) * 100, 1) if ctx_len else 0
-            msg_count_before = len(session.history)
-
-            # Keep only last 4 messages, summarize the rest
-            keep_count = 4
-            older = session.history[:-keep_count]
-            recent = session.history[-keep_count:]
+            msg_count_before = len(history)
 
             # Build text to summarize
             convo_text = "\n".join(
@@ -1077,19 +1097,27 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             compact_url = util_url or session.endpoint_url
             compact_model = util_model or session.model
             compact_headers = util_headers if util_url else session.headers
+            if not compact_url or not compact_model:
+                raise HTTPException(400, "No model is set up to write the summary — choose "
+                                         "a utility or chat model, then compact.")
 
             from src.context_compactor import SELF_SUMMARY_SYSTEM_PROMPT, normalize_compaction_summary
-            compaction_count = sum(1 for m in session.history if isinstance(m, ChatMessage) and "[Conversation summary" in (m.content or ""))
+            compaction_count = sum(1 for m in history if isinstance(m, ChatMessage) and "[Conversation summary" in (m.content or ""))
             sys_prompt = SELF_SUMMARY_SYSTEM_PROMPT.replace("{count}", str(len(older))).replace("{n}", str(compaction_count + 1))
-            summary = await llm_call_async(
-                compact_url, compact_model,
-                [
-                    {"role": "system", "content": sys_prompt},
-                    {"role": "user", "content": convo_text},
-                ],
-                temperature=0.2, max_tokens=1024,
-                headers=compact_headers, timeout=30,
-            )
+            try:
+                summary = await llm_call_async(
+                    compact_url, compact_model,
+                    [
+                        {"role": "system", "content": sys_prompt},
+                        {"role": "user", "content": convo_text},
+                    ],
+                    temperature=0.2, max_tokens=1024,
+                    headers=compact_headers, timeout=30,
+                )
+            except Exception as e:
+                logger.error(f"Manual compact error {session_id}: {e}")
+                raise HTTPException(502, "The model did not write a summary, so nothing was "
+                                         "compacted. Try again.")
             summary = normalize_compaction_summary(summary)
 
             # Replace session history: summary as system message + recent messages
@@ -1117,8 +1145,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             # kept…] and the database [kept…, summary, marker], and after a
             # reload the marker drew under the messages it introduced and the
             # model was replayed its summary after them. `replace_messages` is
-            # the seam the other two compactions persist through
-            # (`session_routes`' compact, `context_compactor`): the whole
+            # the seam `context_compactor` persists through too: the whole
             # history in one transaction, in order, each row's id set on the
             # message it stores, and the cached session given the same list.
             if not session_manager.replace_messages(session_id, new_history):
@@ -1131,7 +1158,11 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             pct_after = round((used_after / ctx_len) * 100, 1) if ctx_len else 0
 
             return {
+                "ok": True,
                 "status": "ok",
+                "summarized": len(older),
+                "kept": len(recent),
+                "message_count": len(new_history),
                 "message": f"Compacted: {msg_count_before} msgs → {len(new_history)} msgs ({pct_before}% → {pct_after}%)",
                 "before": pct_before,
                 "after": pct_after,
@@ -1141,6 +1172,6 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             raise
         except Exception as e:
             logger.error(f"Manual compact error {session_id}: {e}")
-            raise HTTPException(500, str(e))
+            raise HTTPException(500, "Compaction failed. Nothing was changed; try again.")
 
     return router

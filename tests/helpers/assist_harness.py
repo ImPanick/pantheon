@@ -127,7 +127,7 @@ def build_world(monkeypatch, tmp_path, *, admin="alice", integrations=(), chat=N
     monkeypatch.setattr(agent_tools, "get_mcp_manager", lambda: chat, raising=False)
     is_admin = lambda owner: owner == admin  # noqa: E731
     monkeypatch.setattr(tool_execution, "_owner_is_admin", is_admin)
-    monkeypatch.setattr(tool_security, "owner_is_admin_or_single_user", is_admin)
+    monkeypatch.setattr(tool_security, "owner_is_admin", is_admin)
     monkeypatch.setattr(ts, "owner_has_admin_task_privileges", is_admin)
     monkeypatch.setattr(tap, "owner_has_admin_task_privileges", is_admin)
     # `task_routes` imports `owner_has_admin_task_privileges` by name, so it holds

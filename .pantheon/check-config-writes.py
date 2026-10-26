@@ -64,6 +64,14 @@ STORES: dict[tuple[str, str], tuple[str, str]] = {
         GUARDED, "an address book; the loader answers a bad read with []"),
     ("routes/prefs_routes.py", "PREFS_FILE"): (
         GUARDED, "one file holds every user's preferences"),
+    # `B1017`: the boot migration of a flat user_prefs.json to the per-user
+    # form — the same file as the line above.
+    ("core/database.py", "prefs_path"): (
+        GUARDED, "the boot migration of user_prefs.json, which holds every user's preferences"),
+    # `B1017`: the installer's first admin, written only when no auth.json
+    # exists — atomic so a crash leaves it absent rather than half-written.
+    ("setup.py", "auth_path"): (
+        GUARDED, "the installer's first admin; the user database core/auth.py reads"),
     ("src/api_key_manager.py", "self.api_keys_file"): (
         GUARDED, "the store this row is named after: `_load_raw` returns {} and `save` wrote it back"),
     ("src/device_inventory.py", "_store_path()"): (
@@ -167,15 +175,9 @@ GUARDED_BASENAMES: dict[str, tuple[str, str]] = {
 # keyed (file, the store's constant) — so a NEW one fails, and an entry whose
 # write is gone fails as a STORES entry does.
 KNOWN_PLAIN_WRITES: dict[tuple[str, str], str] = {
-    ("core/database.py", "USER_PREFS_FILE"): (
-        "found by `B1008`'s widening and filed, not fixed (`B1017`): the boot "
-        "migration of a flat user_prefs.json to the per-user form writes it with "
-        "`open(prefs_path, 'w')`; its read raises on a bad file, so it is not the "
-        "`P3-16` shape, but it is not atomic"),
-    ("setup.py", "AUTH_FILE"): (
-        "found by `B1008`'s widening and filed with the one above: the installer writes "
-        "the first admin with `open(auth_path, 'w')`, only when no auth.json exists — "
-        "nothing to lose, but a crash mid-write leaves a file it then skips forever"),
+    # `B1017` emptied it: the user_prefs.json migration in `core/database.py`
+    # and the installer's first auth.json in `setup.py` write through
+    # `atomic_write_json(…, preserve_unreadable=True)` now, classified in STORES.
 }
 
 _WRITE_MODES = set("wax+")

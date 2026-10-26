@@ -589,11 +589,11 @@ def _seed_accounts(data_dir: str):
     `Law 14`: `tests/helpers/signed_in.py` is already the one way a test in
     this tree is a person (`D-2026-10-07-02` §2), and it is the only way that
     makes *every* policy check answer about the same people —
-    `owner_is_admin_or_single_user` in the loop and `_owner_is_admin` in the
+    `owner_is_admin` in the loop and `_owner_is_admin` in the
     dispatcher both ask `shared_auth_manager()`.
 
     Without the registration the install is in its pre-setup window, where
-    `owner_is_admin_or_single_user` answers False for everybody and the
+    `owner_is_admin` answers False for everybody and the
     non-admin policy holds two thirds of the register. Measured while building
     this harness: an `auth.json` written beside the probe's data directory and
     *not* registered gave an admin the admin tool list from the loop and

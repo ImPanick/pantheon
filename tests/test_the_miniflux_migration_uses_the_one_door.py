@@ -153,16 +153,25 @@ def test_a_read_is_not_a_write(mirror):
 
 
 def test_the_known_plain_writes_are_named_and_kept_honest(mirror):
-    """The two found on the way are filed, not fixed — so the checker lists
-    them, fails when another appears, and fails when one of them is gone."""
+    """The two found on the way were filed, not fixed — and `B1017` fixed them,
+    so the table is empty. The checker still fails when a plain write comes
+    back, and fails on an entry whose write is gone."""
     module = _load_checker(mirror)
-    module.KNOWN_PLAIN_WRITES.pop(("core/database.py", "USER_PREFS_FILE"))
+    assert module.KNOWN_PLAIN_WRITES == {}
     code, out = _run(module)
-    assert code == 1 and "core/database.py" in out and "USER_PREFS_FILE" in out, out
-    module = _load_checker(mirror)
+    assert code == 0, out
     module.KNOWN_PLAIN_WRITES[("src/settings.py", "SETTINGS_FILE")] = "gone"
     code, out = _run(module)
     assert code == 1 and "no plain write there any more" in out, out
+    target = mirror / "core" / "database.py"
+    source = target.read_text(encoding="utf-8")
+    atomic = "atomic_write_json(prefs_path, new_prefs, indent=2, preserve_unreadable=True)"
+    assert source.count(atomic) == 1, "the migration no longer looks like this"
+    target.write_text(source.replace(
+        atomic, 'open(prefs_path, "w", encoding="utf-8").write(_json.dumps(new_prefs))'),
+        encoding="utf-8")
+    code, out = _run(_load_checker(mirror))
+    assert code == 1 and "core/database.py" in out and "USER_PREFS_FILE" in out, out
 
 
 def test_both_halves_go_through_the_one_door(store, monkeypatch):

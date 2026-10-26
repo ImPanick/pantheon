@@ -15,7 +15,7 @@ in, as somebody, the way the product signs a person in:
   * :func:`signed_in` — that manager registered as the process's shared one
     (`core.auth.register_shared_auth_manager`, which `app.py` calls with the
     app's own), so every policy check that asks `shared_auth_manager()` —
-    `owner_is_admin_or_single_user`, `owner_has_admin_task_privileges`,
+    `owner_is_admin`, `owner_has_admin_task_privileges`,
     `workstation_access.may_use` — answers about these people;
   * :func:`as_person` — a bare app built from routers is given the manager and
     the one thing `AuthMiddleware` adds once a cookie validates: the person on

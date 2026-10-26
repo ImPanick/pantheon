@@ -40,7 +40,7 @@ that mapped only the 107 below would have walked past the other three. `B543`
 | `core/middleware.require_admin` | the real one: honours the internal-tool token (and asks about the person it names, `B1175`), refuses a request sentinel such as a bearer token's `api` (`B543`), raises 403 — it honoured `auth_disabled()` too until there was none (`D-2026-10-07-02` §2) | every site in § A |
 | `routes/auth_routes.py` | was `_get_current_user(request)` + `auth_manager.is_admin(user)`, written out inline at 22 places. Since `B543` its 21 gates are `require_admin`; what is left is the scrub decision in `GET /api/auth/settings`, an exempt read that answers everybody and blanks secrets for a non-admin — not a gate | 1 of rule C's |
 | `routes/shell_routes.py:_require_admin` | was its own reimplementation, which also refused the literal user `api`. Gone since `B543`: its five routes ask `require_admin`, which now says that refusal itself | 0 |
-| `owner_is_admin_or_single_user` | a policy helper that answers the same question a different way, for callers with no request (policy, tools) and for chat's workspace binding | 8 of rule C's, across 6 files |
+| `owner_is_admin` (`owner_is_admin_or_single_user` until `B1271`) | a policy helper that answers the same question a different way, for callers with no request (policy, tools) and for chat's workspace binding | 8 of rule C's, across 6 files |
 
 Only the first consulted `auth_disabled()`. Measured by calling both with
 `AUTH_ENABLED=false` and no session: `core.middleware.require_admin` returned, and
@@ -50,7 +50,7 @@ are one since `B543` — `require_admin` refuses a request with nobody on it, an
 when the app holds no auth manager.
 
 Rule C of the checker counts the second and fourth rows directly — every `is_admin(...)`
-and `owner_is_admin_or_single_user(...)` call outside `require_admin` itself — and ratchets
+and `owner_is_admin(...)` call outside `require_admin` itself — and ratchets
 them. The count, and the share of it that is one file, are derived:
 
 derived-others: 21 across 15 files, 1 in routes/auth_routes.py
@@ -357,7 +357,7 @@ routes: 39
 
 #### `routes/chat_routes.py`
 
-The router carries `dependencies=[Depends(require_chat_api_token_scope)]`, so every route below gets it whether or not the handler mentions auth, and every session route reaches `_verify_session_owner` (imported from `routes/session_routes.py`). `P11-02d` named `chat_routes.py:338/367` as the admin check; those two lines are `_candidate_index` and `_message_plain_text`. The real admin check is `owner_is_admin_or_single_user` at 481 and 510, reached only from `chat_stream`, and it gates workspace binding rather than the route.
+The router carries `dependencies=[Depends(require_chat_api_token_scope)]`, so every route below gets it whether or not the handler mentions auth, and every session route reaches `_verify_session_owner` (imported from `routes/session_routes.py`). `P11-02d` named `chat_routes.py:338/367` as the admin check; those two lines are `_candidate_index` and `_message_plain_text`. The real admin check is `owner_is_admin` at 481 and 510, reached only from `chat_stream`, and it gates workspace binding rather than the route.
 
 routes: 14
 
@@ -365,7 +365,7 @@ routes: 14
 |---|---|---|---|
 | `GET /api/chat/agent-limits` | `agent_limits` | `middleware + effective_user + owner_filter + require_chat_api_token_scope` | yes (`P7-10`) — the chat scope, as `chat_stream`, because it answers for the caller's own next agent run: the two loop caps and whether the selected endpoint is local. `effective_user` then `owner_filter` scope the endpoint lookup to the caller's endpoints, and the answer names no endpoint, host or key. |
 | `POST /api/chat` | `chat_endpoint` | `middleware + _verify_session_owner + effective_user + owner_filter + require_api_token_scope + require_chat_api_token_scope` | yes — token scope, then `effective_user`, then `owner_filter` on every row it reads. |
-| `POST /api/chat_stream` | `chat_stream` | `middleware + _verify_session_owner + effective_user + get_current_user + owner_filter + owner_is_admin_or_single_user + require_api_token_scope + require_chat_api_token_scope` | yes — the same, plus `owner_is_admin_or_single_user` before any workspace is bound. |
+| `POST /api/chat_stream` | `chat_stream` | `middleware + _verify_session_owner + effective_user + get_current_user + owner_filter + owner_is_admin + require_api_token_scope + require_chat_api_token_scope` | yes — the same, plus `owner_is_admin` before any workspace is bound. |
 | `GET /api/chat/resume/{session_id}` | `chat_resume` | `middleware + _verify_session_owner + require_chat_api_token_scope` | yes — `_verify_session_owner` refuses another user's session, and refuses "not yours" and "no such session" identically. |
 | `POST /api/chat/stop/{session_id}` | `chat_stop` | `middleware + _verify_session_owner + require_chat_api_token_scope` | yes — `_verify_session_owner` refuses another user's session, and refuses "not yours" and "no such session" identically. |
 | `POST /api/chat/steer/{session_id}` | `chat_steer` | `middleware + _verify_session_owner + require_chat_api_token_scope` | yes — `_verify_session_owner` refuses another user's session, and refuses "not yours" and "no such session" identically. |
@@ -496,14 +496,14 @@ routes: 3
 
 #### `routes/workspace_routes.py`
 
-The only file of the fifteen that makes a real privilege decision of its own: both routes refuse a caller `owner_is_admin_or_single_user` says no to, which is an admin check spelled a fourth way (`B543`).
+The only file of the fifteen that makes a real privilege decision of its own: both routes refuse a caller `owner_is_admin` says no to, which is an admin check spelled a fourth way (`B543`).
 
 routes: 2
 
 | route | handler | gate | intended |
 |---|---|---|---|
-| `GET /api/workspace/browse` | `browse` | `middleware + get_current_user + owner_is_admin_or_single_user` | yes — refused unless `owner_is_admin_or_single_user`; browsing the host filesystem is correctly the strictest gate in these fifteen files. |
-| `GET /api/workspace/vet` | `vet` | `middleware + get_current_user + owner_is_admin_or_single_user` | yes — same gate, same reason. |
+| `GET /api/workspace/browse` | `browse` | `middleware + get_current_user + owner_is_admin` | yes — refused unless `owner_is_admin`; browsing the host filesystem is correctly the strictest gate in these fifteen files. |
+| `GET /api/workspace/vet` | `vet` | `middleware + get_current_user + owner_is_admin` | yes — same gate, same reason. |
 
 ## C · what this map is for
 
@@ -536,7 +536,7 @@ And before any of it: **the other admin gates in § A's preamble.** `P11-02c`
 already exists for the `_ADMIN_TOOLS` name collision *"one grep away from a serious
 mistake during an RBAC refactor"*. These were the same hazard in a different spelling;
 `B543` folded the user-administration surface and the shell's copy into `require_admin`,
-and what rule C still counts is `owner_is_admin_or_single_user` and the `is_admin`
+and what rule C still counts is `owner_is_admin` and the `is_admin`
 calls outside a request.
 
 ## E · a host the caller names is the operator's to reach (`B541`)

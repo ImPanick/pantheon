@@ -214,7 +214,7 @@ def test_builtin_browser_is_a_server_id_and_keeps_both_its_jobs():
     """`FORBIDDEN.md` Part 1 lists `builtin_browser` under *built-in MCP server
     ids*, not under tool names, and it has two jobs that this row must not
     break (`Law 1`): it is the word `manage_settings`/`ui_control` accept for
-    *disable the browser* (`admin_tools._ALIASES["browser"]`), and it is the
+    *disable the browser* (`src.settings_requests.TOOL_TOGGLE_ALIASES`), and it is the
     route-level intent marker `_expand_browser_mcp_tools` turns into the
     server's own qualified tool names. Both still work; what stopped is the
     bare id being offered to the model as if it were a tool."""
@@ -234,15 +234,28 @@ def test_builtin_browser_is_a_server_id_and_keeps_both_its_jobs():
     assert "mcp__builtin_browser__browser_navigate" in expanded
 
 
-def test_the_browser_toggle_still_knows_the_word():
+def test_the_browser_toggle_still_knows_the_word(monkeypatch):
     """The alias table is where `builtin_browser` earns its place in the
-    denylist register, so it is read here rather than described."""
-    import inspect
+    denylist register, so it is asked here rather than described.
 
+    `B912` moved the table out of `do_manage_settings` into
+    `src/settings_requests.py`, where the approval gate reads it too, so this
+    asks the table and drives the toggle instead of reading the source."""
+    import asyncio
+    import json
+
+    import src.settings as settings
     from src.agent_tools import admin_tools
+    from src.settings_requests import tool_toggle_targets
 
-    source = inspect.getsource(admin_tools.do_manage_settings)
-    assert '"browser": ["builtin_browser"]' in source
+    assert tool_toggle_targets("browser") == ("builtin_browser",)
+    store = {}
+    monkeypatch.setattr(settings, "load_settings", lambda: dict(store))
+    monkeypatch.setattr(settings, "save_settings", lambda values: store.update(values))
+    result = asyncio.run(admin_tools.do_manage_settings(
+        json.dumps({"action": "disable_tool", "tool": "browser"})))
+    assert result["exit_code"] == 0
+    assert store["disabled_tools"] == ["builtin_browser"]
 
 
 @pytest.mark.parametrize("tool", ["vault_get", "vault_search", "vault_unlock"])

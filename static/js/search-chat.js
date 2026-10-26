@@ -348,7 +348,7 @@ function _settingsEntries(q) {
   let panels = [];
   try {
     panels = searchSettingsPanels(q, {
-      isAdmin: viewerIsAdmin(),   // `P23-03`; `B1523`: a viewer the status called a non-admin is one
+      isAdmin: viewerIsAdmin(),   // `P23-03`; `B1523`/`B1271`: a viewer the status called a non-admin is one
       controlText: modal ? controlTextFor(modal) : {},
     });
   } catch (_) { panels = []; }

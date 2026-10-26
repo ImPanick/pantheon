@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 import logging
 
 from core.session_manager import SessionManager
-from core.models import ChatMessage, is_unanswered_reply
+from core.models import ChatMessage
 from src.request_models import SessionResponse
 from core.database import Session as DbSession, SessionLocal, Document, GalleryImage, utcnow_naive
 from src.auth_helpers import (
@@ -1288,86 +1288,11 @@ def setup_session_routes(
         except KeyError:
             raise HTTPException(404, CHAT_GONE)
 
-    @router.post("/session/{session_id}/compact")
-    async def compact_session(request: Request, session_id: str):
-        """Summarize older messages into one compacted history entry."""
-        _verify_session_owner(request, session_id)
-        try:
-            session = session_manager.get_session(session_id)
-        except KeyError:
-            raise HTTPException(404, CHAT_GONE)
-        _reject_compact_during_active_run(session_id)
-
-        history = list(session.history or [])
-        if len(history) < 6:
-            raise HTTPException(400, "Not enough messages to compact")
-
-        # Keep a small recent tail verbatim. The prior half-chat/20-message
-        # tail made manual compaction look like it did nothing on normal chats.
-        recent_keep = min(8, max(4, len(history) // 4))
-        older = history[:-recent_keep]
-        recent = history[-recent_keep:]
-        if not older:
-            raise HTTPException(400, "Nothing old enough to compact")
-
-        from src.context_compactor import SELF_SUMMARY_SYSTEM_PROMPT
-        from src.endpoint_resolver import resolve_endpoint
-        from src.llm_core import llm_call_async
-
-        owner = getattr(session, "owner", None) or effective_user(request)
-        url, model, headers = resolve_endpoint("utility", owner=owner)
-        if not url or not model:
-            url, model, headers = session.endpoint_url, session.model, session.headers
-        if not url or not model:
-            raise HTTPException(400, "No model configured for compaction")
-
-        prior_compactions = sum(
-            1 for m in history
-            if _message_metadata(m).get("compacted") or "[Conversation summary" in _message_text(m)
-        )
-        prompt = SELF_SUMMARY_SYSTEM_PROMPT.replace(
-            "{count}", str(len(older))
-        ).replace(
-            "{n}", str(prior_compactions + 1)
-        )
-        convo_text = "\n".join(
-            f"{_message_role(m).upper()}: {_message_text(m)[:2000]}"
-            for m in older
-            if not is_unanswered_reply(m)   # `B1200`: nothing to summarise
-        )
-        try:
-            summary = await llm_call_async(
-                url,
-                model,
-                [{"role": "system", "content": prompt}, {"role": "user", "content": convo_text}],
-                temperature=0.2,
-                max_tokens=1024,
-                headers=headers,
-                timeout=60,
-            )
-        except Exception as e:
-            logger.error("Manual compaction failed: %s", e)
-            raise HTTPException(500, "Compaction failed")
-
-        summary_msg = ChatMessage(
-            role="system",
-            content=f"[Conversation summary]\n{summary}",
-            metadata={
-                "compacted": True,
-                "summarized_count": len(older),
-                "timestamp": utcnow_naive().isoformat(),
-            },
-        )
-        new_history = [summary_msg] + recent
-        if not session_manager.replace_messages(session_id, new_history):
-            raise HTTPException(500, "Failed to save compacted history")
-
-        return {
-            "ok": True,
-            "summarized": len(older),
-            "kept": len(recent),
-            "message_count": len(new_history),
-        }
+    # `B1529`: `POST /api/session/{id}/compact` is answered by
+    # `routes/history/history_routes.compact_session` alone. The handler here
+    # was registered first and shadowed that one, so the live compact stored
+    # only a `system` summary and left no *Chat compacted* line; what it did
+    # better (the adaptive tail, a refusal for a short chat) moved there.
 
     @router.post("/sessions/auto-sort")
     def auto_sort_sessions(request: Request, skip_llm: bool = False):

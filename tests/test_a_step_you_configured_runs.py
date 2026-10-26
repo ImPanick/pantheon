@@ -72,7 +72,7 @@ def world(monkeypatch, tmp_path):
     # while the dispatcher said `alice`, which the stand-in rule hid).
     import src.tool_security as tool_security
     monkeypatch.setattr(tool_execution, "_owner_is_admin", lambda owner: owner == "alice")
-    monkeypatch.setattr(tool_security, "owner_is_admin_or_single_user",
+    monkeypatch.setattr(tool_security, "owner_is_admin",
                         lambda owner: owner == "alice")
     monkeypatch.setattr(ts, "owner_has_admin_task_privileges", lambda owner: owner == "alice")
     s = recording_scheduler()
@@ -164,7 +164,7 @@ async def test_a_non_admin_s_mcp_step_is_refused_by_the_dispatcher(world, monkey
     import src.task_scheduler as ts
     import src.tool_security as tool_security
     monkeypatch.setattr(ts, "owner_has_admin_task_privileges", lambda owner: True)
-    monkeypatch.setattr(tool_security, "owner_is_admin_or_single_user", lambda owner: True)
+    monkeypatch.setattr(tool_security, "owner_is_admin", lambda owner: True)
     db = w.factory()
     db.query(ScheduledTask).filter(ScheduledTask.id == "wf").update({"status": "active"})
     db.commit()

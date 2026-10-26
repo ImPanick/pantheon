@@ -132,9 +132,10 @@ async def test_static_system_prefix_is_byte_identical_across_turns(monkeypatch):
     # Turn 1: clock reads 09:16
     user_time.clear_user_time_context()
     sess, request, chat_handler, chat_processor = _build_context_harness(monkeypatch, chat_helpers, history=[])
+    # `B1169`: the chat path now passes `available=` (the turn's tools).
     monkeypatch.setattr(
         user_time, "current_datetime_context_message",
-        lambda now_utc=None: {"role": "user", "content": "[Context — current date/time]\nToday is 2026-06-07, 09:16 UTC."},
+        lambda now_utc=None, available=None: {"role": "user", "content": "[Context — current date/time]\nToday is 2026-06-07, 09:16 UTC."},
         raising=False,
     )
 
@@ -147,7 +148,7 @@ async def test_static_system_prefix_is_byte_identical_across_turns(monkeypatch):
     # Turn 2: clock has moved on to 09:17 — a real per-turn drift source.
     monkeypatch.setattr(
         user_time, "current_datetime_context_message",
-        lambda now_utc=None: {"role": "user", "content": "[Context — current date/time]\nToday is 2026-06-07, 09:17 UTC."},
+        lambda now_utc=None, available=None: {"role": "user", "content": "[Context — current date/time]\nToday is 2026-06-07, 09:17 UTC."},
         raising=False,
     )
     ctx2 = await chat_helpers.build_chat_context(
@@ -186,7 +187,7 @@ async def test_changed_instructions_do_change_the_system_prefix(monkeypatch):
     sess, request, chat_handler, chat_processor = _build_context_harness(monkeypatch, chat_helpers, history=[])
     monkeypatch.setattr(
         user_time, "current_datetime_context_message",
-        lambda now_utc=None: {"role": "user", "content": "[Context — current date/time]\nToday is 2026-06-07."},
+        lambda now_utc=None, available=None: {"role": "user", "content": "[Context — current date/time]\nToday is 2026-06-07."},
         raising=False,
     )
 

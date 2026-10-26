@@ -283,7 +283,7 @@ def test_a_metadata_base_url_is_still_refused(server, monkeypatch):
 
 
 def test_a_person_who_is_not_an_admin_is_refused(server, monkeypatch):
-    monkeypatch.setattr("src.tool_execution.owner_is_admin_or_single_user", lambda owner: False)
+    monkeypatch.setattr("src.tool_execution.owner_is_admin", lambda owner: False)
     out = _step(_call(), owner="bob")
     assert out.status == "error"
     assert "restricted to admin users" in out.text

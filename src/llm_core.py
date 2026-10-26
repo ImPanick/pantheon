@@ -2900,11 +2900,34 @@ def _sent_sampling(url, model, temperature, max_tokens, explicit_params=frozense
     the receipt gains the profile's other knobs, which `record_run_config` has
     always had room for. Where the profile does not apply, this is exactly the
     two values asked for, as before.
+
+    `B1028`: and the two other places a payload departs from the request. The
+    native Anthropic builder clamps a temperature to 1.0, omits it for Opus 4.7
+    and later, and fills a length of 4096 — so its own output is read here,
+    the same one-rule move (a Nietzsche 1.2 on Claude was receipted 1.2 and sent
+    1.0). And a reasoning model on an OpenAI-shaped endpoint is sent no
+    temperature (`_omit_temperature`), so none is receipted: a key the wire did
+    not carry is absent, as it is from the payload. Its length rides under
+    `max_completion_tokens` there and is kept here under `max_tokens`, the
+    receipt's one name for the reply length.
     """
     sampling = {"temperature": temperature, "max_tokens": max_tokens}
-    if not url or _detect_provider(url) in _PROVIDERS_WITHOUT_THE_LOCAL_PROFILE:
+    if not url:
         return sampling
+    provider = _detect_provider(url)
+    if provider == "anthropic":
+        payload = _build_anthropic_payload(model, [], temperature, max_tokens)
+        sent = {"max_tokens": payload.get("max_tokens")}
+        if "temperature" in payload:
+            sent["temperature"] = payload["temperature"]
+        return sent
+    if provider in _PROVIDERS_WITHOUT_THE_LOCAL_PROFILE:
+        return sampling
+    # The order the OpenAI-shaped builders apply them in: the reasoning-model
+    # omission, the length, then the local profile.
     sent = {"temperature": temperature}
+    if _omit_temperature(provider, model):
+        sent.pop("temperature", None)
     if max_tokens and max_tokens > 0:
         sent["max_tokens"] = max_tokens
     _apply_local_generation_stability(sent, _normalize_openai_chat_url(url), model,
@@ -2929,6 +2952,10 @@ def _carried_max_tokens(url, model, max_tokens):
     `llm_call_async` had no `_length_key` to act on). The payload itself is
     unchanged: the profile would have filled exactly this number."""
     if max_tokens and max_tokens > 0:
+        return max_tokens
+    # `B1028`: the receipt's rule now also reads the Anthropic builder's 4096,
+    # which is that builder's to fill, not a length this door fits or resends.
+    if url and _detect_provider(url) in _PROVIDERS_WITHOUT_THE_LOCAL_PROFILE:
         return max_tokens
     carried = _sent_sampling(url, model, LLMConfig.DEFAULT_TEMPERATURE, max_tokens).get("max_tokens")
     return carried or max_tokens

@@ -96,6 +96,14 @@ def _request_messages(monkeypatch, preface, **loop_kwargs):
     monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *a, **k: 10, raising=False)
     monkeypatch.setattr(agent_loop, "blocked_tools_for_owner", lambda o: set(),
                         raising=False)
+    # What reaches the request is the question here, not how a tight window is
+    # trimmed (`trim_for_context` has its own tests). This request sits at the
+    # trimmer's shed-or-cut boundary for an unproven window, and `B1169`'s
+    # shorter date note moved it across: the skills block was shed so the
+    # system prompt could stay uncut — that rule working, not an index lost.
+    import src.context_budget as context_budget
+    monkeypatch.setattr(context_budget, "resolve_agent_input_budget_setting",
+                        lambda owner=None: SimpleNamespace(value=0))
     seen = {}
 
     async def capture(*a, **k):
@@ -208,6 +216,14 @@ def test_the_loop_keeps_a_low_signal_read_of_its_own(
     monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *a, **k: 10, raising=False)
     monkeypatch.setattr(agent_loop, "blocked_tools_for_owner", lambda o: set(),
                         raising=False)
+    # What reaches the request is the question here, not how a tight window is
+    # trimmed (`trim_for_context` has its own tests). This request sits at the
+    # trimmer's shed-or-cut boundary for an unproven window, and `B1169`'s
+    # shorter date note moved it across: the skills block was shed so the
+    # system prompt could stay uncut — that rule working, not an index lost.
+    import src.context_budget as context_budget
+    monkeypatch.setattr(context_budget, "resolve_agent_input_budget_setting",
+                        lambda owner=None: SimpleNamespace(value=0))
     seen = {}
 
     async def capture(*a, **k):

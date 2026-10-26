@@ -104,16 +104,22 @@ def test_the_compacted_chat_reloads_summary_marker_then_kept(world):
                          "line 6", "line 7", "line 8", "line 9"], url
 
 
-def test_the_handler_registered_first_keeps_the_order_too(world):
-    """`app.py` includes `session_routes` before `history_routes`, so its
-    compact is the one `POST /api/session/{id}/compact` reaches."""
+def test_with_both_routers_mounted_in_the_apps_order_the_marker_is_kept(world):
+    """`app.py` includes `session_routes` before `history_routes`. That
+    shadowed this handler (`B1529`) until `session_routes` stopped declaring
+    the path; mounted in the app's order, the compact that answers is this one,
+    marker and order and all."""
     smod, history_routes, session_routes, manager = world
     app = FastAPI()
     app.include_router(session_routes.setup_session_routes(manager, {}))
     app.include_router(history_routes.setup_history_routes(manager))
-    assert TestClient(app).post("/api/session/c1/compact").json()["ok"] is True
+    answer = TestClient(app).post("/api/session/c1/compact").json()
+    assert (answer["ok"], answer["summarized"], answer["kept"]) == (True, 6, 4)
 
     _fresh, session = _reloaded(smod)
     context = session.get_context_messages()
-    assert context[0]["role"] == "system" and context[0]["content"].startswith("[Conversation summary]")
-    assert [m["content"] for m in context[1:]] == ["line 6", "line 7", "line 8", "line 9"]
+    assert context[0]["role"] == "system"
+    assert context[0]["content"].startswith("[Conversation summary — 6 earlier messages were compacted]")
+    assert [m["content"] for m in context[1:]] == [
+        "**Chat compacted** — 6 messages summarized, 4 kept.",
+        "line 6", "line 7", "line 8", "line 9"]

@@ -402,8 +402,23 @@ def _fetch_via_report(cfg, auth):
         return None
 
 
-def _fetch_contacts(force=False):
-    """Fetch all contacts. Uses CardDAV when configured, otherwise local JSON."""
+def _fetch_contacts(force=False, report: Optional[dict] = None):
+    """Fetch all contacts. Uses CardDAV when configured, otherwise local JSON.
+
+    `B1534`. On a CardDAV answer that is not the address book — a non-200, or
+    no answer at all — this hands back the last copy it read (often `[]`), and
+    a caller could not tell *not read* from *empty*: `resolve_contact` told the
+    model "No contacts found" with the server down. The return value is kept
+    for every caller that draws it; `report`, when given, is filled with
+    `unread` — a sentence saying why the server was not read, or `None` when
+    it was (a cache hit is a read less than a minute old, since a failed read
+    never refreshes `fetched_at`) — and `stale`, whether contacts from an
+    earlier read came back in its place. An out-parameter, the way
+    `memory_retrieval.retrieve`'s is, so every caller that takes the list is
+    untouched.
+    """
+    if report is not None:
+        report.update(unread=None, stale=False)
     if not force and _contact_cache["fetched_at"]:
         age = (datetime.utcnow() - _contact_cache["fetched_at"]).total_seconds()
         if age < 60:
@@ -416,8 +431,19 @@ def _fetch_contacts(force=False):
         _contact_cache["fetched_at"] = datetime.utcnow()
         return contacts
 
+    def _unread(why):
+        if report is not None:
+            report.update(unread=why, stale=bool(_contact_cache["contacts"]))
+        return _contact_cache["contacts"]
+
     try:
         cfg["url"] = _carddav_base_url(cfg)
+    except ValueError as e:
+        # Pantheon's own refusal of the address (`check_outbound_url`), in its
+        # own words — not "could not be reached".
+        logger.error(f"Failed to fetch contacts: {e}")
+        return _unread(str(e))
+    try:
         auth = None
         if cfg["username"]:
             auth = (cfg["username"], cfg["password"])
@@ -429,14 +455,14 @@ def _fetch_contacts(force=False):
                                     follow_redirects=False)   # `B1022`
             if r.status_code != 200:
                 logger.warning(f"CardDAV returned {r.status_code}")
-                return _contact_cache["contacts"]
+                return _unread(f"the CardDAV server answered HTTP {r.status_code}")
             contacts = _parse_vcards(r.text)
         _contact_cache["contacts"] = contacts
         _contact_cache["fetched_at"] = datetime.utcnow()
         return contacts
     except Exception as e:
         logger.error(f"Failed to fetch contacts: {e}")
-        return _contact_cache["contacts"]
+        return _unread(f"the CardDAV server could not be reached ({type(e).__name__})")
 
 
 def _resolve_resource_url(uid: str) -> str:

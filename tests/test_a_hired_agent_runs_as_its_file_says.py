@@ -34,7 +34,7 @@ def world(wf_db, monkeypatch, tmp_path):
     import src.constants as constants
     import src.tool_security as ts
     monkeypatch.setattr(constants, "DATA_DIR", str(tmp_path))
-    monkeypatch.setattr(ts, "owner_is_admin_or_single_user", lambda owner: owner == "alice")
+    monkeypatch.setattr(ts, "owner_is_admin", lambda owner: owner == "alice")
     from src.task_scheduler import TaskScheduler
     monkeypatch.setattr(TaskScheduler, "_usable_route", lambda self, db, task, url, model: (url, model))
     sched = TaskScheduler(session_manager=None)

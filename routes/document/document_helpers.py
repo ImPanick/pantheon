@@ -124,10 +124,14 @@ def _owner_session_filter(q, user):
 
     The owner backfill runs in init_db before the app serves requests, so
     by the time this filter is live there are no NULL-owner rows to leak;
-    we therefore match the owner strictly for authenticated callers."""
+    we therefore match the owner strictly for authenticated callers.
+
+    `B1271`. `""` used to mean *every owner* — the answer `require_user` gave
+    under auth-off, a loopback bypass or first run until `D-2026-10-07-02` §2.
+    It answers a person or refuses now, and every caller here passes what it
+    or `get_current_user` returned, so no caller can hand this `""`: the
+    branch was removed (`Law 13`) and no person matches nothing."""
     if not user:
-        if user == "":
-            return q
         return q.filter(False)
     return q.filter(Document.owner == user)
 

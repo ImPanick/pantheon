@@ -287,6 +287,14 @@ def test_copilot_is_told_the_request_carries_a_picture(station, monkeypatch):
 ], ids=["native-text-model", "fenced-text-model", "vision-switched-off"])
 def test_a_model_that_cannot_see_is_told_so_in_words(station, monkeypatch, model,
                                                      vision_enabled, fenced):
+    # `B1281`: a model cannot see when its endpoint says so — a name the list
+    # does not know is sent the picture now, as a person's is (`B1279`), and
+    # `tests/test_a_tool_picture_goes_to_a_model_nobody_ruled_out.py` drives
+    # that and the refusal it may meet.
+    import src.chat_helpers as chat_helpers
+    monkeypatch.setattr(chat_helpers, "endpoint_supports_vision",
+                        lambda url, name: False if name in ("deepseek-chat", "small-local-model")
+                        else None)
     request, _events = _click_request(monkeypatch, model=model, fenced=fenced,
                                       vision_enabled=vision_enabled)
     assert image_parts(request) == []

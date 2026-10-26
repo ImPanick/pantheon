@@ -313,8 +313,10 @@ jobs:
       # unpaced inventory (104 -> 91). The ledger's `fan-out` claim no longer
       # repeats this number (`B411` moved its repro to the budget it states),
       # so nothing holds it high.
+      # 91 -> 85 and `--max-env` 33 -> 27 (`B1533`): Brave, Google PSE,
+      # Tavily, Serper and SearXNG's two calls moved onto `paced_http`.
       - name: check-outbound
-        run: python3 .pantheon/check-outbound.py --max 91 --max-env 33
+        run: python3 .pantheon/check-outbound.py --max 85 --max-env 27
       # P3-15. The other half of the same disease check-wiring measures: an
       # element id with no markup and a route with no caller are both something
       # that was built and never wired, and nothing in CI noticed because
@@ -391,7 +393,7 @@ jobs:
       # exists, every route in the fifteen files carries the gate the source
       # actually gives it, and a route the map calls unintended has to name a
       # `Bxxx`. Rule C is a ratchet on admin decisions taken WITHOUT
-      # `require_admin` — `is_admin(...)` and `owner_is_admin_or_single_user(...)`
+      # `require_admin` — `is_admin(...)` and `owner_is_admin(...)`
       # called directly. `B543` moved `routes/auth_routes.py`'s 21 hand-rolled
       # gates and the shell's own `_require_admin` onto it. It may fall as the
       # rest move onto P11-02's roles; it may not rise.

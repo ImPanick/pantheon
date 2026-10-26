@@ -321,7 +321,9 @@ def test_brave_sends_the_time_filter_once_as_its_freshness_parameter(offline, mo
         seen.update(params or {})
         return _Resp()
 
-    monkeypatch.setattr(providers.httpx, "get", _fake_get)
+    # `B1533`: providers send through `paced_http`, the limiter's seam.
+    from src import paced_http
+    monkeypatch.setattr(paced_http, "get_sync", _fake_get)
     monkeypatch.setattr(providers, "_safesearch_for", lambda *_a, **_k: None, raising=False)
     monkeypatch.setenv("DATA_BRAVE_API_KEY", "k")
 
@@ -382,8 +384,10 @@ def test_no_provider_derives_its_own_query_string(monkeypatch):
         wire.append((url, body.get("q") or body.get("query")))
         return _Resp()
 
-    monkeypatch.setattr(providers.httpx, "get", _get)
-    monkeypatch.setattr(providers.httpx, "post", _post)
+    # `B1533`: providers send through `paced_http`, the limiter's seam.
+    from src import paced_http
+    monkeypatch.setattr(paced_http, "get_sync", _get)
+    monkeypatch.setattr(paced_http, "post_sync", _post)
     monkeypatch.setattr(providers, "_get_search_settings", lambda: {}, raising=False)
     monkeypatch.setattr(providers, "_safesearch_for", lambda *_a, **_k: None, raising=False)
     for var in ("DATA_BRAVE_API_KEY", "GOOGLE_API_KEY", "TAVILY_API_KEY", "SERPER_API_KEY"):

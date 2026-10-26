@@ -24,11 +24,11 @@ def test_edit_file_is_sensitive_write_tool():
 
 
 def test_blocked_tools_for_owner_includes_edit_file_for_non_admin(monkeypatch):
-    monkeypatch.setattr(tool_security, "owner_is_admin_or_single_user", lambda owner: False)
+    monkeypatch.setattr(tool_security, "owner_is_admin", lambda owner: False)
     blocked = blocked_tools_for_owner("bob")
     assert "edit_file" in blocked and "write_file" in blocked
     # Admin / single-user gets nothing blocked.
-    monkeypatch.setattr(tool_security, "owner_is_admin_or_single_user", lambda owner: True)
+    monkeypatch.setattr(tool_security, "owner_is_admin", lambda owner: True)
     assert blocked_tools_for_owner("admin") == set()
 
 

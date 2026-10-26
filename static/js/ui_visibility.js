@@ -598,7 +598,8 @@ export function applyToolVisibility(patch = {}, doc = (typeof document !== 'unde
  *  asked) read as an admin. That was auth-off mode's rule — its one operator
  *  was let in by `require_admin` — and there is no auth-off install any more
  *  (`D-2026-10-07-02` §2, `core/middleware.py:require_admin`): a viewer the
- *  server called a non-admin is one. */
+ *  server called a non-admin is one. `B1271` reached the same line from the
+ *  anonymous branches' side. */
 export function viewerIsAdmin() {
   if (_state.isAdmin !== null) return _state.isAdmin;
   const said = typeof window !== 'undefined' ? window._isAdmin : undefined;

@@ -163,6 +163,24 @@ def _retention_days() -> int:
     return value if value >= 0 else DEFAULT_RETENTION_DAYS
 
 
+def _auth_retention_days(days: int) -> int:
+    """`B685`. The auth audit trail's window: `auth_events_retention_days`
+    when an operator set one (`0` keeps it forever), else `days` — the window
+    every other row is pruned on, which is what it always followed."""
+    try:
+        from src.settings import get_setting
+        raw = get_setting("auth_events_retention_days", None)
+    except Exception:
+        return days
+    if raw is None or raw == "":
+        return days
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return days
+    return value if value >= 0 else days
+
+
 def _int_or_none(value: Any) -> Optional[int]:
     if isinstance(value, bool) or value is None:
         return None
@@ -299,9 +317,10 @@ def record_auth_event(action: str, *, actor: Optional[str] = None,
     **Local by default, like everything else here.** `Law 16` is about the
     destination: these rows go to the same SQLite table as every other event,
     they leave the machine only through an exporter the operator configured,
-    and they are pruned by `events_retention_days` along with the rest — a
-    90-day audit window is a choice an operator can change and an append-only
-    file nobody prunes is not.
+    and they are pruned like the rest — on `auth_events_retention_days` when
+    an operator set one, else on `events_retention_days` (`B685`). A window is
+    a choice an operator can change and an append-only file nobody prunes is
+    not.
     """
     payload = _audit_detail(detail) or {}
     if subject:
@@ -368,9 +387,17 @@ def record_llm_round(session_id: str, metrics: Dict[str, Any], *,
 
 
 def prune_events(days: Optional[int] = None, *,
+                 auth_days: Optional[int] = None,
                  budget_seconds: float = _PRUNE_BUDGET_SECONDS,
                  batch_rows: int = _PRUNE_BATCH_ROWS) -> int:
     """Delete rows older than the retention window. Returns rows removed.
+
+    `B685`. Two windows, one pass: the auth audit trail (`AUTH_EVENT_KIND`)
+    on `auth_days` — `auth_events_retention_days`, which follows `days` unless
+    an operator set it — and every other row on `days`. Each is its own
+    predicate in the same batched, budgeted delete, so a year of audit costs a
+    year of audit rows and not a year of model rounds; and `0` for either keeps
+    that half whole, as `0` always has.
 
     `days=0` keeps everything, and says so by doing nothing rather than by
     quietly using a default — a retention setting that silently ignores the
@@ -390,13 +417,22 @@ def prune_events(days: Optional[int] = None, *,
     """
     global _prune_unfinished
     days = _retention_days() if days is None else days
-    if days <= 0:
+    auth_days = _auth_retention_days(days) if auth_days is None else auth_days
+    if days <= 0 and auth_days <= 0:
         return 0
     removed_total = 0
     try:
-        from sqlalchemy import select
+        from sqlalchemy import and_, or_, select
         from core.database import SessionLocal, Event, utcnow_naive
-        cutoff = utcnow_naive() - timedelta(days=days)
+        now = utcnow_naive()
+        expired = []
+        if days > 0:
+            expired.append(and_(Event.kind != AUTH_EVENT_KIND,
+                                Event.ts < now - timedelta(days=days)))
+        if auth_days > 0:
+            expired.append(and_(Event.kind == AUTH_EVENT_KIND,
+                                Event.ts < now - timedelta(days=auth_days)))
+        is_expired = or_(*expired) if len(expired) > 1 else expired[0]
         started = time.monotonic()
         db = SessionLocal()
         try:
@@ -406,7 +442,7 @@ def prune_events(days: Optional[int] = None, *,
                 # `DATABASE_URL` points at), so the batch is selected first and
                 # deleted by primary key.
                 ids = [row[0] for row in db.execute(
-                    select(Event.id).where(Event.ts < cutoff).limit(max(1, batch_rows))
+                    select(Event.id).where(is_expired).limit(max(1, batch_rows))
                 ).all()]
                 if not ids:
                     _prune_unfinished = False

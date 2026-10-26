@@ -1509,8 +1509,9 @@ function initializeEventListeners() {
       window._userPrivileges = d.privileges || null;
       applyToolVisibility({
         privileges: d.privileges || null,
-        // Forge is for admins (`SET-M-9`). Unknown when nobody is signed in
-        // (auth off): unknown is on, and the server decides.
+        // Forge is for admins (`SET-M-9`). Unknown only if the status names
+        // nobody, which a signed-in page cannot get (`D-2026-10-07-02` §2,
+        // `B1271`): unknown is on, and the server decides.
         isAdmin: d.authenticated ? !!d.is_admin : null,
         shell: d.shell || null,
         auth: true,

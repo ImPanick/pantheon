@@ -668,13 +668,14 @@ def is_public_blocked_tool(tool_name: Optional[str]) -> bool:
     return tool_name in NON_ADMIN_BLOCKED_TOOLS or tool_name.startswith("mcp__")
 
 
-def owner_is_admin_or_single_user(owner: Optional[str]) -> bool:
+def owner_is_admin(owner: Optional[str]) -> bool:
     """Return True for admins.
 
-    The name keeps "single user" from when an auth-off install's nobody was
-    answered as its owner (`AUTH_ENABLED=false`). There is no such install now
-    (`D-2026-10-07-02` §2): a single-user install's owner is its first account,
-    which is an admin, and is answered as one by name.
+    `B1271` (`Law 10`): this was `owner_is_admin_or_single_user`, a name kept
+    from when an auth-off install's nobody was answered as its owner
+    (`AUTH_ENABLED=false`). There is no such install now (`D-2026-10-07-02`
+    §2): a single-user install's owner is its first account, which is an
+    admin, and is answered as one by name — so the name says what it answers.
 
     The pre-setup window (no admin created yet) is treated as NON-admin:
     returning True there would hand server-execution tools (``bash``/``python``)
@@ -695,7 +696,7 @@ def owner_is_admin_or_single_user(owner: Optional[str]) -> bool:
 
 def blocked_tools_for_owner(owner: Optional[str]) -> Set[str]:
     """Tools to hide/disable for this owner under public-user policy."""
-    if owner_is_admin_or_single_user(owner):
+    if owner_is_admin(owner):
         return set()
     return set(NON_ADMIN_BLOCKED_TOOLS)
 

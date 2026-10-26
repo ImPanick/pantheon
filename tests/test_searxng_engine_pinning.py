@@ -42,10 +42,10 @@ def calls(monkeypatch):
         return _Resp()
 
     monkeypatch.setattr(prov, "_get_search_instance", lambda: "http://localhost:8080")
-    for name in ("httpx", "requests"):
-        mod = getattr(prov, name, None)
-        if mod is not None:
-            monkeypatch.setattr(mod, "get", fake_get, raising=False)
+    # `B1533`: SearXNG is called through `paced_http` (the limiter's seam,
+    # paced at zero for a local instance), so the transport is replaced there.
+    from src import paced_http
+    monkeypatch.setattr(paced_http, "get_sync", fake_get)
     return seen, prov
 
 

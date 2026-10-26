@@ -152,7 +152,7 @@ def test_each_setting_says_whether_another_step_may_fill_it(world):
 
 
 def test_a_person_who_is_not_an_admin_is_offered_what_their_agent_reaches(world, monkeypatch):
-    monkeypatch.setattr("src.tool_security.owner_is_admin_or_single_user", lambda owner: False)
+    monkeypatch.setattr("src.tool_security.owner_is_admin", lambda owner: False)
     # With the workstation off nothing is lifted into it (`B985`), so the
     # non-admin blocklist is what this person's agent is refused.
     world.settings["workstation_enabled"] = False
@@ -233,6 +233,6 @@ def test_the_resources_a_document_is_checked_against(world):
 
 
 def test_a_person_who_is_not_an_admin_reaches_no_integration_and_no_mcp_tool(world, monkeypatch):
-    monkeypatch.setattr("src.tool_security.owner_is_admin_or_single_user", lambda owner: False)
+    monkeypatch.setattr("src.tool_security.owner_is_admin", lambda owner: False)
     res = fx.workflow_resources("bob")
     assert res.integrations == {} and res.mcp_tools == {}

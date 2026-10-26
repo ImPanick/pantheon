@@ -14,7 +14,7 @@ this phase exists to prevent (`P20-03`: *a turn is never silently moved*):
      One resolver for every privilege (`src.auth_helpers.resolve_privilege`,
      `Law 13`), and no fifth way of asking "is this an admin": the question
      `.pantheon/check-auth-map.py` rule C ratchets. The first version of this
-     file asked it through `owner_is_admin_or_single_user` and moved that
+     file asked it through `owner_is_admin` and moved that
      ratchet from 43 to 44; `get_privileges` already answers it.
 
 `routes_tools(owner)` is the question `P20-03` asks before a shell or file tool

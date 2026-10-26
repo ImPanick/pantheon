@@ -49,7 +49,10 @@ def test_service_searxng_json_sends_safesearch(monkeypatch):
 
     monkeypatch.setattr(providers, "_get_search_instance", lambda: "http://searx.test")
     monkeypatch.setattr(providers, "_get_search_settings", lambda: {"search_safesearch": "moderate"})
-    monkeypatch.setattr(providers.httpx, "get", fake_get)
+    # `B1533`: SearXNG is called through `paced_http` too (paced at zero for
+    # the operator's own instance), so the transport is replaced there.
+    from src import paced_http
+    monkeypatch.setattr(paced_http, "get_sync", fake_get)
 
     results = providers.searxng_search_api("pantheon", count=1)
 
