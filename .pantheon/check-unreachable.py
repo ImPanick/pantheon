@@ -61,6 +61,9 @@ ALLOWED = {
     "/api/mcp/": "MCP clients speak this directly; there is no page for it",
     "/api/tokens/": "API-token holders, and the tokens page manages a subset",
     "/metrics": "Prometheus (P16-12). Deliberately has no UI.",
+    # `B1474`. A page, not a fetch: `static/js/codeRunner.js` frames it
+    # (`iframe.src`) to run a Python block in an opaque-origin sandbox.
+    "/python-sandbox": "codeRunner.js frames it for a Python block (`B1474`)",
     "/api/diagnostics/": "the diagnostics panel plus `pantheon-*` CLI tooling",
     "/api/webhooks/incoming": "external senders — a receiver has no caller here by definition",
     # P18-01/P18-04. The browser no longer holds this path: it reads it from

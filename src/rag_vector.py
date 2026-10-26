@@ -611,23 +611,6 @@ class VectorRAG:
             logger.error(f"remove_directory {directory}: {e}")
             return {"success": False, "message": str(e)}
 
-    def reindex_directory(
-        self, directory: str, file_extensions: Optional[set] = None
-    ) -> Dict[str, Any]:
-        remove_result = self.remove_directory(directory)
-        if not remove_result.get("success"):
-            return remove_result
-        index_result = self.index_personal_documents(directory, file_extensions)
-        return {
-            "success": index_result.get("success", False),
-            "message": (
-                f"Re-index for {directory}: removed {remove_result.get('removed_count', 0)}, "
-                f"{index_result.get('message', '')}"
-            ),
-            "removed_count": remove_result.get("removed_count", 0),
-            "indexed_count": index_result.get("indexed_count", 0),
-            "failed_count": index_result.get("failed_count", 0),
-        }
 
     # ------------------------------------------------------------------
     # Sentence-boundary-aware chunking

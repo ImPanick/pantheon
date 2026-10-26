@@ -32,25 +32,3 @@ export function scrollBehavior() {
   return prefersReducedMotion() ? 'auto' : 'smooth';
 }
 
-/**
- * Run `fn(reduced)` whenever the preference changes, and return an unsubscribe.
- * Nothing needs this yet; it exists so the next thing that does has one place
- * to put the listener rather than a second copy of the query string.
- */
-export function onMotionPreferenceChange(fn) {
-  let mq;
-  try {
-    mq = window.matchMedia && window.matchMedia(QUERY);
-  } catch (_) {
-    return () => {};
-  }
-  if (!mq) return () => {};
-  const handler = (e) => fn(!!e.matches);
-  // Safari before 14 has no addEventListener on MediaQueryList.
-  if (mq.addEventListener) {
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }
-  mq.addListener(handler);
-  return () => mq.removeListener(handler);
-}

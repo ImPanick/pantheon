@@ -1000,17 +1000,14 @@ def _init_scheduled_db():
         CREATE TABLE IF NOT EXISTS email_urgency_alerts (
             message_id TEXT,
             owner TEXT DEFAULT '',
-            uid TEXT,
-            folder TEXT,
-            subject TEXT,
-            sender TEXT,
-            urgency TEXT,
-            reason TEXT,
-            alerted INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
             PRIMARY KEY (message_id, owner)
         )
-    """, ["message_id", "owner", "uid", "folder", "subject", "sender", "urgency", "reason", "alerted", "created_at"])
+    """, ["message_id", "owner", "created_at"])
+    # (`B1480`: this table also kept each urgent email's uid, folder, subject,
+    # sender, urgency and the model's reason, and nothing read them — it is the
+    # set of messages already alerted about. An install that has those columns
+    # keeps them; nothing new is written to them.)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS email_event_seen (
             owner TEXT NOT NULL,

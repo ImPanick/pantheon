@@ -132,7 +132,6 @@ def _owner_session_filter(q, user):
     return q.filter(Document.owner == user)
 
 
-
 def _pdf_export_name(title, variant: str, fallback: str = "form") -> str:
     """The name a form PDF leaves Pantheon under: the document's title, then
     what was done to it — `Q3 Board Pack – final (v2) (signed).pdf`.
@@ -196,22 +195,6 @@ def _resolve_user_upload_path(
         logger.warning("Upload path outside upload directory: %s", path)
         return None
     return path
-
-
-def _locate_upload(
-    upload_dir: str,
-    file_id: str,
-    owner: Optional[str] = None,
-    auth_manager=None,
-    upload_handler: Any = None,
-):
-    """Find an upload by its filename ID via UploadHandler.resolve_upload."""
-    if upload_handler is None:
-        from src.upload_handler import UploadHandler
-
-        base_dir = os.path.dirname(os.path.abspath(upload_dir))
-        upload_handler = UploadHandler(base_dir, upload_dir)
-    return _resolve_user_upload_path(upload_handler, file_id, owner, auth_manager)
 
 
 def _assert_pdf_marker_upload_owned(

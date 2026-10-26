@@ -147,12 +147,6 @@ def resolve_foreground_model_policy(
     )
 
 
-def resolve_foreground_fallback_candidates(owner: Optional[str] = None) -> list:
-    """Return only candidates explicitly enabled by the current user."""
-
-    return list(resolve_foreground_model_policy(owner).fallback_candidates)
-
-
 def build_foreground_model_candidates(
     endpoint_url: str,
     model: str,

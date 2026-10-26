@@ -2,7 +2,7 @@
 """Memory routes must owner-scope caller-supplied session ids.
 
 SessionManager.get_session returns any session by id (no owner scoping). The
-/api/memory extract, audit, import, and by-session handlers accept a
+/api/memory extract, audit and import handlers accept a
 caller-supplied session id, so without an ownership gate a user could target
 another tenant's session and leak their chat history, session-scoped LLM
 credentials, or session title.
@@ -67,21 +67,6 @@ def test_extract_rejects_other_users_session(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         asyncio.run(extract(request=None, session="alice-sess"))
     assert exc.value.status_code == 404
-
-
-def test_by_session_rejects_other_users_session(monkeypatch):
-    router = _router(monkeypatch, caller="bob")
-    gbs = _route(router, "/api/memory/by-session/{session_id}", "GET")
-    with pytest.raises(HTTPException) as exc:
-        gbs(request=None, session_id="alice-sess")
-    assert exc.value.status_code == 404
-
-
-def test_owner_can_access_own_session(monkeypatch):
-    router = _router(monkeypatch, caller="alice")
-    gbs = _route(router, "/api/memory/by-session/{session_id}", "GET")
-    out = gbs(request=None, session_id="alice-sess")
-    assert out["session_name"] == "Secret project"
 
 
 def test_audit_session_fallback_uses_resolver_without_manual_default(monkeypatch):
@@ -190,28 +175,6 @@ def test_add_memory_rejects_other_users_session(monkeypatch):
     memory_manager.add_entry.assert_not_called()
     memory_manager.save.assert_not_called()
     memory_vector.add.assert_not_called()
-
-
-def test_timeline_does_not_expose_other_users_session_name():
-    memory_manager = MagicMock()
-    session_manager = MagicMock()
-    session_manager.sessions = {"bob-session": object()}
-    session_manager.get_session.return_value = SimpleNamespace(owner="bob", name="Bob roadmap")
-    memory_manager.load.return_value = [
-        {
-            "id": "m1",
-            "text": "Alice note",
-            "owner": "alice",
-            "session_id": "bob-session",
-            "timestamp": 1,
-        }
-    ]
-    router = mr.setup_memory_routes(memory_manager, session_manager)
-    timeline = _route(router, "/api/memory/timeline", "GET")
-
-    out = timeline(request=_request("alice"))
-
-    assert out["timeline"][0]["session_name"] == "Unknown"
 
 
 def test_import_missing_session_uses_utility_fallback(monkeypatch):

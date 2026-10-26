@@ -7,7 +7,6 @@ import os
 import re
 import tempfile
 import time
-from datetime import datetime
 import logging
 # H11: the diagnostic reports how the retriever read the question.
 from src import memory_edges, memory_retrieval, memory_style
@@ -521,83 +520,9 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
 
         return {"memories": relevant, "total": len(relevant), "query": query}
 
-    @router.get("/timeline")
-    def memory_timeline(request: Request):
-        """Get memories in chronological order with source session information.
+    # (`B1482`: `GET /api/memory/timeline` and `/by-session/{id}` were here, with
+    # no caller; the Brain lists memories newest first and filters them itself.)
 
-        **`P13-17` records are excluded, and leaving them in would have broken
-        this surface rather than decorated it.** The style profile's
-        `timestamp` moves on *every* user message, so a timeline that included
-        it would show the same single row at the top of every view, for ever,
-        pushing the thing the timeline is for off the screen. It is not a
-        memory, it does not belong in a chronology of what was learned, and
-        `GET /api/memory/style` is where it is read.
-        """
-        user = _owner(request)
-        memories = [m for m in memory_manager.load(owner=user)
-                    if memory_style.kind_of(m) == memory_style.KIND_MEMORY]
-        sorted_memories = sorted(memories, key=lambda x: x.get("timestamp", 0), reverse=True)
-
-        results = []
-        for memory in sorted_memories:
-            if "timestamp" in memory:
-                try:
-                    dt = datetime.fromtimestamp(memory["timestamp"])
-                    memory["timestamp_str"] = dt.strftime("%Y-%m-%d %H:%M:%S")
-                except (ValueError, OSError, OverflowError):
-                    memory["timestamp_str"] = "Unknown"
-            else:
-                memory["timestamp_str"] = "Unknown"
-
-            session_id = memory.get("session_id")
-            if session_id and session_id in session_manager.sessions:
-                try:
-                    session = session_manager.get_session(session_id)
-                    if session:
-                        _assert_session_owner(session, user)
-                    memory["session_name"] = session.name if session else f"Session {session_id[:6]}"
-                except KeyError:
-                    memory["session_name"] = "Unknown"
-                except HTTPException as exc:
-                    if exc.status_code != 404:
-                        raise
-                    memory["session_name"] = "Unknown"
-            else:
-                memory["session_name"] = "Unknown"
-
-            results.append(memory)
-
-        return {"timeline": results, "total": len(results)}
-
-    @router.get("/by-session/{session_id}")
-    def get_memory_by_session(request: Request, session_id: str):
-        """Get all memories associated with a specific session."""
-        user = _owner(request)
-        try:
-            _session_obj = session_manager.get_session(session_id)
-        except KeyError:
-            raise HTTPException(404, f"Session {session_id} not found")
-        _assert_session_owner(_session_obj, user)
-        memories = memory_manager.load(owner=user)
-        session_memories = [m for m in memories if m.get("session_id") == session_id]
-
-        session_memories.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
-
-        try:
-            session = session_manager.get_session(session_id)
-            session_name = session.name if session else f"Session {session_id[:6]}"
-        except KeyError:
-            session_name = f"Session {session_id[:6]}"
-
-        for memory in session_memories:
-            memory["session_name"] = session_name
-
-        return {
-            "session_id": session_id,
-            "session_name": session_name,
-            "memory_count": len(session_memories),
-            "memories": session_memories
-        }
 
     @router.post("/extract")
     async def extract_memory(request: Request, session: str = Form(...)) -> Dict[str, List[str]]:

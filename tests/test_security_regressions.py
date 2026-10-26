@@ -462,22 +462,6 @@ def test_chat_preprocess_does_not_surface_cross_owner_attachment(tmp_path, monke
     assert user_content == "hello"
 
 
-def test_document_upload_lookup_rejects_cross_owner_marker(tmp_path, monkeypatch):
-    from src.upload_handler import UploadHandler
-
-    # `B1049`. Imported under the stub `core.database` below; the helper puts
-    # the module, and the `routes` attribute that names it, back at teardown.
-    drop_for_fresh_import(monkeypatch, "routes.document_helpers")
-    _stub_core_database_for_route_imports(monkeypatch)
-    from routes.document_helpers import _locate_upload
-
-    upload_dir, _alice_id, bob_id = _make_upload_store(tmp_path)
-    handler = UploadHandler(str(tmp_path), str(upload_dir))
-
-    assert _locate_upload(str(upload_dir), bob_id, owner="alice", upload_handler=handler) is None
-    assert _locate_upload(str(upload_dir), bob_id, owner="bob", upload_handler=handler).endswith(bob_id)
-
-
 def test_find_source_upload_id_rejects_path_traversal_marker():
     from src.pdf_form_doc import find_source_upload_id
 
@@ -1119,13 +1103,13 @@ def test_attachment_extract_dir_normal_inputs_unchanged():
 
 
 def test_diagnostics_routes_are_admin_gated():
-    """db/rag stats + test endpoints must require admin (they relied only on
-    the global session check before)."""
+    """db/rag stats must require admin (they relied only on the global session
+    check before). The two test endpoints were deleted with no caller (`B1482`)."""
     src = Path(__file__).resolve().parents[1] / "routes" / "diagnostics_routes.py"
     text = src.read_text()
-    for handler in ("get_database_stats", "get_rag_stats", "test_youtube", "test_research"):
+    for handler in ("get_database_stats", "get_rag_stats"):
         assert f"def {handler}(request: Request" in text, handler
-    assert text.count("require_admin(request)") >= 4
+    assert text.count("require_admin(request)") >= 2
 
 
 def test_email_thread_rendering_sanitizes_body_html():
@@ -1703,8 +1687,7 @@ _DROPPING_TESTS = [
     ("email-auth-error", test_outlook_smtp_basic_auth_error_is_actionable,
      ("routes.email_helpers",)),
     ("email-attachments", test_attachment_extract_dir_stays_contained, ("routes.email_helpers",)),
-    ("document-lookup", test_document_upload_lookup_rejects_cross_owner_marker,
-     ("routes.document_helpers", "core.database")),
+    # (`B1485`: "document-lookup" drove `_locate_upload`, deleted with no caller.)
     ("document-marker", test_pdf_marker_write_rejects_cross_owner_upload,
      ("routes.document_helpers", "core.database")),
     ("email-pollers", test_inprocess_pollers_gate, ("routes.email_pollers",)),

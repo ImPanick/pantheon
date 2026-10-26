@@ -32,7 +32,6 @@ _MOTION = Path(__file__).resolve().parents[2] / "static" / "js" / "motion.js"
 _ANSWERS = {
     "prefersReducedMotion": ("false", "true"),
     "scrollBehavior": ("'smooth'", "'auto'"),
-    "onMotionPreferenceChange": ("() => {}", "() => {}"),
 }
 
 

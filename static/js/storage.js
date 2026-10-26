@@ -100,11 +100,6 @@ export function saveToggleState(state) {
   setJSON(KEYS.TOGGLES, state);
 }
 
-export function getToggle(name, fallback) {
-  const state = loadToggleState();
-  return state[name] !== undefined ? state[name] : (fallback !== undefined ? fallback : false);
-}
-
 export function setToggle(name, value) {
   const state = loadToggleState();
   state[name] = value;
@@ -120,7 +115,6 @@ const Storage = {
   remove,
   loadToggleState,
   saveToggleState,
-  getToggle,
   setToggle
 };
 

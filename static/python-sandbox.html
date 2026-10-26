@@ -1,0 +1,17 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- `B1474`. Where a person's Python block runs in their browser (Pyodide).
+     Served at `/python-sandbox` (app.py) with `sandbox allow-scripts`
+     (core/middleware.py) and framed with
+     the same attribute, so it is an opaque origin: no cookie, no storage, no
+     reach into this app's window or its API. It loads the vendored runtime
+     from this origin and answers `postMessage` runs. -->
+<html>
+<head>
+<meta charset="utf-8">
+<title>Python sandbox</title>
+<script src="static/lib/pyodide/pyodide.js"></script>
+<script src="static/js/pythonSandbox.js"></script>
+</head>
+<body></body>
+</html>

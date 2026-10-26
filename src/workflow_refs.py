@@ -536,13 +536,6 @@ def format_ref(node_id: str, field: str, path=()) -> str:
     return text
 
 
-def format_item_ref(path=()) -> str:
-    """`{{ item<path> }}`, for the step inside a For-each."""
-    text = f"{{{{ {REF_ROOT_ITEM}{_format_path(path)} }}}}"
-    parse_template(text)
-    return text
-
-
 # ── What a value holds, for the picker ───────────────────────────────────────
 
 FIELD_TYPE_TEXT = "text"

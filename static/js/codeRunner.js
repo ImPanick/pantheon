@@ -7,9 +7,6 @@ import * as uiModule from './ui.js';
  * In-browser code runner for Python (Pyodide), JavaScript, and HTML
  */
 
-let pyodideInstance = null;
-let pyodideLoading = false;
-const pyodideQueue = [];
 
 /**
  * Get or create an output panel below the <pre> element
@@ -110,120 +107,94 @@ function addCopyBtn_unused(panel, text) {
 function addCloseBtn(_panel) { /* no-op */ }
 
 /**
- * Lazy-load Pyodide from this origin.
- *
- * It came from cdn.jsdelivr.net until 2026-09-01 (`P16-07`), and that had two
- * problems, only one of which was the network. The request left the machine the
- * moment someone ran a Python block -- and the feature failed anyway, because
- * the CSP that let `pyodide.js` through blocked the `.wasm` fetch it makes next.
- * A leak with nothing to show for it.
- *
- * Both paths now point at `/static/lib/pyodide/`, vendored by
- * `scripts/fetch-pyodide.py` from a checksum-verified npm tarball. `indexURL`
- * matters as much as `src`: Pyodide resolves `pyodide.asm.wasm`,
- * `python_stdlib.zip` and `pyodide-lock.json` against it, so leaving it pointed
- * at the CDN would keep three of the five files remote and look fixed.
+ * `B1474`. Python in the person's own browser, for anyone without the server
+ * shell (`/api/shell/exec` is an admin's). Pyodide is vendored at
+ * `/static/lib/pyodide/` (`P16-07`) and had never run: this used to load it
+ * into the app's own page, where a block could `import js` and act as the
+ * person in this app. It runs in `/python-sandbox` now — an opaque
+ * origin with no cookie and no reach into this window, on a Worker of its own
+ * — kept warm between runs, and a run that overstays is stopped by removing
+ * the frame, which the old in-page runner could not do at all.
  */
-function loadPyodide() {
-  if (pyodideInstance) return Promise.resolve(pyodideInstance);
-  if (pyodideLoading) {
-    return new Promise((resolve, reject) => {
-      pyodideQueue.push({ resolve, reject });
-    });
-  }
-  pyodideLoading = true;
+const PY_LOAD_TIMEOUT_MS = 120000;  // the first run loads ~10 MB
+const PY_RUN_TIMEOUT_MS = 10000;
+let _pySandbox = null;
+let _pyRunSeq = 0;
 
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = '/static/lib/pyodide/pyodide.js';
-    script.onload = () => {
-      window.loadPyodide({ indexURL: '/static/lib/pyodide/' })
-        .then(py => {
-          pyodideInstance = py;
-          pyodideLoading = false;
-          pyodideQueue.forEach(q => q.resolve(py));
-          pyodideQueue.length = 0;
-          resolve(py);
-        })
-        .catch(err => {
-          pyodideLoading = false;
-          pyodideQueue.forEach(q => q.reject(err));
-          pyodideQueue.length = 0;
-          reject(err);
-        });
+function _pythonSandbox() {
+  if (_pySandbox) return _pySandbox;
+  const iframe = document.createElement('iframe');
+  iframe.sandbox = 'allow-scripts';
+  iframe.style.display = 'none';
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.src = '/python-sandbox';
+  const ready = new Promise((resolve) => {
+    const onReady = (e) => {
+      if (e.source !== iframe.contentWindow || !e.data || e.data.type !== 'ready') return;
+      window.removeEventListener('message', onReady);
+      resolve();
     };
-    script.onerror = () => {
-      pyodideLoading = false;
-      // Vendored, so this is a missing file rather than a network problem, and
-      // the message should say which -- `scripts/fetch-pyodide.py` is the fix
-      // and nobody guesses that from "failed to load".
-      const err = new Error(
-        'Pyodide is not installed. Expected it at /static/lib/pyodide/ — run '
-        + 'scripts/fetch-pyodide.py to vendor it.'
-      );
-      pyodideQueue.forEach(q => q.reject(err));
-      pyodideQueue.length = 0;
-      reject(err);
-    };
-    document.head.appendChild(script);
+    window.addEventListener('message', onReady);
   });
+  document.body.appendChild(iframe);
+  _pySandbox = { iframe, ready };
+  return _pySandbox;
+}
+
+function _stopPythonSandbox() {
+  if (_pySandbox && _pySandbox.iframe.parentNode) _pySandbox.iframe.remove();
+  _pySandbox = null;
 }
 
 /**
- * Run Python code via Pyodide
+ * Run Python code in the sandboxed Pyodide frame.
  */
 export async function runPython(code, panel) {
   showLoading(panel, 'Loading Python runtime (first time ~10 MB)...');
-
-  let py;
-  try {
-    py = await loadPyodide();
-  } catch (e) {
-    showOutput(panel, 'Failed to load Python runtime: ' + e.message, true);
-    addCloseBtn(panel);
-    return;
-  }
-
-  showLoading(panel, 'Running...');
-
-  const wrapper = `
-import sys, io
-_stdout = io.StringIO()
-_stderr = io.StringIO()
-sys.stdout = _stdout
-sys.stderr = _stderr
-try:
-    exec(${JSON.stringify(code)})
-except Exception as _e:
-    _stderr.write(str(_e))
-finally:
-    sys.stdout = sys.__stdout__
-    sys.stderr = sys.__stderr__
-(_stdout.getvalue(), _stderr.getvalue())
-`;
-
-  try {
-    const result = await Promise.race([
-      py.runPythonAsync(wrapper),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Execution timed out (10 s)')), 10000))
-    ]);
-
-    const stdout = result.toJs ? result.toJs()[0] : (result[0] || '');
-    const stderr = result.toJs ? result.toJs()[1] : (result[1] || '');
-    if (result.destroy) result.destroy();
-
-    panel.innerHTML = '';
-    if (stderr) {
-      showOutput(panel, stderr, true);
-    } else if (stdout) {
-      showOutput(panel, stdout, false);
-    } else {
-      showOutput(panel, '(no output)', false);
+  const box = _pythonSandbox();
+  const id = ++_pyRunSeq;
+  const outcome = await new Promise((resolve) => {
+    let timer = setTimeout(() => finish({ error: 'The Python runtime did not load.' }), PY_LOAD_TIMEOUT_MS);
+    function finish(result) {
+      clearTimeout(timer);
+      window.removeEventListener('message', onMessage);
+      window.removeEventListener('message', onFailed);
+      resolve(result);
     }
-  } catch (e) {
-    showOutput(panel, e.message, true);
-  }
+    function onMessage(e) {
+      if (e.source !== box.iframe.contentWindow || !e.data || e.data.id !== id) return;
+      if (e.data.type === 'started') {
+        showLoading(panel, 'Running...');
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          _stopPythonSandbox();
+          finish({ error: `Execution timed out (${PY_RUN_TIMEOUT_MS / 1000} s) — the Python runtime was stopped.` });
+        }, PY_RUN_TIMEOUT_MS);
+      } else if (e.data.type === 'result') {
+        finish(e.data);
+      }
+    }
+    function onFailed(e) {
+      if (e.source !== box.iframe.contentWindow || !e.data || e.data.type !== 'failed') return;
+      window.removeEventListener('message', onFailed);
+      _stopPythonSandbox();
+      finish({ error: e.data.error || 'The Python runtime failed to start.' });
+    }
+    window.addEventListener('message', onMessage);
+    window.addEventListener('message', onFailed);
+    box.ready.then(() => box.iframe.contentWindow.postMessage({ type: 'run', id, code }, '*'));
+  });
+  panel.innerHTML = '';
+  if (outcome.error) showOutput(panel, outcome.error, true);
+  else if (outcome.stderr) showOutput(panel, (outcome.stdout || '') + outcome.stderr, true);
+  else showOutput(panel, outcome.stdout || '(no output)', false);
   addCloseBtn(panel);
+}
+
+/** Python runs on the server for an admin, in the browser for everyone else. */
+export function runPythonBlock(code, panel) {
+  if (typeof window !== 'undefined' && window._isAdmin === true) return runServer(code, panel, 'python');
+  return runPython(code, panel);
 }
 
 /**
@@ -379,7 +350,7 @@ export function run(btn) {
   if (lang === 'bash' || lang === 'sh' || lang === 'shell' || lang === 'zsh') {
     runServer(code, panel, 'bash');
   } else if (lang === 'python' || lang === 'py') {
-    runServer(code, panel, 'python');
+    runPythonBlock(code, panel);
   } else if (lang === 'javascript' || lang === 'js') {
     runJavaScript(code, panel);
   } else if (lang === 'html') {
@@ -387,5 +358,5 @@ export function run(btn) {
   }
 }
 
-const codeRunnerModule = { run, runPython, runJavaScript, runHTML, runServer };
+const codeRunnerModule = { run, runPython, runPythonBlock, runJavaScript, runHTML, runServer };
 export default codeRunnerModule;

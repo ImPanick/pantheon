@@ -348,7 +348,6 @@ let _remoteImageMode = 'ask';
 export function setRemoteImageMode(mode) {
   if (mode === 'ask' || mode === 'proxy' || mode === 'block') _remoteImageMode = mode;
 }
-export function getRemoteImageMode() { return _remoteImageMode; }
 
 function _isSameOrigin(href) {
   try { return new URL(href, window.location.origin).origin === window.location.origin; }

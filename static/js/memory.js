@@ -1764,16 +1764,6 @@ export async function addNewMemory() {
   }
 }
 
-export async function editMemory(id) {
-  const memory = memories.find(m => m.id === id);
-  if (!memory) return;
-
-  const newText = prompt('Edit memory:', memory.text);
-  if (!newText || newText === memory.text) return;
-
-  await saveInlineEdit(id, newText);
-}
-
 /** `B710`. Bind a proposal, and say what the gate said.
  *
  *  **A refusal is an answer, not a failure**, and the route already says so by
@@ -2367,7 +2357,6 @@ const memoryModule = {
   renderMemoryList,
   updateMemoryCount,
   addNewMemory,
-  editMemory,
   deleteMemory,
   extractMemory,
   buildCategoryChips,

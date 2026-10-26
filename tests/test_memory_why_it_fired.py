@@ -20,7 +20,7 @@ import re
 
 import pytest
 
-from src.memory import MemoryManager, classify_query, QUERY_KEYWORD_GROUPS
+from src.memory import MemoryManager
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 INDEX = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
@@ -130,26 +130,19 @@ def test_a_task_question_still_boosts_a_task_memory(explain):
     assert "task question" in rows["t"]["reason"]
 
 
-def test_the_query_type_is_reportable_on_its_own():
-    """`classify_query` still answers. `P13-14` is what it no longer *drives*."""
-    assert classify_query("what is the build timeout") == "fact"
-    assert classify_query("who am I") == "identity"
-    assert classify_query("Afrog Labs") is None
-
-
 def test_the_debug_route_reports_the_intent_that_actually_ranked():
     """`P13-14`. The route used to report `classify_query`, and after the scorer
     moved that would have been a classifier reporting on a ranking it no longer
     drives. A diagnostic that agrees with the truth by coincidence is worse than
     none, because it is believed.
 
-    The two disagree in a knowable way: `classify_query` has a `fact` group
+    The two disagreed in a knowable way: `classify_query` had a `fact` group
     matching "what", "when", "where" and "how" — most questions — and the
     ranking deliberately has no such group, because a boost that fires for
     everything is not a boost."""
     from src import memory_retrieval
 
-    assert classify_query("what is the build timeout") == "fact"
+    # (`classify_query` answered "fact" here; it went with `B1485`.)
     assert memory_retrieval.query_intent("what is the build timeout") is None
     assert memory_retrieval.query_intent("what is my name") == "identity"
     # Comments stripped before matching. The route explains *why* it stopped
@@ -158,14 +151,6 @@ def test_the_debug_route_reports_the_intent_that_actually_ranked():
     code = "\n".join(ln for ln in ROUTES.splitlines() if not ln.lstrip().startswith("#"))
     assert "classify_query" not in code, "the route is back on the classifier that does not rank"
     assert "memory_retrieval.query_intent(query)" in code
-
-
-def test_the_keyword_groups_are_inspectable():
-    """They ARE the classifier, and `B40` is what happens when nobody can see
-    them. Identity must stay first: that ordering is the documented intent."""
-    names = [name for name, _ in QUERY_KEYWORD_GROUPS]
-    assert names[0] == "identity"
-    assert set(names) == {"identity", "contact", "preference", "task", "fact"}
 
 
 # ── the contract the five existing callers rely on ──
@@ -243,8 +228,7 @@ def test_the_debug_route_adds_without_changing(monkeypatch, tmp_path):
     # "where" and "how" — which is most questions. A boost that fires for
     # everything is not a boost, and a diagnostic reporting one that did not
     # fire is worse than silence because it is believed.
-    assert result["query_type"] is None
-    assert result["query_type"] != classify_query("what is the build timeout"), \
+    assert result["query_type"] is None, \
         "the route must report the intent that ranked, not the classifier that did not"
     assert len(result["explanations"]) == len(result["memories"])
     ids = {m["id"] for m in result["memories"]}

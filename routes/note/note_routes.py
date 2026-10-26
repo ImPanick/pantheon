@@ -74,13 +74,6 @@ def _note_to_dict(note: Note) -> Dict[str, Any]:
             items = json.loads(note.items)
         except (json.JSONDecodeError, TypeError):
             items = None
-    ai_cls = None
-    raw_ai = getattr(note, "ai_classification", None)
-    if raw_ai:
-        try:
-            ai_cls = json.loads(raw_ai)
-        except (json.JSONDecodeError, TypeError):
-            ai_cls = None
     return {
         "id": note.id,
         "owner": note.owner,
@@ -98,8 +91,6 @@ def _note_to_dict(note: Note) -> Dict[str, Any]:
         "sort_order": note.sort_order or 0,
         "image_url": note.image_url,
         "repeat": note.repeat or "none",
-        "ai_classification": ai_cls,
-        "ai_content_hash": getattr(note, "ai_content_hash", None),
         "agent_session_id": getattr(note, "agent_session_id", None),
         "agent_status": getattr(note, "agent_status", None),
         "agent_session_title": getattr(note, "agent_session_title", None),

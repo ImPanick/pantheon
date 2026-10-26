@@ -213,17 +213,6 @@ def test_parse_companion_base_url_rejects_unsupported_or_noncanonical_addresses(
         P.parse_companion_base_url(value)
 
 
-@pytest.mark.parametrize("payload", ["[]", '{"users": []}'])
-def test_find_admin_user_ignores_invalid_auth_shape(tmp_path, monkeypatch, payload):
-    auth_file = tmp_path / "auth.json"
-    auth_file.write_text(payload)
-    # find_admin_user reads the import-time AUTH_FILE constant, so redirect that
-    # rather than relying on cwd.
-    monkeypatch.setattr(P, "AUTH_FILE", str(auth_file))
-
-    assert P.find_admin_user() is None
-
-
 # --- admin-only gate: a bearer/non-admin caller is rejected ----------------
 
 def _admin_mgr(is_admin):

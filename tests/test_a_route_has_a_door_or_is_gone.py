@@ -41,6 +41,13 @@ RETIRED = [
     ("routes/email_routes.py", '@router.post("/attachment-path/{uid}/{index}")'),
     ("routes/cookbook_routes.py", '@router.get("/api/cookbook/vllm-recipe-manifest")'),
     ("routes/cookbook_routes.py", '@router.get("/api/cookbook/vllm-recipe")'),
+    # `B1482`: six more, found on the audit's second look.
+    ("routes/memory/memory_routes.py", '@router.get("/timeline")'),
+    ("routes/memory/memory_routes.py", '@router.get("/by-session/{session_id}")'),
+    ("routes/chat_routes.py", '@router.post("/api/inject_context/{session_id}")'),
+    ("routes/model_routes.py", '@router.get("/providers")'),
+    ("routes/diagnostics_routes.py", '@router.get("/api/test/youtube")'),
+    ("routes/diagnostics_routes.py", '@router.post("/api/test-research")'),
 ]
 
 
@@ -54,6 +61,8 @@ def test_a_route_with_no_caller_is_retired(path, decorator):
     ("static/js/admin.js", "/api/upload/cleanup"),
     ("static/js/admin.js", "/api/rag/stats"),
     ("static/js/emailLibrary.js", "/unflag-spam"),
+    ("static/js/providerDeviceFlow.js", "/api/copilot/device/cancel"),          # `B1482`
+    ("static/js/providerDeviceFlow.js", "/api/chatgpt-subscription/device/cancel"),
 ])
 def test_a_route_with_a_use_has_a_door(js, url):
     assert url in (ROOT / js).read_text(encoding="utf-8")

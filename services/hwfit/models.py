@@ -208,42 +208,6 @@ def _active_params_b(model):
     return params_b(model)
 
 
-def best_quant_for_budget(model, budget_gb, ctx):
-    """Find best quant that fits in budget_gb of VRAM.
-    Pre-quantized models (AWQ/GPTQ/MLX) use their native quant only.
-    Returns (quant, ctx, mem_gb) or (None, None, None).
-    """
-    if is_prequantized(model):
-        q = model.get("quantization", "Q4_K_M")
-        mem = estimate_memory_gb(model, q, ctx)
-        if mem <= budget_gb:
-            return q, ctx, mem
-        # Try halving context
-        cur_ctx = ctx // 2
-        while cur_ctx >= 1024:
-            mem = estimate_memory_gb(model, q, cur_ctx)
-            if mem <= budget_gb:
-                return q, cur_ctx, mem
-            cur_ctx //= 2
-        return None, None, None
-
-    # GGUF: try best quality first, then fall back
-    for q in QUANT_HIERARCHY:
-        mem = estimate_memory_gb(model, q, ctx)
-        if mem <= budget_gb:
-            return q, ctx, mem
-
-    cur_ctx = ctx // 2
-    while cur_ctx >= 1024:
-        for q in QUANT_HIERARCHY:
-            mem = estimate_memory_gb(model, q, cur_ctx)
-            if mem <= budget_gb:
-                return q, cur_ctx, mem
-        cur_ctx //= 2
-
-    return None, None, None
-
-
 def infer_use_case(model):
     name = model.get("name", "").lower()
     uc = model.get("use_case", "").lower()

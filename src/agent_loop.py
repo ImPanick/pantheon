@@ -564,15 +564,6 @@ def _expand_browser_mcp_tools(tool_names: Set[str], mcp_mgr) -> Set[str]:
     return names
 
 
-def _looks_like_notes_list_request(text: str) -> bool:
-    """Whether the user is asking to see existing notes, not create one."""
-    t = (text or "").lower()
-    return bool(
-        re.search(r"\b(what|show|list|see|current|existing|all|my)\b.{0,60}\bnotes?\b", t)
-        or re.search(r"\bnotes?\b.{0,60}\b(what|show|list|see|current|existing|all|my)\b", t)
-    )
-
-
 def _note_list_summary_from_tool_output(raw: str, max_items: int = 20) -> str:
     """Format manage_notes list/search output for chat without an LLM pass."""
     if not isinstance(raw, str) or not raw.strip():
@@ -1648,7 +1639,7 @@ If the user asks for a reminder/alarm before the event, pass `reminder_minutes` 
     "stop_served_model": "- ```stop_served_model``` — Stop a running model server. Args (JSON): {\"session_id\": \"<from list_served_models>\"}. Use for 'kill my cookbook' / 'stop the model' / 'shut down vLLM'.",
     "tail_serve_output": "- ```tail_serve_output``` — Read the actual tmux stderr/traceback of a CURRENTLY failing cookbook task. Args (JSON): {\"session_id\": \"<from list_served_models>\", \"tail\": 150?}. **Use ONLY after** a launch you just made AND `list_served_models` reports YOUR new task as `crashed`/`error`.\n  The launch is the one you made with `serve_model`. DO NOT use it on old stopped/completed download tasks (they're historical noise — won't predict whether a new launch succeeds). DO NOT call it before launching a fresh attempt. When you do call it, bump `tail` to 400+ only if the visible error references 'see root cause above'.",
     "download_model": "- ```download_model``` — Download a HuggingFace model. Args (JSON): {\"repo_id\": \"Qwen/Qwen3-8B\", \"host\": \"user@gpu-box\"?, \"include\": \"*Q4_K_M*\"?}.",
-    "serve_model": "- ```serve_model``` — Start serving a model with vLLM / SGLang / llama.cpp / Ollama / MLX Image / Diffusers. Args (JSON): {\"repo_id\": \"...\", \"cmd\": \"vllm serve <repo> --port 8000\" or \"python3 -m sglang.launch_server --model-path <repo> --port 30000\" or \"python3 scripts/mlx_image_server.py --model <repo> --port 8100\" or \"python3 scripts/diffusion_server.py --model <repo> --port 8100\", \"host\": \"user@gpu-box\"?}. For MLX image models, use `scripts/mlx_image_server.py`; for non-MLX image/inpaint/diffusion models, use `scripts/diffusion_server.py`. Never use `mlx_lm.server` for image models. After launch, call `list_served_models`; if it returns a diagnosis with an adjusted command, retry with that command.",
+    "serve_model": "- ```serve_model``` — Start serving a model with vLLM / SGLang / llama.cpp / Ollama / MLX Image / Diffusers. Args (JSON): {\"repo_id\": \"...\", \"cmd\"? (omit to launch by name: a saved preset, else a planned first command): \"vllm serve <repo> --port 8000\" or \"python3 -m sglang.launch_server --model-path <repo> --port 30000\" or \"python3 scripts/mlx_image_server.py --model <repo> --port 8100\" or \"python3 scripts/diffusion_server.py --model <repo> --port 8100\", \"host\": \"user@gpu-box\"?}. For MLX image models, use `scripts/mlx_image_server.py`; for non-MLX image/inpaint/diffusion models, use `scripts/diffusion_server.py`. Never use `mlx_lm.server` for image models. After launch, call `list_served_models`; if it returns a diagnosis with an adjusted command, retry with that command.",
     "list_downloads": "- ```list_downloads``` — Show in-progress HuggingFace model downloads (filters Forge tasks/status to downloads only). NO args. Use for 'what's downloading' / 'show my downloads' / 'check download progress'.",
     "cancel_download": "- ```cancel_download``` — Cancel an in-progress download. Args (JSON): {\"session_id\": \"<from list_downloads>\"}. Use for 'cancel the download' / 'kill the download'.",
     "search_hf_models": "- ```search_hf_models``` — Search HuggingFace for models. Args (JSON): {\"query\": \"qwen 8b\", \"limit\": 10?}. Use for 'find a model for X' / 'search huggingface' / 'what models are there for Y'.",
@@ -1869,30 +1860,6 @@ def _register_tool_line(name: str) -> str:
     if args:
         line += f" Args (JSON): {{{args}}} (* = required)"
     return line
-
-
-def _compact_tool_line(name: str, section: str) -> str:
-    """One-line fenced-tool usage hint for compact/local prompts."""
-    text = (section or "").strip()
-    if not text:
-        return f"- `{name}`"
-    if text.startswith("- "):
-        return text
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-    usage = []
-    in_fence = False
-    for ln in lines:
-        if ln.startswith("```"):
-            usage.append(ln)
-            in_fence = not in_fence
-            if len(usage) >= 3:
-                break
-            continue
-        if in_fence and len(usage) < 3:
-            usage.append(ln)
-    if usage:
-        return f"- `{name}` — " + " ".join(usage)
-    return f"- `{name}` — " + lines[0][:160]
 
 
 def _compact_prompt_applies(is_api_model: bool) -> bool:
@@ -5300,7 +5267,6 @@ def _build_base_prompt(
     if context_report is not None:
         context_report["skill_index"] = list(skill_index_used)
     return agent_prompt, skill_index_block
-
 
 
 def _merge_injected_skills(*lists) -> list:

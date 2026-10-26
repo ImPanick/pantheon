@@ -77,15 +77,15 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 107 · Depends 21 · total 128
+derived: direct 104 · Depends 21 · total 125
 
 ### tier summary
 
 | tier | sites |
 |---|---|
 | `superuser` | 49 |
-| `operator` | 54 |
-| `power-user` | 4 |
+| `operator` | 52 |
+| `power-user` | 3 |
 | `only-because-nothing-finer-existed` | 21 |
 
 ### `superuser` — **49 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
@@ -142,7 +142,7 @@ derived: direct 107 · Depends 21 · total 128
 | `routes/auth_routes.py` | `set_user_role` | `PUT /api/auth/users/{username}/role` | grants somebody else a role. `P11-02` |
 | `routes/workstation_routes.py` | `_watched` | `—` | not a route: `GET /api/workstation/screen` and `GET /api/workstation/control` ask it when a `person` is named — an admin may watch another person's workstation screen and who holds it, and only watch (the input, take-over and reset routes take no `person`). Without `person` the caller's own screen, open to anyone the workstation answers. Another person's screen is their data, so this stays the owner's. `B1424` |
 
-### `operator` — **54 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
+### `operator` — **52 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -163,10 +163,8 @@ derived: direct 107 · Depends 21 · total 128
 | `routes/diagnostics_routes.py` | `get_self_check` | `GET /api/diagnostics/self-check` | the boot self-check |
 | `routes/diagnostics_routes.py` | `get_service_health` | `GET /api/diagnostics/services` | which subsystems answered |
 | `routes/diagnostics_routes.py` | `get_rag_stats` | `GET /api/rag/stats` | collection sizes |
-| `routes/diagnostics_routes.py` | `test_youtube` | `GET /api/test/youtube` | a connectivity probe |
 | `routes/diagnostics_routes.py` | `prometheus_metrics` | `GET /metrics` | the Prometheus scrape endpoint. `Law 16` clause 4 makes this the operator's to point where they like, which is exactly the operator tier |
 | `routes/diagnostics_routes.py` | `run_eval` | `POST /api/diagnostics/evals/{name}/run` | runs one; it costs the instance's model budget |
-| `routes/diagnostics_routes.py` | `test_research` | `POST /api/test-research` | a research-pipeline probe that spends model budget |
 | `routes/hwfit_routes.py` | `setup_hwfit_routes` | `—` | not a route: a router-level `dependencies=[Depends(require_admin)]` covering all five `/api/hwfit` routes — hardware detection on the serving host, or over SSH on a host the caller names. Host topology, like `list_gpus` above, and the choice of which box this instance opens SSH to. `B541`: until 2026-10-02 the middleware was the whole gate, and `/profiles` with no host was a directory-existence probe on the serving host for any signed-in account |
 | `routes/embedding_routes.py` | `setup_embedding_routes` | `—` | not a route: a router-level `dependencies=[Depends(require_admin)]` covering every route under `/api/embeddings`. One site, whole-surface reach — the shape `P11-02`'s refactor should prefer |
 | `routes/model_routes.py` | `delete_model_endpoint` | `DELETE /api/model-endpoints/{ep_id}` | deletes it |
@@ -201,14 +199,13 @@ derived: direct 107 · Depends 21 · total 128
 | `routes/workstation_routes.py` | `workstation_check` | `POST /api/workstation/check` | *Check now*: asks the workstation whether it answers, even while it is switched off, and pushes the admin's `sudo` setting to the daemon when it differs. Running the box. `P20-02` |
 | `routes/workstation_routes.py` | `_caller_is_admin` | `—` | not a route: `GET /api/workstation/status` asks it whether to add the admin's view — the address in effect and where it and the token came from, never the token. A 403 here means "no admin view", not a refusal; the status route itself is open to anyone signed in. Asked of `require_admin` rather than `is_admin` so rule C does not rise. `P20-02` |
 
-### `power-user` — **4 power-user sites.** Reads a capable user needs in order to work, gated as if they were instance control. All four are the model picker's inventory: a non-admin can be given `allowed_models` in `DEFAULT_PRIVILEGES` today and still cannot see which endpoints exist.
+### `power-user` — **3 power-user sites.** Reads a capable user needs in order to work, gated as if they were instance control. All three are the model picker's inventory (a fourth, `GET /api/providers`, had no caller and went with `B1482`): a non-admin can be given `allowed_models` in `DEFAULT_PRIVILEGES` today and still cannot see which endpoints exist.
 
 | file | function | route | protects |
 |---|---|---|---|
 | `routes/model_routes.py` | `list_model_endpoints` | `GET /api/model-endpoints` | the endpoint list with keys masked. Same argument: choosing a model is a user act gated as an operator one |
 | `routes/model_routes.py` | `get_endpoint_dependents` | `GET /api/model-endpoints/{ep_id}/dependents` | what would break if an endpoint went away |
 | `routes/model_routes.py` | `list_endpoint_models` | `GET /api/model-endpoints/{ep_id}/models` | the cached model list for one endpoint |
-| `routes/model_routes.py` | `providers` | `GET /api/providers` | the provider catalogue — static, no instance data. A non-admin who may pick a model needs this and cannot have it |
 
 ### `only-because-nothing-finer-existed` — **21 only-because-nothing-finer-existed sites.** The gate is on the shape of the store, not on the act. Contacts, presets and the personal index are one shared file with no owner column, and the receipts are per-run data with no owner scope — so "admin" is standing in for an ownership check nobody has written. These are the rows `P11-02` should retire, and retiring them is a data-model change, not an auth change.
 
@@ -330,7 +327,7 @@ routes: 39
 
 The router carries `dependencies=[Depends(require_chat_api_token_scope)]`, so every route below gets it whether or not the handler mentions auth, and every session route reaches `_verify_session_owner` (imported from `routes/session_routes.py`). `P11-02d` named `chat_routes.py:338/367` as the admin check; those two lines are `_candidate_index` and `_message_plain_text`. The real admin check is `owner_is_admin_or_single_user` at 481 and 510, reached only from `chat_stream`, and it gates workspace binding rather than the route.
 
-routes: 15
+routes: 14
 
 | route | handler | gate | intended |
 |---|---|---|---|
@@ -341,7 +338,6 @@ routes: 15
 | `POST /api/chat/stop/{session_id}` | `chat_stop` | `middleware + _verify_session_owner + require_chat_api_token_scope` | yes — `_verify_session_owner` refuses another user's session, and refuses "not yours" and "no such session" identically. |
 | `POST /api/chat/steer/{session_id}` | `chat_steer` | `middleware + _verify_session_owner + require_chat_api_token_scope` | yes — `_verify_session_owner` refuses another user's session, and refuses "not yours" and "no such session" identically. |
 | `GET /api/chat/stream_status/{session_id}` | `chat_stream_status` | `middleware + _verify_session_owner + require_chat_api_token_scope` | yes — `_verify_session_owner` refuses another user's session, and refuses "not yours" and "no such session" identically. |
-| `POST /api/inject_context/{session_id}` | `inject_context` | `middleware + _verify_session_owner + require_chat_api_token_scope` | yes — `_verify_session_owner` refuses another user's session, and refuses "not yours" and "no such session" identically. |
 | `GET /api/search` | `search_messages` | `middleware + effective_user + require_chat_api_token_scope` | yes — `effective_user`, and the query is filtered to that owner's messages. |
 | `POST /api/rewrite` | `rewrite_message` | `middleware + _verify_session_owner + require_chat_api_token_scope` | yes — `_verify_session_owner` refuses another user's session, and refuses "not yours" and "no such session" identically. |
 | `GET /api/tool-allow-rules` | `list_tool_allow_rules` | `middleware + require_chat_api_token_scope + require_user + storage_owner_for_request` | yes — `require_user` 403s a bearer token outright, then `storage_owner_for_request` scopes the rows. |
@@ -490,10 +486,10 @@ the number of admin decisions added — which is the behaviour the map was built
 The paragraph above is about the 107 that predate roles; the counts below are live.
 
 - **49 superuser sites do not move.** They are already right.
-- **54 operator sites are the phase's return.** Today the only way to let someone keep
+- **52 operator sites are the phase's return.** Today the only way to let someone keep
   the instance up is to make them the owner. An `operator` overlay on
   `DEFAULT_PRIVILEGES` retires 48 gates without touching a single one of the 37.
-- **4 power-user sites are one privilege key.** `allowed_models` already exists in
+- **3 power-user sites are one privilege key.** `allowed_models` already exists in
   `DEFAULT_PRIVILEGES`; a user who has it still cannot list the endpoints it names.
 - **21 only-because-nothing-finer-existed sites are not an auth job at all.** Contacts,
   presets and the personal index need an owner column; the diagnostics receipts need an
@@ -542,7 +538,7 @@ pages a stranger is handed are exactly the ones that list names. That is the exe
 while every page with a route answered `302 → /login`. They now have routes under
 `/sandbox/`, for anyone signed in.
 
-derived-static-documents: 5 under static/, 5 with a route, handed to a caller with no session: /login
+derived-static-documents: 6 under static/, 6 with a route, handed to a caller with no session: /login
 
 ## What this file does not cover
 

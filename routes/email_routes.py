@@ -91,22 +91,6 @@ _SERVER_OWNED_OAUTH_FIELDS = {
 }
 
 
-def _normalized_mail_host(value) -> str:
-    """Normalize a mail hostname for exact provider-bound comparisons."""
-    return providers.normalize_host(value)
-
-
-def _google_oauth_imap_transport_allowed(port: int, starttls: bool) -> bool:
-    """Kept as a name; the pairs it accepts are now the Google record's.
-
-    `P18-05`. Written out longhand this said *993 without STARTTLS, or 143 with
-    it*, which is true of Google and false of Microsoft — a rule that reads as
-    general and is not. The record says which pairs each provider allows and
-    this asks it.
-    """
-    return providers.imap_transport_allowed(providers.get("google"), port, starttls)
-
-
 def _google_oauth_smtp_transport_allowed(port: int, security: str) -> bool:
     return providers.smtp_transport_allowed(providers.get("google"), port, security)
 

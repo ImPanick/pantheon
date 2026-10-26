@@ -26,7 +26,6 @@ import os
 import socket
 import struct
 import threading
-import time
 from typing import Any, Deque, Dict, Optional
 
 _GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -207,12 +206,3 @@ class Session:
         self._ws.close()
 
 
-def wait_for_port(host: str, port: int, timeout: float) -> bool:
-    end = time.monotonic() + timeout
-    while time.monotonic() < end:
-        try:
-            with socket.create_connection((host, port), timeout=0.5):
-                return True
-        except OSError:
-            time.sleep(0.1)
-    return False

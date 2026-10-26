@@ -2227,23 +2227,8 @@ def setup_model_routes(model_discovery):
 
         return StreamingResponse(_stream(), media_type="text/event-stream")
 
-    # /api/providers runs a full host port-scan (discover_models) which can take
-    # seconds when a configured LLM host is unreachable. It's fetched on every
-    # page load, so cache it briefly like _models_cache to keep page load snappy.
-    _providers_cache = {"data": None, "time": 0}
-    _PROVIDERS_CACHE_TTL = 30  # seconds
-
-    @router.get("/providers")
-    def providers(request: Request, refresh: bool = False):
-        """Get all available providers (cached for 30s)."""
-        require_admin(request)
-        now = _time.time()
-        if not refresh and _providers_cache["data"] is not None and (now - _providers_cache["time"]) < _PROVIDERS_CACHE_TTL:
-            return _providers_cache["data"]
-        result = model_discovery.get_providers(list_models=_probe_endpoint)
-        _providers_cache["data"] = result
-        _providers_cache["time"] = now
-        return result
+    # (`B1482`: `GET /api/providers` — a cached copy of `/api/discover`'s probe
+    # that the page no longer fetched — was here.)
 
     @router.get("/discover")
     def discover_local(request: Request):
@@ -2769,24 +2754,19 @@ def setup_model_routes(model_discovery):
 
     @router.get("/default-chat")
     def get_default_chat(request: Request):
-        # SECURITY: resolve the default endpoint + model from the CALLER's
-        # per-user prefs ONLY. We deliberately do NOT fall back to the
-        # global `default_model` / `default_endpoint_id` in settings.json
-        # for authenticated users — that's what was leaking the previous
-        # admin's pick into every new account's composer. If the user has
-        # no per-user default yet, we resolve via the owner-scoped endpoint
-        # lookup below (last-resort: first enabled endpoint THIS user owns).
-        # Unauthenticated single-user mode keeps the old behavior.
+        # `B1479`, `D-2026-10-25-04` §2: defaults are defaults. A person's own
+        # pick wins for them; with none, the admin's Default (Settings →
+        # Default chat model, admin-only to set) is the platform's default.
+        # One rule, `settings.get_user_setting_pair`, read here and by
+        # `endpoint_resolver` alike — the `share_defaults_with_users` switch,
+        # which only this route asked, is retired. What leaked before was an
+        # admin's last composer pick; the Default is a setting an admin sets.
         from src.auth_helpers import get_current_user as _gcu
+        from src.settings import get_user_setting_pair
         try:
             _user = _gcu(request) or ""
         except Exception:
             _user = ""
-        # Admins resolve via the global defaults (they own them, and the
-        # scoped resolution was making the picker disappear for them).
-        # Regular users get per-user prefs with NO global fallback for the
-        # model/endpoint values — that's what was leaking the previous
-        # admin's pick into every new account's composer.
         settings = _load_settings()
         _is_admin = False
         try:
@@ -2795,22 +2775,18 @@ def setup_model_routes(model_discovery):
                 _is_admin = bool(auth_mgr.is_admin(_user))
         except Exception:
             _is_admin = False
-        if _user and not _is_admin:
-            from routes.prefs_routes import _load_for_user
-            _user_prefs = _load_for_user(_user) or {}
-            ep_id = (_user_prefs.get("default_endpoint_id") or "").strip()
-            model = (_user_prefs.get("default_model") or "").strip()
-            # If user has no personal default, fall back to global default
-            # But only based on the "share_defaults_with_users" flag
-            # (only if share_defaults_with_users is enabled)
-            if settings.get("share_defaults_with_users", False):
-                if not ep_id:
-                    ep_id = settings.get("default_endpoint_id", "")
-                if not model:
-                    model = settings.get("default_model", "")
-        else:
-            ep_id = settings.get("default_endpoint_id", "")
-            model = settings.get("default_model", "")
+        ep_id, model = get_user_setting_pair("default_endpoint_id", "default_model",
+                                             "" if _is_admin else _user, settings)
+        # A model the person's privileges do not allow is not their default.
+        if model and _user and not _is_admin:
+            try:
+                from routes.chat_helpers import _allowed_models_for_request
+                _allowed = _allowed_models_for_request(request)
+            except Exception:
+                _allowed = None
+            if _allowed is not None and model not in _allowed:
+                return {"endpoint_id": "", "endpoint_url": "", "model": "",
+                        "reason": f"{model} isn't one of the models you may use. Pick one in the model menu."}
         db = SessionLocal()
         try:
             ep = None

@@ -1,5 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for share_defaults_with_users setting"""
+"""The default model a person who has not picked one gets (`B1479`, `D-2026-10-25-04` §2).
+
+It was `share_defaults_with_users`, a switch only the composer asked. Defaults
+are defaults now: with no pick of their own, a person gets the admin's Default.
+"""
 import pytest
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -109,6 +113,7 @@ def _run_get_default_chat_test(monkeypatch, share_defaults_enabled, second_endpo
 
     fake_auth_manager = MagicMock()
     fake_auth_manager.is_admin = lambda user: False
+    fake_auth_manager.get_privileges = lambda user: {}
 
     endpoints = [
         _FakeEndpoint(
@@ -146,31 +151,21 @@ def _run_get_default_chat_test(monkeypatch, share_defaults_enabled, second_endpo
 
 ### Test Functions
 
-def test_get_default_chat_user_no_prefs_share_disabled_resolves_nothing(monkeypatch):
-    """
-    Non-admin user without personal preferences should resolve to empty
-    ep_id, model, and fallbacks when share_defaults_with_users is disabled.
-    """
-
-    test_data = _run_get_default_chat_test(monkeypatch, share_defaults_enabled=False)
-
-    assert test_data["endpoint_id"] == "", "Should get empty endpoint_id"
-    assert test_data["model"] == "", "Should get empty model"
+@pytest.mark.parametrize("retired_switch", [False, True])
+def test_a_person_with_no_pick_gets_the_admins_default(monkeypatch, retired_switch):
+    """`B1479`. Whatever the retired `share_defaults_with_users` says."""
+    test_data = _run_get_default_chat_test(monkeypatch, share_defaults_enabled=retired_switch)
+    assert test_data["model"] == "qwen-3.6"
+    assert test_data["endpoint_id"] == "global-ep-123"
 
 
-def test_get_default_chat_user_no_prefs_share_enabled_resolves_global_defaults(monkeypatch):
-    """
-    Non-admin user without personal preferences should resolve to global
-    defaults for ep_id and model when share_defaults_with_users is enabled.
-    """
+def test_a_model_the_person_may_not_use_is_not_their_default(monkeypatch):
+    real = _run_get_default_chat_test
+    import routes.chat_helpers as chat_helpers
+    monkeypatch.setattr(chat_helpers, "_allowed_models_for_request", lambda request: frozenset({"other"}))
+    test_data = real(monkeypatch, share_defaults_enabled=True)
+    assert test_data["model"] == "" and "isn't one of the models you may use" in test_data["reason"]
 
-    test_data = _run_get_default_chat_test(monkeypatch, share_defaults_enabled=True)
-
-    assert test_data["model"] == "qwen-3.6", \
-        "model should be resolved from global default_model"
-
-    assert test_data["endpoint_id"] == "global-ep-123", \
-        "Should get global endpoint_id"
 
 def test_get_default_chat_does_not_read_legacy_fallbacks(monkeypatch):
     """
@@ -196,6 +191,7 @@ def test_get_default_chat_does_not_read_legacy_fallbacks(monkeypatch):
 
     fake_auth_manager = MagicMock()
     fake_auth_manager.is_admin = lambda user: False
+    fake_auth_manager.get_privileges = lambda user: {}
     endpoint = _FakeEndpoint(
         id="global-ep-123",
         base_url="http://global-endpoint:8000/v1",

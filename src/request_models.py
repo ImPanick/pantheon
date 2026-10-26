@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List, Dict, Any
-from datetime import datetime
+from typing import Optional, List
 
 
 # Request Models
@@ -28,13 +27,6 @@ class ChatRequest(BaseModel):
         return v
 
 
-class SessionCreateRequest(BaseModel):
-    name: Optional[str] = Field(default="", max_length=200, description="Session name")
-    endpoint_url: str = Field(..., description="LLM endpoint URL")
-    model: Optional[str] = Field(default="", description="Model ID")
-    rag: Optional[bool] = Field(default=False, description="Enable RAG")
-
-
 class MemoryAddRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=5000, description="Memory text")
     category: str = Field(default="fact", description="Memory category")
@@ -47,11 +39,6 @@ class MemoryAddRequest(BaseModel):
         if v not in ['fact', 'contact', 'task', 'preference', 'identity', 'project', 'goal']:
             return 'fact'  # Default to 'fact' if invalid
         return v
-
-
-class MemoryUpdateRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=5000, description="Updated memory text")
-    category: Optional[str] = Field(default=None, pattern="^(fact|contact|task|preference|identity|project|goal)$", description="Memory category")
 
 
 class PresetUpdateRequest(BaseModel):
@@ -104,23 +91,6 @@ class DirectoryRequest(BaseModel):
     )
 
 
-# Response Models
-class ErrorResponse(BaseModel):
-    error: str = Field(..., description="Error code")
-    message: str = Field(..., description="Error message")
-    details: Optional[Dict[str, Any]] = Field(default=None, description="Additional error details")
-
-
-class UploadResponse(BaseModel):
-    id: str = Field(..., description="File ID")
-    name: str = Field(..., description="Sanitized filename")
-    mime: str = Field(..., description="MIME type")
-    size: int = Field(..., description="File size in bytes")
-    hash: str = Field(..., description="SHA-256 hash")
-    uploaded_at: datetime = Field(..., description="Upload timestamp")
-    is_duplicate: bool = Field(default=False, description="Whether file is a duplicate")
-
-
 class SessionResponse(BaseModel):
     id: str = Field(..., description="Session ID")
     name: str = Field(..., description="Session name")
@@ -129,10 +99,3 @@ class SessionResponse(BaseModel):
     archived: bool = Field(default=False, description="Whether session is archived")
 
 
-class MemoryResponse(BaseModel):
-    id: str = Field(..., description="Memory ID")
-    text: str = Field(..., description="Memory text")
-    category: str = Field(..., description="Memory category")
-    source: str = Field(..., description="Memory source")
-    timestamp: int = Field(..., description="Unix timestamp")
-    session_id: Optional[str] = Field(default=None, description="Associated session")

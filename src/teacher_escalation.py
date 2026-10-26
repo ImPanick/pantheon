@@ -29,43 +29,14 @@ import asyncio
 import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlparse
 
 from services.memory.skill_prompts import skill_schema_section
 
 logger = logging.getLogger(__name__)
 
 
-# Hosts considered SOTA / paid APIs — if the student's endpoint URL
-# hits one of these, the loop is OFF (the user is already paying for
-# a top-tier model; no need to escalate).
-_SOTA_HOSTS = frozenset({
-    "api.openai.com", "api.anthropic.com",
-    "api.deepseek.com", "deepseek.com",
-    "api.mistral.ai", "api.cohere.com",
-    "api.together.xyz", "api.fireworks.ai",
-    "api.perplexity.ai", "api.x.ai",
-    "generativelanguage.googleapis.com", "api.groq.com",
-    "openrouter.ai", "ollama.com", "api.venice.ai", "api.kimi.com",
-})
-
-
-def is_self_hosted(endpoint_url: str) -> bool:
-    """True if the endpoint is NOT a known SOTA cloud API.
-
-    Conservative — anything we don't positively recognise as SOTA is
-    treated as self-hosted. Better to over-escalate than to silently
-    add latency to a paid-API user's chat.
-    """
-    if not endpoint_url:
-        return True
-    try:
-        host = (urlparse(endpoint_url).hostname or "").lower()
-    except Exception:
-        return True
-    if not host:
-        return True
-    return host not in _SOTA_HOSTS
+# (`B1473`: `is_self_hosted` and its `_SOTA_HOSTS` list were here, reached only
+# by tests since the background escalation that used them had no caller.)
 
 
 # ── Tier 1: regex-based failure detection ──────────────────────────
@@ -129,8 +100,7 @@ def evaluate_turn_regex(
 #
 # `P17-07`. `evaluate_turn_regex` is the only thing in this product that notices
 # the agent saying it has no tool for something, and until now it did not run.
-# Its two callers are `maybe_escalate` — which has **zero callers** — and
-# `run_teacher_inline`, which the agent loop does call at the end of every turn
+# Its caller is `run_teacher_inline`, which the agent loop does call at the end of every turn
 # and which returns at its first gate unless `teacher_enabled` is on and a
 # `teacher_model` is set. Both default off, so in a default install the
 # classification was never computed, let alone kept.
@@ -578,81 +548,9 @@ async def evaluate_turn_llm(
 
 
 
-async def escalate_and_learn(
-    user_request: str,
-    tool_results: List[Dict[str, Any]],
-    agent_reply: str,
-    failure_reason: str,
-    owner: Optional[str] = None,
-) -> Optional[str]:
-    """Retire legacy background learning when no approval UI is available."""
-    logger.info(
-        "background teacher learning skipped: generated skills require an "
-        "interactive exact approval"
-    )
-    return None
-
-
-def maybe_escalate(
-    *,
-    student_endpoint_url: str,
-    mode: str,
-    user_request: str,
-    tool_results: List[Dict[str, Any]],
-    agent_reply: str,
-    owner: Optional[str] = None,
-) -> Optional[asyncio.Task]:
-    """Fire-and-forget entrypoint called by the agent loop end-of-turn.
-
-    Returns the created asyncio.Task (so tests can await it) or None
-    if escalation didn't fire. Safe to call unconditionally — does
-    its own gating.
-    """
-    # Gate 1: only in agent mode.
-    if mode != "agent":
-        return None
-
-    # Gate 2: feature is enabled AND a teacher endpoint is configured.
-    # (No self-hosted-only gate — users run cheap cloud students like
-    # deepseek-v4-flash with a SOTA teacher; the toggle is the control.)
-    try:
-        from src.settings import get_setting
-        if not get_setting("teacher_enabled", False):
-            return None
-        if not (get_setting("teacher_model", "") or "").strip():
-            return None
-    except Exception:
-        return None
-
-    # Gate 3: regex eval — only escalate on detected failure.
-    status, reason = evaluate_turn_regex(tool_results, agent_reply)
-    if status == "failure":
-        # Fire async — don't block the user's chat.
-        return asyncio.create_task(
-            escalate_and_learn(user_request, tool_results, agent_reply, reason or "", owner),
-            name="teacher_escalation",
-        )
-
-    # Gate 4: Tier 2 LLM self-evaluation requires teacher_tier2_enabled
-    if not get_setting("teacher_tier2_enabled", False):
-        return None
-
-    # Tier 2: LLM self-evaluation background task
-    async def evaluate_and_maybe_escalate():
-        llm_status, llm_reason = await evaluate_turn_llm(
-            user_request=user_request,
-            tool_results=tool_results,
-            agent_reply=agent_reply,
-            student_endpoint_url=student_endpoint_url,
-            owner=owner,
-        )
-        if llm_status == "failure":
-            await escalate_and_learn(user_request, tool_results, agent_reply, llm_reason or "", owner)
-
-    return asyncio.create_task(
-        evaluate_and_maybe_escalate(),
-        name="teacher_escalation_tier2",
-    )
+# (`B1473`: `maybe_escalate` — the end-of-turn background escalation, with no
+# caller — and the `escalate_and_learn` stub it fired were here. Background
+# learning is retired; `run_teacher_inline` below is the path the loop runs.)
 
 
 # ── Inline teacher takeover (visible in chat stream) ───────────────

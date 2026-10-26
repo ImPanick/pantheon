@@ -1005,16 +1005,6 @@ export function getLastUploadedMeta() {
 }
 
 /**
- * The `rejected` half of the most recent `/api/upload` response — `[{name,
- * status, error}]`, empty when the batch was clean or the request never got a
- * body. `B03`.
- */
-export function getLastUploadRejections() {
-  _syncBucket();
-  return _lastUploadRejected.slice();
-}
-
-/**
  * Per-submitted-file outcome of the most recent `uploadPending()`, in the
  * order the files were POSTed: `{name, accepted, id, meta, file}`.
  *
@@ -1060,7 +1050,6 @@ const fileHandlerModule = {
   getPendingRaw,
   clearPending,
   getLastUploadedMeta,
-  getLastUploadRejections,
   getLastUploadOutcome,
   isUploading,
   wasLastUploadCancelled,

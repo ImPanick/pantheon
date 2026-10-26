@@ -19,7 +19,8 @@ Measured on `fcd559e` (the base), each a name nothing had listed, offered:
   * `/api/default-chat` answered a saved default model the endpoint no longer
     listed, and the composer opened a chat on it;
   * `GET /api/providers` with `OPENAI_API_KEY` set answered six OpenAI names
-    written in `src/model_discovery.py`.
+    written in `src/model_discovery.py` (the route had no caller and went with
+    `B1482`).
 
 Driven, not read (`Law 20`): the real model routes on a real router over a real
 SQLite file, against local list servers (`tests/helpers/model_lists.py`) — an
@@ -266,30 +267,6 @@ def test_a_curated_host_whose_listing_fails_lists_nothing(world, monkeypatch):
     assert made.status_code == 200, made.text
     assert made.json()["models"] == []
     assert world.item(c, made.json()["id"])["models"] == []
-
-
-def test_providers_lists_openai_by_its_own_call(world, monkeypatch):
-    """`GET /api/providers` with the server's OpenAI key: OpenAI's own list
-    for that key, not six names written in the source."""
-    import src.model_discovery as md
-
-    srv = world.serve(["gpt-fixture-1"])
-    point_hosts_at(monkeypatch, {"api.openai.com": srv.port})
-    monkeypatch.setattr(md.ModelDiscovery, "discover_models", lambda self: {"hosts": [], "items": []})
-    discovery = md.ModelDiscovery("127.0.0.1", "sk-fixture")
-    # The provider's address, with the fixture's port: the real listing call.
-    import routes.model_routes as model_routes
-    real_probe = model_routes._probe_endpoint
-
-    def probe(base, key, **kw):
-        return real_probe(base.replace("https://api.openai.com", f"http://api.openai.com:{srv.port}"),
-                          key, **kw)
-    monkeypatch.setattr(model_routes, "_probe_endpoint", probe)
-    res = world.client(discovery=discovery).get("/api/providers", params={"refresh": "true"})
-    assert res.status_code == 200, res.text
-    openai = [p for p in res.json()["providers"] if p["provider"] == "openai"]
-    assert openai and openai[0]["items"][0]["models"] == ["gpt-fixture-1"]
-    assert srv.asked and srv.asked[-1]["authorization"] == "Bearer sk-fixture"
 
 
 # ── the saved default ───────────────────────────────────────────────────────

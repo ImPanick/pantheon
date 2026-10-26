@@ -588,7 +588,6 @@ export function _reset() {
   _hooks = {}; _openers = {}; _expect = 0; _booted = false; _restoring = false; _idx = 0;
   _syncQueued = false; _lastEntry = null; _inited = false; _afterPop = null;
 }
-export const _DOC = DOC;
 
 const backStack = {
   ROUTES, ROUTE_ALIASES, TRACKED, DRAWER, elementIdOf, windowForPath, pathFor, configure, setOpeners, stack, top,

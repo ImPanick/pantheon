@@ -67,7 +67,6 @@ class SignatureCreate(BaseModel):
     data: str  # base64 PNG, with or without `data:image/png;base64,` prefix
     width: Optional[int] = None
     height: Optional[int] = None
-    svg: Optional[str] = None
 
 
 def _to_dict(s: Signature) -> Dict[str, Any]:
@@ -113,7 +112,6 @@ def setup_signature_routes() -> APIRouter:
             data_png=b64,
             width=width,
             height=height,
-            svg=None,
         )
         db = SessionLocal()
         try:

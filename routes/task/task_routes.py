@@ -373,7 +373,6 @@ def _run_to_dict(r: TaskRun) -> dict:
         "status": r.status,
         "result": r.result,
         "error": r.error,
-        "tokens_used": r.tokens_used,
         "model": r.model,
         # `P8-25`. What the run actually did, step by step. Written by the
         # scheduler and, until this, carried nowhere — the column existed, the

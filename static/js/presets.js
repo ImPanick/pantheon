@@ -532,25 +532,6 @@ export async function loadPresets(showError) {
 }
 
 /**
- * Set active preset
- */
-export function setActivePreset(presetId) {
-  document.querySelectorAll('.preset-btn').forEach(btn => {
-    btn.classList.remove('active');
-  });
-
-  if (presetId) {
-    selectedPreset = presetId;
-    const btn = document.getElementById(`preset-${presetId}-btn`);
-    if (btn) {
-      btn.classList.add('active');
-    }
-  } else {
-    selectedPreset = null;
-  }
-}
-
-/**
  * Open custom preset modal
  */
 export function openCustomPresetModal() {
@@ -1103,13 +1084,6 @@ export function onSessionSwitch(sessionId) {
 }
 
 /**
- * Check if the current session is a persistent (locked) character chat.
- */
-export function isPersistentChat() {
-  return !!window._persistentChatSession;
-}
-
-/**
  * Remove a session from persistent chat mappings (call when session is deleted).
  */
 export function removePersistentChat(sessionId) {
@@ -1129,7 +1103,6 @@ export function removePersistentChat(sessionId) {
 const presetsModule = {
   init,
   loadPresets,
-  setActivePreset,
   openCustomPresetModal,
   saveCustomPreset,
   getSelectedPreset,
@@ -1138,7 +1111,6 @@ const presetsModule = {
   getUserTemplates,
   getCharacterName,
   onSessionSwitch,
-  isPersistentChat,
   removePersistentChat,
   deactivateCharacter,
   getInject

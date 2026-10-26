@@ -192,7 +192,7 @@ def test_the_source_is_derived_from_the_same_resolution_as_the_value(
         datadir, monkeypatch):
     """A second copy of the layering rule beside the first is how `B90`
     happened (`Law 13`). Driven over every combination that exists."""
-    from src.settings import env_backed_flag, env_backed_flag_source
+    from src.settings import _resolve_env_backed_flag, env_backed_flag
     for stored in (None, True, False, "true", "false", "nonsense"):
         for env in (None, "1", "0", "nonsense"):
             if env is None:
@@ -202,8 +202,8 @@ def test_the_source_is_derived_from_the_same_resolution_as_the_value(
             settings = {} if stored is None else {"metrics_enabled": stored}
             value = env_backed_flag(settings, "metrics_enabled",
                                     "PANTHEON_METRICS_ENABLED")
-            source = env_backed_flag_source(settings, "metrics_enabled",
-                                            "PANTHEON_METRICS_ENABLED")
+            source = _resolve_env_backed_flag(settings, "metrics_enabled",
+                                              "PANTHEON_METRICS_ENABLED", False)[1]
             assert source in ("settings", "environment", "default")
             if source == "settings":
                 assert stored is not None and stored != "nonsense"

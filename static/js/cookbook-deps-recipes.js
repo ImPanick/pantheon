@@ -154,7 +154,6 @@ const _RECIPES = [
   },
 ];
 
-export const RECIPE_VARIANTS = ['pip', 'docker'];
 export const RECIPE_DEFAULT_VARIANT = 'pip';
 
 // Get the commands array for a recipe + variant. Falls back to pip when

@@ -475,10 +475,6 @@ def get(provider_id) -> Optional[Provider]:
     return PROVIDERS.get(str(provider_id or "").strip().lower())
 
 
-def provider_ids() -> Tuple[str, ...]:
-    return tuple(PROVIDERS)
-
-
 def mail_provider_ids() -> Tuple[str, ...]:
     """Providers a mailbox can be linked to with a button.
 
@@ -491,10 +487,6 @@ def mail_provider_ids() -> Tuple[str, ...]:
         for pid, p in PROVIDERS.items()
         if p.mail is not None and p.auth == AUTH_OAUTH2 and p.authorize_url
     )
-
-
-def is_mail_provider(provider_id) -> bool:
-    return str(provider_id or "").strip().lower() in mail_provider_ids()
 
 
 # ── Environment ────────────────────────────────────────────────────────────

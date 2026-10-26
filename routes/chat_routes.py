@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Chat routes — /api/chat, /api/chat_stream, /api/inject_context, /api/search."""
+"""Chat routes — /api/chat, /api/chat_stream, /api/search."""
 
 import asyncio
 import json
@@ -10,7 +10,7 @@ import logging
 from datetime import datetime
 from typing import Callable, Dict, Any, AsyncGenerator, List, Optional, Union
 
-from fastapi import APIRouter, Request, HTTPException, Form, Query, Depends
+from fastapi import APIRouter, Request, HTTPException, Query, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ValidationError
 
@@ -3841,20 +3841,7 @@ def setup_chat_routes(
             return {"status": "idle", "active": False}
         return {**rec, "active": True}
 
-    # ------------------------------------------------------------------ #
-    # POST /api/inject_context
-    # ------------------------------------------------------------------ #
-    @router.post("/api/inject_context/{session_id}")
-    async def inject_context(request: Request, session_id: str, context: str = Form(...)) -> Dict[str, str]:
-        _verify_session_owner(request, session_id)
-        try:
-            sess = session_manager.get_session(session_id)
-            msg = untrusted_context_message("injected research context", f"Research Context: {context}")
-            sess.add_message(ChatMessage(msg["role"], msg["content"], metadata=msg.get("metadata")))
-            session_manager.save_sessions()
-            return {"status": "context_injected"}
-        except KeyError:
-            raise HTTPException(404, "Session not found")
+    # (`B1482`: `POST /api/inject_context/{session_id}` was here, with no caller.)
 
     # ------------------------------------------------------------------ #
     # GET /api/search — search across chat messages

@@ -240,19 +240,6 @@ class SkillCollections:
     def disabled_names(self, owner: Optional[str]) -> set:
         return set(self.switched_off(owner))
 
-    def memberships(self, owner: Optional[str]) -> Dict[str, Dict]:
-        """`{skill name: {"package": id|None, "groups": [ids]}}`."""
-        data = self._load()
-        out: Dict[str, Dict] = {}
-        for p in data["packages"]:
-            if _mine(p, owner):
-                for n in package_skills(p):
-                    out.setdefault(n, {"package": None, "groups": []})["package"] = p.get("id")
-        for g in data["groups"]:
-            if _mine(g, owner):
-                for n in g.get("skills") or []:
-                    out.setdefault(n, {"package": None, "groups": []})["groups"].append(g.get("id"))
-        return out
 
     def rename_skill(self, owner: Optional[str], old: str, new: str) -> None:
         """A renamed skill keeps its package and its groups."""

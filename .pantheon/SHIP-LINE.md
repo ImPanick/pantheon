@@ -215,6 +215,10 @@ Re-measured 2026-10-25, after the deep audit's third pass: **52 filed, 53 closed
 
 **Direction as of 2026-10-25, after pass 3: the open count is falling.**
 
+Re-measured 2026-10-25, after the owner's calls on the audit: **52 filed, 62 closed**, open **404 → 394** — falling. The wave filed nothing and closed twelve: the audit's own rows, two of them on the owner's rulings (`D-2026-10-25-04`). The ship-line composition is unchanged — 0 of the last 40 `B` rows block.
+
+**Direction as of 2026-10-25, after the owner's calls: the open count is falling.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus

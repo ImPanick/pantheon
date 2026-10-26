@@ -309,10 +309,6 @@ def _resolve_account_from_rows(rows: list[dict], selector: str | None) -> dict |
     return None
 
 
-def _resolve_account(selector: str | None) -> dict | None:
-    return _resolve_account_from_rows(_list_accounts_raw(), selector)
-
-
 def _load_config(account: str | None = None) -> dict:
     """Return the full config dict for the requested account (or default).
 

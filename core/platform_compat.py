@@ -231,7 +231,6 @@ def git_bash_path(path: str | Path) -> str:
     return p_str
 
 
-
 def find_bash() -> Optional[str]:
     """Locate a real ``bash`` interpreter, or None.
 
@@ -256,10 +255,6 @@ def find_bash() -> Optional[str]:
     return found
 
 
-def has_bash() -> bool:
-    return find_bash() is not None
-
-
 def which_tool(name: str) -> Optional[str]:
     """``shutil.which`` that also tries Windows executable suffixes.
 
@@ -276,24 +271,6 @@ def which_tool(name: str) -> Optional[str]:
             if found:
                 return found
     return None
-
-
-def run_script_argv(script_path) -> List[str]:
-    """argv to execute a shell *script file*.
-
-    Prefers bash (so existing ``.sh`` wrappers work verbatim, including on
-    Windows via Git Bash). On Windows with no bash available, falls back to
-    ``cmd.exe /c`` — simple commands still run, but bash-specific syntax won't.
-    Callers that need guaranteed bash should check :func:`has_bash` first and
-    surface a clear "install Git Bash" message.
-    """
-    bash = find_bash()
-    if bash:
-        return [bash, str(script_path)]
-    if IS_WINDOWS:
-        comspec = os.environ.get("ComSpec", "cmd.exe")
-        return [comspec, "/c", str(script_path)]
-    return ["sh", str(script_path)]
 
 
 def is_wsl() -> bool:
@@ -334,30 +311,6 @@ def translate_path(path_str: str) -> str:
         return str(Path(path_str).resolve())
     except Exception:
         return path_str
-
-
-def get_wsl_windows_user_profile() -> Optional[str]:
-    """Retrieve the Windows host User Profile path from inside WSL."""
-    if not is_wsl():
-        return None
-    try:
-        r = run_wsl_windows_powershell("Write-Output $env:USERPROFILE", timeout=5)
-        if r.returncode == 0 and r.stdout.strip():
-            return translate_path(r.stdout.strip())
-    except Exception:
-        pass
-
-    try:
-        users_dir = "/mnt/c/Users"
-        if os.path.isdir(users_dir):
-            for entry in os.listdir(users_dir):
-                if entry not in ("All Users", "Default", "Default User", "desktop.ini", "Public"):
-                    path = os.path.join(users_dir, entry)
-                    if os.path.isdir(path):
-                        return path
-    except Exception:
-        pass
-    return None
 
 
 def _ssh_exec_argv(

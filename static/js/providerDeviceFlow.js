@@ -6,6 +6,7 @@ export const PROVIDER_DEVICE_FLOWS = {
     label: 'GitHub Copilot',
     startUrl: '/api/copilot/device/start',
     pollUrl: '/api/copilot/device/poll',
+    cancelUrl: '/api/copilot/device/cancel',
     authUrl(start) {
       return start?.verification_uri_complete || start?.verification_uri || '';
     },
@@ -14,6 +15,7 @@ export const PROVIDER_DEVICE_FLOWS = {
     label: 'ChatGPT Subscription',
     startUrl: '/api/chatgpt-subscription/device/start',
     pollUrl: '/api/chatgpt-subscription/device/poll',
+    cancelUrl: '/api/chatgpt-subscription/device/cancel',
     authUrl(start) {
       return start?.verification_uri || '';
     },
@@ -100,12 +102,25 @@ export async function runProviderDeviceFlow(provider, options = {}) {
 
   const deadline = now() + Number(start.expires_in || 900) * 1000;
   let stepMs = Math.max(Number(start.interval || 5), 2) * 1000;
+  // `B1482`. A sign-in the person walked away from, or one that ran out, is
+  // dropped on the server too (`/device/cancel`), not left until its expiry.
+  const signal = options.signal || null;
+  const cancel = async (status) => {
+    try {
+      const fd = _formData();
+      fd.append('poll_id', start.poll_id);
+      await fetchImpl(cfg.cancelUrl, { method: 'POST', body: fd, credentials: 'same-origin' });
+    } catch (_) { /* the server forgets it at expiry anyway */ }
+    return { status };
+  };
 
   while (true) {
-    if (now() > deadline) return { status: 'expired' };
+    if (signal && signal.aborted) return cancel('cancelled');
+    if (now() > deadline) return cancel('expired');
     await _callCallback(options.onWaiting, { provider, config: cfg, start, authUrl });
     await sleep(stepMs);
-    if (now() > deadline) return { status: 'expired' };
+    if (signal && signal.aborted) return cancel('cancelled');
+    if (now() > deadline) return cancel('expired');
 
     const fd = _formData();
     fd.append('poll_id', start.poll_id);

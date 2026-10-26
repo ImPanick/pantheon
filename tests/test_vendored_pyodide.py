@@ -29,6 +29,9 @@ from tests.helpers.source_text import blank, blank_text  # B290
 
 ROOT = Path(__file__).resolve().parent.parent
 RUNNER = ROOT / "static" / "js" / "codeRunner.js"
+# `B1474`: Pyodide loads in the sandbox frame's Worker now, not in the page.
+SANDBOX = ROOT / "static" / "js" / "pythonSandbox.js"
+SANDBOX_PAGE = ROOT / "static" / "python-sandbox.html"
 MIDDLEWARE = ROOT / "core" / "middleware.py"
 PYODIDE = ROOT / "static" / "lib" / "pyodide"
 
@@ -110,11 +113,15 @@ def test_code_runner_references_no_cdn():
     three of five files remote while every grep for 'jsdelivr' in the obvious
     place comes back clean.
     """
-    code = strip_comments(RUNNER.read_text(encoding="utf-8"))
-    assert "jsdelivr" not in code
-    assert "cdn." not in code
-    assert re.search(r"script\.src\s*=\s*['\"]/static/lib/pyodide/pyodide\.js['\"]", code)
-    assert re.search(r"indexURL:\s*['\"]/static/lib/pyodide/['\"]", code)
+    code = strip_comments(RUNNER.read_text(encoding="utf-8")) + strip_comments(SANDBOX.read_text(encoding="utf-8"))
+    page = strip_comments(SANDBOX_PAGE.read_text(encoding="utf-8"), html=True)
+    assert "jsdelivr" not in code + page
+    assert "cdn." not in code + page
+    # `B1474`: the frame loads the script, the Worker loads it again against
+    # the same indexURL — both resolved from this origin's /static/lib/pyodide/.
+    assert re.search(r"<script src=\"static/lib/pyodide/pyodide\.js\">", page)
+    assert "new URL('static/lib/pyodide/', location.href)" in code
+    assert "importScripts(INDEX + 'pyodide.js')" in code and "indexURL: INDEX" in code
 
 
 def test_no_cdn_in_the_static_frontend_files():
@@ -154,7 +161,7 @@ def test_the_cdn_scan_actually_looks_at_code():
     html = strip_comments("<!-- cdn.jsdelivr.net -->\n<script src=cdn.jsdelivr.net>",
                           html=True)
     assert html.count("cdn.jsdelivr.net") == 1
-    real = strip_comments(RUNNER.read_text(encoding="utf-8"))
+    real = strip_comments(SANDBOX.read_text(encoding="utf-8"))
     assert "loadPyodide" in real and len(real) > 500
 
 
@@ -194,7 +201,7 @@ def test_report_csp_is_untouched_and_still_has_no_wasm():
     creep from a change that had nothing to do with them."""
     text = MIDDLEWARE.read_text(encoding="utf-8")
     i = text.index("if is_report:")
-    block = text[i:text.index("elif is_tool_render:", i)]
+    block = text[i:text.index("elif ", i)]
     assert "wasm-unsafe-eval" not in block
     assert "jsdelivr" not in block
 
@@ -202,9 +209,9 @@ def test_report_csp_is_untouched_and_still_has_no_wasm():
 def test_failure_message_names_the_fix():
     """Vendored means a missing file, not a network problem. Nobody guesses
     `scripts/fetch-pyodide.py` from 'Failed to load Pyodide'."""
-    src = RUNNER.read_text(encoding="utf-8")
+    src = SANDBOX.read_text(encoding="utf-8")
     assert "fetch-pyodide.py" in src
-    assert "Failed to load Pyodide" not in src
+    assert "Failed to load Pyodide" not in src + RUNNER.read_text(encoding="utf-8")
 
 
 def test_no_packages_were_vendored_by_accident():

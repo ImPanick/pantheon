@@ -132,12 +132,6 @@ def register_approval_expiry_listener(listener) -> None:
             _expiry_listeners.append(listener)
 
 
-def unregister_approval_expiry_listener(listener) -> None:
-    with _expiry_listeners_lock:
-        if listener in _expiry_listeners:
-            _expiry_listeners.remove(listener)
-
-
 def clear_approval_expiry_listeners() -> None:
     with _expiry_listeners_lock:
         _expiry_listeners.clear()

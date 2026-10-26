@@ -1155,12 +1155,8 @@ async def _auto_summarize_pass_single(days_back: int = 1, account_id: str | None
                                 _uc = _sql3.connect(SCHEDULED_DB)
                                 _uc.execute(
                                     "INSERT OR REPLACE INTO email_urgency_alerts "
-                                    "(message_id, owner, uid, folder, subject, sender, urgency, reason, alerted, created_at) "
-                                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                                    (message_id, account_owner or "", uid.decode() if isinstance(uid, bytes) else str(uid),
-                                     _folder, subject, sender, urgency, reason,
-                                     1 if urgency in ("critical", "high") else 0,
-                                     datetime.utcnow().isoformat())
+                                    "(message_id, owner, created_at) VALUES (?, ?, ?)",
+                                    (message_id, account_owner or "", datetime.utcnow().isoformat())
                                 )
                                 _uc.commit()
                                 _uc.close()

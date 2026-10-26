@@ -1231,11 +1231,12 @@ FUNCTION_TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {
                     "repo_id": {"type": "string", "description": "Model repo (e.g. 'Qwen/Qwen3-8B')"},
-                    "cmd": {"type": "string", "description": "Full serve command (e.g. 'vllm serve <repo> --port 8000 --tp 2', 'python3 -m sglang.launch_server --model-path <repo> --port 30000', for MLX image models: 'python3 scripts/mlx_image_server.py --model <repo> --port 8100', or for non-MLX image models: 'python3 scripts/diffusion_server.py --model <repo> --port 8100')"},
+                    "cmd": {"type": "string", "description": "Optional. Omit it to launch by name: a saved preset for this model on this host is used, else a first command is planned from the model's metadata and the host's platform, and the launch is diagnosed like any other. Or give the full serve command (e.g. 'vllm serve <repo> --port 8000 --tp 2', 'python3 -m sglang.launch_server --model-path <repo> --port 30000', for MLX image models: 'python3 scripts/mlx_image_server.py --model <repo> --port 8100', or for non-MLX image models: 'python3 scripts/diffusion_server.py --model <repo> --port 8100')"},
                     "host": {"type": "string", "description": "Target server — friendly NAME from list_cookbook_servers (e.g. 'gpu-box', 'workstation') or raw user@host. Omit to use the cookbook's selected default."},
                     "local": {"type": "boolean", "description": "Force serve on THIS machine instead of the default remote server."},
+                    "port": {"type": "integer", "description": "Port for a planned command (when cmd is omitted). Default 8000."},
                 },
-                "required": ["repo_id", "cmd"]
+                "required": ["repo_id"]
             }
         }
     },

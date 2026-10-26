@@ -194,11 +194,6 @@ def _unreadable_keys() -> list:
             if proxy is None and _unreadable(key)]
 
 
-def unreadable_no_proxy() -> Tuple[str, ...]:
-    """The `NO_PROXY` entries httpx cannot read, as written there."""
-    return tuple(_entry(key) for key in _unreadable_keys())
-
-
 def guard_environment_reader() -> Tuple[str, ...]:
     """Put `readable_environment_proxies` where httpx reads the environment from
     (once; again is a no-op), and say at start which entries it keeps from httpx.

@@ -276,7 +276,6 @@ def test_format_ref_writes_what_parses_and_refuses_what_cannot_be_named():
         "{{ steps.fetch-issue.data.items[0].title }}"
     assert wr.format_ref("start", "data", ["headers", "x-id"]) == \
         '{{ steps.start.data.headers["x-id"] }}'
-    assert wr.format_item_ref(["subject"]) == "{{ item.subject }}"
     for args in (("bad id!", "data", []), ("a", "status", []), ("a", "data", ['q"k']),
                  ("a", "data", [-1]), ("a", "data", [True]), ("a", "data", [1.5])):
         with pytest.raises(ValueError):

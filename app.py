@@ -625,6 +625,9 @@ ROUTE_OWNED_STATIC_PAGES = {
     # page's own text says, the mount sends them here, and the route serves
     # the same bytes to anyone signed in — the bar every other page has.
     # Signed in, not admin: nothing in them is the operator's.
+    # `B1474`. The frame a person's Python block runs in. Signed in like any
+    # page; the middleware serves it as an opaque-origin sandbox.
+    "python-sandbox.html": "/python-sandbox",
     "wave-variants.html": "/sandbox/wave-variants",
     "whirlpool-variants.html": "/sandbox/whirlpool-variants",
     "modal-control-variants.html": "/sandbox/modal-control-variants",
@@ -1354,6 +1357,13 @@ def _developer_sandbox(filename: str):
 for _sandbox_file, _sandbox_route in DEVELOPER_SANDBOX_PAGES.items():
     app.add_api_route(_sandbox_route, _developer_sandbox(_sandbox_file),
                       methods=["GET"], include_in_schema=False)
+
+@app.get("/python-sandbox", include_in_schema=False)
+async def serve_python_sandbox(request: Request):
+    """`B1474`. The opaque-origin frame a Python block runs in, for anyone
+    signed in (`core/middleware.py` gives it `sandbox allow-scripts`)."""
+    return serve_html_with_nonce(request, route_owned_page("python-sandbox.html"))
+
 
 @app.get("/login")
 async def serve_login(request: Request):

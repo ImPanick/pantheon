@@ -322,8 +322,10 @@ jobs:
       # 60 -> 37 the same day (`B1453`, `B1454`, `B1263`): nineteen routes
       # with no caller retired, and four given the door they lacked (uploads'
       # stats and cleanup, the RAG index's stats, not-spam).
+      # 37 -> 29 (`B1482`): six more with no caller retired, and the two
+      # device sign-in cancels given their caller.
       - name: check-unreachable
-        run: python3 .pantheon/check-unreachable.py --max-routes 37
+        run: python3 .pantheon/check-unreachable.py --max-routes 29
       # P0-31. A rename that finishes on one side of a join is invisible: the
       # writers move, the readers do not, and nothing raises. It happened four
       # times from one sweep — the API token prefix a person pastes into

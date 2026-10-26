@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import asyncio
 import os
+import re
 import logging
 import sqlite3
 from datetime import datetime, timezone
@@ -991,8 +992,8 @@ class Comparison(TimestampMixin, Base):
     endpoint_b = Column(String, nullable=False)
     response_a = Column(Text, nullable=True)
     response_b = Column(Text, nullable=True)
-    metrics_a = Column(Text, nullable=True)         # JSON string
-    metrics_b = Column(Text, nullable=True)         # JSON string
+    # (`B1480`, `B641`: `metrics_a` / `metrics_b` were declared here and never
+    # written or read; an install that has them keeps them, unused.)
     winner = Column(String, nullable=True)           # "a", "b", "tie", or null
     is_blind = Column(Boolean, default=True)
     # `P13-12`. This column now holds ONE thing again: which side of the blind
@@ -1010,9 +1011,8 @@ class Comparison(TimestampMixin, Base):
     # model list (which is why `model_a`/`model_b` were never enough), the
     # browser's per-model cost estimate, and which compare mode produced it.
     #
-    # A new column rather than `metrics_a`/`metrics_b` — which are declared
-    # above and have never been written or read by anything in the tree — on
-    # purpose: those two are per-model and there are two of them, and the whole
+    # A new column rather than `metrics_a`/`metrics_b` — declared then, never
+    # written or read, gone since `B1480` — on purpose: those two are per-model and there are two of them, and the whole
     # reason this data went somewhere else is that a three-model vote does not
     # fit in a pair of columns. Reusing them would rebuild the same problem
     # under a better name. `B641` covers what to do with them.
@@ -1042,7 +1042,8 @@ class Signature(TimestampMixin, Base):
     data_png = Column(EncryptedText, nullable=False)   # base64 PNG, encrypted at rest
     width = Column(Integer, nullable=True)
     height = Column(Integer, nullable=True)
-    svg = Column(EncryptedText, nullable=True)         # vector signature, encrypted at rest
+    # (`B1480`: an `svg` column was here — the route accepted a vector and saved
+    # None. The PNG is the signature; an install that has the column keeps it.)
 
 
 class ApiToken(TimestampMixin, Base):
@@ -1144,15 +1145,14 @@ class CrewMember(TimestampMixin, Base):
     owner         = Column(String, nullable=True, index=True)
     name          = Column(String, nullable=False)
     avatar        = Column(String, nullable=True)
-    user_name     = Column(String, nullable=True)          # what they call the user
     personality   = Column(Text, nullable=True)             # system prompt
     model         = Column(String, nullable=True)
     endpoint_url  = Column(String, nullable=True)
     greeting      = Column(Text, nullable=True)
     enabled_tools = Column(Text, nullable=True)             # JSON array or "all"
     session_id    = Column(String, ForeignKey("sessions.id", ondelete="SET NULL"), nullable=True)
-    is_active     = Column(Boolean, default=True)
-    sort_order    = Column(Integer, default=0)
+    # (`B1480`: `user_name`, `is_active` and `sort_order` were declared and read
+    # by nothing; an install that has them keeps them, unused.)
     is_default_assistant = Column(Boolean, default=False)   # singleton per-owner "personal assistant"
     timezone      = Column(String, nullable=True)           # IANA tz name (e.g. "America/New_York") for scheduled check-ins
 
@@ -1204,7 +1204,6 @@ class ScheduledTask(TimestampMixin, Base):
     # drop the ForeignKey so SQLAlchemy table sort doesn't fail on flush.
     character_id   = Column(String, nullable=True)
     max_steps      = Column(Integer, nullable=True)       # max agent loop iterations (null=unlimited)
-    email_results  = Column(Boolean, default=True)        # email results to character.email_to
     notifications_enabled = Column(Boolean, default=True) # per-task on/off for completion notifications
     # `P8-32`. The three things a task could not say about its own execution.
     #
@@ -1447,7 +1446,8 @@ class TaskRun(Base):
     status      = Column(String, default="running")
     result      = Column(Text, nullable=True)
     error       = Column(Text, nullable=True)
-    tokens_used = Column(Integer, nullable=True)
+    # (`B1480`: `tokens_used` was declared, served by the runs API and written
+    # by nothing — every run said null. Gone; an install that has it keeps it.)
     steps       = Column(Text, nullable=True)             # JSON log of agent tool calls
     model       = Column(String, nullable=True)           # model that actually ran (resolved at execution)
 
@@ -2524,8 +2524,6 @@ def _migrate_add_notes_sort_order():
             conn.execute("ALTER TABLE notes ADD COLUMN image_url TEXT")
         if columns and "repeat" not in columns:
             conn.execute("ALTER TABLE notes ADD COLUMN repeat TEXT DEFAULT 'none'")
-        if columns and "ai_classification" not in columns:
-            conn.execute("ALTER TABLE notes ADD COLUMN ai_classification TEXT")
         if columns and "ai_content_hash" not in columns:
             conn.execute("ALTER TABLE notes ADD COLUMN ai_content_hash TEXT")
         if columns and "agent_session_id" not in columns:
@@ -2979,6 +2977,55 @@ def _migrate_add_document_source_name_column():
         logging.getLogger(__name__).warning(f"documents.source_name migration: {e}")
 
 
+def _rebuild_relaxing_not_null(conn, table: str, relax) -> bool:
+    """`B1481`. Rebuild `table` with the `relax` columns nullable, keeping every
+    other column, type, default, constraint and index exactly as this database
+    has them.
+
+    SQLite cannot drop a NOT NULL in place. The rebuild this replaced created
+    the new table from a column list written when it was, so on a database old
+    enough to need it every column added since was dropped with its data. This
+    edits only the three constraints in the table's own `CREATE` statement and
+    follows SQLite's own order for a table rebuild — create the new table under
+    another name, copy, drop the old, rename the new — because renaming the OLD
+    table first rewrites other tables' foreign keys to follow it to the name
+    about to be dropped. Returns False, changing nothing, when a constraint is
+    not where it is expected.
+    """
+    row = conn.execute(text("SELECT sql FROM sqlite_master WHERE type='table' AND name=:t"),
+                       {"t": table}).fetchone()
+    if not row or not row[0]:
+        return False
+    create_sql = row[0]
+    for col in relax:
+        create_sql, n = re.subn(
+            rf'(["`\[]?\b{re.escape(col)}\b["`\]]?\s+[A-Za-z]+(?:\s*\([^)]*\))?)\s+NOT\s+NULL',
+            r"\1", create_sql, count=1, flags=re.IGNORECASE)
+        notnull = {r[1]: r[3] for r in conn.execute(text(f"PRAGMA table_info({table})"))}
+        if n == 0 and notnull.get(col):
+            logging.getLogger(__name__).warning(
+                "%s: could not find the NOT NULL on %s in the table's CREATE statement; "
+                "left as it is", table, col)
+            return False
+    staging = f"_rebuild_{table}"
+    create_sql, n = re.subn(rf'^\s*CREATE\s+TABLE\s+["`\[]?{re.escape(table)}["`\]]?',
+                            f'CREATE TABLE "{staging}"', create_sql, count=1, flags=re.IGNORECASE)
+    if n == 0:
+        return False
+    index_sql = [r[0] for r in conn.execute(
+        text("SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name=:t AND sql IS NOT NULL"),
+        {"t": table})]
+    cols = ", ".join(f'"{r[1]}"' for r in conn.execute(text(f"PRAGMA table_info({table})")))
+    conn.execute(text(f'DROP TABLE IF EXISTS "{staging}"'))
+    conn.execute(text(create_sql))
+    conn.execute(text(f'INSERT INTO "{staging}" ({cols}) SELECT {cols} FROM "{table}"'))
+    conn.execute(text(f'DROP TABLE "{table}"'))
+    conn.execute(text(f'ALTER TABLE "{staging}" RENAME TO "{table}"'))
+    for sql in index_sql:
+        conn.execute(text(sql))
+    return True
+
+
 def _migrate_add_task_automation_columns():
     """Add automation columns to scheduled_tasks table if missing."""
     new_cols = {
@@ -3006,46 +3053,8 @@ def _migrate_add_task_automation_columns():
             )
             if needs_rebuild:
                 logging.getLogger(__name__).info("Rebuilding scheduled_tasks to make prompt/schedule/scheduled_time nullable")
-                conn.execute(text("ALTER TABLE scheduled_tasks RENAME TO _old_scheduled_tasks"))
-                conn.execute(text("""
-                    CREATE TABLE scheduled_tasks (
-                        id VARCHAR PRIMARY KEY,
-                        owner VARCHAR,
-                        name VARCHAR NOT NULL,
-                        prompt TEXT,
-                        schedule VARCHAR,
-                        scheduled_time VARCHAR,
-                        scheduled_day INTEGER,
-                        scheduled_date DATETIME,
-                        next_run DATETIME,
-                        last_run DATETIME,
-                        status VARCHAR,
-                        output_target VARCHAR,
-                        session_id VARCHAR,
-                        model VARCHAR,
-                        endpoint_url VARCHAR,
-                        run_count INTEGER,
-                        created_at DATETIME NOT NULL,
-                        updated_at DATETIME NOT NULL,
-                        task_type VARCHAR DEFAULT 'llm',
-                        action VARCHAR,
-                        trigger_type VARCHAR DEFAULT 'schedule',
-                        trigger_event VARCHAR,
-                        trigger_count INTEGER,
-                        trigger_counter INTEGER DEFAULT 0
-                    )
-                """))
-                conn.execute(text("""
-                    INSERT INTO scheduled_tasks
-                    SELECT id, owner, name, prompt, schedule, scheduled_time,
-                           scheduled_day, scheduled_date, next_run, last_run,
-                           status, output_target, session_id, model, endpoint_url,
-                           run_count, created_at, updated_at,
-                           task_type, action, trigger_type, trigger_event,
-                           trigger_count, trigger_counter
-                    FROM _old_scheduled_tasks
-                """))
-                conn.execute(text("DROP TABLE _old_scheduled_tasks"))
+                _rebuild_relaxing_not_null(conn, "scheduled_tasks",
+                                           ("prompt", "schedule", "scheduled_time"))
 
             conn.commit()
             logging.getLogger(__name__).info("Task automation columns migration complete")
@@ -3247,11 +3256,9 @@ class Note(TimestampMixin, Base):
     sort_order = Column(Integer, default=0)
     image_url  = Column(String, nullable=True)      # uploaded image URL (relative path)
     repeat     = Column(String, default="none")     # none, daily, weekly, monthly, yearly
-    # Auto-AI fields — populated by /api/notes/{id}/classify. The classification
-    # JSON shape is { kind, solvable, confidence, task_prompt, tools, items?: [...] }.
-    # Content hash gates re-classification (avoid LLM spend on every save).
-    ai_classification = Column(Text, nullable=True)
-    ai_content_hash   = Column(String, nullable=True)
+    # (`B1480`: `ai_classification` and `ai_content_hash` were "populated by
+    # /api/notes/{id}/classify", a route that does not exist; nothing wrote
+    # either. Gone; an install that has them keeps them, unused.)
     # Chat session spawned by the note's "Agent" button (solve-this-todo).
     # The note shows a clickable tag that opens this session for review.
     agent_session_id  = Column(String, nullable=True)
@@ -3306,7 +3313,7 @@ class CalendarEvent(TimestampMixin, Base):
     status      = Column(String, default="confirmed")  # confirmed, cancelled
     importance  = Column(String, default="normal")    # low | normal | high | critical
     event_type  = Column(String, nullable=True)        # work | personal | health | travel | meal | social | admin | other
-    last_pinged = Column(DateTime, nullable=True)      # last time the assistant pinged about this event
+    # (`B1480`: `last_pinged` went with its only writer, `action_ping_events`, `B1470`.)
     # "caldav" = pulled from a CalDAV server (so the sync may prune it when it
     # vanishes upstream). NULL/local = created locally (agent, email triage, or
     # a UI event whose write-back failed) and must NOT be pruned by the sync.
@@ -4034,7 +4041,7 @@ def _migrate_add_caldav_sync_columns():
 
 
 def _migrate_add_calendar_metadata():
-    """Add importance/event_type/last_pinged columns to calendar_events table."""
+    """Add importance/event_type columns to calendar_events table."""
     import sqlite3
     db_path = DATABASE_URL.replace("sqlite:///", "")
     if not os.path.exists(db_path):
@@ -4048,8 +4055,6 @@ def _migrate_add_calendar_metadata():
             conn.execute("ALTER TABLE calendar_events ADD COLUMN importance TEXT DEFAULT 'normal'")
         if columns and "event_type" not in columns:
             conn.execute("ALTER TABLE calendar_events ADD COLUMN event_type TEXT")
-        if columns and "last_pinged" not in columns:
-            conn.execute("ALTER TABLE calendar_events ADD COLUMN last_pinged DATETIME")
         conn.commit()
     except Exception as e:
         logging.getLogger(__name__).warning(f"calendar_events migration failed: {e}")

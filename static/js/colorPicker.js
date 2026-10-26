@@ -465,7 +465,3 @@ export function initColorPickers(root = document) {
   root.querySelectorAll('input[type="color"]').forEach(attachColorPicker);
 }
 
-// Re-run on new inputs that may mount after init
-export function refreshColorPickers(root = document) {
-  initColorPickers(root);
-}

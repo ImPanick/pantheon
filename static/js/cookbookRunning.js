@@ -1110,7 +1110,7 @@ export function _tmuxForceKill(task) {
 
 // Returns a shell snippet that prints "ALIVE" if the tmux session still
 // exists (or its main PID is still listed in /proc), "DEAD" otherwise.
-// Used by the Stop-all escalation to decide whether to force-kill.
+// Used by `_stopTaskEscalating` to decide whether to force-kill (`B1477`).
 export function _tmuxIsAliveCheck(task) {
   if (_isWindows(task)) {
     // Skip the check on Windows — the graceful path already force-kills.
@@ -1123,6 +1123,34 @@ export function _tmuxIsAliveCheck(task) {
     return `ssh ${_sshPrefix(_getPort(task))}${host} ${_shQuote(_remoteTmuxPrefix() + inner)}`;
   }
   return inner;
+}
+
+/** `B1477`. Stop a task the way its Stop button promises: gracefully first
+ *  (C-c, then kill the session), and if the session is still there — vLLM can
+ *  ignore SIGINT during model init, and a stuck CUDA context can outlive
+ *  `tmux kill-session` — SIGKILL the pane's processes. Returns `'stopped'`,
+ *  `'forced'`, or `'alive'` when even that left it running. */
+export async function _stopTaskEscalating(task) {
+  const run = async (command) => {
+    try {
+      const r = await fetch('/api/shell/exec', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command }),
+      });
+      return r.ok ? await r.json() : null;
+    } catch { return null; }
+  };
+  const alive = async () => {
+    const check = _tmuxIsAliveCheck(task);
+    if (!check) return false;           // Windows: the graceful path already forces
+    const out = await run(check);
+    return !!out && String(out.stdout || '').includes('ALIVE');
+  };
+  await run(_tmuxGracefulKill(task));
+  if (!task.sessionId || !(await alive())) return 'stopped';
+  await run(_tmuxForceKill(task));
+  return (await alive()) ? 'alive' : 'forced';
 }
 
 function _shQuote(value) {
@@ -2949,14 +2977,15 @@ export function _renderRunningTab() {
           });
         } catch {}
       }
-      // Gracefully stop (C-c, then kill the session) so it's fully down...
-      try {
-        await fetch('/api/shell/exec', {
-          method: 'POST', credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command: _tmuxGracefulKill(task) }),
-        });
-      } catch {}
+      // Gracefully stop (C-c, then kill the session), and force it if the
+      // session is still there afterwards (`B1477`) so it's fully down...
+      const how = await _stopTaskEscalating(task);
+      if (how === 'forced') uiModule.showToast(`${task.name || 'The task'} ignored the stop signal, so it was force-killed.`);
+      else if (how === 'alive') {
+        // Not gone: keep the card, so the person is not told it stopped.
+        uiModule.showToast(`${task.name || 'The task'} is still running after a force-kill — check the host.`, 7000);
+        return;
+      }
       // ...then smoothly fade/slide the card out and auto-remove it — no manual
       // ⋮ → Remove needed.
       _animateOutThenRemove(el, task.sessionId);

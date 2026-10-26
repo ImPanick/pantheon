@@ -6,7 +6,7 @@ with native tool-calling. These tests pin the three host-list integrations:
   - agent loop sends native tool schemas to Venice (not fenced-block parsing),
   - teacher escalation treats Venice as SOTA (loop OFF, no added latency).
 """
-from src import agent_loop, teacher_escalation
+from src import agent_loop
 
 
 class TestAgentToolHosts:
@@ -22,13 +22,3 @@ class TestAgentToolHosts:
         url = "https://example.invalid/v1/chat/completions"
         assert not any(h in url for h in agent_loop._API_HOSTS)
 
-
-class TestTeacherEscalationSota:
-    def test_venice_is_sota_not_self_hosted(self):
-        assert teacher_escalation.is_self_hosted("https://api.venice.ai/api/v1/chat/completions") is False
-
-    def test_known_cloud_still_sota(self):
-        assert teacher_escalation.is_self_hosted("https://api.openai.com/v1") is False
-
-    def test_local_endpoint_still_self_hosted(self):
-        assert teacher_escalation.is_self_hosted("http://localhost:8000/v1") is True

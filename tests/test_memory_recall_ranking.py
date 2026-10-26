@@ -27,9 +27,20 @@ These tests are written as retrieval outcomes — "the memory that answers the
 question comes back" — rather than as assertions about scores, because the
 scores are an implementation detail and the outcome is the promise.
 """
+import re
+
 import pytest
 
-from src.memory import MemoryManager, _is_identity_memory, _query_type, _matches_keyword
+from src.memory import MemoryManager
+
+
+def _is_identity_memory(text) -> bool:
+    """`B40`'s identity predicate, as `src/memory.py` held it: two consecutive
+    capitalised words, or a self-naming phrase. An oracle for this file only."""
+    lowered = (text or "").lower()
+    return bool(re.search(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b", text or "")
+                or any(w in lowered for w in ("name is", "i'm", "i am", "called",
+                                              "my name", "named", "call me")))
 
 
 @pytest.fixture
@@ -103,58 +114,11 @@ def test_a_preference_query_finds_the_preference(recall):
     assert recall("does he prefer dark mode or light", mems)[:1] == ["answer"]
 
 
-# ── the classifier ──
-
-def test_the_letter_i_no_longer_makes_a_query_about_identity():
-    """The single line at the centre of this. `"i" in "what is the weather"` is
-    true and always was."""
-    words = (("identity", ["i", "me", "my", "name"]),
-             ("fact", ["what", "when", "explain"]))
-    assert _query_type("what is the weather", words) == "fact"
-    assert _query_type("what time", words) == "fact"
-    assert _query_type("explain the code", words) == "fact"
-
-
-def test_genuine_identity_queries_still_classify_as_identity():
-    words = (("identity", ["i", "me", "my", "name"]), ("fact", ["what", "when"]))
-    assert _query_type("who am i", words) == "identity"
-    assert _query_type("what is my name", words) == "identity"
-
-
-def test_keyword_matching_is_by_word_not_substring():
-    assert _matches_keyword("what is the weather", "what")
-    assert not _matches_keyword("what is the weather", "i")
-    assert not _matches_keyword("remind me at five", "in")
-    assert _matches_keyword("remind me at five", "me")
-
-
-def test_order_of_the_groups_is_preserved():
-    """Identity is checked first on purpose: a question about who someone is
-    beats one that merely mentions a phone number. That ordering was always the
-    intent and never got a chance to run."""
-    groups = (("identity", ["name"]), ("contact", ["phone"]))
-    assert _query_type("what is my name and phone", groups) == "identity"
-
-
-def test_a_query_matching_nothing_has_no_type():
-    assert _query_type("afrog labs", (("identity", ["name"]),)) is None
-
-
-# ── the identity-memory predicate, named so it can be argued with ──
-
-def test_two_capitalised_words_is_all_it_takes():
-    """Documented rather than fixed. This predicate is far broader than its name
-    suggests, and narrowing it is a retrieval-quality change rather than a bug
-    fix — `P13-11`."""
-    assert _is_identity_memory("the office is at 12 Bridge Street")
-    assert _is_identity_memory("deploys with Docker Compose on Sunday")
-    assert _is_identity_memory("my name is Panick")
-    assert not _is_identity_memory("the build timeout is 900 seconds")
-
-
-def test_the_predicate_survives_a_missing_text():
-    assert _is_identity_memory("") is False
-    assert _is_identity_memory(None) is False
+# (`B1485`: the old keyword classifier — `_query_type`, `_matches_keyword` and
+# `QUERY_KEYWORD_GROUPS` — and the `_is_identity_memory` predicate stayed in
+# `src/memory.py` after the scorer moved to `src/memory_retrieval.py`, reached
+# only by the tests that were here. They are gone; the predicate lives on below
+# as this file's oracle for what "an identity memory" meant to `B40`.)
 
 
 # ── the contract its five callers rely on ──

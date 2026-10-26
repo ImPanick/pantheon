@@ -585,13 +585,6 @@ export function setAutoScroll(enabled) {
 }
 
 /**
- * Get auto-scroll state
- */
-export function getAutoScroll() {
-  return autoScrollEnabled;
-}
-
-/**
  * Auto-resize textarea based on content
  */
 export function autoResize(textarea) {
@@ -1194,7 +1187,6 @@ const uiModule = {
   scrollHistory,
   scrollHistoryInstant,
   setAutoScroll,
-  getAutoScroll,
   autoResize,
   debounce,
   el,

@@ -74,7 +74,6 @@ def acme(monkeypatch):
 
 def test_a_new_record_joins_the_linkable_set_with_no_code_change(acme):
     assert "acme" in providers.mail_provider_ids()
-    assert providers.is_mail_provider("acme") is True
 
 
 def test_the_module_that_held_the_literal_now_reads_the_registry(acme):
@@ -97,7 +96,6 @@ def test_a_service_record_is_not_a_mailbox(acme):
     one would produce an account configured against nothing.
     """
     assert "github" not in providers.mail_provider_ids()
-    assert providers.is_mail_provider("github") is False
     assert mail_auth.provider_of({"oauth_provider": "github"}) == ""
 
 

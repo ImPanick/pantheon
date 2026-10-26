@@ -749,17 +749,6 @@ def _list_github_dir(src: ResolvedSource, rel_dir: str, out: Dict[str, str], *, 
         out[rel] = text
 
 
-def fetch_skill_bundle(url: str) -> Tuple[Dict[str, str], ResolvedSource]:
-    """Download SKILL.md and sibling text assets. Returns relative_path → content.
-
-    The two-value form every existing caller uses (`Law 1`). `B926`:
-    `fetch_skill_bundle_report` is the same fetch and also says what it could
-    not bring, which the import route shows the person.
-    """
-    files, src, _notes = fetch_skill_bundle_report(url)
-    return files, src
-
-
 def fetch_skill_bundle_report(url: str) -> Tuple[Dict[str, str], ResolvedSource, List[str]]:
     """Download SKILL.md and sibling text assets, and say what was left behind.
 
@@ -1020,7 +1009,6 @@ def pick_skill_md(files: Dict[str, str]) -> Tuple[str, str]:
 
 def default_category_from_source(src: ResolvedSource) -> str:
     return "imported"
-
 
 
 # ── Whole packages — `P8-49` ────────────────────────────────────────────────

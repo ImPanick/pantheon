@@ -188,42 +188,10 @@ CONTROL_BATCH = "batch"
 CONTROL_REQUEST_HASH_CACHE = "request_hash_cache"
 CONTROL_SYSTEM_FINGERPRINT = "system_fingerprint"
 
-# Canonical reasoning control mechanisms describe how a serving path accepts
-# reasoning controls. They are provider/engine evidence, not user preferences.
-REASONING_CONTROL_MESSAGE_DIRECTIVE = "reasoning_message_directive"  # User-message soft switch, e.g. /think or /no_think.
-REASONING_CONTROL_SYSTEM_DIRECTIVE = "reasoning_system_directive"  # System prompt instruction, e.g. "detailed thinking on/off".
-REASONING_CONTROL_TEMPLATE_KWARG = "reasoning_template_kwarg"  # Chat-template kwarg, e.g. chat_template_kwargs.enable_thinking.
-REASONING_CONTROL_NATIVE_BOOL = "reasoning_native_bool"  # Direct API boolean, e.g. think: true/false.
-REASONING_CONTROL_STRUCTURED_OBJECT = "reasoning_structured_object"  # Structured API object, e.g. thinking: {type: "..."}.
-REASONING_CONTROL_BUDGET = "reasoning_budget"  # Token budget control, e.g. thinkingBudget: 0/-1/N.
-REASONING_CONTROL_EFFORT = "reasoning_effort"  # Graded effort control, e.g. low/medium/high.
-
-# Canonical reasoning control values describe what the provider control accepts.
-# Pantheon runtime preferences can also use auto/on/off, but that is a separate
-# layer that later code resolves into these provider-specific controls.
-REASONING_CONTROL_VALUE_ON = "on"  # Provider supports explicitly requesting reasoning on.
-REASONING_CONTROL_VALUE_OFF = "off"  # Provider supports explicitly requesting reasoning off.
-REASONING_CONTROL_VALUE_AUTO = "auto"  # Provider supports adaptive/dynamic/vendor-decided reasoning.
-
-REASONING_CONTROL_MECHANISMS = frozenset(
-    {
-        REASONING_CONTROL_MESSAGE_DIRECTIVE,
-        REASONING_CONTROL_SYSTEM_DIRECTIVE,
-        REASONING_CONTROL_TEMPLATE_KWARG,
-        REASONING_CONTROL_NATIVE_BOOL,
-        REASONING_CONTROL_STRUCTURED_OBJECT,
-        REASONING_CONTROL_BUDGET,
-        REASONING_CONTROL_EFFORT,
-    }
-)
-
-REASONING_CONTROL_VALUES = frozenset(
-    {
-        REASONING_CONTROL_VALUE_ON,
-        REASONING_CONTROL_VALUE_OFF,
-        REASONING_CONTROL_VALUE_AUTO,
-    }
-)
+# (`B1485`: a reasoning-control vocabulary — seven mechanisms, three values,
+# their alias tables and two normalizers — was declared here and read only by
+# tests. How a model's thinking is switched lives where it is used,
+# `src/llm_core.py`.)
 
 DETERMINISTIC_CONTROLS = frozenset(
     {
@@ -319,41 +287,6 @@ _DETERMINISTIC_CONTROL_ALIASES = {
     "fingerprint": CONTROL_SYSTEM_FINGERPRINT,
 }
 
-_REASONING_CONTROL_ALIASES = {
-    "message_directive": REASONING_CONTROL_MESSAGE_DIRECTIVE,
-    "user_message_directive": REASONING_CONTROL_MESSAGE_DIRECTIVE,
-    "think_directive": REASONING_CONTROL_MESSAGE_DIRECTIVE,
-    "slash_think": REASONING_CONTROL_MESSAGE_DIRECTIVE,
-    "system_directive": REASONING_CONTROL_SYSTEM_DIRECTIVE,
-    "system_prompt_directive": REASONING_CONTROL_SYSTEM_DIRECTIVE,
-    "template_kwarg": REASONING_CONTROL_TEMPLATE_KWARG,
-    "chat_template_kwarg": REASONING_CONTROL_TEMPLATE_KWARG,
-    "chat_template_kwargs": REASONING_CONTROL_TEMPLATE_KWARG,
-    "enable_thinking": REASONING_CONTROL_TEMPLATE_KWARG,
-    "native_bool": REASONING_CONTROL_NATIVE_BOOL,
-    "think_bool": REASONING_CONTROL_NATIVE_BOOL,
-    "thinking_bool": REASONING_CONTROL_NATIVE_BOOL,
-    "structured_object": REASONING_CONTROL_STRUCTURED_OBJECT,
-    "reasoning_object": REASONING_CONTROL_STRUCTURED_OBJECT,
-    "thinking_budget": REASONING_CONTROL_BUDGET,
-    "budget": REASONING_CONTROL_BUDGET,
-    "effort": REASONING_CONTROL_EFFORT,
-}
-
-_REASONING_CONTROL_VALUE_ALIASES = {
-    "enabled": REASONING_CONTROL_VALUE_ON,
-    "enable": REASONING_CONTROL_VALUE_ON,
-    "true": REASONING_CONTROL_VALUE_ON,
-    "disabled": REASONING_CONTROL_VALUE_OFF,
-    "disable": REASONING_CONTROL_VALUE_OFF,
-    "false": REASONING_CONTROL_VALUE_OFF,
-    "adaptive": REASONING_CONTROL_VALUE_AUTO,
-    "automatic": REASONING_CONTROL_VALUE_AUTO,
-    "dynamic": REASONING_CONTROL_VALUE_AUTO,
-    "provider_auto": REASONING_CONTROL_VALUE_AUTO,
-    "vendor_auto": REASONING_CONTROL_VALUE_AUTO,
-}
-
 _DEFAULT_TASK_BY_FAMILY = {
     FAMILY_CHAT: TASK_CHAT_COMPLETIONS,
     FAMILY_EMBEDDING: TASK_EMBEDDINGS_CREATE,
@@ -428,18 +361,6 @@ def normalize_deterministic_control(value: Any) -> str:
     token = _clean_token(value)
     token = _DETERMINISTIC_CONTROL_ALIASES.get(token, token)
     return token if token in DETERMINISTIC_CONTROLS else ""
-
-
-def normalize_reasoning_control_mechanism(value: Any) -> str:
-    token = _clean_token(value)
-    token = _REASONING_CONTROL_ALIASES.get(token, token)
-    return token if token in REASONING_CONTROL_MECHANISMS else ""
-
-
-def normalize_reasoning_control_value(value: Any) -> str:
-    token = _clean_token(value)
-    token = _REASONING_CONTROL_VALUE_ALIASES.get(token, token)
-    return token if token in REASONING_CONTROL_VALUES else ""
 
 
 def _normalize_tokens(values: Any, normalizer) -> tuple[str, ...]:
@@ -937,24 +858,3 @@ def unknown_capability(
     return ModelCapability.build(source=source, confidence=confidence)
 
 
-def capability_from_endpoint_type(model_type: Any) -> ModelCapability:
-    """Return capability metadata from an explicit endpoint model type.
-
-    Missing or unknown endpoint types remain unknown here. Runtime compatibility
-    may still treat legacy rows as chat-capable, but this schema layer should
-    not turn absence of evidence into model capability truth.
-    """
-    token = _clean_token(model_type)
-    if token == "llm":
-        return ModelCapability.build(
-            family=FAMILY_CHAT,
-            source=SOURCE_ENDPOINT_CONFIG,
-            confidence=CONFIDENCE_EXPLICIT,
-        )
-    if token == "image":
-        return ModelCapability.build(
-            family=FAMILY_IMAGE,
-            source=SOURCE_ENDPOINT_CONFIG,
-            confidence=CONFIDENCE_EXPLICIT,
-        )
-    return unknown_capability(source=SOURCE_ENDPOINT_CONFIG)

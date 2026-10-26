@@ -1240,12 +1240,6 @@ def _local_windows_bash_env_prefix(ep: str | None) -> str | None:
     return "source " + shlex.quote(bash_path)
 
 
-def _ssh_ps(host, script_path, port=None):
-    """Build SSH command to run a PowerShell script on a Windows remote."""
-    pf = f"-p {port} " if port and port != "22" else ""
-    return f'ssh {pf}{host} "powershell -ExecutionPolicy Bypass -File {script_path}"'
-
-
 # Windows session dir — stored in user's temp on the remote
 WIN_SESSION_DIR = "$env:TEMP\\\\pantheon-sessions"
 

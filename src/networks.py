@@ -174,13 +174,6 @@ def network_for(host: str) -> Optional[str]:
     return None
 
 
-def trust_for(host: str) -> Optional[str]:
-    for net in declared_networks():
-        if net.contains(host):
-            return net.trust
-    return None
-
-
 def untrusted_network_of(*hosts: str) -> Optional[str]:
     """The name of the untrusted declared network any of `hosts` is in, else
     None. What Pantheon's own agent-side connections (`outbound_fetch`, the

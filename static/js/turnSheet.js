@@ -98,9 +98,6 @@ function _click(node) {
   return true;
 }
 
-/** True while a row is clicking a composer control on the sheet's behalf. */
-export function isDriving() { return _driving > 0; }
-
 /** The approval control, when this person has one. A control the page is not
  *  showing is a control an admin has not granted, so it is not offered here
  *  either. */
@@ -439,5 +436,5 @@ export function initTurnSheet(doc) {
 }
 
 export default { initTurnSheet, paint, readTurn, openSheet, closeSheet, toggleSheet,
-  setMode, setApproval, flipSwitch, handOff, isOpen, isDriving, isRendered,
+  setMode, setApproval, flipSwitch, handOff, isOpen, isRendered,
   approvalControl, SWITCH_ROWS, APPROVAL_CONTROLS };

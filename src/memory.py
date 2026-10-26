@@ -39,81 +39,10 @@ def tokenize(text: str) -> List[str]:
     """Simple tokenizer that splits on whitespace and removes punctuation."""
     return [word.strip('.,!?";') for word in text.split()]
 
-# Keyword categories for semantic matching. Lifted out of
-# `get_relevant_memories` (`H11`) so the diagnostic view can show a person how
-# their question was read, and so the lists themselves can be inspected — they
-# are the whole of the query classifier, and `B40` is what happens when nobody
-# can see them. Order is the precedence order and is deliberate: identity first,
-# so a question about who someone is beats one that merely mentions a phone
-# number.
-QUERY_KEYWORD_GROUPS = (
-    ("identity", ["name", "who", "i", "am", "called", "identity", "myself", "me", "my"]),
-    ("contact", ["phone", "email", "address", "contact", "number", "where", "located", "reach"]),
-    ("preference", ["like", "prefer", "favorite", "want", "love", "hate", "dislike", "enjoy", "interested"]),
-    ("task", ["todo", "task", "remind", "meeting", "appointment", "schedule", "deadline"]),
-    ("fact", ["what", "when", "where", "how", "why", "explain", "describe", "information", "know"]),
-)
-
-
-def classify_query(query: str):
-    """The older, broader query classifier: one of the group names, or None.
-
-    **`P13-14`: this no longer describes the retriever.** It was written for the
-    Jaccard scorer that used to live in this file, and when that scorer was
-    replaced the ranking's intent test went with it —
-    `src/memory_retrieval.query_intent` is the one the boost consults now, and
-    `POST /api/memory/debug` reports that one. Kept rather than deleted (`Law
-    1`) because it answers a real question and callers may want it; renamed in
-    its documentation rather than in its signature because a function that
-    silently stops meaning what it says is exactly the defect `B61` was about.
-
-    The two differ, and the difference is worth knowing: this one has a `fact`
-    group matching "what", "when", "where" and "how", which is most questions,
-    and `query_intent` deliberately has no such group — a boost that fires for
-    everything is not a boost.
-
-    Before `B40` the honest answer here for almost any question was "identity",
-    including "what is the build timeout".
-    """
-    return _query_type((query or "").lower(), QUERY_KEYWORD_GROUPS)
-
-
-def _is_identity_memory(text: str) -> bool:
-    """Whether a memory looks like it says who someone is. `B40`.
-
-    Lifted verbatim out of `get_relevant_memories` so it can be named, tested
-    and — when someone gets to it — narrowed. It is much broader than it looks:
-    `\\b[A-Z][a-z]+ [A-Z][a-z]+\\b` matches ANY two consecutive capitalised
-    words, so "Bridge Street", "Docker Compose" and "Hacker News" all qualify.
-    Widening this predicate is a retrieval-quality change rather than a bug
-    fix, so it is left exactly as found and filed as `P13-11`.
-    """
-    lowered = (text or "").lower()
-    return any([
-        re.search(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b", text or ""),
-        any(word in lowered for word in
-            ["name is", "i'm", "i am", "called", "my name", "named", "call me"]),
-    ])
-
-
-def _matches_keyword(text: str, word: str) -> bool:
-    """Whether `word` appears in `text` as a WORD, not as a substring. `B40`."""
-    return re.search(r"\b" + re.escape(word) + r"\b", text) is not None
-
-
-def _query_type(query_lower: str, groups):
-    """First group whose keyword appears in the query, or None. `B40`.
-
-    Order matters and is the caller's: identity is checked first, so a query
-    that is genuinely about who someone is wins over one that merely mentions a
-    phone number. That ordering was always the intent; it just never got a
-    chance to run, because substring matching made the first group match
-    everything.
-    """
-    for name, words in groups:
-        if any(_matches_keyword(query_lower, word) for word in words):
-            return name
-    return None
+# (`B1485`: `QUERY_KEYWORD_GROUPS`, `classify_query`, `_is_identity_memory`,
+# `_matches_keyword` and `_query_type` were here — the old keyword scorer's
+# classifier, kept after `P13-14` moved ranking to `src/memory_retrieval.py`
+# and reached only by tests since.)
 
 
 def get_text_similarity(text1: str, text2: str) -> float:
@@ -289,7 +218,7 @@ def new_provenance(producer: str, message_index: int = None, quote: str = None) 
       memory.
 
     **`session_id` is deliberately absent.** It is already on the record, and
-    `/api/memory/by-session` and the timeline read it there. A second copy
+    whatever asks which chat a memory came from reads it there. A second copy
     inside `provenance` is two places to change one fact, and the one that does
     not get changed is the one somebody reads (`Law 7`).
     """
@@ -759,8 +688,8 @@ class MemoryManager:
 
         `provenance` (`P13-03`) is which message and which producer this came
         from. It deliberately does **not** carry `session_id`: that field
-        already exists on the record, `/api/memory/by-session` and the timeline
-        read it there, and copying it inside would be two places to change one
+        already exists on the record, whatever asks which chat a memory came
+        from reads it there, and copying it inside would be two places to change one
         fact (`Law 7`).
 
         `status` (`P13-05`) defaults to committed, and the default belongs to
@@ -1095,41 +1024,6 @@ class MemoryManager:
         text_lower = text.strip().lower()
         return [entry for entry in entries if entry["text"].lower() == text_lower]
             
-    def categorize_memory_by_relevance(self, message: str, memories: list):
-        """Categorize memories by type and relevance"""
-        categories = {
-            "contacts": [],
-            "preferences": [],
-            "facts": [],
-            "tasks": []
-        }
-        
-        msg_lower = message.lower()
-        
-        for mem in memories:
-            text_lower = mem["text"].lower()
-            
-            # Contact info
-            if any(word in text_lower for word in ["phone", "email", "address", "lives", "works"]):
-                if any(word in msg_lower for word in ["contact", "phone", "address", "email"]):
-                    categories["contacts"].append(mem)
-            
-            # Personal preferences
-            elif any(word in text_lower for word in ["likes", "dislikes", "prefers", "favorite"]):
-                if any(word in msg_lower for word in ["like", "prefer", "favorite", "want"]):
-                    categories["preferences"].append(mem)
-            
-            # Tasks and todos
-            elif any(word in text_lower for word in ["todo", "task", "remind", "meeting"]):
-                if any(word in msg_lower for word in ["todo", "task", "schedule", "remind"]):
-                    categories["tasks"].append(mem)
-            
-            # General facts - only if very relevant
-            else:
-                if get_text_similarity(message, mem["text"]) > 0.4:
-                    categories["facts"].append(mem)
-        
-        return categories
 
     def get_relevant_memories(self, query: str, memories: list, threshold: float = 0.05,
                               max_items: int = 8, vector=None):

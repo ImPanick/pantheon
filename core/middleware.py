@@ -172,6 +172,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # `path` form as the three above; see the NOTE on prefix deployments
         # in the `elif is_upload` branch below.
         is_upload = path.startswith("/api/upload/")
+        # `B1474`. The frame a person's Python block runs in (Pyodide), and
+        # the vendored runtime it loads from an opaque origin.
+        is_python_sandbox = path == "/python-sandbox"
+        is_pyodide_asset = "/static/lib/pyodide/" in path
 
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -199,6 +203,23 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "img-src 'self' data: blob:; "
                 "connect-src 'self'; "
                 "frame-ancestors 'none'"
+            )
+        elif is_python_sandbox:
+            # An opaque origin like the design preview: no cookie, no storage,
+            # no reach into this app's window. It runs this origin's vendored
+            # Pyodide (`'wasm-unsafe-eval'` compiles its wasm and nothing else)
+            # and fetches only from this origin — where a request carries no
+            # session, because the frame is not same-site with anything.
+            response.headers["X-Frame-Options"] = "SAMEORIGIN"
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'none'; "
+                "script-src 'self' 'wasm-unsafe-eval'; "
+                # The runner's Worker is a blob of the frame's own script, so
+                # a block that never ends blocks that thread, not the page.
+                "worker-src blob:; "
+                "connect-src 'self'; "
+                "sandbox allow-scripts; "
+                "frame-ancestors 'self'"
             )
         elif is_design_preview:
             # A page the agent (or a hand) wrote, run as a design runs. The
@@ -350,4 +371,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "frame-src 'self'; "
                 "frame-ancestors 'none'"
             )
+        if is_pyodide_asset:
+            # `B1474`. The Python sandbox is an opaque origin, so its fetches of
+            # the runtime's wasm, stdlib and lock file are cross-origin. These
+            # are public, vendored, checksum-pinned files and the requests carry
+            # no credentials; nothing else under /static gets this.
+            response.headers["Access-Control-Allow-Origin"] = "*"
         return response

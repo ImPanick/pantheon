@@ -9,7 +9,6 @@ from typing import Dict, List, Optional, Any
 from fastapi import HTTPException
 
 from src.constants import (
-    MAX_CONTEXT_MESSAGES,
     DEFAULT_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
     UPLOAD_DIR,
@@ -114,9 +113,6 @@ class ChatHandler:
         logger.info(f"Preset {preset_id}: temp={temperature}, max_tokens={max_tokens}")
         return temperature, max_tokens, preset_system_prompt, character_name
 
-    def enhance_message_if_needed(self, message: str) -> str:
-        """CoT enhancement disabled — modern models reason natively."""
-        return message
 
     # ------------------------------------------------------------------
     # Preprocessing — shared between /api/chat and /api/chat_stream
@@ -410,9 +406,6 @@ class ChatHandler:
             derived = " ".join(message.split()[:5])
             session.name = "Chat: " + derived if derived else "Chat"
 
-    def trim_history_if_needed(self, session):
-        if len(session.history) > MAX_CONTEXT_MESSAGES:
-            session.history = session.history[-MAX_CONTEXT_MESSAGES:]
 
     async def handle_memory_command(self, session, message: str) -> Optional[str]:
         """Process inline memory commands. Returns response string or None."""

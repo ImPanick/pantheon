@@ -25,10 +25,6 @@ async function _fetchProvider() {
   } catch (e) { /* keep default */ }
 }
 
-export function getCurrentProvider() {
-  return _provider;
-}
-
 const _labels = {
   searxng: 'SearXNG', brave: 'Brave', duckduckgo: 'DuckDuckGo',
   google_pse: 'Google', tavily: 'Tavily', serper: 'Serper',
@@ -49,7 +45,6 @@ export function refresh() {
 
 const searchModule = {
   init,
-  getCurrentProvider,
   getProviderLabel,
   refresh
 };

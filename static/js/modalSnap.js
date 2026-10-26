@@ -338,11 +338,6 @@ export function applyEdgeDock(modal, side = 'right', dockClass) {
   return _applyDockInternal(modal, side, dockClass);
 }
 
-// Backwards-compat: existing callers use applyRightDock for right snaps.
-export function applyRightDock(modal, dockClass = 'modal-right-docked') {
-  return _applyDockInternal(modal, 'right', dockClass);
-}
-
 function _applyDockInternal(modal, side, dockClass) {
   const nodes = _resolveDockNodes(modal);
   if (!nodes) return 0;
@@ -731,15 +726,6 @@ export function resumeDock(modal) {
   delete content._dockSuspended;
   try { applyEdgeDock(modal, side); } catch (_) {}
   return true;
-}
-
-// Wire right-edge snap detection into a drag session. Call this once per
-// modal that should support docking. Returns an object the caller's drag
-// handler can poll: { hovering(): boolean, commit(): void, release(): void }.
-// The drag handler is responsible for calling onMove(clientX, clientY)
-// during mousemove and commit() at mouseup if hovering().
-export function makeRightDockController(modal, dockClass = 'modal-right-docked') {
-  return makeEdgeDockController(modal, 'right', dockClass);
 }
 
 // Read the current visible left-nav edge for snap detection. Use measured

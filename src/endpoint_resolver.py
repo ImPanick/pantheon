@@ -443,22 +443,23 @@ def _configured_entry(setting_prefix: str, owner: Optional[str] = None,
     chat model's. The one reading of that order (`Law 7`): `resolve_endpoint`
     dispatches on it and `configured_model_problem` says why it could not."""
     try:
-        from src.settings import get_user_setting, load_settings
+        from src.settings import get_user_setting_pair, load_settings
         settings = load_settings()
     except Exception:
         return "", ""
 
     owner_str = owner or ""
-    def _stg(key: str) -> str:
-        return (get_user_setting(key, owner_str, settings.get(key, "")) or "").strip()
+    def _pair(prefix: str) -> Tuple[str, str]:
+        # `B1479`: the endpoint and its model from one layer, the person's or
+        # the install's — never one of each.
+        return get_user_setting_pair(f"{prefix}_endpoint_id", f"{prefix}_model",
+                                     owner_str, settings)
 
-    ep_id = _stg(f"{setting_prefix}_endpoint_id")
-    model = _stg(f"{setting_prefix}_model")
+    ep_id, model = _pair(setting_prefix)
 
     # Fall back to utility model for task/research/auto-naming if not specifically configured.
     if not ep_id and setting_prefix not in ("utility", "default"):
-        ep_id = _stg("utility_endpoint_id")
-        model = _stg("utility_model")
+        ep_id, model = _pair("utility")
 
     # If the endpoint is STILL not configured, but the caller provided a
     # valid fallback (e.g. the active session model), use that immediately.
@@ -469,8 +470,7 @@ def _configured_entry(setting_prefix: str, owner: Optional[str] = None,
 
     # Unset Utility (or anything else that didn't have a fallback) means "same as Default Chat Model".
     if not ep_id:
-        ep_id = _stg("default_endpoint_id")
-        model = _stg("default_model")
+        ep_id, model = _pair("default")
 
     return (ep_id, model) if ep_id else ("", "")
 

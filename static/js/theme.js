@@ -1944,18 +1944,6 @@ export function makeDraggable(el, handle) {
   makeWindowDraggable(dockTarget, dragOptions);
 }
 
-// Toggle the popup
-export function togglePopup() {
-  const modal = document.getElementById('theme-modal');
-  if (!modal) return;
-  const visible = !modal.classList.contains('hidden');
-  if (visible) {
-    modal.classList.add('hidden');
-  } else {
-    modal.classList.remove('hidden');
-  }
-}
-
 export function closePopup() {
   const modal = document.getElementById('theme-modal');
   if (!modal) return;
@@ -2525,7 +2513,7 @@ function _initEmbers() {
   draw();
 }
 
-const themeModule = { initThemeUI, togglePopup, closePopup, makeDraggable,
+const themeModule = { initThemeUI, closePopup, makeDraggable,
                        THEMES, applyColors, applyFontDensity, applyBgPattern,
                        applyBgEffectColor, applyBgEffectIntensity, applyBgEffectSize,
                        applyFrostedGlass,

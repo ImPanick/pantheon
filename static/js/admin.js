@@ -432,30 +432,6 @@ function initSignupToggle() {
   });
 }
 
-function initShareDefaultsToggle() {
-  const toggle = el('adm-shareDefaultsToggle');
-  getSettings()
-    .then(d => { toggle.checked = !!d.share_defaults_with_users; })
-    .catch(e => console.warn('Settings fetch failed:', e));
-  toggle.addEventListener('change', async () => {
-    try {
-      const res = await fetch('/api/auth/settings', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ share_defaults_with_users: toggle.checked }),
-      });
-      const data = await res.json();
-      toggle.checked = !!data.share_defaults_with_users;
-    } catch (e) {
-      toggle.checked = !toggle.checked;
-    } finally {
-      // Drop the shared snapshot: it still says what this toggle used to be.
-      invalidateSettings();
-    }
-  });
-}
-
 function initAddUser() {
   fetch('/api/auth/policy', { credentials: 'same-origin' })
     .then(r => r.ok ? r.json() : null)
@@ -969,6 +945,7 @@ function initEndpointForm() {
   const pickerCurrent = picker ? picker.querySelector('.adm-provider-current') : null;
   const DEVICE_AUTH_PROVIDER_VALUES = new Set(Object.keys(PROVIDER_DEVICE_FLOWS));
   let deviceAuthPolling = false;
+  let _deviceAuthAbort = null;   // `B1482`: the sign-in in flight, so Cancel can end it
   function _selectedProviderOption() {
     return provider && provider.selectedOptions ? provider.selectedOptions[0] : null;
   }
@@ -1343,9 +1320,14 @@ function initEndpointForm() {
     _setApiFormForProvider();
     status.textContent = `Starting ${config.label} sign-in...`;
 
+    // `B1482`: one sign-in at a time, and a Cancel that ends it on the server.
+    if (_deviceAuthAbort) _deviceAuthAbort.abort('replaced');
+    const abort = new AbortController();
+    _deviceAuthAbort = abort;
     try {
       const result = await runProviderDeviceFlow(providerKey, {
         openWindow: () => {},
+        signal: abort.signal,
         onStart: ({ start, authUrl }) => {
           if (triggerEl) triggerEl.textContent = 'Waiting...';
           status.className = '';
@@ -1361,7 +1343,10 @@ function initEndpointForm() {
                 '<button type="button" class="admin-btn-sm adm-device-auth-copy">Copy</button>' +
               '</div>' +
               '<a class="admin-btn-add adm-copilot-auth" href="' + encodeURI(authUrl || '') + '" target="_blank" rel="noopener">' + esc(authLabel) + ' ↗</a>' +
+              '<button type="button" class="admin-btn-sm adm-device-auth-cancel">Cancel</button>' +
             '</div>';
+          const cancelBtn = status.querySelector('.adm-device-auth-cancel');
+          if (cancelBtn) cancelBtn.addEventListener('click', () => abort.abort());
           const copyBtn = status.querySelector('.adm-device-auth-copy');
           if (copyBtn) copyBtn.addEventListener('click', async () => {
             const code = start.user_code || '';
@@ -1394,9 +1379,17 @@ function initEndpointForm() {
         showAuthError('Authorization expired.');
         return;
       }
+      if (result.status === 'cancelled') {
+        reset();
+        status.className = '';
+        status.textContent = abort.signal.reason === 'replaced' ? '' : 'Sign-in cancelled.';
+        return;
+      }
     } catch (e) {
       reset();
       showAuthError(formatDeviceFlowError(e));
+    } finally {
+      if (_deviceAuthAbort === abort) _deviceAuthAbort = null;
     }
   }
 
@@ -3898,7 +3891,7 @@ function initAll() {
   // the cause. Anything added here needs a line in `refreshAll` too, or the
   // panel binds its controls and then renders nothing to use them on.
   const inits = [
-    initSignupToggle, initShareDefaultsToggle, initAddUser, initEndpointForm, initMcpForm,
+    initSignupToggle, initAddUser, initEndpointForm, initMcpForm,
     initCalDAV, initBackup, initCleanup, initDangerZone, initTokenForm, initLogsView,
     initWebhookForm, initRag, initUploads,
     () => settingsModule.initIntegrations()

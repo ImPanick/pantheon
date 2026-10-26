@@ -9138,9 +9138,6 @@ import { scrollBehavior } from './motion.js';
     }
   }
 
-  /** Check if diff mode is active */
-  function isDiffModeActive() { return _diffModeActive; }
-
   let _suggestionTotal = 0;
   let _suggestionIndex = 0;
 
@@ -9329,7 +9326,8 @@ import { scrollBehavior } from './motion.js';
     }
 
     if (lang === 'python' || lang === 'py') {
-      codeRunnerModule.runServer(code, outputPanel, 'python');
+      // `B1474`: on the server for an admin, in the browser for everyone else.
+      codeRunnerModule.runPythonBlock(code, outputPanel);
       return;
     }
 
@@ -11454,7 +11452,6 @@ const documentModule = {
   injectFreshDoc,
   replaceEmailReplyBody,
   ensureEmailDraftEnvelope,
-  ensurePaneMounted: _ensureDocPaneMounted,
   loadSessionDocs,
   ensureDocPanel,
   saveDocument,
@@ -11466,7 +11463,6 @@ const documentModule = {
   isPanelOpen,
   enterDiffMode,
   exitDiffMode,
-  isDiffModeActive,
   getCurrentDocId,
   getActiveEmailComposerContext,
   findEmailDocId,

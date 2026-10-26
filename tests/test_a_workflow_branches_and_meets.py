@@ -127,7 +127,7 @@ def test_one_port_may_lead_to_several_steps():
     graph = doc([step("a"), step("b"), step("c")], [arrow("a", "b"), arrow("a", "c")])
     assert check(graph) is None
     assert [n["id"] for n in wd.next_nodes(graph, "a", "success")] == ["b", "c"]
-    assert wd.next_node(graph, "a", "success")["id"] == "b"
+    assert wd.next_nodes(graph, "a", "success")[0]["id"] == "b"
     assert wd.next_nodes(graph, "a", "error") == []
 
 
@@ -339,7 +339,7 @@ def test_the_start_may_lead_to_several_steps():
                                       arrow("b", "m"), arrow("m", "z")]})
     assert check(graph) is None
     assert [n["id"] for n in wd.start_nodes(graph)] == ["a", "b"]
-    assert wd.entry_node(graph)["id"] == "a"
+    assert wd.start_nodes(graph)[0]["id"] == "a"
     assert [(e["node"]["id"], e["when"], e["depth"], e["parent"]) for e in wd.reachable_bfs(graph)] \
         == [("a", None, 0, None), ("b", None, 0, None), ("m", "success", 1, "a"),
             ("z", "success", 2, "m")]

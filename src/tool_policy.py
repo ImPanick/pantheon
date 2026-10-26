@@ -691,9 +691,6 @@ class TurnToolAccess(set):
             out |= self._why.get(spelling, set())
         return frozenset(out)
 
-    def withheld_for(self, because) -> set:
-        """The names withheld for this reason."""
-        return {name for name, why in self._why.items() if because in why}
 
     # ── the writers ───────────────────────────────────────────────────────
     def withhold(self, names, *, because=WITHHELD_UNATTRIBUTED) -> set:

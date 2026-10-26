@@ -108,10 +108,6 @@ class _Out:
         return dict(self._meta)
 
 
-def _event_window(db, Event, kind: str, since):
-    return db.query(Event).filter(Event.kind == kind, Event.ts >= since)
-
-
 def _collect_events(out: _Out) -> None:
     """Everything the `P14` table knows, grouped in SQL rather than in Python."""
     from sqlalchemy import func

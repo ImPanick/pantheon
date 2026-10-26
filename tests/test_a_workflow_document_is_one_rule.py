@@ -410,8 +410,8 @@ def test_contract_c1_is_exactly_what_the_routes_import():
                  "STAND_IN_FIELDS", "WORKFLOW_MAX_NODES", "WORKFLOW_GRAPH_MAX_BYTES",
                  "START_KEY", "WORKFLOW_REFUSAL_REASONS", "DocumentRefusal", "DocumentError",
                  "parse_graph", "validate_document", "content_fingerprint", "without_pins",
-                 "merge_positions", "build_pin", "node_input_shape", "entry_node",
-                 "next_node", "reachable_bfs", "node_effects", "needs_test_confirmation",
+                 "merge_positions", "build_pin", "node_input_shape", "start_nodes",
+                 "next_nodes", "reachable_bfs", "node_effects", "needs_test_confirmation",
                  "chain_to_document", "WorkflowNodeTask", "node_stand_in"):
         assert hasattr(wd, name), name
     assert (wd.GRAPH_VERSION, wd.START_KEY) == (1, "start")

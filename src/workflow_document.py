@@ -14,7 +14,7 @@ step all ask the same functions and cannot disagree (`Law 7`):
   * `parse_graph` — the stored JSON, read and shaped, or a `DocumentError`;
   * `validate_document` — the first reason this document may not run, or `None`,
     with the SAME sentence at save and at run;
-  * the walk: `ports_of`, `start_nodes`, `entry_node`, `next_node(s)`,
+  * the walk: `ports_of`, `start_nodes`, `next_nodes`,
     `reachable_bfs`, `upstream_of`, `concurrent_arrivals`;
   * the stand-in a step runs as (`WorkflowNodeTask`, `node_stand_in`);
   * versions' fingerprint, positions, pins, and a chain made into a document;
@@ -728,19 +728,6 @@ def start_nodes(g: dict) -> list:
         return seen
     entries = _entries(g)
     return entries[:1]
-
-
-def entry_node(g: dict):
-    """The step the workflow starts at: the first of `start_nodes`. `None` for
-    a document with no steps."""
-    starts = start_nodes(g)
-    return starts[0] if starts else None
-
-
-def next_node(g: dict, node_id: str, port: str):
-    """The first step the `port` arrows out of `node_id` lead to, or `None`."""
-    found = next_nodes(g, node_id, port)
-    return found[0] if found else None
 
 
 def next_nodes(g: dict, node_id: str, port: str) -> list:

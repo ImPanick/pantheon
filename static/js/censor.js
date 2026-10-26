@@ -331,12 +331,6 @@ function _censorAllText(el) {
   }
 }
 
-/** Manually censor a specific element (for dynamically loaded content) */
-export function censorElement(el) {
-  if (!_enabled) return;
-  _processElement(el);
-}
-
 /** Toggle censoring on/off (client-side) */
 export function setEnabled(enabled) {
   _enabled = enabled;
@@ -352,6 +346,6 @@ export function isEnabled() {
   return _enabled;
 }
 
-const censorModule = { init, censorElement, setEnabled, isEnabled };
+const censorModule = { init, setEnabled, isEnabled };
 
 export default censorModule;

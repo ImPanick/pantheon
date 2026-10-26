@@ -10,7 +10,7 @@ import copy
 import json
 import time
 import logging
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from src.constants import SETTINGS_FILE, FEATURES_FILE
 # `P22-11` / `P22-12`. The For-each cap's and the longest Wait's built-in
@@ -794,7 +794,6 @@ DEFAULT_SETTINGS = {
     # When True, non-admin users inherit the global default model/endpoint when
     # they have no personal defaults. When False, users only use their personal
     # defaults. Default is False.
-    "share_defaults_with_users": False,
     "utility_endpoint_id": "",
     "utility_model": "",
     # Ordered fallback chain for the Utility model (summarization, naming,
@@ -1452,32 +1451,6 @@ def env_backed_flag(settings: dict, key: str, env_name: str,
     return _resolve_env_backed_flag(settings, key, env_name, default)[0]
 
 
-def env_backed_flag_source(settings: dict, key: str, env_name: str,
-                           default: bool = False) -> str:
-    """Which layer answered `env_backed_flag`: `"settings"`, `"environment"`
-    or `"default"`.
-
-    `B95`. The panel cannot honestly offer a three-state control without this.
-    All three of these keys ship `None` (`B90`), so the control has to express
-    *use the environment or the default*, *yes* and *no* — and the first of
-    those three is a different sentence depending on whether a variable is
-    actually set on this host. `PANTHEON_ALLOW_MODEL_DOWNLOAD=1` in a compose
-    file means "unset" reads as **yes**, and a panel that says "unset" without
-    saying so is telling an operator their `Law 16` gate is shut when it is open.
-
-    Same answer shape as `routes/contacts/contacts_routes._carddav_sources`,
-    which reports `"settings"` / `"environment"` / `""` per field for exactly
-    this reason, and the half of `public_origin.source_of` that `B90`
-    deliberately took only the logging of. `"default"` rather than `""` because
-    a boolean always has an answer — there is no "unconfigured" state where the
-    flag is neither on nor off.
-
-    Derived from the same resolution as the value, not transcribed beside it: a
-    second copy of the layering rule is how `B90` happened (`Law 13`).
-    """
-    return _resolve_env_backed_flag(settings, key, env_name, default)[1]
-
-
 def _resolve_env_backed_flag(settings: dict, key: str, env_name: str,
                              default: bool) -> tuple[bool, str]:
     """The one resolution. Returns `(effective, source)`.
@@ -1572,7 +1545,6 @@ def is_setting_overridden(key: str) -> bool:
         return isinstance(saved, dict) and key in saved
     except (FileNotFoundError, json.JSONDecodeError):
         return False
-
 
 
 # ── Layered numeric limits (`P12-01`) ──────────────────────────────────────
@@ -1810,6 +1782,34 @@ def get_user_setting(key: str, owner: str = "", default: Any = None) -> Any:
         except Exception:
             pass
     return get_setting(key, default)
+
+
+def get_user_setting_pair(endpoint_key: str, model_key: str, owner: str = "",
+                          settings: Optional[dict] = None) -> tuple:
+    """`B1479`, `D-2026-10-25-04` §2. An `(endpoint_id, model)` pair, read
+    from ONE layer: the person's own when they picked an endpoint, else the
+    install's — the admin's Default, which is the platform's default.
+
+    Never the person's endpoint with the install's model: `get_user_setting`
+    answers key by key, and a pair assembled that way names a model the
+    person's endpoint may not serve. One rule for every reader — the
+    composer's `/api/models/default-chat` and `endpoint_resolver` alike
+    (`Law 7`); the `share_defaults_with_users` switch, which only the composer
+    asked, is retired.
+    """
+    if settings is None:
+        settings = load_settings()
+    if owner and endpoint_key in _PER_USER_KEYS:
+        try:
+            from routes.prefs_routes import _load_for_user
+            prefs = _load_for_user(owner) or {}
+            ep = str(prefs.get(endpoint_key) or "").strip()
+            if ep:
+                return ep, str(prefs.get(model_key) or "").strip()
+        except Exception:
+            pass
+    return (str(settings.get(endpoint_key) or "").strip(),
+            str(settings.get(model_key) or "").strip())
 
 
 # ── Features (data/features.json) ──

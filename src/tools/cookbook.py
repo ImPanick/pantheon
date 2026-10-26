@@ -83,10 +83,10 @@ def _cookbook_is_exact_repo_id(value: Any) -> bool:
 def _cookbook_match_saved_preset(query: str, presets: List[Any], host: str = "") -> Optional[Dict[str, Any]]:
     """Resolve a user-facing model label to a saved serve preset.
 
-    The launch agent should be callable directly. If the model says
+    `serve_model` with no command (`B1476`): if the model says
     `repo_id="Qwen3.6-27B-AEON"` because the user used the short UI label, do
-    not force it through `list_serve_presets`; match the saved preset inside
-    the autopilot and let `do_serve_preset` reuse the known-good command.
+    not force it through `list_serve_presets`; match the saved preset here and
+    let `do_serve_preset` reuse the known-good command.
     """
     q = _cookbook_label_key(query)
     if not q:
@@ -580,19 +580,44 @@ def _cookbook_host_meta(host: str, servers: Dict[str, Any]) -> Dict[str, Any]:
     return {}
 
 
-def _cookbook_find_task(tasks: List[Dict[str, Any]], session_id: str) -> Optional[Dict[str, Any]]:
-    for task in tasks or []:
-        if not isinstance(task, dict):
-            continue
-        if task.get("session_id") == session_id or task.get("sessionId") == session_id or task.get("id") == session_id:
-            return task
-    return None
+async def _cookbook_presets() -> List[Any]:
+    """The saved serve presets, or [] when the state cannot be read."""
+    from src.tool_implementations import _internal_headers, _INTERNAL_BASE
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=10, mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
+            resp = await client.get(f"{_INTERNAL_BASE}/api/cookbook/state", headers=_internal_headers())
+            state = resp.json() or {}
+    except Exception:
+        return []
+    presets = state.get("presets") if isinstance(state, dict) else None
+    return presets if isinstance(presets, list) else []
 
 
-def _cookbook_phase(task: Optional[Dict[str, Any]]) -> str:
-    if not task:
-        return "unknown"
-    return str(task.get("phase") or task.get("status") or "unknown").lower()
+async def _cookbook_plan_launch(repo_id: str, host: str, *, port: Any = None) -> Dict[str, Any]:
+    """`B1476`. What `serve_model` launches when it is given a model and no command.
+
+    A saved preset for that model on that host wins — it is a command that
+    worked (`{"preset": …}`). Otherwise the engine is chosen from the model's
+    Hugging Face metadata and the host's platform, and a plain first command is
+    built for it (`{"cmd", "engine", "warning"}`); the launch is then diagnosed
+    and retried the way any other is. Metadata that cannot be had (offline, the
+    hubs switched off, a private repo) is a warning, not a refusal: the name
+    alone still picks an engine.
+    """
+    preset = _cookbook_match_saved_preset(repo_id, await _cookbook_presets(), host)
+    if preset and (preset.get("cmd") or "").strip():
+        return {"preset": preset}
+    info = await _cookbook_hf_model_info(repo_id)
+    host_meta = _cookbook_host_meta(host, await _cookbook_servers())
+    engine = _cookbook_engine_from_model_info(repo_id, None if info.get("error") else info, host_meta)
+    try:
+        port_n = int(port) if port not in (None, "") else 8000
+    except (TypeError, ValueError):
+        port_n = 8000
+    cmd = _cookbook_default_launch_cmd(repo_id, engine, port=port_n,
+                                       info=None if info.get("error") else info)
+    return {"cmd": cmd, "engine": engine, "warning": info.get("error") or ""}
 
 
 def _scan_running_model_processes() -> List[Dict[str, Any]]:
@@ -730,10 +755,10 @@ async def do_serve_model(content: str, owner: Optional[str] = None) -> Dict:
         args = _parse_tool_args(content)
     except ValueError:
         return {"error": "Invalid JSON arguments", "exit_code": 1}
-    repo_id = args.get("repo_id", "")
-    cmd = args.get("cmd", "")
-    if not repo_id or not cmd:
-        return {"error": "repo_id and cmd are required", "exit_code": 1}
+    repo_id = str(args.get("repo_id") or "").strip()
+    cmd = str(args.get("cmd") or "").strip()
+    if not repo_id:
+        return {"error": "repo_id is required", "exit_code": 1}
     host = (args.get("host") or "").strip()
     if host:
         host = await _resolve_cookbook_host(host)
@@ -741,6 +766,15 @@ async def do_serve_model(content: str, owner: Optional[str] = None) -> Dict:
         _servers = await _cookbook_servers()
         if _servers.get("default_host"):
             host = _servers["default_host"]
+    planned_note = ""
+    if not cmd:
+        # `B1476`: no command — a saved preset for this model, else a planned one.
+        plan = await _cookbook_plan_launch(repo_id, host, port=args.get("port"))
+        if plan.get("preset"):
+            return await do_serve_preset(json.dumps({"name": plan["preset"].get("name") or ""}), owner)
+        cmd = plan["cmd"]
+        planned_note = (f"\nNo command was given, so this one was planned for {plan['engine']}: {cmd}"
+                        + (f" ({plan['warning']}; chosen from the name alone)" if plan.get("warning") else ""))
     payload = {"repo_id": repo_id, "cmd": cmd}
     if host:
         payload["remote_host"] = host
@@ -803,7 +837,7 @@ async def do_serve_model(content: str, owner: Optional[str] = None) -> Dict:
             log_path = f"/tmp/pantheon-tmux/{sid}.log"
             return {
                 "output": (
-                    f"Serving {repo_id} on {where} (session: {sid}){note}\n"
+                    f"Serving {repo_id} on {where} (session: {sid}){note}{planned_note}\n"
                     f"Next required check: call list_served_models. If this task is not ready, "
                     f"call tail_serve_output with session_id={sid} and tail=400 before answering. "
                     f"Do not tell the user to check logs; you have the log tool."

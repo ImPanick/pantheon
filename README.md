@@ -249,15 +249,15 @@ proved it dead.
 
 ## Status
 
-**1556 tracked tasks, 1150 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**1556 tracked tasks, 1162 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
 above.
 
 **Read that number with the trend beside it.** Over the last ten waves, *done* went
-**72.9% → 73.9%** and *open* went **407 → 406**: 52 rows filed against 53 closed, a
-file-to-close ratio of **0.981** — the open count fell, by one, because the latest wave was the deep audit's third pass and four audits that had not been run, and it filed what it found and did not finish: it closed twenty-one (every route with no caller deleted or given a door, LAN reach held to the agent of a person allowed the workstation, settings that were saved and then ignored, three tables nothing used, about 2,500 lines of dead code, and the five rows the pass before had left open) and filed thirteen open on purpose, each a decision an audit named — dead code, a switch that changes only words, columns nothing reads (`B1473`–`B1485`). The pass before it closed ten and left those five open. Before it, a wave built the Design studio and the Connections vault, another gave the agent browser to the person (point at a page, watch it inspect), and this one re-scoped `P16-20` and settled `B700` without filing much. Earlier the count had risen on a phase's build list, not defects: opening `P24`, the Agents hall, filed its 25 rows at once, and its first waves closed 18 of its 27, so the 9 still open are its plan — one of them the owner's own audit of every runbook (`P24-27`). Before that wave
+**73.1% → 74.7%** and *open* went **404 → 394**: 52 rows filed against 62 closed, a
+file-to-close ratio of **0.839** — the open count fell by ten, because the latest wave took the owner's answers to the audit's open decisions (`D-2026-10-25-04`) and closed the audit's own rows: Python blocks run for everyone in an opaque-origin sandbox, the admin's Default is the platform's default by one rule, a model launches by name, Stop force-kills a server that ignored it, and about forty dead functions, six more uncalled routes and a handful of dead columns are gone (`B1473`–`B1485`). The wave before it was the audit itself: it closed twenty-one and filed thirteen open, each a decision it named. Before it, a wave built the Design studio and the Connections vault, another gave the agent browser to the person (point at a page, watch it inspect), and this one re-scoped `P16-20` and settled `B700` without filing much. Earlier the count had risen on a phase's build list, not defects: opening `P24`, the Agents hall, filed its 25 rows at once, and its first waves closed 18 of its 27, so the 9 still open are its plan — one of them the owner's own audit of every runbook (`P24-27`). Before that wave
 the window read **0.917**, the first in this record where closing outran filing. Most of that is `P23`, the audits' fixes — built by eight lanes, driven by the owner's
 walk twice on the merged tree and closed on 2026-10-07 — and what came straight after it: the owner's rulings that
 evening, and then `v0.2.0` shipping and the owner running it on their own install. Their two reports of 2026-10-09

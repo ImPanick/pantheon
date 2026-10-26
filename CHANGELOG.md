@@ -108,6 +108,16 @@ the next one is cut.
 
 ### Added
 
+- **Python code blocks run for everyone.** *Run* on a Python block sent it to the server's shell,
+  which only an admin may use, so for everyone else it did nothing useful. A person without the
+  shell now runs it in their own browser (Pyodide, shipped with Pantheon) — in a sandboxed frame
+  that cannot read their cookies, storage or this app, on its own thread, so a block that never
+  ends is stopped after ten seconds without freezing the page. An admin's blocks still run on the
+  server (`B1474`, `D-2026-10-25-04`).
+- **The agent can launch a model by name.** `serve_model` with just a model uses a saved preset
+  for it on that host, or plans a first command for the right engine from the model's metadata,
+  and diagnoses it like any launch (`B1476`). *Stop* on a model server that ignores the signal now
+  force-kills it, and says so — and one that survives even that keeps its card (`B1477`).
 - **Doors for things that were built and unreachable** (`B1453`, `B1469`): *Uploaded files* in
   Settings → System (how many, how much, and *Remove expired uploads* — nothing ever removed
   them), the RAG index's own count under its panel, a *not spam* override on the AI's spam pill in
@@ -138,6 +148,10 @@ the next one is cut.
   port and says connected, refused or no answer (`D-2026-10-25-03`). Network trust is two levels,
   `trusted` and `untrusted`; a saved `limited` reads as `trusted` (what it always did) and writing
   it through the API is refused.
+- **The admin's Default is everyone's default.** Settings → *Default chat model* is the model a
+  person gets until they pick their own — in the composer and for every background model alike.
+  The *Share defaults with users* switch is gone; a model a person's privileges exclude is not
+  offered to them as a default (`B1479`, `D-2026-10-25-04`).
 - **Nineteen API routes nothing called are gone** (`B1453`, `B1454`, `B1263`): `POST
   /api/compare/start` and `/{id}/vote`, the notes `pin`/`archive`/`items/{i}/toggle` POSTs (use
   `PUT /api/notes/{id}`), `GET /api/gallery/tags` and `/stats`, `POST /api/gallery/dedupe-tags` and
@@ -223,6 +237,11 @@ the next one is cut.
   clears the fired-reminder dot, and a deleted chat's running cost is forgotten with it (`B1468`).
   A Docker install now reads `PANTHEON_SOURCE_URL`, `PANTHEON_OTLP_ENDPOINT` and
   `SEARXNG_GENERAL_ENGINES` from `.env`, as the setup guide always said it did (`B1471`).
+- **Cancelling a Copilot or ChatGPT sign-in cancels it.** Settings has a *Cancel* beside the code,
+  and a sign-in you cancel, or one that runs out, is dropped on the server rather than left until
+  it expires (`B1482`). An urgent-email alert no longer keeps the email's subject, sender and the
+  model's reason — only that it was alerted about (`B1480`). Upgrading a very old database no longer
+  drops scheduled-task columns while relaxing three of them (`B1481`).
 
 ---
 

@@ -630,17 +630,6 @@ def test_an_ordinary_memory_edit_is_not_a_style_edit(manager, monkeypatch):
     assert "style_edited" not in manager.load_all()[0]
 
 
-def test_the_timeline_is_not_swamped_by_a_record_that_moves_every_turn(manager, monkeypatch):
-    # The profile's timestamp bumps on every user message, so leaving it in
-    # would pin one row to the top of every timeline for ever.
-    manager.save([manager.add_entry("User drives a van", owner="felix")])
-    for _ in range(ms.PROFILE_MIN_MESSAGES):
-        manager.record_style_observation(FORMAL, owner="felix")
-    endpoints = _routes(manager, monkeypatch)
-    rows = endpoints[("GET", "/api/memory/timeline")](request=None)["timeline"]
-    assert [r["text"] for r in rows] == ["User drives a van"]
-
-
 def test_the_brain_list_still_shows_it_because_it_is_meant_to_be_read(manager, monkeypatch):
     for _ in range(ms.PROFILE_MIN_MESSAGES):
         manager.record_style_observation(FORMAL, owner="felix")

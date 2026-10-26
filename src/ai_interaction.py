@@ -169,14 +169,6 @@ def _resolve_model(spec: str, owner: Optional[str] = None, model_type: Optional[
 # ---------------------------------------------------------------------------
 
 
-
-async def stream_ai_tool(tool: str, content: str, session_id: Optional[str] = None, owner: Optional[str] = None):
-    """Dispatcher for streaming AI tools. Yields events as async generator."""
-    # Fallback: run non-streaming and yield final result
-    desc, result = await dispatch_ai_tool(tool, content, session_id, owner=owner)
-    yield {"_final": True, "desc": desc, "result": result}
-
-
 async def do_pipeline(content: str, session_id: Optional[str] = None, owner: Optional[str] = None) -> Dict:
     """Execute a multi-step pipeline where each model's output feeds the next.
 

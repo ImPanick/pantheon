@@ -8250,11 +8250,6 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     }
   }
 
-  /** Set a display override for the next user message bubble */
-  export function setDisplayOverride(text) {
-    _displayOverride = text;
-  }
-
   /** Hide the user bubble for the next submit (e.g. continue after stop) */
   export function setHideUserBubble() {
     _hideUserBubble = true;
@@ -8650,21 +8645,6 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     }
   }
 
-  /**
-   * Continue the AI's response from where it left off.
-   */
-  export async function continueFrom(aiMsgElement) {
-    const sessionId = sessionModule.getCurrentSessionId();
-    if (!sessionId) return;
-
-    const messageInput = uiModule.el('message');
-    if (messageInput) {
-      messageInput.value = 'Continue from where you left off.';
-      const submitBtn = document.querySelector('.send-btn');
-      if (submitBtn) submitBtn.click();
-    }
-  }
-
   // Open a chat attachment in the right place: images → Gallery editor; PDFs &
   // text/code/markdown → Documents viewer; anything else → raw file. A given
   // upload's imported document is reused (cached by upload id) so clicking it
@@ -8845,7 +8825,6 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     showWelcomeScreen: chatRenderer.showWelcomeScreen,
     checkPendingResearch,
     getImageCost: chatRenderer.getImageCost,
-    setDisplayOverride,
     setHideUserBubble,
     setPendingContinue,
     regenerateFrom,
@@ -8855,7 +8834,6 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     resendUserMessage,
     deleteMessage,
     rewriteWith,
-    continueFrom,
     _appendViewReportLink,
     hasActiveStream,
     // P6-07. The queue, in the shape `tasks.js` `_runToActivityEntry` emits, so

@@ -3261,3 +3261,42 @@ This narrows `D-2026-10-25-02` points 1 and 3; points 2 and 4 stand.
    connections, not a shell command.
 
 What reopens it: the owner asking for more than a reachability check.
+
+## D-2026-10-25-04 — the audit's open decisions: Python for everyone, defaults are defaults, a backend switch that switches, a machine per person, networks per person
+
+*The owner, 2026-10-25, answering the deep audit's open rows: "In-Browser Python — Let users run.
+… Defaults should be defaults. If an admin sets a default, that becomes the platform wide default.
+… Network scope allowable by admin — configured per user. Admin has omni-sight."* Asked about the
+backend control and `B1428`, the owner chose **a real switch, opt-in** and **a VM where KVM exists**.
+
+1. **Python runs for everyone (`B1474`).** A person without the server shell runs a Python block in
+   their own browser (Pyodide, already vendored). An admin keeps the server run. The browser run
+   reaches nothing the page could not: no server, no workstation, no files but what the block holds.
+2. **An admin's default is the platform's default (`B1479`).** The `share_defaults_with_users` switch
+   is retired. Wherever a model is picked for a person who has not picked one — the composer, a
+   task, research, naming, the utility model — the admin's Default is used, by one rule in one place
+   (`Law 7`). A person's own pick still wins for them. *Cost:* a new account starts on the admin's
+   model, which is the intent; the old leak was an admin's *last selection* in the composer
+   becoming everyone's, and that stays fixed — the Default is a setting an admin sets, not a click.
+3. **The backend control switches the backend, when the operator has given Pantheon the means
+   (`B1478`).** With host Docker access on (`docker/host-docker.yml`, the Cookbook's existing
+   opt-in), Settings → Workstation starts the chosen local backend (container or VM) and stops the
+   other. Without it, the panel shows what is running — as the workstation reports it — and the
+   exact `.env` lines and command for each backend. The stored setting that changed only wording is
+   retired. *Cost:* the Docker socket is broad control of the host; this adds a second feature that
+   uses it, and still only where the operator put it.
+4. **A machine per person where the host has KVM (`B1428`, `B1427`).** The VM backend is the
+   default where `/dev/kvm` exists: each person's machine is their own, root included, and
+   *"no overlaps"* holds with *"root inside that sandbox allowed"*. Each VM gets a share of that
+   person's projects folder — one folder, never the root — so what an agent builds there is in
+   Pantheon (`B1427`). Without KVM the default is the container with `sudo` off, and the panel says
+   that turning `sudo` on lets people read each other's work.
+5. **Networks are each person's, and the admin sees them all (`B1475`).** An admin switch turns
+   per-person networks on. A person declares their own network endpoints in their workspace and may
+   link an endpoint to an item in their own vault, which the agent uses by reference. A run is
+   scoped to its owner's networks (and the admin's install-wide ones). The admin sees every
+   person's endpoints — names, hosts, ranges, trust — and, for a linked login, **only that one is
+   linked**: never the item, its label, its user name or its secret. Untrusted still means never
+   connected to (`D-2026-10-25-03`).
+
+What reopens it: the owner changing any one of these.

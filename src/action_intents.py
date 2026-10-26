@@ -155,12 +155,3 @@ def classify_tool_intent(text: str) -> ToolIntent:
     return ToolIntent(False, reason="no tool-action pattern matched")
 
 
-def message_needs_tools(text: str, patterns: Iterable[Pattern[str]] = _TOOL_INTENT_PATTERNS) -> bool:
-    """Return True when a plain chat message should be promoted to agent mode."""
-    if not text:
-        return False
-    if _EXPLANATORY_PREFIX.search(text):
-        return False
-    if patterns is _TOOL_INTENT_PATTERNS:
-        return classify_tool_intent(text).needs_tools
-    return any(pattern.search(text) for pattern in patterns)

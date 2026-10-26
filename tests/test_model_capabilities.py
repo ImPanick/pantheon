@@ -6,40 +6,6 @@ def surfaces(capability):
     return set(mc.display_surfaces_for(capability))
 
 
-def test_endpoint_type_llm_maps_to_explicit_chat_capability():
-    capability = mc.capability_from_endpoint_type("llm")
-
-    assert capability.family == mc.FAMILY_CHAT
-    assert capability.primary_task == mc.TASK_CHAT_COMPLETIONS
-    assert capability.modalities.input == (mc.MODALITY_TEXT,)
-    assert capability.modalities.output == (mc.MODALITY_TEXT,)
-    assert capability.source == mc.SOURCE_ENDPOINT_CONFIG
-    assert capability.confidence == mc.CONFIDENCE_EXPLICIT
-    assert surfaces(capability) == {"chat"}
-
-
-def test_endpoint_type_image_maps_to_explicit_image_generation_capability():
-    capability = mc.capability_from_endpoint_type("image")
-
-    assert capability.family == mc.FAMILY_IMAGE
-    assert capability.primary_task == mc.TASK_IMAGE_GENERATE
-    assert capability.modalities.output == (mc.MODALITY_IMAGE,)
-    assert capability.capabilities == (mc.CAP_IMAGE_GENERATION,)
-    assert capability.source == mc.SOURCE_ENDPOINT_CONFIG
-    assert capability.confidence == mc.CONFIDENCE_EXPLICIT
-    assert surfaces(capability) == {"image_generation"}
-
-
-def test_missing_or_unknown_endpoint_type_does_not_imply_chat():
-    for model_type in (None, "", "openai-compatible", "text"):
-        capability = mc.capability_from_endpoint_type(model_type)
-
-        assert capability.family == mc.FAMILY_UNKNOWN
-        assert capability.primary_task == mc.TASK_UNKNOWN
-        assert capability.source == mc.SOURCE_ENDPOINT_CONFIG
-        assert mc.display_surfaces_for(capability) == ()
-
-
 def test_provider_record_normalizes_aliases_and_boolean_capability_maps():
     capability = mc.ModelCapability.from_dict(
         {
@@ -212,38 +178,3 @@ def test_deterministic_controls_are_normalized_as_claims_not_capabilities():
     ]
     assert {control.status for control in controls} == {mc.ASSERTION_CLAIMED}
     assert {control.source for control in controls} == {mc.SOURCE_PROVIDER_READER}
-
-
-def test_reasoning_control_mechanisms_normalize_known_provider_shapes():
-    values = [
-        "think_directive",
-        "system_prompt_directive",
-        "enable_thinking",
-        "think_bool",
-        "reasoning_object",
-        "thinking_budget",
-        "reasoning_effort",
-    ]
-
-    assert [mc.normalize_reasoning_control_mechanism(value) for value in values] == [
-        mc.REASONING_CONTROL_MESSAGE_DIRECTIVE,
-        mc.REASONING_CONTROL_SYSTEM_DIRECTIVE,
-        mc.REASONING_CONTROL_TEMPLATE_KWARG,
-        mc.REASONING_CONTROL_NATIVE_BOOL,
-        mc.REASONING_CONTROL_STRUCTURED_OBJECT,
-        mc.REASONING_CONTROL_BUDGET,
-        mc.REASONING_CONTROL_EFFORT,
-    ]
-
-
-def test_reasoning_control_values_can_describe_provider_supported_auto():
-    values = ["enabled", "disabled", "adaptive", "dynamic", "provider_auto"]
-
-    assert [mc.normalize_reasoning_control_value(value) for value in values] == [
-        mc.REASONING_CONTROL_VALUE_ON,
-        mc.REASONING_CONTROL_VALUE_OFF,
-        mc.REASONING_CONTROL_VALUE_AUTO,
-        mc.REASONING_CONTROL_VALUE_AUTO,
-        mc.REASONING_CONTROL_VALUE_AUTO,
-    ]
-    assert mc.normalize_reasoning_control_value("message_directive") == ""

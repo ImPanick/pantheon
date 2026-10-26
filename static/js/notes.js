@@ -1826,11 +1826,6 @@ export function closePanel(direction) {
   if (_minimize) { try { Modals.minimize('notes-panel'); } catch {} }
 }
 
-export function togglePanel() {
-  if (_open) closePanel();
-  else openPanel();
-}
-
 export function isPanelOpen() { return _open; }
 
 // ---- Render ----
@@ -5780,9 +5775,9 @@ async function openNote(noteId) {
   setTimeout(tryNext, 120);
 }
 
-const notesModule = { openPanel, closePanel, togglePanel, isPanelOpen, openNote, openNotes: openPanel, closeNotes: closePanel, isNotesOpen: isPanelOpen, refreshDueBadge, enterFullscreen };
+const notesModule = { openPanel, closePanel, isPanelOpen, openNote, openNotes: openPanel, closeNotes: closePanel, refreshDueBadge, enterFullscreen };
 export default notesModule;
-export { openPanel as openNotes, closePanel as closeNotes, isPanelOpen as isNotesOpen, openNote };
+export { openPanel as openNotes, closePanel as closeNotes, openNote };
 window.notesModule = notesModule;
 
 // Start reminder loop on module load (after a short delay so app loads first)

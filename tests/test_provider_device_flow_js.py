@@ -156,3 +156,56 @@ def test_expired_flow_returns_expired_status():
     """
     out = _run_node(js)
     assert out == {"status": "expired"}
+
+
+def test_a_cancelled_sign_in_is_dropped_on_the_server():
+    """`B1482`. `/device/cancel` had no caller: a sign-in the person walked away
+    from stayed on the server until it expired. An aborted flow cancels it."""
+    js = f"""
+      import {{ runProviderDeviceFlow }} from '{_HELPER.as_posix()}';
+      const calls = [];
+      const abort = new AbortController();
+      const response = (ok, status, payload) => ({{ ok, status, async json() {{ return payload; }} }});
+      const fetchImpl = async (url, opts) => {{
+        calls.push(url);
+        if (url.endsWith('/device/start')) {{
+          return response(true, 200, {{ poll_id: 'poll-9', user_code: 'C', verification_uri: 'u',
+                                         interval: 2, expires_in: 30 }});
+        }}
+        if (url.endsWith('/device/cancel')) return response(true, 200, {{ status: 'cancelled' }});
+        abort.abort();
+        return response(true, 200, {{ status: 'pending' }});
+      }};
+      const result = await runProviderDeviceFlow('copilot', {{
+        fetchImpl, openWindow: () => {{}}, sleep: async () => {{}}, now: () => 0, signal: abort.signal,
+      }});
+      console.log(JSON.stringify({{ result, calls }}));
+    """
+    out = _run_node(js)
+    assert out["result"] == {"status": "cancelled"}
+    assert out["calls"] == ["/api/copilot/device/start", "/api/copilot/device/poll",
+                            "/api/copilot/device/cancel"]
+
+
+def test_an_expired_sign_in_is_dropped_on_the_server_too():
+    js = f"""
+      import {{ runProviderDeviceFlow }} from '{_HELPER.as_posix()}';
+      const calls = [];
+      let t = 0;
+      const response = (ok, status, payload) => ({{ ok, status, async json() {{ return payload; }} }});
+      const fetchImpl = async (url) => {{
+        calls.push(url);
+        if (url.endsWith('/device/start')) {{
+          return response(true, 200, {{ poll_id: 'p', user_code: 'C', verification_uri: 'u',
+                                         interval: 2, expires_in: 1 }});
+        }}
+        return response(true, 200, {{ status: 'cancelled' }});
+      }};
+      const result = await runProviderDeviceFlow('chatgpt-subscription', {{
+        fetchImpl, openWindow: () => {{}}, sleep: async () => {{ t += 5000; }}, now: () => t,
+      }});
+      console.log(JSON.stringify({{ result, calls }}));
+    """
+    out = _run_node(js)
+    assert out["result"] == {"status": "expired"}
+    assert out["calls"][-1] == "/api/chatgpt-subscription/device/cancel"

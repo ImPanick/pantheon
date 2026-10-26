@@ -7633,7 +7633,6 @@ class TaskScheduler:
                 owner=owner,
                 name="Assistant",
                 avatar=None,
-                user_name=None,
                 personality=default_personality,
                 model=model,
                 endpoint_url=endpoint_url,
