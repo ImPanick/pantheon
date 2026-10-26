@@ -1232,6 +1232,15 @@ class ScheduledTask(TimestampMixin, Base):
     # reach, as a JSON list of names; NULL is no scope — every run as it always
     # was. A run of a scoped task is refused every address outside them.
     networks       = Column(Text, nullable=True)
+    # `B675`. The last time this task's run asked to come back later
+    # (`TaskDeferred` — a quiet window, an agent-capacity wait): until when,
+    # and the action's own words for why. The deferred run's row is deleted on
+    # purpose (a quiet-window defer would otherwise fill Activity with rows
+    # nobody wants), so without these a task that defers on every tick was,
+    # from every surface, a task that simply was not running. Cleared when a
+    # run of it next starts. NULL for every row that exists.
+    deferred_until = Column(DateTime, nullable=True)
+    defer_reason   = Column(Text, nullable=True)
 
     session = relationship("Session", backref=backref("scheduled_tasks", cascade="save-update, merge"))
     then_task = relationship("ScheduledTask", remote_side=[id], foreign_keys=[then_task_id])
@@ -2351,9 +2360,11 @@ def _migrate_add_scheduled_task_execution_columns():
     if not os.path.exists(db_path):
         return
     # `B1475`'s `networks` rides the same loop: one more nullable column a run
-    # reads about its own execution, NULL for every row that exists.
+    # reads about its own execution, NULL for every row that exists. So do
+    # `B675`'s `deferred_until` and `defer_reason`.
     wanted = (("tz_name", "TEXT"), ("max_retries", "INTEGER"),
-              ("timeout_seconds", "INTEGER"), ("networks", "TEXT"))
+              ("timeout_seconds", "INTEGER"), ("networks", "TEXT"),
+              ("deferred_until", "DATETIME"), ("defer_reason", "TEXT"))
     conn = None
     try:
         conn = sqlite3.connect(db_path)

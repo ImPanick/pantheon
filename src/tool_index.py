@@ -47,7 +47,10 @@ ALWAYS_AVAILABLE = frozenset({
 })
 
 # Tools that the Personal Assistant always has access to during scheduled
-# check-ins and proactive tasks, in addition to RAG-selected tools.
+# check-ins and proactive tasks. `B1372`: pinned in the run's suite plan
+# (`agent_loop.plan_turn_tool_suite`'s `pinned_tools`); they were unioned onto a
+# top-8 vector retrieval, so a scheduled run's tools depended on whether an
+# embedding backend answered.
 ASSISTANT_ALWAYS_AVAILABLE = frozenset({
     "list_email_accounts", "list_emails", "read_email", "scan_email_unsubscribes", "unsubscribe_email", "send_email", "reply_to_email",
     "bulk_email", "archive_email", "delete_email", "mark_email_read",
@@ -869,8 +872,8 @@ class ToolIndex:
 # tools per query against 7.8. The vector lane is not a better judge of which
 # tools a request needs — it is a judge that sometimes does not answer, which is
 # strictly worse. It stays reachable (`ToolIndex.retrieve`,
-# `get_tools_for_query`, the Assistant path in `src/task_scheduler.py`, app
-# warmup, the eval harness) and off for the chat/agent turn's offer, behind one
+# `get_tools_for_query`, app warmup, the eval harness) and off for the
+# chat/agent turn's offer — and, since `B1372`, for a scheduled task's — behind one
 # declared switch (`agent_loop._TOOL_RETRIEVAL_SELECTS_THE_TURN`) rather than
 # deleted blind (`Law 1`).
 

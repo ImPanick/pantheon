@@ -43,10 +43,11 @@ CANVAS_JS = JS / "workbench" / "canvas.js"
 
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
-# The ten built-ins a fresh install lists (names as `HOUSEKEEPING_DEFAULTS` has them).
+# The ten built-ins a fresh install lists (names as `HOUSEKEEPING_DEFAULTS` has them;
+# `B1215` renamed "Chat Sessions Tidy" to "Chats Tidy").
 _BUILTIN_NAMES = ["Skills Audit", "Email Tags", "Calendar Classify Events", "Email Calendar Events",
                   "Email Auto Translate", "Email AI Auto Reply", "Email (Summary)", "Research Tidy",
-                  "Memory Tidy", "Chat Sessions Tidy"]
+                  "Memory Tidy", "Chats Tidy"]
 
 
 def _builtin(i, name, **extra):
@@ -55,8 +56,8 @@ def _builtin(i, name, **extra):
 
 
 _FRESH = [_builtin(i, n) for i, n in enumerate(_BUILTIN_NAMES)]
-# The person's own: Backup → (if it works) Message me → (if it fails) Chat
-# Sessions Tidy, a built-in joined to their workflow; and a lone step.
+# The person's own: Backup → (if it works) Message me → (if it fails) Chats
+# Tidy, a built-in joined to their workflow; and a lone step.
 _MINE = [
     {"id": "m1", "name": "Backup", "task_type": "llm", "status": "active", "is_builtin": False,
      "then_task_id": "m2", "else_task_id": None},
@@ -139,7 +140,7 @@ def test_your_own_steps_come_first_and_a_built_in_joined_to_them_stays(box):
         toggle(root, true);
         out({ first, all: drawn(root).length, empty: root.querySelector('.wb-empty').hidden });
     """)
-    assert o["first"] == ["b9", "m1", "m2", "m3"], "Chat Sessions Tidy is joined to Message me"
+    assert o["first"] == ["b9", "m1", "m2", "m3"], "Chats Tidy is joined to Message me"
     assert o["all"] == 13 and o["empty"] is True
 
 

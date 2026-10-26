@@ -372,14 +372,29 @@ function _wallClockLabel(hhmm) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-/** `P22-03`. What a scheduled task does when a run fails, for the card — or
- *  `''`. Only a scheduled task retries (`failure_next_run`: an event or webhook
- *  task waits for its next trigger), so only a scheduled task says so. */
+/** `P22-03`. What a task does when a run fails, for the card — or `''`. */
 function _retryWords(task) {
-  if ((task?.trigger_type || 'schedule') !== 'schedule') return '';
+  // `B805`: every trigger retries now — an event or webhook task with what
+  // started it — so every card says so. (It said nothing for those two, which
+  // was true while their retries did nothing.)
   const n = Number(task?.max_retries) || 0;
   if (n <= 0) return '';
   return `${n} ${n === 1 ? 'retry' : 'retries'} if it fails`;
+}
+
+/**
+ * `B675`. "Deferred until 14:20 (in 20m): <why>" while the task's next run is
+ * the one its last run asked for (`deferred_until`, served beside
+ * `defer_reason`); `''` otherwise — an edit that moved the next run, or a run
+ * since, ends it.
+ */
+function _deferredWords(task) {
+  if (!task || task.status !== 'active' || !task.deferred_until || !task.next_run) return '';
+  const until = new Date(task.deferred_until);
+  if (isNaN(until.getTime()) || until.getTime() !== new Date(task.next_run).getTime()) return '';
+  const clock = until.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const why = String(task.defer_reason || '').trim();
+  return `Deferred until ${clock} (${_relativeTime(task.deferred_until)})` + (why ? `: ${why}` : '');
 }
 
 /** `P22-03`. A run's time limit in the unit a person would say it in. */
@@ -835,7 +850,12 @@ function _renderList() {
     // times" set in the form reads back the same on the card.
     const retries = _retryWords(task);
     if (retries) metaParts.push(retries);
-    if (task.next_run && task.status === 'active') metaParts.push('Next: ' + _relativeTime(task.next_run));
+    // `B675`. A run that asked to come back later leaves no row, so the next
+    // run's line says it, with the action's own reason — or a task deferring
+    // on every tick reads as a task that is simply not running.
+    const deferred = _deferredWords(task);
+    if (deferred) metaParts.push(deferred);
+    else if (task.next_run && task.status === 'active') metaParts.push('Next: ' + _relativeTime(task.next_run));
     if (task.run_count > 0) metaParts.push(task.run_count + ' run' + (task.run_count !== 1 ? 's' : ''));
     const meta = document.createElement('div');
     meta.className = 'memory-item-meta';
@@ -1399,6 +1419,9 @@ const _STEP_KIND_WORDS = {
   // § 2.4): "step · Summarise my inbox — worked". "node" is a word a person
   // never meets (§ 6.6).
   node: 'step',
+  // `B612`. The log's last line when it hit the scheduler's step cap
+  // (`STEP_KIND_CAPPED`): it says how many steps were not recorded.
+  capped: 'log full',
 };
 const _TOOL_STEP_STATUS_WORDS = {
   ok: 'done',
@@ -1435,8 +1458,15 @@ function _renderRunSteps(run, opts = {}) {
     return `<li class="task-run-step task-run-step-${kind}${statusClass}">${head}${detail}${output}</li>`;
   }).join('');
   const failed = steps.filter(s => s && (s.status === 'error' || s.status === 'blocked')).length;
+  // `B612`. A log that hit the scheduler's cap ends with one `capped` line,
+  // which is not a step: the count is the steps kept, and the summary says how
+  // many more there were — it read "200 steps" as though that were all.
+  const capped = steps.find(s => s && s.kind === 'capped');
+  const kept = steps.length - (capped ? 1 : 0);
+  const dropped = capped ? Math.max(0, Number(capped.dropped) || 0) : 0;
   const summary = opts.summary
-    || (`${steps.length} step${steps.length === 1 ? '' : 's'}`
+    || (`${kept} step${kept === 1 ? '' : 's'}`
+      + (dropped ? ` · ${dropped} more not recorded` : '')
       + (failed ? ` · ${failed} did not finish` : ''));
   return `<details class="task-run-steps"${opts.open ? ' open' : ''}>
       <summary>${_escHtml(summary)}</summary>

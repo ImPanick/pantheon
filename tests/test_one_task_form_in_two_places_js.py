@@ -669,10 +669,11 @@ def test_nine_sydney_retry_three_reads_back_the_same_on_the_card(sandbox, task_d
     assert out["back"] == ["Australia/Sydney", "9", "3", "10"], out["back"]
 
 
-def test_the_card_names_retries_only_where_they_happen(sandbox):
-    """An event or webhook task that fails waits for its next trigger and is
-    never re-run on a clock (`failure_next_run`), so it does not say it
-    retries even if a count is stored."""
+def test_the_card_names_retries_for_every_trigger(sandbox):
+    """`B805` changed this: an event or webhook task with retries is re-run on
+    failure with what started it (`failure_next_run`,
+    `_retry_with_trigger`), so its card says it retries, as a scheduled
+    task's does. (It said nothing while those retries did nothing.)"""
     out = _case(sandbox, {}, """
         console.log(JSON.stringify({
           one: __t._retryWords({ trigger_type: 'schedule', max_retries: 1 }),
@@ -683,7 +684,8 @@ def test_the_card_names_retries_only_where_they_happen(sandbox):
           place: __f._zonePlace('UTC'),
         }));
     """)
-    assert out["one"] == "1 retry if it fails" and out["none"] == "" and out["event"] == ""
+    assert out["one"] == "1 retry if it fails" and out["none"] == ""
+    assert out["event"] == "3 retries if it fails"
     assert out["limits"] == ["45 s", "10 min", "2 h", ""]
     assert out["cron"] == "Every Monday at 09:00 (Buenos Aires time)"  # P23-05 (WB-U-11)
     assert out["place"] == "UTC"

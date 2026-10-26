@@ -1279,8 +1279,14 @@ def plan_turn_tool_suite(
     mcp_by_server: Optional[Dict[str, Set[str]]] = None,
     within_allowed=None,
     get_setting_fn=None,
+    pinned_tools: Iterable[str] = (),
 ):
     """This turn's tool set: the whole suite, or a deterministic part of it.
+
+    `pinned_tools` (`B1372`) are names the caller keeps in the set whatever
+    the room, beside rule 4's — a scheduled task's always-available assistant
+    tools, which used to be unioned onto a top-8 vector retrieval. Only a
+    candidate is pinned, so it never widens past the person's privileges.
 
     **The measured defect this replaces.** `src/tool_index.ALWAYS_AVAILABLE` is
     three tools; everything else reached a turn only by winning a top-8 vector
@@ -1379,6 +1385,7 @@ def plan_turn_tool_suite(
     pinned |= names_the_request_pins(query, candidates, mcp_tools=mcp_by_server or {})
     for domain in domains:
         pinned |= _DOMAIN_TOOL_MAP.get(domain, set())
+    pinned |= {str(n) for n in (pinned_tools or ())}      # `B1372`
     pinned &= candidates
 
     return plan_tool_suite(
@@ -2316,8 +2323,10 @@ _TOOL_SELECTION_TIMEOUT_SECONDS = 1.5
 # refusal 0.93** against the embedding path's **0.83 / 0.83**. The vector lane
 # is not a better judge of which tools a request needs — it is a judge that
 # sometimes does not answer. The index stays reachable and used elsewhere:
-# `ToolIndex.retrieve` / `get_tools_for_query` for the Personal Assistant's
-# check-ins (`src/task_scheduler.py`), `app.py`'s warmup, and the eval harness.
+# `ToolIndex.retrieve` / `get_tools_for_query`, `app.py`'s warmup, and the eval
+# harness. (`B1372`: a scheduled task's tools were the last offer it decided —
+# `src/task_scheduler.py` now has this loop plan them, with the assistant's
+# always-available tools pinned, through `pinned_tools`.)
 # Set this True to put it back in front of the turn's offer.
 _TOOL_RETRIEVAL_SELECTS_THE_TURN = False
 
@@ -6808,8 +6817,16 @@ async def stream_agent_loop(
     explicit_params=frozenset(),
     approval_ttl_seconds: Optional[int] = None,
     approval_held_by_run: bool = False,
+    pinned_tools: Optional[Set[str]] = None,
 ) -> AsyncGenerator[str, None]:
     """Streaming agent loop generator.
+
+    ``pinned_tools`` (`B1372`): names the turn's suite plan keeps whatever the
+    room (`plan_turn_tool_suite`'s `pinned_tools`). A scheduled task passes its
+    always-available assistant tools here instead of a ``relevant_tools`` set
+    of its own, so its tool set is planned the way a chat turn's is — the same
+    input, the same tools, whether or not an embedding backend answered — and
+    recorded on the run the same way. ``None`` for every chat turn.
 
     ``approval_ttl_seconds`` (`D-2026-10-02-01` §1) is how long a card this
     run mints waits — a workflow step's question waits
@@ -7712,6 +7729,7 @@ async def stream_agent_loop(
                 mcp_costs=_suite_mcp_costs,
                 mcp_by_server=_suite_mcp_servers,
                 within_allowed=_within_allowed,
+                pinned_tools=pinned_tools or (),
             )
 
         def _log_the_plan(label):

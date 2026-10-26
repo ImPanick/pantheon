@@ -795,13 +795,29 @@ def test_the_collection_lanes_are_named(version):
 def test_the_task_rename_map_is_the_fork_points_own(version):
     """`legacy_names` is not a Pantheon rename: it was already at the fork
     point, so an Odysseus install has nothing to do. The notes say so and give
-    the count; both are derived."""
-    m = tree_legacy_names()
+    the count; both are derived.
+
+    `B1215`. Derived from the tree the notes describe: a released version's
+    notes from the tree at its tag (`v<version>`), a version not yet tagged's
+    from this one. Pantheon renamed a built-in after 0.2.0 ("Chat Sessions
+    Tidy" → "Chats Tidy", its old name kept as a legacy name, migrated at
+    boot), so this tree's map is the fork point's plus that, and comparing it
+    with notes about 0.2.0 compared two different trees."""
+    if _released(version):
+        m = _housekeeping(_git("show", f"v{version}:src/task_scheduler.py").stdout)
+    else:
+        m = tree_legacy_names()
     body = section(_notes(version), STORED_SEC)
     n_names = sum(len(v) for v in m.values())
     assert f"{len(m)} built-in tasks" in body and f"{n_names} earlier names" in body
     if _upstream_reachable():
-        assert _housekeeping(_up_show("src/task_scheduler.py")) == m
+        up = _housekeeping(_up_show("src/task_scheduler.py"))
+        if _released(version):
+            assert up == m
+        # `Law 1`, for every version: each earlier name the fork point knew is
+        # still read, so an Odysseus install's rows are still the built-ins.
+        now = tree_legacy_names()
+        assert all(set(names) <= set(now.get(action, ())) for action, names in up.items()), now
 
 
 # ═══ headers and user agents ═══════════════════════════════════════════════
