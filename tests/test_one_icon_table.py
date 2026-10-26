@@ -643,10 +643,32 @@ def _expected_now(before: dict) -> dict:
     return out
 
 
+# `B397`'s diff, the same way: one site gone, named. `research/panel.js`'s
+# `_closeIcon` — an 18px chevron declared at module scope and referenced
+# nowhere, already unreferenced at the fork (`e5c99a5e`) — was removed rather
+# than wired, because the panel's close is `#research-panel-close`'s ✖ and no
+# control was waiting for it. 57 before `B397`, 56 after; the two sites after
+# it in that module (`_chevronIcon`, the section chevron) move up one place.
+_B397_REMOVED = "static/js/research/panel.js#3"
+
+
+def _now_key(key: str):
+    """The key a `B230` baseline site has in the tree now, or `None` for the
+    site `B397` removed."""
+    if key == _B397_REMOVED:
+        return None
+    mod, n = key.split("#")
+    gone_mod, gone_n = _B397_REMOVED.split("#")
+    if mod == gone_mod and int(n) > int(gone_n):
+        return f"{mod}#{int(n) - 1}"
+    return key
+
+
 def test_every_chevron_site_emits_what_its_literal_emitted_plus_B291s_two_changes():
     """The measurement `Law 1` asks for, made site by site rather than argued.
 
-    57 before, 57 after, matched by module and by order within the module; for
+    57 before, 56 after (`B397` removed one, named in `_now_key`), matched by
+    module and by order within the module; for
     each one the `<svg>` the table now produces is compared with the `<svg>` the
     literal produced, every attribute and the stroke — plus exactly the two
     changes `B291` decided, applied by `_expected_now` where a reader can see
@@ -667,9 +689,13 @@ def test_every_chevron_site_emits_what_its_literal_emitted_plus_B291s_two_change
     now = _sites_now()
     assert len(before) == 57
     assert len({k.split("#")[0] for k in before}) == 23
-    assert sorted(now) == sorted(before), sorted(set(now) ^ set(before))
     keys = sorted(before)
-    rendered = _h("chevrons", json.dumps([now[k] for k in keys]))["rendered"]
+    # `B397`: 56 now — the baseline less `_closeIcon`, renumbered (above).
+    kept = [k for k in keys if _now_key(k)]
+    assert len(kept) == 56
+    assert sorted(now) == sorted(_now_key(k) for k in kept), \
+        sorted(set(now) ^ {_now_key(k) for k in kept})
+    rendered = _h("chevrons", json.dumps([now[_now_key(k)] for k in kept]))["rendered"]
 
     def segments(points):
         n = [float(x) for x in points.split()]
@@ -677,7 +703,7 @@ def test_every_chevron_site_emits_what_its_literal_emitted_plus_B291s_two_change
         return {frozenset(pair) for pair in zip(pts, pts[1:])}
 
     diffs, respelled = [], []
-    for key, markup in zip(keys, rendered):
+    for key, markup in zip(kept, rendered):
         want = want_all[key]
         got = _svg_attrs(markup)
         points = re.search(r'<polyline points="([^"]*)"', markup).group(1)

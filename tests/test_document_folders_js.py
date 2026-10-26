@@ -417,6 +417,7 @@ _FETCH = """
     let _libraryOffset = 0, _librarySort = 'recent', _librarySearch = '', _libraryActiveLanguage = null;
     let _libraryArchivedView = false, _libraryFolderView = F.VIEW_ALL;
     let _libraryDocs = [], _docsVisibleLimit = 20, _libraryTotal = 0, _libraryLanguages = {}, _librarySessionCount = 0;
+    let _libraryLibraryTotal = 0;   // `B1219`
     let _libraryFetchSeq = 0;
     const applyViewParams = F.applyViewParams;
     let refreshed = 0;
@@ -480,6 +481,10 @@ _GRID = """
     function _maybeCascadeGrid() {}
     function libraryCreateCard() { return new Node('div'); }
     async function libraryFetch() {}
+    // `B1219`: an empty folder names its subfolders that hold documents.
+    let _libraryFolders = [];
+    const folderName = F.folderName, folderView = F.folderView;
+    __SUBFOLDERS__
     const grid = document.body.appendChild(new Node('div'));
     grid.setAttribute('id', 'doclib-grid');
     __GRID__
@@ -488,7 +493,8 @@ _GRID = """
 
 def test_an_empty_folder_is_not_reported_as_an_empty_library(sandbox):
     body = _cut("function libraryRenderGrid(", "function libraryRenderGrid()")
-    out = _js(sandbox, _GRID.replace("__GRID__", body) + """
+    sub = _cut("function _subfoldersHolding(", "function _subfoldersHolding(path)")
+    out = _js(sandbox, _GRID.replace("__GRID__", body).replace("__SUBFOLDERS__", sub) + """
         _libraryFolderView = F.folderView('Clients');
         libraryRenderGrid();
         _libraryFolderView = F.VIEW_UNFILED;

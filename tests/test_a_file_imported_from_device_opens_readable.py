@@ -141,7 +141,8 @@ globalThis.requestAnimationFrame = (fn) => setTimeout(fn, 0);
 _PRELUDE = r"""
 import { createRequire } from 'module';
 import { readFileSync } from 'fs';
-import { OFFICE_EXTS, documentLanguage, ingestKindFromName } from './attachmentLanguage.js';
+// `B401`: the import compares the server's verdict with `INGEST_KIND_BINARY`.
+import { OFFICE_EXTS, documentLanguage, ingestKindFromName, INGEST_KIND_BINARY } from './attachmentLanguage.js';
 const require = createRequire(import.meta.url);
 globalThis.window = globalThis;
 const API_BASE = __BASE__;

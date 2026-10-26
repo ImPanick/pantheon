@@ -114,6 +114,9 @@ def test_the_tasks_all_chip_leaves_the_count_to_the_tab(tmp_path):
 def test_the_library_heading_is_bare_until_something_narrows_the_list(tmp_path):
     out = _node(tmp_path, _ELEMENT + """
         let _libraryLanguages = { markdown: 10, csv: 4, text: 2, html: 1 };
+        // `B1219`: the heading's denominator is the library's own total (the
+        // server's `library_total`); the chips count the open folder.
+        let _libraryLibraryTotal = 17;
         let _libraryTotal = 17, _librarySearch = '', _libraryActiveLanguage = null;
         let _libraryFolderView = { kind: 'all' }, _librarySelectMode = false;
         const stats = { textContent: 'stale' };
@@ -134,7 +137,7 @@ def test_the_library_heading_is_bare_until_something_narrows_the_list(tmp_path):
         _librarySearch = ''; _libraryFolderView = { kind: 'folder', path: 'Finance' }; _libraryTotal = 2;
         libraryRenderStats();
         const folder = stats.textContent;
-        _libraryLanguages = {}; _libraryTotal = 0; _librarySearch = 'invoice';
+        _libraryLanguages = {}; _libraryLibraryTotal = 0; _libraryTotal = 0; _librarySearch = 'invoice';
         libraryRenderStats();
         console.log(JSON.stringify({ bare, chips, searched, folder, empty: stats.textContent }));
     """ % (_body("documentLibrary.js", "function libraryRenderStats("),

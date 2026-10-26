@@ -60,6 +60,9 @@ def dom_dir(tmp_path_factory):
     directory = tmp_path_factory.mktemp("exportmenu")
     (directory / "dom.js").write_text(harness._DOM)
     (directory / "shim.js").write_text(_SHIM)
+    # `B1333`: the frame `_printWholeChat` prints through is `printFrame.js`'
+    # (a document's *Print as PDF* uses the same one), imported as shipped.
+    shutil.copy(ROOT / "static" / "js" / "printFrame.js", directory / "printFrame.js")
     return directory
 
 
@@ -113,6 +116,7 @@ document.createElement = (tag) => {
 
 _PRE = r"""
 import { document, printed } from './shim.js';
+import { printHtmlInFrame } from './printFrame.js';
 const API_BASE = '';
 const asked = [];
 let answer = null;

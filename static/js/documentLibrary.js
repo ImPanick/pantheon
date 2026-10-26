@@ -7,7 +7,7 @@
 
 import { topPortalZ } from './toolWindowZOrder.js';
 import uiModule from './ui.js';
-import { documentLanguage, ingestKindFromName, OFFICE_EXTS } from './attachmentLanguage.js';
+import { documentLanguage, ingestKindFromName, INGEST_KIND_BINARY, OFFICE_EXTS } from './attachmentLanguage.js';
 import sessionModule from './sessions.js';
 import spinnerModule from './spinner.js';
 import markdownModule from './markdown.js';
@@ -19,7 +19,7 @@ import { chevronIcon } from './icons.js';
 import {
   folderApi, renderFolderBar, showFolderPicker, showFolderMenu, removeFolderFlow,
   describeRemovalOutcome, describeFiled, applyViewParams, startDocumentDrag,
-  viewAfterRelocate, joinPath, folderName, parentOf, VIEW_ALL, importFolder,
+  viewAfterRelocate, joinPath, folderName, parentOf, VIEW_ALL, importFolder, folderView,
 } from './documentFolders.js';
 
 // ── Injected references from documentModule ──
@@ -66,6 +66,9 @@ let _libraryTotal = 0;
 let _libraryOffset = 0;
 let _docsVisibleLimit = 20;  // chunked reveal (matches the Chats tab's 20)
 let _libraryLanguages = {};
+// `B1219`: the type chips count the open folder; this is the library's own
+// total, for the "3 of 17" heading.
+let _libraryLibraryTotal = 0;
 let _librarySessionCount = 0;
 let _libraryActiveLanguage = null;
 let _librarySort = 'recent';
@@ -368,6 +371,8 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       }
       _libraryTotal = data.total;
       _libraryLanguages = data.languages;
+      _libraryLibraryTotal = Number.isFinite(data.library_total) ? data.library_total
+        : Object.values(data.languages || {}).reduce((a, b) => a + b, 0);
       _librarySessionCount = data.session_count;
 
       libraryRenderStats();
@@ -401,7 +406,8 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
   function libraryRenderStats() {
     const el = document.getElementById('doclib-stats');
     if (!el) return;
-    const totalAll = Object.values(_libraryLanguages).reduce((a, b) => a + b, 0);
+    // `B1219`: the library's total, not the open folder's (the chips are).
+    const totalAll = _libraryLibraryTotal;
     // `B1241` (round 2). The heading is bare unless something narrows the
     // list: the "all (17)" chip below it says the total, and "Documents 17
     // documents" said it a second time (measured on `a936b5c`). Narrowed, it
@@ -412,6 +418,14 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     } else {
       el.textContent = '';
     }
+  }
+
+  /** `B1219`. The open folder's direct subfolders that hold documents
+   *  (`total` counts their own subfolders too), fullest first. */
+  function _subfoldersHolding(path) {
+    return _libraryFolders
+      .filter((f) => (f.parent || null) === path && Number(f.total || 0) > 0)
+      .sort((a, b) => Number(b.total) - Number(a.total) || String(a.path).localeCompare(String(b.path)));
   }
 
   function libraryRenderLangChips() {
@@ -459,6 +473,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     _libraryDocs = _libraryDocs.filter(d => String(d.id) !== String(docId));
     _librarySelectedIds.delete(docId);
     _libraryTotal = Math.max(0, _libraryTotal - 1);
+    _libraryLibraryTotal = Math.max(0, _libraryLibraryTotal - 1);
 
     const lang = removed && (removed.language || 'text');
     if (lang && Object.prototype.hasOwnProperty.call(_libraryLanguages, lang)) {
@@ -791,11 +806,18 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       } else if (_libraryFolderView.kind === 'folder') {
         // `P21-01`. An empty folder is not an empty library, and saying "No
         // documents yet" inside one would tell a person their documents are gone.
+        // `B1219`: and when its documents are in its subfolders, it says where
+        // — "7 in Lumen 2.0" — and opens the fullest of them.
+        const held = _subfoldersHolding(_libraryFolderView.path);
         uiModule.renderEmptyState(grid, {
           kind: 'empty',
           className: 'doclib-empty',
           title: 'No documents here.',
-          action: { label: 'Show all documents', onClick: () => libraryOpenFolder(VIEW_ALL) },
+          message: held.length
+            ? held.map((f) => `${f.total} in ${folderName(f.path)}`).join(', ') + '.' : undefined,
+          action: held.length
+            ? { label: `Open ${folderName(held[0].path)}`, onClick: () => libraryOpenFolder(folderView(held[0].path)) }
+            : { label: 'Show all documents', onClick: () => libraryOpenFolder(VIEW_ALL) },
         });
       } else if (_libraryFolderView.kind === 'unfiled') {
         uiModule.renderEmptyState(grid, {
@@ -2057,6 +2079,30 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       throw new Error(`${what} can't be opened as documents`);
     }
 
+    // `B401`. A file neither the shared register nor the browser's own type
+    // says is text — a `.wpd`, a `.pages`, a renamed `.zip`, a file with no
+    // type at all — is asked about before it is read as text: its first bytes
+    // go to the server's one probe (`POST /api/upload/kind`, `ingest_kind`),
+    // never to a browser copy of it. `binary` is refused with the server's
+    // reason; `readAsText` made such a file a document of replacement
+    // characters and the Library said "Imported 1 file". A server that cannot
+    // be asked leaves the import as it was.
+    if (ingestKindFromName(name, file.type) === null) {
+      let verdict = null;
+      try {
+        const fd = new FormData();
+        fd.append('file', file.slice(0, 8192), name);
+        const res = await fetch(`${API_BASE}/api/upload/kind`, { method: 'POST', body: fd });
+        if (res.ok) verdict = await res.json();
+      } catch (_) { /* unasked: read it as before */ }
+      if (verdict && verdict.kind === INGEST_KIND_BINARY) {
+        // The server's phrase, as `B400`'s refusal is worded: each door puts
+        // its own frame round it (the Library's summary, *Import from
+        // device*'s "Couldn't import <name> — ").
+        throw new Error(verdict.reason || "it isn't text, and nothing here reads its format");
+      }
+    }
+
     const content = await readFileContent(file);
     // `P21-03`. The file's name, not a title cut from it here: the
     // server titles it (`file_names.document_title`, one rule for every
@@ -2137,6 +2183,15 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     // Switched off (for everyone, this person or this browser), the window is
     // drawn without its Documents tab and never asks for a document.
     const _docsShown = !window.pantheonToolShown || window.pantheonToolShown('library');
+    // `B1275`: the same for Deep Research. Its routes answer to its own switch
+    // (`require_feature("deep_research")`), so with it off the Research tab was
+    // a 403 state and the archive said "Part of the archive did not load.
+    // Research: …". Off, the window has no Research tab, the archive asks for
+    // no research, and a door that names the Research tab is Deep Research's
+    // door — refused with its sentence.
+    const _researchShown = !window.pantheonToolShown || window.pantheonToolShown('research');
+    if (_openTab === 'research' && !_researchShown
+        && window.pantheonToolDoor && !window.pantheonToolDoor('research')) return;
     // `P23-01` (C-NAV): opened from another window — Deep Research's *Library*
     // — the Library says `← Research`, and closing it re-raises Research.
     if (opts && opts.from) backStack.noteOpener('doclib-modal', opts.from, opts.fromTab);
@@ -2977,10 +3032,13 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       // research; archived documents went with the documents (the route would
       // refuse anyway, and a refusal here reads as "part of the archive did
       // not load").
+      // `B1275`: and with Deep Research switched off, archived research went
+      // with it, for the same reason.
+      const _arcAsked = 1 + (_docsShown ? 1 : 0) + (_researchShown ? 1 : 0);
       Promise.all([
         _arcSource('Chats', API_BASE + '/api/sessions/archived?limit=100&sort=recent'),
         _docsShown ? _arcSource('Documents', API_BASE + '/api/documents/library?archived=true&limit=50') : {},
-        _arcSource('Research', '/api/research/library?archived=true'),
+        _researchShown ? _arcSource('Research', '/api/research/library?archived=true') : {},
       ]).then(([s, d, r]) => {
         // These are all archived by definition — flag them so the expanded
         // chat preview hides its (redundant) "Archive" button.
@@ -2988,7 +3046,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
         _arcDocs = d.documents || [];
         _arcResearch = (r.research || []).map(x => ({ ...x, archived: true }));
         _arcLoadFailures = _arcFail.slice();
-        if (_arcFail.length === (_docsShown ? 3 : 2)) {   // every source asked failed
+        if (_arcFail.length === _arcAsked) {   // every source asked failed
           uiModule.renderEmptyState(grid, {
             kind: 'error',
             className: 'doclib-empty',
@@ -3144,11 +3202,13 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
             action: { label: 'Clear filters', onClick: _arcClearFilters },
           });
         } else {
+          // `B1277`: one line (the voice guide's rule 8). It named documents
+          // and research reports in a window drawn without them (`B1194`,
+          // `B1275`); what can be archived is on every card's own menu.
           uiModule.renderEmptyState(grid, {
             kind: 'empty',
             className: 'doclib-empty',
-            title: 'Nothing archived yet',
-            message: 'Archive a chat, a document or a research report and it moves here instead of being deleted.',
+            title: 'Nothing archived yet.',
           });
         }
         _appendInlineLoadMore(grid, 0, _arcVisibleLimit, () => {});
@@ -4173,6 +4233,12 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     const btn = document.getElementById('tool-library-btn');
     if (btn) btn.classList.add('active');
 
+    // `B1275`. Deep Research switched off: no Research tab or panel (removed
+    // after the wiring above, which finds them by id, as Documents' below).
+    if (!_researchShown) {
+      modal.querySelectorAll('[data-doclib-tab="research"], [data-doclib-panel="research"]')
+        .forEach((n) => n.remove());
+    }
     // `B1194`. The Library switched off: the window is the chat archive's —
     // Chats, Research, Archive — and its Documents tab and panel are not there
     // to be reached (removed after the wiring above, which finds them by id).

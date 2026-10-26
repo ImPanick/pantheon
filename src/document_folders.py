@@ -44,11 +44,9 @@ import json
 import logging
 import re
 import secrets
-import threading
-import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional
 
 from sqlalchemy import false, func, or_
@@ -814,20 +812,48 @@ class FolderPlan:
     steps: List[Dict[str, Any]]
     changes: List[Dict[str, Any]]
     created_at: datetime = field(default_factory=utcnow_naive)
-    expires_at: float = field(default_factory=lambda: time.monotonic() + PLAN_TTL_SECONDS)
+    #: Wall-clock UTC (`B1018`): a plan is a row now and outlives the process.
+    expires_at: datetime = field(
+        default_factory=lambda: utcnow_naive() + timedelta(seconds=PLAN_TTL_SECONDS))
     #: `B1006`. What a person is shown to answer a plan nobody asked for in a
     #: chat — the scheduled tidy's — from a notification. ``None`` for the
     #: agent's plans, which are answered on the card in the chat that asked.
     review: Optional[Dict[str, Any]] = None
 
 
-_plans: Dict[str, FolderPlan] = {}
-_plans_lock = threading.Lock()
+# `B1018`. Where a waiting plan lives: the `document_plans` table, read by the
+# same `pending_plan` / `waiting_review(s)` that read a process dict until now.
+# The dict forgot every plan on a restart — tolerable for the agent's 30-minute
+# card, not for the scheduled tidy's seven-day proposal, whose Review then said
+# "That tidy is no longer waiting", deleted nothing (fail-closed) and was not
+# offered again until the tidy next ran. One store, no cache in front of it
+# (`Law 7`): a cache is a second answer to "is it still waiting?".
+#
+# A caller already inside a transaction passes its `db` (`apply_plan`), so the
+# plan is consumed in the same commit as the changes it made — and SQLite is
+# not asked for a second writer while the first holds its lock.
+
+def _plan_session():
+    from core import database as cdb   # resolved per call: tests point it at their own DB
+    return cdb.SessionLocal()
 
 
-def _purge_plans_locked(now: float) -> None:
-    for plan_id in [k for k, p in _plans.items() if p.expires_at <= now]:
-        _plans.pop(plan_id, None)
+def _plan_from_row(row) -> FolderPlan:
+    def _load(text, default):
+        try:
+            value = json.loads(text) if text else default
+        except (TypeError, ValueError):
+            return default
+        return value if isinstance(value, type(default)) else default
+    return FolderPlan(plan_id=row.id, owner=row.owner, session_id=row.session_id,
+                      steps=_load(row.steps, []), changes=_load(row.changes, []),
+                      created_at=row.created_at, expires_at=row.expires_at,
+                      review=_load(row.review, {}) if row.review else None)
+
+
+def _live_plans(db, now: datetime):
+    from core.database import DocumentPlan
+    return db.query(DocumentPlan).filter(DocumentPlan.expires_at > now)
 
 
 def propose_plan(owner: str, session_id: str, steps: List[Dict[str, Any]],
@@ -838,32 +864,71 @@ def propose_plan(owner: str, session_id: str, steps: List[Dict[str, Any]],
     `ttl_seconds` and `review` are `B1006`'s: the scheduled tidy's plan waits
     longer than the agent's 30 minutes, and carries what its notification shows.
     """
-    with _plans_lock:
-        _purge_plans_locked(time.monotonic())
-        for plan_id in [k for k, p in _plans.items()
-                        if p.owner == owner and p.session_id == session_id]:
-            _plans.pop(plan_id, None)
-        plan = FolderPlan(plan_id=secrets.token_urlsafe(9), owner=owner,
-                          session_id=session_id, steps=list(steps), changes=list(changes),
-                          review=review)
-        if ttl_seconds is not None:
-            plan.expires_at = time.monotonic() + ttl_seconds
-        _plans[plan.plan_id] = plan
-        return plan
+    from core.database import DocumentPlan
+
+    now = utcnow_naive()
+    ttl = PLAN_TTL_SECONDS if ttl_seconds is None else ttl_seconds
+    plan = FolderPlan(plan_id=secrets.token_urlsafe(9), owner=owner, session_id=session_id,
+                      steps=list(steps), changes=list(changes), created_at=now,
+                      expires_at=now + timedelta(seconds=ttl), review=review)
+    db = _plan_session()
+    try:
+        # What has lapsed goes, and so does this chat's older plan.
+        db.query(DocumentPlan).filter(DocumentPlan.expires_at <= now).delete(
+            synchronize_session=False)
+        db.query(DocumentPlan).filter(DocumentPlan.owner == owner,
+                                      DocumentPlan.session_id == session_id).delete(
+            synchronize_session=False)
+        db.add(DocumentPlan(id=plan.plan_id, owner=owner, session_id=session_id,
+                            steps=json.dumps(plan.steps), changes=json.dumps(plan.changes),
+                            review=json.dumps(review) if review is not None else None,
+                            created_at=plan.created_at, expires_at=plan.expires_at))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+    return plan
 
 
-def pending_plan(plan_id: Any, owner: str, session_id: Optional[str]) -> Optional[FolderPlan]:
-    with _plans_lock:
-        _purge_plans_locked(time.monotonic())
-        plan = _plans.get(str(plan_id or ""))
-        if plan is None or plan.owner != owner or plan.session_id != session_id:
+def _read_plans(query_fn, db=None):
+    own = db is None
+    db = db or _plan_session()
+    try:
+        return query_fn(db)
+    finally:
+        if own:
+            db.close()
+
+
+def pending_plan(plan_id: Any, owner: str, session_id: Optional[str], db=None) -> Optional[FolderPlan]:
+    from core.database import DocumentPlan
+
+    def find(d):
+        row = (_live_plans(d, utcnow_naive())
+               .filter(DocumentPlan.id == str(plan_id or "")).first())
+        if row is None or row.owner != owner or row.session_id != session_id:
             return None
-        return plan
+        return _plan_from_row(row)
+    return _read_plans(find, db)
 
 
-def discard_plan(plan_id: str) -> None:
-    with _plans_lock:
-        _plans.pop(plan_id, None)
+def discard_plan(plan_id: str, db=None) -> None:
+    """Drop a plan. With *db*, inside the caller's transaction (it commits)."""
+    from core.database import DocumentPlan
+
+    if db is not None:
+        db.query(DocumentPlan).filter(DocumentPlan.id == str(plan_id)).delete(
+            synchronize_session=False)
+        return
+    own = _plan_session()
+    try:
+        own.query(DocumentPlan).filter(DocumentPlan.id == str(plan_id)).delete(
+            synchronize_session=False)
+        own.commit()
+    finally:
+        own.close()
 
 
 def _answerable_by(plan: FolderPlan, owner: Any) -> bool:
@@ -874,18 +939,27 @@ def waiting_review(plan_id: Any, owner: Any) -> Optional[FolderPlan]:
     """`B1006`. A plan waiting for its person on a notification — the
     scheduled tidy's — if it is *owner*'s. An agent's plan is not answered
     here: it is answered on the card in the chat that asked."""
-    with _plans_lock:
-        _purge_plans_locked(time.monotonic())
-        plan = _plans.get(str(plan_id or ""))
+    from core.database import DocumentPlan
+
+    def find(d):
+        row = (_live_plans(d, utcnow_naive())
+               .filter(DocumentPlan.id == str(plan_id or "")).first())
+        plan = _plan_from_row(row) if row is not None else None
         return plan if plan is not None and _answerable_by(plan, owner) else None
+    return _read_plans(find)
 
 
 def waiting_reviews(owner: Any) -> List[FolderPlan]:
     """Every such plan still waiting for *owner*, oldest first."""
-    with _plans_lock:
-        _purge_plans_locked(time.monotonic())
-        return sorted((p for p in _plans.values() if _answerable_by(p, owner)),
-                      key=lambda p: p.created_at)
+    from core.database import DocumentPlan
+
+    def find(d):
+        q = _live_plans(d, utcnow_naive()).filter(DocumentPlan.review.isnot(None))
+        if owner is not EVERY_OWNER:
+            q = q.filter(DocumentPlan.owner == owner)
+        plans = [_plan_from_row(r) for r in q.order_by(DocumentPlan.created_at).all()]
+        return [p for p in plans if _answerable_by(p, owner)]
+    return _read_plans(find)
 
 
 def _row_metadata(message: ChatMessage) -> Dict[str, Any]:
@@ -931,8 +1005,16 @@ def plan_answer(db, plan: FolderPlan) -> str:
     return "unanswered"
 
 
+def _discard_refused(db, plan_id: str) -> None:
+    """A plan answered no, or gone stale, is dropped for good — and none of
+    the caller's uncommitted work goes with that commit (`B1018`)."""
+    db.rollback()
+    discard_plan(plan_id, db)
+    db.commit()
+
+
 def apply_plan(db, owner: str, session_id: Optional[str], plan_id: Any) -> Dict[str, Any]:
-    plan = pending_plan(plan_id, owner, session_id)
+    plan = pending_plan(plan_id, owner, session_id, db)
     if plan is None:
         raise FolderError(
             "No plan with that id is waiting in this chat — plans last "
@@ -942,15 +1024,16 @@ def apply_plan(db, owner: str, session_id: Optional[str], plan_id: Any) -> Dict[
         raise FolderError("The person has not answered the plan yet, so nothing was "
                           "changed. Wait for their answer.", 409)
     if answer == "declined":
-        discard_plan(plan.plan_id)
+        _discard_refused(db, plan.plan_id)
         raise FolderError(f"The person did not choose '{PLAN_APPROVE_LABEL}', so nothing "
                           "was changed.", 409)
     changes = run_steps(db, owner, plan.steps)
     if _fingerprint(changes) != _fingerprint(plan.changes):
-        discard_plan(plan.plan_id)
+        _discard_refused(db, plan.plan_id)
         raise FolderError("Your documents changed after this plan was shown, so none of it "
                           "was applied. Propose it again to see what it would do now.", 409)
-    discard_plan(plan.plan_id)
+    # `B1018`: consumed in the caller's transaction, with the changes it made.
+    discard_plan(plan.plan_id, db)
     # The same changes in the same order (the fingerprint says so); what the
     # plan's card gave as each one's reason — a tidy's "empty", "a duplicate"
     # — is said again on the card that reports them done.

@@ -130,6 +130,9 @@ async function _syncLibrary(options = {}) {
             sourceCount: item.source_count || existing.sourceCount || 0,
             thumbnail: item.thumbnail || existing.thumbnail || '',
             category: item.category || existing.category || '',
+            // `B1188`: the run's own reason (`BRAIN-M-6`), so a card drawn
+            // from the Library after a reload says why it found nothing.
+            stopped: item.stopped || existing.stopped || '',
             _fromLibrary: true,
           };
           for (const [key, value] of Object.entries(updates)) {
@@ -148,6 +151,7 @@ async function _syncLibrary(options = {}) {
           sourceCount: item.source_count || 0,
           thumbnail: item.thumbnail || '',
           category: item.category || '',
+          stopped: item.stopped || '',   // `B1188`
           errorMsg: null, avgDuration: null, modelName: null,
           settings: { max_rounds: item.rounds || 8 },
           _es: null, _timerInterval: null, _fromLibrary: true,

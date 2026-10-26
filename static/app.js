@@ -42,6 +42,7 @@ import settingsModule from './js/settings.js?v=20261009census';
 import * as WindowManager from './js/modalManager.js?v=20261009census';
 // `P23-01`. One back stack: Back = Escape = `←`, the URL names the top window.
 import backStack from './js/backStack.js';
+import { printHtmlInFrame } from './js/printFrame.js';   // `B1320`, `B1333`
 // `D-2026-10-09-01` §4. The phone's turn controls: the chip that replaces the
 // dropped Agent/Chat toggle on a narrow bar, and the sheet behind it.
 import { initTurnSheet } from './js/turnSheet.js';
@@ -661,35 +662,9 @@ function initializeEventListeners() {
   async function _printWholeChat(sessionName) {
     const html = await _fetchWholeChat('html');
     if (!html) return false;
-    document.getElementById('export-print-frame')?.remove();
-    const frame = document.createElement('iframe');
-    frame.id = 'export-print-frame';
-    frame.title = sessionName;
-    frame.setAttribute('aria-hidden', 'true');
-    // Off-screen rather than display:none — a frame with no box does not lay
-    // out, and a frame that has not laid out prints blank.
-    frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:816px;height:1056px;border:0;';
-    document.body.appendChild(frame);
-    const doc = frame.contentDocument;
-    if (!doc) { frame.remove(); return false; }
-    doc.open();
-    doc.write(html);
-    doc.close();
-    const win = frame.contentWindow;
-    const done = () => frame.remove();
-    try {
-      win.addEventListener('afterprint', done, { once: true });
-      win.focus();
-      win.print();
-    } catch (err) {
-      console.warn('Printing the chat failed:', err);
-      frame.remove();
-      return false;
-    }
-    // Headless browsers and some print paths never fire `afterprint`; the
-    // frame must not be left in the page either way.
-    setTimeout(done, 60000);
-    return true;
+    // `B1333`: the frame is `printFrame.js`' — a document's *Print as PDF*
+    // prints through the same one.
+    return printHtmlInFrame(html, { id: 'export-print-frame', title: sessionName });
   }
 
   // Export: PDF

@@ -17,6 +17,7 @@ from core.models import ChatMessage
 from src.chat_helpers import extract_urls, vision_answer
 from src.document_processor import build_user_content, analyze_image_with_vl_result
 from src.file_names import upload_display_name  # `P21-03`
+from src.upload_handler import upload_kind  # `B404`
 from src.youtube_handler import (
     is_youtube_url,
     extract_youtube_id,
@@ -196,6 +197,10 @@ class ChatHandler:
                         "created_at": fi.get("created_at") or fi.get("uploaded_at"),
                         "width": fi.get("width"),
                         "height": fi.get("height"),
+                        # `B404`: what the file is, recorded at save, saved with
+                        # the message — so the chip opens a history attachment
+                        # as a document without asking the server again.
+                        "kind": upload_kind(fi),
                     })
 
         # Analyze images only when attachment preprocessing is actually

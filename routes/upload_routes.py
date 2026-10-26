@@ -6,6 +6,9 @@ import json
 import asyncio
 import shutil
 import uuid
+import hashlib
+import threading
+from collections import OrderedDict
 from pathlib import Path
 from fastapi import APIRouter, Request, File, UploadFile, HTTPException, Form
 from typing import List, Optional
@@ -47,7 +50,9 @@ from src.upload_limits import (
 from src import svg_runtime
 # `B232`: what the product can make of an uploaded file is one question with
 # one answer, and this route is one of the three doors that has to carry it.
-from src.document_processor import INGEST_KIND_BINARY, ingest_kind
+# `B404`: answered once, at save, and read off the upload's row
+# (`upload_kind`); the probe is for a row saved before that (`probe_upload_kind`).
+from src.upload_handler import probe_upload_kind, upload_kind
 from src.svg_runtime import (
     MAX_PREVIEW_SVG_BYTES,
     SVG_REFUSAL_HEADER,
@@ -68,18 +73,52 @@ UPLOAD_RESPONSE_HEADERS = {"X-Content-Type-Options": "nosniff"}
 UPLOAD_KIND_HEADER = "X-Upload-Kind"
 
 
-def _upload_kind(path: str, name: str) -> str:
-    """``ingest_kind`` with the I/O failure folded in.
+# `B403`. The SVG preview gate's verdict, remembered per file version.
+#
+# The raster arm of `download_file` writes a thumbnail into `.thumbs/` once and
+# serves it until the source is newer; the SVG arm read the file and ran the
+# whole gate on **every** request — measured at 0.125 s for a 5 MiB export that
+# passes and 0.545 s when `B300`'s tokenizer has to re-judge it, per request,
+# per viewer, and a chip is re-requested on message renders. A refusal was the
+# worst case by construction: it is `no-store` to the browser, so a refused
+# 8 MiB file was re-scanned on every paint.
+#
+# The verdict is a pure function of the bytes, so this caches the verdict —
+# a slug or `None`, a few bytes — not the bytes: the pass arm still has to send
+# the file, and the read is not the expensive part (a SHA-256 of 5 MiB is about
+# 10 ms against the gate's 125-545). Two keys: the bytes' digest, which is the
+# only key a pass is ever read from — so a rewrite, whatever its timestamp,
+# cannot inherit one — and the file's version as the filesystem names it
+# (`realpath`, inode, size, `st_mtime_ns`), which a refusal is also kept under
+# so a refused file is answered without being read. Process memory, bounded: a
+# restart judges each file once more, and nothing on disk can claim a verdict
+# the gate did not give (`Law 17`: the adversary here is the hostile document,
+# and it cannot write this map).
+_SVG_VERDICT_MAX = 512
+_svg_verdicts: "OrderedDict[tuple, Optional[str]]" = OrderedDict()
+_svg_verdicts_lock = threading.Lock()
 
-    A probe that cannot open the file answers ``binary`` — the same thing
-    ``looks_like_text`` does with an unreadable path — rather than raising into
-    a route whose job is to serve bytes.
-    """
-    try:
-        return ingest_kind(path, name)
-    except Exception as exc:
-        logger.warning("ingest kind probe failed for %s: %s", path, exc)
-        return INGEST_KIND_BINARY
+
+def _svg_version_key(path: str, st) -> tuple:
+    return (os.path.realpath(path), st.st_ino, st.st_size, st.st_mtime_ns)
+
+
+def _svg_cached_verdict(key: tuple):
+    """``(True, reason)`` for a version already judged, ``(False, None)``."""
+    with _svg_verdicts_lock:
+        if key in _svg_verdicts:
+            _svg_verdicts.move_to_end(key)
+            return True, _svg_verdicts[key]
+    return False, None
+
+
+def _svg_remember_verdict(key: tuple, reason: Optional[str]) -> None:
+    with _svg_verdicts_lock:
+        _svg_verdicts[key] = reason
+        _svg_verdicts.move_to_end(key)
+        while len(_svg_verdicts) > _SVG_VERDICT_MAX:
+            _svg_verdicts.popitem(last=False)
+
 
 def _upload_ids_from_persisted_text(value: object) -> set[str]:
     """Return canonical upload IDs embedded in persisted text.
@@ -450,8 +489,8 @@ def setup_upload_routes(upload_handler):
                     # 38-extension regex of its own, in front of a backend that
                     # derives it. One field, three values, and the browser reads
                     # it instead of testing a name.
-                    "kind": _upload_kind(meta.get("path") or "",
-                                         meta.get("name") or ""),
+                    # `B404`: recorded by `save_upload`, not probed again.
+                    "kind": upload_kind(meta),
                 }
                 if gallery_id:
                     item["gallery_id"] = gallery_id
@@ -552,6 +591,36 @@ def setup_upload_routes(upload_handler):
             logger.error(f"Failed to get upload stats: {e}")
             raise HTTPException(500, "Failed to get upload statistics")
 
+    # `B401`. What the server would make of a file the browser has in hand and
+    # has not uploaded — the Library's import, which stores a document, not an
+    # upload, and so had no verdict: a binary the browser has no type for (a
+    # `.wpd`, a `.pages`, a renamed `.zip`) went through `FileReader.readAsText`
+    # and became a document of U+FFFD with "Imported 1 file". `B232` answered
+    # the same question on the composer path because there is an upload there.
+    # Here the first `TEXT_SNIFF_BYTES` are posted, written to a scratch file
+    # under the name they came with, and asked the one probe every other door
+    # asks (`probe_upload_kind` → `ingest_kind`) — so the browser never holds a
+    # copy of `looks_like_text` (`Law 14`). Nothing is kept. A refusal carries
+    # `unread_reason`, the phrase the chat's attachment note uses.
+    @router.post("/kind")
+    async def upload_kind_probe(request: Request, file: UploadFile = File(...)):
+        """``{kind, reason}`` for a file's name and first bytes; nothing stored."""
+        import tempfile
+        from src.document_processor import (
+            INGEST_KIND_BINARY, TEXT_SNIFF_BYTES, unread_reason,
+        )
+        effective_user(request)   # signed in: the middleware's gate, as every upload route
+        head = await file.read(TEXT_SNIFF_BYTES)
+        name = os.path.basename(str(file.filename or "")) or "file"
+        ext = os.path.splitext(name.lower())[1]
+        with tempfile.TemporaryDirectory(prefix="pantheon-kind-") as scratch:
+            probe_path = os.path.join(scratch, "probe" + (ext if len(ext) <= 16 else ""))
+            with open(probe_path, "wb") as fh:
+                fh.write(head)
+            kind = probe_upload_kind(probe_path, name)
+            reason = unread_reason(probe_path, ext) if kind == INGEST_KIND_BINARY else ""
+        return {"kind": kind, "reason": reason}
+
     def _svg_response(path: str, thumb: bool):
         """Serve an uploaded SVG: sanitised for a preview, intact for a download.
 
@@ -585,26 +654,50 @@ def setup_upload_routes(upload_handler):
                    "Content-Disposition": "attachment"}
         if not thumb:
             return FileResponse(path, media_type="image/svg+xml", headers=headers)
-        try:
-            with open(path, "rb") as fh:
-                content = fh.read(MAX_PREVIEW_SVG_BYTES + 1)
-        except OSError as e:
-            logger.warning(f"SVG preview read failed for {path}: {e}")
-            content = b""
+        # `B403`: a file already judged is not judged again (see
+        # `_svg_verdicts`). A remembered refusal is answered from the file's
+        # version (path, inode, size, mtime) without reading it at all —
+        # refusing is fail-closed whatever the bytes are now. A pass is only
+        # ever taken for the exact bytes about to be sent: those are read
+        # anyway, and their digest is the key, so no rewrite can inherit one.
+        # The gate is part of every key: a verdict is the gate's answer about
+        # the bytes, and a different gate (a test's, a reloaded module's) has
+        # given none yet.
         # Through the module, not a name bound at import time, so there is
         # demonstrably one gate in the process and this route reaches it.
-        reason = svg_runtime.svg_refusal_reason(
-            content, MAX_PREVIEW_SVG_BYTES, allow_data_images=True,
-            # `B300`. A hyperlink is not a beacon — nothing is fetched until a
-            # click, and inside an `<img>` there is no click — so a diagram
-            # whose boxes link to `https://` previews now. The widening is
-            # opt-in and only this caller takes it: the emoji route serves
-            # known-good line art and has nothing to gain (`B160`'s rule for
-            # `allow_data_images`, one row on).
-            allow_hyperlinks=True,
-        )
+        gate = svg_runtime.svg_refusal_reason
+        try:
+            version = (gate,) + _svg_version_key(path, os.stat(path))
+        except OSError:
+            version = None
+        known, reason = _svg_cached_verdict(version) if version else (False, None)
+        refused_before = known and reason is not None
+        if not refused_before:
+            try:
+                with open(path, "rb") as fh:
+                    content = fh.read(MAX_PREVIEW_SVG_BYTES + 1)
+            except OSError as e:
+                logger.warning(f"SVG preview read failed for {path}: {e}")
+                content = b""
+            digest = (gate, "sha256", hashlib.sha256(content).hexdigest())
+            known, reason = _svg_cached_verdict(digest)
+            if not known:
+                reason = gate(
+                    content, MAX_PREVIEW_SVG_BYTES, allow_data_images=True,
+                    # `B300`. A hyperlink is not a beacon — nothing is fetched
+                    # until a click, and inside an `<img>` there is no click —
+                    # so a diagram whose boxes link to `https://` previews now.
+                    # The widening is opt-in and only this caller takes it: the
+                    # emoji route serves known-good line art and has nothing to
+                    # gain (`B160`'s rule for `allow_data_images`, one row on).
+                    allow_hyperlinks=True,
+                )
+                _svg_remember_verdict(digest, reason)
+            if reason is not None and version is not None:
+                _svg_remember_verdict(version, reason)
         if reason is not None:
-            logger.info("SVG preview refused (%s): %s", reason, path)
+            if not refused_before:
+                logger.info("SVG preview refused (%s): %s", reason, path)
             return Response(
                 svg_runtime.refused_preview_svg(reason),
                 media_type="image/svg+xml",
@@ -761,7 +854,9 @@ def setup_upload_routes(upload_handler):
             filename=display,
             headers={**UPLOAD_RESPONSE_HEADERS,
                      "Content-Disposition": attachment_disposition(display),
-                     UPLOAD_KIND_HEADER: _upload_kind(path, original_name)},
+                     # `B404`: the row's recorded kind; a row from before
+                     # it was recorded is probed, as every row was.
+                     UPLOAD_KIND_HEADER: upload_kind(info, path, original_name)},
         )
 
     # `B1155` (f-import: the chat's HEAD for an upload's kind always got 405).

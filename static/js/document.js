@@ -23,6 +23,7 @@ import { topPortalZ } from './toolWindowZOrder.js';
 import { chevronIcon, playIcon } from './icons.js';
 
 import { scrollBehavior } from './motion.js';
+import { printHtmlInFrame } from './printFrame.js';   // `B1333`
   let API_BASE = '';
   let isOpen = false;
   let _hlDebounce = null;
@@ -3077,6 +3078,7 @@ import { scrollBehavior } from './motion.js';
     _setEmailHeaderInputValue('doc-email-references', fields.references, { preserveFocused: !forceHeaderFields, preserveNonEmpty: preserveEmailHeader && !forceHeaderFields });
     _setEmailHeaderInputValue('doc-email-source-uid', fields.sourceUid || '', { preserveFocused: !forceHeaderFields, preserveNonEmpty: preserveEmailHeader && !forceHeaderFields });
     _setEmailHeaderInputValue('doc-email-source-folder', fields.sourceFolder || '', { preserveFocused: !forceHeaderFields, preserveNonEmpty: preserveEmailHeader && !forceHeaderFields });
+    _syncEmailAiButton();   // `B1212`: *Reply* or *Draft*, from the In-Reply-To just set
     // Show/hide unread button only if we have a source UID (came from inbox)
     const unreadBtn = document.getElementById('doc-email-unread-btn');
     if (unreadBtn) unreadBtn.style.display = fields.sourceUid ? '' : 'none';
@@ -4418,6 +4420,22 @@ import { scrollBehavior } from './motion.js';
     });
   }
 
+  /**
+   * `B1212`. The email toolbar's AI button says what it will do: *Reply* on a
+   * mail that answers one (it carries `In-Reply-To`), *Draft* on a new one.
+   * It said *Reply* on every compose — a mail that replies to nothing — both
+   * as drawn and as put back after a draft. Called when the mail's fields are
+   * shown and when a draft finishes, the two places the label is written.
+   */
+  function _syncEmailAiButton(btn = document.getElementById('doc-email-ai-reply-btn')) {
+    if (!btn) return;
+    const replying = !!(document.getElementById('doc-email-in-reply-to')?.value || '').trim();
+    btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="color:var(--accent, var(--red));flex-shrink:0;position:relative;top:-1px;"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>'
+      + `<span style="font-size:11px;">${replying ? 'Reply' : 'Draft'}</span>`;
+    btn.title = replying ? 'Draft a reply with AI (fast + optional context)'
+      : 'Draft this mail with AI (fast + optional context)';
+  }
+
   async function _aiReply(opts = {}) {
     const { mode = 'auto', noteHint = '', contextKey = '' } = (opts || {});
     const to = document.getElementById('doc-email-to')?.value?.trim() || '';
@@ -4511,7 +4529,7 @@ import { scrollBehavior } from './motion.js';
     } catch (e) {
       if (uiModule) uiModule.showError('Failed to generate AI reply');
     } finally {
-      if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="color:var(--accent, var(--red));flex-shrink:0;position:relative;top:-1px;"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg><span style="font-size:11px;margin-left:4px;">Reply</span>'; }
+      if (btn) { btn.disabled = false; _syncEmailAiButton(btn); }   // `B1212`
     }
   }
 
@@ -4968,7 +4986,12 @@ import { scrollBehavior } from './motion.js';
     const titleInput = document.getElementById('doc-title-input');
     const langSelect = document.getElementById('doc-language-select');
     if (titleInput) doc.title = titleInput.value;
-    if (langSelect) doc.language = langSelect.value;
+    // `B1233`: the picker shows `''` for a language it has no option for, and
+    // copying that back made the document's language empty — which every
+    // `(doc.language || 'markdown')` then read as markdown (the toolbar, the
+    // preview). `text` has its option now; a language the picker still lacks
+    // keeps the one it has rather than becoming markdown by accident.
+    if (langSelect && langSelect.value) doc.language = langSelect.value;
     // For email docs, reconstruct full content with header
     if (doc.language === 'email' && textarea) {
       const to = document.getElementById('doc-email-to')?.value || '';
@@ -5132,6 +5155,7 @@ import { scrollBehavior } from './motion.js';
           <option value="html">html</option>
           <option value="css">css</option>
           <option value="markdown">markdown</option>
+          <option value="text">text</option>
           <option value="json">json</option>
           <option value="yaml">yaml</option>
           <option value="bash">bash</option>
@@ -9881,21 +9905,32 @@ import { scrollBehavior } from './motion.js';
     const close = bindMenuDismiss(menu, () => { menu.remove(); });
   }
 
+  /** The body a document exports as: markdown rendered, anything else as
+   *  preformatted text. `B1333`: the HTML item and the PDF item read this. */
+  function _exportBodyHtml() {
+    const textarea = document.getElementById('doc-editor-textarea');
+    const lang = document.getElementById('doc-language-select')?.value || '';
+    const text = (textarea && textarea.value) || '';
+    if (lang === 'markdown' && markdownModule?.mdToHtml) {
+      return markdownModule.mdToHtml(text, { shortcodes: false }); // export: keep :shortcodes: literal
+    }
+    return '<pre style="white-space:pre-wrap;font-size:12px;font-family:monospace;">' +
+      text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>';
+  }
+
+  /** `B1333`. The one standalone HTML document a document exports as — *Export
+   *  HTML* saves it, *Print as PDF* prints it (`Law 7`). `head` is extra markup
+   *  for the print (KaTeX's sheet when a formula was typeset). */
+  function _exportHtmlDocument(body, { head = '' } = {}) {
+    const title = docs.get(activeDocId)?.title || 'document';
+    return `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>${title.replace(/</g,'&lt;')}</title>${head}</head><body style="max-width:800px;margin:40px auto;font-family:sans-serif;line-height:1.6;padding:0 20px;">\n${body}\n</body></html>`;
+  }
+
   function exportAsHtml() {
     if (!activeDocId) return;
     const textarea = document.getElementById('doc-editor-textarea');
     if (!textarea) return;
-    const lang = document.getElementById('doc-language-select')?.value || '';
-    const text = textarea.value || '';
-    let body;
-    if (lang === 'markdown' && markdownModule?.mdToHtml) {
-      body = markdownModule.mdToHtml(text, { shortcodes: false }); // export: keep :shortcodes: literal
-    } else {
-      body = '<pre style="white-space:pre-wrap;font-size:12px;font-family:monospace;">' +
-        text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>';
-    }
-    const title = docs.get(activeDocId)?.title || 'document';
-    const html = `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>${title.replace(/</g,'&lt;')}</title></head><body style="max-width:800px;margin:40px auto;font-family:sans-serif;line-height:1.6;padding:0 20px;">\n${body}\n</body></html>`;
+    const html = _exportHtmlDocument(_exportBodyHtml());
     const blob = new Blob([html], { type: 'text/html' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -9905,8 +9940,42 @@ import { scrollBehavior } from './motion.js';
     if (uiModule) uiModule.showToast('Exported as HTML');
   }
 
+  /**
+   * `B1333`. *Print as PDF* prints the document, not a picture of it.
+   *
+   * Measured in Chromium (fx6-export, after `B1322`): this rendered through
+   * html2canvas at `scale: 2` and embedded JPEG tiles, so the text could not be
+   * selected, searched or read by a screen reader, and the file was large —
+   * 2.0 MB for 120 lines, 6.8 MB for 400, 6-8 s each. The chat's PDF item has
+   * printed a self-contained HTML document in a frame since `B1320`; this is
+   * the same frame (`printFrame.js`) printing the standalone HTML *Export HTML*
+   * builds (`_exportHtmlDocument`, one builder), with math typeset first as the
+   * raster path did. A picture prints in the frame like the text (it is waited
+   * for), so nothing needs flattening; the raster is kept for a browser where
+   * the frame cannot print (`_rasterisePdf`), which still hands over a file.
+   */
   async function exportAsPdf() {
     if (!activeDocId) return;
+    const textarea = document.getElementById('doc-editor-textarea');
+    if (!textarea) return;
+    const container = document.createElement('div');
+    container.innerHTML = _exportBodyHtml();
+    // `renderMath` typesets the formulas `mdToHtml` left pending; the frame
+    // needs KaTeX's sheet for them, and only then.
+    await markdownModule.renderMath(container);
+    const head = container.querySelector('.katex')
+      ? '<link rel="stylesheet" href="/static/lib/katex/katex.min.css">' : '';
+    const page = _exportHtmlDocument(container.innerHTML, {
+      head: head + '<style>@page{margin:14mm}@media print{body{margin:0 auto!important}'
+        + '.code-block-header button,.copy-btn{display:none!important}}</style>',
+    });
+    if (await printHtmlInFrame(page, { id: 'doc-print-frame', title: _getExportBaseName() })) return;
+    await _rasterisePdf();
+  }
+
+  /** The raster PDF — html2canvas tiles in a jsPDF — for a browser whose frame
+   *  cannot print (`B1333`). It was the only PDF path until then. */
+  async function _rasterisePdf() {
     const textarea = document.getElementById('doc-editor-textarea');
     if (!textarea) return;
     try {
@@ -10016,7 +10085,15 @@ import { scrollBehavior } from './motion.js';
       if (uiModule) uiModule.showError('Failed to load DOCX library');
       return;
     }
-    const text = textarea.value || '';
+    // `B422`: XML 1.0 forbids the C0 controls other than tab, LF and CR (and
+    // U+FFFE/U+FFFF) outright — they cannot be escaped, only removed — and
+    // `docx` escapes only `& < >`, so one vertical tab pasted from a PDF or a
+    // terminal made a `word/document.xml` that does not parse (Word: corrupt
+    // file), at docx 8.5.0 and 9.7.1 alike. A vertical tab or form feed is a
+    // line break where it came from, so it becomes one; the rest go.
+    const text = (textarea.value || '')
+      .replace(/[\u000B\u000C]/g, '\n')
+      .replace(/[\u0000-\u0008\u000E-\u001F\uFFFE\uFFFF]/g, '');
     const { Document, Packer, Paragraph, TextRun, HeadingLevel } = window.docx;
     // Parse text into paragraphs, handle markdown headings
     const paragraphs = text.split('\n').map(line => {

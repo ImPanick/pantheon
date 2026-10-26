@@ -686,6 +686,35 @@ class DocumentFolder(TimestampMixin, Base):
     )
 
 
+class DocumentPlan(Base):
+    """`B1018` — a document reorganisation waiting for its person's answer.
+
+    `src/document_folders.py` held these in a process dict, so a restart forgot
+    every waiting plan. For the agent's 30-minute plans `P21-02` judged that
+    acceptable; `B1006`'s scheduled Documents Tidy proposal waits seven days
+    for a person who may not open Pantheon for most of them, and after a
+    restart its Review said *"That tidy is no longer waiting"* and nothing
+    re-offered it until five more documents arrived. One row per waiting plan;
+    a new table only, so `init_db`'s `create_all` is the whole migration.
+
+    ``steps`` and ``changes`` are the plan as it was shown (JSON lists) — the
+    seal `apply_plan` compares against; ``review`` is what a notification shows
+    for a plan nobody asked for in a chat (JSON, or NULL for the agent's).
+    ``created_at`` is when it was made (the person's answer must come after);
+    ``expires_at`` is wall-clock UTC, as a plan now outlives the process.
+    """
+    __tablename__ = "document_plans"
+
+    id         = Column(String, primary_key=True, index=True)
+    owner      = Column(String, nullable=True, index=True)
+    session_id = Column(String, nullable=False, index=True)
+    steps      = Column(Text, nullable=False, default="[]")
+    changes    = Column(Text, nullable=False, default="[]")
+    review     = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utcnow_naive)
+    expires_at = Column(DateTime, nullable=False, index=True)
+
+
 class GalleryAlbum(TimestampMixin, Base):
     """A photo album/folder."""
     __tablename__ = "gallery_albums"

@@ -215,7 +215,10 @@ async function _updateResearchCount() {
 }
 
 const _searchIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>';
-const _closeIcon = chevronIcon({ size: 18 });
+// `B397`: an 18px `_closeIcon` chevron sat here, declared and never drawn —
+// unreferenced since the fork (`e5c99a5e`), where it was already a literal
+// nobody used. The panel's close is `#research-panel-close`'s ✖, so no control
+// was waiting for it; it is gone rather than wired.
 const _playIcon = playIcon({ size: 14 });
 const _cancelIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 const _trashIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>';
@@ -695,6 +698,24 @@ function _populateModels(endpointId) {
 
 // ── Job rendering ──
 
+/**
+ * `B1274`. Deep Research's three Library links — *Library → Research* over the
+ * Past section and the two no-past hints — in one place. Each called
+ * `closePanel()` before `openLibrary(..., from: 'research-overlay')`, so when
+ * the Library came up its opener was no longer open and the back stack drops
+ * an opener that is not on screen (`backStack._readPage`): measured, the
+ * Library opened on Research with no `← Research`, and closing it landed on
+ * the chat. Research stays open and the Library opens over it — it is the
+ * later window and the top one at every width, measured at 1400px and at
+ * 390px, where the old comment said it stacked under the full-screen sheet —
+ * so `← Research` (or closing the Library) comes back here.
+ */
+function _openLibraryOnResearch() {
+  if (window.documentModule && window.documentModule.openLibrary) {
+    window.documentModule.openLibrary({ tab: 'research', from: 'research-overlay' });   // `P23-01`
+  }
+}
+
 function _renderJobs() {
   // Keep the rail/sidebar indicator in sync on every job-state change,
   // even when the panel is closed (no container yet).
@@ -716,10 +737,7 @@ function _renderJobs() {
         noPastHint.dataset._wired = '1';
         noPastHint.querySelector('.research-library-link')?.addEventListener('click', (e) => {
           e.stopPropagation();
-          closePanel();
-          if (window.documentModule && window.documentModule.openLibrary) {
-            window.documentModule.openLibrary({ tab: 'research', from: 'research-overlay' });   // `P23-01`
-          }
+          _openLibraryOnResearch();
         });
       }
     }
@@ -764,10 +782,7 @@ function _renderJobs() {
       noPastHint.dataset._wired = '1';
       noPastHint.querySelector('.research-library-link')?.addEventListener('click', (e) => {
         e.stopPropagation();
-        closePanel();
-        if (window.documentModule && window.documentModule.openLibrary) {
-          window.documentModule.openLibrary({ tab: 'research', from: 'research-overlay' });   // `P23-01`
-        }
+        _openLibraryOnResearch();
       });
     }
   }
@@ -826,12 +841,7 @@ function _renderJobs() {
       hint.innerHTML = '<span>Past reports:</span> <button type="button" class="research-library-link">Library → Research</button>';
       hint.querySelector('.research-library-link').addEventListener('click', (e) => {
         e.stopPropagation();
-        // Close the research panel first so the Library opens ABOVE it on mobile
-        // (otherwise it stacks under the full-screen panel).
-        closePanel();
-        if (window.documentModule && window.documentModule.openLibrary) {
-          window.documentModule.openLibrary({ tab: 'research', from: 'research-overlay' });   // `P23-01`
-        }
+        _openLibraryOnResearch();
       });
       header.appendChild(hint);
     }
