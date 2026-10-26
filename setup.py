@@ -128,8 +128,12 @@ def create_default_admin():
                 }
             }
         }
-        with open(auth_path, "w", encoding="utf-8") as f:
-            json.dump(auth_data, f, indent=2)
+        # `B1017`. Atomic: a crash mid-write used to leave a half-written
+        # auth.json that the check above then skipped forever ("already
+        # exists") and the app could not read. Now the file is whole or absent,
+        # and an absent one is created on the next run.
+        from core.atomic_io import atomic_write_json
+        atomic_write_json(auth_path, auth_data, indent=2, preserve_unreadable=True)
 
         if sys.stdin.isatty() and not os.getenv("PANTHEON_ADMIN_PASSWORD"):
             print(f"  [ok] Admin account created ({username})")

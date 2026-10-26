@@ -2956,8 +2956,13 @@ def _migrate_assign_legacy_owner():
                     if key in prefs
                 }
                 new_prefs["_users"] = {admin_user: named_prefs}
-                with open(prefs_path, "w", encoding="utf-8") as f:
-                    _json.dump(new_prefs, f, indent=2)
+                # `B1017`. Atomic, like the store's own writer
+                # (`routes/prefs_routes.py`): this file holds every user's
+                # preferences, and a plain `open(…, "w")` that died mid-dump
+                # left it truncated. The read above has already raised on a bad
+                # file, and `preserve_unreadable` re-checks at the write.
+                from core.atomic_io import atomic_write_json
+                atomic_write_json(prefs_path, new_prefs, indent=2, preserve_unreadable=True)
                 logger.info(f"Migrated user_prefs.json to per-user format under '{admin_user}'")
     except Exception as e:
         logger.warning(f"user_prefs.json migration failed: {e}")
