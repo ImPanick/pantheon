@@ -851,6 +851,14 @@ When referencing app entities by id, use clickable markdown anchors:
 """
 
 _DOMAIN_RULES = {
+    # `B1389`. One tool per rule line. `prune_rules_to_available_tools` drops a
+    # line only when it names no tool the turn has, so a line naming a pair —
+    # *"use `web_search` or `web_fetch`"*, *"Prefer `grep`, `glob`, and
+    # `ls`"* — survived on a workflow step limited to one of them and told it
+    # about the other (`B1304`'s defect where its filter cannot reach). Split
+    # the way the Forge block's `serve_preset`/`serve_model` lines already
+    # were; the census in `tests/test_a_first_message_is_not_a_lesser_message.py`
+    # is at 0.
     # `B1304`. The "Research X" sentence moved out of this block and into
     # `_TOOL_GATED_RULE_LINES` below, where it ships only on a turn that can
     # actually call `trigger_research`. It sat here, on a block gated by
@@ -859,13 +867,15 @@ _DOMAIN_RULES = {
     # defect the owner's export records.
     "web": """\
 ## Web rules
-- For web lookup/search/latest/current requests, use `web_search` or `web_fetch`.
+- For web lookup/search/latest/current requests, use `web_search`.
+- To read a page at an address you already have, use `web_fetch`.
 - Do not use shell, Python, curl, requests, or scraping code for web lookup unless web tools are unavailable or already failed.""",
     "documents": """\
 ## Document rules
 - For long code/content (>15 lines), use `create_document` instead of pasting into chat.
 - If an active document is open, "fix this", "add X", "change Y", etc. usually refers to that document.
-- Use `edit_document` for targeted changes. Use `update_document` only for genuine full rewrites.
+- Use `edit_document` for targeted changes.
+- Use `update_document` only for genuine full rewrites.
 - For feedback/review/suggestions on an open document, use `suggest_document`.
 - To suggest an ADDITION rather than a change, set the suggestion's find to a short existing anchor snippet and its replace to that same snippet plus the new content.""",
     "email": """\
@@ -879,7 +889,8 @@ _DOMAIN_RULES = {
     "cookbook": """\
 ## Forge/model-serving rules
 - Forge is the LLM-serving subsystem.
-- "What's running/serving" starts with `list_served_models`. "What's downloading" uses `list_downloads`.
+- "What's running/serving" starts with `list_served_models`.
+- "What's downloading" uses `list_downloads`.
 - Check `list_serve_presets` for a preset before launching a known model.
 - Launch anything the presets do not cover with `serve_model`.
 - Downloads/serves run on a Forge server; pass the named `host` when the user names one.
@@ -899,13 +910,18 @@ _DOMAIN_RULES = {
 - Tool toggles like "turn off shell/search/research" use `ui_control toggle <name> <on|off>`, not memory.""",
     "sessions": """\
 ## Chat/session rules
-- Pantheon chats are sessions. Use `list_sessions`/`manage_session`; do not shell out looking for chat files.
+- Pantheon chats are sessions; do not shell out looking for chat files.
+- Find and list chats with `list_sessions`.
+- Rename, archive, fork, open or delete chats with `manage_session`.
 - Preserve clickable session links from tool output in your final answer.""",
     "files": """\
 ## File rules
 - Use file tools for real disk files. Use document tools only for editor documents.
-- Prefer `grep`, `glob`, and `ls` over shell equivalents when available.
-- Use `edit_file`/`write_file` for writes; avoid shell redirection/heredocs for editing files.""",
+- Prefer `grep` over shell equivalents for searching file contents.
+- Prefer `glob` over shell equivalents for finding files by name.
+- Prefer `ls` over shell equivalents for listing a folder.
+- Use `edit_file` to change an existing file; avoid shell redirection/heredocs for editing files.
+- Use `write_file` to create a file; avoid shell redirection/heredocs for writes.""",
     "settings": """\
 ## Settings/API rules
 - Use `manage_settings` for preferences and tool enable/disable.
@@ -1562,7 +1578,12 @@ Generate an image. Line 1 = description, line 2 = model name, line 3 = WxH (e.g.
     "chat_with_model": "- ```chat_with_model``` — Ask a DIFFERENT AI model and relay its answer. Line 1 = model name (or 'model@endpoint'), rest = your message. Use when the user says 'ask <model>', 'what does <model> think', or wants to compare/their answer from another model.",
     "ask_teacher": "- ```ask_teacher``` — Escalate a hard question to a more capable model. Line 1 = model name or 'auto', rest = the question. Use when stuck or need expert knowledge.",
     "list_models": "- ```list_models``` — Show all available AI models across all endpoints. Use when user asks what models are available.",
-    "manage_session": "- ```manage_session``` — Rename, archive, delete, fork, switch, or `list` chats (the UI calls them 'chats'; 'session' is internal). Line 1 = action (list/switch/rename/archive/unarchive/delete/important/unimportant/truncate/fork), Line 2 = exact chat id from `list_sessions` (or `current` where supported). For delete/archive/truncate, always list first and reuse the exact id; never invent placeholder ids. `switch`/`open` returns a clickable anchor link the user can tap to open the chat — use for \"open my X chat\".",
+    # `B1389`. A sibling named inside a one-line section goes on its own
+    # continuation line (as `tail_serve_output`'s `serve_model` line already
+    # did), so the per-line pruner can drop it on a turn without the sibling:
+    # here `list_sessions`, and `list_served_models` in `serve_model` and
+    # `tail_serve_output` below.
+    "manage_session": "- ```manage_session``` — Rename, archive, delete, fork, switch, or `list` chats (the UI calls them 'chats'; 'session' is internal). Line 1 = action (list/switch/rename/archive/unarchive/delete/important/unimportant/truncate/fork), Line 2 = exact chat id from a `list` result (or `current` where supported). For delete/archive/truncate, always list first and reuse the exact id; never invent placeholder ids. `switch`/`open` returns a clickable anchor link the user can tap to open the chat — use for \"open my X chat\".\n  `list_sessions` returns the same chat ids, most recent first.",
     "manage_memory": "- ```manage_memory``` — Manage the user's persistent memory (facts about the USER themselves, their preferences, context that persists across chats). Line 1 = action (list/add/edit/delete/search), rest = content. Use when user says 'remember this' about themselves, states identity facts like 'my name is <name>' / 'call me <name>' / 'I live in <place>', or asks about stored memories. DO NOT use for info about another person (their address, phone, email, birthday).\n  Info about another person goes in `manage_contact`: if the user pastes an address/phone with a name and says 'save this for <person>', use `manage_contact add` with the address arg, NOT manage_memory.",
     "manage_skills": "- ```manage_skills``` — Skill registry (SKILL.md format). Args (JSON): {\"action\": \"list|view|view_ref|search|add|edit|patch|publish|delete\", ...}. `list` returns the index of available skills (published + teacher-escalation drafts); `view name=foo` fetches the full SKILL.md; `view_ref name=foo path=...` loads a reference file under the skill directory. For `add`, provide an explicit kebab-case `name` and only report the exact returned name, because storage may normalize or dedupe it. Use this BEFORE doing domain work — there may already be a procedure (published or draft) that prescribes the correct steps. Drafts written by the teacher loop are authoritative guidance even though they're not yet published.",
     "manage_tasks": "- ```manage_tasks``` — Create and manage scheduled background tasks (recurring AI jobs). Args (JSON): {\"action\": \"list|create|edit|delete|pause|resume|run|dry_run|draft_workflow\", ...}. For steps that run one after another, draft_workflow with {\"description\": \"<the user's words>\"} drafts a workflow, switched off, that a person checks in the Workbench.",
@@ -1637,9 +1658,9 @@ If the user asks for a reminder/alarm before the event, pass `reminder_minutes` 
     "update_plan": "- ```update_plan``` — While executing an approved plan, write the plan back: tick steps done or revise them. Args (JSON): {\"plan\": \"- [x] done step\\n- [ ] next step\"}. Always pass the COMPLETE checklist, not a diff. Call it after finishing each step (mark it `- [x]`) and whenever the user asks to change the plan. The user's docked plan window updates live. Does nothing if there's no active plan. Writing the plan is not doing the work: after this call, take the next unchecked step in the same turn.",
     "list_served_models": "- ```list_served_models``` — Show what the Forge (LLM-serving subsystem) is currently running. NO args. Use this for ANY 'what's running' / 'what's serving' / 'show my cookbook' / 'is anything up' query. DO NOT shell out (`ps aux`, `docker ps`, etc.) — this tool is the source of truth. Failed serve tasks include recent logs plus diagnosis/retry suggestions.\n  Use those suggestions to call `serve_model` again with an adjusted command when appropriate.",
     "stop_served_model": "- ```stop_served_model``` — Stop a running model server. Args (JSON): {\"session_id\": \"<from list_served_models>\"}. Use for 'kill my cookbook' / 'stop the model' / 'shut down vLLM'.",
-    "tail_serve_output": "- ```tail_serve_output``` — Read the actual tmux stderr/traceback of a CURRENTLY failing cookbook task. Args (JSON): {\"session_id\": \"<from list_served_models>\", \"tail\": 150?}. **Use ONLY after** a launch you just made AND `list_served_models` reports YOUR new task as `crashed`/`error`.\n  The launch is the one you made with `serve_model`. DO NOT use it on old stopped/completed download tasks (they're historical noise — won't predict whether a new launch succeeds). DO NOT call it before launching a fresh attempt. When you do call it, bump `tail` to 400+ only if the visible error references 'see root cause above'.",
+    "tail_serve_output": "- ```tail_serve_output``` — Read the actual tmux stderr/traceback of a CURRENTLY failing cookbook task. Args (JSON): {\"session_id\": \"<from list_served_models>\", \"tail\": 150?}. **Use ONLY after** a launch you just made reports YOUR new task as `crashed`/`error`.\n  `list_served_models` is where that status shows.\n  The launch is the one you made with `serve_model`. DO NOT use it on old stopped/completed download tasks (they're historical noise — won't predict whether a new launch succeeds). DO NOT call it before launching a fresh attempt. When you do call it, bump `tail` to 400+ only if the visible error references 'see root cause above'.",
     "download_model": "- ```download_model``` — Download a HuggingFace model. Args (JSON): {\"repo_id\": \"Qwen/Qwen3-8B\", \"host\": \"user@gpu-box\"?, \"include\": \"*Q4_K_M*\"?}.",
-    "serve_model": "- ```serve_model``` — Start serving a model with vLLM / SGLang / llama.cpp / Ollama / MLX Image / Diffusers. Args (JSON): {\"repo_id\": \"...\", \"cmd\"? (omit to launch by name: a saved preset, else a planned first command): \"vllm serve <repo> --port 8000\" or \"python3 -m sglang.launch_server --model-path <repo> --port 30000\" or \"python3 scripts/mlx_image_server.py --model <repo> --port 8100\" or \"python3 scripts/diffusion_server.py --model <repo> --port 8100\", \"host\": \"user@gpu-box\"?}. For MLX image models, use `scripts/mlx_image_server.py`; for non-MLX image/inpaint/diffusion models, use `scripts/diffusion_server.py`. Never use `mlx_lm.server` for image models. After launch, call `list_served_models`; if it returns a diagnosis with an adjusted command, retry with that command.",
+    "serve_model": "- ```serve_model``` — Start serving a model with vLLM / SGLang / llama.cpp / Ollama / MLX Image / Diffusers. Args (JSON): {\"repo_id\": \"...\", \"cmd\"? (omit to launch by name: a saved preset, else a planned first command): \"vllm serve <repo> --port 8000\" or \"python3 -m sglang.launch_server --model-path <repo> --port 30000\" or \"python3 scripts/mlx_image_server.py --model <repo> --port 8100\" or \"python3 scripts/diffusion_server.py --model <repo> --port 8100\", \"host\": \"user@gpu-box\"?}. For MLX image models, use `scripts/mlx_image_server.py`; for non-MLX image/inpaint/diffusion models, use `scripts/diffusion_server.py`. Never use `mlx_lm.server` for image models.\n  After launch, call `list_served_models`; if it returns a diagnosis with an adjusted command, retry with that command.",
     "list_downloads": "- ```list_downloads``` — Show in-progress HuggingFace model downloads (filters Forge tasks/status to downloads only). NO args. Use for 'what's downloading' / 'show my downloads' / 'check download progress'.",
     "cancel_download": "- ```cancel_download``` — Cancel an in-progress download. Args (JSON): {\"session_id\": \"<from list_downloads>\"}. Use for 'cancel the download' / 'kill the download'.",
     "search_hf_models": "- ```search_hf_models``` — Search HuggingFace for models. Args (JSON): {\"query\": \"qwen 8b\", \"limit\": 10?}. Use for 'find a model for X' / 'search huggingface' / 'what models are there for Y'.",

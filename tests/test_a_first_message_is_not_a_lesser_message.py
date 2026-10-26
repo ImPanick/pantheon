@@ -580,10 +580,32 @@ def test_no_one_tool_prompt_names_more_tools_than_it_used_to():
     product offers them together and no cell of the matrix sees it — and a list
     in prose was what let two non-siblings sit in the count unnoticed. This
     keeps the count as a second line of defence. **The bound only goes down.**
+
+    `B1389` took it to **0**: the seven sibling pairs split one tool per rule
+    line, and the four one-line sections that named a sibling
+    (`manage_session`, `serve_model`, `tail_serve_output`, `manage_bg_jobs`)
+    moved the name onto a continuation line the pruner can drop, or stopped
+    backticking it. A workflow step whose `allowed_tools` is `["glob"]` no
+    longer reads *"Prefer `grep`, `glob`, and `ls`"*.
     """
     gaps = _one_tool_prompt_census()
-    assert len(gaps) <= 27, [g for g in gaps if len(g[2]) > 1 or g[0] in (
-        "serve_model", "tail_serve_output", "manage_memory", "manage_research")]
+    assert gaps == [], gaps
+
+
+@pytest.mark.parametrize("only,sibling", [
+    ("glob", "grep"), ("grep", "glob"), ("web_search", "web_fetch"),
+    ("edit_file", "write_file"), ("list_sessions", "manage_session"),
+])
+def test_a_step_limited_to_one_sibling_is_not_told_about_the_other(monkeypatch, only, sibling):
+    """`B1389`, from the loop: a workflow AI step whose `allowed_tools` is one
+    of a sibling pair is offered exactly that tool and its prompt names it —
+    and not the other, which it cannot call."""
+    _base(monkeypatch, _mcp_manager())
+    sent = _drive(monkeypatch, message="do the step you were given",
+                  policy=ToolPolicy(allowed_tools=[only]), prompt_type="agent")
+    assert sent[0]["tools"] == [only]
+    named = set(BACKTICKED.findall(sent[0]["prompt"]))
+    assert sibling not in named, f"a step limited to {only} was told about {sibling}"
 
 
 def test_a_tool_a_gate_holds_is_still_not_offered(monkeypatch):

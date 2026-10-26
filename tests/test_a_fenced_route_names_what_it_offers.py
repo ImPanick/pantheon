@@ -116,8 +116,10 @@ def test_a_disabled_tool_gets_no_line_of_its_own():
 
     Asserted as *no usage line*, not as *the name appears nowhere*: the rule
     pruner's documented rule is per LINE — *"Prefer `grep`, `glob`, and `ls`
-    over shell equivalents when available"* survives on `grep` and `glob`, and
+    over shell equivalents when available"* survived on `grep` and `glob`, and
     rewriting prose is not something a filter can do honestly (`B1311`).
+    (`B1389` split that line one tool per line, so the pruner now drops the
+    `ls` half; the assertion below is still the one this row controls.)
     What this row controls is whether the tool is advertised as callable.
     """
     prompt = al._assemble_prompt(set(_register_names()), {"host_shell", "ls"},
