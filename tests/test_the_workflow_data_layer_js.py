@@ -543,7 +543,9 @@ def test_the_dry_run_is_of_the_saved_document_one_plan_per_step(box):
     assert o["head"] == "__start__" and o["partial"] is False
     assert [k for k, _ in o["plans"]] == ["__start__", "n1", "n2"]
     assert o["plans"][0][1]["steps"][0]["detail"] == "Would start: Every day at 08:00."
-    assert o["plans"][2][1] == {"steps": [], "declined": "It is paused.", "when": "success", "depth": 1}
+    # `B1066`: and the step's dry-run verdict (`dry`), none for a Prompt step.
+    assert o["plans"][2][1] == {"steps": [], "declined": "It is paused.", "when": "success", "depth": 1,
+                                "dry": None}
     assert o["cleanSays"] == ""
     assert o["dirtySays"] == "This is the plan for the workflow as saved: your unsaved changes are not in it."
     assert o["asked"] == ["/api/tasks/t1/run?dry=true"] * 2

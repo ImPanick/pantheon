@@ -48237,6 +48237,7 @@ button.task-card-toggle {
 .wf-test-lede,
 .wf-test-pin-note,
 .wf-test-alone,
+.wf-test-why,
 .wf-test-dropped { margin: 0; color: var(--color-muted-alt); overflow-wrap: anywhere; }
 .wf-test-pin-note { font-style: italic; }
 .wf-test-edits { margin: 0; font-weight: 600; }

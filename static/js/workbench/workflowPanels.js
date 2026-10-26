@@ -757,8 +757,20 @@ export function createWorkflowPanels({
    *  first with its dry plan (the route decides which, from `effects` it does
    *  not send the browser — design § 0.11); a pinned sample is marked on the
    *  canvas and never used by a scheduled run. */
-  function testSection(parent, { step, source }) {
+  function testSection(parent, { step, source, workflow }) {
     let pinned = step.pinned != null ? step.pinned : null;
+    // `B1082`. What the server says this step can be handed, per source
+    // (`test_sources` on the Doc: `[{source, offered, why}]`, from
+    // `node_input_shape` and the step's last real run). Every source was
+    // offered and the route refused the ones a step cannot use — on the first
+    // step of a scheduled workflow, all but *Nothing*. A Doc without it (an
+    // older server, a step not saved yet) offers all five, as before; the
+    // route still checks each.
+    const served = workflow && workflow.test_sources && typeof workflow.test_sources === 'object'
+      ? workflow.test_sources[String(step.id)] : null;
+    const offers = Array.isArray(served)
+      ? new Map(served.filter((o) => o && o.source).map((o) => [String(o.source), o])) : null;
+    const withheld = (s) => !!(offers && offers.has(s) && offers.get(s).offered === false);
     let lastUsed = null;       // `input_used` of the last answer, for *Pin this*
     let busy = false;
     let alive = true;
@@ -776,6 +788,9 @@ export function createWorkflowPanels({
     const sel = _el('select', 'wf-test-source');
     pick.appendChild(sel);
     box.appendChild(pick);
+    // `B1082`: why a source is not in the list, in the route's own words.
+    const whyNot = _el('p', 'wf-test-why');
+    box.appendChild(whyNot);
     const text = _el('textarea', 'wf-test-input');
     text.rows = 5;
     text.setAttribute('aria-label', 'The input for the test, as text or JSON');
@@ -813,14 +828,33 @@ export function createWorkflowPanels({
     function syncSources() {
       const keep = sel.value;
       sel.replaceChildren();
-      for (const s of TEST_SOURCES) {
-        if (s.source === 'pinned' && pinned == null) continue;
+      const listed = TEST_SOURCES.filter((s) => (s.source !== 'pinned' || pinned != null) && !withheld(s.source));
+      for (const s of listed) {
         const o = _el('option', null, s.label);
         o.value = s.source;
         sel.appendChild(o);
       }
-      const values = TEST_SOURCES.map((s) => s.source).filter((v) => v !== 'pinned' || pinned != null);
-      sel.value = values.includes(keep) ? keep : (pinned != null ? 'pinned' : 'last');
+      const values = listed.map((s) => s.source);
+      // A source no longer listed is not kept: the pinned sample, the last
+      // input, else Nothing (`B1082`: *last* is not offered on a step that has
+      // not run).
+      const fallback = ['pinned', 'last', 'none'].find((v) => values.includes(v)) || values[0] || '';
+      sel.value = values.includes(keep) ? keep : fallback;
+      // Why the rest are not offered: one line per reason, the sources it
+      // keeps out named. A pinned sample that is not there is just not listed.
+      const reasons = new Map();
+      for (const s of TEST_SOURCES) {
+        if (!withheld(s.source) || (s.source === 'pinned' && pinned == null)) continue;
+        const why = String(offers.get(s.source).why || '').trim();
+        if (!why) continue;
+        if (!reasons.has(why)) reasons.set(why, []);
+        reasons.get(why).push(`“${s.label}”`);
+      }
+      const only = values.length === 1 ? TEST_SOURCES.find((s) => s.source === values[0]) : null;
+      whyNot.textContent = [...reasons].map(([why, names]) => (only && reasons.size === 1
+        ? `Only “${only.label}”: ${why}`
+        : `${names.join(' and ')} ${names.length === 1 ? 'is' : 'are'} not offered: ${why}`)).join(' ');
+      whyNot.hidden = !whyNot.textContent;
       syncInput();
     }
     function syncInput() {

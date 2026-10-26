@@ -44,7 +44,8 @@ from tests.helpers import workflow_contract as wc  # noqa: E402
 
 SUMMARY_KEYS = {"id", "name", "task_id", "trigger_status", "version", "step_count",
                 "last_run", "converted_from", "updated_at"}
-DOC_KEYS = SUMMARY_KEYS | {"graph", "trigger_task", "versions_kept"}
+# `B1082`: `test_sources` added (per step, the test inputs it can be handed).
+DOC_KEYS = SUMMARY_KEYS | {"graph", "trigger_task", "versions_kept", "test_sources"}
 LAST_RUN_KEYS = {"id", "status", "started_at", "finished_at", "dry"}
 VERSION_KEYS = {"version", "name", "saved_at", "source", "step_count", "current"}
 

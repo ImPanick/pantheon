@@ -217,6 +217,8 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         out["graph"] = store.stored_graph(wf)
         out["trigger_task"] = _task_to_dict(trigger, workflow_id=wf.id) if trigger is not None else None
         out["versions_kept"] = store.versions_kept(db, wf)
+        # `B1082`: per step, the test inputs it can be handed, and why not.
+        out["test_sources"] = test_source_offers(db, trigger, out["graph"])
         checking = check_plans(db, trigger, out["graph"])
         if checking is not None:
             out["plans"], out["plans_declined"] = checking
@@ -922,6 +924,107 @@ def _pinned_envelope(graph, node_id, trigger, data):
     return envelope, list(dropped or ())
 
 
+def _not_run_words(label) -> str:
+    return f"{label} has not run yet, so there is no last input to test it with."
+
+
+def _too_long_words(label, value) -> str:
+    return (f"The last input {label} was handed was too long to keep whole "
+            f"({value.get('chars', 'many')} characters), so it cannot be used for a test.")
+
+
+def _no_example_words(label) -> str:
+    return f"{label} is handed nothing when it runs, so there is nothing to write an example of."
+
+
+def _last_input(db, trigger, node_id):
+    """`(stored_input, found)` — what this step was handed in its last real run."""
+    from src.workflow_runs import last_node_record
+    rec = last_node_record(db, trigger.id, node_id) if trigger is not None else None
+    if rec is None:
+        return None, False
+    value = _field(rec, "input")
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError):
+            value = None
+    return value, True
+
+
+# `B1082`. What a refusal of these sources adds for the person who pressed
+# Test (the panel says only the first sentence, beside the list).
+_TEST_SOURCE_NEXT = {
+    "last": {"not_run": " Pin a sample, paste one, or let the model write one.",
+             "too_long": " Pin a sample or paste one instead."},
+}
+
+
+def _source_refusals(db, trigger, graph, node_id: str, label: str) -> dict:
+    """`B1082`. `{source: (why, kind, refusal)}` for each of `TEST_SOURCES` this step
+    cannot be tested with, from the step's input shape (`node_input_shape`)
+    and its last real run. One rule, asked by the Doc (`test_source_offers`)
+    and by the test route (`_test_input`), so what the panel withholds is
+    what the route refuses, in the same words. `refusal` is the engine's own
+    (`WorkflowRefused` with its `reason` and steps) where there is one."""
+    from src.workflow_document import DocumentError, build_pin, node_input_shape
+
+    shape = node_input_shape(graph, node_id, trigger)
+    if shape.source is None:
+        # Handed nothing: the engine's own sentence for it (`build_pin`'s
+        # refusal). `last` too — what a first step on a schedule was handed is
+        # nothing, which is the *Nothing* source.
+        try:
+            build_pin(graph, node_id, trigger, {})
+        except DocumentError as err:
+            refusal = store._document_error_refusal(err)
+            return {s: (refusal.sentence, "handed_nothing", refusal)
+                    for s in ("last", "pinned", "custom", "example")}
+    out = {}
+    value, found = _last_input(db, trigger, node_id)
+    if not found:
+        out["last"] = (_not_run_words(label), "not_run", None)
+    elif isinstance(value, dict) and value.get("truncated") is True:
+        out["last"] = (_too_long_words(label, value), "too_long", None)
+    if not shape.fields:
+        out["example"] = (_no_example_words(label), "no_fields", None)
+    return out
+
+
+def test_source_offers(db, trigger, graph) -> dict:
+    """`B1082`. Which of `TEST_SOURCES` *Test this step* can use, per step of
+    `graph` (the saved document): `{node_id: [{source, offered, why?}]}`, in
+    `TEST_SOURCES`' order, `why` the sentence the test route refuses that
+    source with (`_source_refusals`, the one rule).
+
+    The panel offered all five on every step and the route refused the ones a
+    step cannot be handed — measured: on the first step of a scheduled
+    workflow, *What it was handed in the last run*, *Something I type here*
+    and *An example the model writes* were each offered and each refused
+    ("The step is handed nothing, so a sample would never be used: …"), and
+    on a step not yet run *last* was. The route already knew the step's input
+    shape; this serves it, so the panel offers only what can be used and says
+    why of the rest. The route still checks every source (a document saved
+    since this was read, a draft not saved).
+
+    `pinned` is offered where a pinned sample would be used; whether one is
+    pinned is the step's own `pinned`, which the panel holds as it changes.
+    """
+    out = {}
+    if trigger is None:
+        return out
+    for node in store.nodes_of(graph):
+        if not isinstance(node, dict) or node.get("id") is None:
+            continue
+        node_id = str(node.get("id"))
+        why = _source_refusals(db, trigger, graph, node_id, store.quoted(node.get("label") or node_id))
+        out[node_id] = [
+            {"source": s, "offered": False, "why": why[s][0]} if s in why
+            else {"source": s, "offered": True}
+            for s in TEST_SOURCES]
+    return out
+
+
 async def _test_input(db, wf, trigger, stored, graph, node, source, raw):
     """The envelope the step would really be handed, from the chosen source,
     and the keys a sample lost because the step is never handed them."""
@@ -930,24 +1033,14 @@ async def _test_input(db, wf, trigger, stored, graph, node, source, raw):
     node_id = str(node.get("id"))
     if source == "none":
         return None, []
+    refused = _source_refusals(db, trigger, graph, node_id, label).get(source)
+    if refused is not None:
+        why, kind, refusal = refused
+        if refusal is not None:
+            raise refusal
+        raise WorkflowRefused(400, why + _TEST_SOURCE_NEXT.get(source, {}).get(kind, ""))
     if source == "last":
-        from src.workflow_runs import last_node_record
-        rec = last_node_record(db, trigger.id, node_id)
-        if rec is None:
-            raise WorkflowRefused(
-                400, f"{label} has not run yet, so there is no last input to test it with. "
-                     f"Pin a sample, paste one, or let the model write one.")
-        value = _field(rec, "input")
-        if isinstance(value, str):
-            try:
-                value = json.loads(value)
-            except (TypeError, ValueError):
-                value = None
-        if isinstance(value, dict) and value.get("truncated") is True:
-            raise WorkflowRefused(
-                400, f"The last input {label} was handed was too long to keep whole "
-                     f"({value.get('chars', 'many')} characters), so it cannot be used for a "
-                     f"test. Pin a sample or paste one instead.")
+        value, _found = _last_input(db, trigger, node_id)
         return value, []
     if source == "pinned":
         pinned = next((n.get("pinned") for n in store.nodes_of(stored)
@@ -961,10 +1054,7 @@ async def _test_input(db, wf, trigger, stored, graph, node, source, raw):
         if raw is None or (isinstance(raw, str) and not raw.strip()):
             raise WorkflowRefused(400, "Paste the sample to test with.")
         return _pinned_envelope(graph, node_id, trigger, _sample_data(raw, fields, label))
-    # example
-    if not fields:
-        raise WorkflowRefused(
-            400, f"{label} is handed nothing when it runs, so there is nothing to write an example of.")
+    # example (a step handed no fields is refused above)
     data = await _write_example(wf.owner, node.get("label") or node_id, fields)
     return _pinned_envelope(graph, node_id, trigger, data)
 
