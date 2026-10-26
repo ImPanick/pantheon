@@ -958,3 +958,23 @@ def test_the_shell_is_the_only_place_left_that_spells_one():
     assert _chevron_polylines(login.read_text(encoding="utf-8")) == [], (
         "the login page has grown a chevron; it is a third place to keep in step"
     )
+
+
+def test_the_stroke_spread_is_cited_to_the_row_that_carries_it():
+    """`B783`. `iconSvg`'s own doc comment said the stroke-width spread "is filed
+    as `B290`" — the comment-blanker row, which has nothing to do with icons, so
+    a reader who followed the citation concluded the spread was unowned. The
+    finding is `B291`'s (the ladder is on `B394`), which the chevron section of
+    the same file already cited correctly.
+
+    Scoped to the one comment block that opens `iconSvg` (`Law 20`): the file's
+    own header names `B290` legitimately, for the blanker, and so does this
+    comment's correction note."""
+    src = TABLE.read_text(encoding="utf-8")
+    end = src.index("export function iconSvg(")
+    doc = src[src.rindex("/**", 0, end):end]
+    sentence = re.search(r"the spread itself\s+\*?\s*is a real defect and is filed as `(B\d+)`",
+                         doc)
+    assert sentence, "iconSvg's doc comment no longer files the stroke spread anywhere"
+    assert sentence.group(1) == "B291", sentence.group(0)
+    assert "`B394`" in doc, "the proposed ladder's row is not named beside it"

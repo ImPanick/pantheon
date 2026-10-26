@@ -122,7 +122,10 @@ export const STOP_GLYPH = '<rect x="6" y="6" width="12" height="12" rx="1"/>';
  * vertex is mitred rather than rounded, and one carries an `id` the settings
  * page looks up by. Reproducing each site exactly is what makes "this is a
  * move, not a restyle" a measurement instead of a promise — the spread itself
- * is a real defect and is filed as `B290` rather than fixed by stealth here.
+ * is a real defect and is filed as `B291` (the proposed ladder is on `B394`)
+ * rather than fixed by stealth here. (`B783`: this line cited `B290`, the
+ * comment-blanker row, until 2026-10-26 — a reader who followed it found
+ * regular expressions and nothing about strokes.)
  */
 export function iconSvg(glyph, opts = {}) {
   const {

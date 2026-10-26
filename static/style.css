@@ -6027,7 +6027,13 @@ body.bg-pattern-sparkles {
       opacity:0; transition: opacity .15s, color .15s, border-color .15s;
       display:flex; align-items:center; justify-content:center;
     }
-    pre .use-code.bottom { top:auto; bottom:6px; }
+    /* `B635`: `pre .use-code.bottom { top:auto; bottom:6px }` stood here and
+       matched nothing from the day it was written — the only writer of a
+       `.bottom` class was `chat.js`'s `mouseenter` repositioner, which touched
+       copy/edit/run and never this button, and `P5-06` removed it. Deleted
+       rather than wired: `.use-code` is `slashCommands.js`'s *Use in Chat* on a
+       setup reply's own `<pre>`, which has no code-block header to join, so it
+       keeps the corner it has always actually sat in. */
     pre:hover .use-code { opacity:0.7; }
     pre .use-code:hover { opacity:1; }
     pre .use-code.used {

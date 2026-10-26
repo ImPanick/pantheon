@@ -187,3 +187,30 @@ def test_a_one_line_block_no_longer_reserves_a_gutter_for_absent_buttons():
     rule = re.search(r"pre\.pre-compact\s*\{([^}]*)\}", css)
     assert rule, "the compact rule is gone entirely"
     assert "padding-right" not in rule.group(1), rule.group(1)
+
+
+def test_every_state_the_use_in_chat_button_is_styled_for_is_one_its_builder_writes():
+    """`B635`. `pre .use-code.bottom` was styled and never written: the `.bottom`
+    class came only from `chat.js`'s repositioner (above), which never touched
+    `.use-code`, so the rule matched nothing from the day it landed.
+
+    Measured both ways rather than grepped for the one word (`Law 20`): every
+    `.use-code.<state>` compound the sheet styles (comments blanked, so this
+    file's own explanation of the deleted rule is not a rule) has to be a class
+    `slashCommands.js`'s builder — the only writer of `use-code` — actually puts
+    on the button."""
+    from pathlib import Path
+    from tests.helpers.source_text import blank, blank_text
+    root = Path(__file__).resolve().parents[1]
+    css = blank(root / "static" / "style.css")
+    styled = set(re.findall(r"\.use-code\.([a-z][a-z0-9-]*)", css))
+    writers = [p for p in sorted((root / "static" / "js").rglob("*.js"))
+               if "'use-code'" in blank_text(p.read_text(encoding="utf-8"))]
+    assert [p.name for p in writers] == ["slashCommands.js"], writers
+    src = blank_text(writers[0].read_text(encoding="utf-8"))
+    start = src.index("useBtn.className = 'use-code'")
+    builder = src[start:src.index("pre.appendChild(useBtn)", start)]
+    written = set(re.findall(r"useBtn\.classList\.(?:add|toggle)\('([a-z][a-z0-9-]*)'", builder))
+    assert styled, "the sheet no longer styles any state of the button"
+    assert styled <= written, (
+        f"the sheet styles .use-code states nothing writes: {sorted(styled - written)}")
