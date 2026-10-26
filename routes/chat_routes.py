@@ -711,6 +711,25 @@ def _apply_shaping_metrics(metrics, ctx, *, route_trim=None, route_compaction=No
     return metrics
 
 
+def rag_frames(ctx) -> List[str]:
+    """The turn's retrieval frames: what was found, or why nothing was looked for.
+
+    `B1287`. The `rag_sources` frame went out only when there were sources, so
+    a turn with the RAG chip on and the document index down carried no word
+    that retrieval had not happened. Now such a turn carries one
+    `rag_sources` frame with no sources and `off` — the sentence the RAG
+    window shows (`rag_unavailable_reason`) — which the browser says once and
+    puts on the chip (`static/js/ragNotice.js`). A turn that searched and
+    found nothing above the threshold is not this: it sends nothing, as before.
+    """
+    if ctx.rag_sources:
+        return [f"data: {json.dumps({'type': 'rag_sources', 'data': ctx.rag_sources})}\n\n"]
+    off = getattr(ctx, "rag_off", "") or ""
+    if off:
+        return [f"data: {json.dumps({'type': 'rag_sources', 'data': [], 'off': off})}\n\n"]
+    return []
+
+
 def _compacted_event(context_length, stats=None) -> str:
     """`P4-13`. The compaction notice, with what the compaction cost.
 
@@ -2556,8 +2575,8 @@ def setup_chat_routes(
                     f'data: {json.dumps({"type": "doc_update", **_opened})}\n\n'
                 )
 
-            if ctx.rag_sources:
-                yield f"data: {json.dumps({'type': 'rag_sources', 'data': ctx.rag_sources})}\n\n"
+            for _frame in rag_frames(ctx):
+                yield _frame
 
             if web_sources:
                 yield f"data: {json.dumps({'type': 'web_sources', 'data': web_sources})}\n\n"

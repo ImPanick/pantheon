@@ -423,12 +423,21 @@ class ChatProcessor:
         # that is only retrieval, so a flag mapped to either of those would have
         # been decoration. `rag` was one of the three flags the audit found with
         # no consumer in any layer at all; this is its consumer.
+        #
+        # `B1287`: with retrieval asked for and no index to ask, the turn
+        # carried no `rag_sources` and no word that retrieval did not happen —
+        # the RAG window said why (`rag.js`), the chat did not. Why is kept on
+        # `_last_rag_off` (as `_last_used_memories` is kept) for the route to
+        # say once in the turn; it is not put in front of the model.
+        self._last_rag_off = ""
         if use_rag and not feature_enabled("rag"):
             logger.info("RAG retrieval skipped: the `rag` feature is switched off")
             use_rag = False
         if use_rag:
             try:
                 rag_manager = getattr(self.personal_docs_manager, 'rag_manager', None)
+                if not rag_manager:
+                    self._last_rag_off = self._rag_off_sentence()
                 if rag_manager:
                     results = rag_manager.search(message, k=5, owner=owner)
                     # Filter by similarity threshold
@@ -598,6 +607,23 @@ class ChatProcessor:
             preface.append(style_message)
 
         return preface, rag_sources, web_sources
+
+    @staticmethod
+    def _rag_off_sentence() -> str:
+        """`B1287`. Why this turn searched no documents, for the person.
+
+        The index's own reason when it is down (`rag_unavailable_reason`, the
+        sentence the RAG window shows), read without starting an init attempt.
+        When the index is up now but this chat was wired before it was — the
+        chat holds the manager `app.py` built at start — that is said instead,
+        because "RAG is off" would then be false about the index.
+        """
+        from src.rag_singleton import rag_unavailable_reason
+
+        reason = rag_unavailable_reason(retry=False)
+        return reason or (
+            "RAG did not search for this reply: the document index started after "
+            "Pantheon did, and the chat uses it after Pantheon restarts.")
 
     def _style_and_register(self, message, session, *, owner=None,
                             incognito=False, use_memory=True,

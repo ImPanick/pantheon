@@ -42,6 +42,7 @@ import { startToolCard as _startToolCard, drawToolProgress as _drawToolProgress,
 // turn's other notes, drawn by the same module for the reload; (`B921`) the
 // compaction notice's words.
 import { renderAgentStop, renderAgentNote, compactionNoticeText, trimNoticeText } from './agentStops.js';
+import { noteRagFrame } from './ragNotice.js';   // `B1287`
 import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArrowUpRecall.js?v=20260714promptrecall';
 import {
   createIncrementalDisplayProjector,
@@ -4792,6 +4793,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
               } else if (json.type === 'rag_sources') {
                 if (_isBg) continue;
                 holder._ragSources = json.data;
+                // `B1287`: no sources and `off` — the chip was on and no index
+                // answered. Said on the chip, and once in a toast.
+                noteRagFrame(document, json, uiModule.showToast);
               } else if (json.type === 'memories_used') {
                 if (_isBg) continue;
                 holder._memoriesUsed = json.data;
