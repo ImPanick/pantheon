@@ -200,7 +200,7 @@ function _wireNotesWindow(pane) {
     skipSelector: 'button, input, select, textarea, label, .notes-mobile-grabber',
     enableDock: true,
     enableLeftDock: true,
-    onEnterFullscreen: () => { _fillWindow(pane); },
+    // `B810`: no `onEnterFullscreen` — the top edge is `tileManager.js`'s.
     onExitFullscreen: () => {
       _restoreNotesSidebarDock(pane);
     },

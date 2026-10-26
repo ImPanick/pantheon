@@ -2382,26 +2382,10 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
           }
         } catch {}
         // Replaced ~150 lines of inline drag/snap/dock with one helper call.
-        // Library intentionally disables top-edge fullscreen snap: that layout
-        // breaks dense icon/tool rows. Side docking still works.
+        // Side docking works here; the top edge is `tileManager.js`'s, as for
+        // every window (`B810`: `windowDrag.js`'s own top-edge fullscreen,
+        // which this call switched off by name, is gone).
         const FS_CLASS = 'doclib-fullscreen';
-        const enterFullscreen = () => {
-          if (modal.classList.contains(FS_CLASS)) return;
-          modal.classList.add(FS_CLASS);
-          content.style.position = 'fixed';
-          content.style.left = '0';
-          content.style.top = '0';
-          content.style.right = '0';
-          content.style.bottom = '0';
-          content.style.width = '100vw';
-          content.style.maxWidth = '100vw';
-          content.style.height = '100vh';
-          content.style.maxHeight = '100vh';
-          content.style.borderRadius = '0';
-          content.style.margin = '0';
-          content.style.transform = 'none';
-          try { localStorage.setItem('doclib-pos', JSON.stringify({ fullscreen: true })); } catch {}
-        };
         const exitFullscreen = (cx, cy) => {
           if (!modal.classList.contains(FS_CLASS)) return;
           modal.classList.remove(FS_CLASS);
@@ -2422,9 +2406,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
           header,
           fsClass: FS_CLASS,
           skipSelector: '.modal-close',
-          onEnterFullscreen: enterFullscreen,
           onExitFullscreen: exitFullscreen,
-          enableFullscreen: false,
           onDragEnd: () => {
             try { localStorage.setItem('doclib-pos', JSON.stringify({ left: content.style.left, top: content.style.top })); } catch {}
           },

@@ -6,7 +6,6 @@ import uiModule from './ui.js';
 import sessionModule from './sessions.js';
 import spinnerModule from './spinner.js';
 import { makeWindowDraggable } from './windowDrag.js';
-import { snapModalToZone } from './tileManager.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 import { setBackgroundWork } from './modalManager.js?v=20261009census';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
@@ -184,17 +183,8 @@ function _wireMemoryDrag() {
     skipSelector: 'button, input, select, label',
     enableDock: true,
     enableLeftDock: true,
-    onEnterFullscreen: () => {
-      snapModalToZone(modal, {
-        name: 'fullscreen',
-        rect: {
-          left: 0,
-          top: 0,
-          width: window.innerWidth || document.documentElement.clientWidth || 0,
-          height: window.innerHeight || document.documentElement.clientHeight || 0,
-        },
-      });
-    },
+    // `B810`: the top edge is `tileManager.js`'s — it maximises this window as
+    // it does every `.modal`. `windowDrag.js` takes no fullscreen callback.
   });
 }
 

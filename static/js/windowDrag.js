@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Shared window-drag helper. Replaces the duplicated mousedown / mousemove
-// / mouseup + snap-to-top fullscreen + left/right edge dock patterns that
-// were copy-pasted across calendar.js, tasks.js, gallery.js, emailLibrary.js,
-// documentLibrary.js, theme.js. Behavior stays identical to the old per-file
-// copies — each callsite provides its own enter/exit-fullscreen callbacks
-// since the CSS class + inline styles differ per modal.
+// / mouseup + left/right edge dock patterns that were copy-pasted across
+// calendar.js, tasks.js, gallery.js, emailLibrary.js, documentLibrary.js,
+// theme.js.
+//
+// Maximising a window — the top edge, the half snaps, the ghost preview — is
+// `tileManager.js`'s, not this helper's (`B810`). It listens on `document`
+// for any `.modal-header` drag in a `.modal`, so no callsite opts in. This
+// helper moves a window, docks it to a side, and resizes it. Its own top-edge
+// fullscreen (`onEnterFullscreen`, `enableFullscreen`) was hard-coded off at
+// the fork, documented as on, and is gone; what stays is leaving a fullscreen
+// a window is already in (`fsClass`, `onExitFullscreen`).
 //
 // API:
 //   makeWindowDraggable(modal, { content, header, ...options })
@@ -12,10 +18,6 @@
 //     content:         the element being moved (usually .modal-content)
 //     header:          the drag handle (usually .modal-header)
 //     fsClass:         optional class name representing "fullscreen" state
-//     onEnterFullscreen: optional () => void — called when cursor releases
-//                        near the top edge (within SNAP_PX). Caller is
-//                        responsible for adding fsClass + applying inline
-//                        styles that produce the fullscreen layout.
 //     onExitFullscreen:  optional (cx, cy) => void — called mid-drag when
 //                        the cursor leaves the fullscreen "unsnap" band
 //                        (down > UNSNAP_PX OR near either horizontal edge
@@ -34,8 +36,6 @@
 //                        Default 768. Set to 0 to never skip.
 //     enableDock:      bool — enable left + right edge docks.
 //                        Default true.
-//     enableFullscreen: bool — enable top-edge fullscreen snap.
-//                        Default true when onEnterFullscreen is supplied.
 //
 // `P10-06` / `B660`: every window wired here also gets a keyboard handle as
 // the first control in its header — arrow keys move it, Shift + arrow keys
@@ -55,7 +55,7 @@ export const KEY_STEP = 16;
 export const MOVE_THRESHOLD = 4;
 const KEY_DIRS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
-const SNAP_PX = 6;        // cursor distance from top edge for fullscreen snap
+const SNAP_PX = 6;        // the top band, where `tileManager.js` maximises and the side docks stay off
 const UNSNAP_PX = 24;     // cursor distance from top before fullscreen exits
 const DOCK_EDGE_PX = 60;  // cursor distance from L/R edge to trigger dock
                           // exit while still in fullscreen state
@@ -75,9 +75,7 @@ export function makeWindowDraggable(modal, options = {}) {
   const header = options.header;
   if (!content || !header) return;
   const fsClass = options.fsClass || null;
-  const onEnterFullscreen = options.onEnterFullscreen || null;
   const onExitFullscreen = options.onExitFullscreen || null;
-  const enableFullscreen = false;
   const onDragEnd = options.onDragEnd || null;
   const onDragStart = options.onDragStart || null;
   const skipSelector = options.skipSelector || 'button, input, select';
@@ -120,35 +118,12 @@ export function makeWindowDraggable(modal, options = {}) {
   let dragging = false;
   let startX = 0, startY = 0;
   let startLeft = 0, startTop = 0;
-  let snapHint = null;
   // Whether the pointer actually moved beyond a small threshold this drag.
   // Used to suppress the synthetic click the browser fires on mouseup —
   // header click handlers (e.g. "collapse expanded card / back to list")
   // would otherwise fire after a drag and collapse the modal contents.
   let movedDuringDrag = false;
 
-  const _showSnapHint = (on) => {
-    // Top-edge fullscreen hint. Side hints come from the dock controllers.
-    if (!on) {
-      if (snapHint) { snapHint.remove(); snapHint = null; }
-      return;
-    }
-    if (snapHint) return;
-    snapHint = document.createElement('div');
-    snapHint.className = 'modal-snap-hint';
-    snapHint.style.cssText =
-      'position:fixed;left:0;top:0;right:0;bottom:0;' +
-      'background:color-mix(in srgb, var(--accent-primary, #60a5fa) 12%, transparent);' +
-      'border:2px dashed color-mix(in srgb, var(--accent-primary, #60a5fa) 60%, transparent);' +
-      'z-index:9998;pointer-events:none;';
-    document.body.appendChild(snapHint);
-  };
-
-  const _enterFs = () => {
-    if (!onEnterFullscreen) return;
-    if (fsClass && modal && modal.classList.contains(fsClass)) return;
-    onEnterFullscreen();
-  };
   const _exitFs = (cx, cy) => {
     if (!onExitFullscreen) return;
     if (fsClass && modal && !modal.classList.contains(fsClass)) return;
@@ -249,10 +224,9 @@ export function makeWindowDraggable(modal, options = {}) {
     }
     content.style.left = (startLeft + cx - startX) + 'px';
     content.style.top = (startTop + cy - startY) + 'px';
-    // Corner guard: in the top fullscreen band the side docks stay OFF, so a
-    // top corner only ever snaps to fullscreen — never the corner hybrid.
+    // Corner guard: in the top band the side docks stay OFF, so a top corner
+    // is `tileManager.js`'s fullscreen — never the corner hybrid.
     const inTopBand = cy <= SNAP_PX;
-    _showSnapHint(enableFullscreen && inTopBand);
     if (inTopBand) {
       if (rightDock) rightDock.release();
       if (leftDock) leftDock.release();
@@ -266,14 +240,6 @@ export function makeWindowDraggable(modal, options = {}) {
     if (!dragging) return;
     dragging = false;
     if (modal) modal.classList.remove('modal-dragging');
-    _showSnapHint(false);
-    // Top edge wins over side edges — fullscreen is the more common gesture.
-    if (enableFullscreen && typeof cy === 'number' && cy <= SNAP_PX) {
-      if (rightDock) rightDock.release();
-      if (leftDock) leftDock.release();
-      _enterFs();
-      return;
-    }
     if (rightDock && rightDock.hovering()) {
       if (leftDock) leftDock.release();
       if (fsClass && modal) modal.classList.remove(fsClass);  // dock takes over from fullscreen

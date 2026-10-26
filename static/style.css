@@ -49048,7 +49048,7 @@ body.plan-mode-active .chat-input-bar {
    `← <opener>` (C-NAV, `modalManager.drawBackButton`, which writes `data-back-to`) — leaves its opener beneath it
    dimmed and inert to the pointer, so the opener's header and × are not live beside the window on top. Read off
    that button, so nothing else has to keep the pairs; the opener comes back as the button, ×, Escape or Back closes
-   the window above it. (Keyboard inertness wants the `inert` attribute, a script's — filed with the note.) */
+   the window above it. The keyboard half is `backStack.js`'s: it sets `inert` on the opener while the pair holds. */
 body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .modal-back-btn[data-back-to="memory-modal"]) #memory-modal > *,
 body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .modal-back-btn[data-back-to="skills-modal"]) #skills-modal > *,
 body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .modal-back-btn[data-back-to="workbench-modal"]) #workbench-modal > *,

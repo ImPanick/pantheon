@@ -687,18 +687,19 @@ function _getModal() {
   // `P9-05`, and the comment that used to sit here was the row's whole premise:
   // *"Calendar doesn't support fullscreen snap so no fsClass / enter/exit
   // callbacks here."* Both halves of that are true and neither matters, because
-  // **`windowDrag.js`'s fullscreen machinery is dead in every window**:
-  // `enableFullscreen` is hard-coded `false` in `windowDrag.js`'s `makeWindowDraggable`, three lines
-  // under a JSDoc that promises *"Default true when onEnterFullscreen is
-  // supplied"*, so `_enterFs` has no caller anywhere in the product. What
+  // **`windowDrag.js`'s fullscreen machinery was dead in every window**:
+  // `enableFullscreen` was hard-coded `false` in `windowDrag.js`'s `makeWindowDraggable`, three lines
+  // under a JSDoc that promised *"Default true when onEnterFullscreen is
+  // supplied"*, so `_enterFs` had no caller anywhere in the product (`B810`
+  // deleted it and its callbacks). What
   // actually maximises a window is `tileManager.js`, which listens on
   // `document` for a header drag — `_findDragTarget` matches any
   // `.modal-header` inside a `.modal`, which is this one — and returns a
   // `fullscreen` zone the moment the cursor passes `y <= 0`. **Calendar has had
   // a full view for as long as the tiling manager has existed.** Adding a
   // callback here would have been a second way to do it, wired to the half that
-  // does not run (`Law 14`). The dead half is filed rather than deleted
-  // (`Law 1`).
+  // does not run (`Law 14`). The dead half was filed (`Law 1`), then deleted
+  // under `B810`.
   {
     const content = _modal.querySelector('.modal-content');
     const header = _modal.querySelector('.modal-header');

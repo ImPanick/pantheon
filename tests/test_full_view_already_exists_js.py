@@ -32,7 +32,8 @@ option is never read from `options`, so `_enterFs` has no caller in the product,
 `onEnterFullscreen` callback and `documentLibrary.js`'s explicit
 `enableFullscreen: false` are both arguing about a branch that cannot run. It is
 inherited — it reads the same at the fork point — and it is `Law 14`'s second
-implementation, the one that went stale. Filed, not deleted (`Law 1`).
+implementation, the one that went stale. Filed, not deleted (`Law 1`); `B810`
+then took the call — `tileManager.js` maximises — and deleted the dead branch.
 
 This file exists so the closure cannot rot: if Compare ever stops rendering into
 `#chat-container`, or Calendar is ever excluded from the tiling zones, the row
@@ -92,25 +93,30 @@ def test_the_calendar_is_not_one_of_the_windows_excluded_from_tiling():
     assert 'class="modal-header"' in shell
 
 
-def test_windowdrags_own_fullscreen_branch_is_dead_and_says_otherwise():
-    """The finding the row's Calendar half actually produced, pinned so that
-    closing the row does not bury it. Two statements about the same option, in
-    the same file, twenty-eight lines apart, that contradict each other."""
+def test_windowdrag_takes_no_fullscreen_option_and_names_who_maximises():
+    """The finding the row's Calendar half produced: two statements about the
+    same option, twenty-eight lines apart, that contradicted each other — a
+    JSDoc promising *"Default true when onEnterFullscreen is supplied"* over
+    `const enableFullscreen = false;`.
+
+    `B810` took the call: `tileManager.js` owns maximising, and windowDrag's
+    dead top-edge branch (`_enterFs`, its snap hint, the constant) and every
+    callback handed to it are deleted. What this pins now is the row's
+    `Verify:` — the option is no longer documented, nothing reads it or passes
+    it, and the file says in one line which module maximises a window."""
     src = DRAG_JS.read_text(encoding="utf-8")
-    assert "Default true when onEnterFullscreen is supplied" in src, (
-        "the JSDoc promise moved; re-read the option table"
-    )
     body = js_function(src, "export function makeWindowDraggable")
-    assert "const enableFullscreen = false;" in body, (
-        "windowDrag's fullscreen gate is no longer a constant — if it now reads "
-        "`options.enableFullscreen`, the branch is live and B812 can close"
-    )
-    assert "options.enableFullscreen" not in body, (
-        "the documented option is still never read"
-    )
-    # Which makes both of its callers arguments about a branch that cannot run.
-    assert "onEnterFullscreen" in (JS / "memory.js").read_text(encoding="utf-8")
-    assert "enableFullscreen: false" in (JS / "documentLibrary.js").read_text(encoding="utf-8")
+    for gone in ("enableFullscreen", "onEnterFullscreen", "_enterFs", "_showSnapHint"):
+        assert gone not in body, f"{gone} is back in makeWindowDraggable"
+    assert "Default true when onEnterFullscreen is supplied" not in src, "the dead option is documented again"
+    assert "Maximising a window — the top edge, the half snaps, the ghost preview — is\n// `tileManager.js`'s" in src
+    # And no window hands it a callback for a branch that cannot run.
+    for js in JS.rglob("*.js"):
+        if "lib" in js.relative_to(JS).parts:
+            continue
+        code = re.sub(r"//[^\n]*", "", js.read_text(encoding="utf-8"))
+        assert not re.search(r"\b(onEnterFullscreen|enableFullscreen)\s*[:=]", code), \
+            f"{js.relative_to(ROOT)} passes a fullscreen option windowDrag no longer takes"
 
 
 def test_the_calendar_did_not_grow_a_second_way_to_go_fullscreen():
