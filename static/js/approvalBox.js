@@ -23,16 +23,33 @@
 // names are the skill test's, so the card looks the same in both places.
 
 /**
+ * `B1211`. What the two buttons do on a workflow step's or a task run's
+ * question (`approve_task`, the row's scope: the gate re-arms behind a yes),
+ * said on each button as its `title` — the Workbench's waiting step and the
+ * notice's window read these, one copy. They were a paragraph under the card
+ * (`ANSWER_WORDS`, and a second copy in `workflowApprovalNotice.js`); the
+ * UI/UX audit's § 5 asked for them on the buttons.
+ */
+export const ANSWER_TITLES = Object.freeze({
+  allow: 'Lets this one action run. The next one asks again.',
+  denyStep: 'The step takes its “if it fails” way.',
+  denyTask: 'The run ends without it.',
+});
+
+/**
  * `approval` — `{ approval_id, question, action: { tool, content, effects,
  *   workspace, digest } }` (the `ask_user` public payload).
  * `allowValue` — the decision the Allow button sends (`approve` for the skill
  *   test, `approve_task` for a workflow step).
  * `allowLabel` / `denyLabel` — the buttons' words.
+ * `allowTitle` / `denyTitle` — what each does, as its tooltip (`B1211`);
+ *   none by default, so the skill test's card is as it was.
  * `onDecide(decision)` — posts it; a throw re-enables the buttons and is
  *   handed to `onError(message)`.
  */
 export function approvalBox(approval, {
-  allowValue = 'approve', allowLabel = 'Allow once', denyLabel = 'Deny', onDecide = null, onError = null,
+  allowValue = 'approve', allowLabel = 'Allow once', denyLabel = 'Deny', allowTitle = '', denyTitle = '',
+  onDecide = null, onError = null,
 } = {}) {
   const a = approval && typeof approval === 'object' ? approval : {};
   const box = document.createElement('div');
@@ -71,15 +88,16 @@ export function approvalBox(approval, {
       actions.querySelectorAll('button').forEach((btn) => { btn.disabled = false; });
     }
   };
-  for (const [decision, label, cls] of [
-    ['deny', denyLabel, 'confirm-btn confirm-btn-secondary'],
-    [allowValue, allowLabel, 'confirm-btn confirm-btn-primary'],
+  for (const [decision, label, cls, title] of [
+    ['deny', denyLabel, 'confirm-btn confirm-btn-secondary', denyTitle],
+    [allowValue, allowLabel, 'confirm-btn confirm-btn-primary', allowTitle],
   ]) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = cls;
     button.dataset.decision = decision;
     button.textContent = label;
+    if (title) button.title = String(title);
     button.addEventListener('click', () => decide(decision));
     actions.appendChild(button);
   }
@@ -87,4 +105,4 @@ export function approvalBox(approval, {
   return box;
 }
 
-export default { approvalBox };
+export default { approvalBox, ANSWER_TITLES };

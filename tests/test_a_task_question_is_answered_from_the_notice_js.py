@@ -103,7 +103,8 @@ def test_a_task_question_is_offered_once_and_allow_once_answers_at_the_tasks_doo
           sub: d.querySelector('.wf-approval-sub').textContent.split(' Waiting since')[0],
           question: d.querySelector('.skill-test-meta').textContent, markup: markup(d),
           buttons: d.querySelectorAll('button').map((b) => [b.textContent, b.dataset.decision || null]),
-          note: d.querySelector('.wf-approval-note').textContent };
+          note: d.querySelectorAll('.wf-approval-note').length,
+          titles: d.querySelectorAll('button').filter((b) => b.dataset.decision).map((b) => [b.dataset.decision, b.title]) };
         fire(d.querySelectorAll('button').find((b) => b.dataset.decision === 'approve_task'), 'click');
         await settle(10);
         out({ first, again, toast, read, sent, gone: !dialog(), last: ui.toasts[ui.toasts.length - 1],
@@ -117,8 +118,11 @@ def test_a_task_question_is_offered_once_and_allow_once_answers_at_the_tasks_doo
     assert r["question"] == "Allow this exact action once? <img src=x onerror=alert(1)>" and r["markup"] == []
     assert r["buttons"] == [["Deny", "deny"], ["Allow once", "approve_task"], ["Open the task", None],
                             ["Not now", None]]
-    assert r["note"] == ("Allow once lets this one action run, and the next one asks again. "
-                         "Deny ends this run without it.")
+    # `B1211`: what each answer does is on its button, not a paragraph under
+    # the card; a task's Deny ends the run.
+    assert r["note"] == 0
+    assert r["titles"] == [["deny", "The run ends without it."],
+                           ["approve_task", "Lets this one action run. The next one asks again."]]
     assert o["sent"] == [["POST", "http://test.local/api/tasks/t1/runs/r1/answer",
                           {"approval_id": "ap1", "decision": "approve_task"}]]
     assert o["gone"] is True and o["workbench"] == 0

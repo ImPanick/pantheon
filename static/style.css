@@ -48584,8 +48584,7 @@ button.task-card-toggle {
   box-shadow: 0 12px 32px var(--shadow-ink-2);
 }
 .wf-approval-title { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
-.wf-approval-sub,
-.wf-approval-note { margin: 0; font-size: 11.5px; color: var(--color-muted-alt); overflow-wrap: anywhere; }
+.wf-approval-sub { margin: 0; font-size: 11.5px; color: var(--color-muted-alt); overflow-wrap: anywhere; }
 .wf-approval-said { margin: 0; font-weight: 600; }
 .wf-approval-said:empty { display: none; }
 .wf-approval-buttons { display: flex; justify-content: flex-end; gap: 6px; }

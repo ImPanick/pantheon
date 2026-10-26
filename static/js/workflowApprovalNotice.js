@@ -41,7 +41,7 @@
  */
 
 import uiModule from './ui.js';
-import { approvalBox } from './approvalBox.js';
+import { approvalBox, ANSWER_TITLES } from './approvalBox.js';
 import { registerMenuDismiss } from './escMenuStack.js';
 // `P3-18`'s rule: a window portaled to the body takes its z from the live
 // counter when shown, never a literal a long session climbs past.
@@ -189,9 +189,14 @@ export function openWorkflowApproval(review) {
   said.className = 'wf-approval-said';
   said.setAttribute('role', 'status');
   said.setAttribute('aria-live', 'polite');
+  // `B1211`: what each answer does is on its button (`title`), from the
+  // card's own words; a task's Deny ends the run, a step's takes its
+  // "if it fails" way.
   box.appendChild(approvalBox(review.approval, {
     allowValue: 'approve_task',
     allowLabel: 'Allow once',
+    allowTitle: ANSWER_TITLES.allow,
+    denyTitle: isTask(review) ? ANSWER_TITLES.denyTask : ANSWER_TITLES.denyStep,
     onDecide: async (decision) => {
       said.textContent = decision === 'deny' ? 'Denying…' : 'Allowing it once…';
       const reply = await answerWorkflowApproval(review, decision);
@@ -206,11 +211,6 @@ export function openWorkflowApproval(review) {
     },
     onError: (message) => { said.textContent = `Not answered: ${String(message).replace(/\.$/, '')}.`; },
   }));
-  const note = document.createElement('p');
-  note.className = 'wf-approval-note';
-  note.textContent = 'Allow once lets this one action run, and the next one asks again. '
-    + (isTask(review) ? 'Deny ends this run without it.' : 'Deny takes the step’s “if it fails” way.');
-  box.appendChild(note);
   box.appendChild(said);
   const row = document.createElement('div');
   row.className = 'wf-approval-buttons';

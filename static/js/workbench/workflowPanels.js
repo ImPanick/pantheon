@@ -39,7 +39,7 @@ import { runStatusTone, runStatusLabel } from '../runStatus.js';
 // picker, and the gate card a waiting step is answered with.
 import { mountStepFields, mountAiOptions, STEP_FIELD_KINDS, needLine } from './stepFields.js';
 import { decorateField, openFieldPicker, exampleText } from './fieldPicker.js';
-import { approvalBox } from '../approvalBox.js';
+import { approvalBox, ANSWER_TITLES } from '../approvalBox.js';
 
 /** The kinds a step can be, in the palette's order, with what each does in
  *  the words a person meets (`D-2026-10-01-05`: the palette offers only what
@@ -71,9 +71,6 @@ export const PIN_SENTENCE = 'A pinned sample is only used when you press Test. S
 export const NOTHING_ELSE = 'Nothing is delivered.';
 /** `P22-07`. Action and Research steps run with their own settings. */
 export const DOES_NOT_READ = 'This kind of step does not read what it is handed; it runs with its own settings.';
-/** `P22-17`. Under a waiting step's card: what each answer does. */
-export const ANSWER_WORDS = 'Allow once lets this one action run, and the next one asks again. '
-  + 'Deny takes the step’s “if it fails” way.';
 /** `P22-19`, `P22-24` (wb-canvas-e). The banner a step nobody has checked
  *  opens with, by its mark's origin (C-A: `drafted` | `imported`). */
 export const CHECK_WORDS = Object.freeze({
@@ -1091,9 +1088,13 @@ export function createWorkflowPanels({
     } else if (wt.kind === 'approval') {
       if (wt.until) part.appendChild(_el('p', 'wf-record-note', `If nobody answers by ${_short(wt.until)}, it is not done and the step takes its “if it fails” way.`));
       if (wt.approval && typeof answer === 'function') {
+        // `B1211`: what each answer does is on its button (`title`), not a
+        // paragraph under the card.
         part.appendChild(approvalBox(wt.approval, {
           allowValue: 'approve_task',
           allowLabel: 'Allow once',
+          allowTitle: ANSWER_TITLES.allow,
+          denyTitle: ANSWER_TITLES.denyStep,
           onDecide: async (decision) => {
             said.textContent = decision === 'deny' ? 'Denying…' : 'Allowing it once…';
             const r = await answer({ nodeId, item, approvalId: wt.approval.approval_id, decision });
@@ -1104,7 +1105,6 @@ export function createWorkflowPanels({
           },
           onError: (message) => { said.textContent = `Not answered: ${String(message).replace(/\.$/, '')}.`; },
         }));
-        part.appendChild(_el('p', 'wf-record-note', ANSWER_WORDS));
       } else {
         part.appendChild(_el('p', 'wf-record-note', 'Its question is in your notifications.'));
       }
@@ -1240,6 +1240,6 @@ export function createWorkflowPanels({
 }
 
 export default {
-  createWorkflowPanels, PALETTE_KINDS, TEST_SOURCES, PIN_SENTENCE, NOTHING_ELSE, DOES_NOT_READ, ANSWER_WORDS,
+  createWorkflowPanels, PALETTE_KINDS, TEST_SOURCES, PIN_SENTENCE, NOTHING_ELSE, DOES_NOT_READ,
   CHECK_WORDS, CHECK_NOTES, CHECKED_WORDS, WHY_TITLE, READING_NOTE, whereWords, FROM_RUN_WORDS,
 };
