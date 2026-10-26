@@ -1868,6 +1868,12 @@ async def _startup_event():
 
     _startup_tasks.append(asyncio.create_task(_null_owner_sweep_loop()))
 
+    # `B560`. An unanswered approval is denied at its deadline, not whenever
+    # the store is next touched: on an idle box nothing else would reach
+    # `_purge_expired_locked`. Jittered, a few seconds apart.
+    from src.tool_approvals import approval_sweep_loop
+    _startup_tasks.append(asyncio.create_task(approval_sweep_loop()))
+
     # Nightly skill audit — at ~02:00 local, test + judge a batch of the
     # least-recently-checked skills, auto-fixing/escalating weak ones (never
     # deletes). Rotates through the library so each night covers different
