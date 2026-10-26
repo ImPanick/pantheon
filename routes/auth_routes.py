@@ -1173,6 +1173,21 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                     val = _validate_workstation_setting(key, val)
                 except ValueError as exc:
                     raise HTTPException(400, str(exc))
+            if key == "github_token":
+                # `B927`. Written from the GitHub token panel in MCP &
+                # Integrations. It travels in an `Authorization` header, so a
+                # value that could not (a newline, a space) is refused here
+                # rather than stored and answered with a 401 on every import.
+                # Empty removes it, and the importer falls back to
+                # `PANTHEON_GITHUB_TOKEN`.
+                if not isinstance(val, str):
+                    raise HTTPException(400, "github_token is text, or empty to remove it.")
+                val = val.strip()
+                if len(val) > 255 or any(c.isspace() or not c.isprintable() for c in val):
+                    raise HTTPException(
+                        400,
+                        "That is not a GitHub token: a token is one word of visible "
+                        "characters, at most 255 of them (ghp_…, github_pat_…).")
             if key in ("host_exec_denylist", "host_exec_allowlist"):
                 # `P17-09`'s lesson a third time: a list stored and then silently
                 # ignored is worse than a refusal, because the operator believes

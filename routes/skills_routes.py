@@ -2193,6 +2193,20 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         return {"ok": True, "skill": {k: v for k, v in entry.items() if not k.startswith("_")},
                 "files": len(files), "notes": notes}
 
+    @router.get("/github-token")
+    async def github_token_state(request: Request):
+        """Whether the skill importer has a GitHub token, and from where — `B927`.
+
+        Never the token. The panel in MCP & Integrations asks this and writes
+        through `POST /api/auth/settings` (`github_token`), the door every other
+        integration secret is saved through, so there is one validator and one
+        store. Admin-only like the import it serves. Declared before
+        `/{skill_id}` so it is not read as a skill called "github-token".
+        """
+        require_admin(request)
+        from services.memory import skill_importer as si
+        return si.github_token_state()
+
     # ── packages and groups — `P8-49` … `P8-52` ────────────────────────────
     # Declared before `/{skill_id}` so `GET /collections` is not read as a
     # skill called "collections".

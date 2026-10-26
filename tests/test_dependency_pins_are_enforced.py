@@ -443,8 +443,10 @@ def test_the_realesrgan_pins_are_read_from_the_build_script_not_copied():
     requirements file. The audit reads them where they are actually pinned, so
     the version cannot exist in two places and disagree with itself (`Law 13`)."""
     audit = _load(_AUDIT, "audit_specs")
+    # `B373` added `realesrgan==0.3.0` (the script's `RUNTIME_SPEC`): the Forge's
+    # Install button installs it with the three wheel pins, so it is audited too.
     assert sorted(audit.realesrgan_pins()) == [
-        "basicsr==1.4.2", "facexlib==0.3.0", "gfpgan==1.3.8"]
+        "basicsr==1.4.2", "facexlib==0.3.0", "gfpgan==1.3.8", "realesrgan==0.3.0"]
 
 
 # --- The wiring: the rules actually run --------------------------------------

@@ -40,7 +40,6 @@ import argparse
 import importlib.util
 import json
 import pathlib
-import re
 import subprocess
 import sys
 import tempfile
@@ -81,10 +80,15 @@ def realesrgan_pins() -> list[str]:
     path = ROOT / WHEEL_SCRIPT
     if not path.exists():
         return []
-    m = re.search(r'^SPECS="([^"]+)"', path.read_text(encoding="utf-8"), re.M)
-    if not m:
-        return []
-    return [s for s in m.group(1).split() if "==" in s]
+    # `B373`. Read through `src/forge_pins.py`, the one reader of this file:
+    # the Forge's Install button installs `RUNTIME_SPEC` + `SPECS` from it, so
+    # the audit covers the same closure — `realesrgan` itself included.
+    spec = importlib.util.spec_from_file_location(
+        "pantheon_forge_pins", ROOT / "src" / "forge_pins.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    pins = module.read_pins(path)
+    return pins["runtime"] + pins["wheels"]
 
 
 def audit(paths: list[pathlib.Path], *, no_deps: bool = False) -> dict:

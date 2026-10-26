@@ -27,6 +27,12 @@ cd "$work"
 
 # Pinned to the versions Real-ESRGAN 0.3.0 resolves to.
 SPECS="basicsr==1.4.2 gfpgan==1.3.8 facexlib==0.3.0"
+# `B373`. The Real-ESRGAN release those pins are for. Not built here (it is pure
+# Python with its own wheel), but read with SPECS by the Forge's Install button
+# (`src/forge_pins.py`) and by `.pantheon/audit-dependencies.py`, so what a
+# deployment installs at runtime is the closure CI audits, not whatever PyPI
+# resolves that day.
+RUNTIME_SPEC="realesrgan==0.3.0"
 
 for spec in $SPECS; do
   name="${spec%%==*}"

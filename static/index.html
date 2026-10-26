@@ -871,6 +871,22 @@
                 <button type="button" class="admin-btn-add" id="unified-intg-add-btn" style="text-align:center;display:inline-flex;align-items:center;justify-content:center;gap:5px;flex-shrink:0;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Add Integration</button>
               </div>
             </div>
+            <!-- `B927`. The skill importer's GitHub token, beside the other
+                 integration secrets. Admin-only (drawn by `githubToken.js`
+                 only when `GET /api/skills/github-token` answers), write-only:
+                 the field is never filled from the server, which says only
+                 whether a token is set and where it came from. -->
+            <div class="admin-card" id="github-token-card" hidden>
+              <h2>GitHub token</h2>
+              <div class="admin-toggle-sub" id="github-token-rate" style="margin-bottom:8px;line-height:1.5;">Skill imports ask GitHub for each folder they list. Without a token GitHub allows 60 lookups an hour; with one, 5,000. A token with no scopes (public read) is enough.</div>
+              <div class="settings-row" style="gap:8px;">
+                <label class="settings-label" for="github-token-input">Token</label>
+                <input type="password" id="github-token-input" class="settings-select" autocomplete="new-password" spellcheck="false" placeholder="ghp_… or github_pat_…" style="flex:1 1 auto;">
+                <button type="button" id="github-token-save" class="memory-toolbar-btn">Save</button>
+                <button type="button" id="github-token-remove" class="memory-toolbar-btn" hidden>Remove</button>
+              </div>
+              <div id="github-token-state" class="admin-toggle-sub" role="status" aria-live="polite" style="margin-top:6px;"></div>
+            </div>
           </div>
         </div>
       </div>

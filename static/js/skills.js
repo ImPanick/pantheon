@@ -3082,6 +3082,25 @@ async function _renderPromptPreview(m) {
   panel.replaceChildren(head, exact, body, facts);
 }
 
+// `B927`. The words every GitHub rate-limit sentence ends on
+// (`services/memory/skill_importer.py:GITHUB_TOKEN_DOOR`). A line carrying them
+// gets a button that opens the token's panel in MCP & Integrations, so the fix
+// the sentence names is one click from where the person read it.
+export const GITHUB_TOKEN_DOOR = 'Set a GitHub token in MCP & Integrations';
+
+function _tokenDoor(el) {
+  el.appendChild(document.createTextNode(' '));
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'skill-import-open skill-import-token';
+  btn.textContent = 'Set a GitHub token';
+  btn.addEventListener('click', () => import('./workbench/workbench.js')
+    .then((wb) => wb.openWorkbench({ room: 'integrations', view: 'github-token' }))
+    .catch((e) => console.error('The Workbench did not load:', e)));
+  el.appendChild(btn);
+  return btn;
+}
+
 // `B926`. The import's own status line (`#skill-import-status`), under the box
 // it was started from. Everything it says is text.
 function _importStatus(m, kind, lines, openName) {
@@ -3090,10 +3109,13 @@ function _importStatus(m, kind, lines, openName) {
   el.hidden = false;
   el.className = `memory-desc skill-import-status${kind ? ` is-${kind}` : ''}`;
   el.replaceChildren();
+  let door = false;
   (Array.isArray(lines) ? lines : [lines]).filter(Boolean).forEach((line, i) => {
     if (i) el.appendChild(document.createElement('br'));
     el.appendChild(document.createTextNode(String(line)));
+    door = door || String(line).includes(GITHUB_TOKEN_DOOR);
   });
+  if (door) _tokenDoor(el);
   if (openName) {
     el.appendChild(document.createTextNode(' '));
     const open = document.createElement('button');

@@ -78,18 +78,18 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 135 · Depends 21 · total 156
+derived: direct 136 · Depends 21 · total 157
 
 ### tier summary
 
 | tier | sites |
 |---|---|
-| `superuser` | 68 |
+| `superuser` | 69 |
 | `operator` | 64 |
 | `power-user` | 3 |
 | `only-because-nothing-finer-existed` | 21 |
 
-### `superuser` — **68 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
+### `superuser` — **69 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -131,6 +131,7 @@ derived: direct 135 · Depends 21 · total 156
 | `routes/skills_routes.py` | `import_skill_from_url` | `POST /api/skills/import-from-url` | fetches a skill bundle over the network and installs it. A supply-chain decision; `FORBIDDEN.md` keeps the host allowlist and the IP-pinned transport under it |
 | `routes/skills_routes.py` | `import_skill_file` | `POST /api/skills/import-file` | installs a skill from a downloaded skill file — files written under `skills/`, the same supply-chain decision as the URL import without the network. `B1469` |
 | `routes/skills_routes.py` | `update_package` | `POST /api/skills/packages/{package_id}/update` | fetches an installed skill package from GitHub again and rewrites its skills — `import_skill_from_url`'s surface on a package already here. `P8-49` |
+| `routes/skills_routes.py` | `github_token_state` | `GET /api/skills/github-token` | whether the skill importer holds a GitHub token and where it came from (settings or `PANTHEON_GITHUB_TOKEN`) — never the token. The read half of the panel that sets it through `POST /api/auth/settings`. `B927` |
 | `routes/vault/vault_routes.py` | `get_config` | `GET /api/vault/config` | the credential vault's configuration |
 | `routes/vault/vault_routes.py` | `save_config` | `POST /api/vault/config` | rewrites it |
 | `routes/vault/vault_routes.py` | `lock` | `POST /api/vault/lock` | locks them |
@@ -517,11 +518,11 @@ this file's hand-rolled pattern, so the population that this map covers grew by 
 the number of admin decisions added — which is the behaviour the map was built to give.
 The paragraph above is about the 107 that predate roles; the counts below are live.
 
-- **68 superuser sites do not move.** They are already right.
+- **69 superuser sites do not move.** They are already right.
 - **64 operator sites are the phase's return.** Today the only way to let someone keep
   the instance up is to make them the owner. An `operator` overlay on
   `DEFAULT_PRIVILEGES` retires the 64 operator sites without touching any of the
-  68 superuser sites. (Both counts in the one spelling `check-auth-map.py` checks
+  69 superuser sites. (Both counts in the one spelling `check-auth-map.py` checks
   wherever it appears: this sentence said *"48 gates … the 37"* through every gate
   added after it was written, and it is the sentence this section concludes from —
   `B1143`.)
