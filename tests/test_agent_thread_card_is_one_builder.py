@@ -171,6 +171,24 @@ def test_the_label_is_escaped(sandbox):
     assert "&lt;img" in out
 
 
+# `B633`. The two claims `tests/test_web_search_tool_icon_js.py` made that no
+# case here made, moved onto the real module — that file asserted them on a
+# private copy of the renderer it inlined, and was retired as superseded.
+
+
+def test_a_hostile_tool_name_is_escaped_where_it_becomes_the_label(sandbox):
+    # An unknown tool is named by its own name, so the name is markup's input.
+    out = _html(sandbox, {"tool": '<img src=x onerror="alert(1)">', "state": "running"})
+    assert "<img" not in out
+    assert "&lt;img" in out
+
+
+def test_a_tool_named_in_capitals_still_gets_its_icon(sandbox):
+    for tool in ("WEB_SEARCH", "Web_Search"):
+        out = _html(sandbox, {"tool": tool, "state": "running"})
+        assert "<svg" in out and "circle" in out, tool
+
+
 # ── the content ───────────────────────────────────────────────────────────────
 
 

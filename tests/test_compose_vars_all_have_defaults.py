@@ -66,26 +66,27 @@ def test_the_tts_cache_limit_keeps_its_number_in_one_place():
         assert "524288000" not in code, f"{path.name} now carries the TTS cache number too"
 
 
-def test_an_empty_env_value_still_lands_on_the_documented_default(monkeypatch):
+def test_an_empty_env_value_still_lands_on_the_documented_default(monkeypatch, tmp_path):
     """The behaviour the warning was hiding, pinned so it stays true.
 
     Compose exports the name with an empty value, so `os.getenv(name, default)`
     hands back `""` and `int("")` raises. Something has to catch that, and the
     something is easy to delete during a tidy-up because it looks defensive
-    rather than load-bearing."""
+    rather than load-bearing.
+
+    `B552`: the service is constructed and asked, rather than its source being
+    searched for a `try`/`except ValueError` shape — a regex that a correct
+    refactor turned red and a guard catching the wrong exception kept green.
+    """
     import os
+
+    from services.tts.tts_service import TTSService
 
     monkeypatch.setenv("PANTHEON_TTS_CACHE_MAX_BYTES", "")
     assert os.getenv("PANTHEON_TTS_CACHE_MAX_BYTES", 500 * 1024 * 1024) == "", (
         "an empty env value is present, so it beats the default — this is the whole bug")
-    with pytest.raises(ValueError):
-        int(os.getenv("PANTHEON_TTS_CACHE_MAX_BYTES", 500 * 1024 * 1024))
 
-    service = (_REPO / "services" / "tts" / "tts_service.py").read_text(encoding="utf-8")
-    guarded = re.search(
-        r"try:\s*\n\s*self\.max_cache_bytes = int\(os\.getenv\(\s*\n?\s*"
-        r'"PANTHEON_TTS_CACHE_MAX_BYTES".*?\n\s*except ValueError:',
-        service, re.S)
-    assert guarded, (
-        "the ValueError guard in tts_service is gone — with compose exporting an "
-        "empty string, that guard is what keeps the 500 MB default reachable")
+    service = TTSService(cache_dir=str(tmp_path / "tts-cache"))
+    assert service.max_cache_bytes == 500 * 1024 * 1024, (
+        "with compose exporting an empty string, the service must still land on "
+        f"its documented 500 MB default; it has {service.max_cache_bytes!r}")

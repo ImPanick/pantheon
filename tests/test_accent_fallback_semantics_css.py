@@ -105,6 +105,8 @@ import functools
 import re
 from pathlib import Path
 
+from tests.helpers import css_colour  # B396: the one resolver
+
 ROOT = Path(__file__).resolve().parents[1]
 STYLE = ROOT / "static" / "style.css"
 THEME_JS = ROOT / "static" / "js" / "theme.js"
@@ -256,24 +258,15 @@ def _root_tokens() -> dict:
     """The tokens `:root` defines, as expressions. `--accent` is not among them,
     and `test_accent_is_defined_nowhere_in_the_stylesheet` is why.
 
-    Hex literals AND `light-dark()` pairs, since `B22`. Reading only the hex
-    ones was not a narrower measurement, it was a wrong one: a token this
-    function cannot see is absent from the theme dict, so `_resolve` silently
-    takes the `var(--x, <fallback>)` branch and the test ends up measuring the
-    fallback on all sixteen palettes instead of the token. That is how
-    `test_the_supervisor_ladder_still_separates_recovering_from_stop` reported
-    a collision on `claude` and `copper`, whose values had not moved at all.
+    EVERY custom property `:root` declares, since `B396` — this read hex
+    literals, then `light-dark()` pairs and `var()`s (`B22`), and each widening
+    was a correction rather than a refinement: a token this function cannot
+    see is absent from the theme dict, so the resolver silently takes the
+    `var(--x, <fallback>)` branch and measures the fallback on every palette.
+    That is how `test_the_supervisor_ladder_still_separates_recovering_from_stop`
+    reported a collision on `claude` and `copper`, whose values had not moved.
     """
-    css = _css()
-    block = css[css.index(":root {"):]
-    block = block[:block.index("}")]
-    return dict(
-        re.findall(
-            r"--([a-z-]+)\s*:\s*"
-            r"(#[0-9a-fA-F]{3,8}|light-dark\([^;]*?\)|var\([^;]*?\))",
-            block,
-        )
-    )
+    return css_colour.root_expressions(_css())
 
 
 # ── Reading the palettes ────────────────────────────────────────────────────
@@ -281,43 +274,16 @@ def _root_tokens() -> dict:
 
 @functools.lru_cache(maxsize=1)
 def _themes() -> dict:
-    """The sixteen shipped palettes, with `--accent` resolved the way
-    `applyColors()` resolves it today.
+    """The shipped palettes, with `--accent` resolved the way `applyColors()`
+    resolves it today (`css_colour.palettes`).
 
     `colors.accent` exists in no palette and `generateHarmonyColors()` produces
     none, so `colors.accent || colors.red` is the theme's red at every one of
     the three sites that set it. When a palette gains its own `accent:` key
-    this function starts reporting it and every measurement below re-runs
-    against the new value, which is the point of reading it from source.
+    this starts reporting it and every measurement below re-runs against the
+    new value, which is the point of reading it from source.
     """
-    src = THEME_JS.read_text(encoding="utf-8")
-    body = src[src.index("export const THEMES = {"):]
-    body = body[body.index("{"):]
-    depth = 0
-    for i, ch in enumerate(body):
-        depth += (ch == "{") - (ch == "}")
-        if depth == 0:
-            body = body[: i + 1]
-            break
-
-    out = {}
-    for match in re.finditer(r"(\w+)\s*:\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}", body):
-        fields = dict(re.findall(r"(\w+)\s*:\s*'(#[0-9a-fA-F]{3,8})'", match.group(2)))
-        if not {"bg", "fg", "panel"} <= set(fields):
-            continue
-        resolved = dict(_root_tokens())
-        # theme.js only writes `--red` when the palette names one; an unnamed
-        # one keeps `:root`'s.
-        resolved.update(fields)
-        resolved["accent"] = fields.get("accent") or resolved["red"]
-        # `B22` — `light-dark()` needs to know which arm this palette resolves.
-        # Same rule and threshold as `theme.js`'s `_isLightBackground` (`P3-09`).
-        resolved["color-scheme"] = (
-            "light" if _luminance(_rgb(resolved["bg"])) > 0.5 else "dark"
-        )
-        out[match.group(1)] = resolved
-    assert len(out) == 23, f"expected the twenty-three shipped palettes, found {sorted(out)}"
-    return out
+    return css_colour.palettes(_root_tokens())
 
 
 # ── Colour ─────────────────────────────────────────────────────────────────
@@ -339,106 +305,13 @@ def _themes() -> dict:
 _DEAD_FALLBACK_TOKENS = {"blue", "accent-primary"}
 
 
-class _PaintsNothing(AssertionError):
-    """A chain that dead-ends on a token nothing defines.
-
-    A real CSS outcome — invalid at computed-value time, the declaration is
-    dropped — rather than a gap in the resolver, so callers that are counting
-    what a site paints can catch it. Everywhere else it is still an
-    `AssertionError` and still fails the test.
-    """
-
-
-def _rgb(value: str) -> tuple:
-    digits = value.lstrip("#")
-    if len(digits) == 3:
-        digits = "".join(c * 2 for c in digits)
-    return tuple(int(digits[i:i + 2], 16) for i in (0, 2, 4))
-
-
-def _resolve(expr: str, theme: dict, ground=None) -> tuple:
-    """Resolve the colour expressions this sheet actually uses, and no others.
-
-    Deliberately narrow, in the shape `tests/test_tool_effect_surfaces_js.py`
-    established. An expression it cannot resolve fails rather than being
-    skipped: teach it the new form instead of widening it into a guess.
-
-    `ground` is what a `color-mix(… , transparent)` composites onto — a dot
-    tinted to 60% is not a colour until you know what is behind it.
-    """
-    expr = expr.strip()
-    pair = re.fullmatch(r"light-dark\(\s*(.+?)\s*,\s*(.+?)\s*\)", expr)
-    if pair:
-        # `B22`. Which arm applies is `color-scheme`, which all three palette
-        # writers set from the background's luminance (`P3-09`); the palette
-        # carries the answer, this does not re-derive it.
-        scheme = theme.get("color-scheme")
-        assert scheme in ("light", "dark"), (
-            f"{expr!r} needs the palette's `color-scheme`; this one says {scheme!r}"
-        )
-        return _resolve(pair.group(1) if scheme == "light" else pair.group(2),
-                        theme, ground)
-    mix = re.fullmatch(r"color-mix\(in srgb,\s*(.+?)\s+([\d.]+)%\s*,\s*(.+?)\s*\)", expr)
-    if mix:
-        first = _resolve(mix.group(1), theme, ground)
-        share = float(mix.group(2)) / 100
-        other = mix.group(3).strip()
-        if other == "transparent":
-            assert ground is not None, f"{expr!r} needs a ground to composite onto"
-            second = ground
-        else:
-            second = _resolve(other, theme, ground)
-        return tuple(first[i] * share + second[i] * (1 - share) for i in range(3))
-    token = re.fullmatch(r"var\(--([a-z-]+)(?:,\s*(.+))?\)", expr)
-    if token:
-        name, fallback = token.group(1), token.group(2)
-        if name in theme:
-            return _resolve(theme[name], theme, ground)
-        if not fallback:
-            raise _PaintsNothing(
-                f"--{name} resolves to nothing and has no fallback; a bare "
-                f"var(--{name}) voids the whole declaration"
-            )
-        return _resolve(fallback, theme, ground)
-    assert expr.startswith("#"), (
-        f"the colour check cannot resolve {expr!r} — teach `_resolve` its form"
-    )
-    return _rgb(expr)
-
-
-def _luminance(colour: tuple) -> float:
-    def channel(value):
-        value /= 255.0
-        return value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4
-
-    r, g, b = (channel(c) for c in colour)
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b
-
-
-def _contrast(fore: tuple, back: tuple) -> float:
-    def channel(value):
-        value /= 255.0
-        return value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4
-
-    def relative(colour):
-        r, g, b = (channel(c) for c in colour)
-        return 0.2126 * r + 0.7152 * g + 0.0722 * b
-
-    high, low = sorted((relative(fore), relative(back)), reverse=True)
-    return (high + 0.05) / (low + 0.05)
-
-
-def _distance(a: tuple, b: tuple) -> float:
-    """Plain euclidean sRGB distance, 0..441.
-
-    Crude on purpose. It is not being asked whether two colours are pleasant
-    together, only whether they are the same pixel — which is what "finished"
-    and "failed" became when both resolved to the accent.
-    """
-    return sum((a[i] - b[i]) ** 2 for i in range(3)) ** 0.5
-
-
-# ── The guard the row exists for ────────────────────────────────────────────
+# `B396`. One resolver for the suite: this file's copy split `color-mix()`
+# with a regex and did not recurse into a token's expression.
+_PaintsNothing = css_colour.PaintsNothing
+_rgb = css_colour.rgb
+_resolve = css_colour.resolve
+_contrast = css_colour.contrast
+_distance = css_colour.distance
 
 
 def test_accent_is_defined_nowhere_in_the_stylesheet():

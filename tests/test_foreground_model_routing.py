@@ -17,6 +17,7 @@ import routes.chat_routes as chat_routes
 import routes.chat_helpers as chat_helpers
 import routes.prefs_routes as prefs_routes
 from src.request_models import ChatRequest
+from tests.helpers.patch_estimator import patch_estimator  # B743
 from src.tool_approvals import document_content_digest
 from src.foreground_model_routing import (
     FOREGROUND_AVAILABILITY_STATUSES,
@@ -223,6 +224,14 @@ def _chat_stream_endpoint(
     else:
         monkeypatch.setattr(chat_routes, "save_assistant_response", lambda *args, **kwargs: None)
         monkeypatch.setattr(chat_routes, "run_post_response_tasks", lambda *args, **kwargs: None)
+    # `B743`: deliberately the route's one binding, and not `patch_estimator`.
+    # This helper is shared by ~25 files that were written against it, and some
+    # count their expectations from another module's binding AFTER calling it
+    # (`test_an_agent_turns_compaction_is_counted_and_kept.py` reads
+    # `context_compactor.estimate_tokens` for figures the loop measured with
+    # the real one) — patching every binding here changed what they measured,
+    # 16 cases red. A test of this file that asserts on token counts uses
+    # `patch_estimator` itself.
     monkeypatch.setattr(chat_routes, "estimate_tokens", lambda messages: 10)
     monkeypatch.setattr(
         chat_routes,
@@ -2266,7 +2275,7 @@ def test_multi_round_agent_uses_only_selected_model(monkeypatch):
 
     monkeypatch.setattr(agent_loop, "get_setting", lambda key, default=None: default)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None)
-    monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *args, **kwargs: 10)
+    patch_estimator(monkeypatch, lambda *args, **kwargs: 10)
     monkeypatch.setattr(agent_loop, "blocked_tools_for_owner", lambda owner: set())
     async def fake_stream(candidates, messages, **kwargs):
         nonlocal round_number
@@ -2315,7 +2324,7 @@ def test_multi_round_agent_pins_answering_fallback_for_the_run(monkeypatch):
 
     monkeypatch.setattr(agent_loop, "get_setting", lambda key, default=None: default)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None)
-    monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *args, **kwargs: 10)
+    patch_estimator(monkeypatch, lambda *args, **kwargs: 10)
     monkeypatch.setattr(
         agent_loop,
         "_agent_route_tool_mode",
@@ -2382,7 +2391,7 @@ def test_late_agent_fallback_records_each_round_and_stays_pinned(monkeypatch):
 
     monkeypatch.setattr(agent_loop, "get_setting", lambda key, default=None: default)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None)
-    monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *args, **kwargs: 10)
+    patch_estimator(monkeypatch, lambda *args, **kwargs: 10)
     monkeypatch.setattr(agent_loop, "_agent_route_tool_mode", lambda url, model, owner=None, headers=None: (True, False, False))
 
     async def fake_stream(candidates, messages, **kwargs):
@@ -2447,7 +2456,7 @@ def test_agent_terminal_first_round_error_has_no_success_completion(monkeypatch,
     calls = 0
     monkeypatch.setattr(agent_loop, "get_setting", lambda key, default=None: default)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None)
-    monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *args, **kwargs: 10)
+    patch_estimator(monkeypatch, lambda *args, **kwargs: 10)
 
     async def fake_stream(candidates, messages, **kwargs):
         nonlocal calls
@@ -2492,7 +2501,7 @@ def test_agent_terminal_later_round_error_stops_after_completed_tool(
     calls = 0
     monkeypatch.setattr(agent_loop, "get_setting", lambda key, default=None: default)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None)
-    monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *args, **kwargs: 10)
+    patch_estimator(monkeypatch, lambda *args, **kwargs: 10)
     monkeypatch.setattr(agent_loop, "blocked_tools_for_owner", lambda owner: set())
     monkeypatch.setattr(
         agent_loop,
@@ -2571,7 +2580,7 @@ def test_direct_low_signal_partial_error_emits_terminal_history(
 ):
     monkeypatch.setattr(agent_loop, "get_setting", lambda key, default=None: default)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None)
-    monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *args, **kwargs: 10)
+    patch_estimator(monkeypatch, lambda *args, **kwargs: 10)
     monkeypatch.setattr(
         agent_loop,
         "_classify_agent_request",
@@ -2661,9 +2670,8 @@ def test_direct_low_signal_fallback_estimates_winning_route_prompt(
             *list(messages),
         ],
     )
-    monkeypatch.setattr(
-        agent_loop,
-        "estimate_tokens",
+    patch_estimator(
+        monkeypatch,
         lambda request_messages: (
             99
             if any(
@@ -2839,7 +2847,7 @@ def test_direct_low_signal_empty_completion_surfaces_without_fake_success(monkey
 def test_reasoning_only_agent_error_emits_terminal_history(monkeypatch):
     monkeypatch.setattr(agent_loop, "get_setting", lambda key, default=None: default)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None)
-    monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *args, **kwargs: 10)
+    patch_estimator(monkeypatch, lambda *args, **kwargs: 10)
 
     async def fake_stream(candidates, messages, **kwargs):
         yield 'data: {"delta": "private reasoning partial", "thinking": true}\n\n'
@@ -2874,7 +2882,7 @@ def test_toolless_multi_round_agent_persists_round_route_provenance(monkeypatch)
     backup = ("https://backup.example/v1", "backup-model", {})
     monkeypatch.setattr(agent_loop, "get_setting", lambda key, default=None: default)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None)
-    monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *args, **kwargs: 10)
+    patch_estimator(monkeypatch, lambda *args, **kwargs: 10)
 
     async def fake_stream(candidates, messages, **kwargs):
         nonlocal calls
@@ -2923,7 +2931,7 @@ def test_agent_metrics_attribute_usage_to_each_answering_route(monkeypatch):
     backup = ("http://localhost:11434/v1", "backup-model", {})
     monkeypatch.setattr(agent_loop, "get_setting", lambda key, default=None: default)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None)
-    monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *args, **kwargs: 10)
+    patch_estimator(monkeypatch, lambda *args, **kwargs: 10)
     monkeypatch.setattr(
         agent_loop,
         "_agent_route_tool_mode",
@@ -3008,7 +3016,7 @@ def test_agent_round_ignores_malformed_usage_and_uses_estimate(
 ):
     monkeypatch.setattr(agent_loop, "get_setting", lambda key, default=None: default)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None)
-    monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *args, **kwargs: 10)
+    patch_estimator(monkeypatch, lambda *args, **kwargs: 10)
     monkeypatch.setattr(
         agent_loop,
         "_agent_route_tool_mode",
@@ -3081,7 +3089,7 @@ def test_force_answer_recovery_persists_and_bills_pinned_fallback_route(
 
     monkeypatch.setattr(agent_loop, "get_setting", lambda key, default=None: default)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None)
-    monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *args, **kwargs: 10)
+    patch_estimator(monkeypatch, lambda *args, **kwargs: 10)
     monkeypatch.setattr(agent_loop, "blocked_tools_for_owner", lambda owner: set())
     monkeypatch.setattr(
         agent_loop,
@@ -3197,7 +3205,7 @@ def test_agent_terminal_retains_completed_paid_fallback_usage(monkeypatch):
     backup = ("https://paid.example/v1", "backup-model", {})
     monkeypatch.setattr(agent_loop, "get_setting", lambda key, default=None: default)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None)
-    monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *args, **kwargs: 10)
+    patch_estimator(monkeypatch, lambda *args, **kwargs: 10)
     monkeypatch.setattr(
         agent_loop,
         "_agent_route_tool_mode",
@@ -3268,7 +3276,7 @@ def test_agent_builds_backup_prompt_and_tool_transport_before_attempt(monkeypatc
 
     monkeypatch.setattr(agent_loop, "get_setting", lambda key, default=None: default)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None)
-    monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *args, **kwargs: 10)
+    patch_estimator(monkeypatch, lambda *args, **kwargs: 10)
     monkeypatch.setattr(agent_loop, "blocked_tools_for_owner", lambda owner: set())
     monkeypatch.setattr(
         agent_loop,
@@ -3353,7 +3361,7 @@ def test_agent_fallback_request_uses_candidate_context_budget(
 
     monkeypatch.setattr(agent_loop, "get_setting", lambda key, default=None: default)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None)
-    monkeypatch.setattr(agent_loop, "estimate_tokens", lambda messages: len(messages) * 10)
+    patch_estimator(monkeypatch, lambda messages: len(messages) * 10)
     monkeypatch.setattr(agent_loop, "blocked_tools_for_owner", lambda owner: set())
     monkeypatch.setattr(
         agent_loop,
@@ -3476,7 +3484,7 @@ def test_agent_persists_only_answering_route_compaction(monkeypatch):
 
     monkeypatch.setattr(agent_loop, "get_setting", lambda key, default=None: default)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None)
-    monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *args, **kwargs: 10)
+    patch_estimator(monkeypatch, lambda *args, **kwargs: 10)
     monkeypatch.setattr(agent_loop, "blocked_tools_for_owner", lambda owner: set())
 
     async def fake_compact(
@@ -3531,7 +3539,7 @@ def test_agent_deferred_compaction_survives_duplicate_primary_fallback(monkeypat
 
     monkeypatch.setattr(agent_loop, "get_setting", lambda key, default=None: default)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None)
-    monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *args, **kwargs: 10)
+    patch_estimator(monkeypatch, lambda *args, **kwargs: 10)
     monkeypatch.setattr(agent_loop, "blocked_tools_for_owner", lambda owner: set())
 
     async def fake_compact(
@@ -3578,7 +3586,7 @@ def test_skill_activation_reaches_later_fallback_request_and_pinned_round(monkey
 
     monkeypatch.setattr(agent_loop, "get_setting", lambda key, default=None: default)
     monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None)
-    monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *args, **kwargs: 10)
+    patch_estimator(monkeypatch, lambda *args, **kwargs: 10)
     monkeypatch.setattr(agent_loop, "blocked_tools_for_owner", lambda owner: set())
     monkeypatch.setattr(
         agent_loop,
@@ -3843,10 +3851,9 @@ async def test_each_candidate_measures_a_shaping_step_against_its_own_boundary(m
     monkeypatch.setattr(chat_routes, "maybe_compact", fake_compact)
     monkeypatch.setattr(chat_routes, "trim_for_context", lambda messages, budget: list(messages)[:4])
     # `shaping_stats` lives in `routes/chat_helpers.py` and counts tokens with
-    # that module's `estimate_tokens`; both modules bind the same
-    # `src.model_context` function, so patching the measuring module is the
-    # honest seam here.
-    monkeypatch.setattr(chat_helpers, "estimate_tokens", lambda messages: len(messages) * 100)
+    # that module's own binding of `estimate_tokens` (`B743`): the helper
+    # patches every binding, so this one cannot be the one missed.
+    patch_estimator(monkeypatch, lambda messages: len(messages) * 100)
 
     factory, state = chat_routes._chat_candidate_request_factory(
         history, 4096, session=SimpleNamespace(), owner="alice",
@@ -3885,7 +3892,7 @@ async def test_the_nonstream_reply_records_both_shaping_steps(monkeypatch):
 
     monkeypatch.setattr(chat_routes, "maybe_compact", fake_compact)
     monkeypatch.setattr(chat_routes, "trim_for_context", lambda messages, budget: list(messages))
-    monkeypatch.setattr(chat_helpers, "estimate_tokens", lambda messages: len(messages) * 100)
+    patch_estimator(monkeypatch, lambda messages: len(messages) * 100)
 
     async def fake_call(url, model, messages, **kwargs):
         return "an answer"

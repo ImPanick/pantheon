@@ -223,7 +223,10 @@ STILL_WRITE_THEIR_OWN = {
     "tests/test_the_workshop_surfaces_js.py": "61 four characters",
     # correct today, and a copy to drift.
     "tests/test_the_round_reaches_the_card.py": "53 the canonical five",
-    "tests/test_web_search_tool_icon_js.py": "24 the canonical five",
+    # `B633`: `test_web_search_tool_icon_js.py` ("24 the canonical five") was
+    # retired — it asserted on a private copy of the renderer, and its two
+    # uncovered claims moved onto the real module in
+    # `test_agent_thread_card_is_one_builder.py`.
     # `B882`'s three loaders were here and are gone: the one markdown harness
     # holds the single `escapeHtml` inline now, so the entries went with them.
     # The list stays a description of the tree, which the next test enforces.

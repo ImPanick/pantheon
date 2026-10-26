@@ -59,6 +59,7 @@ from pathlib import Path
 
 import pytest
 from tests.helpers.source_text import blank, blank_text  # B290
+from tests.helpers import css_colour  # B396: the one resolver
 
 ROOT = Path(__file__).resolve().parents[1]
 CHAT_RENDERER = ROOT / "static" / "js" / "chatRenderer.js"
@@ -1655,83 +1656,16 @@ def test_the_narrow_breakpoints_keep_both_surfaces_legible():
 # the app ships. That is the exact property that failed, and it failed silently
 # because nothing measured it.
 
-_TOKEN_FALLBACK_ONLY = {"accent"}
+# `B396`. One resolver for the suite (`tests/helpers/css_colour.py`). This
+# file's copy predated `P1-01`: it resolved `--accent` only through its
+# fallback, read no `:root` token and split `color-mix()` with a regex.
+_resolve = css_colour.resolve
+_contrast = css_colour.contrast
 
 
 def _themes() -> dict:
-    """The sixteen shipped palettes, read out of `static/js/theme.js`."""
-    src = (ROOT / "static" / "js" / "theme.js").read_text(encoding="utf-8")
-    body = src[src.index("export const THEMES = {"):]
-    body = body[body.index("{"):]
-    depth = 0
-    for i, ch in enumerate(body):
-        depth += (ch == "{") - (ch == "}")
-        if depth == 0:
-            body = body[: i + 1]
-            break
-    root_red = _decls(":root")["--red"]
-    out = {}
-    for match in re.finditer(r"(\w+)\s*:\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}", body):
-        fields = dict(re.findall(r"(\w+)\s*:\s*'(#[0-9a-fA-F]{3,8})'", match.group(2)))
-        if {"bg", "fg", "panel"} <= set(fields):
-            # theme.js only writes `--red` when the palette names one, so an
-            # unnamed one keeps the value from `:root`.
-            fields.setdefault("red", root_red)
-            out[match.group(1)] = fields
-    assert len(out) >= 16, f"expected every shipped theme, found {sorted(out)}"
-    return out
-
-
-def _rgb(value: str) -> tuple:
-    digits = value.lstrip("#")
-    if len(digits) == 3:
-        digits = "".join(c * 2 for c in digits)
-    return tuple(int(digits[i:i + 2], 16) for i in (0, 2, 4))
-
-
-def _resolve(expr: str, theme: dict) -> tuple:
-    """Resolve the colour expressions this block actually uses, and no others.
-
-    Deliberately narrow. An expression it cannot resolve fails the test rather
-    than being skipped, because a silently unmeasured colour is how the
-    original defect stayed invisible; teach this function the new form instead.
-    """
-    expr = expr.strip()
-    mix = re.fullmatch(
-        r"color-mix\(in srgb,\s*(.+?)\s+([\d.]+)%\s*,\s*(.+?)\s*\)", expr
-    )
-    if mix:
-        first = _resolve(mix.group(1), theme)
-        second = _resolve(mix.group(3), theme)
-        share = float(mix.group(2)) / 100
-        return tuple(first[i] * share + second[i] * (1 - share) for i in range(3))
-    token = re.fullmatch(r"var\(--([a-z-]+)(?:,\s*(.+))?\)", expr)
-    if token:
-        name, fallback = token.group(1), token.group(2)
-        if name in theme:
-            return _rgb(theme[name])
-        assert name in _TOKEN_FALLBACK_ONLY and fallback, (
-            f"--{name} resolves to nothing and has no fallback; a bare "
-            f"var(--{name}) voids the whole declaration"
-        )
-        return _resolve(fallback, theme)
-    assert expr.startswith("#"), (
-        f"the contrast check cannot resolve {expr!r} — teach `_resolve` its form"
-    )
-    return _rgb(expr)
-
-
-def _contrast(fore: tuple, back: tuple) -> float:
-    def channel(value):
-        value /= 255.0
-        return value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4
-
-    def relative(colour):
-        r, g, b = (channel(c) for c in colour)
-        return 0.2126 * r + 0.7152 * g + 0.0722 * b
-
-    high, low = sorted((relative(fore), relative(back)), reverse=True)
-    return (high + 0.05) / (low + 0.05)
+    """The shipped palettes over `:root`'s tokens, as `applyColors()` paints them."""
+    return css_colour.palettes(css_colour.root_expressions(STYLE.read_text(encoding="utf-8")))
 
 
 def test_the_serious_lead_is_never_less_legible_than_the_routine_one():

@@ -210,6 +210,47 @@ def test_fenced_code_keeps_dollar_backtick_and_quote(node_available):
     assert "s/$&#39;/y/" in html
 
 
+def test_a_quoted_html_sample_keeps_its_code_and_leaks_no_placeholder(node_available):
+    # `B634`/`B890`. Ported from `tests/markdown_codefence_placeholder_regression.mjs`,
+    # which nothing ran and which had not parsed since `markdown.js` gained its
+    # `icons.js` import (it stripped three of six imports by regex — a fifth
+    # private copy of the harness `B882` made one of). The defect it guards:
+    # an allowed-HTML placeholder captured as code inside a fenced block in a
+    # blockquote, and never restored in the final `<pre><code>`.
+    html = _run_markdown_case("\n".join([
+        "> ```html",
+        "> <script>",
+        ">   newWindow.addEventListener('click', () => {",
+        ">     desktop.appendChild(newWindow);",
+        ">   });",
+        "> </script>",
+        "> ```",
+    ]))
+
+    assert "___ALLOWED_HTML_" not in html
+    assert "appendChild" in html
+
+    # The `.mjs`'s sample holds nothing the allowed-HTML pass extracts, so on
+    # today's renderer it could not fail. The same sample with a link and a
+    # `<details>` in it — what an HTML sample in a reply often holds — is the
+    # one whose code becomes placeholders when the fence is not taken first.
+    html = _run_markdown_case("\n".join([
+        "> ```html",
+        "> <details><summary>More</summary>",
+        '> <a href="https://example.org/docs">docs</a>',
+        "> </details>",
+        "> <script>",
+        ">   desktop.appendChild(newWindow);",
+        "> </script>",
+        "> ```",
+    ]))
+
+    assert "___ALLOWED_HTML_" not in html
+    assert "appendChild" in html
+    assert "&lt;a href=" in html, "the sample's link is code to read, not a link to follow"
+    assert "<details" not in html, "the sample's <details> is code, not a live element"
+
+
 def test_fenced_code_keeps_double_dollar(node_available):
     # `$$` collapsed to a single `$` in the restored block.
     html = _run_markdown_case('```sh\necho "$$USD and $$"\n```')

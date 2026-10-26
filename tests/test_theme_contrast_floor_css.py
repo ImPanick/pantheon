@@ -133,14 +133,13 @@ import pytest
 # exist and are the same machines this measurement needs.
 from test_tool_effect_surfaces_js import _DOM, _make_sandbox  # noqa: E402
 from test_accent_token_js import _THEME_STUBS, THEME_NAMES  # noqa: E402
-from test_fg_muted_and_backdrop_cascade_css import (  # noqa: E402
-    _contrast,
-    _css,
-    _distance,
-    _relative_luminance,
-    _resolve,
-    _rgb,
-    _root_expressions,
+from test_fg_muted_and_backdrop_cascade_css import _css, _root_expressions  # noqa: E402
+from tests.helpers.css_colour import (  # noqa: E402 — `B396`: the one resolver
+    contrast as _contrast,
+    distance as _distance,
+    relative_luminance as _relative_luminance,
+    resolve as _resolve,
+    rgb as _rgb,
 )
 
 ROOT = Path(__file__).resolve().parents[1]

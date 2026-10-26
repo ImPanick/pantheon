@@ -85,6 +85,7 @@ import functools
 import re
 from pathlib import Path
 from tests.helpers.source_text import blank, blank_text  # B290
+from tests.helpers import css_colour  # B396: the one resolver
 
 ROOT = Path(__file__).resolve().parents[1]
 STYLE = ROOT / "static" / "style.css"
@@ -159,16 +160,7 @@ def _var_uses(token: str) -> tuple:
                 break
 
 
-def _split_top_level(text: str, sep: str) -> list:
-    """Split on `sep` at paren depth zero. `color-mix()` is full of commas."""
-    out, depth, start = [], 0, 0
-    for i, ch in enumerate(text):
-        depth += (ch == "(") - (ch == ")")
-        if ch == sep and depth == 0:
-            out.append(text[start:i])
-            start = i + 1
-    out.append(text[start:])
-    return out
+_split_top_level = css_colour.split_top_level  # `B396`
 
 
 def _fallback(expr: str) -> str:
@@ -253,161 +245,32 @@ def _decl(selector: str, prop: str) -> str:
 
 @functools.lru_cache(maxsize=1)
 def _root_expressions() -> dict:
-    """Every custom property `:root` declares, as its unresolved expression.
-
-    Not just the hex ones: `--fg-muted` is a `color-mix` over two other
-    tokens, and reading only literals would silently skip the thing this file
-    exists to measure.
-    """
-    css = _css()
-    start = css.index(":root {")
-    block = css[start:css.index("}", start)]
-    return {
-        name: value.strip()
-        for name, value in re.findall(r"--([a-z0-9-]+)\s*:\s*([^;}]+)", block)
-    }
+    """Every custom property `:root` declares, as its unresolved expression
+    (`css_colour.root_expressions`)."""
+    return css_colour.root_expressions(_css())
 
 
 @functools.lru_cache(maxsize=1)
 def _themes() -> dict:
-    """The sixteen shipped palettes, each a token name -> expression map.
+    """The shipped palettes over `:root`'s expressions (`css_colour.palettes`).
 
-    `:root`'s tokens first, then the palette's own `bg/fg/panel/border/red`
-    over the top — which is exactly what the three writers do with
-    `setProperty` on `documentElement`. `--fg-muted` therefore arrives from
-    `:root` as an *expression* naming `--fg`, and resolves per palette, which
-    is the whole claim the row makes about declaring it once.
+    `--fg-muted` therefore arrives from `:root` as an *expression* naming
+    `--fg`, and resolves per palette, which is the whole claim the row makes
+    about declaring it once.
     """
-    src = THEME_JS.read_text(encoding="utf-8")
-    body = src[src.index("export const THEMES = {"):]
-    body = body[body.index("{"):]
-    depth = 0
-    for i, ch in enumerate(body):
-        depth += (ch == "{") - (ch == "}")
-        if depth == 0:
-            body = body[:i + 1]
-            break
-
-    out = {}
-    for match in re.finditer(r"(\w+)\s*:\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}", body):
-        fields = dict(re.findall(r"(\w+)\s*:\s*'(#[0-9a-fA-F]{3,8})'", match.group(2)))
-        if not {"bg", "fg", "panel"} <= set(fields):
-            continue
-        resolved = dict(_root_expressions())
-        resolved.update(fields)
-        # `applyColors()` resolves the accent as `colors.accent || colors.red`,
-        # and no shipped palette names an accent — see P1-01.
-        resolved["accent"] = fields.get("accent") or resolved["red"]
-        # `B22` — `light-dark()` needs to know which arm this palette resolves.
-        # Same rule and same threshold as `theme.js`'s `_isLightBackground`
-        # (`P3-09`): WCAG relative luminance of `--bg`, threshold 0.5.
-        resolved["color-scheme"] = (
-            "light" if _relative_luminance(_rgb(resolved["bg"])) > 0.5 else "dark"
-        )
-        out[match.group(1)] = resolved
-    assert len(out) == 23, f"expected the twenty-three shipped palettes, found {sorted(out)}"
-    return out
+    return css_colour.palettes(_root_expressions())
 
 
 # ── Colour ─────────────────────────────────────────────────────────────────
 
 
-class _PaintsNothing(AssertionError):
-    """A chain that dead-ends on a token nothing defines.
-
-    A real CSS outcome — invalid at computed-value time, the declaration is
-    dropped — and the state all 93 bare uses were in before this row.
-    """
-
-
-def _rgb(value: str) -> tuple:
-    digits = value.lstrip("#")
-    if len(digits) == 3:
-        digits = "".join(c * 2 for c in digits)
-    return tuple(int(digits[i:i + 2], 16) for i in (0, 2, 4))
-
-
-def _resolve(expr: str, theme: dict, ground=None) -> tuple:
-    """Resolve the colour expressions this sheet uses, and no others.
-
-    Narrow on purpose, in the shape `test_accent_fallback_semantics_css.py`
-    established: an expression it cannot resolve fails the test rather than
-    being skipped, because a silently unmeasured colour is how a token that
-    resolves to nothing survives 101 uses.
-
-    Unlike that file's resolver this one splits `color-mix()` on balanced
-    parens and recurses into token *expressions*, not just token literals —
-    `--fg-muted` is itself a mix, and two sites nest it inside another one.
-
-    `ground` is what `color-mix(…, transparent)` composites onto.
-    """
-    expr = expr.strip()
-    if expr.startswith("light-dark("):
-        # `B22`. The sheet's per-surface semantic tokens. Which arm applies is
-        # decided by `color-scheme`, which all three palette writers set from
-        # the background's WCAG luminance (`P3-09`) — so the palette carries the
-        # answer and this does not re-derive it. A theme dict that does not say
-        # fails here rather than silently picking one.
-        arms = [a.strip() for a in _split_top_level(expr[len("light-dark("):-1], ",")]
-        assert len(arms) == 2, f"expected two arms in {expr!r}"
-        scheme = theme.get("color-scheme")
-        assert scheme in ("light", "dark"), (
-            f"{expr!r} needs the palette's `color-scheme`; this one says {scheme!r}"
-        )
-        return _resolve(arms[0] if scheme == "light" else arms[1], theme, ground)
-    if expr.startswith("color-mix("):
-        inner = expr[len("color-mix("):-1]
-        parts = [p.strip() for p in _split_top_level(inner, ",")]
-        assert len(parts) == 3 and parts[0] == "in srgb", (
-            f"the colour check cannot read {expr!r} — teach `_resolve` its form"
-        )
-        head = re.fullmatch(r"(.+?)\s+([\d.]+)%", parts[1])
-        assert head, f"expected `<color> N%` in {parts[1]!r}"
-        first = _resolve(head.group(1), theme, ground)
-        share = float(head.group(2)) / 100
-        if parts[2] == "transparent":
-            assert ground is not None, f"{expr!r} needs a ground to composite onto"
-            second = ground
-        else:
-            second = _resolve(parts[2], theme, ground)
-        return tuple(first[i] * share + second[i] * (1 - share) for i in range(3))
-    if expr.startswith("var("):
-        inner = expr[len("var("):-1]
-        parts = _split_top_level(inner, ",")
-        name = parts[0].strip().lstrip("-")
-        fallback = parts[1].strip() if len(parts) > 1 else None
-        if name in theme and theme[name] is not None:
-            return _resolve(theme[name], theme, ground)
-        if fallback is None:
-            raise _PaintsNothing(
-                f"--{name} resolves to nothing and has no fallback; a bare "
-                f"var(--{name}) voids the whole declaration"
-            )
-        return _resolve(fallback, theme, ground)
-    assert expr.startswith("#"), (
-        f"the colour check cannot resolve {expr!r} — teach `_resolve` its form"
-    )
-    return _rgb(expr)
-
-
-def _relative_luminance(colour: tuple) -> float:
-    def channel(value):
-        value /= 255.0
-        return value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4
-
-    r, g, b = (channel(c) for c in colour)
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b
-
-
-def _contrast(fore: tuple, back: tuple) -> float:
-    high, low = sorted(
-        (_relative_luminance(fore), _relative_luminance(back)), reverse=True
-    )
-    return (high + 0.05) / (low + 0.05)
-
-
-def _distance(a: tuple, b: tuple) -> float:
-    return sum((a[i] - b[i]) ** 2 for i in range(3)) ** 0.5
+# `B396`. One resolver for the suite, moved from here to `tests/helpers/`.
+_PaintsNothing = css_colour.PaintsNothing
+_rgb = css_colour.rgb
+_resolve = css_colour.resolve
+_relative_luminance = css_colour.relative_luminance
+_contrast = css_colour.contrast
+_distance = css_colour.distance
 
 
 def _muted(theme: dict) -> tuple:
