@@ -423,7 +423,10 @@ def test_the_budget_runs_out_and_the_schedule_comes_back(task_db):
 
 def test_an_event_triggered_task_is_not_put_on_a_clock(task_db):
     """Re-firing an event task without its event would make it a different
-    kind of task. It waits for the trigger, and always has."""
+    kind of task, so it is never put on a clock (`next_run` stays `None`).
+    `B805` changed the rest: with retries left, its retry is the same trigger
+    again (`TaskScheduler._retry_with_trigger`), so the plan is a retry —
+    driven end to end in `tests/test_a_webhook_task_retries_with_its_payload.py`."""
     _seed(task_db, max_retries=3)
     db = task_db()
     try:
@@ -434,7 +437,7 @@ def test_an_event_triggered_task_is_not_put_on_a_clock(task_db):
     finally:
         db.close()
     assert plan.next_run is None
-    assert plan.is_retry is False
+    assert plan.is_retry is True and plan.note.endswith("with what started it")
 
 
 @pytest.mark.asyncio

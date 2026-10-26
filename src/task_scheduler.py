@@ -760,9 +760,29 @@ def failure_next_run(db, task, *, run_id: str, now=None) -> FailureSchedule:
     backed_off = apply_interval_floor(now + timedelta(seconds=delay), now)
     budget = max(0, int(getattr(task, "max_retries", None) or 0))
 
-    if scheduled is None:
+    if (getattr(task, "trigger_type", None) or "schedule") != "schedule":
         # An event- or webhook-triggered task waits for its trigger, and always
-        # has. Re-firing it on a clock would make it a different kind of task.
+        # has. Re-firing it on a clock would make it a different kind of task —
+        # so `next_run` stays `None`. `B805`: its retry is the SAME trigger
+        # again — the envelope the failed run was handed (`run_trigger`) —
+        # which the caller re-dispatches after this wait
+        # (`TaskScheduler._retry_with_trigger`). `max_retries` was accepted on
+        # every task and did nothing on these, with nothing saying so; a
+        # webhook that failed because a provider was down is retried against
+        # the payload it brought, not dropped.
+        wait = (backed_off - now).total_seconds()
+        if attempt <= budget:
+            return FailureSchedule(
+                None, True, attempt, wait,
+                f"Failed — retrying (attempt {attempt} of {budget}) in "
+                f"{_human_gap(wait)}, with what started it")
+        if budget:
+            return FailureSchedule(
+                None, False, attempt, wait,
+                f"Failed — {budget} retry attempt(s) used up. It runs again on its "
+                f"next trigger.")
+        return FailureSchedule(None, False, attempt, delay, "")
+    if scheduled is None:
         return FailureSchedule(None, False, attempt, delay, "")
     if attempt <= budget:
         return FailureSchedule(
@@ -3025,6 +3045,41 @@ class TaskScheduler:
                 async with self._executing_lock:
                     self._executing.discard(task_id)
 
+    #: `B805`. A retry that comes due while its task is busy (running, or a
+    #: run of it parked) tries again this often, this many times, then says
+    #: in the log that it gave up.
+    RETRY_BUSY_SECONDS = 30
+    RETRY_BUSY_TRIES = 20
+
+    def _retry_with_trigger(self, task_id: str, run_id: str, delay: float) -> None:
+        """`B805`. An event- or webhook-triggered task's retry: the SAME
+        trigger — the envelope the failed run was handed — dispatched again
+        after `delay` (`failure_next_run`'s backoff), as background work.
+
+        Held in this process, as the trigger itself is (`run_trigger` lives on
+        the run's slot), so a restart before it is due drops it — the failed
+        run's row says a retry was coming and the next trigger runs the task
+        as always. The attempt count is the run history's
+        (`consecutive_failures`), so a retry that fails again plans the next
+        one, and one that works ends the streak."""
+        trigger = self.run_trigger(run_id)
+
+        async def _later():
+            await asyncio.sleep(max(0.0, float(delay or 0)))
+            for _ in range(self.RETRY_BUSY_TRIES):
+                if await self.run_task_now(task_id, trigger=trigger):
+                    return
+                await asyncio.sleep(self.RETRY_BUSY_SECONDS)
+            logger.warning("Task %s: a retry with its trigger gave up — the task stayed busy",
+                           task_id)
+
+        pending = getattr(self, "_pending_retries", None)
+        if pending is None:
+            pending = self._pending_retries = set()
+        job = asyncio.create_task(_later())
+        pending.add(job)
+        job.add_done_callback(pending.discard)
+
     def _restate_stopped_by_user(self, run_id: str) -> None:
         """`B1060`. A run the gate stopped said it would run again; the person
         stopped it before it did. Its `result` says so; its `error` keeps why
@@ -3749,6 +3804,8 @@ class TaskScheduler:
                     logger.warning("Task %s: %s", task_id, plan.note)
                     self._record_run_step(run_id, kind="progress", detail=plan.note)
                     self._attach_run_steps(run_id, run)
+                if plan.is_retry and plan.next_run is None:
+                    self._retry_with_trigger(task_id, run_id, plan.delay_seconds)   # `B805`
                 if (task.next_run is None and task.schedule == "once"
                         and (task.trigger_type or "schedule") == "schedule"):
                     task.status = "completed"
@@ -3887,6 +3944,9 @@ class TaskScheduler:
                             self._record_run_step(run_id, kind="progress",
                                                   detail=plan.note)
                             self._attach_run_steps(run_id, run_obj)
+                        if plan.is_retry and plan.next_run is None:
+                            # `B805`
+                            self._retry_with_trigger(task_id, run_id, plan.delay_seconds)
                     except Exception as exc:
                         # `P3-17`. `last_run` was set on the line above, so
                         # swallowing this leaves `next_run` at a time that has
@@ -3901,6 +3961,22 @@ class TaskScheduler:
                             getattr(task_obj, "id", "?"), getattr(task_obj, "schedule", "?"),
                             getattr(task_obj, "next_run", None), exc,
                         )
+                elif (task_obj is not None and run_obj is not None and run_obj.status == "error"
+                        and int(getattr(task_obj, "max_retries", None) or 0) > 0):
+                    # `B805`. An event or webhook task that RAISED gets its
+                    # retries too — the same trigger, again — as one whose run
+                    # RETURNED a failure does above. Its `next_run` is left as
+                    # it was: that column means "deferred" on these.
+                    try:
+                        plan = failure_next_run(db, task_obj, run_id=run_id)
+                        if plan.note:
+                            logger.warning("Task %s: %s", task_id, plan.note)
+                            self._record_run_step(run_id, kind="progress", detail=plan.note)
+                            self._attach_run_steps(run_id, run_obj)
+                        if plan.is_retry:
+                            self._retry_with_trigger(task_id, run_id, plan.delay_seconds)
+                    except Exception as exc:
+                        logger.warning("Could not plan a retry for task %s: %s", task_id, exc)
                 try:
                     db.commit()
                     # `P8-28`. The same branch the ordinary path takes. A task

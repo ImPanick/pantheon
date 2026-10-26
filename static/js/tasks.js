@@ -372,11 +372,11 @@ function _wallClockLabel(hhmm) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-/** `P22-03`. What a scheduled task does when a run fails, for the card — or
- *  `''`. Only a scheduled task retries (`failure_next_run`: an event or webhook
- *  task waits for its next trigger), so only a scheduled task says so. */
+/** `P22-03`. What a task does when a run fails, for the card — or `''`. */
 function _retryWords(task) {
-  if ((task?.trigger_type || 'schedule') !== 'schedule') return '';
+  // `B805`: every trigger retries now — an event or webhook task with what
+  // started it — so every card says so. (It said nothing for those two, which
+  // was true while their retries did nothing.)
   const n = Number(task?.max_retries) || 0;
   if (n <= 0) return '';
   return `${n} ${n === 1 ? 'retry' : 'retries'} if it fails`;

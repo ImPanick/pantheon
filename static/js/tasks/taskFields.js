@@ -704,6 +704,17 @@ function _timeLimitParts(seconds) {
   return { amount: String(s), unit: 1 };
 }
 
+/** `B805`. The retry box, for every trigger: a scheduled task retries on its
+ *  clock, an event or webhook task with what started it (`failure_next_run`,
+ *  `TaskScheduler._retry_with_trigger`). It was drawn for a schedule only —
+ *  and the API took a count on any task, which did nothing on the others. */
+function _retryBoxHtml(existing) {
+  return `
+        <label class="task-form-label" for="task-form-retries">Retry a failed run <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — up to ${_RETRIES_MAX} times)</span></label>
+        <input type="number" id="task-form-retries" class="task-form-input task-form-number" min="0" max="${_RETRIES_MAX}" step="1" inputmode="numeric" placeholder="0" value="${_escHtml(Number(existing?.max_retries) > 0 ? String(existing.max_retries) : '')}" />
+        <div class="task-form-hint">After a failure it tries again, this many times at most — an event or webhook task with what started it. Each retry waits about twice as long as the one before.</div>`;
+}
+
 /** The retry box, read: `{ value }` or `{ error }`. Blank is no retries. */
 function _readRetries(root) {
   const raw = String(_byId(root, 'task-form-retries')?.value ?? '').trim();
@@ -1206,9 +1217,7 @@ ${(isNode && taskType === 'research') ? '' : `
         <label class="task-form-label" for="task-form-tz">Time zone <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional)</span></label>
         <select id="task-form-tz" class="task-form-input"></select>
         <div id="task-form-tz-note" class="task-form-hint"></div>
-        <label class="task-form-label" for="task-form-retries">Retry a failed run <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — up to ${_RETRIES_MAX} times)</span></label>
-        <input type="number" id="task-form-retries" class="task-form-input task-form-number" min="0" max="${_RETRIES_MAX}" step="1" inputmode="numeric" placeholder="0" value="${_escHtml(Number(existing?.max_retries) > 0 ? String(existing.max_retries) : '')}" />
-        <div class="task-form-hint">After a failure it tries again, this many times at most. Each retry waits about twice as long as the one before.</div>
+        ${_retryBoxHtml(existing)}
       `;
 
       // `P22-03`. The zone, before the time picker is filled: a task with a
@@ -1340,6 +1349,7 @@ ${(isNode && taskType === 'research') ? '' : `
         <div id="task-form-event-payload" class="task-form-event-payload"></div>
         <label class="task-form-label">Every N occurrences</label>
         <input type="number" id="task-form-trigger-count" class="task-form-input" min="1" max="1000" value="${existing?.trigger_count || _defaultTriggerCount()}" />
+        ${_retryBoxHtml(existing)}
       `;
       // `P8-31`. The field used to be pre-filled with a literal 5 — a number
       // nobody chose, in front of an API that had no default and a bus that
@@ -1374,6 +1384,7 @@ ${(isNode && taskType === 'research') ? '' : `
             <button class="task-btn" id="task-form-webhook-rotate" style="white-space:nowrap;" title="Issue a new token. The current URL stops working immediately.">Rotate</button>
           </div>
           <div style="font-size:10px;opacity:0.4;margin-top:4px;">POST this URL from any external service to trigger the task. Anyone holding it can run the task — rotate if it leaks.</div>
+          ${_retryBoxHtml(existing)}
         `;
         $('task-form-webhook-copy')?.addEventListener('click', async () => {
           // `B59`. Was `navigator.clipboard.writeText(url)` followed
@@ -1416,7 +1427,8 @@ ${(isNode && taskType === 'research') ? '' : `
           }
         });
       } else {
-        triggerOpts.innerHTML = '<div style="font-size:11px;opacity:0.5;margin-top:4px;">Webhook URL will be generated when the task is saved.</div>';
+        triggerOpts.innerHTML = '<div style="font-size:11px;opacity:0.5;margin-top:4px;">Webhook URL will be generated when the task is saved.</div>'
+          + _retryBoxHtml(existing);
       }
     }
   }
@@ -1737,15 +1749,6 @@ ${(isNode && taskType === 'research') ? '' : `
           }
         }
         payload.tz_name = zone;
-        // Retries are a schedule's: a failed event or webhook task waits for its
-        // next trigger and is never re-run on a clock (`failure_next_run`), so the
-        // box is only drawn, and only sent, for a scheduled task.
-        const retries = _readRetries(host);
-        if (retries.error) {
-          if (uiModule) uiModule.showError(retries.error);
-          return false;
-        }
-        payload.max_retries = retries.value;
       } else if (triggerType === 'event') {
         const evSel = $('task-form-event');
         const countInput = $('task-form-trigger-count');
@@ -1760,6 +1763,18 @@ ${(isNode && taskType === 'research') ? '' : `
         payload.trigger_count = parseInt(countInput?.value || String(_defaultTriggerCount()), 10);
       }
       // webhook: no extra fields needed, token is auto-generated server-side
+
+      // `B805`. Retries, for every trigger: a scheduled task's on its clock,
+      // an event's or a webhook's with what started it. It was read and sent
+      // for a schedule only.
+      if ($('task-form-retries')) {
+        const retries = _readRetries(host);
+        if (retries.error) {
+          if (uiModule) uiModule.showError(retries.error);
+          return false;
+        }
+        payload.max_retries = retries.value;
+      }
 
       // `P22-03`. A ceiling on one run's wall clock, for every trigger. Blank is
       // `0`, which the API stores as "no limit" — so clearing the box clears it.
