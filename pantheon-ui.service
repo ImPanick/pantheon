@@ -1,5 +1,5 @@
 # Copy to /etc/systemd/system/pantheon-ui.service
-# Edit User, WorkingDirectory, and ExecStart paths to match your setup
+# Edit User, WorkingDirectory, ExecStart and ExecStartPost paths to match your setup
 [Unit]
 Description=Pantheon UI
 After=network.target
@@ -10,6 +10,14 @@ Type=simple
 User=YOURUSER
 WorkingDirectory=/home/YOURUSER/pantheon-ui
 ExecStart=/home/YOURUSER/pantheon-ui/venv/bin/uvicorn app:app --port 7000 --host 0.0.0.0
+# B444: `Type=simple` calls the unit started the instant uvicorn is forked, so
+# `systemctl start` returned and `status` read `active (running)` while port 7000
+# still refused connections. The unit now stays `activating` until the app
+# answers /api/ready with {"ready": true} (the compose healthcheck's probe), and
+# a start that never gets there fails instead of reading active. Keep the port
+# in this URL the one ExecStart serves, and the wait shorter than TimeoutStartSec.
+ExecStartPost=/home/YOURUSER/pantheon-ui/venv/bin/python scripts/pantheon-deploy wait-ready --url http://127.0.0.1:7000/api/ready --timeout 170
+TimeoutStartSec=180
 Restart=always
 RestartSec=3
 EnvironmentFile=-/home/YOURUSER/pantheon-ui/.env

@@ -16,6 +16,7 @@ sleeping, and then verifies:
     scripts/pantheon-deploy verify       verify whatever is running now
     scripts/pantheon-deploy rollback     put the previous image back
     scripts/pantheon-deploy probe        (inside the container; not for humans)
+    scripts/pantheon-deploy wait-ready   (systemd's ExecStartPost; `B444`)
 
 `pantheon deploy ...` works too — `scripts/pantheon` discovers this file the
 way git discovers `git-foo`.
@@ -343,6 +344,9 @@ def boot_log(docker: Docker, service: str = SERVICE, since: str = "") -> str:
 
 PROBE_TIMEOUT = 15
 
+# The app as this host reaches it — the probe's routes and `wait-ready`'s URL.
+LOCAL_APP = "http://127.0.0.1:7000"
+
 
 def _probe_routes(routes) -> list:
     import urllib.error
@@ -355,7 +359,7 @@ def _probe_routes(routes) -> list:
     opener = urllib.request.build_opener(_NoRedirect)
     out = []
     for path, expected, why in routes:
-        url = "http://127.0.0.1:7000" + path
+        url = LOCAL_APP + path
         row = {"path": path, "expected": list(expected), "why": why}
         try:
             with opener.open(url, timeout=PROBE_TIMEOUT) as res:
@@ -668,6 +672,67 @@ def _running_image_ref(docker: Docker, service: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# `B444`. The other supervisor. `pantheon-ui.service` is `Type=simple`, which
+# calls the unit started the instant uvicorn is forked, so `systemctl start`
+# returned and `systemctl status` read `active (running)` for the 35-60 s port
+# 7000 refuses connections — and forever for a process that came up wedged.
+# This is the unit's `ExecStartPost=`: the unit stays `activating` until it
+# returns, so `systemctl start` blocks until the app is serving and fails when
+# it never does — the meaning the compose healthcheck gives `docker ps`, asked
+# the same way (`/api/ready`, `{"ready": true}`, `B441`).
+
+READY_URL = LOCAL_APP + "/api/ready"
+
+
+def _fetch(url: str, timeout: float = 5.0):
+    """`(status, body)` for a GET; `(0, reason)` when nothing answered."""
+    import urllib.error
+    import urllib.request
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as res:
+            return res.status, res.read(65536).decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return e.code, ""
+    except Exception as e:                           # refused, reset, timeout
+        return 0, f"{type(e).__name__}: {e}"
+
+
+def _says_ready(status: int, body: str) -> bool:
+    """The compose healthcheck's test: a 200 whose JSON says `ready: true`. A
+    login page or an error page is a 200 that is not ready."""
+    if status != 200:
+        return False
+    try:
+        return json.loads(body).get("ready") is True
+    except (ValueError, AttributeError):
+        return False
+
+
+def wait_for_ready(url: str = READY_URL, timeout: float = 170.0, poll: float = 2.0,
+                   fetch=_fetch, sleeper=time.sleep, clock=time.monotonic) -> float:
+    """Block until `url` answers ready. Returns seconds waited; raises
+    `DeployError` with the last answer when `timeout` passes first."""
+    started = clock()
+    while True:
+        status, body = fetch(url)
+        waited = clock() - started
+        if _says_ready(status, body):
+            return waited
+        if waited >= timeout:
+            last = (f"answered {status}" if status else f"did not answer ({body})")
+            raise DeployError(
+                f"{url} {last} for {waited:.0f}s, and the app is ready only when it answers "
+                "200 with {\"ready\": true}. `journalctl -u pantheon-ui -n 80` has the reason; "
+                "a 503 means the database or the data directory is not usable.")
+        sleeper(poll)
+
+
+def cmd_wait_ready(args) -> None:
+    waited = wait_for_ready(args.url, timeout=args.timeout)
+    sys.stderr.write(f"  {args.url} ready after {waited:.0f}s\n")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 def build_parser():
     p = common_parser("pantheon-deploy",
@@ -704,6 +769,13 @@ def build_parser():
                         help="(inside the container) emit the raw verification report")
     pr.add_argument("--app-root", default="/app")
     pr.set_defaults(func=cmd_probe)
+
+    w = sub.add_parser("wait-ready", parents=[common],
+                       help="(systemd ExecStartPost) wait until the app answers ready")
+    w.add_argument("--url", default=READY_URL, help=f"readiness URL (default {READY_URL})")
+    w.add_argument("--timeout", type=float, default=170.0,
+                   help="seconds to wait before failing (default 170)")
+    w.set_defaults(func=cmd_wait_ready)
     return p
 
 
