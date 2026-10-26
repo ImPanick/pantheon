@@ -2703,13 +2703,18 @@ def _admin_keyword_patterns():
 _ADMIN_SELF_SUFFICIENT_RE, _ADMIN_MENTION_RE = _admin_keyword_patterns()
 
 
-def admin_intent_in_text(text: str) -> bool:
-    """Whether this text asks for a management action (see the block above)."""
+def _admin_request_words(text: str):
+    """Each `_ADMIN_KEYWORDS` match in this text that reads as a request.
+
+    The rule is the block above, unchanged; it yields the words instead of
+    stopping at the first, so `B1489` can ask *which* words made a turn an
+    admin turn. `admin_intent_in_text` still stops at the first (`any`).
+    """
     t = str(text or "")
     if not t.strip():
-        return False
-    if _ADMIN_SELF_SUFFICIENT_RE.search(t):
-        return True
+        return
+    for m in _ADMIN_SELF_SUFFICIENT_RE.finditer(t):
+        yield m.group(0)
     for m in _ADMIN_MENTION_RE.finditer(t):
         before = t[:m.start()]
         words = _ADMIN_WORD_RE.findall(before)
@@ -2718,10 +2723,53 @@ def admin_intent_in_text(text: str) -> bool:
         # number says. A constant nobody can set to its own inverse.
         window = " ".join(words[max(0, len(words) - _ADMIN_GOVERNOR_WORDS):])
         if _ADMIN_ACTION_RE.search(window) or _ADMIN_POSSESSIVE_RE.search(window):
-            return True
-        if _ADMIN_ACTION_RE.fullmatch(m.group(0)) and _ADMIN_CLAUSE_MARKER_RE.search(before):
-            return True
-    return False
+            yield m.group(0)
+        elif _ADMIN_ACTION_RE.fullmatch(m.group(0)) and _ADMIN_CLAUSE_MARKER_RE.search(before):
+            yield m.group(0)
+
+
+def admin_intent_in_text(text: str) -> bool:
+    """Whether this text asks for a management action (see the block above)."""
+    return any(True for _ in _admin_request_words(text))
+
+
+# `B1489` (the remainder of `B1387`). **A note, to-do or reminder turn is an
+# admin turn that needs none of the management tools.** The note words are in
+# `_ADMIN_KEYWORDS` so that *"open my notes file"* reaches `manage_documents`
+# (the comment on the list says so, and `Law 1` pins that turn as an admin
+# turn), and that one reason made *"add a note to remind me to call the
+# dentist"* force-include all fifteen `_ADMIN_PROMPT_FORCE_INCLUDE` names —
+# 5,587 tokens of schema — on a turn the domain seed already serves:
+# `_classify_agent_request` maps exactly these words to `notes_calendar_tasks`,
+# and the loop seeds that domain's tools onto any selection, a caller's own
+# narrow `relevant_tools` included (`tests/test_a_note_turn_is_offered_a_note_tool.py`).
+#
+# The narrower rule: a turn whose **only** request words are note words, and
+# whose note word does not name a file, does not force the management set in.
+# A note word that names a file — *my notes file*, *the todo doc*, *notes.md* —
+# is the document request the words were added for, and keeps it. Anything
+# else in the turn that is a management request (*"list my todos and my
+# sessions"*) keeps it too. `_detect_admin_intent` is untouched, so every turn
+# it called admin is still admin; what moved is what the loop spends on one.
+#: A **filter** over `_ADMIN_KEYWORDS`, as `_ADMIN_SELF_SUFFICIENT` is (`Law 7`).
+_ADMIN_NOTE_WORDS = frozenset({"note", "notes", "todo", "todos", "reminder", "reminders"})
+_NOTE_NAMES_A_FILE_RE = re.compile(
+    r"\b(?:notes?|todos?|reminders?)(?:\s+|[._-])(?:files?|docs?|documents?|md|txt)\b",
+    re.IGNORECASE,
+)
+
+
+def _only_note_words(messages: List[Dict]) -> bool:
+    """`B1489`. True when every request word in the person's last message is a
+    note word and none of them names a file — the turn the domain seed serves.
+
+    Read through `_extract_last_user_message`, the same walk
+    `_detect_admin_intent` makes (Pantheon's framed context skipped, `B1371`).
+    """
+    text = _extract_last_user_message(messages)
+    words = {w.lower() for w in _admin_request_words(text)}
+    return (bool(words) and words <= _ADMIN_NOTE_WORDS
+            and not _NOTE_NAMES_A_FILE_RE.search(str(text or "")))
 
 
 def _detect_admin_intent(messages: List[Dict]) -> bool:
@@ -7168,7 +7216,10 @@ async def stream_agent_loop(
     # is live and the yield is never inside the window it would be timing.
     yield _agent_prep_frame(prep_timings, running="request_setup")
     _t0 = time.time()
-    _needs_admin = _detect_admin_intent(messages)
+    # `B1489`. An admin turn whose only management words are note words is
+    # served by the `notes_calendar_tasks` domain seed, so it does not force
+    # the fifteen management schemas in (see `_only_note_words`).
+    _needs_admin = _detect_admin_intent(messages) and not _only_note_words(messages)
     _last_user = _extract_last_user_message(messages)
     _pan_qwen_finetune_model = _is_pantheon_qwen_model(model)
     # The caller's temperature survives for non-qwen routes; the qwen cap is
