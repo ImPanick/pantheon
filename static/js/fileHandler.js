@@ -492,6 +492,114 @@ export function getContextBudget() {
   return _contextBudget;
 }
 
+// ── `B761`: a pending file priced before it is sent ─────────────────────────
+//
+// A file sitting in the composer has not been uploaded — `uploadPending` runs
+// at send — so the server has nothing to measure, and the meter could only say
+// "N attached — measured when you send": *the limit, after you hit it*. The row
+// left the choice open (upload on attach, or not); this keeps bytes in the
+// browser until the person sends. A text or code file's characters are counted
+// here — read with `Blob.text()`, at most `ESTIMATE_READ_BYTES` of it — and run
+// through the server's own budgets from the report already on screen: the
+// per-file allowance (`context_log_file_chars` for a `.log`, else
+// `context_text_file_chars`), then what is left of the turn's ceiling, in
+// order, as `document_processor.build_user_content` spends them. It is an
+// estimate and says so (`≈`, and a sentence): the server's header lines and a
+// file's encoding make the measured figure differ a little. A PDF, an Office
+// file or a picture is not read here — no converter runs in the composer — and
+// keeps "measured when you send".
+const ESTIMATE_READ_BYTES = 4 * 1024 * 1024;
+const _estimates = new WeakMap();   // File -> { chars, more } once read
+
+function _estimable(f) {
+  const name = String((f && f.name) || '');
+  const kind = attachmentKind(name, f && f.type);
+  return kind === 'code' || kind === 'text' || /\.(csv|tsv)$/i.test(name);
+}
+
+function _estimatePending() {
+  for (const f of pendingFiles) {
+    if (!f || _estimates.has(f) || !_estimable(f) || typeof f.slice !== 'function') continue;
+    _estimates.set(f, null);   // being read
+    Promise.resolve()
+      .then(() => f.slice(0, ESTIMATE_READ_BYTES).text())
+      .then((text) => {
+        _estimates.set(f, { chars: text.length, more: (f.size || 0) > ESTIMATE_READ_BYTES });
+        renderContextMeter();
+      })
+      .catch(() => { _estimates.set(f, { chars: null }); });
+  }
+}
+
+function _budgetChars(budgets, key) {
+  const b = (budgets || []).find((x) => x && x.key === key);
+  return _chars(b && b.chars);
+}
+
+/**
+ * What the pending files will cost, by the server's rules, from the budgets on
+ * screen: `{ items, spent, estimated }`. An item is `{ name, kind, chars, fit,
+ * state, cutBy }` — `state` as the server names it (`full`, `truncated`,
+ * `omitted`) plus `unknown` for a file not read here; `cutBy` says which
+ * allowance cut it (`file` or `turn`).
+ */
+export function estimatePendingSpend(budgets, files) {
+  const ceiling = (budgets || []).find((b) => b && b.is_ceiling) || null;
+  let remaining = _chars(ceiling && ceiling.chars);
+  const items = [];
+  let spent = 0;
+  let estimated = 0;
+  for (const f of files || []) {
+    const name = String((f && f.name) || 'attachment');
+    const kind = attachmentKind(name, f && f.type);
+    const est = _estimates.get(f);
+    if (!est || est.chars == null) {
+      items.push({ name, kind, chars: null, fit: 0, state: 'unknown', cutBy: '' });
+      continue;
+    }
+    estimated += 1;
+    const perFile = _budgetChars(budgets,
+      /\.log$/i.test(name) ? 'context_log_file_chars' : 'context_text_file_chars') || remaining;
+    const afterFile = Math.min(est.chars, perFile);
+    const cutByFile = est.more || est.chars > perFile;
+    let fit = Math.min(afterFile, Math.max(0, remaining));
+    let state = 'full';
+    let cutBy = '';
+    if (remaining <= 0) { state = 'omitted'; fit = 0; cutBy = 'turn'; }
+    else if (fit < afterFile) { state = 'truncated'; cutBy = 'turn'; }
+    else if (cutByFile) { state = 'truncated'; cutBy = 'file'; }
+    remaining -= fit;
+    spent += fit;
+    items.push({ name, kind, chars: est.chars, more: !!est.more, fit, state, cutBy, perFile });
+  }
+  return { items, spent, estimated };
+}
+
+function _estimateChip(item, limit) {
+  const chip = _contextChip(
+    { name: item.name, kind: item.kind, chars: item.fit,
+      state: item.state === 'unknown' ? 'full' : item.state }, limit);
+  chip.classList.add('context-chip-estimate');
+  const note = chip.querySelector('.context-chip-note');
+  const total = item.chars == null ? '' : `≈ ${item.chars.toLocaleString()}${item.more ? '+' : ''}`;
+  if (item.state === 'unknown') {
+    note.textContent = 'measured when you send';
+  } else if (item.state === 'omitted') {
+    note.textContent = `${total} characters — no room in this message`;
+  } else if (item.state === 'truncated' && item.cutBy === 'file') {
+    note.textContent = `${total} characters — will be cut to ${item.fit.toLocaleString()} `
+      + `(${/\.log$/i.test(item.name) ? 'the .log' : 'the per-file'} allowance)`;
+  } else if (item.state === 'truncated') {
+    note.textContent = `${total} characters — only ${item.fit.toLocaleString()} will fit`;
+  } else {
+    const share = limit > 0 ? Math.round((item.fit / limit) * 100) : 0;
+    note.textContent = `${total} characters, ${share}% of the budget`;
+  }
+  chip.title = item.chars == null ? item.name
+    : `${item.name} — about ${item.chars.toLocaleString()} characters, estimated before sending`;
+  return chip;
+}
+
 function _contextChip(item, limit) {
   const chip = document.createElement('span');
   const state = String((item && item.state) || 'full');
@@ -561,10 +669,15 @@ function _drawContextMeter() {
   const segments = report && Array.isArray(report.segments) ? report.segments : [];
   const attachments = segments.find((s) => s && s.key === 'attachments') || null;
   const measured = !!(attachments && attachments.measured);
-  const spent = measured ? _chars(attachments.chars) : 0;
   const items = measured && Array.isArray(attachments.items) ? attachments.items : [];
   const unmeasured = segments.filter((s) => s && !s.measured);
   const pending = pendingFiles.length;
+  // `B761`: nothing measured yet and files waiting — price them here.
+  if (pending && !items.length) _estimatePending();
+  const estimate = (pending && !items.length) ? estimatePendingSpend(budgets, pendingFiles) : null;
+  const estimating = !!(estimate && estimate.estimated);
+  const spent = measured && items.length ? _chars(attachments.chars)
+    : (estimating ? estimate.spent : (measured ? _chars(attachments.chars) : 0));
   const filled = limit > 0 ? Math.max(0, Math.min(100, (spent / limit) * 100)) : 0;
 
   const head = document.createElement('div');
@@ -577,7 +690,9 @@ function _drawContextMeter() {
   head.appendChild(title);
   const figure = document.createElement('span');
   figure.className = 'context-meter-figure';
-  figure.textContent = `${spent.toLocaleString()} of ${limit.toLocaleString()} characters`;
+  figure.textContent = estimating
+    ? `≈ ${spent.toLocaleString()} of ${limit.toLocaleString()} characters`
+    : `${spent.toLocaleString()} of ${limit.toLocaleString()} characters`;
   head.appendChild(figure);
   host.appendChild(head);
 
@@ -591,7 +706,7 @@ function _drawContextMeter() {
       ? `; ${unmeasured.length} other parts of the message were not measured`
       : ''));
   const fill = document.createElement('span');
-  fill.className = 'context-meter-fill';
+  fill.className = estimating ? 'context-meter-fill is-estimate' : 'context-meter-fill';
   fill.style.width = `${filled}%`;
   bar.appendChild(fill);
   if (unmeasured.length) {
@@ -610,6 +725,8 @@ function _drawContextMeter() {
   chips.className = 'context-meter-chips';
   if (items.length) {
     items.forEach((item) => chips.appendChild(_contextChip(item, limit)));
+  } else if (estimating) {
+    estimate.items.forEach((item) => chips.appendChild(_estimateChip(item, limit)));
   } else {
     const empty = document.createElement('span');
     empty.className = 'context-meter-empty';
@@ -619,6 +736,16 @@ function _drawContextMeter() {
     chips.appendChild(empty);
   }
   host.appendChild(chips);
+
+  if (estimating) {
+    const said = document.createElement('div');
+    said.className = 'context-meter-estimate';
+    const cut = estimate.items.filter((i) => i.state === 'truncated' || i.state === 'omitted');
+    said.textContent = (cut.length
+      ? `${cut.length === 1 ? cut[0].name + ' will' : cut.length + ' files will'} not be sent whole. `
+      : '') + 'Estimated here before sending; measured exactly when you send.';
+    host.appendChild(said);
+  }
 
   const foot = document.createElement('div');
   foot.className = 'context-meter-foot';
