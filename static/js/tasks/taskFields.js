@@ -21,6 +21,10 @@
  *     onCancel called when the person cancels.
  *     mode     `P22-05` (wf-ui): `'task'` (the default — the form above, byte
  *              for byte), `'node'` or `'trigger'`; see `mountTaskFields`.
+ *     ownIds   `B1041`: every id the form writes is this mount's own
+ *              (`tf3-task-form-name`), so a second form open beside the
+ *              page's has labels that name its own fields. The Workbench's
+ *              mounts pass it; the Tasks window's form keeps `#task-form-*`.
  *
  * **What changed in the move, and only this** (it is a move, not a rewrite —
  * the ids, `CHAIN_FIELDS`, the validation messages and the payload are the
@@ -59,8 +63,36 @@ function _escHtml(s) {
 /** Find one of this form's fields inside `root` — the form's own host, or the
  *  document for the helpers a test drives on their own. The ids are literal
  *  `task-form-*` strings, so they are safe as a selector as written. */
+// `B1041` / `B1064`. Each mount's own ids. Every lookup was already inside
+// the form's host (`P22-03`), but ids are document-wide to the browser: with
+// the Tasks window's form and a Workbench panel open at once, the ids were
+// the same in both, so a `<label for="task-form-tz">` in one focused the
+// other's field and the second form's fields had no label at all. A mount
+// made with `ownIds` gets a prefix (`tf3-`), and every id this form writes —
+// in its markup (`_ids`), on the elements it builds (`_pid`) — and every
+// lookup (`_byId`) carry it. The Tasks window's form keeps the plain ids:
+// it is the page's form, and `tasks.js` and the slash-command tour address
+// it by them (`#task-form-save`).
+const _mountPrefix = new WeakMap();
+let _mountCount = 0;
+function _prefixOf(el) {
+  for (let n = el; n; n = n.parentNode) {
+    if (_mountPrefix.has(n)) return _mountPrefix.get(n);
+  }
+  return '';
+}
+/** The id `id` has in `root`'s mount. */
+function _pid(root, id) {
+  return _prefixOf(root) + id;
+}
+/** `html` with every `task-form-*` id it writes, or names (`for`,
+ *  `aria-labelledby`), made `root`'s mount's own. */
+function _ids(root, html) {
+  const p = _prefixOf(root);
+  return p ? String(html).replace(/\b(id|for|aria-labelledby)="task-form-/g, `$1="${p}task-form-`) : html;
+}
 function _byId(root, id) {
-  return root && typeof root.querySelector === 'function' ? root.querySelector('#' + id) : null;
+  return root && typeof root.querySelector === 'function' ? root.querySelector('#' + _pid(root, id)) : null;
 }
 
 export const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -336,10 +368,10 @@ async function _renderEmailActionOptions(action, existing, extra) {
       return `<option value="${_escHtml(id)}" ${id === current ? 'selected' : ''}>${_escHtml(label + suffix)}</option>`;
     }),
   ].join('');
-  extra.insertAdjacentHTML('afterbegin', `
-    <label class="task-form-label">Email account</label>
+  extra.insertAdjacentHTML('afterbegin', _ids(extra, `
+    <label class="task-form-label" for="task-form-email-account">Email account</label>
     <select id="task-form-email-account" class="task-form-input">${options}</select>
-  `);
+  `));
 }
 
 let _triggerEvents = null;
@@ -488,7 +520,8 @@ function _buildTimePicker(containerId, hour, minute, root = document) {
 
   const hourSel = document.createElement('select');
   hourSel.className = 'task-form-input task-time-select';
-  hourSel.id = containerId + '-hour';
+  hourSel.id = _pid(root, containerId + '-hour');
+  hourSel.setAttribute('aria-label', 'Hour');   // `B1064`
   for (let h = 0; h < 24; h++) {
     const opt = document.createElement('option');
     opt.value = h;
@@ -503,7 +536,8 @@ function _buildTimePicker(containerId, hour, minute, root = document) {
 
   const minSel = document.createElement('select');
   minSel.className = 'task-form-input task-time-select';
-  minSel.id = containerId + '-min';
+  minSel.id = _pid(root, containerId + '-min');
+  minSel.setAttribute('aria-label', 'Minute');
   for (let m = 0; m < 60; m += 5) {
     const opt = document.createElement('option');
     opt.value = m;
@@ -536,7 +570,8 @@ function _buildDatePicker(containerId, initialDate, root = document) {
   // Year select
   const yearSel = document.createElement('select');
   yearSel.className = 'task-form-input task-date-select';
-  yearSel.id = containerId + '-year';
+  yearSel.id = _pid(root, containerId + '-year');
+  yearSel.setAttribute('aria-label', 'Year');   // `B1064`
   for (let y = year; y <= year + 2; y++) {
     const opt = document.createElement('option');
     opt.value = y;
@@ -549,7 +584,8 @@ function _buildDatePicker(containerId, initialDate, root = document) {
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const monthSel = document.createElement('select');
   monthSel.className = 'task-form-input task-date-select';
-  monthSel.id = containerId + '-month';
+  monthSel.id = _pid(root, containerId + '-month');
+  monthSel.setAttribute('aria-label', 'Month');
   MONTHS.forEach((name, i) => {
     const opt = document.createElement('option');
     opt.value = i;
@@ -561,7 +597,8 @@ function _buildDatePicker(containerId, initialDate, root = document) {
   // Day select
   const daySel = document.createElement('select');
   daySel.className = 'task-form-input task-date-select';
-  daySel.id = containerId + '-day';
+  daySel.id = _pid(root, containerId + '-day');
+  daySel.setAttribute('aria-label', 'Day');
   function populateDays() {
     const y = parseInt(yearSel.value, 10);
     const m = parseInt(monthSel.value, 10);
@@ -889,9 +926,13 @@ const _formModes = new WeakMap();
  */
 export function mountTaskFields(host, {
   task = null, tasks = [], onSaved = null, onCancel = null, mode = 'task',
-  slots = null, pickField = null, extra = null, problem = null, chain = true,
+  slots = null, pickField = null, extra = null, problem = null, chain = true, ownIds = false,
 } = {}) {
   if (!host) return { destroy() {} };
+  // `B1041`. A mount beside the page's form (the Workbench's) has ids of its
+  // own, so a label names its own field with both open; see `_mountPrefix`.
+  if (ownIds) _mountPrefix.set(host, `tf${++_mountCount}-`);
+  else _mountPrefix.delete(host);
   // `P22-05` (wf-ui). Which form: see the sections below. Anything else is the
   // task form, so a caller that passes nothing gets what it always got.
   const isNode = mode === 'node';
@@ -973,12 +1014,12 @@ export function mountTaskFields(host, {
       ${lede ? `<p class="memory-desc">${lede}</p>` : ''}
     <div class="task-form" style="flex:1;overflow-y:auto;min-height:0;">`,
     name: `
-      <label class="task-form-label">Name</label>
+      <label class="task-form-label" for="task-form-name">Name</label>
       <input type="text" id="task-form-name" class="task-form-input" value="${_escHtml(existing?.name || '')}" placeholder="${namePlaceholder}" />
 `,
     type: `
-      <label class="task-form-label">Type</label>
-      <div class="task-form-toggle" id="task-form-type-toggle">
+      <label class="task-form-label" id="task-form-type-label">Type</label>
+      <div class="task-form-toggle" id="task-form-type-toggle" role="group" aria-labelledby="task-form-type-label">
         <button class="task-toggle-btn ${curTaskType === 'llm' ? 'active' : ''}" data-val="llm" style="position:relative;top:-4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>Prompt</button>
         <button class="task-toggle-btn ${curTaskType === 'research' ? 'active' : ''}" data-val="research" style="position:relative;top:-4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Research</button>
         <button class="task-toggle-btn ${curTaskType === 'action' ? 'active' : ''}" data-val="action" style="position:relative;top:-4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Action</button>
@@ -987,8 +1028,8 @@ export function mountTaskFields(host, {
       <div id="task-form-type-opts"></div>
 `,
     trigger: `
-      <label class="task-form-label">Trigger</label>
-      <div class="task-form-toggle" id="task-form-trigger-toggle">
+      <label class="task-form-label" id="task-form-trigger-label">Trigger</label>
+      <div class="task-form-toggle" id="task-form-trigger-toggle" role="group" aria-labelledby="task-form-trigger-label">
         <button class="task-toggle-btn ${curTriggerType === 'schedule' ? 'active' : ''}" data-val="schedule" style="position:relative;top:-4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Schedule</button>
         <button class="task-toggle-btn ${curTriggerType === 'event' ? 'active' : ''}" data-val="event" style="position:relative;top:-4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Event</button>
         <button class="task-toggle-btn ${curTriggerType === 'webhook' ? 'active' : ''}" data-val="webhook" style="position:relative;top:-4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Webhook</button>
@@ -997,14 +1038,14 @@ export function mountTaskFields(host, {
       <div id="task-form-trigger-opts"></div>
 `,
     output: `
-      <label class="task-form-label">Output</label>
+      <label class="task-form-label" for="task-form-output">Output</label>
       <select id="task-form-output" class="task-form-input">
         <option value="session">Chat</option>
       </select>
       <div id="task-form-output-extra"></div>
 `,
     model: `
-      <label class="task-form-label">Model</label>
+      <label class="task-form-label" for="task-form-model">Model</label>
       <select id="task-form-model" class="task-form-input">
         <option value="">Default</option>
       </select>
@@ -1032,8 +1073,8 @@ export function mountTaskFields(host, {
       </div>
 `,
     chain: `
-      <label class="task-form-label">Chain <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — what runs after this one)</span></label>
-      <div class="task-form-chain">
+      <label class="task-form-label" id="task-form-chain-label">Chain <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — what runs after this one)</span></label>
+      <div class="task-form-chain" role="group" aria-labelledby="task-form-chain-label">
         <label class="task-form-chain-row">
           <span class="task-form-chain-when">${_escHtml(_edgeWhenLabel('success'))}</span>
           <select id="task-form-chain" class="task-form-input">
@@ -1097,7 +1138,7 @@ export function mountTaskFields(host, {
       // task were a third way to draw one, in a panel 1,247 px tall.
       : ['head', 'name', 'type', 'trigger', 'output', 'model', 'timeout', 'networks',
         ...(chain === false ? [] : ['chain']), 'notif', 'actions'];
-  host.innerHTML = order.map((k) => sections[k]).join('');
+  host.innerHTML = _ids(host, order.map((k) => sections[k]).join(''));
 
   // --- `P22-09` (wf-canvas): a step's text boxes, told what they may take ---
   const nodeHandles = {};
@@ -1127,11 +1168,11 @@ export function mountTaskFields(host, {
       // `P22-05` (wf-ui). A step that runs one of the person's tasks, as it
       // would run on its own. A workflow is not offered: a step may not run a
       // workflow (§ 8's default), and the server refuses one in words.
-      typeOpts.innerHTML = `
+      typeOpts.innerHTML = _ids(typeOpts, `
         <label class="task-form-label" for="task-form-run-task">Task to run</label>
         <select id="task-form-run-task" class="task-form-input"><option value="">Choose a task…</option></select>
         <div class="task-form-hint">It runs with its own settings and keeps its own history, and what it makes is handed to the next step.</div>
-      `;
+      `);
       const sel = $('task-form-run-task');
       const choices = (Array.isArray(tasks) ? tasks : [])
         .filter((t) => t && t.id != null && t.task_type !== 'workflow')
@@ -1158,25 +1199,25 @@ export function mountTaskFields(host, {
       const _curPersona = (existing?.character_id || '').toLowerCase();
       const _personaOptsHtml = _personaOpts.map(([v, label]) =>
         `<option value="${v}" ${v === _curPersona ? 'selected' : ''}>${label}</option>`).join('');
-      typeOpts.innerHTML = `
-        <label class="task-form-label">${taskType === 'research' ? 'Research question' : 'Prompt'}</label>
+      typeOpts.innerHTML = _ids(typeOpts, `
+        <label class="task-form-label" for="task-form-prompt">${taskType === 'research' ? 'Research question' : 'Prompt'}</label>
         <textarea id="task-form-prompt" class="task-form-input task-form-textarea" rows="4" placeholder="${placeholder}">${_escHtml(existing?.prompt || '')}</textarea>
 ${(isNode && taskType === 'research') ? '' : `
-        <label class="task-form-label">Persona</label>
+        <label class="task-form-label" for="task-form-persona">Persona</label>
         <select id="task-form-persona" class="task-form-input">${_personaOptsHtml}</select>`}
-      `;
+      `);
       // `P22-05`. A Research step takes no persona (its config has no
       // `character_id`), so its step form does not offer one; every other
       // use of this form draws the same text it always did.
       _decorate($('task-form-prompt'), 'prompt');
     } else {
-      typeOpts.innerHTML = `
-        <label class="task-form-label">Action</label>
+      typeOpts.innerHTML = _ids(typeOpts, `
+        <label class="task-form-label" for="task-form-action">Action</label>
         <select id="task-form-action" class="task-form-input">
           <option value="">Loading…</option>
         </select>
         <div id="task-form-action-extra"></div>
-      `;
+      `);
       const syncActionExtra = async () => {
         const sel = $('task-form-action');
         const extra = $('task-form-action-extra');
@@ -1196,11 +1237,11 @@ ${(isNode && taskType === 'research') ? '' : `
           const box = isLong
             ? `<textarea id="task-form-action-param" class="task-form-input task-form-textarea" rows="4" placeholder="${_escHtml(param.label || '')}"></textarea>`
             : `<input type="text" id="task-form-action-param" class="task-form-input" placeholder="${_escHtml(param.label || '')}" />`;
-          extra.insertAdjacentHTML('beforeend', `
+          extra.insertAdjacentHTML('beforeend', _ids(extra, `
             <label class="task-form-label" for="task-form-action-param">${_escHtml(param.label || param.name || 'Argument')}</label>
             ${box}
             <div class="memory-desc" style="font-size:11px;margin-top:4px;">${_escHtml(param.description || '')}</div>
-          `);
+          `));
           // `value` is assigned rather than interpolated: a stored command is
           // arbitrary text and `</textarea>` in it would close the element.
           const paramEl = $('task-form-action-param');
@@ -1215,11 +1256,11 @@ ${(isNode && taskType === 'research') ? '' : `
         // their own; a step's form makes no request, so they stay where they
         // are set — on the e-mail tagging task — and are not offered here.
         if (action === 'check_email_urgency' && !isNode) {
-          extra.insertAdjacentHTML('beforeend', `
-            <label class="task-form-label">Email triage rules</label>
+          extra.insertAdjacentHTML('beforeend', _ids(extra, `
+            <label class="task-form-label" for="task-form-urgent-email-prompt">Email triage rules</label>
             <textarea id="task-form-urgent-email-prompt" class="task-form-input task-form-textarea" rows="4" placeholder="What should count as urgent? e.g. deadlines, blockers, people waiting outside."></textarea>
             <div class="memory-desc" style="font-size:11px;margin-top:4px;">Pause/resume and schedule are controlled by this task. It tags work, personal, urgent, action-needed, finance, legal, travel, newsletter, marketing, spam, and related mail categories. Urgent/reply-soon emails use your reminder settings.</div>
-          `);
+          `));
           const settings = await _fetchUrgentEmailSettings();
           const promptEl = $('task-form-urgent-email-prompt');
           if (promptEl && !promptEl.dataset.loaded) {
@@ -1287,8 +1328,8 @@ ${(isNode && taskType === 'research') ? '' : `
     if (!triggerOpts) return;
     triggerOpts.innerHTML = '';
     if (triggerType === 'schedule') {
-      triggerOpts.innerHTML = `
-        <label class="task-form-label">Frequency</label>
+      triggerOpts.innerHTML = _ids(triggerOpts, `
+        <label class="task-form-label" for="task-form-schedule">Frequency</label>
         <select id="task-form-schedule" class="task-form-input">
           <option value="daily" ${(!existing?.schedule || existing.schedule === 'daily') ? 'selected' : ''}>Daily</option>
           <option value="weekly" ${existing?.schedule === 'weekly' ? 'selected' : ''}>Weekly</option>
@@ -1298,14 +1339,14 @@ ${(isNode && taskType === 'research') ? '' : `
         </select>
         <div id="task-form-schedule-opts"></div>
         <div id="task-form-time-section">
-          <label class="task-form-label">Time</label>
-          <div class="task-time-picker" id="task-form-time-wrap"></div>
+          <label class="task-form-label" id="task-form-time-label">Time</label>
+          <div class="task-time-picker" id="task-form-time-wrap" role="group" aria-labelledby="task-form-time-label"></div>
         </div>
         <label class="task-form-label" for="task-form-tz">Time zone <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional)</span></label>
         <select id="task-form-tz" class="task-form-input"></select>
         <div id="task-form-tz-note" class="task-form-hint"></div>
         ${_retryBoxHtml(existing)}
-      `;
+      `);
 
       // `P22-03`. The zone, before the time picker is filled: a task with a
       // zone stores its wall-clock time and is shown it as stored.
@@ -1366,9 +1407,10 @@ ${(isNode && taskType === 'research') ? '' : `
           const label = document.createElement('label');
           label.className = 'task-form-label';
           label.textContent = 'Day of week';
+          label.htmlFor = _pid(host, 'task-form-day');   // `B1064`
           schedOpts.appendChild(label);
           const sel = document.createElement('select');
-          sel.id = 'task-form-day';
+          sel.id = _pid(host, 'task-form-day');
           sel.className = 'task-form-input';
           DAYS_OF_WEEK.forEach((day, i) => {
             const opt = document.createElement('option');
@@ -1382,10 +1424,11 @@ ${(isNode && taskType === 'research') ? '' : `
           const label = document.createElement('label');
           label.className = 'task-form-label';
           label.textContent = 'Day of month';
+          label.htmlFor = _pid(host, 'task-form-day');   // `B1064`
           schedOpts.appendChild(label);
           const inp = document.createElement('input');
           inp.type = 'number';
-          inp.id = 'task-form-day';
+          inp.id = _pid(host, 'task-form-day');
           inp.className = 'task-form-input';
           inp.min = 1; inp.max = 31;
           inp.value = existing?.scheduled_day ?? 1;
@@ -1394,10 +1437,14 @@ ${(isNode && taskType === 'research') ? '' : `
           const label = document.createElement('label');
           label.className = 'task-form-label';
           label.textContent = 'Date';
+          // `B1064`: three selects under one label — a group named by it.
+          label.id = _pid(host, 'task-form-date-label');
           schedOpts.appendChild(label);
           const dateWrap = document.createElement('div');
           dateWrap.className = 'task-date-picker';
-          dateWrap.id = 'task-form-date';
+          dateWrap.id = _pid(host, 'task-form-date');
+          dateWrap.setAttribute('role', 'group');
+          dateWrap.setAttribute('aria-labelledby', label.id);
           schedOpts.appendChild(dateWrap);
           // `P22-03`. With a zone, the date is the one on that zone's
           // calendar — 23:30 Sydney on the 3rd is the 3rd, wherever the
@@ -1412,10 +1459,11 @@ ${(isNode && taskType === 'research') ? '' : `
           const label = document.createElement('label');
           label.className = 'task-form-label';
           label.textContent = 'Cron expression';
+          label.htmlFor = _pid(host, 'task-form-cron');   // `B1064`
           schedOpts.appendChild(label);
           const inp = document.createElement('input');
           inp.type = 'text';
-          inp.id = 'task-form-cron';
+          inp.id = _pid(host, 'task-form-cron');
           inp.className = 'task-form-input';
           inp.placeholder = '*/30 * * * *';
           inp.value = existing?.cron_expression || '';
@@ -1430,17 +1478,17 @@ ${(isNode && taskType === 'research') ? '' : `
       updateScheduleOpts();
 
     } else if (triggerType === 'event') {
-      triggerOpts.innerHTML = `
-        <label class="task-form-label">Event</label>
+      triggerOpts.innerHTML = _ids(triggerOpts, `
+        <label class="task-form-label" for="task-form-event">Event</label>
         <select id="task-form-event" class="task-form-input">
           <option value="">Loading…</option>
         </select>
         <div id="task-form-event-desc" class="task-form-event-desc"></div>
         <div id="task-form-event-payload" class="task-form-event-payload"></div>
-        <label class="task-form-label">Every N occurrences</label>
+        <label class="task-form-label" for="task-form-trigger-count">Every N occurrences</label>
         <input type="number" id="task-form-trigger-count" class="task-form-input" min="1" max="1000" value="${existing?.trigger_count || _defaultTriggerCount()}" />
         ${_retryBoxHtml(existing)}
-      `;
+      `);
       // `P8-31`. The field used to be pre-filled with a literal 5 — a number
       // nobody chose, in front of an API that had no default and a bus that
       // reads a missing count as one. It reads the served
@@ -1465,8 +1513,8 @@ ${(isNode && taskType === 'research') ? '' : `
         // — a pasted screenshot, a shared CI log, a copied support ticket —
         // there was no revocation path in the product at all. A secret you can
         // copy but cannot rotate is a secret with no lifecycle.
-        triggerOpts.innerHTML = `
-          <label class="task-form-label">Webhook URL</label>
+        triggerOpts.innerHTML = _ids(triggerOpts, `
+          <label class="task-form-label" for="task-form-webhook-url">Webhook URL</label>
           <div style="display:flex;gap:4px;align-items:center;">
             <input type="text" class="task-form-input" value="${url}" readonly style="flex:1;font-size:11px;opacity:0.8;" id="task-form-webhook-url" />
             <button class="task-btn" id="task-form-webhook-copy" style="white-space:nowrap;">Copy</button>
@@ -1474,7 +1522,7 @@ ${(isNode && taskType === 'research') ? '' : `
           </div>
           <div style="font-size:10px;opacity:0.4;margin-top:4px;">POST this URL from any external service to trigger the task. Anyone holding it can run the task — rotate if it leaks.</div>
           ${_retryBoxHtml(existing)}
-        `;
+        `);
         $('task-form-webhook-copy')?.addEventListener('click', async () => {
           // `B59`. Was `navigator.clipboard.writeText(url)` followed
           // unconditionally by `showToast('Copied')`. Over plain http on a LAN
@@ -1564,7 +1612,7 @@ ${(isNode && taskType === 'research') ? '' : `
         return `<option value="${_escHtml(id)}" ${id === parsed.accountId ? 'selected' : ''}>${_escHtml(label + suffix)}</option>`;
       }),
     ].join('');
-    extra.innerHTML = `
+    extra.innerHTML = _ids(extra, `
       <div class="task-form-output-email" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:6px;">
         <label>
           <span class="task-form-label" style="margin-top:0;">From</span>
@@ -1576,7 +1624,7 @@ ${(isNode && taskType === 'research') ? '' : `
         </label>
       </div>
       <div class="memory-desc" style="font-size:10px;margin-top:3px;">Leave To blank to send to the selected account’s own address.</div>
-    `;
+    `);
   };
 
   if ($('task-form-output')) _fetchOutputTargets().then(targets => {

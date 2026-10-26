@@ -161,10 +161,13 @@ export const ROOMS = [
     // in from here, as they were to the canvas.
     // `P23-06` (WB-M-14): the canvas draws the chain, so the form it opens
     // for a task has no Chain selects (`chain: false`); the Tasks window's has.
+    // `B1041`: every form the Workbench mounts has ids of its own
+    // (`ownIds`), so its labels name its own fields while the Tasks window's
+    // form is open too.
     mount: (host, opts) => mountAutomations(host, {
       ...opts,
       mountTaskFields: (h, o) => mountTaskFields(h, (!o || !o.mode || o.mode === 'task')
-        ? { ...(o || {}), chain: false } : o),
+        ? { ...(o || {}), chain: false, ownIds: true } : { ...o, ownIds: true }),
       renderSteps: renderRunSteps,
     }),
   },
