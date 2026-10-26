@@ -614,16 +614,17 @@ class ChatProcessor:
 
         The index's own reason when it is down (`rag_unavailable_reason`, the
         sentence the RAG window shows), read without starting an init attempt.
-        When the index is up now but this chat was wired before it was — the
-        chat holds the manager `app.py` built at start — that is said instead,
-        because "RAG is off" would then be false about the index.
+
+        `B1532`: the chat no longer holds the manager `app.py` built at start —
+        `PersonalDocsManager.rag_manager` reads the index as it stands — so an
+        index that came up since is searched, and "started after Pantheon did,
+        used after a restart" (this sentence's second half) is no longer true
+        of anything. What is left is a manager with no index at all.
         """
         from src.rag_singleton import rag_unavailable_reason
 
         reason = rag_unavailable_reason(retry=False)
-        return reason or (
-            "RAG did not search for this reply: the document index started after "
-            "Pantheon did, and the chat uses it after Pantheon restarts.")
+        return reason or "RAG did not search for this reply: no document index answered."
 
     def _style_and_register(self, message, session, *, owner=None,
                             incognito=False, use_memory=True,

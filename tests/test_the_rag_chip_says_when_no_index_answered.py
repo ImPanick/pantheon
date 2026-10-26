@@ -110,14 +110,21 @@ def test_an_index_that_searched_and_found_nothing_says_nothing(no_embedding_mode
     assert rag_frames(SimpleNamespace(rag_sources=sources, rag_off="")) == []
 
 
-def test_an_index_up_now_but_not_in_this_chat_says_that(no_embedding_model, monkeypatch):
-    """The chat holds the manager built at start; an index that came up since
-    is not "off", and the sentence says what is true."""
+def test_an_index_up_now_is_searched_not_reported_off(no_embedding_model, monkeypatch):
+    """`B1532` changed this. It pinned "the chat holds the manager built at
+    start; an index that came up since is said, not searched". The real
+    `PersonalDocsManager` reads the index as it stands now, so a turn searches
+    an index that came up after start and says nothing is off.
+    `tests/test_an_index_that_came_up_later_is_searched_by_the_chat.py` drives
+    it from the index coming up."""
     import src.rag_singleton as rag_singleton
+    from src.personal_docs import PersonalDocsManager
 
+    docs = PersonalDocsManager.__new__(PersonalDocsManager)
+    docs.rag_manager = None                      # as `app.py` built it, index down
     monkeypatch.setattr(rag_singleton, "rag_instance", _Rag())
-    processor, _ = _turn(_Docs(None))
-    assert processor._last_rag_off.startswith("RAG did not search for this reply")
+    processor, _ = _turn(docs)
+    assert processor._last_rag_off == ""
 
 
 def test_the_context_carries_it_to_the_route():

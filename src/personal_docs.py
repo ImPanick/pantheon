@@ -550,6 +550,29 @@ def _string_list(values) -> list[str]:
 class PersonalDocsManager:
     """Manager class for personal document indexing and retrieval."""
 
+    @property
+    def rag_manager(self):
+        """`B1532`. The document index as it stands now, not as it stood at start.
+
+        `app.py` builds this manager with `get_rag_manager()`'s answer at boot,
+        and it was kept: with the index down then (no embedding model yet,
+        ChromaDB still starting) this stayed `None` for the life of the process,
+        while `personal_routes._rag()` asked the singleton each time — so the
+        RAG window worked and the chat's retrieval, and a directory added with
+        *index*, stayed off until a restart. A manager handed in is used as
+        given (a test's, or the boot one when it was up); otherwise the
+        singleton's instance is read as it is, without starting an init
+        attempt (`rag_singleton.rag_instance`, `B1287`'s rule that a turn is not
+        where an index is brought up)."""
+        if self._rag_manager is not None:
+            return self._rag_manager
+        from src import rag_singleton
+        return rag_singleton.rag_instance
+
+    @rag_manager.setter
+    def rag_manager(self, value):
+        self._rag_manager = value
+
     def __init__(self, personal_dir: str, rag_manager=None):
         self.personal_dir = personal_dir
         self.rag_manager = rag_manager

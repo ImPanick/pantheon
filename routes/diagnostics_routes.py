@@ -46,13 +46,24 @@ def setup_diagnostics_routes(
 ) -> APIRouter:
     router = APIRouter(tags=["diagnostics"])
 
+    def _rag_now(*, start: bool):
+        """`B1532`. The document index as it stands, not `app.py`'s answer at
+        start: with the index down then, the health card and the stats line
+        said so until a restart. `start=True` asks the singleton as the RAG
+        routes do (`get_rag_manager`, throttled); `False` only reads it, for a
+        probe that must stay safe to poll."""
+        if rag_available and rag_manager is not None:
+            return rag_manager
+        from src import rag_singleton
+        return rag_singleton.get_rag_manager() if start else rag_singleton.rag_instance
+
     @router.get("/api/diagnostics/services")
     async def get_service_health(request: Request) -> Dict[str, Any]:
         """Consolidated degraded-state report for ChromaDB, SearXNG, email,
         ntfy, and provider endpoints. Non-intrusive probes — safe to poll."""
         require_admin(request)
         from src.service_health import collect_service_health
-        return await collect_service_health(rag_manager, memory_vector)
+        return await collect_service_health(_rag_now(start=False), memory_vector)
 
     @router.get("/api/diagnostics/self-check")
     async def get_self_check(request: Request) -> Dict[str, Any]:
@@ -318,8 +329,9 @@ def setup_diagnostics_routes(
     @router.get("/api/rag/stats")
     async def get_rag_stats(request: Request) -> Dict[str, Any]:
         require_admin(request)
-        if rag_available and rag_manager:
-            return rag_manager.get_stats()
+        rag = _rag_now(start=True)   # `B1532`
+        if rag:
+            return rag.get_stats()
         return {"error": "RAG system not available"}
 
     # (`B1482`: `GET /api/test/youtube` and `POST /api/test-research` — debugging
