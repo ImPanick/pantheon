@@ -952,6 +952,30 @@ def readonly_verdict(tool: Dict, override: Optional[Dict[str, Any]] = None) -> T
     return name.startswith(_MCP_READONLY_VERBS), "heuristic"
 
 
+def declared_read_only(tool: Dict, override: Optional[Dict[str, Any]] = None) -> bool:
+    """`B1329`. Did a *person or the server* declare this tool read-only?
+
+    The approval gate's question, and narrower than `readonly_verdict` in two
+    ways, both toward asking. The name heuristic does not count: a leading verb
+    is a guess, and plan mode may act on a guess because it fails closed, where
+    the gate would be acting on it to *stop* asking. And hints that contradict
+    each other (`readOnlyHint: true` beside `destructiveHint: true`) are not a
+    declaration of anything — the spec says `destructiveHint` only means
+    something when `readOnlyHint` is false, and a server that sends both is
+    the case where trusting the softer one costs most. The operator's own
+    override answers first, as everywhere (`readonly_verdict`).
+    """
+    is_readonly, source = readonly_verdict(tool, override)
+    if not is_readonly or source == "heuristic":
+        return False
+    if source == "override":
+        return True
+    ann = tool.get("annotations")
+    destructive = (ann.get("destructiveHint") if isinstance(ann, dict)
+                   else getattr(ann, "destructiveHint", None))
+    return destructive is not True
+
+
 def mcp_tool_is_readonly(tool: Dict, override: Optional[Dict[str, Any]] = None) -> bool:
     """Classify an MCP tool as safe (non-mutating) for plan mode.
 
@@ -1928,6 +1952,20 @@ class McpManager:
                     "is_disabled": tool["name"] in disabled,
                 })
         return result
+
+    def declared_read_only(self, qualified_name: Any) -> bool:
+        """`B1329`. `declared_read_only` for a connected tool, by its qualified
+        name; False for a name no connected server offers. The override is
+        read from the database the way `get_all_tools` reads it."""
+        parts = split_mcp_tool_name(qualified_name)
+        if parts is None:
+            return False
+        server_id, name = parts
+        for tool in self._tools.get(server_id, ()):
+            if tool.get("name") == name:
+                override = load_tool_overrides(server_id).get(server_id, {}).get(name)
+                return declared_read_only(tool, override)
+        return False
 
     def plan_mode_blocked_mcp(self) -> Tuple[Dict[str, Set[str]], Set[str]]:
         """Plan mode: block every MCP tool that isn't clearly read-only.

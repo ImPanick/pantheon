@@ -414,7 +414,41 @@ def capabilities_for_tool(tool_name: Any) -> ToolCapabilities:
             return capabilities
     if tool_name in _BROWSER_MCP_READ_TOOLS:
         return _BROWSER_MCP_READ_CAPABILITIES
+    if tool_name.startswith("mcp__") and _mcp_declared_read_only(tool_name):
+        return _BROWSER_MCP_READ_CAPABILITIES
     return _UNKNOWN_CAPABILITIES
+
+
+def _mcp_declared_read_only(tool_name: str) -> bool:
+    """`B1329`. An MCP tool its server (or the operator's override) declares
+    read-only is classified as the built-in browser's read tools are:
+    `brokered_network_read`, which no rung blocks, with its result
+    `external_untrusted`.
+
+    Every MCP tool used to be `known=False`, so once a run was tainted a pure
+    lookup was refused with *"can cause unknown/high-impact"* exactly as a
+    destructive one was. **The adversary (`Law 17`) is the server itself** —
+    the thing the gate exists to hold — and `readOnlyHint` is its claim. So the
+    claim may only soften: it can turn "unknown, refuse" into "a read, run",
+    for this call, and nothing more. It never adds an effect, never makes the
+    output trusted (the result still arms the gate, so the next effectful call
+    asks — the hint is about the call, never about what comes back), and it
+    lifts no other control: plan mode, the disabled list, a step's allowlist
+    and `NON_ADMIN_BLOCKED_TOOLS` are all asked before this and unchanged.
+    Without a hint — or with `destructiveHint` beside it, or the operator's
+    override saying otherwise — the tool stays unknown. A manager that cannot
+    be asked answers *not declared*: fails high.
+    """
+    try:
+        from src.tool_utils import get_mcp_manager
+        manager = get_mcp_manager()
+        if manager is None:
+            return False
+        return bool(manager.declared_read_only(tool_name))
+    except Exception:
+        logger.debug("MCP read-only declaration unreadable for %r; unknown", tool_name,
+                     exc_info=True)
+        return False
 
 
 # ── The assistant may take its own reach away, never give itself more (P7-02) ─
