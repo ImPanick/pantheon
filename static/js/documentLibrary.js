@@ -2674,7 +2674,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
         const restoreBtn = preview.querySelector('.doclib-chat-restore-btn');
         if (restoreBtn) restoreBtn.addEventListener('click', async (e) => {
           e.stopPropagation();
-          await fetch(API_BASE + '/api/session/' + session.id + '/unarchive', { method: 'POST' });
+          await fetch(`${API_BASE}/api/session/${session.id}/unarchive`, { method: 'POST' });
           _renderLibArchive();
         });
         const copyBtn = preview.querySelector('.doclib-chat-copy-btn');
@@ -3243,7 +3243,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
         card.querySelector('._arc-menu').addEventListener('click', (e) => { e.stopPropagation(); _showLibDropdown(e.currentTarget, [
           { label: 'Open', action: () => { if (window.sessionModule) window.sessionModule.selectSession(s.id); } },
           { label: 'Copy', action: () => _copyChatById(s.id) },
-          { label: 'Restore', action: async () => { await fetch(API_BASE + '/api/session/' + s.id + '/unarchive', { method: 'POST' }); _renderLibArchive(); } },
+          { label: 'Restore', action: async () => { await fetch(`${API_BASE}/api/session/${s.id}/unarchive`, { method: 'POST' }); _renderLibArchive(); } },
           { label: 'Delete', action: async () => {
             if (!await window.styledConfirm('Delete this chat permanently?', { confirmText: 'Delete', danger: true })) return;
             await fetch(API_BASE + '/api/session/' + s.id, { method: 'DELETE' });
@@ -3400,7 +3400,10 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       const i = key.indexOf(':'), type = key.slice(0, i), id = key.slice(i + 1);
       if (type === 'documents') return fetch(API_BASE + '/api/document/' + id + '/archive?archived=false', { method: 'POST', credentials: 'same-origin' });
       if (type === 'research') return fetch('/api/research/' + id + '/archive?archived=false', { method: 'POST', credentials: 'same-origin' });
-      return fetch(API_BASE + '/api/session/' + id + '/unarchive', { method: 'POST', credentials: 'same-origin' });
+      // `B1276`: a template, so `check-unreachable.py` sees the one archive's
+      // Restore as this route's caller — the deleted browser was the only one
+      // it could read.
+      return fetch(`${API_BASE}/api/session/${id}/unarchive`, { method: 'POST', credentials: 'same-origin' });
     }
     function _arcDeleteOne(key) {
       const i = key.indexOf(':'), type = key.slice(0, i), id = key.slice(i + 1);
