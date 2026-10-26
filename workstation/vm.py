@@ -89,6 +89,14 @@ DEFAULT_PAYLOAD = Path("/opt/pantheon-workstation/payload")
 
 APP_LABEL = "PWSAPP"
 APP_MOUNT = "/opt/pantheon-workstation/app"
+# `B1427`. A person's projects folder, shared into their machine (virtio-9p):
+# this host's `<projects>/<their folder>` — one folder, never the root, so the
+# hypervisor wall the VM backend exists for holds — at the same path inside, so
+# what an agent builds in its machine is in Pantheon's `data/projects/<folder>`.
+# The machine learns its folder's name from `PROJECTS_FOLDER_FILE` on the app
+# disk and mounts the tag at start (`workstation/__main__.mount_project_share`).
+PROJECTS_TAG = "pantheon-projects"
+PROJECTS_FOLDER_FILE = "projects-folder"
 PROVISION_DIR = "/opt/pantheon-workstation/provision"
 IMAGE_READY = "PANTHEON-WORKSTATION-IMAGE-READY"
 IMAGE_FAILED = "PANTHEON-WORKSTATION-IMAGE-FAILED"
@@ -293,7 +301,7 @@ def qemu_argv(*, name: str, accel: str, cpus: int, memory_mib: int, disk: Path,
               iso: Optional[Path], console: Path, qmp: Path,
               forward: Optional[Tuple[str, int]] = None,
               dump: Optional[Path] = None, qemu: str = "qemu-system-x86_64",
-              restrict: bool = False) -> List[str]:
+              restrict: bool = False, share: Optional[Path] = None) -> List[str]:
     """One machine's command line. No display device (the desktop is Xvfb
     inside), no default devices, the serial console to a file, one virtio
     disk, the read-only seed or app disk (`iso`), user-mode network with at most one
@@ -324,6 +332,15 @@ def qemu_argv(*, name: str, accel: str, cpus: int, memory_mib: int, disk: Path,
         host, port = forward
         netdev += f",hostfwd=tcp:{host}:{int(port)}-:{P.DEFAULT_PORT}"
     argv += ["-netdev", netdev, "-device", "virtio-net-pci,netdev=net0"]
+    if share is not None:
+        # `B1427`. One folder. `security_model=none`: the machine's owners and
+        # modes land on the host as they are (QEMU runs as root here), so the
+        # folder reads in Pantheon like the container backend's does. A comma
+        # would end the option; the folder names cannot hold one (`protocol`).
+        if "," in str(share):
+            raise ValueError(f"a projects folder path with a comma cannot be shared: {share}")
+        argv += ["-virtfs", f"local,path={share},mount_tag={PROJECTS_TAG},"
+                            "security_model=none,id=projects"]
     if dump is not None:
         # Every packet the machine sends or receives, for measuring what it
         # talks to (`Law 16`). Never on by default.
@@ -549,6 +566,9 @@ class QemuMachine(Machine):
         fd = os.open(root / "token", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(self.token + "\n")
+        # `B1427`: which folder the machine mounts its projects share at.
+        (root / PROJECTS_FOLDER_FILE).write_text(P.project_folder_of(self.account) + "\n",
+                                                 encoding="utf-8")
         iso = self.dir / "app.iso"
         make_iso(iso, APP_LABEL, root, keep_modes=True)
         shutil.rmtree(root, ignore_errors=True)
@@ -974,7 +994,30 @@ class Fleet(System):
                          memory_mib=self.memory_mib, disk=folder / "disk.qcow2",
                          iso=folder / "app.iso", console=folder / "console.log",
                          qmp=folder / "qmp.sock", forward=("127.0.0.1", int(m.port or 0)),
-                         restrict=self._restricted.get(m.account, False))
+                         restrict=self._restricted.get(m.account, False),
+                         share=self.project_share(m.account))
+
+    def project_share(self, account: str) -> Optional[Path]:
+        """`B1427`. This person's own projects folder on this host, made if
+        missing — or None when this host was given no projects folder (an
+        overlay without the mount), and the machine starts as it always did.
+        Made the way the container backend makes it (`B1424`): theirs, in
+        Pantheon's group, `2770`, so Pantheon reads what they build."""
+        root = Path(os.environ.get(P.PROJECTS_DIR_ENV, "").strip() or P.PROJECTS_DIR)
+        if not root.is_dir():
+            return None
+        folder = root / P.project_folder_of(account)
+        try:
+            folder.mkdir(mode=0o2770, exist_ok=True)
+            from workstation.__main__ import PAIRING_GID_ENV   # the one spelling
+            gid = os.environ.get(PAIRING_GID_ENV, "").strip()
+            if gid.isdigit() and int(gid) and os.geteuid() == 0:
+                os.chown(folder, -1, int(gid))
+            os.chmod(folder, 0o2770)
+        except OSError as e:
+            logger.warning("the projects folder for %s could not be made: %s", account, e)
+            return None
+        return folder
 
     def machine_for(self, account: str) -> Machine:
         with self._registry:

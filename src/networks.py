@@ -39,6 +39,15 @@ running on machines the operator owns, and traffic between them is normal.
 `P16-20` holds the hard-boundary version for a deployment that genuinely wants
 one — most plausibly several people sharing one install — and it is deferred.
 
+`B1475` (`D-2026-10-25-04` §5) opened the two doors this module waited for.
+**A task's networks** (`ScheduledTask.networks`) hold its runs to them —
+`task_scheduler` enters `scoped_to` around the run — with `OUTSIDE` for *and
+the internet*. **A person's own networks** (`src/person_networks.py`, while an
+admin has `networks_per_person` on) are declared beside the install's and are
+read only inside that person's runs (`bound_person`). Pantheon's own calls are
+held only to not crossing into another declared network (`crossing`); the
+agent's reach to the strict rule (`host_allowed`).
+
 None of which relaxes the auth boundary. `FORBIDDEN.md` Part 2 stands: *LAN to
 LAN is fine* is about traffic between the operator's own machines, never about
 who may log in.
@@ -48,6 +57,7 @@ import contextvars
 import ipaddress
 import json
 import logging
+import re
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
 logger = logging.getLogger(__name__)
@@ -68,6 +78,10 @@ TRUST_LEVELS = ("untrusted", "trusted")
 DEFAULT_TRUST = "trusted"
 RETIRED_TRUST = {"limited": "trusted"}
 
+#: `B1475`. The scope name that admits every host in no declared network —
+#: a task's *"and the internet"*. Reserved: no network may be called it.
+OUTSIDE = "internet"
+
 # The active scope: which declared networks this run may reach. None means "no
 # scope in force", which is the shipped state and today's behaviour.
 _scope: "contextvars.ContextVar[Optional[frozenset]]" = contextvars.ContextVar(
@@ -86,11 +100,11 @@ class NetworkScopeViolation(Exception):
 class Network:
     """One named segment: what is in it, how far it is trusted."""
 
-    __slots__ = ("name", "hosts", "cidrs", "trust", "enabled", "notes")
+    __slots__ = ("name", "hosts", "cidrs", "trust", "enabled", "notes", "person")
 
     def __init__(self, name: str, hosts: Sequence[str] = (),
                  cidrs: Sequence[str] = (), trust: str = DEFAULT_TRUST,
-                 enabled: bool = True, notes: str = "") -> None:
+                 enabled: bool = True, notes: str = "", person: bool = False) -> None:
         self.name = str(name).strip()
         self.hosts = [str(h).strip().lower() for h in hosts if str(h).strip()]
         self.cidrs = []
@@ -103,6 +117,9 @@ class Network:
         self.trust = trust if trust in TRUST_LEVELS else DEFAULT_TRUST
         self.enabled = bool(enabled)
         self.notes = str(notes or "")
+        # `B1475`. The run's own person declared it (`src/person_networks.py`),
+        # rather than an admin for everyone.
+        self.person = bool(person)
 
     def contains(self, host: str) -> bool:
         host = (host or "").strip().lower().strip("[]")
@@ -123,7 +140,7 @@ class Network:
     def as_dict(self) -> Dict[str, Any]:
         return {"name": self.name, "hosts": list(self.hosts),
                 "cidrs": [str(c) for c in self.cidrs], "trust": self.trust,
-                "enabled": self.enabled, "notes": self.notes}
+                "enabled": self.enabled, "notes": self.notes, "person": self.person}
 
 
 def _raw_networks() -> List[Dict[str, Any]]:
@@ -141,10 +158,41 @@ def _raw_networks() -> List[Dict[str, Any]]:
     return value if isinstance(value, list) else []
 
 
-def declared_networks(*, include_disabled: bool = False) -> List[Network]:
-    """Every network the operator has named. Empty out of the box."""
+def bound_person() -> Optional[str]:
+    """`B1475`. The person this run acts for — the one binding every tool call
+    already carries (`tool_execution.get_tool_person`), not a second one. None
+    outside a tool call: model discovery, a route, the scheduler's own work."""
+    try:
+        from src.tool_execution import get_tool_person
+        return get_tool_person()
+    except Exception:
+        return None
+
+
+def _person_raw(owner: Optional[str] = None) -> List[Dict[str, Any]]:
+    owner = owner or bound_person()
+    if not owner:
+        return []
+    try:
+        from src.person_networks import for_run
+        return for_run(owner)
+    except Exception:
+        logger.debug("person networks unavailable", exc_info=True)
+        return []
+
+
+def declared_networks(*, include_disabled: bool = False, person: bool = True,
+                      owner: Optional[str] = None) -> List[Network]:
+    """Every network the operator has named — and, inside a person's run with
+    per-person networks on, that person's own after them (`B1475`; the
+    install's first, so its names win a tie). Empty out of the box.
+    `person=False` is the install's list alone; `owner` names the person when
+    no run is bound (a route checking a task's scope as its owner sees it)."""
     out = []
-    for raw in _raw_networks():
+    sources = [(raw, False) for raw in _raw_networks()]
+    if person:
+        sources += [(raw, True) for raw in _person_raw(owner)]
+    for raw, mine in sources:
         if not isinstance(raw, dict) or not str(raw.get("name") or "").strip():
             continue
         net = Network(
@@ -154,6 +202,7 @@ def declared_networks(*, include_disabled: bool = False) -> List[Network]:
             trust=raw.get("trust") or DEFAULT_TRUST,
             enabled=raw.get("enabled", True),
             notes=raw.get("notes") or "",
+            person=mine,
         )
         if net.enabled or include_disabled:
             out.append(net)
@@ -233,6 +282,57 @@ def scoped_to(names: Optional[Iterable[str]]):
         _scope.reset(token)
 
 
+def scope_names(stored: Any) -> Optional[List[str]]:
+    """`B1475`. A task's stored `networks` — a JSON list of names — as the
+    scope its runs are held to, or None for none. A value that will not read
+    is a scope of nothing, said once: it was written through `check_scope`,
+    so it is damage, and a damaged boundary closes rather than opens."""
+    if stored in (None, "", "[]", []):
+        return None
+    value = stored
+    if isinstance(stored, str):
+        try:
+            value = json.loads(stored)
+        except ValueError:
+            value = None
+    if not isinstance(value, list):
+        logger.warning("a task's network scope is unreadable (%r); its runs reach no network", stored)
+        return []
+    return [str(n).strip() for n in value if str(n).strip()]
+
+
+def check_scope(value: Any, owner: Optional[str]) -> tuple:
+    """`(names or None, problems)` for a scope a task is being given: each
+    name is a network `owner` can see — the install's, and their own — or
+    `OUTSIDE`. Nothing picked is no scope."""
+    if value in (None, "", []):
+        return None, []
+    if isinstance(value, str):
+        value = [v for v in re.split(r"[\s,]+", value) if v]
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        return None, ["networks is a list of network names."]
+    known = {n.name.lower(): n.name for n in declared_networks(include_disabled=True, owner=owner)}
+    names, problems = [], []
+    for raw in value:
+        name = raw.strip()
+        if not name:
+            continue
+        if name.lower() == OUTSIDE:
+            name = OUTSIDE
+        elif name.lower() in known:
+            name = known[name.lower()]
+        else:
+            problems.append(f"There is no network “{name[:80]}”. "
+                            + (f"The networks you can pick are: {', '.join(sorted(known.values()))}."
+                               if known else "None are declared; add one in Settings → Networks."))
+            continue
+        if name not in names:
+            names.append(name)
+    if not problems and not names:
+        return None, []
+    return names, problems
+
+
 def host_allowed(host: str) -> bool:
     """May this run reach `host`?
 
@@ -241,13 +341,41 @@ def host_allowed(host: str) -> bool:
     a host that belongs to no declared network is **refused**, not waved
     through. "I could not classify it" is not a reason to permit reach; the
     operator who named two segments and asked for one of them did not mean
-    "and also anything I forgot to describe".
+    "and also anything I forgot to describe". Unless they said so: `OUTSIDE`
+    in the scope (`B1475`, a task's *and the internet*) admits every host in
+    no declared network, and still none in a declared one outside the scope.
     """
     scope = _scope.get()
     if scope is None:
         return True
     name = network_for(host)
-    return name is not None and name in scope
+    if name is None:
+        return OUTSIDE in scope
+    return name in scope
+
+
+def crossing(host: str) -> Optional[str]:
+    """The declared network `host` is in when a scope is in force and that
+    network is not in it, else None. The question every paced call is asked
+    (`rate_limiter`), Pantheon's own included: a run scoped to the lab does not
+    talk to a model or a service in production. A host in no declared network
+    — the workstation, a model's public API — is not a crossing; whether the
+    *agent* may reach one is `host_allowed`'s stricter question."""
+    scope = _scope.get()
+    if scope is None:
+        return None
+    name = network_for(host)
+    return name if name is not None and name not in scope else None
+
+
+def require_same_segment(host: str, *, what: str = "connection") -> None:
+    """Refuse a host in a declared network outside this run's scope."""
+    name = crossing(host)
+    if name is None:
+        return
+    raise NetworkScopeViolation(
+        f"{what} to {host!r} refused: it is in network {name!r}, and this run is "
+        f"scoped to {sorted(current_scope() or [])}.")
 
 
 def require_host(host: str, *, what: str = "connection") -> None:
@@ -324,6 +452,10 @@ def validate_networks(value: Any) -> List[str]:
         name = str(raw.get("name") or "").strip()
         if not name:
             problems.append(f"{where} has no name. A network is addressed by name, so it needs one.")
+        elif name.lower() == OUTSIDE:
+            problems.append(
+                f"{name!r} is the name a run's scope uses for every address in no "
+                f"declared network. Name this network something else.")
         elif name.lower() in seen:
             # `network_for` returns the FIRST match, so a duplicate name means
             # one of the two is unreachable and nothing says which.

@@ -24,6 +24,7 @@
 // written back over the real one.
 
 import uiModule from './ui.js';
+import { esc } from './util/escapeHtml.js';
 import { invalidateSettings } from './appConfig.js';
 
 const $ = (id) => document.getElementById(id);
@@ -31,6 +32,12 @@ const $ = (id) => document.getElementById(id);
 // Words for the protocol's values. Keyed by value; the values themselves come
 // from the server.
 const BACKEND_WORDS = {
+  // `D-2026-10-25-04` §4: the shipped choice.
+  auto: {
+    label: 'Automatic',
+    says: 'A virtual machine per person where this install has one running on KVM — each '
+      + 'person’s machine is their own, root included; otherwise the container, with sudo off.',
+  },
   container: {
     label: 'Container beside Pantheon',
     says: 'An Ubuntu container beside Pantheon, started by the workstation overlay. '
@@ -383,6 +390,17 @@ function renderSudo(settings, daemon) {
   if (!why) return;
   if (why.dataset.shipped === undefined) why.dataset.shipped = why.textContent;
   why.textContent = SUDO_WORDS[machineKind(settings, daemon)] || why.dataset.shipped;
+  // `B1428`, `D-2026-10-25-04` §4: with no answer of the admin's own, sudo
+  // follows the backend — on in a VM, off in the shared container.
+  const auto = $('ws-sudo-auto');
+  if (auto) {
+    const byBackend = settings && settings.sudo_choice === null;
+    auto.textContent = byBackend
+      ? 'Automatic: on in a virtual machine, off in the shared container.'
+      : 'Set by an admin.';
+    const reset = $('ws-sudo-reset');
+    if (reset) reset.hidden = byBackend;
+  }
 }
 
 function renderRecreate(settings, daemon) {
@@ -449,6 +467,87 @@ async function check() {
     renderUnreachable(e);
     return null;
   }
+}
+
+// ── `B1478`: the workstation's containers, for an admin ─────────────────────
+
+const MACHINE_WORDS = {
+  'workstation-net': 'Network gate',
+  workstation: 'Workstation',
+  'workstation-vm': 'VM host',
+};
+
+/** The admin's view of the workstation's containers: each with its state and
+ *  Start/Stop/Restart/Logs, or the sentence saying why Pantheon can't act. */
+export function renderMachines(view) {
+  const box = $('ws-machines');
+  if (!box) return;
+  box.hidden = !view;
+  if (!view) return;
+  const rows = (view.containers || []).map((c) => {
+    const state = c.health ? `${c.state}, ${c.health}` : c.state;
+    const running = c.state === 'running';
+    const btn = (action, label, show) => (show
+      ? `<button type="button" class="memory-toolbar-btn" data-service="${esc(c.service)}" data-action="${action}">${label}</button>`
+      : '');
+    return `<div class="ws-machine" data-service="${esc(c.service)}">`
+      + `<span class="ws-machine-name">${esc(MACHINE_WORDS[c.service] || c.service)}</span>`
+      + `<span class="ws-machine-state">${esc(state)}</span>`
+      + btn('start', 'Start', !running) + btn('stop', 'Stop', running)
+      + btn('restart', 'Restart', running) + btn('logs', 'Logs', true)
+      + '</div>';
+  }).join('');
+  const sentence = view.sentence ? `<div class="admin-toggle-sub">${esc(view.sentence)}</div>` : '';
+  box.innerHTML = rows + sentence;
+}
+
+async function loadMachines() {
+  try {
+    const res = await fetch('/api/workstation/machines', { credentials: 'same-origin' });
+    if (!res.ok) { renderMachines(null); return null; }
+    const view = await res.json();
+    renderMachines(view);
+    return view;
+  } catch (_) {
+    renderMachines(null);
+    return null;
+  }
+}
+
+async function machineAction(service, action) {
+  if (action === 'logs') {
+    const res = await fetch(`/api/workstation/machines/${encodeURIComponent(service)}/logs?tail=200`,
+      { credentials: 'same-origin' });
+    const out = $('ws-machine-logs');
+    if (!out) return;
+    out.hidden = false;
+    out.textContent = res.ok ? ((await res.json()).text || '(no output)') : await readError(res);
+    return;
+  }
+  say('ws-admin-result', `${action[0].toUpperCase()}${action.slice(1)}ing ${MACHINE_WORDS[service] || service}…`, true);
+  const res = await fetch(`/api/workstation/machines/${encodeURIComponent(service)}/${action}`,
+    { method: 'POST', credentials: 'same-origin' });
+  say('ws-admin-result', res.ok ? 'Done.' : await readError(res), res.ok);
+  await loadMachines();
+  await check();
+}
+
+async function switchBackend(backend) {
+  say('ws-admin-result', 'Switching…', true);
+  const res = await fetch('/api/workstation/backend', {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ backend }),
+  });
+  if (!res.ok) {
+    say('ws-admin-result', await readError(res), false);
+  } else {
+    const body = await res.json();
+    invalidateSettings();
+    say('ws-admin-result', body.sentence || 'Saved.', true);
+  }
+  await loadMachines();
+  await check();
 }
 
 /** One settings write. A refusal is shown in the server's words and the
@@ -548,8 +647,15 @@ function wire() {
   onChange('ws-sudo', 'workstation_sudo', (n) => !!n.checked);
   onChange('ws-route-tools', 'workstation_route_tools', (n) => !!n.checked);
   onChange('ws-lan-reach', 'agent_lan_reach', (n) => !!n.checked);        // `P16-20`
-  onChange('ws-backend', 'workstation_backend', (n) => n.value);
+  // `B1478`: choosing a backend switches it — stored, and with the host's
+  // Docker, that one started and the other stopped.
+  $('ws-backend')?.addEventListener('change', () => { switchBackend($('ws-backend').value); });
+  $('ws-machines')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-service]');
+    if (btn) machineAction(btn.dataset.service, btn.dataset.action);
+  });
   onChange('ws-network', 'workstation_network', (n) => n.value);
+  $('ws-sudo-reset')?.addEventListener('click', () => { save({ workstation_sudo: null }); });
   $('ws-save-address')?.addEventListener('click', () => { saveAddress(); });
   $('ws-recreate-copy')?.addEventListener('click', () => {
     const text = $('ws-recreate-cmd')?.textContent || '';
@@ -563,11 +669,15 @@ function wire() {
 
 export async function open() {
   wire();
-  return load();
+  const status = await load();
+  // An admin's only: the answer carries `settings` for an admin alone, and
+  // nobody else is sent to an admin route to be refused.
+  if (status && status.settings) loadMachines();
+  return status;
 }
 
 export const _test = {
   describeMachines,  // `B979`
   describeDaemon, describeYou, render, apply, fillSettings, renderEffects, networkStateSentence,
-  renderRecreate, renderSudo, machineKind,
+  renderRecreate, renderSudo, machineKind, renderMachines,
 };

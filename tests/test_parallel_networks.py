@@ -228,9 +228,12 @@ def test_the_url_gate_is_checked_before_dns(declared):
     assert resolved == [], "DNS was consulted for a host the scope had already refused"
 
 
-def test_the_limiter_refuses_an_out_of_scope_host(declared):
+def test_the_limiter_refuses_a_host_in_another_declared_network(declared):
     """`P15`'s limiter is the one place every deliberately-paced outbound call
-    passes through, which makes it a cheap second layer."""
+    passes through, which makes it a cheap second layer. `B1475`: it asks
+    whether a call crosses into another declared network — Pantheon's own calls
+    pass through it too, and a lab-scoped run still talks to its own model and
+    its own workstation, which are in no declared network."""
     from src.rate_limiter import OutboundHostLimiter
     declared(LAB, PROD)
     limiter = OutboundHostLimiter()
@@ -238,6 +241,7 @@ def test_the_limiter_refuses_an_out_of_scope_host(declared):
         with pytest.raises(nw.NetworkScopeViolation):
             limiter.acquire("10.20.7.3")
         limiter.acquire("10.9.0.5")     # in scope, must not raise
+        limiter.acquire("workstation")  # in no declared network: not a crossing
 
 
 def test_outbound_fetch_refuses_an_out_of_scope_host(declared):

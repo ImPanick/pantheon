@@ -18,13 +18,8 @@
 // in the other.
 
 import { invalidateSettings } from './appConfig.js';
-
-// `D-2026-10-25-03`. Two trust levels: trusted (the agent's own connections may
-// go there) and untrusted (listed, never connected to). The retired "limited"
-// always behaved as trusted, so a saved one reads as that.
-const TRUST_LEVELS = ['trusted', 'untrusted'];
-const _trustOf = (t) => (t === 'untrusted' ? 'untrusted' : 'trusted');
-const _EMPTY = { name: '', cidrs: '', hosts: '', trust: 'trusted', enabled: true };
+// `B1475`. The rows are drawn by the one editor both network lists use.
+import { EMPTY_ROW, renderRows, rowsToValue, showProblems as _showProblems, valueToRows } from './networkRows.js';
 
 let _rows = [];
 let _loaded = false;
@@ -33,136 +28,22 @@ const $ = (id) => document.getElementById(id);
 
 /** The on-screen rows as the shape the API and the setting both use. */
 function toValue() {
-  const split = (s) => String(s || '').split(/[\s,]+/).filter(Boolean);
-  return _rows.map((r) => ({
-    name: String(r.name || '').trim(),
-    cidrs: split(r.cidrs),
-    hosts: split(r.hosts).map((h) => h.toLowerCase()),
-    trust: _trustOf(r.trust),
-    enabled: r.enabled !== false,
-  }));
+  return rowsToValue(_rows);
 }
 
 function fromValue(list) {
-  return (Array.isArray(list) ? list : []).map((n) => ({
-    name: n && n.name ? String(n.name) : '',
-    cidrs: Array.isArray(n && n.cidrs) ? n.cidrs.join(' ') : '',
-    hosts: Array.isArray(n && n.hosts) ? n.hosts.join(' ') : '',
-    trust: _trustOf(n && n.trust),
-    enabled: !(n && n.enabled === false),
-  }));
+  return valueToRows(list);
 }
 
 function render() {
-  const host = $('networks-list');
-  if (!host) return;
-  host.textContent = '';
-  if (_rows.length === 0) {
-    const none = document.createElement('div');
-    none.className = 'admin-toggle-sub';
-    none.style.cssText = 'padding:10px 0;opacity:0.65;';
-    none.textContent = 'No networks declared. With none declared this changes nothing — '
-      + 'every path runs exactly as it does today.';
-    host.appendChild(none);
-    return;
-  }
-  _rows.forEach((row, i) => host.appendChild(rowEl(row, i)));
-}
-
-function rowEl(row, i) {
-  const wrap = document.createElement('div');
-  wrap.className = 'networks-row';
-
-  const mk = (label, key, placeholder, width) => {
-    const cell = document.createElement('label');
-    cell.className = 'networks-cell';
-    cell.style.flex = width;
-    const cap = document.createElement('span');
-    cap.className = 'networks-cell-label';
-    cap.textContent = label;
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'settings-select';
-    input.value = row[key] || '';
-    input.placeholder = placeholder;
-    input.addEventListener('input', () => { row[key] = input.value; });
-    cell.append(cap, input);
-    return cell;
-  };
-
-  wrap.appendChild(mk('Name', 'name', 'home', '1 1 120px'));
-  wrap.appendChild(mk('CIDRs', 'cidrs', '192.168.1.0/24', '2 1 180px'));
-  wrap.appendChild(mk('Hosts', 'hosts', 'nas.local printer.local', '2 1 180px'));
-
-  const trustCell = document.createElement('label');
-  trustCell.className = 'networks-cell';
-  trustCell.style.flex = '0 0 120px';
-  const trustCap = document.createElement('span');
-  trustCap.className = 'networks-cell-label';
-  trustCap.textContent = 'Trust';
-  const trust = document.createElement('select');
-  trust.className = 'settings-select';
-  trust.title = 'Trusted: the agent may connect there (a page fetch, a reach check). Untrusted: listed, never connected to.';
-  for (const level of TRUST_LEVELS) {
-    const opt = document.createElement('option');
-    opt.value = level;
-    opt.textContent = level;
-    if (row.trust === level) opt.selected = true;
-    trust.appendChild(opt);
-  }
-  trust.addEventListener('change', () => { row.trust = trust.value; });
-  trustCell.append(trustCap, trust);
-  wrap.appendChild(trustCell);
-
-  const onCell = document.createElement('label');
-  onCell.className = 'networks-cell networks-cell-switch';
-  onCell.style.flex = '0 0 auto';
-  const onCap = document.createElement('span');
-  onCap.className = 'networks-cell-label';
-  onCap.textContent = 'On';
-  const sw = document.createElement('label');
-  sw.className = 'admin-switch';
-  const cb = document.createElement('input');
-  cb.type = 'checkbox';
-  cb.checked = row.enabled !== false;
-  cb.addEventListener('change', () => { row.enabled = cb.checked; });
-  const slider = document.createElement('span');
-  slider.className = 'admin-slider';
-  sw.append(cb, slider);
-  onCell.append(onCap, sw);
-  wrap.appendChild(onCell);
-
-
-  const del = document.createElement('button');
-  del.type = 'button';
-  del.className = 'memory-toolbar-btn networks-remove';
-  del.textContent = 'Remove';
-  del.title = 'Remove this network';
-  del.addEventListener('click', () => {
-    _rows.splice(i, 1);
-    render();
+  renderRows($('networks-list'), _rows, {
+    emptyText: 'No networks declared. With none declared this changes nothing — '
+      + 'every path runs exactly as it does today.',
   });
-  wrap.appendChild(del);
-  return wrap;
 }
 
 function showProblems(problems) {
-  const box = $('networks-problems');
-  if (!box) return;
-  box.textContent = '';
-  if (!problems || problems.length === 0) {
-    box.hidden = true;
-    return;
-  }
-  // Every problem, not the first — a form that reports one typo per round trip
-  // is a form people give up on. Same reasoning as `validate_networks`.
-  for (const p of problems) {
-    const line = document.createElement('div');
-    line.className = 'networks-problem';
-    line.textContent = p;
-    box.appendChild(line);
-  }
-  box.hidden = false;
+  _showProblems($('networks-problems'), problems);
 }
 
 function flashSaved() {
@@ -484,6 +365,86 @@ async function showGuard() {
   }
 }
 
+// ── each person's networks (`B1475`) ───────────────────────────────────────
+//
+// The switch, and every person's networks, read-only. The server sends of a
+// linked vault login only `login_linked` — never which item, its name or
+// anything in it (`person_networks.everyone`), so there is nothing here to
+// leak (`D-2026-10-25-04` §5).
+
+function personRow(person, net) {
+  const row = document.createElement('div');
+  row.className = 'networks-row networks-person-row';
+  const cell = (cls, text) => {
+    const el = document.createElement('span');
+    el.className = `device-cell ${cls}`;
+    el.textContent = text;
+    row.appendChild(el);
+    return el;
+  };
+  const who = cell('networks-person-account', person.person || person.account);
+  who.title = person.account;
+  cell('networks-person-name', net.name || '');
+  const where = [...(net.cidrs || []), ...(net.hosts || [])].join(' ') || 'nothing';
+  cell('networks-person-where', where);
+  cell('networks-person-trust', net.trust === 'untrusted' ? 'untrusted' : 'trusted');
+  if (net.enabled === false) cell('networks-person-off', 'off');
+  if (net.login_linked) {
+    const badge = cell('networks-person-login', 'login linked');
+    badge.title = 'A login from their vault is linked. Which one, and what is in it, is theirs.';
+  }
+  return row;
+}
+
+async function loadPeople() {
+  const host = $('networks-people');
+  const box = $('networks-per-person');
+  if (!host) return;
+  host.textContent = '';
+  let state;
+  try {
+    const res = await fetch('/api/networks/people');
+    if (!res.ok) throw new Error(`unavailable (${res.status})`);
+    state = await res.json();
+  } catch (e) {
+    host.textContent = String(e.message || e);
+    return;
+  }
+  if (box) box.checked = !!state.enabled;
+  const people = Array.isArray(state.people) ? state.people : [];
+  if (!people.length) {
+    const none = document.createElement('div');
+    none.className = 'admin-toggle-sub networks-empty';
+    none.textContent = state.enabled
+      ? 'Nobody has declared a network of their own yet.'
+      : 'Nobody has declared a network of their own.';
+    host.appendChild(none);
+    return;
+  }
+  for (const person of people) {
+    for (const net of person.networks || []) host.appendChild(personRow(person, net));
+  }
+}
+
+async function savePerPerson(on) {
+  const out = $('networks-people-result');
+  const res = await fetch('/api/auth/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ networks_per_person: !!on }),
+  });
+  if (out) {
+    out.textContent = res.ok
+      ? (on ? 'On. Each person declares their own networks in Settings → My networks.'
+        : 'Off. Only the networks above apply; what people saved is kept.')
+      : `Not saved (${res.status}).`;
+    out.classList.toggle('networks-probe-hit', res.ok);
+    out.hidden = false;
+  }
+  if (res.ok) invalidateSettings();
+  await loadPeople();
+}
+
 export async function open() {
   if (!_loaded) {
     try {
@@ -496,7 +457,7 @@ export async function open() {
     _loaded = true;
 
     $('networks-add')?.addEventListener('click', () => {
-      _rows.push({ ..._EMPTY });
+      _rows.push({ ...EMPTY_ROW });
       render();
     });
     $('networks-save')?.addEventListener('click', () => { save(); });
@@ -509,6 +470,7 @@ export async function open() {
     $('devices-refresh')?.addEventListener('click', () => { loadDevices(); });
     $('host-exec-save')?.addEventListener('click', () => { saveHostLists(); });
     $('host-exec-show-guard')?.addEventListener('click', () => { showGuard(); });
+    $('networks-per-person')?.addEventListener('change', (e) => { savePerPerson(e.target.checked); });
 
     try {
       const res = await fetch('/api/auth/settings');
@@ -520,6 +482,7 @@ export async function open() {
   }
   render();
   loadDevices();
+  loadPeople();
 }
 
 export const _test = { toValue, fromValue, setRows: (r) => { _rows = r; }, getRows: () => _rows };

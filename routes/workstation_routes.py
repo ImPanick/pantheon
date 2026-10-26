@@ -227,6 +227,105 @@ def setup_workstation_routes() -> APIRouter:
         return {"ok": True, "account": answer.get("account"),
                 "sentence": "Your workstation home is back to a clean start."}
 
+    # ── `B1478`: the admin controls the workstation's containers ──────────────
+    #
+    # `D-2026-10-25-04` §3. Only where the operator gave Pantheon the host's
+    # Docker (`docker/host-docker.yml`); otherwise each answer says how to give
+    # it. Admin only: these start and stop containers on the host. Only the
+    # workstation's own services in Pantheon's own compose project are named,
+    # and only start, stop and restart (`src/workstation_control.py`).
+
+    def _docker():
+        from src import workstation_control as wctl
+        if not wctl.available():
+            raise HTTPException(409, wctl.ENABLE_SENTENCE)
+        api = wctl.DockerAPI()
+        try:
+            project = wctl.own_project(api)
+        except wctl.DockerControlError as e:
+            raise HTTPException(503, str(e))
+        if not project:
+            raise HTTPException(409, "Pantheon can't tell which compose project it runs in, "
+                                     "so it won't touch any container.")
+        return wctl, api, project
+
+    @router.get("/machines")
+    async def workstation_machines(request: Request):
+        """Admin only: the workstation's containers and what Pantheon may do."""
+        require_admin(request)
+        from src import workstation_control as wctl
+        out: Dict[str, Any] = {"available": wctl.available(), "choice": wa.wc.backend_choice(),
+                               "backend": wa.backend_setting(), "vm_configured": wa.wc.vm_configured(),
+                               "containers": [], "sentence": ""}
+        if not out["available"]:
+            out["sentence"] = wctl.ENABLE_SENTENCE
+            return out
+        try:
+            wctl_, api, project = _docker()
+            out["project"] = project
+            out["containers"] = wctl_.workstation_containers(api, project)
+        except HTTPException as e:
+            out["sentence"] = e.detail
+        except wctl.DockerControlError as e:
+            out["sentence"] = str(e)
+        return out
+
+    @router.post("/machines/{service}/{action}")
+    async def workstation_machine_act(request: Request, service: str, action: str):
+        """Admin only: start, stop or restart one workstation service."""
+        require_admin(request)
+        wctl, api, project = _docker()
+        try:
+            done = wctl.act(api, project, service, action)
+        except wctl.DockerControlError as e:
+            raise HTTPException(400, str(e))
+        logger.info("workstation %s: %s by an admin", service, action)
+        return {"ok": True, **done}
+
+    @router.get("/machines/{service}/logs")
+    async def workstation_machine_logs(request: Request, service: str, tail: int = 200):
+        """Admin only: the last lines a workstation service wrote."""
+        require_admin(request)
+        wctl, api, project = _docker()
+        try:
+            return {"service": service, "text": wctl.logs(api, project, service, tail)}
+        except wctl.DockerControlError as e:
+            raise HTTPException(400, str(e))
+
+    @router.post("/backend")
+    async def workstation_backend(request: Request):
+        """Admin only: choose the backend — stored, and with the host's Docker,
+        that backend started and the other stopped."""
+        require_admin(request)
+        body = await _body(request)
+        try:
+            choice = wa.validate_setting("workstation_backend", body.get("backend"))
+        except (KeyError, ValueError) as e:
+            raise HTTPException(400, str(e))
+        from src.settings import load_settings, save_settings
+        settings = dict(load_settings())
+        settings["workstation_backend"] = choice
+        save_settings(settings)
+        wa.wc.forget_vm_accel()
+        backend = wa.backend_setting()
+        out: Dict[str, Any] = {"ok": True, "choice": choice, "backend": backend, "steps": [],
+                               "sentence": ""}
+        from src import workstation_control as wctl
+        if not wctl.available():
+            out["sentence"] = ("Saved. " + ("Pantheon now talks to that workstation. "
+                               if wa.wc.vm_configured() else "") + wctl.ENABLE_SENTENCE)
+            return out
+        try:
+            wctl_, api, project = _docker()
+            out.update(wctl_.switch(api, project, backend))
+            out["sentence"] = f"Switched to the {backend} workstation: " + ", ".join(out["steps"]) + "."
+        except HTTPException as e:
+            out["sentence"] = f"Saved, but nothing was switched: {e.detail}"
+        except wctl.DockerControlError as e:
+            out["sentence"] = f"Saved, but nothing was switched: {e}"
+        logger.info("workstation backend set to %s (%s) by an admin", choice, backend)
+        return out
+
     # ── `P20-05`: watch it, take it over, hand it back ────────────────────────
 
     def _mine(request: Request):

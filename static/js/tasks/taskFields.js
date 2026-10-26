@@ -715,6 +715,40 @@ function _readRetries(root) {
   return { value: n };
 }
 
+/** `B1475`. Fill the Networks box from `/api/networks/mine` — every network
+ *  this person's runs see, and "internet" — and show it when there are any.
+ *  A name the task holds that is no longer offered stays, picked, so saving
+ *  the form does not quietly widen the task. */
+async function _fillNetworkChoices(root, existing) {
+  const sel = _byId(root, 'task-form-networks');
+  const wrap = _byId(root, 'task-form-networks-wrap');
+  if (!sel || !wrap) return;
+  let choices = [];
+  try {
+    const res = await fetch(`${API_BASE}/api/networks/mine`, { credentials: 'same-origin' });
+    if (res.ok) choices = (await res.json()).choices || [];
+  } catch (_) { choices = []; }
+  const held = Array.isArray(existing?.networks) ? existing.networks : [];
+  const names = [...choices, ...held.filter((n) => !choices.includes(n))];
+  if (!names.length) return;
+  for (const name of names) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name === 'internet' ? 'internet (any address in no declared network)' : name;
+    opt.selected = held.includes(name);
+    sel.appendChild(opt);
+  }
+  wrap.hidden = false;
+}
+
+/** The Networks box, read: the picked names, or null when it is not shown. */
+function _readNetworks(root) {
+  const wrap = _byId(root, 'task-form-networks-wrap');
+  const sel = _byId(root, 'task-form-networks');
+  if (!wrap || !sel || wrap.hidden) return null;
+  return Array.from(sel.selectedOptions || []).map((o) => o.value);
+}
+
 /** The time-limit box and its unit, read: `{ value }` in seconds, or
  *  `{ error }`. Blank or 0 is no limit, which is what `0` means on the wire. */
 function _readTimeLimit(root) {
@@ -889,6 +923,16 @@ export function mountTaskFields(host, {
       </div>
       <div class="task-form-hint">A run that takes longer than this is stopped and counts as failed.</div>
 `,
+    // `B1475`. Which declared networks its runs may reach. Drawn hidden and
+    // shown once `/api/networks/mine` names any: an install with none
+    // declared has nothing to pick.
+    networks: `
+      <div id="task-form-networks-wrap" hidden>
+        <label class="task-form-label" for="task-form-networks">Networks <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — none picked: no limit)</span></label>
+        <select id="task-form-networks" class="task-form-input" multiple size="3"></select>
+        <div class="task-form-hint">Its runs are refused every address outside the networks picked. “internet” is every address in no declared network.</div>
+      </div>
+`,
     chain: `
       <label class="task-form-label">Chain <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — what runs after this one)</span></label>
       <div class="task-form-chain">
@@ -953,7 +997,7 @@ export function mountTaskFields(host, {
       // `P23-06` (WB-M-14): `chain: false` — the Workbench's chains canvas,
       // where the arrows themselves are the chain; two selects listing every
       // task were a third way to draw one, in a panel 1,247 px tall.
-      : ['head', 'name', 'type', 'trigger', 'output', 'model', 'timeout',
+      : ['head', 'name', 'type', 'trigger', 'output', 'model', 'timeout', 'networks',
         ...(chain === false ? [] : ['chain']), 'notif', 'actions'];
   host.innerHTML = order.map((k) => sections[k]).join('');
 
@@ -1469,6 +1513,9 @@ ${(isNode && taskType === 'research') ? '' : `
     renderOutputExtra();
   });
 
+  // `B1475`. The networks this person's runs can be held to.
+  if ($('task-form-networks')) _fillNetworkChoices(host, existing);
+
   // Populate model dropdown from /api/models. Value is "endpoint_url::model"
   // so a single field encodes both the model name and which endpoint to call.
   // Blank value (option 0) = inherit session default.
@@ -1775,6 +1822,11 @@ ${(isNode && taskType === 'research') ? '' : `
     // Notifications toggle — defaults to true if absent.
     const notifEl = $('task-form-notif');
     if (notifEl) payload.notifications_enabled = !!notifEl.checked;
+
+    // `B1475`. Sent only when the box was drawn: hidden, it says nothing about
+    // a scope the task may already have. `[]` clears it.
+    const picked = _readNetworks(host);
+    if (picked) payload.networks = picked;
 
     // Task type specifics
     if (taskType === 'llm' || taskType === 'research') {

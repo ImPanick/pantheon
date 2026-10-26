@@ -1,0 +1,66 @@
+# Both workstation backends side by side, so Settings -> Workstation can switch
+# between them — `B1478`, `D-2026-10-25-04` §3–4. Use it WITH the container's
+# overlay:
+#
+#   COMPOSE_FILE=docker-compose.yml:docker/workstation.yml:docker/workstation-both.yml
+#
+# (on Windows the separator is `;`), then `docker compose up -d --build`. The
+# container backend stays where it was (`workstation`, http://workstation:7040);
+# this adds the VM backend as `workstation-vm` (http://workstation-vm:7040) with
+# a pairing volume of its own, and tells Pantheon where both are. Which one the
+# agents use is Settings -> Workstation -> Backend. With docker/host-docker.yml
+# as well, choosing one there starts it and stops the other; without it, both
+# run and the choice is which one Pantheon talks to.
+#
+# The `workstation-vm` service below is `docker/workstation-vm.yml`'s
+# `workstation`, under its own name, hostname and pairing volume — and nothing
+# else differs. `tests/test_the_workstation_backend_switches.py` holds the two
+# definitions equal, so a change to one that misses the other fails CI. (Not an
+# `extends:`: compose resolves an extended file's relative paths against that
+# file, and `./workstation` would point into docker/.)
+#
+# Its volume is the VM overlay's `workstation-vm`, so an install that ran the VM
+# overlay alone keeps every person's machine. Do not run both this file and
+# docker/workstation-vm.yml: two VM hosts would share one disk volume.
+services:
+  workstation-vm:
+    build:
+      context: ./workstation
+      dockerfile: vm.Dockerfile
+    hostname: workstation-vm
+    environment:
+      - PANTHEON_WORKSTATION_PAIRING_GID=${PGID:-1000}
+      - PANTHEON_WORKSTATION_VM_MEMORY_MIB=${PANTHEON_WORKSTATION_VM_MEMORY_MIB:-2048}
+      - PANTHEON_WORKSTATION_VM_CPUS=${PANTHEON_WORKSTATION_VM_CPUS:-2}
+      - PANTHEON_WORKSTATION_VM_DISK_GIB=${PANTHEON_WORKSTATION_VM_DISK_GIB:-20}
+      - PANTHEON_WORKSTATION_VM_ACCEL=${PANTHEON_WORKSTATION_VM_ACCEL:-auto}
+      - PANTHEON_WORKSTATION_VM_IDLE_MIN=${PANTHEON_WORKSTATION_VM_IDLE_MIN:-30}
+      - PANTHEON_WORKSTATION_VM_MAX_RUNNING=${PANTHEON_WORKSTATION_VM_MAX_RUNNING:-auto}
+    volumes:
+      - workstation-vm:/var/lib/pantheon-workstation-vm
+      - workstation-vm-pairing:/workstation-pairing
+      # `B1427`. The projects folder, and only it: each person's machine is
+      # given its own folder in it (virtio-9p, `workstation/vm.py`), never the
+      # root, so what an agent builds is in data/projects/<their folder>.
+      - ${APP_DATA_DIR:-./data}/projects:/projects:z
+    device_cgroup_rules:
+      - "c 10:232 rwm"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import json,sys,urllib.request as u; sys.exit(0 if json.load(u.urlopen('http://127.0.0.1:7040/v1/health', timeout=5)).get('agent') == 'pantheon-workstation' else 1)"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    stop_grace_period: 2m
+    restart: unless-stopped
+
+  pantheon:
+    environment:
+      - PANTHEON_WORKSTATION_VM_URL=http://workstation-vm:7040
+      - PANTHEON_WORKSTATION_VM_PAIRING=/workstation-vm-pairing
+    volumes:
+      - workstation-vm-pairing:/workstation-vm-pairing:ro
+
+volumes:
+  workstation-vm:
+  workstation-vm-pairing:

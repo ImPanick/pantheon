@@ -3505,6 +3505,23 @@
             <div id="networks-saved" class="networks-saved" hidden>Saved.</div>
           </div>
 
+          <!-- `B1475` (`D-2026-10-25-04` §5). Each person's own networks: the
+               switch, and every one of them, read-only. Of a linked vault
+               login the server sends only that one is linked. Drawn by
+               `static/js/networks.js` from `GET /api/networks/people`. -->
+          <div class="admin-card" style="margin-top:12px;">
+            <h2>Each person's networks</h2>
+            <div class="admin-toggle-row">
+              <div>
+                <label class="admin-toggle-label" for="networks-per-person">Each person may declare their own networks</label>
+                <div class="admin-toggle-sub" id="networks-per-person-why">On: Settings → My networks lets each person name their own networks and link a login from their own vault to one. Theirs direct their runs only, beside these; they grant no reach the person did not have. You see every one of them below, and of a linked login only that one is linked. Off: these are the only networks.</div>
+              </div>
+              <label class="admin-switch"><input type="checkbox" id="networks-per-person" aria-describedby="networks-per-person-why"><span class="admin-slider"></span></label>
+            </div>
+            <div id="networks-people" class="settings-col"></div>
+            <div id="networks-people-result" class="networks-probe-result" role="status" hidden></div>
+          </div>
+
           <div class="admin-card" style="margin-top:12px;">
             <h2>Network agent</h2>
             <!-- `B1236` (P23 round 2). `P23-03`'s short line said "sees the network
@@ -3617,6 +3634,36 @@
             </div>
             <div class="admin-toggle-sub">A token is used for that host only, for one git command at a time, and is never shown again. Give it only the repository scopes you want the agent to have; a push always asks you first.</div>
             <div id="git-settings-result" class="admin-toggle-sub" role="status" hidden></div>
+          </div>
+        </div>
+
+        <!-- ═══ MY NETWORKS TAB (`B1475`) ═══
+             Each person's own networks, while an admin allows them: a name,
+             ranges and hosts, a trust, and a login from their own vault the
+             agent signs in with there. They direct this person's runs only.
+             Drawn by `static/js/personNetworks.js` from `GET /api/networks/mine`. -->
+        <div data-settings-panel="my-networks" class="hidden">
+          <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6" aria-hidden="true"><rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M12 8v4"/><path d="M5 16v-2h14v2"/></svg>Your networks</h2>
+            <div id="my-networks-off" class="admin-toggle-sub" hidden></div>
+            <div id="my-networks-body">
+              <div class="admin-toggle-sub" style="margin-bottom:10px;line-height:1.5;">
+                The networks your agents work in — your lab, your NAS, a client's VPN. Your runs see them beside the install's; nobody else's do. Link a login from your vault and the agent signs in with it there, by name, without seeing it. An untrusted network is listed and never connected to. Your admin sees these networks, and of a login only that one is linked.
+              </div>
+              <div id="my-networks-install" class="admin-toggle-sub" hidden></div>
+              <div id="my-networks-list" class="settings-col"></div>
+              <div class="settings-row" style="margin-top:10px;gap:8px;">
+                <button type="button" id="my-networks-add" class="memory-toolbar-btn">Add a network</button>
+                <button type="button" id="my-networks-save" class="memory-toolbar-btn" style="margin-left:auto;">Save</button>
+              </div>
+              <div class="settings-row" style="margin-top:10px;gap:8px;">
+                <input type="text" id="my-networks-probe" class="settings-select" placeholder="Which of mine is 192.168.1.20 in?" style="flex:1 1 auto;" autocomplete="off" spellcheck="false">
+                <button type="button" id="my-networks-probe-go" class="memory-toolbar-btn">Check</button>
+              </div>
+              <div id="my-networks-probe-result" class="networks-probe-result" role="status" hidden></div>
+              <div id="my-networks-problems" class="networks-problems" hidden></div>
+              <div id="my-networks-saved" class="networks-saved" hidden>Saved.</div>
+            </div>
           </div>
         </div>
 
@@ -3786,6 +3833,10 @@
                 <select id="ws-backend" class="settings-select" aria-describedby="ws-backend-effect"></select>
               </div>
               <div id="ws-backend-effect" class="admin-toggle-sub ws-effect"></div>
+              <!-- `B1478`. The workstation's containers, for an admin: state, and
+                   Start / Stop / Restart / Logs where Pantheon has the host's Docker. -->
+              <div id="ws-machines" class="ws-machines" hidden></div>
+              <pre id="ws-machine-logs" class="ws-machine-logs" hidden></pre>
 
               <div class="admin-toggle-row ws-toggle">
                 <div>
@@ -3793,6 +3844,8 @@
                   <div class="admin-toggle-sub ws-warn" id="ws-sudo-why">With sudo on, an agent can install software &mdash; and can read other people&rsquo;s workstation homes.</div>
                   <!-- `B956`. What the switch cannot do, and what can. -->
                   <div class="admin-toggle-sub" id="ws-sudo-after">Turning it off applies from now on. It cannot take back what an agent already did as root.</div>
+                  <!-- `B1428`. Whether sudo follows the backend or an admin's answer. -->
+                  <div class="admin-toggle-sub"><span id="ws-sudo-auto"></span> <button type="button" id="ws-sudo-reset" class="memory-toolbar-btn" hidden>Back to automatic</button></div>
                 </div>
                 <label class="admin-switch"><input type="checkbox" id="ws-sudo" aria-describedby="ws-sudo-why ws-sudo-after"><span class="admin-slider"></span></label>
               </div>

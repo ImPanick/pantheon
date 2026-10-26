@@ -150,6 +150,73 @@ SOURCE_PAIRING = "pairing"
 SOURCE_NONE = "none"
 
 
+# ── which local backend (`B1478`, `D-2026-10-25-04` §3–4) ─────────────────────
+
+_VM_ACCEL_TTL_S = 60.0
+_vm_accel_cache: Dict[str, Any] = {"at": 0.0, "accel": None}
+
+
+def vm_configured() -> bool:
+    """Whether this install has the VM backend beside the container
+    (`docker/workstation-both.yml` sets its address on Pantheon)."""
+    return bool(parse_base(os.environ.get(P.VM_URL_ENV, "")))
+
+
+def _vm_token() -> str:
+    try:
+        return (Path(os.environ.get(P.VM_PAIRING_DIR_ENV) or "/workstation-vm-pairing")
+                / P.TOKEN_FILENAME).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def vm_accel() -> Optional[str]:
+    """The VM backend's acceleration, `kvm` or `tcg`, from its own health —
+    or None when it is not configured or does not answer. Cached for a minute:
+    `auto` asks it on the way to every call."""
+    import time as _time
+    if not vm_configured():
+        return None
+    now = _time.monotonic()
+    if now - _vm_accel_cache["at"] < _VM_ACCEL_TTL_S:
+        return _vm_accel_cache["accel"]
+    accel = None
+    try:
+        import httpx
+        base = parse_base(os.environ.get(P.VM_URL_ENV, ""))
+        token = _vm_token()
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        with httpx.Client(timeout=_timeouts(5.0), trust_env=False) as c:
+            body = c.get(f"{base}/v1/health", headers=headers).json()
+        accel = ((body or {}).get("machine") or {}).get("accel")
+        accel = accel if accel in P.ACCELS else None
+    except Exception:  # noqa: BLE001 — "did not answer" is the None answer
+        accel = None
+    _vm_accel_cache.update(at=now, accel=accel)
+    return accel
+
+
+def forget_vm_accel() -> None:
+    """Ask the VM backend again next time — after a switch, its answer moves."""
+    _vm_accel_cache.update(at=0.0, accel=None)
+
+
+def backend_choice() -> str:
+    """The admin's choice: a backend, or `auto` (the shipped default)."""
+    value = _setting("workstation_backend", "auto")
+    return value if value in P.BACKEND_CHOICES else "auto"
+
+
+def effective_backend() -> str:
+    """The local backend Pantheon talks to. `auto` (`D-2026-10-25-04` §4): the
+    VM where this install has one and it runs on KVM — a machine per person,
+    root included, with no overlaps — else the container."""
+    choice = backend_choice()
+    if choice != "auto":
+        return choice
+    return "vm" if vm_configured() and vm_accel() == "kvm" else "container"
+
+
 def resolve_base() -> tuple[Optional[str], str]:
     """`(origin, source)`: the address in effect and the layer it came from.
 
@@ -158,10 +225,16 @@ def resolve_base() -> tuple[Optional[str], str]:
     the client actually calls cannot disagree (`Law 7`). A stored value that
     does not parse falls through to the environment rather than winning; the
     settings route refuses one at the moment it is typed, so that only happens
-    to a hand-edited file."""
+    to a hand-edited file.
+
+    `B1478`: with both local backends configured, the environment layer is the
+    one the effective backend names — the VM's address for `vm`, the
+    container's otherwise. A stored address (another machine) still wins."""
     stored = parse_base(str(_setting("workstation_url", "") or ""))
     if stored:
         return stored, SOURCE_SETTING
+    if vm_configured() and effective_backend() == "vm":
+        return parse_base(os.environ.get(P.VM_URL_ENV, "")), SOURCE_ENVIRONMENT
     env = parse_base(os.environ.get(URL_ENV, ""))
     if env:
         return env, SOURCE_ENVIRONMENT
@@ -173,6 +246,11 @@ def configured_base() -> Optional[str]:
 
 
 def pairing_token_path() -> Path:
+    """The pairing token of the daemon `resolve_base` names: the VM backend's
+    own folder when that is the one in use (`B1478`)."""
+    if vm_configured() and effective_backend() == "vm" \
+            and not parse_base(str(_setting("workstation_url", "") or "")):
+        return Path(os.environ.get(P.VM_PAIRING_DIR_ENV) or "/workstation-vm-pairing") / P.TOKEN_FILENAME
     return Path(os.environ.get(P.PAIRING_DIR_ENV) or P.DEFAULT_PAIRING_DIR) / P.TOKEN_FILENAME
 
 

@@ -217,7 +217,8 @@ def test_every_tab_is_drawn_from_the_registry_in_the_registrys_order(sandbox):
     assert [b["label"] for b in buttons] == [p["label"] for p in out["registry"]]
     # Sixteen since `P20-02` added the Workstation panel (2026-09-30).
     # `B1229`: + forge. `P24-15`: + agents.
-    assert len(buttons) == 20, f"expected twenty tabs, drew {len(buttons)}"  # `P25-02`: + git; `P27-03`: + vault
+    # `P25-02`: + git; `P27-03`: + vault; `B1475`: + my-networks.
+    assert len(buttons) == 21, f"expected twenty-one tabs, drew {len(buttons)}"
     assert all(b["hasIcon"] for b in buttons), "a tab lost its glyph"
 
 
@@ -320,7 +321,7 @@ def test_redrawing_the_nav_keeps_the_tab_you_were_on(sandbox):
         }));
     """ % json.dumps(_index_panel_ids()))
     assert out["active"] == ["appearance"]
-    assert out["count"] == 20, "a redraw duplicated the nav"  # `B1229`: + forge; `P24-15`: + agents; `P25-02`: + git; `P27-03`: + vault
+    assert out["count"] == 21, "a redraw duplicated the nav"  # `B1229`: + forge; `P24-15`: + agents; `P25-02`: + git; `P27-03`: + vault; `B1475`: + my-networks
 
 
 def test_a_missing_container_is_not_an_exception(sandbox):
@@ -375,7 +376,7 @@ def test_the_page_carries_the_container_and_no_hand_written_tab():
     assert 'data-settings-tab=' not in html, "a tab is still declared in the markup"
     # The panels are still markup, deliberately — that is the half the
     # self-check still has something to compare.
-    assert len(_index_panel_ids()) == 20  # `P20-02`: + workstation; `B1229`: + forge; `P24-15`: + agents; `P25-02`: + git; `P27-03`: + vault
+    assert len(_index_panel_ids()) == 21  # `P20-02`: + workstation; `B1229`: + forge; `P24-15`: + agents; `P25-02`: + git; `P27-03`: + vault; `B1475`: + my-networks
 
 
 def test_the_generated_nav_has_the_css_it_needs():

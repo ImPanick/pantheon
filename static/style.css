@@ -46640,6 +46640,25 @@ body.settings-sidebar-resize-active {
 .device-new { opacity: 1; font-weight: 600; }
 .device-kind { flex: 0 0 auto; opacity: 0.5; text-transform: uppercase; font-size: 10px; }
 
+/* ── `B1475`: each person's networks ───────────────────────────────────────
+   The person's editor is `.networks-row` with a login column; the admin's view
+   of everyone's is a read-only `.device-row`-style line per network. */
+.networks-empty { padding: 10px 0; opacity: 0.65; }
+.networks-person-row { align-items: center; }
+.networks-person-account { flex: 0 0 110px; font-weight: 600; }
+.networks-person-name { flex: 0 0 120px; }
+.networks-person-where { flex: 1 1 160px; font-family: ui-monospace, monospace; opacity: 0.8; }
+.networks-person-trust,
+.networks-person-off { flex: 0 0 auto; opacity: 0.6; text-transform: uppercase; font-size: 10px; }
+.networks-person-login {
+  flex: 0 0 auto;
+  font-size: 10px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.my-networks-readonly .networks-row { opacity: 0.6; pointer-events: none; }
+
 /* ── `P17-11`: the agent's permanent list, shown read-only ─────────────────
    Rendered flat rather than as a table: it is a list of reasons, and a reason
    that has to be read across a column boundary is a reason people skip. */
@@ -50717,3 +50736,10 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .design-version-on .design-version-pick { font-weight: 700; }
 .design-version-when { opacity: 0.6; font-size: 11px; }
 .design-design-card { height: auto; }
+
+/* `B1478`. The workstation's containers in Settings → Workstation, for an admin. */
+.ws-machines { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 10px; }
+.ws-machine { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ws-machine-name { font-weight: 600; min-width: 8rem; }
+.ws-machine-state { opacity: 0.75; margin-right: auto; }
+.ws-machine-logs { max-height: 16rem; overflow: auto; font-size: 11px; white-space: pre-wrap; }

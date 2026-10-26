@@ -173,12 +173,16 @@ def test_the_keys_ship_off_and_the_destination_ships_empty():
         "workstation_url": "",
         "workstation_token": "",
         "workstation_tls_pin": "",            # `B980`: empty, the environment's beneath it
-        "workstation_backend": "container",
-        "workstation_sudo": True,
+        # `D-2026-10-25-04` §3–4 (`B1478`, `B1428`): the backend is *auto* — a
+        # VM where the host can run one, else the container — and `sudo` is
+        # *by backend* (None): on in a person's own VM, off in the shared
+        # container, until an admin answers it.
+        "workstation_backend": "auto",
+        "workstation_sudo": None,
         "workstation_network": "full",
         "workstation_route_tools": True,
     }
-    assert DEFAULT_SETTINGS["workstation_backend"] in P.BACKENDS
+    assert DEFAULT_SETTINGS["workstation_backend"] in P.BACKEND_CHOICES
     assert DEFAULT_SETTINGS["workstation_network"] in P.NETWORK_MODES
     # The fallback `workstation_access` answers with when the settings module
     # cannot be read is a copy; this is what keeps it the same copy.
@@ -195,7 +199,7 @@ def test_only_an_admin_writes_a_workstation_setting(app, who):
         "workstation_url": "http://evil.example:7040"})
     assert r.status_code == 403
     assert stored("workstation_enabled") is False
-    assert stored("workstation_sudo") is True
+    assert stored("workstation_sudo") is None
     assert stored("workstation_url") == ""
 
 
@@ -562,10 +566,13 @@ def test_the_admins_sudo_reaches_the_daemon_both_ways(app, ws):
     assert ws.system.sudo is False, "precondition: the daemon starts with sudo off"
     switch_on(app, ws)
     status = as_user(app, ALLOWED).get("/api/workstation/status").json()
-    assert ws.system.sudo is True, "the shipped `sudo` on never reached the daemon"
-    assert status["daemon"]["sudo"] is True
-
+    # `B1428`: unanswered, `sudo` is off in the shared container.
+    assert ws.system.sudo is False and status["daemon"]["sudo"] is False
     admin = as_user(app, ADMIN)
+    admin.post("/api/auth/settings", json={"workstation_sudo": True})
+    assert admin.post("/api/workstation/check").json()["daemon"]["sudo"] is True
+    assert ws.system.sudo is True, "the admin's `sudo` on never reached the daemon"
+
     admin.post("/api/auth/settings", json={"workstation_sudo": False})
     assert admin.post("/api/workstation/check").json()["daemon"]["sudo"] is False
     assert ws.system.sudo is False
@@ -580,7 +587,7 @@ def test_ensure_ready_makes_the_account_and_hands_back_what_the_tools_need(app, 
     ready = run(wa.ensure_ready(ALSO, auth_manager=app.state.auth_manager))
     assert ready.account == account_for(ALSO)
     assert isinstance(ready.client, WorkstationClient) and ready.client.base == ws.url
-    assert ready.home["created"] is True and ready.daemon["sudo"] is True
+    assert ready.home["created"] is True and ready.daemon["sudo"] is False   # `B1428`: the container's default
     assert account_for(ALSO) in ws.system.accounts()
     with pytest.raises(WorkstationError) as e:
         run(wa.ensure_ready(PLAIN, auth_manager=app.state.auth_manager))

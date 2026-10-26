@@ -77,18 +77,18 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 104 · Depends 21 · total 125
+derived: direct 109 · Depends 21 · total 130
 
 ### tier summary
 
 | tier | sites |
 |---|---|
-| `superuser` | 49 |
-| `operator` | 52 |
+| `superuser` | 50 |
+| `operator` | 56 |
 | `power-user` | 3 |
 | `only-because-nothing-finer-existed` | 21 |
 
-### `superuser` — **49 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
+### `superuser` — **50 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -141,8 +141,9 @@ derived: direct 104 · Depends 21 · total 125
 | `routes/auth_routes.py` | `remove_role` | `DELETE /api/auth/roles/{name}` | removes a role and revokes it from every user holding it. `P11-02` |
 | `routes/auth_routes.py` | `set_user_role` | `PUT /api/auth/users/{username}/role` | grants somebody else a role. `P11-02` |
 | `routes/workstation_routes.py` | `_watched` | `—` | not a route: `GET /api/workstation/screen` and `GET /api/workstation/control` ask it when a `person` is named — an admin may watch another person's workstation screen and who holds it, and only watch (the input, take-over and reset routes take no `person`). Without `person` the caller's own screen, open to anyone the workstation answers. Another person's screen is their data, so this stays the owner's. `B1424` |
+| `routes/person_network_routes.py` | `everyones_networks` | `GET /api/networks/people` | every person's own networks — names, hosts, ranges, trust — and of a linked vault login only that one is linked, never which item or anything in it. Other people's data: the owner's omni-sight (`D-2026-10-25-04` §5). `B1475` |
 
-### `operator` — **52 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
+### `operator` — **56 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -198,6 +199,10 @@ derived: direct 104 · Depends 21 · total 125
 | `routes/webhook/webhook_routes.py` | `test_webhook` | `POST /api/webhooks/{webhook_id}/test` | fires a test delivery |
 | `routes/workstation_routes.py` | `workstation_check` | `POST /api/workstation/check` | *Check now*: asks the workstation whether it answers, even while it is switched off, and pushes the admin's `sudo` setting to the daemon when it differs. Running the box. `P20-02` |
 | `routes/workstation_routes.py` | `_caller_is_admin` | `—` | not a route: `GET /api/workstation/status` asks it whether to add the admin's view — the address in effect and where it and the token came from, never the token. A 403 here means "no admin view", not a refusal; the status route itself is open to anyone signed in. Asked of `require_admin` rather than `is_admin` so rule C does not rise. `P20-02` |
+| `routes/workstation_routes.py` | `workstation_machines` | `GET /api/workstation/machines` | the workstation's own containers in Pantheon's compose project — each one's state — or the sentence naming the host-Docker opt-in. Running the box. `B1478` |
+| `routes/workstation_routes.py` | `workstation_machine_act` | `POST /api/workstation/machines/{service}/{action}` | start, stop or restart one of the workstation's services, through the host's Docker where the operator gave Pantheon it; only those services, only those three acts. Running the box. `B1478` |
+| `routes/workstation_routes.py` | `workstation_machine_logs` | `GET /api/workstation/machines/{service}/logs` | the last lines one workstation service wrote. Logs. `B1478` |
+| `routes/workstation_routes.py` | `workstation_backend` | `POST /api/workstation/backend` | the backend switch: saves the choice and starts that backend's services and stops the other's, where Pantheon has the host's Docker. Running the box. `B1478` |
 
 ### `power-user` — **3 power-user sites.** Reads a capable user needs in order to work, gated as if they were instance control. All three are the model picker's inventory (a fourth, `GET /api/providers`, had no caller and went with `B1482`): a non-admin can be given `allowed_models` in `DEFAULT_PRIVILEGES` today and still cannot see which endpoints exist.
 
@@ -485,8 +490,8 @@ this file's hand-rolled pattern, so the population that this map covers grew by 
 the number of admin decisions added — which is the behaviour the map was built to give.
 The paragraph above is about the 107 that predate roles; the counts below are live.
 
-- **49 superuser sites do not move.** They are already right.
-- **52 operator sites are the phase's return.** Today the only way to let someone keep
+- **50 superuser sites do not move.** They are already right.
+- **56 operator sites are the phase's return.** Today the only way to let someone keep
   the instance up is to make them the owner. An `operator` overlay on
   `DEFAULT_PRIVILEGES` retires 48 gates without touching a single one of the 37.
 - **3 power-user sites are one privilege key.** `allowed_models` already exists in

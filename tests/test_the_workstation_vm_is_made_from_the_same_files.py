@@ -447,8 +447,12 @@ def test_the_vm_overlay_asks_for_one_device_and_nothing_else_of_the_host():
     assert not ws.get("devices") and ws.get("network_mode") in (None, "")
     mounts = [(m["type"], m["source"], m["target"], bool(m.get("read_only")))
               for m in ws["volumes"]]
-    assert mounts == [("volume", "workstation-vm", str(vm.DEFAULT_STATE), False),
-                      ("volume", "workstation-pairing", P.DEFAULT_PAIRING_DIR, False)]
+    # `B1427`: and the projects folder — the one host folder, which the host
+    # shares into each person's machine one person's folder at a time.
+    assert mounts[:2] == [("volume", "workstation-vm", str(vm.DEFAULT_STATE), False),
+                          ("volume", "workstation-pairing", P.DEFAULT_PAIRING_DIR, False)]
+    assert len(mounts) == 3 and mounts[2][0] == "bind" and mounts[2][2] == "/projects"
+    assert mounts[2][1].endswith("/projects") and mounts[2][3] is False
     assert not any("docker.sock" in str(m) for m in ws["volumes"])
     assert ws["environment"]["PANTHEON_WORKSTATION_PAIRING_GID"] == "1234"
     assert ws["environment"][vm.ENV["accel"]] == "auto"

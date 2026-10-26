@@ -152,6 +152,13 @@ function onSettingsPanelActivated(tab) {
       .catch((e) => console.error('Git panel failed to load', e));
   }
 
+  // `B1475`. Same shape: the person's own networks, read on activation.
+  if (tab === 'my-networks') {
+    import('./personNetworks.js')
+      .then((mod) => mod.open())
+      .catch((e) => console.error('My networks panel failed to load', e));
+  }
+
   // `P27-03`. Same shape: the person's own vault, read on activation.
   if (tab === 'vault') {
     import('./vaultSettings.js')

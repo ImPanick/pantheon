@@ -206,8 +206,10 @@ admin narrows it to *internet only* or *none* in the same panel, held by the
 small `workstation-net` container the overlay starts beside it, so an agent
 using *sudo* cannot lift it (`P20-06`) — and no access to Docker or to
 Pantheon's data, except each person's projects folder (`data/projects`,
-shared read-write so a project is the same folder on both sides, `B1417`); with *sudo* on (the default) one person's agent can read
-another's workstation home, and the panel says so beside the switch. With a GPU
+shared read-write so a project is the same folder on both sides, `B1417`). *sudo*
+is off in the container unless an admin turns it on — with it on, one person's
+agent can read another's workstation home, and the panel says so beside the
+switch — and on in a person's own VM (`B1428`). With a GPU
 overlay, list all three:
 `COMPOSE_FILE=docker-compose.yml:docker/gpu.nvidia.yml:docker/workstation.yml`.
 
@@ -220,6 +222,21 @@ overlay, list all three:
 | **Another machine** | the lines `install.py` prints | Any Ubuntu 24.04 machine — a Proxmox or libvirt VM, a spare box. Copy the repository's `workstation/` folder to it and run `sudo python3 workstation/install.py`; it prints the four lines to put in Pantheon's `.env` (this overlay's `COMPOSE_FILE`, the address, the token and the certificate's fingerprint). HTTPS with that one certificate pinned by default; `--no-tls` for a LAN or a VPN. Pantheon never sends the workstation's token over plain http to a public address. |
 
 On Windows, separate `COMPOSE_FILE` entries with `;` instead of `:`. With a GPU overlay, list both.
+
+**Both local backends, and a switch between them** (`B1478`, opt-in). Add
+`docker/workstation-both.yml` after the container's overlay —
+`COMPOSE_FILE=docker-compose.yml:docker/workstation.yml:docker/workstation-both.yml`
+— and the VM host runs beside the container. Settings → Workstation → *Backend*
+then chooses which one the agents use; *Automatic* is the VM where the host has
+KVM and the container otherwise. Add `docker/host-docker.yml` as well and the
+choice also starts that backend and stops the other, and the panel lists the
+workstation's containers with Start, Stop, Restart and Logs. That overlay gives
+Pantheon the host's Docker socket — broad control of the host, the same opt-in
+the Cookbook uses — and Pantheon uses it here only on its own compose project's
+workstation services: it lists, starts, stops, restarts and reads logs, and
+never creates, pulls or removes anything. Without it, both run and the choice is
+which one answers. On the VM backend each person's machine is given their own
+folder of `data/projects` and no other (`B1427`).
 
 **Docker GPU overlays.** CPU-only users can skip this section. Forge can
 only detect GPUs that Docker exposes to the container — if the host runtime or
@@ -904,11 +921,26 @@ the ambiguity this exists to remove.
 broad ones. That is stated rather than sorted for you — "most specific wins"
 quietly reorders what you wrote, and the surprise arrives later.
 
-**Scoping a run.** Inside a scope, a host in another segment is refused before a
-socket opens — on model endpoint selection, discovery, URL fetches and every
-paced outbound call. **A host in no declared network is refused too:** if you
-named two segments and asked for one, you did not mean "and also anything I
-forgot to describe".
+**Scoping a run.** A task's *Networks* (in the task form) holds its runs to the
+networks picked (`B1475`). Inside a scope, what the agent reaches — a page
+fetch, an integration, a `network reach` check, discovery — is refused any host
+outside them before a socket opens. **A host in no declared network is refused
+too:** if you named two segments and asked for one, you did not mean "and also
+anything I forgot to describe". Pick *internet* as well to allow everything no
+network claims. Pantheon's own calls for the run — its model, its workstation —
+are refused only a host in *another* declared network, so a run scoped to the
+lab keeps its own model and shell, and does not use a model in production.
+
+**Each person's own networks** (`B1475`). With *Each person may declare their
+own networks* on (Settings → Networks; off by default), Settings → My networks
+lets each person declare networks of their own, in the same shape, and link a
+login from their own vault to one. Theirs are read only in their own runs —
+beside yours, after them, so a name of yours wins — and nobody else's runs see
+them; the agent's `network list` names a linked login to an agent allowed to
+use it, which signs in with it by name and never sees it. They grant no reach:
+whether an agent may reach the LAN at all is still *Agents may reach the local
+network* and the person's workstation privilege. You see every person's
+networks under the switch, and of a linked login only that one is linked.
 
 **What this is for, and what it is not.** Scoping is how you *direct* the agent:
 work on the lab, and the lab is what gets discovered, offered and acted on. It

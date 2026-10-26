@@ -145,8 +145,13 @@ class WebFetchTool:
                     pass
                 return fetch_webpage_content(url, **kwargs)
 
+            # `B1475`. In a copy of this context: a context variable does not
+            # cross `run_in_executor` on its own, and the run's network scope
+            # and the person its networks are read for are both ones.
+            import contextvars
+            ctx_copy = contextvars.copy_context()
             result = await asyncio.wait_for(
-                loop.run_in_executor(None, _fetch),
+                loop.run_in_executor(None, ctx_copy.run, _fetch),
                 timeout=30,
             )
         except asyncio.TimeoutError:

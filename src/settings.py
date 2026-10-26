@@ -375,6 +375,12 @@ DEFAULT_SETTINGS = {
     # [{"name": "lab", "cidrs": ["10.9.0.0/24"], "hosts": ["lab-gpu.lan"],
     #   "trust": "trusted" | "untrusted", "enabled": true, "notes": "…"}]
     "networks": [],
+    # `B1475`, `D-2026-10-25-04` §5. Whether each person may declare networks
+    # of their own (Settings → My networks), which direct their own runs beside
+    # the install-wide list above. OFF: only that list exists, as always. An
+    # admin sees every person's networks, and of a linked vault login only that
+    # one is linked (`src/person_networks.py`).
+    "networks_per_person": False,
     # `P17-01`. Where the network agent listens, and the credential Pantheon
     # presents to it. **Both ship empty and that is the whole default**: with no
     # address there is no agent, nothing is called, and this changes nothing
@@ -437,17 +443,22 @@ DEFAULT_SETTINGS = {
     # (`workstation_client.normalise_pin`); nothing it can hold turns
     # verification off.
     "workstation_tls_pin": "",
-    # Which backend the admin says this is (`protocol.BACKENDS`): the container
-    # image (`P20-01`), a VM (`P20-07`), or a remote machine. Stored and shown;
-    # the daemon reports its own, and the panel shows both when they differ.
-    "workstation_backend": "container",
-    # May the agent use `sudo` inside the workstation? ON, the owner's call
-    # (`D-2026-09-30-03`): *super basic setup* means an agent can install what a
-    # task needs. With it on one person's agent can read another's workstation
-    # home, and the panel says so beside the switch. The daemon enforces it —
-    # Pantheon holds the setting and pushes it through the protocol's `config`
-    # route whenever the daemon's answer differs (`ensure_ready`).
-    "workstation_sudo": True,
+    # Which workstation Pantheon uses (`protocol.BACKEND_CHOICES`): `auto` — the
+    # VM where this install has one on KVM, else the container
+    # (`D-2026-10-25-04` §4) — or `container`, `vm`, `remote`. With both local
+    # backends configured it decides which daemon Pantheon talks to, and with the
+    # host's Docker it starts that one and stops the other (`B1478`,
+    # `src/workstation_control.py`). It used to change only the panel's words.
+    "workstation_backend": "auto",
+    # May the agent use `sudo` inside the workstation? `None` (the shipped
+    # default) means *by backend* (`D-2026-10-25-04` §4, `B1428`): ON in a VM,
+    # where each person's machine is their own and root reaches nobody else;
+    # OFF in the shared container, where root would read every person's home and
+    # projects folder. True or False is the admin's own answer, either way. It
+    # was ON everywhere (`D-2026-09-30-03`), and "no overlaps" could not hold.
+    # The daemon enforces it — Pantheon pushes it through `config` whenever the
+    # daemon's answer differs (`sync_config`).
+    "workstation_sudo": None,
     # `protocol.NETWORK_MODES`: `full` (internet and LAN, the owner's choice),
     # `internet`, or `none`. Pushed with `sudo` on every sync (`P20-06`): held by
     # the overlay's network gate, outside the workstation, where its root cannot

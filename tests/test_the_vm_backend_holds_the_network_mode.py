@@ -170,7 +170,7 @@ def test_sync_config_pushes_the_mode_to_the_vm_host(tmp_path, monkeypatch):
     starts the next machine with it."""
     with vm_fleet.vm_host(tmp_path / "state") as (fleet, url):
         monkeypatch.setattr(wa, "network_setting", lambda: "none")
-        monkeypatch.setattr(wa, "sudo_wanted", lambda: False)
+        monkeypatch.setattr(wa, "sudo_wanted", lambda backend=None: False)
         daemon = run(wa.sync_config(WorkstationClient(url, vm_fleet.HOST_TOKEN)))
         assert daemon["network"] == "none" and fleet.network == "none"
         assert wa.network_view("none", daemon)["state"] == wa.NETWORK_ENFORCED

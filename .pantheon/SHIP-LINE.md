@@ -219,6 +219,10 @@ Re-measured 2026-10-25, after the owner's calls on the audit: **52 filed, 62 clo
 
 **Direction as of 2026-10-25, after the owner's calls: the open count is falling.**
 
+Re-measured 2026-10-26, after the triage's reconciliation and the owner's last three calls: **52 filed, 101 closed**, open **402 → 353** — falling, by forty-one in one wave. Thirty-seven of those closes are rows the six-way triage found already done or moot, with the commit or ruling that settled each; four are built (`B1475`, `B1478`, `B1427`, `B1428`). Nothing was filed. The ship-line composition is unchanged — 0 of the last 40 `B` rows block.
+
+**Direction as of 2026-10-26: the open count is falling.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus

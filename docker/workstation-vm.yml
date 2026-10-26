@@ -30,7 +30,7 @@
 #     slow, said in the panel, and the overlay starts the same either way. A
 #     `devices:` entry would refuse to start on a host without /dev/kvm.
 #   * NOT privileged, NO Docker socket, no added capability, no published port,
-#     no Pantheon volume but the pairing one.
+#     no Pantheon volume but the pairing one and the projects folder (`B1427`).
 #   * full network for the machines, through QEMU's user-mode network (outbound
 #     only; nothing reaches a machine but its one forwarded port, inside this
 #     container). `P20-06` lets an admin narrow it.
@@ -57,6 +57,10 @@ services:
       # machine gone.
       - workstation-vm:/var/lib/pantheon-workstation-vm
       - workstation-pairing:/workstation-pairing
+      # `B1427`. The projects folder, and only it: each person's machine is
+      # given its own folder in it (virtio-9p, `workstation/vm.py`), never the
+      # root, so what an agent builds is in data/projects/<their folder>.
+      - ${APP_DATA_DIR:-./data}/projects:/projects:z
     device_cgroup_rules:
       - "c 10:232 rwm"
     healthcheck:

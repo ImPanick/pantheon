@@ -70,7 +70,7 @@ SETTING_KEYS = (
     "workstation_route_tools",
 )
 _BOOL_KEYS = ("workstation_enabled", "workstation_sudo", "workstation_route_tools")
-_ENUM_KEYS = {"workstation_backend": P.BACKENDS, "workstation_network": P.NETWORK_MODES}
+_ENUM_KEYS = {"workstation_backend": P.BACKEND_CHOICES, "workstation_network": P.NETWORK_MODES}
 # It goes in an `Authorization` header, so one line of visible ASCII: a newline
 # here would be a header of Pantheon's own making. The daemon mints 47
 # characters (`TOKEN_PREFIX` + 32 bytes urlsafe); 512 is room for an operator's
@@ -253,8 +253,8 @@ def _setting(key: str) -> Any:
 # The shipped answers, for the one case the settings module cannot be read.
 # `src.settings.DEFAULT_SETTINGS` is the source; this is the fallback's copy
 # and `tests/test_the_workstation_is_admin_controlled.py` pins the two equal.
-_DEFAULTS = {"workstation_sudo": True, "workstation_route_tools": True,
-             "workstation_network": "full", "workstation_backend": "container"}
+_DEFAULTS = {"workstation_sudo": None, "workstation_route_tools": True,
+             "workstation_network": "full", "workstation_backend": "auto"}
 
 
 def _bool(key: str, default: bool = False) -> bool:
@@ -264,8 +264,22 @@ def _bool(key: str, default: bool = False) -> bool:
     return bool(_DEFAULTS.get(key, default))
 
 
-def sudo_wanted() -> bool:
-    return _bool("workstation_sudo")
+def sudo_choice() -> Optional[bool]:
+    """The admin's own answer, or None for *by backend* (the shipped default)."""
+    value = _setting("workstation_sudo")
+    return value if isinstance(value, bool) else None
+
+
+def sudo_wanted(daemon_backend: Optional[str] = None) -> bool:
+    """`B1428`, `D-2026-10-25-04` §4. The admin's answer when they gave one;
+    otherwise ON in a VM — each person's machine is their own — and OFF in the
+    shared container, where root would read everyone's work. `daemon_backend`
+    is what the daemon that answered says it is; without it, the backend in
+    use."""
+    choice = sudo_choice()
+    if choice is not None:
+        return choice
+    return (daemon_backend or wc.effective_backend()) == "vm"
 
 
 def route_tools_wanted() -> bool:
@@ -278,8 +292,8 @@ def network_setting() -> str:
 
 
 def backend_setting() -> str:
-    value = _setting("workstation_backend")
-    return value if value in P.BACKENDS else _DEFAULTS["workstation_backend"]
+    """The backend in use (`auto` resolved — `wc.effective_backend`)."""
+    return wc.effective_backend()
 
 
 def settings_view() -> Dict[str, Any]:
@@ -305,12 +319,17 @@ def settings_view() -> Dict[str, Any]:
         "tls_pin_source": pin_source,
         "tls_pin_setting": wc.display_pin(stored_pin) or stored_pin,
         "backend": backend_setting(),
+        # `B1478`: the admin's choice (`auto` included), whether both local
+        # backends are here, and what Pantheon can do to its containers.
+        "backend_choice": wc.backend_choice(),
+        "vm_configured": wc.vm_configured(),
         "sudo": sudo_wanted(),
+        "sudo_choice": sudo_choice(),
         "network": network_setting(),
         "route_tools": route_tools_wanted(),
         # `P16-20`. Reaching the local network, and raw-packet tools.
         "lan_reach": _bool("agent_lan_reach", True),
-        "backends": list(P.BACKENDS),
+        "backends": list(P.BACKEND_CHOICES),
         "network_modes": list(P.NETWORK_MODES),
         # `B956`. Shown beside `sudo` when the workstation is the container.
         "recreate_command": RECREATE_COMMAND,
@@ -327,6 +346,8 @@ def validate_setting(key: str, value: Any) -> Any:
     never answers and nothing saying why. The address is stored as the origin
     the client will actually call, so the stored value and the effective one
     are the same string."""
+    if key == "workstation_sudo" and value is None:
+        return None   # `B1428`: back to *by backend*
     if key in _BOOL_KEYS:
         if not isinstance(value, bool):
             raise ValueError(f"{key} is true or false.")
@@ -420,7 +441,7 @@ async def sync_config(client: WorkstationClient) -> Dict[str, Any]:
         if not await _gate_answers(client):
             raise
         raise WorkstationError("unavailable", GATE_UP_SENTENCE) from e
-    want = sudo_wanted()
+    want = sudo_wanted(daemon.get("backend"))
     if daemon.get("sudo") is not want:
         daemon.update(await client.config(sudo=want))
     mode = network_setting()

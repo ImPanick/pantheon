@@ -385,7 +385,6 @@ def test_the_daemon_disagreeing_about_what_it_is_is_said(sandbox):
     ("ws-enabled", "workstation_enabled", "node.checked = false;", False),
     ("ws-sudo", "workstation_sudo", "node.checked = false;", False),
     ("ws-route-tools", "workstation_route_tools", "node.checked = true;", True),
-    ("ws-backend", "workstation_backend", "node.value = 'vm';", "vm"),
     ("ws-network", "workstation_network", "node.value = 'none';", "none"),
 ])
 def test_each_control_writes_its_own_key_and_then_asks_again(sandbox, control, key, act, value):
@@ -403,6 +402,26 @@ def test_each_control_writes_its_own_key_and_then_asks_again(sandbox, control, k
     assert [(c["method"], c["url"]) for c in out["calls"]] == [
         ("POST", "/api/auth/settings"), ("POST", "/api/workstation/check")]
     assert out["calls"][0]["body"] == {key: value}
+    assert out["invalidated"] == 1 and out["adminResult"] == "Saved."
+
+
+def test_the_backend_control_switches_through_its_own_route(sandbox):
+    """`B1478`. *Backend* is not a settings write: its route saves the choice
+    and, where Pantheon has the host's Docker, starts that backend and stops
+    the other — then the panel re-reads the containers and asks again."""
+    out = _panel(sandbox, _serving("st") + """
+        await mod.open();
+        calls.length = 0;
+        const node = byId('ws-backend');
+        node.value = 'vm';
+        node.dispatchEvent({ type: 'change' });
+        await settle();
+        console.log(JSON.stringify(read()));
+    """, st=ADMIN_UP)
+    assert [(c["method"], c["url"]) for c in out["calls"]] == [
+        ("POST", "/api/workstation/backend"), ("GET", "/api/workstation/machines"),
+        ("POST", "/api/workstation/check")]
+    assert out["calls"][0]["body"] == {"backend": "vm"}
     assert out["invalidated"] == 1 and out["adminResult"] == "Saved."
 
 

@@ -87,8 +87,9 @@ setting, not content, so it is not put through the SSRF validators: every reques
 **Who may use it.** Admins, and anyone an admin grants `can_use_workstation` (per person in Settings → Users, or
 by role). A bearer API token does not inherit its owner's workstation (`require_user`, `B70`).
 
-**`sudo` (on by default).** With it on an agent can install software — and, because people are separated by
-Unix accounts inside one container, **can read other people's workstation homes**. The panel says so beside the
+**`sudo` (by backend unless an admin chose, `B1428`).** Unset, it is on in a person's own VM and off in the
+shared container. With it on an agent can install software — and, in the container, because people are separated by
+Unix accounts inside one machine, **can read other people's workstation homes**. The panel says so beside the
 switch — and, on the VM backend, that each person's machine is separate (`B981`: the sentence follows the kind of
 machine the daemon says it is). With it off each home is jailed by the daemon (`outside_home`). Turning it off applies from then on: it cannot take back what an agent already did as root inside the container. Recreating the container does, with every home and account kept (`B956`). The VM backend (`P20-07`) is the
 stronger wall between people when that matters.
@@ -112,6 +113,21 @@ agent with `sudo` lifts in one command; the panel says so. A workstation started
 and the panel says that and how to recreate it. *Not covered*: a public address that leads back into the LAN (a
 router's own WAN address, a relay the owner runs), and DNS — under *internet* names still resolve through the
 resolver the container was given.
+
+**The backend switch and the host's Docker (`B1478`).** Where the operator added `docker/host-docker.yml` — the
+Cookbook's opt-in, broad control of the host's Docker daemon — an admin's *Backend* choice also starts that backend's
+containers and stops the other's, and the panel starts, stops, restarts and reads the logs of each. The code that
+does it (`src/workstation_control.py`) acts only on containers labelled with Pantheon's own compose project and one of
+the workstation's service names, only with those four calls, and never creates, pulls, builds or removes anything;
+every route is `require_admin`. What it adds to the opt-in's existing risk is a second admin feature that uses the
+socket, not a wider use of it: an attacker who can act as an admin already had the Cookbook's control of the host's
+Docker. Without the opt-in the switch only chooses which daemon Pantheon talks to.
+
+**Each person's networks (`B1475`).** A person's own declared networks are read only in their own runs and grant no
+reach — they classify, scope and mark untrusted, as the install's do. A network may name a login in the person's own
+vault; the admin's view of everyone's networks carries only that one is linked (`login_linked`), the item's id being
+dropped in `person_networks.everyone` before any route, so no page or API answer an admin reads holds which login or
+anything in it.
 
 ## Prompt-Injection Hardening
 

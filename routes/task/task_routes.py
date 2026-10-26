@@ -6,7 +6,7 @@ import logging
 import secrets
 import uuid
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -202,6 +202,9 @@ class TaskCreate(BaseModel):
     tz_name: Optional[str] = None                 # IANA zone, e.g. "Australia/Sydney"
     max_retries: Optional[int] = None             # extra attempts at a FAILED occurrence
     timeout_seconds: Optional[int] = None         # wall clock for one run; 0/None = none
+    # `B1475`. The declared networks its runs may reach (names; "internet" for
+    # every address in none). Omitted or [] — no scope, as every task was.
+    networks: Optional[List[str]] = None
 
 
 class TaskUpdate(BaseModel):
@@ -228,6 +231,7 @@ class TaskUpdate(BaseModel):
     tz_name: Optional[str] = None                 # see TaskCreate.tz_name; "" clears it
     max_retries: Optional[int] = None             # see TaskCreate.max_retries
     timeout_seconds: Optional[int] = None         # see TaskCreate.timeout_seconds
+    networks: Optional[List[str]] = None          # see TaskCreate.networks; [] clears it
 
 
 class QuestionAnswer(BaseModel):
@@ -258,6 +262,12 @@ def _workflow_id_of(t: ScheduledTask):
     from src.workflow_store import workflow_ids_for
     session = object_session(t)
     return workflow_ids_for(session, [t.id]).get(t.id) if session else None
+
+
+def _task_networks(t: ScheduledTask):
+    """`B1475`. The task's network scope as names, or None."""
+    from src.networks import scope_names
+    return scope_names(getattr(t, "networks", None))
 
 
 def _task_to_dict(t: ScheduledTask, include_last_run_result: bool = False,
@@ -291,6 +301,7 @@ def _task_to_dict(t: ScheduledTask, include_last_run_result: bool = False,
         "tz_name": getattr(t, "tz_name", None),
         "max_retries": getattr(t, "max_retries", None),
         "timeout_seconds": getattr(t, "timeout_seconds", None),
+        "networks": _task_networks(t),
         "character_id": getattr(t, "character_id", None),
         "model": t.model,
         "endpoint_url": t.endpoint_url,
@@ -670,7 +681,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             task = SimpleNamespace(tz_name=tz_name, crew_member_id=crew_member_id)
         return _resolve_task_timezone(db, task)
 
-    def _validate_execution_settings(req) -> dict:
+    def _validate_execution_settings(req, user: Optional[str] = None) -> dict:
         """`tz_name`, `max_retries` and `timeout_seconds`, checked once.
 
         `P8-32`. Shared by create and edit so the two cannot drift, which is
@@ -709,6 +720,14 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                     400, f"timeout_seconds must be 0 (no timeout) or between "
                          f"{MIN_TASK_TIMEOUT_SECONDS} and {MAX_TASK_TIMEOUT_SECONDS}")
             out["timeout_seconds"] = value or None
+        if req.networks is not None:
+            # `B1475`. Names the owner can see — the install's networks and
+            # their own — checked by the module that enforces them (`Law 13`).
+            from src.networks import check_scope
+            names, problems = check_scope(req.networks, user)
+            if problems:
+                raise HTTPException(400, " ".join(problems))
+            out["networks"] = json.dumps(names) if names else None
         return out
 
     def _validate_crew_member_id(db, crew_member_id: Optional[str], user: Optional[str]) -> Optional[str]:
@@ -824,7 +843,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                     db, task_id=task_id, owner=user, name=name, action=req.action,
                     then_task_id=then_task_id, else_task_id=else_task_id, user=user)
             crew_member_id = _validate_crew_member_id(db, req.crew_member_id, user)
-            execution = _validate_execution_settings(req)
+            execution = _validate_execution_settings(req, user)
             # `P8-32`. In the task's own zone, from the moment it is created.
             # This call passed no `tz_name` at all, so a task linked to a crew
             # member in Sydney was created with a UTC `next_run` and only
@@ -1168,7 +1187,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             # `P8-32`. Same validator as create, so an edit is not the way round
             # it — which is exactly how `P15-08`'s cron floor was got round
             # before both doors were closed.
-            for field, value in _validate_execution_settings(req).items():
+            for field, value in _validate_execution_settings(req, user).items():
                 setattr(task, field, value)
             if req.cron_expression is not None:
                 if req.cron_expression:

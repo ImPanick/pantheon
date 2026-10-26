@@ -2833,7 +2833,7 @@ class TaskScheduler:
                 if dry or bypass_model_slot or not self._task_needs_model_slot(task_id):
                     if idle_first:
                         waited = await self._wait_until_idle(task_id, run_id)
-                    outcome = await self._execute_task_locked(
+                    outcome = await self._execute_scoped(
                         task_id,
                         run_id,
                         release_executing=False,
@@ -2849,7 +2849,7 @@ class TaskScheduler:
                     sem, waited = await self._take_model_slot(
                         task_id, run_id, idle_first=idle_first)
                     try:
-                        outcome = await self._execute_task_locked(
+                        outcome = await self._execute_scoped(
                             task_id,
                             run_id,
                             release_executing=False,
@@ -2954,6 +2954,34 @@ class TaskScheduler:
                 db.close()
         except Exception:
             logger.debug("Failed to defer cancelled queued task %s", task_id, exc_info=True)
+
+    async def _execute_scoped(self, task_id: str, run_id: str, **kw):
+        """`B1475`. `_execute_task_locked`, held to the task's networks when it
+        names any (`ScheduledTask.networks`): every connection the run's agent
+        opens is refused outside them (`networks.scoped_to`). A task with none
+        runs as every task always has — and inside an enclosing scope (a
+        workflow step) it keeps that one; `scoped_to` only ever narrows."""
+        from src import networks as N
+        names = self._task_network_scope(task_id)
+        if names is None:
+            return await self._execute_task_locked(task_id, run_id, **kw)
+        with N.scoped_to(names):
+            return await self._execute_task_locked(task_id, run_id, **kw)
+
+    @staticmethod
+    def _task_network_scope(task_id: str):
+        from core.database import SessionLocal, ScheduledTask
+        from src import networks as N
+        db = SessionLocal()
+        try:
+            row = db.query(ScheduledTask.networks).filter(ScheduledTask.id == task_id).first()
+        except Exception:
+            logger.warning("task %s: its network scope could not be read; it runs in none", task_id,
+                           exc_info=True)
+            return []
+        finally:
+            db.close()
+        return N.scope_names(row[0] if row else None)
 
     async def _execute_task_locked(
         self,

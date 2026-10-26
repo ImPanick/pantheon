@@ -164,6 +164,47 @@ def shared_roots() -> List[Path]:
     return [Path(raw)]
 
 
+def mount_project_share(app_dir: Path = Path("/opt/pantheon-workstation/app"), *,
+                        sys_root: Path = Path("/sys/bus/virtio/drivers/9pnet_virtio"),
+                        mounts: Path = Path("/proc/mounts"),
+                        run: Callable = None) -> Optional[Path]:
+    """`B1427`. Inside a VM backend's machine: mount the person's projects
+    folder the host shared (tag `pantheon-projects`) at the same path it has
+    on the host, before the daemon serves — or do nothing when the host shared
+    none, and the machine runs as it always did. Returns where it is mounted."""
+    import subprocess
+    run = run or subprocess.run
+    try:
+        folder = (app_dir / "projects-folder").read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not folder or "/" in folder or folder.startswith("."):
+        return None
+    tags = []
+    for tag_file in sys_root.glob("*/mount_tag"):
+        try:
+            tags.append(tag_file.read_text(encoding="utf-8").strip("\x00\n "))
+        except OSError:
+            continue
+    if "pantheon-projects" not in tags:
+        return None
+    target = shared_roots()[0] / folder
+    try:
+        mounted = mounts.read_text(encoding="utf-8")
+    except OSError:
+        mounted = ""
+    if f" {target} 9p " in mounted:
+        return target
+    target.mkdir(parents=True, exist_ok=True)
+    done = run(["mount", "-t", "9p", "-o", "trans=virtio,version=9p2000.L,msize=262144",
+                "pantheon-projects", str(target)], capture_output=True, text=True)
+    if getattr(done, "returncode", 1) != 0:
+        logging.getLogger(__name__).warning("the projects share did not mount at %s: %s",
+                                            target, getattr(done, "stderr", ""))
+        return None
+    return target
+
+
 def make_system(args: argparse.Namespace) -> System:
     if args.system == "ubuntu":
         # Imported here: the module needs Linux's setfsuid, and `single` runs
@@ -220,6 +261,8 @@ def check_pairing_group(system: System, gid: Optional[int]) -> None:
 
 def build(args: argparse.Namespace):
     """`(server, system)`, listening, not yet serving."""
+    if getattr(args, "backend", None) == "vm" and getattr(args, "token_file", None):
+        mount_project_share()   # `B1427`: a machine's own projects folder, if shared
     system = make_system(args)
     check_pairing_group(system, args.pairing_group)
     from_env = bool((os.environ.get(P.TOKEN_ENV) or "").strip())

@@ -949,6 +949,8 @@ function _renderList() {
     // `P22-03`. The ceiling a run is held to, when one is set.
     const limitWords = _timeLimitWords(task.timeout_seconds);
     if (limitWords) extra.push('time limit: ' + limitWords);
+    // `B1475`. The networks its runs are held to, when it names any.
+    if (Array.isArray(task.networks) && task.networks.length) extra.push('networks: ' + task.networks.join(', '));
     if (extra.length) {
       const ex = document.createElement('div');
       ex.style.cssText = 'font-size:10px;opacity:0.4;margin-bottom:6px;';

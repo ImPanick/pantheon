@@ -1228,6 +1228,10 @@ class ScheduledTask(TimestampMixin, Base):
     tz_name        = Column(String, nullable=True)
     max_retries    = Column(Integer, nullable=True)
     timeout_seconds = Column(Integer, nullable=True)
+    # `B1475`. The declared networks (`src/networks.py`) this task's runs may
+    # reach, as a JSON list of names; NULL is no scope — every run as it always
+    # was. A run of a scoped task is refused every address outside them.
+    networks       = Column(Text, nullable=True)
 
     session = relationship("Session", backref=backref("scheduled_tasks", cascade="save-update, merge"))
     then_task = relationship("ScheduledTask", remote_side=[id], foreign_keys=[then_task_id])
@@ -1643,6 +1647,18 @@ class AgentHireTask(Base):
                      nullable=False, index=True)
     # The trigger's position in the manifest, so a recompile replaces like for like.
     trigger = Column(Integer, nullable=False, default=0)
+
+
+class PersonNetworks(TimestampMixin, Base):
+    """`B1475`, `D-2026-10-25-04` §5. The networks one person declared for
+    their own runs, as the JSON list `src/networks.py` reads (`name`, `hosts`,
+    `cidrs`, `trust`, `enabled`, `notes`, and `login`: the id of an item in
+    that person's own vault). One row per account (`account_of`). Read only
+    while an admin has per-person networks on (`networks_per_person`)."""
+    __tablename__ = "person_networks"
+
+    account  = Column(String, primary_key=True)
+    networks = Column(Text, nullable=False, default="[]")
 
 
 class GitIdentity(TimestampMixin, Base):
@@ -2334,8 +2350,10 @@ def _migrate_add_scheduled_task_execution_columns():
     db_path = DATABASE_URL.replace("sqlite:///", "")
     if not os.path.exists(db_path):
         return
+    # `B1475`'s `networks` rides the same loop: one more nullable column a run
+    # reads about its own execution, NULL for every row that exists.
     wanted = (("tz_name", "TEXT"), ("max_retries", "INTEGER"),
-              ("timeout_seconds", "INTEGER"))
+              ("timeout_seconds", "INTEGER"), ("networks", "TEXT"))
     conn = None
     try:
         conn = sqlite3.connect(db_path)

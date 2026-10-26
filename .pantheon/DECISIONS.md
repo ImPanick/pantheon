@@ -3300,3 +3300,49 @@ backend control and `B1428`, the owner chose **a real switch, opt-in** and **a V
    connected to (`D-2026-10-25-03`).
 
 What reopens it: the owner changing any one of these.
+
+## D-2026-10-26-01 — seventeen calls from the open-row triage, on their recommendations
+
+*The owner, 2026-10-25, after a six-way triage of every open row sorted 392 of them and found
+seventeen that needed a product decision: "Accept all (Recommended)."* Each is ruled as it was
+put, with its recommendation:
+
+1. **`B531`** — a privilege-gated route whose privilege store raises **fails closed**: 503, logged
+   once; `require_admin` routes and sign-in stay reachable so an operator can recover.
+2. **`B692`** — an admin-typed outbound webhook may target private, CGNAT and ULA ranges (n8n,
+   Home Assistant), logged; loopback, link-local and cloud metadata stay refused, and the
+   DNS-rebinding pin stays.
+3. **`B1272`** — a lost admin password is recovered by a script run where the data lives, which
+   rewrites one account's hash and revokes its sessions — never an environment variable applied on
+   every boot.
+4. **`B1270`** — owner-less data from an install that ran without sign-in is claimed by widening
+   `scripts/claim_ownerless.py` (tasks, notes, calendar, allow-rules under `__pantheon_local__`, the
+   workstation home): an explicit operator act.
+5. **`B1191`** — a tool switched off for a person is hidden, its routes refused, and that person's
+   background work for it paused with a sentence saying why; nothing is deleted.
+6. **`B1195`** — the per-person Gallery switch is *Image generation*; a person's own images stay
+   viewable.
+7. **`P15-07`** — Kimi Code is sent one honest Pantheon User-Agent, as every other endpoint is
+   (`D-2026-10-25-03`: nothing evasive); if the service refuses it, it says so.
+8. **`B869`** (with `B868`) — the 286 vendored ECC skills stay out of the model's default
+   catalogue; they remain searchable and viewable.
+9. **`B1226`** — a failed call to a local or private host does not set the limiter's cooldown;
+   public hosts keep it.
+10. **`B481`** — a new chat keeps the mode the person was in.
+11. **`B451`** — SHIP-LINE § 3 is a CI gate (`check-ship-line.py`); `B455` folds into it.
+12. **`B1210`** — both sentence-drafters stay, in the same words, and the task one offers to
+    describe a workflow when the work has several steps.
+13. **`B390`** — cute's text darkens to `#c9366b`; retrowave's surfaces darken (`#141423`,
+    `#111a31`); closes `B15` and `B16`.
+14. **`B394`** — only the nine measured stroke outliers move; sizes stay.
+15. **`P5-15`** — the empty pinned-tools strip is removed.
+16. **`P9-03`** — "Library" wherever a person reads it; stored ids stay; Gallery and Email stay
+    their own windows.
+17. **`B1207`** — the Source link's tooltip and label are one sentence: *"Source code for this
+    Pantheon (AGPL-3.0-or-later). Built on Odysseus."*
+
+The owner also set the order (2026-10-25): *"System and function first, beauty after"* — every
+open row before the UI/UX redesign. Items 14–17 are visual and are done in the redesign; item 13
+is accessibility and is done now.
+
+What reopens it: the owner changing any one of these.

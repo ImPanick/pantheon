@@ -580,17 +580,26 @@ class OutboundHostLimiter:
             return wait, pol
 
     def _check_scope(self, host: str) -> None:
-        """`P16-16` — refuse an out-of-scope host before pacing it.
+        """`P16-16` — refuse a host in another declared network before pacing it.
 
         The limiter is the one place every deliberately-paced outbound call
         passes through (`P15`), which makes it the cheapest place to put a
         second layer under the per-caller checks. It is a layer, not the
         boundary: a caller that does not pace is not caught here, which is why
         `url_safety` and `outbound_fetch` check independently.
+
+        `B1475`. It asks whether the call *crosses* to a declared network
+        outside the scope, not `require_host`'s stricter question. Every paced
+        call comes through here — the run's own model, the workstation daemon,
+        embeddings — and the moment a task could be scoped, the strict rule
+        would have refused a lab-scoped run its own model and its own shell
+        (neither is in a declared network). The agent's reach — a page fetch,
+        an integration, `network reach` — is still held to the strict rule
+        where it is asked.
         """
         try:
-            from src.networks import require_host
-            require_host(host, what="outbound request")
+            from src.networks import require_same_segment
+            require_same_segment(host, what="outbound request")
         except ImportError:
             pass
 

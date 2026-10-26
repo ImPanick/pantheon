@@ -108,6 +108,23 @@ the next one is cut.
 
 ### Added
 
+- **Each person can declare their own networks, and an admin sees them all.** With *Each person
+  may declare their own networks* on (Settings → Networks, off by default), Settings → My
+  networks lets a person name the networks their agents work in — their lab, their NAS, a client's
+  VPN — with a trust each, and link a login from their own vault to one: the agent is told to sign
+  in with it there, by name, and never sees it. A person's networks direct their own runs only.
+  The admin's list shows every person's networks, and of a linked login only that one is linked —
+  never which, nor anything in it (`B1475`, `D-2026-10-25-04` §5).
+- **A task can be held to its networks.** *Networks* in the task form: its runs are refused every
+  address outside the networks picked, with *internet* for everything no network claims (`B1475`).
+- **The workstation's backend switch switches** (opt-in). Add `docker/workstation-both.yml` to run
+  the VM host beside the container; Settings → Workstation → *Backend* chooses which one the agents
+  use, and *Automatic* picks the VM where the host has KVM. With `docker/host-docker.yml` too, the
+  choice starts that backend and stops the other, and the panel lists the workstation's containers
+  with Start, Stop, Restart and Logs — only the workstation's own, only those acts (`B1478`).
+- **A VM has its person's projects folder.** On the VM backend each person's machine is given
+  their folder of `data/projects` — that folder, never the others — so what an agent builds there
+  is in Pantheon (`B1427`).
 - **Python code blocks run for everyone.** *Run* on a Python block sent it to the server's shell,
   which only an admin may use, so for everyone else it did nothing useful. A person without the
   shell now runs it in their own browser (Pyodide, shipped with Pantheon) — in a sandboxed frame
@@ -136,6 +153,17 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **`sudo` in the workstation is by backend unless an admin chose.** An install that never set it
+  had root on in the shared container, where it reads every person's work. Unset, it is now on in a
+  person's own VM and **off in the container**; an admin who wants it on there turns it on, and
+  the panel says that root then reads everyone's files (`B1428`, `D-2026-10-25-04` §4). The
+  backend setting is *Automatic* unless set — the container wherever no VM host is configured, so
+  nothing changes for an install with one backend.
+- **A network scope holds the agent, not Pantheon's own calls.** Inside a run scoped to some
+  networks, the agent's page fetches, integrations and reach checks are refused every address
+  outside them, as before; Pantheon's own calls for the run — its model, its workstation — are
+  refused only an address in *another* declared network. Until now nothing opened a scope, and the
+  first task given one would have been refused its own model (`B1475`).
 - **An agent can read your LAN by URL — if you may use the workstation.** `web_fetch` refused every
   private address in `v0.2.0`. It now reaches LAN and tailnet addresses (a router page, a NAS's
   API) for the agent of a person allowed the workstation, while *Agents may reach the local
@@ -191,6 +219,8 @@ the next one is cut.
 
 ### Fixed
 
+- **Saving the install's networks keeps their notes.** The Networks panel dropped each network's
+  `notes` on every save; both network lists now draw from one editor that keeps them (`B1475`).
 - **The model can tell where your message begins.** Everything Pantheon adds to a turn — the
   delivery register, the date and time — had to be a `user` message, and nothing marked it, so it
   was glued to your words. A model sent that spent 92 seconds deciding which part of its prompt was

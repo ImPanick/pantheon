@@ -133,8 +133,11 @@ def _refusal(host: str) -> Optional[str]:
     return N.untrusted_refusal(host)
 
 
-def interfaces_text(answer: Dict[str, Any]) -> str:
+def interfaces_text(answer: Dict[str, Any], *, logins: Optional[Dict[str, str]] = None) -> str:
+    """`logins` (`B1475`): `{network: login label}` for the person's own
+    networks whose linked vault login this agent may use."""
     from src import networks as N
+    logins = logins or {}
     lines: List[str] = []
     ifs = answer.get("interfaces") or []
     if ifs:
@@ -155,16 +158,25 @@ def interfaces_text(answer: Dict[str, Any]) -> str:
             cidrs = ", ".join(str(c) for c in n.cidrs) or "no range"
             hosts = f"; hosts: {', '.join(n.hosts)}" if n.hosts else ""
             off = "" if n.enabled else " (disabled)"
-            lines.append(f"- “{n.name}” [{n.trust}]{off}: {cidrs}{hosts}")
+            mine = " (the person's own)" if n.person else ""
+            lines.append(f"- “{n.name}” [{n.trust}]{mine}{off}: {cidrs}{hosts}")
+            if n.name in logins:
+                lines.append(f"  sign in there with the vault login “{logins[n.name]}” "
+                             "(agent_browser login, or shell_with_login) — you never see its values.")
         lines.append("Check whether a host answers with network reach {host} {port}. An "
                      "untrusted network is listed only.")
     else:
         lines.append("")
-        lines.append("No networks are declared. The person declares networks (with their "
-                     "trust) in Settings → Networks.")
+        lines.append("No networks are declared. An admin declares them (with their trust) in "
+                     "Settings → Networks; where an admin allows it, each person declares their "
+                     "own in Settings → My networks.")
     scope = N.current_scope()
     if scope is not None:
-        lines.append(f"This run is scoped to: {', '.join(sorted(scope)) or '(none)'}.")
+        named = sorted(scope - {N.OUTSIDE})
+        words = ", ".join(named) or "(no network)"
+        if N.OUTSIDE in scope:
+            words += ", and any address in no declared network"
+        lines.append(f"This run is scoped to: {words}.")
     return "\n".join(lines)
 
 
@@ -191,7 +203,8 @@ def reach_text(answer: Dict[str, Any]) -> str:
     return line
 
 
-async def run_network(content: Any, *, owner: Optional[str]) -> Dict[str, Any]:
+async def run_network(content: Any, *, owner: Optional[str],
+                      agent_id: Optional[str] = None) -> Dict[str, Any]:
     from src.workstation_access import ensure_ready
     from src.workstation_client import WorkstationError
 
@@ -226,7 +239,9 @@ async def run_network(content: Any, *, owner: Optional[str]) -> Dict[str, Any]:
         return e.as_result()
     if action == "reach":
         return {"output": reach_text(answer), "exit_code": 0, "ran_in": "workstation"}
-    return {"output": interfaces_text(answer), "exit_code": 0, "ran_in": "workstation"}
+    from src.person_networks import agent_logins
+    return {"output": interfaces_text(answer, logins=agent_logins(owner, agent_id)),
+            "exit_code": 0, "ran_in": "workstation"}
 
 
 class NetworkTool:
@@ -234,4 +249,5 @@ class NetworkTool:
     turn's owner."""
 
     async def execute(self, content: str, ctx: Optional[dict] = None) -> Dict[str, Any]:
-        return await run_network(content, owner=(ctx or {}).get("owner"))
+        c = ctx or {}
+        return await run_network(content, owner=c.get("owner"), agent_id=c.get("agent_id"))

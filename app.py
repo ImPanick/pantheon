@@ -1174,6 +1174,10 @@ app.include_router(setup_vault_mine_routes())
 from routes.vault.vault_routes import setup_vault_routes
 app.include_router(setup_vault_routes())
 
+# `B1475`: each person's own networks, and the admin's view of everyone's.
+from routes.person_network_routes import setup_person_network_routes
+app.include_router(setup_person_network_routes())
+
 # Contacts (CardDAV)
 from routes.contacts.contacts_routes import setup_contacts_routes
 app.include_router(setup_contacts_routes())
@@ -1647,6 +1651,26 @@ async def _startup_event():
             logger.warning(f"MCP startup failed (non-critical): {type(e).__name__}: {e}")
 
     _startup_tasks.append(asyncio.create_task(_startup_mcp_connections()))
+
+    # `B1478`. A `docker compose up -d` (a redeploy, a reboot) starts every
+    # service in the project, the backend the admin switched away from too.
+    # Where Pantheon has the host's Docker and both local backends are here, put
+    # the admin's choice back: the other one stopped. Nothing otherwise.
+    async def _hold_workstation_backend():
+        try:
+            from src import workstation_control as wctl
+            from src import workstation_client as _wc
+            if not (wctl.available() and _wc.vm_configured()):
+                return
+            await asyncio.sleep(30)   # let the VM host answer `auto`'s question
+            result = await asyncio.to_thread(wctl.hold, _wc.effective_backend())
+            if result.get("steps"):
+                logger.info("workstation backend held at %s: %s", result.get("backend"),
+                            ", ".join(result["steps"]))
+        except Exception as e:  # noqa: BLE001 — never a reason not to start
+            logger.warning("Holding the workstation backend failed (non-critical): %s", e)
+
+    _startup_tasks.append(asyncio.create_task(_hold_workstation_backend()))
 
     # Startup warmups are opt-in. They make later requests a little warmer, but
     # they also compete with the first seconds of real UI use on slow or busy

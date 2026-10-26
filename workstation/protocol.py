@@ -67,6 +67,12 @@ URL_ENV = "PANTHEON_WORKSTATION_URL"
 TOKEN_ENV = "PANTHEON_WORKSTATION_TOKEN"
 PAIRING_DIR_ENV = "PANTHEON_WORKSTATION_PAIRING"
 DEFAULT_PAIRING_DIR = "/workstation-pairing"
+# `B1478`, `D-2026-10-25-04` §3. Both local backends side by side
+# (`docker/workstation-both.yml`): the VM backend's address and pairing folder,
+# set on Pantheon by that overlay. Which of the two Pantheon talks to is
+# Settings → Workstation → Backend.
+VM_URL_ENV = "PANTHEON_WORKSTATION_VM_URL"
+VM_PAIRING_DIR_ENV = "PANTHEON_WORKSTATION_VM_PAIRING"
 TOKEN_FILENAME = "token"
 TOKEN_PREFIX = "pws_"
 TOKEN_ENTROPY_BYTES = 32
@@ -286,6 +292,10 @@ BROWSER_ACTIONS = ("open", "read", "click", "type", "press", "scroll", "back", "
 #   "status": "open"|"sent"|"done"|"declined", "said", "lost"?, "box"?, "where"?}]}.
 NOTE_ACTIONS = ("note_add", "note_edit", "note_remove", "notes", "note_done", "notes_sent")
 BACKENDS = ("container", "vm", "remote")
+# What an admin may choose: a backend, or `auto` — the VM where this install has
+# one on KVM, else the container (`D-2026-10-25-04` §4). `auto` is a choice, not
+# something a daemon reports; `BACKENDS` stays the daemon's vocabulary.
+BACKEND_CHOICES = ("auto",) + BACKENDS
 # ── what the machine is (`P20-07`, added) ─────────────────────────────────────
 # `health`, for a caller with the token, also answers
 #   "machine": {"virtualization": str, "accel": "kvm"|"tcg"|None}
@@ -497,7 +507,8 @@ def error_body(code: str, message: str) -> Dict[str, str]:
 
 __all__ = [
     # `P20-07`, added.
-    "ACCELS", "MACHINE_IMAGE_STATES", "MACHINE_START_S", "TLS_PIN_ENV",
+    "ACCELS", "BACKEND_CHOICES", "MACHINE_IMAGE_STATES", "MACHINE_START_S", "TLS_PIN_ENV",
+    "VM_PAIRING_DIR_ENV", "VM_URL_ENV",
     # `B979`, added.
     "MACHINE_STATES",
     # `B984`, added.

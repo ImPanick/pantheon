@@ -1456,7 +1456,9 @@ async def _execute_tool_block_impl(
         # `P16-20`. By name, with the owner: whose workstation the check runs in.
         from src.agent_tools.network_tools import command_line as _net_line
         desc = f"network: {_net_line(content)}"
-        result = await _direct_fallback(tool, content, session_id=session_id, owner=owner) \
+        # `B1475`: and the agent — which linked vault logins `list` may name.
+        result = await _direct_fallback(tool, content, session_id=session_id, owner=owner,
+                                        agent_id=getattr(tool_policy, "agent_id", None)) \
             or {"error": "network: execution failed", "exit_code": 1}
     elif tool == "connections":
         # `P27-09`. By name, with the owner, the agent and the workspace: whose
