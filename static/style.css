@@ -6747,6 +6747,19 @@ body.bg-pattern-sparkles {
       }
       #mode-agent-btn { border-radius: 12px 0 0 12px; }
       #mode-chat-btn { border-radius: 0 12px 12px 0; }
+      /* `B1347`. The model picker on the message row was 21px tall on every
+         phone — the one door to a model a chat without one shows, at half the
+         44px a thumb needs (measured 109 × 21 at 390×844). The turn sheet's
+         Model row is a second door; this keeps the first one hittable. The box
+         grows DOWN from where it sits (`top: 0` on the row) and the label
+         keeps its line — 3px of padding plus the 1px border is where the
+         centred 21px box put it — so the row reads exactly as before and only
+         the target changes. */
+      .model-picker-btn {
+        min-height: 44px;
+        align-items: flex-start;
+        padding-top: 3px;
+      }
       /* Diff mode — stack toolbar, bigger buttons */
       .diff-toolbar {
         padding: 8px 12px;
