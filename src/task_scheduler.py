@@ -2965,10 +2965,15 @@ class TaskScheduler:
                 raise
         await self._execute_task(task_id)
 
-    def _take_pending_trigger(self, task_id: str) -> dict | None:
+    def _take_pending_trigger(self, task_id: str, *, matching: dict | None = None) -> dict | None:
         """`B1075`. Read and clear the trigger an event queued on the row
         (`ScheduledTask.pending_trigger`), or `None`. Cleared in the same
-        commit it is read in, so one queued event is handed to one run."""
+        commit it is read in, so one queued event is handed to one run.
+
+        `B1512`. `matching` is the trigger a run was handed itself (the bus's
+        own run in this process): the queued copy is cleared only when it is
+        that same event, so a webhook's run does not throw away an event that
+        is still waiting for its own."""
         from core.database import SessionLocal, ScheduledTask
         db = SessionLocal()
         try:
@@ -2976,6 +2981,13 @@ class TaskScheduler:
             raw = getattr(row, "pending_trigger", None) if row is not None else None
             if not raw:
                 return None
+            if matching is not None:
+                try:
+                    same = json.loads(raw) == json.loads(json.dumps(matching, default=str))
+                except (TypeError, ValueError):
+                    same = False
+                if not same:
+                    return None
             row.pending_trigger = None
             db.commit()
         except Exception:
@@ -3107,10 +3119,17 @@ class TaskScheduler:
         # the main loop's due run of a task an event in another process fired.
         # A run handed its own trigger (`run_task_now` from the bus in this
         # process) takes it too — it is that event — so it is not handed twice.
+        #
+        # `B1512`. Not by a run a person started with no trigger of its own
+        # (*Run now*): that run is theirs, and the queued event still runs
+        # after it with its own payload (`_queued_event_due` keeps it due).
+        # And a run handed a trigger takes the queued copy only when it is
+        # the same event.
         if resume_run_id is None and not dry:
-            pending = self._take_pending_trigger(task_id)
-            if trigger is None:
-                trigger = pending
+            if trigger is not None:
+                self._take_pending_trigger(task_id, matching=trigger)
+            elif started_by != STARTED_BY_PERSON:
+                trigger = self._take_pending_trigger(task_id)
         run_id = resume_run_id or self._new_queued_run(task_id)
         resume = resume_run_id is not None
         # `B1060`. Background work waits for Pantheon to be idle BEFORE it takes
@@ -4002,7 +4021,7 @@ class TaskScheduler:
                         tz_name=_resolve_task_timezone(db, task),
                     )
                 else:
-                    task.next_run = None
+                    task.next_run = self._next_run_after(db, task)   # `B1512`
                 db.commit()
                 # `B112`. Declared silent in `TASK_RUN_NOTIFY`, with the reason:
                 # the restart sweep aborts every in-flight run on every boot and
@@ -4033,7 +4052,7 @@ class TaskScheduler:
                         tz_name=_resolve_task_timezone(db, task),
                     )
                 else:
-                    task.next_run = None
+                    task.next_run = self._next_run_after(db, task)   # `B1512`
                 db.commit()
                 # `B112`. A no-op that leaves the task on its schedule is a
                 # housekeeping action saying "nothing to do" — it recurs on every
@@ -4079,6 +4098,8 @@ class TaskScheduler:
                 # is now the one place either shape is answered (`Law 14`).
                 plan = failure_next_run(db, task, run_id=run_id)
                 task.next_run = plan.next_run
+                if task.next_run is None and (task.trigger_type or "schedule") != "schedule":
+                    task.next_run = self._queued_event_due(db, task)   # `B1512`
                 self._say_failure_plan(task_id, run_id, run, plan)   # `B805`, `B1494`
                 if (task.next_run is None and task.schedule == "once"
                         and (task.trigger_type or "schedule") == "schedule"):
@@ -4094,7 +4115,7 @@ class TaskScheduler:
                 if task.next_run is None and task.schedule == "once":
                     task.status = "completed"
             else:
-                task.next_run = None
+                task.next_run = self._next_run_after(db, task)   # `B1512`
 
             db.commit()
             logger.info(f"Task '{task.name}' completed (run {run_id})")
@@ -4311,13 +4332,39 @@ class TaskScheduler:
 
     def _next_run_after(self, db, task):
         """A scheduled task's next time, as a finished run would set it; `None`
-        for an event or webhook task (it runs when it is triggered)."""
+        for an event or webhook task (it runs when it is triggered) — unless an
+        event is queued for it (`_queued_event_due`)."""
         if (task.trigger_type or "schedule") != "schedule":
-            return None
+            return self._queued_event_due(db, task)
         return compute_next_run(
             task.schedule, task.scheduled_time, task.scheduled_day, task.scheduled_date,
             after=_utcnow(), cron_expression=task.cron_expression,
             tz_name=_resolve_task_timezone(db, task))
+
+    def _queued_event_due(self, db, task):
+        """`B1512`. When an event queued on the row while this run was in
+        flight is due, or `None` when none is.
+
+        An event fired where no scheduler runs (the email server's process) or
+        while this task held its claim (`run_task_now` answers `False`) writes
+        `next_run = now` and `pending_trigger` on the row and leaves the run to
+        the loop. The finishing run then wrote `next_run = None` from the row
+        it loaded when it started, over the event's `next_run`: the event never
+        ran, and its envelope was taken by whatever run started next. So the
+        row is read again here, past this session's stale copy, and a queued
+        envelope keeps its `next_run`. Residual, said: an event landing between
+        this read and the commit that follows it is still overwritten.
+        """
+        from core.database import ScheduledTask
+        try:
+            row = (db.query(ScheduledTask.pending_trigger, ScheduledTask.next_run)
+                   .filter(ScheduledTask.id == task.id).first())
+        except Exception:
+            logger.warning("Could not read task %s's queued event", task.id, exc_info=True)
+            return None
+        if row is None or not row[0]:
+            return None
+        return row[1] or _utcnow()
 
     def _skip_for_in_flight(self, db, task, run_id: str, other) -> str:
         """`B674`. This run did not start because another of the same workflow
@@ -4390,11 +4437,15 @@ class TaskScheduler:
         finally:
             db.close()
 
-    def _record_parked_skip(self, task_id: str) -> str | None:
+    def _record_parked_skip(self, task_id: str, trigger: dict | None = None) -> str | None:
         """`B674` for `run_task_now`: a trigger that arrives while this
         workflow's run is parked writes its own `skipped` row (the same
         sentence) and starts nothing. Answers the sentence, or `None` when no
-        run of it is parked."""
+        run of it is parked.
+
+        `B1512`. The skip is that trigger's outcome, so the copy the bus queued
+        on the row for it is taken with it — left there, the skipped row would
+        keep the task due for an event that has already been answered."""
         from core.database import SessionLocal, ScheduledTask, TaskRun
         from src import workflow_runs as wr
 
@@ -4411,6 +4462,8 @@ class TaskScheduler:
             db.add(TaskRun(id=run_id, task_id=task_id, started_at=_utcnow(),
                            status="queued", result="Queued — waiting for a free slot…"))
             db.commit()
+            if trigger is not None:
+                self._take_pending_trigger(task_id, matching=trigger)
             return self._skip_for_in_flight(db, task, run_id, parked)
         finally:
             db.close()
@@ -7936,7 +7989,7 @@ class TaskScheduler:
         """
         if started_by not in STARTED_BY:
             raise ValueError(f"started_by must be one of {STARTED_BY}, not {started_by!r}")
-        if not dry and self._record_parked_skip(task_id) is not None:
+        if not dry and self._record_parked_skip(task_id, trigger) is not None:
             # `B674`. A workflow whose run is parked runs once at a time: this
             # trigger is a `skipped` run that says why, and the caller is told
             # it did not start (the webhook keeps its 409, with those words —
