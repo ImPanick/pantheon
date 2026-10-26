@@ -163,6 +163,8 @@ const API_BASE = '';
 const emailApiUrl = (path) => path;
 const noteMailboxSync = () => {};
 const _maybeOpenFromHash = () => {}, openEmailLibrary = () => {}, markInboxAsSeen = () => {}, _composeNew = () => {};
+// `B812`: the dot is painted by `emailShared.paintUnreadDot`; this case counts requests.
+const paintUnreadDot = () => {};
 """ + fns + r"""
 (async () => {
   _bindEvents();

@@ -79,8 +79,17 @@ def _ep(eid, owner, *, is_enabled=True):
 
 
 def _resolve(rows, owner, endpoint_id=None):
-    sys.modules["src.database"].ModelEndpoint = _ModelEndpoint
-    return _owned_enabled_endpoint(_DB(rows), owner, endpoint_id)
+    # Put the real class back afterwards: when `src.database` was already
+    # imported, `setdefault` above kept the real module, and leaving the fake
+    # on it broke every later file that queries `ModelEndpoint` (measured:
+    # `test_the_lan_calls_read_a_no_proxy_range.py` in a full run).
+    mod = sys.modules["src.database"]
+    had = getattr(mod, "ModelEndpoint", None)
+    mod.ModelEndpoint = _ModelEndpoint
+    try:
+        return _owned_enabled_endpoint(_DB(rows), owner, endpoint_id)
+    finally:
+        mod.ModelEndpoint = had
 
 
 # --- explicit endpoint_id (POST /api/research/start, body.endpoint_id) --------
