@@ -8171,8 +8171,8 @@ class TaskScheduler:
                     "edit_image",
                 ]),
                 session_id=session_id,
-                is_active=True,
-                sort_order=0,
+                # (`B1480` retired `is_active` and `sort_order`: this was the
+                # one writer, and nothing read either.)
                 is_default_assistant=True,
                 timezone=None,  # user picks in settings; None = legacy UTC behavior
             )

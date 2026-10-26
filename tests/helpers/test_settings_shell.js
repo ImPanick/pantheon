@@ -271,6 +271,9 @@ function buildFixture(document) {
     'git',
     // `P27-03`, 2026-10-24. Settings → Vault: everyone's own logins.
     'vault',
+    // `B1475`, 2026-10-26. Settings → My networks: each person's own, beside
+    // the logins they link to.
+    'my-networks',
     'tools',
     'users',
     'embeddings',
@@ -404,6 +407,7 @@ function moduleSource(relativePath) {
       'account',
       'git',        // `P25-02` — see the fixture list above
       'vault',      // `P27-03` — see the fixture list above
+      'my-networks', // `B1475` — see the fixture list above
       'tools',
       'users',
       'embeddings',

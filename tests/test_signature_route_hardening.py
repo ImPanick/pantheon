@@ -99,7 +99,8 @@ def test_create_signature_stores_normalized_png_and_drops_svg(monkeypatch):
     assert db.added.data_png == _PNG_B64
     assert db.added.width == 320
     assert db.added.height == 80
-    assert db.added.svg is None
+    # `B1480`: the column is gone, so a vector sent anyway is not even carried.
+    assert "svg" not in vars(db.added)
     assert response["data_url"] == f"data:image/png;base64,{_PNG_B64}"
     db.commit.assert_called_once()
     db.close.assert_called_once()

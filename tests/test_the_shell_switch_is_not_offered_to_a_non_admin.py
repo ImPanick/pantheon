@@ -209,6 +209,8 @@ def _users_case(users_payload: dict) -> str:
         "function el(id) { return document.getElementById(id); }",
         js_binding(src, "PRIV_LABELS") + ";",
         js_binding(src, "NON_ADMIN_RETIRED_PRIVS") + ";",
+        # `B1195`: a switch whose Tools entry is not a door says what it takes.
+        js_binding(src, "PRIV_TAKES") + ";",
         # `P23-03`: each switch names the Tools entry it hides, read from the
         # one table.
         f"import {{ toolsHiddenBy, hidesLine }} from {json.dumps(UI_VIS_JS.as_uri())};",
@@ -265,4 +267,8 @@ def test_users_offers_no_shell_switch_and_says_where_the_shell_is(auth, tmp_path
         assert [k for kind, k in items if kind == "switch"] == [
             "can_use_agent", "can_use_browser", "can_use_workstation", "can_use_documents",
             "can_use_research", "can_generate_images", "can_manage_memory",
-            "can_auto_approve"]
+            "can_auto_approve",
+            # `B1191` (`D-2026-10-26-01` §5): one per Tools entry that had no
+            # switch for a person, after the ones already pinned.
+            "can_use_assistant", "can_use_calendar", "can_use_compare", "can_use_email",
+            "can_use_notes", "can_use_tasks", "can_use_theme", "can_use_workbench"]

@@ -205,7 +205,9 @@ ITEMISED = SUPERSEDED_MARKUP | NEVER_BUILT | DEAD_ATTRIBUTE
 def test_the_scan_sees_the_markup():
     assert len(re.findall(r'\bid="', INDEX)) > 400
     assert len(JS) > 500_000
-    assert lookup_prefixes() >= {"adv-", "ge-", "preset-"}
+    # `preset-` left with `setActivePreset`, removed as dead in `B1484`; the
+    # Compare panel's `cmp-…-` lookups are the third shape now.
+    assert lookup_prefixes() >= {"adv-", "ge-", "cmp-title-"}
 
 
 def test_a_constructed_lookup_is_not_an_orphan():
@@ -317,16 +319,17 @@ def test_a_suffix_lookup_is_not_an_orphan():
 
 
 def test_a_generic_suffix_does_not_silence_everything_that_ends_with_it():
-    """`-btn` and `-toggle` are among the suffixes appended somewhere in this
-    codebase. Excluding every id that merely ends in one would trade a blind
+    """`-toggle` is among the suffixes appended somewhere in this codebase
+    (`-btn` was too, until `B1484` removed the dead `setActivePreset` that
+    built it). Excluding every id that merely ends in one would trade a blind
     spot for a bigger blind spot, so the base has to exist too."""
     suffixes = lookup_suffixes()
-    assert "-btn" in suffixes, "the suffix scan stopped finding the generic ones"
+    assert "-toggle" in suffixes, "the suffix scan stopped finding the generic ones"
     ids = set(re.findall(r'\bid="([^"]+)"', INDEX))
-    ends_in_btn = {i for i in ids if i.endswith("-btn")}
-    assert len(ends_in_btn) > 20, len(ends_in_btn)
-    without_base = {i for i in ends_in_btn if i[: -len("-btn")] not in ids}
+    ends_in_it = {i for i in ids if i.endswith("-toggle")}
+    assert len(ends_in_it) > 15, len(ends_in_it)
+    without_base = {i for i in ends_in_it if i[: -len("-toggle")] not in ids}
     assert without_base, (
-        "no id ends in `-btn` without a matching base, so this test proves "
+        "no id ends in `-toggle` without a matching base, so this test proves "
         "nothing about the rule it is checking"
     )

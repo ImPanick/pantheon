@@ -232,7 +232,7 @@ KVM and the container otherwise. Add `docker/host-docker.yml` as well and the
 choice also starts that backend and stops the other, and the panel lists the
 workstation's containers with Start, Stop, Restart and Logs. That overlay gives
 Pantheon the host's Docker socket — broad control of the host, the same opt-in
-the Cookbook uses — and Pantheon uses it here only on its own compose project's
+the Forge uses — and Pantheon uses it here only on its own compose project's
 workstation services: it lists, starts, stops, restarts and reads logs, and
 never creates, pulls or removes anything. Without it, both run and the choice is
 which one answers. On the VM backend each person's machine is given their own

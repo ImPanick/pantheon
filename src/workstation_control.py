@@ -8,7 +8,7 @@ other endpoints and direct shell access and commands to."*
 Until this, Settings → Workstation → *Backend* changed only wording: which kind
 of workstation runs was decided by the compose overlay in `.env`, and Pantheon
 holds no Docker socket. This module is the part that can act, and only where the
-operator has given Pantheon the means — `docker/host-docker.yml`, the Cookbook's
+operator has given Pantheon the means — `docker/host-docker.yml`, the Forge's
 existing opt-in (`src/host_docker_access.py`), which is broad control of the
 host's Docker daemon and is never switched on by Pantheon itself.
 
@@ -55,7 +55,7 @@ ACTIONS = ("start", "stop", "restart")
 ENABLE_SENTENCE = (
     "Pantheon can't start or stop the workstation here: it has no access to the host's Docker. "
     "To give it that, add docker/host-docker.yml to COMPOSE_FILE in .env (broad control of the "
-    "host's Docker — the Cookbook uses the same opt-in) and run `docker compose up -d`."
+    "host's Docker — the Forge uses the same opt-in) and run `docker compose up -d`."
 )
 
 

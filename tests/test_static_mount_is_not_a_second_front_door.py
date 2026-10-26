@@ -90,9 +90,11 @@ def followed(c, url):
 # read out of `app.py` so that this probe boots — and every measurement below
 # is taken — on a tree that has no such table, which is the tree these
 # assertions have to be able to fail on (`Law 9`). The last three are `B370`'s
-# developer sandboxes, which the mount served itself until 2026-10-02.
+# developer sandboxes, which the mount served itself until 2026-10-02, and
+# `B1474`'s Python frame is the one after them.
 NAMES = ["index.html", "login.html", "backgrounds.html",
-         "wave-variants.html", "whirlpool-variants.html", "modal-control-variants.html"]
+         "wave-variants.html", "whirlpool-variants.html", "modal-control-variants.html",
+         "python-sandbox.html"]
 owned = getattr(app_module, "ROUTE_OWNED_STATIC_PAGES", None)
 urls = ["/", "/login", "/docs"] + ["/static/" + name for name in NAMES]
 # The same three asked for in the spellings a filesystem or a URL normaliser
@@ -329,6 +331,8 @@ def test_the_table_the_mount_reads_is_the_table_the_routes_read(gated):
                      "wave-variants.html": "/sandbox/wave-variants",
                      "whirlpool-variants.html": "/sandbox/whirlpool-variants",
                      "modal-control-variants.html": "/sandbox/modal-control-variants",
+                     # `B1474`: the opaque-origin frame a Python block runs in.
+                     "python-sandbox.html": "/python-sandbox",
                      }, owned
     for name, route in owned.items():
         assert gated["direct"]["/static/" + name]["location"] == route, name

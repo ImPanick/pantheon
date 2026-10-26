@@ -144,6 +144,17 @@ def test_the_policy_did_not_widen_to_get_redoc_back(surface):
         if not csp:
             continue
         checked += 1
+        if url == "/python-sandbox":
+            # `B1474`, the one document allowed a `blob:` worker, and only
+            # because it is not this app: `sandbox allow-scripts` without
+            # `allow-same-origin` makes it an opaque origin with no cookie,
+            # no storage and no reach into the page that framed it. A Worker
+            # from a URL cannot start in an opaque origin, so Pyodide's runner
+            # is a blob of the frame's own script. No eval, no child frames.
+            assert "sandbox allow-scripts;" in csp and "allow-same-origin" not in csp, csp
+            assert "'unsafe-eval'" not in csp and "child-src" not in csp, csp
+            assert "worker-src blob:;" in csp, csp
+            continue
         assert "'unsafe-eval'" not in csp, (url, csp)
         assert "blob:" not in csp.split("img-src")[0], (url, csp)
         for directive in ("worker-src", "child-src"):
