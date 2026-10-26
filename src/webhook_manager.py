@@ -32,6 +32,9 @@ _PRIVATE_NETWORKS = [
     ipaddress.ip_network("10.0.0.0/8"),
     ipaddress.ip_network("172.16.0.0/12"),
     ipaddress.ip_network("192.168.0.0/16"),
+    # `B692`: CGNAT — a tailnet — is someone's private network too, and Python's
+    # `is_private` does not say so; the strict path missed it until now.
+    ipaddress.ip_network("100.64.0.0/10"),
     ipaddress.ip_network("127.0.0.0/8"),
     ipaddress.ip_network("169.254.0.0/16"),
     ipaddress.ip_network("::1/128"),
@@ -63,6 +66,49 @@ def _ip_is_private(addr: ipaddress._BaseAddress) -> bool:
     return any(addr in net for net in _PRIVATE_NETWORKS)
 
 
+#: `B692`, `D-2026-10-26-01` §2. The ranges an admin's webhook may point into:
+#: the LAN (RFC 1918), CGNAT — where Tailscale puts a tailnet — and IPv6 ULA.
+#: n8n, Home Assistant, a Grafana on `192.168.1.x`. Never loopback, link-local
+#: (cloud metadata lives there), multicast, unspecified or reserved.
+_LAN_NETWORKS = (
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("100.64.0.0/10"),
+    ipaddress.ip_network("fc00::/7"),
+)
+_NEVER_NAMES = ("localhost", "0.0.0.0", "metadata.google.internal", "metadata")
+
+
+def _ip_refused(addr: ipaddress._BaseAddress, *, allow_lan: bool) -> bool:
+    """Whether a webhook may not be delivered to `addr`. `allow_lan` is an
+    admin-supplied destination's: the LAN, CGNAT and ULA are allowed then."""
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        addr = addr.ipv4_mapped
+    if allow_lan:
+        if addr.is_loopback or addr.is_link_local or addr.is_multicast or addr.is_unspecified:
+            return True
+        if any(addr in net for net in _LAN_NETWORKS):
+            return False
+    return _ip_is_private(addr)
+
+
+def is_lan_destination(url: str) -> bool:
+    """Whether `url`'s host is, or resolves into, the LAN, CGNAT or ULA —
+    what the routes log when an admin points a webhook there."""
+    host = (urlparse(url).hostname or "").strip()
+    try:
+        addrs = [ipaddress.ip_address(host)]
+    except ValueError:
+        addrs = _resolve_hostname_ips(host)
+    out = []
+    for a in addrs:
+        if isinstance(a, ipaddress.IPv6Address) and a.ipv4_mapped is not None:
+            a = a.ipv4_mapped
+        out.append(any(a in net for net in _LAN_NETWORKS))
+    return any(out)
+
+
 def _resolve_hostname_ips(hostname: str) -> list:
     """Resolve a hostname to all its A/AAAA records. Empty list on failure."""
     import socket
@@ -80,7 +126,7 @@ def _resolve_hostname_ips(hostname: str) -> list:
     return out
 
 
-def _is_private_url(url: str) -> bool:
+def _is_private_url(url: str, *, allow_lan: bool = False) -> bool:
     """Check if a URL points to a private/internal address.
 
     Resolves DNS names so attackers can't hide an internal IP behind
@@ -94,13 +140,15 @@ def _is_private_url(url: str) -> bool:
             return True
         # Block common internal hostnames + suffixes the resolver may not catch.
         h_lower = hostname.lower()
-        if h_lower in ("localhost", "0.0.0.0", "metadata.google.internal", "metadata"):
+        if h_lower in _NEVER_NAMES:
             return True
-        if h_lower.endswith((".local", ".internal", ".lan", ".intranet", ".localhost")):
+        if h_lower.endswith(".localhost"):
+            return True
+        if not allow_lan and h_lower.endswith((".local", ".internal", ".lan", ".intranet")):
             return True
         # IP literal? short-circuit.
         try:
-            return _ip_is_private(ipaddress.ip_address(hostname))
+            return _ip_refused(ipaddress.ip_address(hostname), allow_lan=allow_lan)
         except ValueError:
             pass
         # DNS hostname — resolve and check every record.
@@ -108,13 +156,25 @@ def _is_private_url(url: str) -> bool:
         if not addrs:
             # Couldn't resolve → fail closed; let validation reject the URL.
             return True
-        return any(_ip_is_private(a) for a in addrs)
+        return any(_ip_refused(a, allow_lan=allow_lan) for a in addrs)
     except ValueError:
         return True
 
 
-def validate_webhook_url(url: str) -> str:
-    """Validate and normalize a webhook URL. Raises ValueError if invalid."""
+LAN_REFUSED = ("URL must not point to loopback, link-local or cloud-metadata addresses")
+PRIVATE_REFUSED = ("URL must not point to private/internal addresses — an admin can point a "
+                   "webhook at the LAN from Settings; the agent cannot")
+
+
+def validate_webhook_url(url: str, *, allow_lan: bool = False) -> str:
+    """Validate and normalize a webhook URL. Raises ValueError if invalid.
+
+    `allow_lan` (`B692`, `D-2026-10-26-01` §2) is an admin typing the
+    destination: the LAN, CGNAT and ULA are then allowed — a webhook into n8n
+    or Home Assistant is the common case on a self-hosted box. Loopback,
+    link-local and cloud metadata stay refused, and delivery stays pinned to
+    the addresses checked (DNS rebinding). The agent's own path does not pass
+    it."""
     url = url.strip()
     if len(url) > 2048:
         raise ValueError("URL too long (max 2048 characters)")
@@ -123,12 +183,12 @@ def validate_webhook_url(url: str) -> str:
         raise ValueError("URL must use http or https")
     if not parsed.hostname:
         raise ValueError("URL must have a hostname")
-    if _is_private_url(url):
-        raise ValueError("URL must not point to private/internal addresses")
+    if _is_private_url(url, allow_lan=allow_lan):
+        raise ValueError(LAN_REFUSED if allow_lan else PRIVATE_REFUSED)
     return url
 
 
-def _validated_public_ips(url: str) -> list:
+def _validated_public_ips(url: str, *, allow_lan: bool = False) -> list:
     """Resolve *url*'s host and return its IPs, raising ValueError if any is
     private/internal.
 
@@ -148,12 +208,12 @@ def _validated_public_ips(url: str) -> list:
     except ValueError:
         literal = None
     if literal is not None:
-        if _ip_is_private(literal):
-            raise ValueError("URL must not point to private/internal addresses")
+        if _ip_refused(literal, allow_lan=allow_lan):
+            raise ValueError(LAN_REFUSED if allow_lan else PRIVATE_REFUSED)
         return [literal]
     addrs = _resolve_hostname_ips(hostname)
-    if not addrs or any(_ip_is_private(a) for a in addrs):
-        raise ValueError("URL must not point to private/internal addresses")
+    if not addrs or any(_ip_refused(a, allow_lan=allow_lan) for a in addrs):
+        raise ValueError(LAN_REFUSED if allow_lan else PRIVATE_REFUSED)
     return addrs
 
 
@@ -409,9 +469,12 @@ class WebhookManager:
         # capture the exact IPs that passed the check so the connect can be
         # pinned to one of them (closes the DNS-rebinding TOCTOU: the check
         # below and the socket connect no longer resolve independently).
+        # `B692`: every stored webhook was saved by an admin (the routes and the
+        # admin tool are both admin-only), so the LAN is allowed here; what is
+        # never allowed — loopback, link-local, metadata — is refused again.
         try:
-            validate_webhook_url(url)
-            pinned_ips = _validated_public_ips(url)
+            validate_webhook_url(url, allow_lan=True)
+            pinned_ips = _validated_public_ips(url, allow_lan=True)
         except ValueError as e:
             logger.warning(f"Webhook {webhook_id} has invalid URL, skipping: {e}")
             return

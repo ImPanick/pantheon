@@ -592,7 +592,17 @@ def setup_note_routes(task_scheduler=None, upload_handler=None):
     global _scheduler_ref
     _scheduler_ref = task_scheduler
 
-    router = APIRouter(prefix="/api/notes", tags=["notes"])
+    # `B1191` (`D-2026-10-26-01` §5): refused, in the door's words, to a person this
+
+    # Tools entry is switched off for (`src/tool_privileges.py`).
+
+    from fastapi import Depends as _Depends
+
+    from src.tool_privileges import tool_privilege as _tool_privilege
+
+    router = APIRouter(prefix="/api/notes", tags=["notes"],
+
+                       dependencies=[_Depends(_tool_privilege("can_use_notes"))])
 
     def _owner(request: Request) -> Optional[str]:
         # require_user, not bare get_current_user: a request that reaches

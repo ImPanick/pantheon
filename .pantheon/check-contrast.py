@@ -52,7 +52,7 @@ LARGE_FLOOR = 3.0
 #: Themes whose own `fg` misses the body floor against their own `panel`, so no
 #: foreground choice reaches it and the fix is a different design rather than a
 #: different colour. `B15` owns these; they are not this check's failures.
-B15_THEMES = {"cute", "retrowave"}
+B15_THEMES: set = set()   # `B390` (`D-2026-10-26-01` §13) retired it: both clear now
 
 #: `advanced` is not a palette — it is the custom-theme slot. Skipped by name.
 NOT_A_PALETTE = {"advanced"}
@@ -157,7 +157,11 @@ OFFERABLE = ("filled",)
 #: either; they are waiting on `B15`. Keeping them separate from the genuinely
 #: failing designs below is the useful distinction: fixing two palettes' `fg`
 #: turns one choice into three.
-BLOCKED_ON_B15 = ("outline", "tinted")
+#: Empty since `B390` (`D-2026-10-26-01` §13) moved `cute` and `retrowave` over
+#: the floor: `outline` now clears every palette (offering it is the redesign's
+#: call, after the owner's *system and function first*), and `tinted` fails on
+#: those two on its own account (4.05).
+BLOCKED_ON_B15: tuple = ()
 
 
 #: `P1-09`. **The guard the row asks for cannot fire, and that is the finding.**
@@ -588,7 +592,9 @@ def main() -> int:
         for p in problems:
             print(f"  E {p}")
         return 1
-    print("\ncontrast OK — every palette's body text clears the floor or is B15's, "
+    body = ("every palette's body text clears the floor or is B15's" if B15_THEMES
+            else "every palette's body text clears the floor")
+    print(f"\ncontrast OK — {body}, "
           f"all {len(OFFERABLE)} offered button designs clear it everywhere, and no "
           "rule paints a hard-coded white on an accent.")
     return 0

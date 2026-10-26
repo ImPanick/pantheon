@@ -156,9 +156,12 @@ const _ARCHIVE_WHERE = 'Chats → manage';
  * key, `ui` a key of `UI_VIS_MAP` above.
  */
 export const TOOL_VISIBILITY = Object.freeze({
+  // `B1191` (`D-2026-10-26-01` §5): the eight entries below with a
+  // `privilege:` got their person's switch; `src/tool_privileges.py` refuses
+  // their routes and holds their background work while it is off.
   assistant: _tool({
     label: 'Assistant', doors: ['tool-assistant-btn', 'rail-assistant'],
-    ui: 'tool-assistant',
+    privilege: 'can_use_assistant', ui: 'tool-assistant',
   }),
   brain: _tool({
     label: 'Brain', doors: ['tool-memory-btn', 'rail-memory'],
@@ -170,12 +173,12 @@ export const TOOL_VISIBILITY = Object.freeze({
   calendar: _tool({
     label: 'Calendar', doors: ['tool-calendar-btn', 'rail-calendar'],
     windows: ['calendar-modal'], slash: ['event'], routes: ['/calendar'],
-    shortcut: 'open_calendar', ui: 'tool-calendar',
+    shortcut: 'open_calendar', privilege: 'can_use_calendar', ui: 'tool-calendar',
   }),
   compare: _tool({
     label: 'Compare', doors: ['tool-compare-btn', 'rail-compare'],
     windows: ['compare-model-overlay'], slash: ['compare', 'tour-compare'],
-    routes: ['/compare'], shortcut: 'open_compare', ui: 'tool-compare',
+    routes: ['/compare'], shortcut: 'open_compare', privilege: 'can_use_compare', ui: 'tool-compare',
   }),
   research: _tool({
     label: 'Deep Research', doors: ['tool-research-btn', 'rail-research'],
@@ -192,13 +195,16 @@ export const TOOL_VISIBILITY = Object.freeze({
     routes: ['/cookbook', '/forge'], shortcut: 'open_cookbook',
     adminOnly: true, ui: 'tool-cookbook',
   }),
-  // The person's column is *Image generation*: the audit's model (§ 3) gives
-  // Gallery that switch, so it hides something a person can see.
+  // `B1195`, `D-2026-10-26-01` §6. The person's switch for Gallery is *Image
+  // generation* (`can_generate_images`), and it takes the AI image tools —
+  // upscale, inpaint, style transfer and the rest, each refused by its route —
+  // never the window: a person's own images stay theirs to see. So Gallery has
+  // no person column here; the everyone switch (`gallery`) still hides it.
   gallery: _tool({
     label: 'Gallery', doors: ['tool-gallery-btn', 'rail-gallery'],
     windows: ['gallery-modal'], slash: ['gallery', 'photos', 'tour-gallery'],
     routes: ['/gallery'], shortcut: 'open_gallery',
-    feature: 'gallery', privilege: 'can_generate_images', ui: 'tool-gallery',
+    feature: 'gallery', ui: 'tool-gallery',
   }),
   // `B1194` — `D-2026-10-07-02` §3, the owner: *"Hiding library should guide
   // archives."* The three switches here (*Document Editor* for everyone,
@@ -233,17 +239,17 @@ export const TOOL_VISIBILITY = Object.freeze({
   notes: _tool({
     label: 'Notes', doors: ['tool-notes-btn', 'rail-notes'],
     windows: ['notes-panel', 'notes-pane'], slash: ['notes', 'note', 'todo'],
-    routes: ['/notes'], shortcut: 'open_notes', ui: 'tool-notes',
+    routes: ['/notes'], shortcut: 'open_notes', privilege: 'can_use_notes', ui: 'tool-notes',
   }),
   tasks: _tool({
     label: 'Tasks', doors: ['tool-tasks-btn', 'rail-tasks'],
     windows: ['tasks-modal'], slash: ['tasks', 'tour-task-1', 'tour-task-2'],
-    routes: ['/tasks'], shortcut: 'open_tasks', ui: 'tool-tasks',
+    routes: ['/tasks'], shortcut: 'open_tasks', privilege: 'can_use_tasks', ui: 'tool-tasks',
   }),
   theme: _tool({
     label: 'Theme', doors: ['tool-theme-btn', 'rail-theme'],
     windows: ['theme-modal'], slash: ['tour-theme'], routes: ['/theme'],
-    shortcut: 'open_theme', ui: 'tool-theme',
+    shortcut: 'open_theme', privilege: 'can_use_theme', ui: 'tool-theme',
   }),
   // `P24-12`. The Agents hall. Everyone may hire any agent
   // (`D-2026-10-22-01` §2), so no feature, privilege or admin column: what a
@@ -254,12 +260,13 @@ export const TOOL_VISIBILITY = Object.freeze({
   }),
   workbench: _tool({
     label: 'Workbench', doors: ['tool-workbench-btn', 'rail-workbench'],
-    windows: ['workbench-modal'], routes: ['/workbench'], ui: 'tool-workbench',
+    windows: ['workbench-modal'], routes: ['/workbench'], privilege: 'can_use_workbench',
+    ui: 'tool-workbench',
   }),
   email: _tool({
     label: 'Email', doors: ['email-section', 'rail-email'],
     windows: ['email-lib-modal'], slash: ['email'], routes: ['/email'],
-    ui: 'email-section',
+    privilege: 'can_use_email', ui: 'email-section',
   }),
   // ── Composer chips ──
   web: _tool({

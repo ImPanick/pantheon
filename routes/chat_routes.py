@@ -2283,7 +2283,9 @@ def setup_chat_routes(
         _privs = {}
         _user = ctx.user
         if _user and hasattr(request.app.state, 'auth_manager') and request.app.state.auth_manager:
-            _privs = request.app.state.auth_manager.get_privileges(_user)
+            # `B531`: a 503 that says why, rather than a 500 or a grant.
+            from src.auth_helpers import privileges_or_refuse
+            _privs = privileges_or_refuse(request.app.state.auth_manager, _user)
         if _privs:
             if not _privs.get("can_use_bash", True):
                 # `P20-03`. `can_use_bash` is about a shell on this machine;

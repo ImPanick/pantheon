@@ -143,7 +143,12 @@ async def _body(request: Request) -> dict:
 
 
 def setup_workflow_routes(task_scheduler) -> APIRouter:
-    router = APIRouter(prefix="/api/workflows", tags=["workflows"])
+    # `B1191` (`D-2026-10-26-01` §5): refused, in the door's words, to a person this
+    # Tools entry is switched off for (`src/tool_privileges.py`).
+    from fastapi import Depends as _Depends
+    from src.tool_privileges import tool_privilege as _tool_privilege
+    router = APIRouter(prefix="/api/workflows", tags=["workflows"],
+                       dependencies=[_Depends(_tool_privilege("can_use_workbench"))])
 
     def _owner(request: Request):
         return get_current_user(request)

@@ -437,8 +437,28 @@ def _resolve_run_endpoint(db, task: ScheduledTask, run: TaskRun) -> str:
     return ""
 
 
+def _tasks_gate(request: Request) -> None:
+    """`B1191` (`D-2026-10-26-01` §5). The task data is the Tasks window's and
+    the Workbench's Automations room's, so either switch opens it; a person
+    with both off is refused in the Tasks door's words. The notifications poll
+    stays open — a paused task's sentence reaches the person there — and the
+    webhook trigger names nobody, so its task's owner is asked at run time."""
+    from fastapi import HTTPException as _HTTPException
+    from src.tool_privileges import tool_privilege
+    if request.url.path.rstrip("/").endswith("/notifications"):
+        return
+    try:
+        tool_privilege("can_use_tasks")(request)
+    except _HTTPException as refused:
+        try:
+            tool_privilege("can_use_workbench")(request)
+        except _HTTPException:
+            raise refused
+
+
 def setup_task_routes(task_scheduler) -> APIRouter:
-    router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+    from fastapi import Depends as _Depends
+    router = APIRouter(prefix="/api/tasks", tags=["tasks"], dependencies=[_Depends(_tasks_gate)])
 
     def _owner(request: Request):
         return get_current_user(request)
@@ -1871,7 +1891,8 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             '  "scheduled_day": 0,               // weekly: 0=Mon..6=Sun; monthly: 1..31\n'
             '  "scheduled_date": "YYYY-MM-DDTHH:MM",  // only for "once"\n'
             '  "cron_expression": "m h dom mon dow",  // only if schedule is "cron"\n'
-            '  "output_target": "session" | "email" | "notification"  // use email when the user asks to email the result\n'
+            '  "output_target": "session" | "email" | "notification",  // use email when the user asks to email the result\n'
+            '  "steps": 1  // how many separate things it asks for, one after another (check X, then do Y: 2)\n'
             "}\n\n"
             "Rules: default schedule to 'daily' if a time is given without a frequency. "
             "Default scheduled_time to '09:00' if none is stated. For 'every weekday' "
@@ -1908,6 +1929,12 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             if draft.get("output_target") in ("session", "email", "notification"):
                 out["output_target"] = draft["output_target"]
             out["trigger_type"] = "schedule"
+            # `B1210`, the owner's call (`D-2026-10-26-01` §12): both drafters
+            # stay, and this one says when the work is several things in a row,
+            # which a workflow runs step by step and a task runs as one prompt.
+            steps = draft.get("steps")
+            if isinstance(steps, int) and not isinstance(steps, bool) and steps >= 2:
+                out["several_steps"] = True
             if not out.get("prompt"):
                 return {"success": False, "message": "Could not extract a task instruction"}
             return {"success": True, "draft": out}

@@ -2318,6 +2318,12 @@ async def action_ping_notes(owner: str, **kwargs) -> Tuple[str, bool]:
                             continue
                     except Exception:
                         pass
+                # `B1191` (`D-2026-10-26-01` §5): held, not dropped, while Notes
+                # is switched off for the note's owner — not marked as pinged,
+                # so a reminder still inside its window fires once it is back on.
+                from src.tool_privileges import may_use_tool as _may_use_tool
+                if not _may_use_tool(n.owner or owner or "", "can_use_notes"):
+                    continue
                 # Compose + dispatch.
                 title = (n.title or "Reminder").strip() or "Reminder"
                 body_parts = []

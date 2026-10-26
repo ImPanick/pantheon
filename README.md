@@ -249,15 +249,15 @@ proved it dead.
 
 ## Status
 
-**1556 tracked tasks, 1203 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**1559 tracked tasks, 1221 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
 above.
 
 **Read that number with the trend beside it.** Over the last ten waves, *done* went
-**73.3% → 77.3%** and *open* went **402 → 353**: 52 rows filed against 101 closed, a
-file-to-close ratio of **0.515** — the open count fell by forty-nine, most of it in the latest wave, which reconciled the open-row triage (37 rows found done or moot closed, 24 folded into the rows that hold them) and built the owner's last three calls of `D-2026-10-25-04`: a workstation backend switch that starts and stops the backends where the operator gave Pantheon the host's Docker, `sudo` by backend with each VM given its person's projects folder, and networks per person — declared in each person's settings, linked to a login in their own vault, seen whole by the admin but for the login (`B1475`, `B1478`, `B1427`, `B1428`). The wave before it took the owner's answers to the audit's open decisions and closed the audit's own rows: Python blocks run for everyone in an opaque-origin sandbox, the admin's Default is the platform's default by one rule, a model launches by name, Stop force-kills a server that ignored it, and about forty dead functions, six more uncalled routes and a handful of dead columns are gone (`B1473`–`B1485`). The wave before it was the audit itself: it closed twenty-one and filed thirteen open, each a decision it named. Before it, a wave built the Design studio and the Connections vault, another gave the agent browser to the person (point at a page, watch it inspect), and this one re-scoped `P16-20` and settled `B700` without filing much. Earlier the count had risen on a phase's build list, not defects: opening `P24`, the Agents hall, filed its 25 rows at once, and its first waves closed 18 of its 27, so the 9 still open are its plan — one of them the owner's own audit of every runbook (`P24-27`). Before that wave
+**73.5% → 78.3%** and *open* went **399 → 338**: 55 rows filed against 116 closed, a
+file-to-close ratio of **0.474** — the open count fell by sixty-one, most of it in the last two waves. The latest built thirteen of the owner's seventeen calls from the triage (`D-2026-10-26-01`): a switch per Tools entry for one person that hides it, refuses its routes and holds its background work (`B1191`), a way back from a lost admin password (`B1272`), an install that ran without sign-in handing what it made to one account (`B1270`), an admin's webhook into the LAN (`B692`), Kimi Code sent Pantheon's own name (`P15-07`), and the ship line made a CI gate (`B451`); it filed three, one closed in it. The wave before it reconciled the open-row triage (37 rows found done or moot closed, 24 folded into the rows that hold them) and built the owner's last three calls of `D-2026-10-25-04`: a workstation backend switch that starts and stops the backends where the operator gave Pantheon the host's Docker, `sudo` by backend with each VM given its person's projects folder, and networks per person — declared in each person's settings, linked to a login in their own vault, seen whole by the admin but for the login (`B1475`, `B1478`, `B1427`, `B1428`). The wave before it took the owner's answers to the audit's open decisions and closed the audit's own rows: Python blocks run for everyone in an opaque-origin sandbox, the admin's Default is the platform's default by one rule, a model launches by name, Stop force-kills a server that ignored it, and about forty dead functions, six more uncalled routes and a handful of dead columns are gone (`B1473`–`B1485`). The wave before it was the audit itself: it closed twenty-one and filed thirteen open, each a decision it named. Before it, a wave built the Design studio and the Connections vault, another gave the agent browser to the person (point at a page, watch it inspect), and this one re-scoped `P16-20` and settled `B700` without filing much. Earlier the count had risen on a phase's build list, not defects: opening `P24`, the Agents hall, filed its 25 rows at once, and its first waves closed 18 of its 27, so the 9 still open are its plan — one of them the owner's own audit of every runbook (`P24-27`). Before that wave
 the window read **0.917**, the first in this record where closing outran filing. Most of that is `P23`, the audits' fixes — built by eight lanes, driven by the owner's
 walk twice on the merged tree and closed on 2026-10-07 — and what came straight after it: the owner's rulings that
 evening, and then `v0.2.0` shipping and the owner running it on their own install. Their two reports of 2026-10-09
@@ -268,13 +268,13 @@ control — one row of that table's twenty-five: a chat can be set to **Auto**, 
 privileged effect that follows outside content. What that gives up, and what it leaves untouched, are written out in
 [`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md)'s register under `B1338`. The open count falls only when closing outruns filing, and in
 most waves it does not — most rows are defects found by sweeps over code that was already here,
-not new work invented — so this reading is a good stretch, not a promise. What matters more is a different number: of the last 40 backlog rows filed (`B1446`–`B1485`), **none** is
+not new work invented — so this reading is a good stretch, not a promise. What matters more is a different number: of the last 40 backlog rows filed (`B1449`–`B1488`), **none** is
 on the ship line's open list — the short list of rows that stop a stranger relying on this
 repository now that it is public (measured 2026-10-02, and read again on 2026-10-07, 2026-10-08, 2026-10-09 and twice on 2026-10-14 for every row filed since): `B1179`, found at wave G's merge, was met
 the same day, and every gate the list named is met. The series, the classification and
 what counts as blocking are in
 [`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md). Every figure in this paragraph is
-`.pantheon/ship-line.py`'s, and `.pantheon/check-ledger.py` fails the build when one here stops
+`.pantheon/check-ship-line.py`'s, and `.pantheon/check-ledger.py` fails the build when one here stops
 matching it.
 
 Test suite: **20,309 passing**, nothing red — measured 2026-10-18 at `c66fe54`, which is how that figure is stated now: it cannot be derived without a 76-minute run, so it names the day and the commit instead of pretending to be current (`B1405`). The fourteen standing failures this fork
@@ -357,7 +357,7 @@ of the output before it lands.
 made by a person, and the work is theirs to accept.
 
 The rest of this repository is the argument for taking that seriously. Every change is a tracked
-row with a `Verify:` line, and a row cannot be ticked on a claim nobody checked. Twenty-eight
+row with a `Verify:` line, and a row cannot be ticked on a claim nobody checked. Twenty-nine
 checkers run in CI, each one added after a specific defect got through — not designed in advance.
 A test earns its place by failing on the tree as it stood *before* the fix, and mutation testing
 is what proves it would. [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) records the mistakes with

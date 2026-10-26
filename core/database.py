@@ -2542,8 +2542,6 @@ def _migrate_add_notes_sort_order():
             conn.execute("ALTER TABLE notes ADD COLUMN image_url TEXT")
         if columns and "repeat" not in columns:
             conn.execute("ALTER TABLE notes ADD COLUMN repeat TEXT DEFAULT 'none'")
-        if columns and "ai_content_hash" not in columns:
-            conn.execute("ALTER TABLE notes ADD COLUMN ai_content_hash TEXT")
         if columns and "agent_session_id" not in columns:
             conn.execute("ALTER TABLE notes ADD COLUMN agent_session_id TEXT")
         # `B80` — the rest of a note-level agent run's bookkeeping.
@@ -3899,8 +3897,16 @@ def _migrate_encrypt_signatures():
         return
     try:
         with engine.connect() as conn:
+            # `B1480` stopped declaring `svg`: a database made since has no such
+            # column, and one made before keeps it — with whatever it held, so
+            # that is still encrypted where it is there.
+            cols = {r[1] for r in conn.execute(text("PRAGMA table_info(signatures)")).fetchall()}
+            if not cols:
+                return
+            has_svg = "svg" in cols
             rows = conn.execute(text(
-                "SELECT id, data_png, svg FROM signatures"
+                "SELECT id, data_png, svg FROM signatures" if has_svg
+                else "SELECT id, data_png, NULL FROM signatures"
             )).fetchall()
             migrated = 0
             for rid, data_png, svg in rows:

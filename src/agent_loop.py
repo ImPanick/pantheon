@@ -6747,6 +6747,13 @@ async def stream_agent_loop(
     # as a second gate, so it inherits `execute_tool_block`'s enforcement, the
     # prompt cache key below, and one set of tests (`Law 14`).
     disabled_tools.withhold(feature_disabled_tools(), because=WITHHELD_BY_FEATURE)
+    # `B1191` (`D-2026-10-26-01` §5). A Tools entry an admin switched off for
+    # this person takes its tools with it — in every run, a chat's or a
+    # scheduled one's — recorded as a privilege, which no later clamp lifts.
+    from src.tool_privileges import withheld_for_owner as _tools_switched_off
+    _switched_off = _tools_switched_off(owner)
+    if _switched_off:
+        disabled_tools.withhold(_switched_off, because=WITHHELD_BY_PRIVILEGE)
     # `B1349` (fx11-cap). The settings half of the same question, in the
     # turn's own set rather than in a local copy of it inside
     # `_build_base_prompt` — which is where `generate_image` used to enter, so

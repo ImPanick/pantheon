@@ -541,6 +541,13 @@ To expose Pantheon on a local network or Tailscale with HTTPS:
 A grab-bag of small gotchas that otherwise turn into long debugging sessions.
 
 - **You're asked to sign in although `.env` says `AUTH_ENABLED=false`.** That is the product since 0.2.0: there is always a sign-in, and the variable is ignored (the log says so once at start). The first run asks for the admin account. Whether other people may make their own accounts is Settings → Users → *People can sign themselves up*, off by default.
+- **You've lost the admin password.** Stop Pantheon, set a new one where its data lives, start it again (`B1272`) — every other account is untouched, and the person is signed out everywhere:
+  ```bash
+  docker compose stop pantheon
+  docker compose run --rm pantheon python scripts/reset_password.py admin
+  docker compose start pantheon
+  ```
+  (Native installs: `python scripts/reset_password.py admin` with the server stopped.) It asks for the password twice and never takes it from the command line; `--disable-2fa` also turns two-factor sign-in off, for a lost authenticator.
 - **The first setting in `.env` is ignored (Windows).** If you edited `.env` in Notepad it may have saved a UTF-8 **BOM**, turning the first key into `﻿APP_BIND` (say) so it is never matched. Pantheon loads `.env` with `encoding="utf-8-sig"` to tolerate a leading BOM, but the safe fix is to re-save `.env` as **UTF-8 without BOM** (VS Code: *Save with Encoding → UTF-8*).
 - **macOS: the app isn't at `http://localhost:7000`.** macOS AirPlay Receiver usually holds port `7000`, so the macOS start script serves on **`7860`** instead — open `http://localhost:7860`. To use `7000`, free it (System Settings → General → AirDrop & Handoff → turn off *AirPlay Receiver*) and set `APP_PORT=7000`.
 - **Copy buttons do nothing over a plain-HTTP Tailscale/LAN URL.** Browsers only expose the clipboard API (`navigator.clipboard`) on **secure origins** — HTTPS, or `localhost`. Over `http://100.x.y.z:7860` it is blocked. Serve over HTTPS (see *HTTPS + LAN/Tailscale exposure* above); `localhost` is exempt, so copy still works on the host itself.

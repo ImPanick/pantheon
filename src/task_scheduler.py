@@ -3090,6 +3090,17 @@ class TaskScheduler:
                     self._skip_for_in_flight(db, task, run_id, _parked)
                     return
 
+            # `B1191` (`D-2026-10-26-01` §5). A Tools entry an admin switched off
+            # for the task's owner holds its work: Tasks for a task, the
+            # Workbench for a workflow. Each occurrence is a `skipped` run that
+            # says why, the task keeps its schedule and its settings, and it
+            # runs again at its next time once the switch is back on.
+            from src.tool_privileges import held_by_switch as _held_by_switch
+            _held = _held_by_switch(db, task)
+            if _held:
+                self._skip_switched_off(db, task, run_id, _held)
+                return
+
             # `P22-05`. One question for a task and for a workflow: the task's
             # own action, or any step of its document (`admin_only_action_of`)
             # — asked before any step runs, so no earlier step runs first.
@@ -3831,6 +3842,33 @@ class TaskScheduler:
         task.next_run = self._next_run_after(db, task)
         db.commit()
         logger.info("Workflow '%s': %s", task.name, sentence)
+        return sentence
+
+    def _skip_switched_off(self, db, task, run_id: str, key: str) -> str:
+        """`B1191`. This run did not start because its Tools entry is switched
+        off for the task's owner: a `skipped` run with the sentence, the next
+        time moved on as a no-op's would, and the owner told once — not on
+        every occurrence of a task that runs every five minutes."""
+        from core.database import TaskRun
+        from src.tool_privileges import paused_sentence
+
+        sentence = paused_sentence(key)
+        previous = (db.query(TaskRun)
+                    .filter(TaskRun.task_id == task.id, TaskRun.id != run_id,
+                            TaskRun.finished_at.isnot(None))
+                    .order_by(TaskRun.finished_at.desc()).first())
+        run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+        if run is not None:
+            run.status = "skipped"
+            run.result = sentence
+            run.error = sentence
+            run.finished_at = _utcnow()
+        task.last_run = _utcnow()
+        task.next_run = self._next_run_after(db, task)
+        db.commit()
+        logger.info("Task '%s' held: %s", task.name, sentence)
+        if previous is None or (previous.result or "") != sentence:
+            self._notify_run_outcome(task, "skipped", body=sentence, task_id=task.id)
         return sentence
 
     def in_flight_sentence(self, task_id: str) -> str | None:

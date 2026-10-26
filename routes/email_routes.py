@@ -1809,7 +1809,12 @@ def _sanitize_email_html(raw: str) -> str:
 
 def setup_email_routes():
     _start_poller()
-    router = APIRouter(prefix="/api/email", tags=["email"])
+    # `B1191` (`D-2026-10-26-01` §5): refused, in the door's words, to a person this
+    # Tools entry is switched off for (`src/tool_privileges.py`).
+    from fastapi import Depends as _Depends
+    from src.tool_privileges import tool_privilege as _tool_privilege
+    router = APIRouter(prefix="/api/email", tags=["email"],
+                       dependencies=[_Depends(_tool_privilege("can_use_email"))])
 
     # ── In-memory cache + prefetch + IMAP connection pool ──
     # Three layers stacked because every cold click was hitting Dovecot

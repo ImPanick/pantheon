@@ -108,6 +108,28 @@ the next one is cut.
 
 ### Added
 
+- **An admin can switch each Tools entry off for one person** — Assistant, Calendar, Compare,
+  Email, Notes, Tasks, Theme and Workbench join Brain, Deep Research, Gallery and the Library
+  in Settings → Users. Off hides the entry, its routes refuse that person in the same sentence
+  the door says, its tools leave the agent, and its work that runs without the window — their
+  scheduled tasks and workflows, the Assistant's check-ins, the inbox check, mail scheduled to
+  send, their email actions, note reminders — is held with a sentence saying why. Nothing is
+  deleted; turning it back on is all it takes (`B1191`, `D-2026-10-26-01` §5).
+- **A lost admin password has a way back.** Stop Pantheon, run
+  `python scripts/reset_password.py <name>` where its data lives (in Docker,
+  `docker compose run --rm pantheon …`), start it again: the password is set, that person is
+  signed out everywhere, and no other account changes. `--disable-2fa` is there for a lost
+  authenticator (`B1272`).
+- **`scripts/claim_ownerless.py` gives one account everything an install without sign-in
+  made** — its tasks, notes, calendars, allow-rules, workflows, folders, drafts and the rest,
+  its vault and git settings where the account has none of its own, its skills, preferences
+  and projects folder — and prints how to copy its workstation home. `--dry-run` says what
+  would move (`B1270`).
+- **A task drafted from a sentence offers a workflow when the work is several steps** — the
+  Workbench's *Or describe it*, with the same words already in it (`B1210`).
+- **The ship line is a CI gate.** `check-ship-line.py --check` fails when an open row its
+  triage calls a candidate is in neither list of `SHIP-LINE.md` § 7 (`B451`).
+
 - **Each person can declare their own networks, and an admin sees them all.** With *Each person
   may declare their own networks* on (Settings → Networks, off by default), Settings → My
   networks lets a person name the networks their agents work in — their lab, their NAS, a client's
@@ -152,6 +174,22 @@ the next one is cut.
   button all close it. `/toggle mode [agent|chat]` is the same control, typed.
 
 ### Changed — read this before upgrading
+
+- **A webhook an admin sets up may point at the LAN.** n8n, Home Assistant, a tailnet or an
+  IPv6 ULA address are accepted from Settings, and the save is logged; loopback, link-local and
+  cloud metadata stay refused, and delivery stays pinned to the address that was checked. A
+  webhook the agent adds keeps the public-only rule — which now also refuses CGNAT, a tailnet's
+  range, that it had let through (`B692`).
+- **Kimi Code is sent Pantheon's own name.** Pantheon re-sent a refused request under five
+  other products' names until one got through; it sends `Pantheon/<version>` once now, as to
+  every endpoint, and if Kimi Code refuses it the chat says so and names the Moonshot API as
+  the way to use Kimi models (`P15-07`).
+- **An unreadable account store refuses privilege-gated routes** with a 503 that says why,
+  where it used to grant them; an admin's routes and sign-in stay reachable (`B531`).
+- **`cute` and `retrowave` read at 4.5:1.** `cute`'s pink text is darker (`#c9366b`) and
+  `retrowave`'s surfaces a shade darker (`#141423`, `#111a31`) (`B390`).
+- **The Gallery stays open to a person without *Image generation*;** that switch takes the AI
+  image tools only (`B1195`).
 
 - **`sudo` in the workstation is by backend unless an admin chose.** An install that never set it
   had root on in the shared container, where it reads every person's work. Unset, it is now on in a
@@ -218,6 +256,15 @@ the next one is cut.
   arming that a non-empty memory store did on its own.
 
 ### Fixed
+
+- **A failed call to your own workstation or model server is not held for five seconds** before
+  the next one; the hold is for third-party services, and the workstation's own host names are
+  paced as local now (`B1226`).
+- **Every database made since `B1480` logged a skipped signature migration on start** — it still
+  selected the retired `svg` column; and a notes migration re-added a retired column (`B1487`).
+- **The vendored skill library stays out of what the model is shown by rule,** not by its
+  confidence happening to sit under the floor; it is still found by a search and opened by
+  name (`B869`).
 
 - **Saving the install's networks keeps their notes.** The Networks panel dropped each network's
   `notes` on every save; both network lists now draw from one editor that keeps them (`B1475`).

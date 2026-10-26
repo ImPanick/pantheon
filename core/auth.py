@@ -47,6 +47,17 @@ DEFAULT_PRIVILEGES = {
     # turn anything on — the person still sets the mode per chat, and the
     # install default stays Manual approve.
     "can_auto_approve": False,
+    # `B1191`, `D-2026-10-26-01` §5. A switch per Tools entry that had none —
+    # on, so nothing changes until an admin turns one off for a person; what
+    # each takes is `src/tool_privileges.py`'s.
+    "can_use_assistant": True,
+    "can_use_calendar": True,
+    "can_use_compare": True,
+    "can_use_email": True,
+    "can_use_notes": True,
+    "can_use_tasks": True,
+    "can_use_theme": True,
+    "can_use_workbench": True,
     "max_messages_per_day": 0,
     "allowed_models": [],
     "allowed_models_restricted": False,
@@ -764,6 +775,32 @@ class AuthManager:
             self._config["users"][username]["password_hash"] = _hash_password(new_password)
             self._save()
         return True
+
+    def reset_password(self, username: str, new_password: str, *,
+                       disable_2fa: bool = False) -> Optional[int]:
+        """`B1272`, `D-2026-10-26-01` §3. Set `username`'s password without the
+        old one and sign them out everywhere; answers how many sessions ended,
+        or None when there is no such account.
+
+        **No route calls this.** Its one caller is `scripts/reset_password.py`,
+        run where the data lives by someone with a shell there — the recovery a
+        lost admin password needs, and never an environment variable applied
+        on every boot. `disable_2fa` is for a lost authenticator too."""
+        username = username.strip().lower()
+        if username not in self.users:
+            return None
+        with self._config_lock:
+            rec = self._config["users"][username]
+            rec["password_hash"] = _hash_password(new_password)
+            if disable_2fa:
+                for key in ("totp_secret", "totp_secret_pending", "totp_backup_codes"):
+                    rec.pop(key, None)
+                rec["totp_enabled"] = False
+            self._save()
+        ended = self.revoke_user_sessions(username)
+        logger.warning("password reset for '%s' from the command line; %d session(s) ended%s",
+                       username, ended, ", two-factor turned off" if disable_2fa else "")
+        return ended
 
     # ------------------------------------------------------------------
     # TOTP two-factor authentication

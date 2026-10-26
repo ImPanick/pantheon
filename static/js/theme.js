@@ -17,7 +17,8 @@ export const THEMES = {
   paper:      { bg:'#faf8f5', fg:'#3b3836', panel:'#ffffff', border:'#d5d0c8', red:'#c5ac4a' },
   // Spicy / fun themes
   cyberpunk:  { bg:'#0a0a0f', fg:'#0ff0fc', panel:'#12101a', border:'#9b30ff', red:'#e040fb' },
-  retrowave:  { bg:'#1a1a2e', fg:'#e94560', panel:'#16213e', border:'#533483', red:'#e94560' },
+  // `B390` (`D-2026-10-26-01` §13): its surfaces a shade darker (ΔL −3.4), its red kept.
+  retrowave:  { bg:'#141423', fg:'#e94560', panel:'#111a31', border:'#533483', red:'#e94560' },
   forest:     { bg:'#1b2a1b', fg:'#a8d5a2', panel:'#142414', border:'#3d6b3d', red:'#7cb871' },
   ocean:      { bg:'#0b1a2c', fg:'#64d2ff', panel:'#091422', border:'#1e5074', red:'#4facfe' },
   ume:        { bg:'#2b1b2e', fg:'#f5c2e7', panel:'#1e1420', border:'#6c4675', red:'#f5a0c0' },
@@ -30,7 +31,8 @@ export const THEMES = {
                             userBubbleBg: '#2f2f2f', aiBubbleBg: '#171717',
                             inputBg: '#2f2f2f', brandColor: '#ffffff', brandMixTo: '#ffffff' } },
   claude:     { bg:'#262624', fg:'#f5f4f0', panel:'#30302e', border:'#4a4a47', red:'#c6613f' },
-  cute:       { bg:'#fff0f5', fg:'#d4608a', panel:'#fff8fa', border:'#f0c0d0', red:'#ff6b9d' },
+  // `B390`, the owner's call (`D-2026-10-26-01` §13): its pink, darkened to clear 4.5:1.
+  cute:       { bg:'#fff0f5', fg:'#c9366b', panel:'#fff8fa', border:'#f0c0d0', red:'#ff6b9d' },
   // Familiar platform moods, drawn with Pantheon's own palette and tokens.
   guild:      { bg:'#202127', fg:'#e5e8f5', panel:'#292b35', border:'#484c60', red:'#a9b6ff' },
   codehost:   { bg:'#f1f5fb', fg:'#22344a', panel:'#f9fbff', border:'#a4b7cd', red:'#4a5fb2' },

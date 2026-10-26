@@ -47,6 +47,29 @@ const PRIV_LABELS = {
   // name: granting this lets the person switch a chat to Auto, where a step
   // that would raise an approval card runs instead.
   can_auto_approve: 'Auto-approve (run tool steps in a chat without asking)',
+  // `B1191` (`D-2026-10-26-01` §5). One per Tools entry that had no switch for
+  // a person. Off hides it, refuses its routes and holds its background work
+  // with a sentence; nothing is deleted.
+  can_use_assistant: 'Assistant',
+  can_use_calendar: 'Calendar',
+  can_use_compare: 'Compare',
+  can_use_email: 'Email',
+  can_use_notes: 'Notes',
+  can_use_tasks: 'Tasks',
+  can_use_theme: 'Theme',
+  can_use_workbench: 'Workbench',
+};
+
+// `B1195`, the owner's call (`D-2026-10-26-01` §6). What a switch takes that
+// is not a Tools entry, said where the table has nothing to say.
+const PRIV_TAKES = {
+  can_generate_images: 'Off takes the AI image tools (upscale, inpaint, style transfer and the rest). Their own images stay in their Gallery.',
+  // `B1191`: what their background work does while off — held, never deleted.
+  can_use_assistant: 'Off also holds the Assistant\'s check-ins.',
+  can_use_email: 'Off also holds their inbox check, mail scheduled to send, and their email actions.',
+  can_use_notes: 'Off also holds their note reminders.',
+  can_use_tasks: 'Off also holds their scheduled tasks; each says why, and runs again once it is back on.',
+  can_use_workbench: 'Off also holds their workflows.',
 };
 
 // `B966`, the owner's call (`D-2026-10-01-01`). A privilege this panel no
@@ -151,7 +174,7 @@ async function loadUsers() {
             continue;
           }
           const checked = u.privileges && u.privileges[key] ? 'checked' : '';
-          const hides = _hidesLine({ privilege: key });
+          const hides = [_hidesLine({ privilege: key }), PRIV_TAKES[key]].filter(Boolean).join(' ');
           html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;">
             <span style="font-size:12px;">${label}${hides ? `<span class="admin-toggle-sub" style="display:block;font-size:10px;opacity:0.55;">${esc(hides)}</span>` : ''}</span>
             <label class="admin-switch" style="transform:scale(0.85);"><input type="checkbox" data-priv="${key}" data-user="${esc(u.username)}" ${checked} aria-label="${esc(label)}"><span class="admin-slider"></span></label>

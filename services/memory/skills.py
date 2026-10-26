@@ -1553,6 +1553,15 @@ class SkillsManager:
         """
         out: List[Dict] = []
         for s in self.load_active(owner=owner):
+            # `B869`/`B868`, the owner's call (`D-2026-10-26-01` §8). The 286
+            # vendored ECC skills stay out of what the model is shown by
+            # default, by rule rather than by the coincidence that they parse as
+            # drafts at 0.8 under a 0.85 floor: a later sync that marked them
+            # published would otherwise put them all in every prompt. They stay
+            # searchable (`get_relevant_skills`, the person's search) and
+            # viewable (`read_skill_md`, `manage_skills view`).
+            if s.get("library") == VENDORED_LIBRARY:
+                continue
             status = s.get("status")
             # Published + None (pre-status legacy) always included.
             # Drafts only if the teacher wrote them.

@@ -94,6 +94,10 @@ STORES: dict[tuple[str, str], tuple[str, str]] = {
         STRICT_READ, "import writes files supplied by the caller, not read from the target"),
     ("services/memory/skills.py", "self._skill_file(cat, nm)"): (
         STRICT_READ, "same: the Skill is built from the request, not from the file"),
+    ("scripts/claim_ownerless.py", "path"): (
+        STRICT_READ, "`B1270`. A SKILL.md the script has just read whole with an unguarded "
+                     "`read()`, rewritten only when `claim_skill_text` found frontmatter it "
+                     "could edit — a file it could not read raises before the write"),
     ("services/memory/skills.py", "os.path.join(vdir, vid + '.md')"): (
         STRICT_READ, "`P8-10`. A version snapshot, at a path that did not exist a "
                      "moment ago — `vid` is one past the highest sequence number in "

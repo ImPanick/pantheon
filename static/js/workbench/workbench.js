@@ -334,10 +334,12 @@ function _wire() {
 }
 
 /** Move an open room to what the door asked for. */
-function _land(roomId, handle, { focusId, workflowId, runId, view, skill, serverId }) {
+function _land(roomId, handle, { focusId, workflowId, runId, view, skill, serverId, describe }) {
   if (!handle) return;
   if (roomId === 'automations') {
-    if (workflowId != null && runId != null && typeof handle.openRun === 'function') {
+    if (describe && typeof handle.describe === 'function') {
+      handle.describe(describe);   // `B1210`: the task drafter's words, in *Or describe it*
+    } else if (workflowId != null && runId != null && typeof handle.openRun === 'function') {
       handle.openRun(workflowId, runId);
     } else if (workflowId != null && typeof handle.openWorkflow === 'function') {
       handle.openWorkflow(workflowId);
@@ -363,7 +365,9 @@ function _land(roomId, handle, { focusId, workflowId, runId, view, skill, server
  * (`P22-17`, wf-canvas) on that workflow's run — a waiting run on the step it
  * waits on (a workflow question's *Open the run*); `describeTrigger(task)` is
  * the schedule wording (`tasks.js:_scheduleLabel`), handed in by the door so
- * the words exist once.
+ * the words exist once. `describe` (`B1210`) opens *New workflow* with that
+ * sentence in *Or describe it* — nothing is drafted until the person presses
+ * *Draft it*.
  */
 // `BRAIN-M-16` (P23-02). The room the window was closed on; `closeWorkbench`
 // clears `_current`, so this is what a plain reopen lands on. It reopened on
@@ -373,7 +377,7 @@ let _lastRoom = null;
 export function openWorkbench({
   room = null, view = null, skill = null, serverId = null,
   focusId = null, workflowId = null, runId = null, describeTrigger = null,
-  from = null, tab = null,
+  from = null, tab = null, describe = null,
 } = {}) {
   if (window.pantheonToolDoor && !window.pantheonToolDoor(room === 'skills' ? ['workbench', 'brain'] : 'workbench')) return false;   // `P23-03`
   if (typeof describeTrigger === 'function') _describe = describeTrigger;
@@ -387,7 +391,7 @@ export function openWorkbench({
     modal.style.display = '';
   }
   modal.querySelector('.modal-content')?.classList.remove('modal-closing');
-  const asked = { focusId, workflowId, runId, view, skill, serverId };
+  const asked = { focusId, workflowId, runId, view, skill, serverId, describe };
   const automations = focusId != null || workflowId != null || runId != null;
   const target = (room && _room(room)) ? room
     : automations ? 'automations'

@@ -54,3 +54,25 @@ def test_an_urgent_email_leaves_only_that_it_was_alerted_about():
     assert "(message_id, owner, created_at)" in stmt
     for leaked in ("subject", "sender", "reason"):
         assert leaked not in stmt
+
+
+def test_a_fresh_database_and_its_second_start_migrate_without_a_warning(tmp_path):
+    """`B1480` stopped declaring `signatures.svg`, and the start-up migration
+    that encrypts signatures still selected it — so every database made since
+    logged *"Signature encryption migration skipped: no such column: svg"* on
+    every start, and an old database's plaintext was the one thing it was for.
+    A migration that names a column the model no longer declares is the same
+    defect, so: a fresh database, started twice, says nothing at WARNING."""
+    import os
+    import subprocess
+    import sys
+    code = ("import logging, sys; logging.basicConfig(level=logging.WARNING, stream=sys.stdout); "
+            "from core.database import init_db; init_db(); init_db()")
+    env = {k: v for k, v in os.environ.items() if k != "DATABASE_URL"}
+    env["PANTHEON_DATA_DIR"] = str(tmp_path)
+    done = subprocess.run([sys.executable, "-c", code], cwd=ROOT, env=env, capture_output=True,
+                          text=True, timeout=300)
+    assert done.returncode == 0, done.stderr[-2000:]
+    noisy = [line for line in (done.stdout + done.stderr).splitlines()
+             if "migration" in line.lower() and ("skipped" in line or "failed" in line)]
+    assert noisy == [], noisy

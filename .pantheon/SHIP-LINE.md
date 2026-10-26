@@ -1,10 +1,10 @@
-# The ship line — a proposal
+# The ship line
 
-> **This is a proposal, not a decision.** Nothing in the tracker has been
-> re-categorised, no row has been re-ticked, and no gate has been changed.
-> `.pantheon/ship-line.py` is deliberately not named `check-*.py`, so
-> `release-gate.py` does not run it and a red answer here blocks nobody.
-> Adopting it is one rename; § *Adopting this* says what that costs.
+> **Adopted 2026-10-26** — the owner's call (`D-2026-10-26-01` §11). § 3's line
+> is the line, and `.pantheon/check-ship-line.py --check` is a CI step: an open
+> row its triage calls a candidate is classified in § 7 the day it is filed, or
+> the build says which. Until that day this was a proposal under the name
+> `ship-line.py`, which `release-gate.py` does not run.
 >
 > Filed 2026-09-17 under `B451`. The owner's question is the whole reason it
 > exists: *"the tracked items keeps growing and our progress isnt really making
@@ -14,7 +14,7 @@
 
 ## 1. The measurement
 
-Every number below comes from `.pantheon/ship-line.py --trend`, which reads the
+Every number below comes from `.pantheon/check-ship-line.py --trend`, which reads the
 `**N tracked, M done.**` headline off each `§ Progress` entry. That headline is
 the status table's `Total` row restated, and `check-tracker.py` validates the
 newest one against the table — so this is the tracker's own arithmetic, not a
@@ -223,6 +223,10 @@ Re-measured 2026-10-26, after the triage's reconciliation and the owner's last t
 
 **Direction as of 2026-10-26: the open count is falling.**
 
+Re-measured 2026-10-26, after the owner's seventeen calls from the triage: **55 filed, 116 closed**, open **399 → 338** — falling. The wave built thirteen of them and closed four rows folded into them; it filed three, one closed in it (`B1487`), and the gate this wave adopted named one of the two open ones unclassified on its first run (`B1488`), which is now tracked, not blocking. The ship-line composition is unchanged — 0 of the last 40 `B` rows block.
+
+**Direction as of 2026-10-26, after the seventeen calls: the open count is falling.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
@@ -230,7 +234,7 @@ today's — **four are gates** under the line proposed below: `B370`, `B400`,
 `B411` and `B452`. Ten per cent. The other 90 % is real work that a stranger can
 use the software without. That is the convergence argument, and it is the only
 one available: not that we will stop finding things, but that almost nothing we
-find is a gate. The figure is recomputed by `ship-line.py` rather than carried
+find is a gate. The figure is recomputed by `check-ship-line.py` rather than carried
 forward, which is the failure `B44` is named after.
 
 ---
@@ -536,7 +540,7 @@ heading claimed to cover (`B79`); a `§ Progress` entry claimed rows it left
 unticked for two days (`B241`). Each was fixed the same way: a script recounts and
 fails on drift. This is that, for the ship line.
 
-**`.pantheon/ship-line.py --check` fails when:**
+**`.pantheon/check-ship-line.py --check` fails when:**
 
 1. an id in the register below is not a row in the tracker;
 2. a row named `blocking` is no longer open — it has been closed and the count in
@@ -565,23 +569,24 @@ looking.
 it, or `--check` names it.** That is the whole mechanism. It does not depend on
 anyone remembering, and it does not require re-reading 234 rows ever again.
 
-### Adopting this
+### Adopted
 
-One rename:
+It was one rename, and it is done (`B451`, 2026-10-26):
 
     git mv .pantheon/ship-line.py .pantheon/check-ship-line.py
 
-`release-gate.py` globs `.pantheon/check-*.py` and runs anything CI does not, so
-the gate picks it up with no other change. A line in `.github/workflows/ci.yml`
-puts it in CI, and `release-gate.py` reads its checker list out of that file, so
-the two stay in step by construction. Until the owner rules, it stays unrenamed.
+`release-gate.py` globs `.pantheon/check-*.py` and runs anything CI does not, and
+`.github/workflows/ci.yml` runs `check-ship-line.py --check`; the gate reads its
+checker list out of that file, so the two stay in step by construction. `B455`'s
+ask — that the count a person reads distinguish work from rows that are not
+work — is this: the blocking set is the number that means *how far*.
 
 ---
 
 ## 7. The register
 
 `verdict` is `blocking` or `tracked`. `class` says why. Both columns are read by
-`ship-line.py`; the reason column is for people.
+`check-ship-line.py`; the reason column is for people.
 
 Rows not listed here were read in digest and are **not blocking by rule** — the
 rule found none of its signals in them. That is a classification and it is the
@@ -719,6 +724,7 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B1341` | tracked | decision | whether any effect should still stop in a chat set to Auto — filed rather than decided quietly, which is what the brief for `B1338` required. Auto ships as ruled, with no exception list and a case that drives every stop condition at every rung, so a quiet `if` cannot be added without reddening it; the argument for an exception is `DESTRUCTIVE`, the one class whose result a person cannot undo from inside Pantheon and whose blast radius is not bounded by the action's own arguments, and the argument against is the ruling's own, that a mode which keeps some asks is a mode nobody can describe in one sentence. Not a gate: Auto is off until a person turns it on, per chat, and `B1338` states the cost where they do |
 | `B1342` | tracked | security | an admin cannot be forbidden Auto in their own install, because `core/auth.ADMIN_PRIVILEGES` flips every boolean in `DEFAULT_PRIVILEGES` to True, so an admin holds `can_auto_approve` by construction and nothing an admin can set takes it away from themselves. `can_auto_approve` is the one control over who may turn Auto on, and clearing it for every account does forbid Auto install-wide for every non-admin; what is uncovered is an install that wants the gate un-switchable even for admins — a shared or compliance install, or one where Auto should need a second person. The same shape as `can_use_workstation`, and the fix if wanted is a **floor rather than a default**, which is the one shape that cannot be read as an install-wide *enable* and so does not reopen what the ruling closed |
 | `B1399` | tracked | security | `lift()` is stricter than its own stated contract: `src/tool_policy.py` says **five** reasons cannot be lifted by a later clamp — a privilege, a policy, a switched-off feature, plan mode, a step's own list — while `LIFTABLE_REASONS` makes **seven** unliftable, the two unnamed being `WITHHELD_BY_CALLER` and `WITHHELD_BY_WORKSTATION`. **Tracked rather than blocking, and the direction is the reason:** the mismatch makes the product *more* restrictive than documented, never less — no name is lifted that the contract says must not be, and `FORBIDDEN.md` Part 2's privilege, feature and plan-mode reasons are unliftable in both readings. What it costs is a **capability**: because `src/agent_loop.py:6417` tags the route's whole `disabled_tools` kwarg `WITHHELD_BY_CALLER`, the `pantheon-qwen3` notes clamp can lift nothing the route passed in, which is every name PR `#6020` wrote it to lift. Measured as a dead clamp rather than a missing tool: with `blocked_tools_for_owner` empty the three personal managers are in `disabled_tools` only if the route put them there, and for an admin on a notes turn it does not. Bisected to `45a4ed8` (`fx11-cap`), whose message argues the privilege case correctly and never mentions the caller case; it merged unseen because that wave's full suite was killed and restarted three times and never completed. The owner's call is which way to resolve it, and it is a capability question, not a control one |
+| `B1488` | tracked | security | an install-wide switch for the eight Tools entries `B1191` gave a person's switch. Not a gate: each can already be refused to any person, admins excepted, with routes, agent tools and background work held (`src/tool_privileges.py`); an everyone switch is an admin's convenience over setting it per person, and nothing reaches a person it should not while it is missing |
 
 ---
 

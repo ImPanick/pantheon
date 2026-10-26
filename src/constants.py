@@ -137,6 +137,10 @@ MAX_CONTEXT_MESSAGES = 90
 REQUEST_TIMEOUT = 20
 OPENAI_COMPAT_PATH = "/v1/chat/completions"
 
+# `P15-07`, `D-2026-10-26-01` §7. The one name Pantheon gives an API it calls
+# for a model — its own, and its version — where a service asks for one.
+PANTHEON_USER_AGENT = f"Pantheon/{APP_VERSION}"
+
 # Outbound UA for web_fetch / web_search scraping; common desktop UA so pages serve normal HTML.
 WEB_FETCH_USER_AGENT = os.environ.get(
     "WEB_FETCH_USER_AGENT",

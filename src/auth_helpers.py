@@ -255,6 +255,41 @@ def resolve_privilege(privs: Any, key: str, *,
     return False
 
 
+#: `B531`, `D-2026-10-26-01` §1. What a person is told when the privilege
+#: store could not be read: the route is refused, never granted, and an admin's
+#: routes and sign-in stay reachable so the operator can mend it.
+PRIVILEGE_STORE_SENTENCE = (
+    "Pantheon couldn't read who may do this — its account store answered with an error — so it "
+    "refused rather than guess. An admin can still sign in and fix it; the server's log says what failed.")
+
+_privilege_store_failing = False
+
+
+def privileges_or_refuse(auth_mgr: Any, user: str) -> dict:
+    """`user`'s privileges, or a 503 saying the store could not be read.
+
+    `B531`. A privilege-gated route whose store raises **fails closed**
+    (`D-2026-10-26-01` §1): it used to answer `return user` from a bare
+    `except`, so a corrupt `auth.json`, a lock timeout or a future resolver's
+    bug granted every gated route to whoever asked. Logged once per run of
+    failures — the first after a success — not once per request. `require_admin`
+    asks `is_admin`, not this, so an admin can still reach Settings and sign-in
+    still works: the way back stays open."""
+    global _privilege_store_failing
+    try:
+        privs = auth_mgr.get_privileges(user) or {}
+    except Exception as exc:  # noqa: BLE001 — said once, then refused
+        if not _privilege_store_failing:
+            _privilege_store_failing = True
+            import logging
+            logging.getLogger(__name__).error(
+                "the privilege store could not be read (%s: %s); privilege-gated routes are "
+                "refused until it can", type(exc).__name__, exc)
+        raise HTTPException(503, PRIVILEGE_STORE_SENTENCE) from exc
+    _privilege_store_failing = False
+    return privs if isinstance(privs, dict) else {}
+
+
 def require_privilege(request: Request, key: str) -> str:
     """Reject callers whose `auth.json` privilege flag for `key` is False.
     Returns the username so the route handler can keep using it.
@@ -271,12 +306,7 @@ def require_privilege(request: Request, key: str) -> str:
     auth_mgr = getattr(request.app.state, "auth_manager", None)
     if auth_mgr is None:
         return user
-    try:
-        privs = auth_mgr.get_privileges(user) or {}
-    except Exception:
-        return user
-    if not isinstance(privs, dict):
-        privs = {}
+    privs = privileges_or_refuse(auth_mgr, user)
     # Declared key -> stored value, else the registry's declared default.
     # Undeclared key -> denied. `resolve_privilege` carries the reasoning.
     if not resolve_privilege(privs, key):

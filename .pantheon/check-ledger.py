@@ -593,7 +593,7 @@ def _readme_problems() -> list:
 def _ship_line():
     import importlib.util
     spec = importlib.util.spec_from_file_location("_ledger_ship_line",
-                                                  ROOT / ".pantheon" / "ship-line.py")
+                                                  ROOT / ".pantheon" / "check-ship-line.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -603,7 +603,7 @@ def _readme_trend_problems() -> list:
     """`B1148`. The README's *Status* paragraph restated the ship line's trend —
     *"done went 49.7% → 63.0% and open went 192 → 229: 237 rows filed against
     200 closed, a file-to-close ratio of 1.185"* — and said the figures were
-    recomputed by `ship-line.py --trend`; they were a copy, and `--trend` said
+    recomputed by `check-ship-line.py --trend`; they were a copy, and `--trend` said
     70.8% → 72.5%, 290 → 314, 149 against 125, 1.192. Its *On AI* section said
     *"Twenty-three checkers run in CI"* against `ci.yml`'s 24. Each is held here
     to the function that computes it, the way the badge and the tracked/done
@@ -622,7 +622,7 @@ def _readme_trend_problems() -> list:
                  f"ratio of **{t['ratio']}**"):
         if want not in readme:
             problems.append(f"README's trend does not read {want!r} — "
-                            f"`ship-line.py --trend` moved")
+                            f"`check-ship-line.py --trend` moved")
     recent, blocking = sl.composition(sl.parse_rows(text),
                                       sl.parse_register(sl.PROPOSAL.read_text(encoding="utf-8")))
     span = f"(`{recent[0].id}`–`{recent[-1].id}`), **{_count_word(len(blocking))}**"

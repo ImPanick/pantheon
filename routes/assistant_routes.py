@@ -79,7 +79,12 @@ def _task_to_checkin_dict(t: ScheduledTask) -> dict:
 
 
 def setup_assistant_routes(task_scheduler) -> APIRouter:
-    router = APIRouter(prefix="/api/assistant", tags=["assistant"])
+    # `B1191` (`D-2026-10-26-01` §5): refused, in the door's words, to a person this
+    # Tools entry is switched off for (`src/tool_privileges.py`).
+    from fastapi import Depends as _Depends
+    from src.tool_privileges import tool_privilege as _tool_privilege
+    router = APIRouter(prefix="/api/assistant", tags=["assistant"],
+                       dependencies=[_Depends(_tool_privilege("can_use_assistant"))])
 
     def _owner(request: Request) -> str:
         owner = get_current_user(request)

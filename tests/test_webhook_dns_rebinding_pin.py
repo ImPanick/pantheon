@@ -140,10 +140,11 @@ def test_deliver_pins_to_validated_ip_end_to_end(monkeypatch):
     # loopback as allowed for this test (production blocks it — here we only
     # want to prove the pin routes to the validated IP).
     monkeypatch.setattr(wm, "SessionLocal", lambda: _Db())
-    monkeypatch.setattr(wm, "_is_private_url", lambda url: False)
+    monkeypatch.setattr(wm, "_is_private_url", lambda url, **kw: False)
     monkeypatch.setattr(wm, "_resolve_hostname_ips",
                         lambda h: [ipaddress.ip_address("127.0.0.1")])
     monkeypatch.setattr(wm, "_ip_is_private", lambda a: False)
+    monkeypatch.setattr(wm, "_ip_refused", lambda a, **kw: False)
 
     manager = wm.WebhookManager()
     try:

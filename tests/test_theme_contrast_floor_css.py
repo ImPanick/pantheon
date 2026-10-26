@@ -234,38 +234,31 @@ def _worst(expr: str, theme: dict) -> float:
 
 # ── `B15` ───────────────────────────────────────────────────────────────────
 
-# Named on purpose, per the row's own `Verify` and `D-2026-09-14-03`. Values
-# pinned so neither can get quietly worse and a THIRD palette cannot join them.
-_B15_UNDER_AA = {"cute": (3.44, 3.26), "retrowave": (4.15, 4.46)}
+# `B390` shipped (`D-2026-10-26-01` §13): `cute`'s pink darkened to `#c9366b`
+# and `retrowave`'s surfaces to `#141423` / `#111a31`. The two palettes this
+# exception named (`D-2026-09-14-03`) clear now, so it is retired, and their
+# figures are pinned so neither slips back under.
+_B390_NOW = {"cute": (4.75, 4.51), "retrowave": (4.51, 4.75)}
 
 
-def test_body_text_clears_aa_on_every_palette_but_the_two_named_ones(palettes):
-    """`B15`'s `Verify`, measured over all sixteen against both surfaces."""
+def test_body_text_clears_aa_on_every_palette(palettes):
+    """`B15`'s `Verify`, measured over all sixteen against both surfaces —
+    with no palette excused since `B390`."""
     measured = {
         name: (_contrast(_resolve("var(--fg)", theme), _resolve("var(--panel)", theme)),
                _contrast(_resolve("var(--fg)", theme), _resolve("var(--bg)", theme)))
         for name, theme in palettes.items()
     }
     under = {n for n, (p, b) in measured.items() if min(p, b) < BODY_FLOOR}
-    assert under == set(_B15_UNDER_AA), (
-        "the set of palettes whose own body text misses 4.5:1 against their own "
-        "surfaces has changed.\n  now: "
+    assert under == set(), (
+        "a palette's own body text misses 4.5:1 against its own surfaces: "
         + ", ".join(f"{n} ({measured[n][0]:.2f} panel / {measured[n][1]:.2f} bg)"
-                    for n in sorted(under))
-        + "\n  named on purpose: " + ", ".join(sorted(_B15_UNDER_AA))
-        + "\nA palette joining this set is a new instance of `B15` and is not "
-        "covered by the ruling that named these two. A palette leaving it means "
-        "`B390` shipped and this exception can retire."
-    )
-    for name, (want_panel, want_bg) in _B15_UNDER_AA.items():
+                    for n in sorted(under)))
+    for name, (want_panel, want_bg) in _B390_NOW.items():
         got_panel, got_bg = measured[name]
-        assert round(got_panel, 2) == want_panel, (name, got_panel)
-        assert round(got_bg, 2) == want_bg, (name, got_bg)
-    # The row's other two numbers, because a ruling that rests on "the default
-    # is fine and these two are opt-in" stops being true if either moves.
+        assert (round(got_panel, 2), round(got_bg, 2)) == (want_panel, want_bg), (name, got_panel, got_bg)
+    # The row's other number, because "the default is fine" rests on it.
     assert round(measured["dark"][0], 2) == 12.72
-    clear = sorted((v[0], n) for n, v in measured.items() if n not in _B15_UNDER_AA)
-    assert clear[0][1] == "light" and round(clear[0][0], 2) == 7.13, clear[:3]
 
 
 def test_the_muted_foreground_floor_and_the_palette_B15_never_counted(palettes):

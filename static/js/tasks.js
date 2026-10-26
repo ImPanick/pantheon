@@ -3154,9 +3154,15 @@ async function _aiDraftTask(inputEl, btnEl) {
     if (draft.scheduled_time) {
       try { draft.scheduled_time = _localTimeToUtc(draft.scheduled_time); } catch (_) {}
     }
+    // `B1210` (`D-2026-10-26-01` §12). Several things in a row read better as a
+    // workflow, where each runs as its own step and is checked before it can;
+    // the draft says so and offers the Workbench's drafter the same words.
+    const severalSteps = !!draft.several_steps;
+    delete draft.several_steps;
     // Pass the draft as a synthetic "existing" (no id) → form pre-fills every
     // field but still creates via POST on save.
     _showForm(draft, draft.task_type, draft.trigger_type || 'schedule');
+    if (severalSteps && uiModule) _offerWorkflowDraft(desc);
   } catch (e) {
     if (uiModule) uiModule.showError('AI draft failed: ' + (e.message || e));
   } finally {
@@ -3165,6 +3171,23 @@ async function _aiDraftTask(inputEl, btnEl) {
     btnEl.disabled = false;
     btnEl.innerHTML = origHtml;
   }
+}
+
+/** `B1210`. The task drafter's offer, when what was described is several
+ *  things in a row: describe it as a workflow instead, in the Workbench's own
+ *  *Or describe it* box, with the same words already in it. */
+function _offerWorkflowDraft(desc) {
+  uiModule.showToast('This reads as several steps in a row. A workflow runs each as its own step.', {
+    duration: 12000,
+    action: 'Describe it as a workflow',
+    onAction: () => {
+      const from = _open ? 'tasks-modal' : undefined;
+      if (from) backStack.noteOpener('workbench-modal', from);
+      import('./workbench/workbench.js')
+        .then((wb) => wb.openWorkbench({ room: 'automations', describe: desc, describeTrigger: _scheduleLabel, from }))
+        .catch(() => uiModule.showError('The Workbench did not load. Reload the page and try again.'));
+    },
+  });
 }
 
 function _renderMainView() {

@@ -2200,12 +2200,11 @@ def test_no_string_in_either_control_is_less_legible_than_the_prose_beside_it():
     assert not losing, losing
 
     # Two palettes put *every* string in the app under 4.5:1 against their own
-    # panel — `B15` measured `cute` at 3.44 and `retrowave` at 4.15. That
-    # ceiling belongs to the palette and not to this control, and it is named
-    # here on purpose rather than papered over.
+    # panel until `B390` (`D-2026-10-26-01` §13) moved their colours — `B15`
+    # measured `cute` at 3.44 and `retrowave` at 4.15. None does now.
     under = sorted(n for n, v in measured.items() if v[0] < 4.5)
-    assert under == ["cute", "retrowave"], (
-        f"the set of palettes that cannot carry body text has changed: {under}"
+    assert under == [], (
+        f"a palette cannot carry body text again: {under}"
     )
 
 
@@ -2266,10 +2265,9 @@ def test_every_string_on_the_revoke_screen_reads_exactly_as_well_as_the_ladder()
         )
     )
 
-    # The palette ceiling, named rather than papered over — the same two the
-    # ladder's own measurement names.
+    # The palette ceiling the ladder's own measurement named went with `B390`.
     under = sorted(name for name, base in measured.items() if base < 4.5)
-    assert under == ["cute", "retrowave"], under
+    assert under == [], under
 
 
 def test_the_revoke_screen_never_whispers_the_part_that_matters():

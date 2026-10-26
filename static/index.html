@@ -3925,7 +3925,7 @@
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Webhooks</h2>
             <div class="admin-toggle-sub" style="margin-bottom:8px">
-              POSTs a small JSON body to your URL when one of these happens. The URL must be reachable from outside this machine; a private or loopback address is refused. A secret signs each delivery.
+              POSTs a small JSON body to your URL when one of these happens. It may be on your LAN or tailnet — n8n, Home Assistant — or anywhere public; loopback and cloud-metadata addresses are refused. A secret signs each delivery.
             </div>
             <div id="adm-whList"><div class="admin-empty">Loading...</div></div>
             <div class="admin-rag-section-label">Add a webhook</div>

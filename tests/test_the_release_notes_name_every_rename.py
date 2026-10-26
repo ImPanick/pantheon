@@ -868,7 +868,7 @@ def test_the_open_gates_are_the_ship_lines_open_blocking_rows(version):
     `SHIP-LINE.md` draws — every open `blocking` row, and nothing that has
     closed. `P10-12` is the notes themselves and is left out. Stands down when
     the tag is cut: from then on the list is a record of release day."""
-    ship = _load_path("_release_ship_line", ROOT / ".pantheon" / "ship-line.py")
+    ship = _load_path("_release_ship_line", ROOT / ".pantheon" / "check-ship-line.py")
     rows = ship.parse_rows(ship.TRACKER.read_text(encoding="utf-8"))
     register = ship.parse_register(ship.PROPOSAL.read_text(encoding="utf-8"))
     blocking = {r.id for r in rows

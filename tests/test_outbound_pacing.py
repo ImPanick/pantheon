@@ -491,3 +491,27 @@ def test_a_function_that_acquires_is_paced(repo):
         encoding="utf-8",
     )
     assert run(["--max", "0"], repo).returncode == 0
+
+
+@pytest.mark.parametrize("host", ["workstation", "192.168.1.20", "100.101.1.2", "nas.lan", "localhost"])
+def test_a_failed_call_to_your_own_machine_sets_no_cooldown(monkeypatch, host):
+    """`B1226`, `D-2026-10-26-01` §9. The cooldown is politeness to a third
+    party; a down workstation was reported 8 s late (3 s cap + 5 s hold)."""
+    import time
+    from src import rate_limiter as rl
+    limiter = rl.OutboundHostLimiter()
+    limiter.note_failure(host)
+    assert limiter._st(host).next_allowed_at <= time.monotonic()
+    assert limiter.policy_for(host) is rl.LOCAL_POLICY
+
+
+def test_a_public_host_keeps_its_cooldown_and_an_explicit_policy_wins():
+    import time
+    from src import rate_limiter as rl
+    limiter = rl.OutboundHostLimiter()
+    limiter.note_failure("api.example.test")
+    assert limiter._st("api.example.test").next_allowed_at - time.monotonic() > 4.0
+    limiter._policies["nas.lan"] = rl.HostPolicy(min_interval=1.0, max_concurrent=1, jitter=0.0, max_wait=30.0)
+    limiter.note_failure("nas.lan")
+    assert limiter._st("nas.lan").next_allowed_at - time.monotonic() > 4.0, \
+        "an operator who wrote a policy for a local host meant it"

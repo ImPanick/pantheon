@@ -800,7 +800,12 @@ def _expand_rrule(
 # ── Routes ──
 
 def setup_calendar_routes(upload_handler=None) -> APIRouter:
-    router = APIRouter(prefix="/api/calendar", tags=["calendar"])
+    # `B1191` (`D-2026-10-26-01` §5): refused, in the door's words, to a person this
+    # Tools entry is switched off for (`src/tool_privileges.py`).
+    from fastapi import Depends as _Depends
+    from src.tool_privileges import tool_privilege as _tool_privilege
+    router = APIRouter(prefix="/api/calendar", tags=["calendar"],
+                       dependencies=[_Depends(_tool_privilege("can_use_calendar"))])
 
     def _reserve_calendar_uploads(request: Request, *values) -> None:
         missing_id = reserve_upload_references(

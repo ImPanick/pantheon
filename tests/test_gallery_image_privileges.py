@@ -41,3 +41,20 @@ def test_gallery_routes_imports_privilege_helper():
     source = _gallery_source()
     assert "get_current_user" in source
     assert "require_privilege" in source
+
+
+def test_without_image_generation_a_persons_own_gallery_stays_theirs():
+    """`B1195`, `D-2026-10-26-01` §6. The person's switch is *Image
+    generation*: the AI image routes ask for it, and the routes that list and
+    show their own images do not — nor does the Tools entry hide."""
+    import re
+    source = _gallery_source()
+    functions = _function_sources(source)
+    for route in ("/api/gallery/library", "/api/gallery/albums", "/api/gallery/{image_id}"):
+        m = re.search(r'@router\.get\("' + re.escape(route) + r'"\)\s*\n\s*(?:async )?def (\w+)', source)
+        assert m, route
+        assert "can_generate_images" not in functions[m.group(1)], route
+    vis = Path("static/js/ui_visibility.js").read_text(encoding="utf-8")
+    entry = vis[vis.index("  gallery: _tool({"):]
+    entry = entry[:entry.index("}),")]
+    assert "privilege" not in entry and "feature: 'gallery'" in entry

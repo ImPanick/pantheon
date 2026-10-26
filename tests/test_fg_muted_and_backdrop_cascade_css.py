@@ -681,25 +681,16 @@ def test_muted_text_clears_the_floor_on_fourteen_palettes():
         )
 
 
-def test_the_two_palettes_under_the_floor_are_under_their_own_ceiling():
-    """Naming `cute` and `retrowave` is only honest if the shortfall really is
-    the palette's. Both put full-strength `--fg` under 4.5:1 against `--panel`,
-    so the exception is a ceiling and not a value this row chose badly — and on
-    `cute`, `--fg-muted` clears more contrast than `--fg` does, which is the
-    strongest evidence available that the token is not the weak link.
-    """
+def test_the_two_palettes_under_the_floor_are_the_tokens_now_not_the_palettes():
+    """`B390` (`D-2026-10-26-01` §13) moved the ceiling: `cute` and `retrowave`
+    put full-strength `--fg` over 4.5:1 against `--panel` now, so `--fg-muted`'s
+    shortfall on them is the token's mix, not the palette's limit — `B1486`
+    carries it to the redesign. Until then the two stay named and pinned above,
+    and their own body text is held over the floor here."""
     for name in sorted(_UNDER_FLOOR):
         theme = _themes()[name]
         own = _contrast(_rgb(theme["fg"]), _rgb(theme["panel"]))
-        assert own < FLOOR, (
-            f"{name} now clears {FLOOR}:1 with its own --fg ({own:.2f}); it no "
-            "longer belongs in the B15 exception and --fg-muted should be "
-            "measured against the floor there like everywhere else"
-        )
-    cute = _themes()["cute"]
-    assert _contrast(_muted(cute), _rgb(cute["panel"])) > _contrast(
-        _rgb(cute["fg"]), _rgb(cute["panel"])
-    ), "on cute, --fg-muted should out-contrast the palette's own body text"
+        assert own >= FLOOR, f"{name}'s own --fg fell under {FLOOR}:1 again ({own:.2f})"
 
 
 def test_the_population_compounding_with_opacity_cannot_grow():

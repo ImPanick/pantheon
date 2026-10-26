@@ -936,6 +936,8 @@ function initializeEventListeners() {
     if (typeof updatePlusDot === 'function') updatePlusDot();
     // Clear character/persona
     if (presetsModule && presetsModule.deactivateCharacter) presetsModule.deactivateCharacter();
+    // `B481`, the owner's call (`D-2026-10-26-01` §10): Agent or Chat is the
+    // person's, and a new chat keeps the one they were in — it is not reset.
   }
 
   /** Sync Research indicator button + overflow + tool sidebar active state. */

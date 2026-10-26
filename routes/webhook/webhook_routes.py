@@ -114,9 +114,14 @@ def setup_webhook_routes(
         if not name:
             raise HTTPException(400, "Webhook name is required")
         try:
-            url = validate_webhook_url(url)
+            # `B692`: an admin typed it, so the LAN is allowed — and logged.
+            url = validate_webhook_url(url, allow_lan=True)
         except ValueError as e:
             raise HTTPException(400, str(e))
+        from src.webhook_manager import is_lan_destination
+        if is_lan_destination(url):
+            logger.info("webhook %r points at a LAN address (%s), allowed for an admin (B692)",
+                        name, url.split("?", 1)[0][:200])
         try:
             events = validate_events(events)
         except ValueError as e:

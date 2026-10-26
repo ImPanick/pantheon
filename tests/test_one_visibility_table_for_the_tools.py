@@ -137,7 +137,9 @@ def test_a_privilege_hides_the_rail_twin_too(tmp_path):
         }));
     """)
     assert out["memory"] == [False, False]
-    assert out["gallery"] == [False, False]
+    # `B1195` (`D-2026-10-26-01` §6): *Image generation* takes the AI image
+    # tools, not the Gallery — a person's own images stay theirs to see.
+    assert out["gallery"] == [True, True]
     assert out["says"] == ("Brain is switched off for your account. An admin can turn "
                            "it back on in Settings → Users.")
 
@@ -305,17 +307,17 @@ def test_open_by_name_refuses_a_hidden_tool_in_the_chat(tmp_path):
         globalThis.document = document;
         async function _cmdOpen(args, ctx) %s
         const ctx = { esc: _shippedEsc };
-        V.applyToolVisibility({ privileges: { can_generate_images: false }, auth: true }, document);
-        await _cmdOpen(['gallery'], ctx);
+        V.applyToolVisibility({ privileges: { can_manage_memory: false }, auth: true }, document);
+        await _cmdOpen(['brain'], ctx);
         await _cmdOpen(['documents'], ctx);
         console.log(JSON.stringify({
-          replies, toasts, gallery: nodes['tool-gallery-btn'].clicked, library: nodes['tool-library-btn'].clicked,
+          replies, toasts, brain: nodes['tool-memory-btn'].clicked, library: nodes['tool-library-btn'].clicked,
         }));
     """ % body)
-    assert out["gallery"] == 0
+    assert out["brain"] == 0
     assert out["library"] == 1
     assert out["replies"] == []
-    assert out["toasts"] == ["Gallery is switched off for your account. An admin can turn "
+    assert out["toasts"] == ["Brain is switched off for your account. An admin can turn "
                              "it back on in Settings → Users."]
 
 
@@ -646,7 +648,7 @@ def test_each_switch_names_the_tools_entry_it_hides(tmp_path):
                 "Archived chats are under Chats → manage.",
         "web": "Off hides the Web search button.",
         "filter": "",
-        "images": "Off hides Gallery.",
+        "images": "",   # `B1195`: it takes the AI image tools, not a Tools entry
         "agent": "Off hides the Agent mode button.",
         "browser": "",
     }
@@ -673,6 +675,7 @@ def test_the_users_list_offers_no_revoke_on_the_only_admin_and_a_privileges_butt
             f"import {{ toolsHiddenBy, hidesLine }} from {json.dumps(UI_VIS.as_uri())};",
             js_binding(src, "PRIV_LABELS") + ";",
             js_binding(src, "NON_ADMIN_RETIRED_PRIVS") + ";",
+            js_binding(src, "PRIV_TAKES") + ";",   # `B1195`
             _admin_fn("_hidesLine"),
             "async function loadUsers() " + js_function(src, "async function loadUsers"),
             f"const PAYLOAD = {json.dumps({'users': users})};",

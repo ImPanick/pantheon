@@ -117,7 +117,12 @@ def setup_compare_routes(session_manager: SessionManager):
     # were silently ignored while the call appeared to succeed. Production
     # calls it once, so nothing was broken; two test files that each build a
     # router were not, and the suite's green depended on which ran first.
-    router = APIRouter(prefix="/api/compare", tags=["compare"])
+    # `B1191` (`D-2026-10-26-01` §5): refused, in the door's words, to a person this
+    # Tools entry is switched off for (`src/tool_privileges.py`).
+    from fastapi import Depends as _Depends
+    from src.tool_privileges import tool_privilege as _tool_privilege
+    router = APIRouter(prefix="/api/compare", tags=["compare"],
+                       dependencies=[_Depends(_tool_privilege("can_use_compare"))])
 
 
     # (`B1453`: `POST /start` and `POST /{comp_id}/vote` were here — a

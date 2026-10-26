@@ -229,7 +229,8 @@ def _allowed_models_for_request(request) -> Optional[frozenset[str]]:
     auth_manager = getattr(getattr(request.app, "state", None), "auth_manager", None)
     if not auth_manager:
         return None
-    privs = auth_manager.get_privileges(user) or {}
+    from src.auth_helpers import privileges_or_refuse   # `B531`
+    privs = privileges_or_refuse(auth_manager, user)
     return _allowed_models_from_privileges(privs)
 
 def _enforce_chat_privileges(request, sess) -> None:
@@ -252,7 +253,8 @@ def _enforce_chat_privileges(request, sess) -> None:
     if not auth_manager:
         return
 
-    privs = auth_manager.get_privileges(user) or {}
+    from src.auth_helpers import privileges_or_refuse   # `B531`: refused, never granted
+    privs = privileges_or_refuse(auth_manager, user)
 
     # Explicit "block everything" sentinel takes precedence over the
     # allowlist — it's the only way to distinguish "user clicked [None]"

@@ -401,8 +401,10 @@ def test_a_diagram_left_in_the_other_scheme_would_still_fail_this(palettes, merm
     assert len(dark) == 15, dark
     assert 2.16 <= min(dark.values()) and max(dark.values()) <= 3.45, dark
     under = {n: v for n, v in dark.items() if v < GRAPHIC_MIN}
+    # `retrowave` left this set with `B390` (`D-2026-10-26-01` §13): a darker
+    # panel under the light scheme's ink measures over 3:1.
     assert set(under) == {"claude", "copper", "dark", "forest", "gpt", "ocean",
-                          "retrowave", "ume", "grove", "guild", "channel"}, under
+                          "ume", "grove", "guild", "channel"}, under
 
     # And the text is fine in both directions, which is why the fix is to draw
     # the strokes again rather than to repaint the panel under them.

@@ -513,6 +513,19 @@ async def _auto_summarize_pass(days_back: int = 1, account_id: str | None = None
 
 async def _auto_summarize_pass_single(days_back: int = 1, account_id: str | None = None, max_process: int | None = None, progress_cb=None, away_only: bool = False) -> str:
     """Single pass of the auto-summarize/reply scan for ONE account.
+
+    `B1191`: held for an account whose owner Email is switched off for.
+    """
+    from src.tool_privileges import may_use_tool, paused_sentence
+    if account_id and not may_use_tool(_owner_for_email_account(account_id), "can_use_email"):
+        return paused_sentence("can_use_email")
+    return await _auto_summarize_pass_single_inner(
+        days_back=days_back, account_id=account_id, max_process=max_process,
+        progress_cb=progress_cb, away_only=away_only)
+
+
+async def _auto_summarize_pass_single_inner(days_back: int = 1, account_id: str | None = None, max_process: int | None = None, progress_cb=None, away_only: bool = False) -> str:
+    """Single pass of the auto-summarize/reply scan for ONE account.
     Reads current settings flags."""
     import asyncio
     import sqlite3 as _sql3
@@ -1394,8 +1407,13 @@ def _scheduled_poll_once() -> dict:
         """, (now_iso,)).fetchall()
         conn.close()
 
+        from src.tool_privileges import may_use_tool as _may_use_tool
         for r in rows:
             sid = r[0]
+            # `B1191` (`D-2026-10-26-01` §5): a person's mail waits, pending,
+            # while Email is switched off for them; it goes when it is back on.
+            if r[11] and not _may_use_tool(r[11], "can_use_email"):
+                continue
             try:
                 # Atomically claim this row before doing any work. Two
                 # pollers can race here (the in-process asyncio task and an
@@ -1703,7 +1721,12 @@ async def _inbox_check_pass() -> dict:
 
     accounts = await asyncio.to_thread(_inbox_accounts)
     outcomes = {}
+    from src.tool_privileges import may_use_tool, paused_sentence
     for account in accounts:
+        # `B1191`: not for a person Email is switched off for — held, not dropped.
+        if not may_use_tool(account.get("owner"), "can_use_email"):
+            outcomes[account.get("account_id") or "default"] = paused_sentence("can_use_email")
+            continue
         await wait_for_interactive_quiet("background inbox check")
         try:
             outcomes[account.get("account_id") or "default"] = await _check_inbox(account)

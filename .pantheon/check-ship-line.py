@@ -11,9 +11,9 @@ measurement bug.
 This script is the evidence behind `.pantheon/SHIP-LINE.md`. It does three things
 and it is careful about which of them is judgement:
 
-    .pantheon/ship-line.py            the register, adjudicated
-    .pantheon/ship-line.py --trend    tracked / done / open, per Progress entry
-    .pantheon/ship-line.py --check    the ratchet: no open row is unclassified
+    .pantheon/check-ship-line.py            the register, adjudicated
+    .pantheon/check-ship-line.py --trend    tracked / done / open, per Progress entry
+    .pantheon/check-ship-line.py --check    the ratchet: no open row is unclassified
 
 **The rule in `triage()` is recall-oriented triage, not a classifier.** It reads a
 row's body for the signals that a gate leaves — an auth boundary, a licence
@@ -31,11 +31,10 @@ A row filed tomorrow is therefore *unclassified*, by name, until somebody says
 which it is — which is the mechanism, and it is the only part of this that has to
 survive the person who wrote it.
 
-**This is a proposal and is deliberately not a gate.** `release-gate.py` runs
-`.pantheon/check-*.py`; this file is not named that. Adopting the line is one
-rename — `git mv .pantheon/ship-line.py .pantheon/check-ship-line.py` — after
-which the gate picks it up with no other change, and a line in `ci.yml` puts it in
-CI. Until the owner rules, a red answer here should not stop anybody's merge.
+**It is a gate** (`B451`, the owner's call: `D-2026-10-26-01` §11). It was a
+proposal named `ship-line.py` so that `release-gate.py`, which runs
+`.pantheon/check-*.py`, would not pick it up; the owner accepted § 3's line, and
+adoption was the rename and the `--check` step in `ci.yml`.
 """
 
 from __future__ import annotations

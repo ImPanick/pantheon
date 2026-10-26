@@ -524,14 +524,11 @@ def setup_research_routes(research_handler, session_manager=None) -> APIRouter:
             if tool_owner and tool_owner not in REQUEST_SENTINEL_OWNERS:
                 auth_mgr = getattr(request.app.state, "auth_manager", None)
                 if auth_mgr is not None and getattr(auth_mgr, "is_configured", False):
-                    try:
-                        privs = auth_mgr.get_privileges(tool_owner) or {}
-                        if not privs.get("can_use_research", True):
-                            raise HTTPException(403, "Your account is not allowed to use research.")
-                    except HTTPException:
-                        raise
-                    except Exception:
-                        pass
+                    # `B531`: an unreadable store refuses, never grants.
+                    from src.auth_helpers import privileges_or_refuse
+                    privs = privileges_or_refuse(auth_mgr, tool_owner)
+                    if not privs.get("can_use_research", True):
+                        raise HTTPException(403, "Your account is not allowed to use research.")
                 user = tool_owner
         session_id = f"rp-{uuid.uuid4().hex[:12]}"
 

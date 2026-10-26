@@ -110,11 +110,15 @@ def test_the_computed_foreground_clears_the_floor_on_every_palette(name, pal):
 
 
 def test_the_filled_design_is_the_only_one_offered_and_why():
-    """`D-2026-09-08-01` plus measurement. If `B15` is ever fixed, `outline`
-    and `tinted` clear everywhere and the audit says to offer them — so this
-    case pins today's answer *and* the reason, rather than the number 1."""
+    """`D-2026-09-08-01` plus measurement. `B390` (`D-2026-10-26-01` §13) fixed
+    `B15`'s two palettes, and `outline` clears every palette now — offering a
+    second design is the redesign's call, so this pins today's answer and that
+    the choice exists."""
     designs = CC.button_designs()
     assert CC.OFFERABLE == ("filled",)
+    assert CC.B15_THEMES == set() and CC.BLOCKED_ON_B15 == ()
+    assert min(r["outline"] for r in designs.values()) >= BODY_FLOOR
+    assert {t for t, r in designs.items() if r["tinted"] < BODY_FLOOR} == {"cute", "retrowave"}
     for theme in CC.B15_THEMES:
         assert designs[theme]["filled"] >= BODY_FLOOR, (
             f"filled no longer clears {theme}; B15 would have no fix left")

@@ -219,6 +219,8 @@ _LOCAL_NAMES = frozenset({
     "localhost", "host.docker.internal", "gateway.docker.internal",
     # compose service names — inside the network Pantheon ships with
     "pantheon", "searxng", "chromadb", "chroma", "ntfy", "ollama",
+    # `B1226`: and the workstation's, which were paced as a stranger's.
+    "workstation", "workstation-net", "workstation-vm",
 })
 _LOCAL_SUFFIXES = (".local", ".lan", ".internal", ".localdomain", ".home.arpa")
 
@@ -737,7 +739,18 @@ class OutboundHostLimiter:
         self._persist()
 
     def note_failure(self, host: str, cooldown: float = 5.0) -> None:
-        """A transport-level failure. Slow down, but do not treat it as a ban."""
+        """A transport-level failure. Slow down, but do not treat it as a ban.
+
+        `B1226`, the owner's call (`D-2026-10-26-01` §9): not for a local or
+        private host. The cooldown is politeness toward a third party whose
+        abuse detection scores retries; the operator's own workstation or model
+        server runs none, and a 5 s hold there only made a down machine slower
+        to report (3 s connect cap + 5 s). A host with an explicit policy is
+        the operator's say and keeps it; a local server's 429 still holds it
+        (`note_429`), because that is the server asking."""
+        key = (host or "").lower()
+        if key not in self._policies and host_is_local(key):
+            return
         now = time.monotonic()
         with self._lock:
             self._st(host).next_allowed_at = max(self._st(host).next_allowed_at, now + cooldown)

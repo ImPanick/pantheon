@@ -159,6 +159,15 @@ jobs:
       - name: check-tracker
         run: python3 .pantheon/check-tracker.py
 
+      # `B451`, the owner's call (`D-2026-10-26-01` §11). The ship line is a
+      # gate now: `.pantheon/SHIP-LINE.md` § 7 names which open rows block making
+      # this repository public and usable by a stranger, and this fails when a
+      # row it names no longer exists, when a blocking row has been closed and
+      # the register is stale, or when an open row its triage calls a candidate
+      # appears in neither list — the row filed today is classified today.
+      - name: check-ship-line
+        run: python3 .pantheon/check-ship-line.py --check
+
       # `B430`. The tracker above checks that the roadmap does not lie about
       # itself. This one checks that CI does not. It was written because on
       # 2026-09-17 nothing in this repository could answer "is the pipeline

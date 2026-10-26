@@ -4,7 +4,7 @@
 `.pantheon/SHIP-LINE.md` proposes that fifteen of 234 open rows block making
 this repository public, and that the other 219 stay tracked and stop being gates.
 A proposal is a claim (`Law 9`), so every number in it is computed by
-`.pantheon/ship-line.py` and every number here is computed the same way, from the
+`.pantheon/check-ship-line.py` and every number here is computed the same way, from the
 tracker, rather than restated.
 
 The important test is `test_an_unclassified_candidate_fails_the_check`. Every
@@ -31,7 +31,7 @@ PROPOSAL = ROOT / ".pantheon" / "SHIP-LINE.md"
 
 def _load():
     spec = importlib.util.spec_from_file_location(
-        "_ship_line", ROOT / ".pantheon" / "ship-line.py")
+        "_ship_line", ROOT / ".pantheon" / "check-ship-line.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -399,9 +399,11 @@ def test_the_real_tree_is_green():
     assert sl.check(ROWS, REGISTER) == 0
 
 
-def test_the_proposal_is_not_wired_as_a_gate_yet():
-    """It is a proposal. `release-gate.py` globs `.pantheon/check-*.py`; this
-    file is not named that, and adopting the line is the rename. A red answer
-    must not block anybody's merge before the owner has ruled."""
-    assert not (ROOT / ".pantheon" / "check-ship-line.py").exists()
-    assert (ROOT / ".pantheon" / "ship-line.py").exists()
+def test_the_line_is_a_gate_in_ci():
+    """`B451`, the owner's call (`D-2026-10-26-01` §11). Adopting the line was
+    the rename — `release-gate.py` globs `.pantheon/check-*.py` — and the
+    `--check` step in CI, which is where the gate reads its checker list."""
+    assert (ROOT / ".pantheon" / "check-ship-line.py").exists()
+    assert not (ROOT / ".pantheon" / "ship-line.py").exists()
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "run: python3 .pantheon/check-ship-line.py --check" in ci

@@ -53,3 +53,52 @@ def test_require_privilege_still_blocks_disallowed(monkeypatch):
     req = _request(_Mgr({"do_x": False}))
     with pytest.raises(Exception):
         require_privilege(req, "do_x")
+
+
+class _Broken:
+    def __init__(self):
+        self.calls = 0
+
+    def get_privileges(self, user):
+        self.calls += 1
+        raise OSError("auth.json: unreadable")
+
+
+def test_an_unreadable_privilege_store_refuses_and_says_so_once(monkeypatch, caplog):
+    """`B531`, `D-2026-10-26-01` §1. It used to `return user` from a bare
+    `except` — every privilege-gated route granted while the store could not
+    be read. Now: a 503 in a sentence that says what to do, logged once for
+    the run of failures, and logged again after a success and a new failure."""
+    import logging
+    monkeypatch.setattr(auth_helpers, "require_user", lambda request: "bob")
+    monkeypatch.setattr(auth_helpers, "_privilege_store_failing", False)
+    broken = _Broken()
+    req = _request(broken)
+    caplog.set_level(logging.ERROR, logger="src.auth_helpers")
+    for _ in range(3):
+        with pytest.raises(Exception) as refused:
+            require_privilege(req, "can_use_research")
+        assert refused.value.status_code == 503
+        assert refused.value.detail == auth_helpers.PRIVILEGE_STORE_SENTENCE
+    assert broken.calls == 3
+    assert len([r for r in caplog.records if "privilege store" in r.getMessage()]) == 1
+    assert require_privilege(_request(_Mgr({})), "can_use_research") == "bob"
+    with pytest.raises(Exception):
+        require_privilege(req, "can_use_research")
+    assert len([r for r in caplog.records if "privilege store" in r.getMessage()]) == 2
+
+
+def test_the_research_loopback_refuses_on_an_unreadable_store_too():
+    """The loopback's own check had a bare `except: pass` that granted."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "routes" / "research" / "research_routes.py").read_text()
+    i = src.index('privs.get("can_use_research", True)')
+    window = src[i - 600:i]
+    assert "privileges_or_refuse(auth_mgr, tool_owner)" in window and "except Exception" not in window
+
+
+def test_require_admin_does_not_ask_the_privilege_store():
+    """The way back stays open: an admin's routes ask `is_admin`."""
+    import inspect
+    from core import middleware
+    assert "get_privileges" not in inspect.getsource(middleware.require_admin)

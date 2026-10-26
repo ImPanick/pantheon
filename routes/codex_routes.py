@@ -83,8 +83,19 @@ async def _as_owner(request: Request, owner: str, fn, *args, **kwargs):
             request.state.api_token = orig_api_token
 
 
+def _tool_for(allowed: set[str]):
+    """`B1191`. The Tools entry a Codex action reaches into, by its scopes."""
+    for scopes, key in ((TODO_READ_SCOPES | TODO_WRITE_SCOPES, "can_use_notes"),
+                        (EMAIL_READ_SCOPES | EMAIL_DRAFT_SCOPES | EMAIL_SEND_SCOPES, "can_use_email"),
+                        (CALENDAR_READ_SCOPES | CALENDAR_WRITE_SCOPES, "can_use_calendar")):
+        if allowed <= scopes:
+            return key
+    return None
+
+
 def _scope_owner(request: Request, allowed: set[str]) -> str:
-    """Return the data owner if the caller is allowed for this Codex action."""
+    """Return the data owner if the caller is allowed for this Codex action —
+    and, `B1191`, if the Tools entry it reaches is not switched off for them."""
     if getattr(request.state, "api_token", False):
         scopes = set(getattr(request.state, "api_token_scopes", []) or [])
         if not scopes.intersection(allowed):
@@ -93,8 +104,14 @@ def _scope_owner(request: Request, allowed: set[str]) -> str:
         owner = getattr(request.state, "api_token_owner", None)
         if not owner:
             raise HTTPException(403, "API token has no owner")
-        return owner
-    return require_user(request)
+    else:
+        owner = require_user(request)
+    key = _tool_for(allowed)
+    if key:
+        from src.tool_privileges import may_use_tool, off_sentence
+        if not may_use_tool(owner, key):
+            raise HTTPException(403, off_sentence(key))
+    return owner
 
 
 def _scope_owner_all(request: Request, required: set[str]) -> str:

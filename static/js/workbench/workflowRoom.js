@@ -2069,9 +2069,24 @@ export function mountAutomations(host, opts = {}) {
     return !R.destroyed;
   })();
 
+  /** `B1210`. *New workflow*, with `text` in *Or describe it*: the task
+   *  drafter's offer. Filled, never sent — *Draft it* is the person's press. */
+  function describeIt(text) {
+    if (R.destroyed) return;
+    guardLeave(() => {
+      openNewForm();
+      if (!describeGroup.hidden) {
+        describeBox.value = String(text || '');
+        describeBox.focus();
+      }
+    });
+  }
+  if (opts.describe) ready.then((ok) => { if (ok) describeIt(opts.describe); });
+
   return {
     ready,
     focusChain,
+    describe: (text) => describeIt(text),
     openWorkflow: (id) => openWorkflow(id),
     openRun: (workflowId, runId) => openRunOf(workflowId, runId),
     canClose,

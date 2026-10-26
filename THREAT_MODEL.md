@@ -187,6 +187,8 @@ These are open, acknowledged, and contributor help is welcome. Each one was re-c
 
 ### Closed gaps
 
+- ~~**An admin's webhook could not reach anything the operator runs.**~~ Decided (`B692`, `D-2026-10-26-01` §2). A webhook an admin types may point at the LAN, a tailnet (CGNAT) or an IPv6 ULA — n8n, Home Assistant — and the route logs that it does; loopback, link-local (cloud metadata), multicast and the unspecified address stay refused, and delivery stays pinned to the addresses that were checked, so a name that rebinds to loopback is refused at the socket. The agent's own `webhooks add` keeps the public-only rule, now with CGNAT in it.
+
 - ~~**SSRF via `/api/v1/chat` `base_url`.**~~ Fixed. `routes/webhook/webhook_routes.py:311` passes a token-supplied `base_url` through `src/url_security.py:validate_public_http_url` and returns `400` on rejection. Auto-resolved known-provider URLs and admin-configured LAN endpoints are deliberately still allowed, which is the `Law 17` position — a self-hoster pointing at their own Ollama is the intended case.
 - ~~**`src/search/` partial consolidation.**~~ Fixed. All seven modules under `src/search/` are now shims over `services.search`: `analytics`, `cache`, `content`, `core`, `providers` and `query` alias by `sys.modules` replacement, and `ranking` re-exports. None holds a parallel implementation, so there is nothing left to drift.
 - ~~**Coarse token scopes.**~~ Partly fixed, and what remains is gap 2 above. The claim that tokens carried "either `chat` or `admin` scope" is no longer true; there is no `admin` scope in `ALLOWED_SCOPES` at all.

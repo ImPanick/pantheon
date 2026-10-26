@@ -20,6 +20,7 @@ from src.prompt_security import (
     is_framed_context_content,
     is_untrusted_context_content,
 )
+from src.constants import PANTHEON_USER_AGENT
 from src.rate_limiter import outbound as _outbound
 from src.rate_limiter import parse_retry_after as _retry_after
 from src.rate_limiter import parse_reset_header as _reset_after
@@ -873,34 +874,19 @@ def _host_match(url: str, *domains: str) -> bool:
     return any(host == d or host.endswith("." + d) for d in domains)
 
 
-# Kimi Code subscription keys (api.kimi.com/coding/v1) require a whitelisted
-# coding-agent User-Agent; otherwise the API returns 403 access_terminated_error.
-# Tried in order; first success is cached per base URL for later requests.
-# `P15-07` is open on this list and it is the owner's call, not an agent's.
-# What is written down so the decision is made on facts:
-#   * It fires ONLY on kimi.com with "/coding" in the path (`_is_kimi_code_url`),
-#     which is a subscription endpoint the operator has paid for. It is not a
-#     general-purpose block-evasion path and never touches another provider.
-#   * Moonshot serves that endpoint only to clients naming themselves as one of
-#     a whitelist of coding agents. Pantheon is a coding agent that is not on
-#     the list, so it tries the names that are.
-#   * The first accepted name is cached per base URL, so the rotation runs once
-#     per endpoint and not once per request.
-#   * As of 2026-08-31 the retries are paced through the outbound limiter. That
-#     part needed no decision: six rapid retries at a host that has just refused
-#     you is the shape that escalates, whatever one concludes about the names.
-# The open question is only whether naming ourselves after other vendors'
-# products is acceptable. Do not change this list without answering it.
-KIMI_CODE_USER_AGENTS: tuple[str, ...] = (
-    "claude-code/0.1.0",
-    "claude-code/1.0.0",
-    "KimiCLI/1.0",
-    "Kilo-Code/1.0",
-    "Roo-Code/1.0",
-    "Cursor/1.0",
+# `P15-07`, the owner's call (`D-2026-10-26-01` §7, `D-2026-10-25-03`: nothing
+# evasive). Kimi Code's subscription endpoint (`api.kimi.com/coding/v1`) answers
+# only clients that name themselves as one of the coding agents it lists, and
+# until this ruling Pantheon re-sent a refused request as `claude-code`,
+# `KimiCLI`, `Kilo-Code`, `Roo-Code` and `Cursor` in turn until one got through.
+# It sends one name now — its own, as it does to every endpoint — and when the
+# service refuses that, the person is told so in words, with what to use instead.
+KIMI_CODE_USER_AGENT = PANTHEON_USER_AGENT
+KIMI_CODE_REFUSED = (
+    "Kimi Code refused Pantheon: its coding plan answers only the coding agents it lists, and "
+    "Pantheon sends its own name rather than borrowing another product's. For Kimi models, add a "
+    "Moonshot API key endpoint (https://api.moonshot.ai/v1) instead."
 )
-KIMI_CODE_USER_AGENT = KIMI_CODE_USER_AGENTS[0]
-_kimi_code_ua_cache: dict[str, str] = {}
 
 
 def _is_kimi_code_url(url: str) -> bool:
@@ -910,17 +896,6 @@ def _is_kimi_code_url(url: str) -> bool:
         return "/coding" in (urlparse(url).path or "")
     except Exception:
         return False
-
-
-def _kimi_code_base_key(url: str) -> str:
-    """Normalize a Kimi Code chat/models URL to its OpenAI base (.../coding/v1)."""
-    parsed = urlparse(url)
-    path = (parsed.path or "").rstrip("/")
-    for suffix in ("/chat/completions", "/models", "/completions"):
-        if path.endswith(suffix):
-            path = path[: -len(suffix)]
-    path = path.rstrip("/") or "/coding/v1"
-    return f"{parsed.scheme}://{parsed.netloc}{path}"
 
 
 def _is_kimi_code_access_denied(status: int, body: bytes | str) -> bool:
@@ -935,154 +910,43 @@ def _is_kimi_code_access_denied(status: int, body: bytes | str) -> bool:
     )
 
 
-def _kimi_code_ua_candidates(url: str) -> list[str]:
-    if not _is_kimi_code_url(url):
-        return []
-    base_key = _kimi_code_base_key(url)
-    cached = _kimi_code_ua_cache.get(base_key)
-    if cached:
-        return [cached] + [ua for ua in KIMI_CODE_USER_AGENTS if ua != cached]
-    return list(KIMI_CODE_USER_AGENTS)
-
-
-def _remember_kimi_code_user_agent(url: str, user_agent: str) -> None:
-    _kimi_code_ua_cache[_kimi_code_base_key(url)] = user_agent
-
-
 def apply_kimi_code_headers(headers: Optional[Dict], url: str) -> Dict[str, str]:
-    """Pick a Kimi Code User-Agent (cached probe when possible)."""
+    """Pantheon's own User-Agent on a Kimi Code request (`P15-07`)."""
     h = dict(headers or {})
-    if not _is_kimi_code_url(url):
-        return h
-    base_key = _kimi_code_base_key(url)
-    cached = _kimi_code_ua_cache.get(base_key)
-    if cached:
-        h["User-Agent"] = cached
-        return h
-    models_url = base_key.rstrip("/") + "/models"
-    from src.tls_overrides import llm_verify
-    for ua in KIMI_CODE_USER_AGENTS:
-        trial = dict(h)
-        trial["User-Agent"] = ua
-        try:
-            r = httpx.get(models_url, headers=trial, timeout=8, verify=llm_verify())
-        except Exception:
-            continue
-        if _is_kimi_code_access_denied(r.status_code, r.content):
-            logger.debug("Kimi Code rejected User-Agent %s (403), trying next", ua)
-            continue
-        if r.status_code < 400:
-            _remember_kimi_code_user_agent(url, ua)
-            h["User-Agent"] = ua
-            return h
-        break
-    h.setdefault("User-Agent", KIMI_CODE_USER_AGENT)
+    if _is_kimi_code_url(url):
+        h["User-Agent"] = KIMI_CODE_USER_AGENT
     return h
 
 
 async def apply_kimi_code_headers_async(client, headers: Optional[Dict], url: str) -> Dict[str, str]:
-    """Pick a Kimi Code User-Agent without blocking the event loop."""
-    h = dict(headers or {})
-    if not _is_kimi_code_url(url):
-        return h
-    base_key = _kimi_code_base_key(url)
-    cached = _kimi_code_ua_cache.get(base_key)
-    if cached:
-        h["User-Agent"] = cached
-        return h
-    models_url = base_key.rstrip("/") + "/models"
-    for ua in KIMI_CODE_USER_AGENTS:
-        trial = dict(h)
-        trial["User-Agent"] = ua
-        try:
-            r = await client.get(models_url, headers=trial, timeout=8)
-        except Exception:
-            continue
-        if _is_kimi_code_access_denied(r.status_code, r.content):
-            logger.debug("Kimi Code rejected User-Agent %s (403), trying next", ua)
-            continue
-        if r.status_code < 400:
-            _remember_kimi_code_user_agent(url, ua)
-            h["User-Agent"] = ua
-            return h
-        break
-    h.setdefault("User-Agent", KIMI_CODE_USER_AGENT)
-    return h
+    """The same, for the streaming path; nothing to ask first any more."""
+    return apply_kimi_code_headers(headers, url)
 
 
-def _kimi_pace(url: str) -> None:
-    """Space the identifier retries out (`P15-07`, 2026-08-31).
-
-    This loop re-sends the same request under a different client name after a
-    403, up to six times, and it used to do so **back to back with no delay**.
-    Whatever one concludes about the identifiers themselves — that question is
-    the owner's and is open on `P15-07` — six rapid retries against a host that
-    has just refused you is the request shape abuse detection is built to score,
-    and pacing it is correct under either answer.
-    """
-    from src.rate_limiter import outbound
-
-    try:
-        outbound.acquire("api.kimi.com", authenticated=True)
-    except Exception:
-        # Never let politeness break a model call; the pacing is best-effort.
-        pass
+def _kimi_says_so(url: str, r):
+    """A Kimi Code refusal of Pantheon's name, as a response whose message is
+    the sentence a person reads (`KIMI_CODE_REFUSED`); any other answer as it
+    came. Logged once per run of refusals."""
+    if not _is_kimi_code_url(url) or not _is_kimi_code_access_denied(r.status_code, r.content):
+        return r
+    from src.log_once import log_once
+    log_once(logger, logging.WARNING, "kimi-code-refused", "%s", KIMI_CODE_REFUSED)
+    return httpx.Response(
+        403, json={"error": {"message": KIMI_CODE_REFUSED, "type": "access_terminated_error"}},
+        request=getattr(r, "request", None) or httpx.Request("POST", url))
 
 
 def httpx_get_kimi_aware(url: str, headers: Optional[Dict], **kwargs):
-    h = apply_kimi_code_headers(headers, url)
-    if not _is_kimi_code_url(url):
-        return httpx.get(url, headers=h, **kwargs)
-    last = None
-    for ua in _kimi_code_ua_candidates(url):
-        trial = dict(h)
-        trial["User-Agent"] = ua
-        _kimi_pace(url)
-        last = httpx.get(url, headers=trial, **kwargs)
-        if not _is_kimi_code_access_denied(last.status_code, last.content):
-            if last.status_code < 400:
-                _remember_kimi_code_user_agent(url, ua)
-            return last
-    return last
+    return _kimi_says_so(url, httpx.get(url, headers=apply_kimi_code_headers(headers, url), **kwargs))
 
 
 def httpx_post_kimi_aware(url: str, headers: Optional[Dict], **kwargs):
-    h = apply_kimi_code_headers(headers, url)
-    if not _is_kimi_code_url(url):
-        return httpx.post(url, headers=h, **kwargs)
-    last = None
-    for ua in _kimi_code_ua_candidates(url):
-        trial = dict(h)
-        trial["User-Agent"] = ua
-        _kimi_pace(url)
-        last = httpx.post(url, headers=trial, **kwargs)
-        if not _is_kimi_code_access_denied(last.status_code, last.content):
-            if last.status_code < 400:
-                _remember_kimi_code_user_agent(url, ua)
-            return last
-    return last
+    return _kimi_says_so(url, httpx.post(url, headers=apply_kimi_code_headers(headers, url), **kwargs))
 
 
 async def httpx_post_kimi_aware_async(client, url: str, headers: Optional[Dict], **kwargs):
-    h = await apply_kimi_code_headers_async(client, headers, url)
-    if not _is_kimi_code_url(url):
-        return await client.post(url, headers=h, **kwargs)
-    last = None
-    for ua in _kimi_code_ua_candidates(url):
-        trial = dict(h)
-        trial["User-Agent"] = ua
-        try:
-            from src.rate_limiter import outbound as _ob
-
-            await _ob.acquire_async("api.kimi.com", authenticated=True)
-        except Exception:
-            pass
-        last = await client.post(url, headers=trial, **kwargs)
-        if not _is_kimi_code_access_denied(last.status_code, last.content):
-            if last.status_code < 400:
-                _remember_kimi_code_user_agent(url, ua)
-            return last
-    return last
+    r = await client.post(url, headers=apply_kimi_code_headers(headers, url), **kwargs)
+    return _kimi_says_so(url, r)
 
 
 def _detect_provider(url: str) -> str:
@@ -1598,6 +1462,8 @@ def _format_upstream_error(status: int, body: bytes | str, url: str) -> str:
             body = body.decode("utf-8", errors="replace")
         except Exception:
             body = str(body)
+    if _is_kimi_code_url(url) and _is_kimi_code_access_denied(status, body):
+        return KIMI_CODE_REFUSED   # `P15-07`
     provider = _provider_label(url)
     # Try to pull a message out of the body
     detail = ""

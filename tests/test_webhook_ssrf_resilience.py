@@ -126,3 +126,53 @@ async def test_webhook_delivery_uses_naive_utc_timestamps(monkeypatch):
     assert db.updates[0]["last_status_code"] == 204
     assert db.committed is True
     assert db.closed is True
+
+
+# ── `B692`, `D-2026-10-26-01` §2: an admin's webhook may point into the LAN ──
+
+@pytest.mark.parametrize("url", [
+    "http://192.168.1.10:5678/webhook/abc",      # n8n on the LAN
+    "http://10.0.0.5:8123/api/webhook/x",        # Home Assistant
+    "http://100.101.102.103/hook",               # a tailnet (CGNAT)
+    "http://[fd12:3456::1]/hook",                # IPv6 ULA
+])
+def test_an_admin_may_point_a_webhook_into_the_lan(url):
+    assert validate_webhook_url(url, allow_lan=True) == url
+    with pytest.raises(ValueError) as e:
+        validate_webhook_url(url)
+    assert "private/internal addresses" in str(e.value), "the agent's own path still refuses it"
+
+
+@pytest.mark.parametrize("url", [
+    "http://127.0.0.1/", "http://[::1]/", "http://[::]/", "http://0.0.0.0/",
+    "http://169.254.169.254/latest/meta-data/", "http://[::ffff:169.254.169.254]/",
+    "http://[fe80::1]/", "http://224.0.0.1/", "http://localhost:8080/",
+    "http://metadata.google.internal/", "http://metadata/",
+])
+def test_loopback_link_local_and_metadata_stay_refused_for_an_admin(url):
+    with pytest.raises(ValueError) as e:
+        validate_webhook_url(url, allow_lan=True)
+    assert "loopback, link-local or cloud-metadata" in str(e.value)
+
+
+def test_a_lan_name_is_resolved_and_pinned_like_any_other(monkeypatch):
+    import ipaddress
+    import src.webhook_manager as wm
+    monkeypatch.setattr(wm, "_resolve_hostname_ips", lambda h: [ipaddress.ip_address("192.168.1.20")])
+    assert validate_webhook_url("http://n8n.lan/hook", allow_lan=True) == "http://n8n.lan/hook"
+    assert wm._validated_public_ips("http://n8n.lan/hook", allow_lan=True) == [
+        ipaddress.ip_address("192.168.1.20")]
+    assert wm.is_lan_destination("http://n8n.lan/hook") is True
+    # A name that rebinds to loopback is refused at delivery, LAN or not.
+    monkeypatch.setattr(wm, "_resolve_hostname_ips", lambda h: [ipaddress.ip_address("127.0.0.1")])
+    with pytest.raises(ValueError):
+        wm._validated_public_ips("http://n8n.lan/hook", allow_lan=True)
+
+
+def test_the_admin_route_allows_it_and_the_agent_tool_does_not():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    route = (root / "routes" / "webhook" / "webhook_routes.py").read_text()
+    tool = (root / "src" / "agent_tools" / "admin_tools.py").read_text()
+    assert "validate_webhook_url(url, allow_lan=True)" in route and "is_lan_destination(url)" in route
+    assert "validate_webhook_url(url)" in tool and "allow_lan" not in tool

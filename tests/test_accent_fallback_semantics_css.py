@@ -566,8 +566,10 @@ def test_every_token_named_in_an_accent_fallback_exists():
 # gain a member without a failure, and the number of declarations sheltering
 # under the exception cannot go up.
 
+# `B390` (`D-2026-10-26-01` §13) darkened `retrowave`'s surfaces, and its
+# accent on the new `--panel` clears — so it left this set.
 _ACCENT_TEXT_UNDER_FLOOR = {
-    "light", "paper", "retrowave", "organs", "lavender", "claude", "cute",
+    "light", "paper", "organs", "lavender", "claude", "cute",
 }
 
 
@@ -601,7 +603,7 @@ def test_full_strength_accent_text_clears_the_floor_on_nine_palettes():
         "a palette leaving it means P1-08 has work it can retire."
     )
     clears = {n: r for n, r in measured.items() if n not in under}
-    assert len(clears) == 16, f"expected sixteen palettes above the floor, got {sorted(clears)}"
+    assert len(clears) == 17, f"expected seventeen palettes above the floor, got {sorted(clears)}"
 
 
 def test_the_population_under_the_contrast_exception_cannot_grow():
