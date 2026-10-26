@@ -305,6 +305,14 @@ def require_privilege(request: Request, key: str) -> str:
     user = require_user(request)
     auth_mgr = getattr(request.app.state, "auth_manager", None)
     if auth_mgr is None:
+        # `B1271`, measured: no request to the product reaches this. `app.py`
+        # sets `app.state.auth_manager` at import, before it mounts a route
+        # (`tests/test_the_anonymous_branches_are_gone_or_named.py` asks the
+        # booted app). What does reach it is a test that mounts one router on
+        # a bare `FastAPI()` — dozens do, and they are its only callers. A
+        # manager that cannot answer is refused (`privileges_or_refuse`); an
+        # app with none is a harness, and `require_user` has still asked for
+        # a person.
         return user
     privs = privileges_or_refuse(auth_mgr, user)
     # Declared key -> stored value, else the registry's declared default.
@@ -316,10 +324,19 @@ def require_privilege(request: Request, key: str) -> str:
 
 def owner_filter(query, model_cls, user: str, *, include_shared: bool = True):
     """Filter `query` so only rows owned by `user` (and optionally null-owner
-    'shared' rows) come through. No-op when `user` is empty (single-user
-    mode). Returns the modified query."""
+    'shared' rows) come through. Returns the modified query.
+
+    `B1271`. With no `user` this was a no-op — every row, everyone's — the
+    single-user / auth-off answer. No request reaches it now: `require_user`
+    answers a person or refuses (`D-2026-10-07-02` §2). Its one caller that
+    can act for no person is `src/task_scheduler.py`, passing
+    `task.owner or None` for a task the owner sweep
+    (`core.database._migrate_assign_legacy_owner`) has not reached yet; such a
+    task now reads the shared rows — webhook_routes' rule for a token with no
+    owner — and never another person's private endpoint and its key."""
     if not user:
-        return query
+        return query.filter(model_cls.owner == None) if include_shared \
+            else query.filter(False)  # noqa: E711
     if include_shared:
         return query.filter((model_cls.owner == user) | (model_cls.owner == None))  # noqa: E711
     return query.filter(model_cls.owner == user)

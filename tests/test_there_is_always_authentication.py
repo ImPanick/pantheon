@@ -359,11 +359,11 @@ def test_before_the_first_account_nobody_has_an_admins_tasks(monkeypatch, tmp_pa
     as an admin until the first account existed, so an install that had run
     without a sign-in kept running its owner-less shell, SSH and serve tasks, and
     a task webhook could start one. Nobody is an admin before setup now, as
-    `owner_is_admin_or_single_user` already answered."""
+    `owner_is_admin` already answered."""
     import core.auth
     from core.auth import AuthManager
     from src.task_action_policy import owner_has_admin_task_privileges
-    from src.tool_security import owner_is_admin_or_single_user
+    from src.tool_security import owner_is_admin
     for name, raw in EVERY_OLD_DOOR.items():
         monkeypatch.setenv(name, raw)
     blank = AuthManager(auth_path=str(tmp_path / "auth.json"))
@@ -371,7 +371,7 @@ def test_before_the_first_account_nobody_has_an_admins_tasks(monkeypatch, tmp_pa
     assert blank.is_configured is False
     for owner in (None, "", ADMIN, "internal-tool-ish"):
         assert owner_has_admin_task_privileges(owner) is False, owner
-        assert owner_is_admin_or_single_user(owner) is False, owner
+        assert owner_is_admin(owner) is False, owner
 
 
 def test_require_admin_wants_an_admin(every_door_open):
@@ -436,15 +436,15 @@ def test_the_agent_policies_answer_nobody_no(every_door_open):
     from src import workstation_access
     from src.owner_identity import DEFAULT_LOCAL_OWNER, effective_storage_owner
     from src.task_action_policy import owner_has_admin_task_privileges
-    from src.tool_security import blocked_tools_for_owner, owner_is_admin_or_single_user
-    assert owner_is_admin_or_single_user(None) is False
+    from src.tool_security import blocked_tools_for_owner, owner_is_admin
+    assert owner_is_admin(None) is False
     assert blocked_tools_for_owner(None) != set()
     assert owner_has_admin_task_privileges(None) is False
     assert workstation_access.may_use(None) is False
     assert effective_storage_owner(None) is None
     assert effective_storage_owner(DEFAULT_LOCAL_OWNER) == DEFAULT_LOCAL_OWNER
     # And the admin is still the admin.
-    assert owner_is_admin_or_single_user(ADMIN) is True
+    assert owner_is_admin(ADMIN) is True
     assert blocked_tools_for_owner(ADMIN) == set()
     assert owner_has_admin_task_privileges(ADMIN) is True
-    assert owner_is_admin_or_single_user(MEMBER) is False
+    assert owner_is_admin(MEMBER) is False

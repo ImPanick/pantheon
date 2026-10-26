@@ -30,7 +30,7 @@ Four populations, derived:
      `_verify_session_owner` the same way.
 
   C  a ratchet on admin decisions made some OTHER way — `is_admin(...)` and
-     `owner_is_admin_or_single_user(...)` called directly. `require_admin` is
+     `owner_is_admin(...)` called directly. `require_admin` is
      one gate with many call sites; these are the separate implementations.
      `routes/auth_routes.py` held 22 of them — the entire user-administration
      surface, invisible to any audit that greps for `require_admin` — until
@@ -128,12 +128,12 @@ AUTH_NAMES = frozenset({
     "require_user", "require_authenticated_request", "require_privilege",
     "require_admin", "_require_admin", "owner_filter",
     "storage_owner_for_request", "require_api_token_scope",
-    "require_chat_api_token_scope", "owner_is_admin_or_single_user",
+    "require_chat_api_token_scope", "owner_is_admin",
     "is_admin", "_verify_session_owner",
 })
 
 #: The other ways this codebase answers "is this person an admin".
-OTHER_GATE_NAMES = frozenset({"is_admin", "owner_is_admin_or_single_user"})
+OTHER_GATE_NAMES = frozenset({"is_admin", "owner_is_admin"})
 
 HTTP_METHODS = frozenset({
     "get", "post", "put", "delete", "patch", "head", "options", "websocket",

@@ -563,15 +563,17 @@ export function applyToolVisibility(patch = {}, doc = (typeof document !== 'unde
   return _hidden;
 }
 
-/** May the person signed in see the admin's Settings? The status's answer
- *  when someone is signed in. Nobody signed in once `/api/auth/status` has
- *  answered (`window._isAdmin` set, to `false`) is an install with auth off,
- *  whose one operator the server's `require_admin` lets in — the owner. Not
- *  answered yet: not shown, until it says. */
+/** May the person signed in see the admin's Settings? The status's answer —
+ *  the applier's copy, or `window._isAdmin` where only that was set. Not
+ *  answered yet: not shown, until it says.
+ *
+ *  `B1271`. `window._isAdmin` set to `false` used to answer *yes*: a status
+ *  that named nobody was an install with auth off, whose one operator the
+ *  server let in. There is no such install (`D-2026-10-07-02` §2), so `false`
+ *  means what it says. */
 export function viewerIsAdmin() {
   if (_state.isAdmin !== null) return _state.isAdmin;
-  const said = typeof window !== 'undefined' ? window._isAdmin : undefined;
-  return said !== undefined;
+  return typeof window !== 'undefined' && window._isAdmin === true;
 }
 
 /** A read-only view of what is known, for the Settings rows that explain a

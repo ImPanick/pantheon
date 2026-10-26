@@ -117,11 +117,13 @@ def test_visible_image_endpoint_for_base_allows_shared_or_own(monkeypatch):
     assert ep.base_url == URL
 
 
-def test_image_endpoint_owner_filter_is_noop_in_single_user_mode(monkeypatch):
+def test_with_no_owner_only_a_shared_endpoint_is_visible(monkeypatch):
+    """`B1271`: "no owner" was single-user mode and saw every endpoint. There
+    is no such mode (`D-2026-10-07-02` §2); no owner sees the shared rows and
+    never another person's private endpoint."""
     _patch_model(monkeypatch)
-    rows = [_ep(URL, "bob")]
 
-    ep = gallery_routes._visible_image_endpoint_for_base(_DB(rows), URL, None)
-
-    assert ep is not None
-    assert ep.owner == "bob"
+    assert gallery_routes._visible_image_endpoint_for_base(
+        _DB([_ep(URL, "bob")]), URL, None) is None
+    ep = gallery_routes._visible_image_endpoint_for_base(_DB([_ep(URL, None)]), URL, None)
+    assert ep is not None and ep.owner is None

@@ -52,7 +52,7 @@ def ws():
 def admin(monkeypatch):
     """Pass the public-tool gate so file tools dispatch in tests."""
     monkeypatch.setattr(
-        "src.tool_execution.owner_is_admin_or_single_user", lambda owner: True
+        "src.tool_execution.owner_is_admin", lambda owner: True
     )
 
 
@@ -439,12 +439,12 @@ def test_browse_is_admin_gated(monkeypatch):
     browse = next(r.endpoint for r in router.routes if r.path == "/api/workspace/browse")
 
     monkeypatch.setattr(wr, "get_current_user", lambda req: "bob")
-    monkeypatch.setattr(wr, "owner_is_admin_or_single_user", lambda owner: False)
+    monkeypatch.setattr(wr, "owner_is_admin", lambda owner: False)
     with pytest.raises(HTTPException) as ei:
         browse(request=object(), path="/")
     assert ei.value.status_code == 403
 
-    monkeypatch.setattr(wr, "owner_is_admin_or_single_user", lambda owner: True)
+    monkeypatch.setattr(wr, "owner_is_admin", lambda owner: True)
     out = browse(request=object(), path=os.path.expanduser("~"))
     assert "dirs" in out and "path" in out
     assert all("name" in d and "path" in d for d in out["dirs"])
@@ -490,7 +490,7 @@ def test_browse_marks_root_unselectable_and_vet_endpoint(monkeypatch):
     vet = next(r.endpoint for r in router.routes if r.path == "/api/workspace/vet")
 
     monkeypatch.setattr(wr, "get_current_user", lambda req: "admin")
-    monkeypatch.setattr(wr, "owner_is_admin_or_single_user", lambda owner: True)
+    monkeypatch.setattr(wr, "owner_is_admin", lambda owner: True)
 
     out = browse(request=object(), path="/")
     assert out["selectable"] is False
@@ -502,7 +502,7 @@ def test_browse_marks_root_unselectable_and_vet_endpoint(monkeypatch):
     assert vet(request=object(), path="~") == {"ok": True, "path": home}
 
     from fastapi import HTTPException
-    monkeypatch.setattr(wr, "owner_is_admin_or_single_user", lambda owner: False)
+    monkeypatch.setattr(wr, "owner_is_admin", lambda owner: False)
     with pytest.raises(HTTPException) as ei:
         vet(request=object(), path="/tmp")
     assert ei.value.status_code == 403
@@ -522,13 +522,13 @@ def test_request_workspace_gate(ws, monkeypatch):
     monkeypatch.setattr(te, "vet_workspace", lambda p: vet_calls.append(p) or real_vet(p))
 
     import src.tool_security as ts
-    monkeypatch.setattr(ts, "owner_is_admin_or_single_user", lambda owner: False)
+    monkeypatch.setattr(ts, "owner_is_admin", lambda owner: False)
     # Valid and invalid paths are indistinguishable for a non-admin: both
     # drop silently, and the path never reaches the filesystem.
     assert cr._resolve_request_workspace(object(), ws) == ("", "")
     assert cr._resolve_request_workspace(object(), "/nonexistent/xyz") == ("", "")
     assert vet_calls == []
 
-    monkeypatch.setattr(ts, "owner_is_admin_or_single_user", lambda owner: True)
+    monkeypatch.setattr(ts, "owner_is_admin", lambda owner: True)
     assert cr._resolve_request_workspace(object(), ws) == (os.path.realpath(ws), "")
     assert cr._resolve_request_workspace(object(), "/nonexistent/xyz") == ("", "/nonexistent/xyz")

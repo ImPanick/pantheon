@@ -145,7 +145,7 @@ def test_a_tool_switched_off_for_everyone_is_refused(chat, monkeypatch):
 
 
 def test_a_person_who_is_not_an_admin_is_refused(chat, monkeypatch):
-    monkeypatch.setattr("src.tool_execution.owner_is_admin_or_single_user", lambda owner: False)
+    monkeypatch.setattr("src.tool_execution.owner_is_admin", lambda owner: False)
     out = _step(_call({"channel": "#general", "text": "hi"}), owner="bob")
     assert out.status == "error" and "restricted to admin users" in out.text
     assert chat.session.calls == []

@@ -86,7 +86,7 @@ def tools_see(monkeypatch, auth):
     """The tool layer asks `may_use` without the route's auth manager; point the
     one it builds at this file's, so the agent and the routes ask one question."""
     monkeypatch.setattr(core.auth, "AuthManager", lambda *a, **k: auth)
-    monkeypatch.setattr(tool_security, "owner_is_admin_or_single_user",
+    monkeypatch.setattr(tool_security, "owner_is_admin",
                         lambda owner: owner == ADMIN)
 
 

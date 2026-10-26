@@ -31,9 +31,10 @@ most recently edited in the library's default sort and printed "edited just
 now" under each — a reorganisation reported as twenty edits.
 
 **Owner scope.** Every query here is scoped to one owner, the same strict
-equality `_owner_session_filter` applies to the library. `EVERY_OWNER` is the
-routes' single-user / auth-off mode and nothing else passes it; the agent tool
-refuses before calling in when it has no owner, as its other actions already do.
+equality `_owner_session_filter` applies to the library; no owner matches
+nothing. (`B1271`: `EVERY_OWNER`, the routes' auth-off mode, went when auth-off
+did, `D-2026-10-07-02` §2.) The agent tool refuses before calling in when it
+has no owner, as its other actions already do.
 Another person's document is "not found" — the routes' wording, so a refusal
 says nothing about whether the thing exists.
 """
@@ -69,16 +70,6 @@ REMOVE_DELETE = "delete"
 REMOVE_CHOICES = (REMOVE_MOVE_UP, REMOVE_DELETE)
 
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
-
-
-class _EveryOwner:
-    """Single-user / auth-off mode: every row, like `_owner_session_filter`."""
-
-    def __repr__(self) -> str:  # pragma: no cover - debugging aid
-        return "EVERY_OWNER"
-
-
-EVERY_OWNER = _EveryOwner()
 
 
 class FolderError(Exception):
@@ -179,15 +170,9 @@ def _sort_key(path: str):
 # ── queries ──────────────────────────────────────────────────────────────────
 
 def _scoped(query, model, owner):
-    if owner is EVERY_OWNER:
-        return query
     if not owner:
         return query.filter(false())
     return query.filter(model.owner == owner)
-
-
-def _row_owner(owner) -> Optional[str]:
-    return None if owner is EVERY_OWNER else owner
 
 
 def _in_subtree(column, root: str):
@@ -247,7 +232,7 @@ def _ensure_rows(db, owner, path: str) -> List[str]:
         found = (_scoped(db.query(DocumentFolder.id), DocumentFolder, owner)
                  .filter(DocumentFolder.path == step).first())
         if found is None:
-            db.add(DocumentFolder(id=str(uuid.uuid4()), owner=_row_owner(owner), path=step))
+            db.add(DocumentFolder(id=str(uuid.uuid4()), owner=owner, path=step))
             db.flush()
             made.append(step)
     return made
@@ -932,7 +917,7 @@ def discard_plan(plan_id: str, db=None) -> None:
 
 
 def _answerable_by(plan: FolderPlan, owner: Any) -> bool:
-    return plan.review is not None and (owner is EVERY_OWNER or plan.owner == owner)
+    return plan.review is not None and bool(owner) and plan.owner == owner
 
 
 def waiting_review(plan_id: Any, owner: Any) -> Optional[FolderPlan]:
@@ -954,9 +939,8 @@ def waiting_reviews(owner: Any) -> List[FolderPlan]:
     from core.database import DocumentPlan
 
     def find(d):
-        q = _live_plans(d, utcnow_naive()).filter(DocumentPlan.review.isnot(None))
-        if owner is not EVERY_OWNER:
-            q = q.filter(DocumentPlan.owner == owner)
+        q = (_live_plans(d, utcnow_naive()).filter(DocumentPlan.review.isnot(None))
+             .filter(DocumentPlan.owner == owner))
         plans = [_plan_from_row(r) for r in q.order_by(DocumentPlan.created_at).all()]
         return [p for p in plans if _answerable_by(p, owner)]
     return _read_plans(find)

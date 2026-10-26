@@ -1219,10 +1219,10 @@ def test_presetup_does_not_grant_admin_tools_when_auth_enabled(monkeypatch):
 
     from src.tool_security import (
         blocked_tools_for_owner,
-        owner_is_admin_or_single_user,
+        owner_is_admin,
     )
 
-    assert owner_is_admin_or_single_user(None) is False
+    assert owner_is_admin(None) is False
     blocked = blocked_tools_for_owner(None)
     assert "bash" in blocked
     assert "python" in blocked
@@ -1246,10 +1246,10 @@ def test_auth_enabled_false_no_longer_grants_nobody_the_tools_before_setup(monke
 
     from src.tool_security import (
         blocked_tools_for_owner,
-        owner_is_admin_or_single_user,
+        owner_is_admin,
     )
 
-    assert owner_is_admin_or_single_user(None) is False
+    assert owner_is_admin(None) is False
     assert {"bash", "python"} <= blocked_tools_for_owner(None)
 
 
@@ -1271,13 +1271,13 @@ def test_auth_enabled_false_after_setup_asks_who_the_owner_is(monkeypatch):
 
     from src.tool_security import (
         blocked_tools_for_owner,
-        owner_is_admin_or_single_user,
+        owner_is_admin,
     )
 
-    assert owner_is_admin_or_single_user(None) is False
-    assert owner_is_admin_or_single_user("bob") is False
+    assert owner_is_admin(None) is False
+    assert owner_is_admin("bob") is False
     assert {"bash", "python"} <= blocked_tools_for_owner(None)
-    assert owner_is_admin_or_single_user("operator") is True
+    assert owner_is_admin("operator") is True
     assert blocked_tools_for_owner("operator") == set()
 
 

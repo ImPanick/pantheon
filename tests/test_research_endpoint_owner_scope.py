@@ -124,12 +124,16 @@ def test_fallback_returns_none_when_only_others_endpoints():
     assert _resolve(rows, "alice") is None
 
 
-# --- legacy single-user / unresolved owner: owner_filter no-op ---------------
+# --- no owner: the shared rows, never someone's private one (`B1271`) --------
 
-def test_null_owner_is_legacy_single_user_noop():
-    rows = [_ep("ep-x", "bob"), _ep("ep-y", "alice")]
-    ep = _resolve(rows, None, "ep-x")
-    assert ep is not None and ep.id == "ep-x"
+def test_no_owner_reads_only_shared_endpoints():
+    """This was "legacy single-user: owner_filter no-op" and resolved bob's
+    private endpoint for nobody. There is no single-user mode now
+    (`D-2026-10-07-02` §2)."""
+    rows = [_ep("ep-x", "bob"), _ep("ep-y", "alice"), _ep("ep-z", None)]
+    assert _resolve(rows, None, "ep-x") is None
+    ep = _resolve(rows, None, "ep-z")
+    assert ep is not None and ep.id == "ep-z"
 
 
 def test_runtime_resolution_uses_provider_auth_for_chatgpt_subscription(monkeypatch):

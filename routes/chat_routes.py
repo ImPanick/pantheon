@@ -896,8 +896,8 @@ def _resolve_request_workspace(request, raw_value) -> tuple:
     requested = (raw_value or "").strip()
     if not requested:
         return "", ""
-    from src.tool_security import owner_is_admin_or_single_user
-    if not owner_is_admin_or_single_user(get_current_user(request)):
+    from src.tool_security import owner_is_admin
+    if not owner_is_admin(get_current_user(request)):
         return "", ""
     from src.tool_execution import vet_workspace
     workspace = vet_workspace(requested) or ""
@@ -964,8 +964,8 @@ def _resolve_workspace_from_message_path(request, message: str) -> tuple[str, st
         # reach. Not bound, and not a reason to promote the turn.
         return "", ""
 
-    from src.tool_security import owner_is_admin_or_single_user
-    if not owner_is_admin_or_single_user(get_current_user(request)):
+    from src.tool_security import owner_is_admin
+    if not owner_is_admin(get_current_user(request)):
         return "", ""
 
     from src.tool_execution import vet_workspace

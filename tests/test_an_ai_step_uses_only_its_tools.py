@@ -342,7 +342,7 @@ def test_a_tool_switched_off_for_everyone_is_not_offered(monkeypatch, chat_mcp, 
 def test_a_person_who_is_not_an_admin_is_offered_what_their_agent_reaches(monkeypatch, chat_mcp):
     from src.tool_security import NON_ADMIN_BLOCKED_TOOLS
     from src.workflow_effects import ai_tool_choices
-    monkeypatch.setattr("src.tool_security.owner_is_admin_or_single_user", lambda owner: False)
+    monkeypatch.setattr("src.tool_security.owner_is_admin", lambda owner: False)
     names = {c["name"] for c in ai_tool_choices("bob")}
     assert "web_search" in names
     assert "bash" not in names and not (names & set(NON_ADMIN_BLOCKED_TOOLS))

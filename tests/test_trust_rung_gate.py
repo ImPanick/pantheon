@@ -131,7 +131,7 @@ def _drive_agent_loop(monkeypatch, *, rung, rounds, session_id, executed,
         live = agent_loop.execute_tool_block.__globals__
 
         monkeypatch.setitem(live, "_execute_tool_block_impl", fake_impl)
-        # `_owner_is_admin` resolves through `owner_is_admin_or_single_user`,
+        # `_owner_is_admin` resolves through `owner_is_admin`,
         # which reads `AUTH_ENABLED` and constructs an `AuthManager` —
         # process-wide state another file can leave configured. Pinned for the
         # same reason: this file measures the replay, not the admin policy.

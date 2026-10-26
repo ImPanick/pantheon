@@ -55,13 +55,13 @@ def counted(monkeypatch, tmp_path):
 
 def _ask_every_check():
     from src.task_action_policy import owner_has_admin_task_privileges
-    from src.tool_security import owner_is_admin_or_single_user
+    from src.tool_security import owner_is_admin
     from src.workstation_access import may_use
 
     answers = []
     for _ in range(5):
         answers.append((owner_has_admin_task_privileges("ada"), owner_has_admin_task_privileges("bo"),
-                        owner_is_admin_or_single_user("ada"), owner_is_admin_or_single_user("bo"),
+                        owner_is_admin("ada"), owner_is_admin("bo"),
                         may_use("ada")))
     return answers
 

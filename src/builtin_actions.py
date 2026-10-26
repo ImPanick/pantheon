@@ -1054,11 +1054,11 @@ async def action_tidy_research(owner: str, **kwargs) -> Tuple[str, bool]:
     try:
         from pathlib import Path
         import json as _json
-        from src.tool_security import owner_is_admin_or_single_user
+        from src.tool_security import owner_is_admin
         research_dir = Path(DEEP_RESEARCH_DIR)
         if not research_dir.exists():
             raise TaskNoop("no research directory")
-        if not owner_is_admin_or_single_user(owner):
+        if not owner_is_admin(owner):
             # Return before the glob rather than filtering inside the loop: the
             # loop reports "none broken" off an empty `removed`, which reaches
             # Activity as a false report to a user whose files it skipped, and a

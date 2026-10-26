@@ -469,7 +469,7 @@ async def run_case(manifest, case: Dict[str, Any], *, factory, data_dir: str,
     # the privileges of whoever hires it (the hire form names what a run
     # will lack, `P24-13`).
     for mod in list(sys.modules.values()):
-        for fname in ("_owner_is_admin", "owner_is_admin_or_single_user", "owner_has_admin_task_privileges"):
+        for fname in ("_owner_is_admin", "owner_is_admin", "owner_has_admin_task_privileges"):
             fn = getattr(mod, fname, None)
             if callable(fn) and getattr(mod, "__name__", "").startswith(("src.", "routes.", "core.")):
                 p.set(mod, fname, (lambda real: lambda o, *a, **k: o == EVAL_OWNER or real(o, *a, **k))(fn))

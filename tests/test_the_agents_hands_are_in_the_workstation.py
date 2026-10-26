@@ -67,7 +67,7 @@ _USERS: Dict[str, Dict[str, Any]] = {
 
 class _Auth:
     """`core.auth.AuthManager`, answering for `_USERS` — the real
-    `owner_is_admin_or_single_user`, `may_use` and `resolve_privilege` run on top."""
+    `owner_is_admin`, `may_use` and `resolve_privilege` run on top."""
 
     is_configured = True
 

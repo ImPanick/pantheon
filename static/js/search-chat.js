@@ -348,7 +348,7 @@ function _settingsEntries(q) {
   let panels = [];
   try {
     panels = searchSettingsPanels(q, {
-      isAdmin: viewerIsAdmin(),   // `P23-03`: auth off counts as the owner
+      isAdmin: viewerIsAdmin(),   // `P23-03`: the status's answer (`B1271`)
       controlText: modal ? controlTextFor(modal) : {},
     });
   } catch (_) { panels = []; }

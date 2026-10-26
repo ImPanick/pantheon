@@ -60,11 +60,14 @@ class PlanAnswer(BaseModel):
 
 
 def _scope(user: Optional[str]):
-    """The owner every query is scoped to — `_owner_session_filter`'s rule."""
+    """The owner every query is scoped to — `_owner_session_filter`'s rule.
+
+    `B1271`: `""` was the auth-off answer and meant every owner
+    (`document_folders.EVERY_OWNER`); `require_user` answers a person or
+    refuses now (`D-2026-10-07-02` §2), so no request reaches it, and the
+    sentinel went with the branch (`Law 13`)."""
     if user:
         return user
-    if user == "":
-        return folders.EVERY_OWNER
     raise HTTPException(403, "Authentication required")
 
 
