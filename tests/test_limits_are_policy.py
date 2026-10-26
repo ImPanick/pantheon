@@ -372,13 +372,17 @@ def test_the_two_declared_upload_rate_limits_agree(tmp_path):
     `SecurityConfig`'s fields — `app.py` hands `config` to
     `setup_search_routes`, which never looks at it — so 60 is the only one of
     the two that has ever executed, and 5 was an unreachable declaration.
+
+    `B550` removed the mirror with the rest of `src/config.py`'s 36 unread
+    fields, so there are no longer two to agree: the handler's is the only
+    declaration, and it is still 60.
     """
-    from src.config import config
+    import src.config as config_module
     from src.upload_handler import UploadHandler
     handler = UploadHandler(base_dir=str(tmp_path), upload_dir=str(tmp_path / "up"))
-    assert config.security.upload_rate_limit == handler.upload_rate_limit == 60
-    assert config.security.upload_rate_window == handler.upload_rate_window
-    assert config.security.max_concurrent_uploads == handler.max_concurrent_uploads
+    assert handler.upload_rate_limit == 60
+    assert not hasattr(config_module, "SecurityConfig")
+    assert not hasattr(config_module, "config")
 
 
 def test_the_agent_may_read_the_auth_throttles_and_may_not_write_them(store):

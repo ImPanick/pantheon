@@ -42,7 +42,9 @@ async def _request_values(request: Request) -> Dict[str, Any]:
     return values
 
 
-def setup_search_routes(config) -> APIRouter:
+def setup_search_routes() -> APIRouter:
+    # `B550`: took `config` (src/config.py's `AppConfig`) and referenced it zero
+    # times; the object is gone and so is the parameter.
     router = APIRouter(tags=["search"])
 
     @router.get("/api/search/config")

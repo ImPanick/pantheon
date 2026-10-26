@@ -494,7 +494,7 @@ def _search_client(monkeypatch, recorder):
 
     monkeypatch.setattr(sr, "_call_provider", recorder, raising=False)
     app = FastAPI()
-    app.include_router(sr.setup_search_routes(None))
+    app.include_router(sr.setup_search_routes())  # `B550`: no `config` parameter
     return TestClient(app)
 
 

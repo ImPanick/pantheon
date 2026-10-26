@@ -898,7 +898,9 @@ else:
     )
 
 # ========= IMPORT CONFIG =========
-from src.config import config
+# `B550`: imported for its one effect — the data directories exist — now that
+# the `config` object it used to export (36 fields nothing read) is gone.
+import src.config  # noqa: F401
 
 # ========= COMPONENT INITIALIZATION =========
 from src.app_initializer import initialize_managers
@@ -1031,7 +1033,7 @@ app.include_router(setup_history_routes(session_manager, upload_handler=upload_h
 
 # Search
 from routes.search.search_routes import setup_search_routes
-app.include_router(setup_search_routes(config))
+app.include_router(setup_search_routes())
 
 # Presets
 from routes.preset_routes import setup_preset_routes
