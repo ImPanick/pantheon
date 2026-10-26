@@ -393,7 +393,7 @@ jobs:
       # exists, every route in the fifteen files carries the gate the source
       # actually gives it, and a route the map calls unintended has to name a
       # `Bxxx`. Rule C is a ratchet on admin decisions taken WITHOUT
-      # `require_admin` — `is_admin(...)` and `owner_is_admin_or_single_user(...)`
+      # `require_admin` — `is_admin(...)` and `owner_is_admin(...)`
       # called directly. `B543` moved `routes/auth_routes.py`'s 21 hand-rolled
       # gates and the shell's own `_require_admin` onto it. It may fall as the
       # rest move onto P11-02's roles; it may not rise.
