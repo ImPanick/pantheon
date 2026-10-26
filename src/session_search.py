@@ -415,3 +415,56 @@ def search_session_messages(
     finally:
         if owns_db:
             db.close()
+
+
+def search_session_titles(
+    query: str,
+    limit: int = 8,
+    owner: str | None = None,
+    restrict_owner: bool = True,
+    include_legacy_owner: bool = True,
+    hidden_names: Iterable[str] = (),
+    db=None,
+) -> list[dict[str, Any]]:
+    """`B1249`. The chats whose **name** holds every word typed, newest first.
+
+    The message search above reads `chat_messages` only, so a chat named by
+    hand or by the auto-namer was found only through a word that happened to be
+    in one of its messages: Ctrl+K *What the survey says* — the chat's own
+    title — answered nothing. The browser's list is a page (`list_page`), so
+    the title lane is asked of the database, where every chat is, with the
+    message search's own rules: the caller's own chats (``owner``, as
+    `search_session_messages` scopes them), never an archived one or an SFT
+    batch, never a name the sidebar hides (``hidden_names``).
+
+    Each word is a case-insensitive substring of the name (``LIKE``, escaped),
+    all of them required, so *survey what* finds it too.
+    """
+    words = [w for w in re.split(r"\s+", (query or "").strip()) if w]
+    if not words:
+        return []
+    limit = max(1, min(int(limit or 8), 50))
+    owns_db = db is None
+    if owns_db:
+        db = SessionLocal()
+    try:
+        from sqlalchemy import func
+
+        recency = func.coalesce(DBSession.last_message_at, DBSession.updated_at, DBSession.created_at)
+        q = db.query(DBSession.id, DBSession.name, recency.label("active"))
+        for word in words:
+            q = q.filter(DBSession.name.ilike(f"%{_escape_like(word)}%", escape="\\"))
+        q = q.filter(DBSession.archived == False)  # noqa: E712
+        q = q.filter(~DBSession.name.like("SFT trace batch%"))
+        hidden = [n for n in hidden_names if n]
+        if hidden:
+            q = q.filter(func.trim(func.coalesce(DBSession.name, "")).notin_(hidden))
+        if restrict_owner:
+            q = _owner_filter(q, owner, include_legacy_owner)
+        rows = q.order_by(recency.desc(), DBSession.id).limit(limit).all()
+        return [{"session_id": sid, "session_name": name or "Untitled",
+                 "last_active": active.isoformat() if hasattr(active, "isoformat") else (active or None)}
+                for sid, name, active in rows]
+    finally:
+        if owns_db:
+            db.close()

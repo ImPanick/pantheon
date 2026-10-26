@@ -238,13 +238,16 @@ export function answer(query, spec) { answers.set(query, spec); }
 globalThis.fetch = async (url) => {
   const u = String(url);
   globalThis.__fetches.push(u);
-  const m = u.match(/\/api\/search\?q=([^&]*)&limit=(\d+)$/);
+  // `B1249`: the palette asks for the chats found by name too (`&chats=1`)
+  // and is answered `{ chats, results }`; `/find` still asks for the list.
+  const m = u.match(/\/api\/search\?q=([^&]*)&limit=(\d+)(&chats=1)?$/);
   if (m) {
     const spec = answers.get(decodeURIComponent(m[1])) || { status: 200, body: [] };
     if (spec.gate) await spec.gate;
     if (spec.throws) throw new Error(spec.throws);
+    const body = m[3] && spec.status < 400 ? { chats: spec.chats || [], results: spec.body } : spec.body;
     return { ok: spec.status < 400, status: spec.status, statusText: spec.statusText || '',
-             json: async () => spec.body };
+             json: async () => body };
   }
   return { ok: true, status: 200, json: async () => ({}) };
 };
@@ -816,7 +819,8 @@ def test_the_chats_still_come_from_the_same_request_and_open_the_same_way(box):
     """)
     assert out["early"] == []
     found = out["found"]
-    assert [u for u in found["fetches"] if "/api/search" in u] == ["/api/search?q=invoice&limit=20"]
+    # `B1249`: the same request, asking for the chats found by name as well.
+    assert [u for u in found["fetches"] if "/api/search" in u] == ["/api/search?q=invoice&limit=20&chats=1"]
     chats = _chats(found["groups"])
     assert [g["label"] for g in chats] == ["Accounts", "Travel"]
     assert [o["session"] for o in chats[0]["options"]] == ["s1", "s1"]

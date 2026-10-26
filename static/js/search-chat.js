@@ -25,7 +25,8 @@
 //   * Commands — the slash catalogue the composer's autocomplete shows
 //     (`slashCatalog()`); chosen commands are **put in the message box**, never
 //     run from here (see `_fillComposer`).
-//   * Chats — `/api/search`, exactly as before (see `_searchChats`).
+//   * Chats — `/api/search`, as before (see `_searchChats`), and since `B1249`
+//     the chats whose *name* holds the words (`chats=1`), drawn first.
 //
 // **The palette changes nothing itself.** It opens windows through their own
 // doors, opens Settings through `settingsModule.open`, and hands commands to
@@ -60,7 +61,7 @@ let debounceTimer = null;
 // dropped instead of drawn over the newer one — the old handler drew whichever
 // answer arrived last.
 let _chatSeq = 0;
-let _chat = { query: '', state: 'idle', results: [], error: '' };
+let _chat = { query: '', state: 'idle', results: [], chats: [], error: '' };
 
 let _options = [];      // [{ el, entry }] in listbox order
 let _active = -1;       // index into _options, mirrored by aria-activedescendant
@@ -159,7 +160,7 @@ export function isOpen() {
 function _reset() {
   if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
   _chatSeq += 1;
-  _chat = { query: '', state: 'idle', results: [], error: '' };
+  _chat = { query: '', state: 'idle', results: [], chats: [], error: '' };
   _options = [];
   _active = -1;
 }
@@ -407,6 +408,28 @@ export function commandGroups(query) {
 
 // ── the chats ───────────────────────────────────────────────────────────────
 
+/**
+ * `B1249`. The chats found by their name, as one group above the message hits.
+ * The message search reads only what was said in a chat, so its own title —
+ * the name a person or the auto-namer gave it — found nothing: Ctrl+K *What
+ * the survey says* answered no rows. Asked of the server (`chats=1`), not
+ * filtered from the sidebar's list, because that list is one page of chats.
+ */
+function _titleEntries(chats) {
+  return (Array.isArray(chats) ? chats : []).map((c) => {
+    const sid = String((c && c.session_id) || '');
+    return {
+      kind: 'chat', title: true,
+      key: 'chat-title:' + sid,
+      label: (c && c.session_name) || 'Untitled chat',
+      sessionId: sid,
+      timestamp: c && c.last_active,
+      run: () => (sessionModule && sessionModule.selectSession
+        ? sessionModule.selectSession(sid) : undefined),
+    };
+  }).filter((e) => e.sessionId);
+}
+
 function _chatGroups(results) {
   const groups = [];
   const bySession = new Map();
@@ -447,15 +470,18 @@ function _searchChats(query) {
     debounceTimer = null;
     let next;
     try {
-      const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(query)}&limit=20`);
+      const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(query)}&limit=20&chats=1`);
       if (!res.ok) {
-        next = { state: 'error', results: [], error: `${res.status}${res.statusText ? ' ' + res.statusText : ''}` };
+        next = { state: 'error', results: [], chats: [], error: `${res.status}${res.statusText ? ' ' + res.statusText : ''}` };
       } else {
         const data = await res.json();
-        next = { state: 'done', results: Array.isArray(data) ? data : ((data && data.results) || []), error: '' };
+        // A plain list is what a server from before `B1249` answers.
+        next = Array.isArray(data)
+          ? { state: 'done', results: data, chats: [], error: '' }
+          : { state: 'done', results: (data && data.results) || [], chats: (data && data.chats) || [], error: '' };
       }
     } catch (err) {
-      next = { state: 'error', results: [], error: (err && err.message) || 'no answer' };
+      next = { state: 'error', results: [], chats: [], error: (err && err.message) || 'no answer' };
     }
     if (seq !== _chatSeq || !isOpen()) return;
     _chat = { query, ...next };
@@ -514,7 +540,23 @@ function _optionNode(entry, query) {
   row.setAttribute('role', 'option');
   row.setAttribute('aria-selected', 'false');
   row.dataset.paletteKind = entry.kind;
-  if (entry.kind === 'chat') {
+  if (entry.kind === 'chat' && entry.title) {
+    // `B1249`: a chat by its name — the name, the words found marked, and when
+    // it was last used.
+    row.className = 'search-result-item search-palette-row';
+    row.dataset.session = entry.sessionId;
+    const label = document.createElement('span');
+    label.className = 'search-palette-label';
+    _highlight(label, entry.label, query);
+    row.appendChild(label);
+    const when = formatTimestamp(entry.timestamp);
+    if (when) {
+      const detail = document.createElement('span');
+      detail.className = 'search-palette-detail';
+      detail.textContent = when;
+      row.appendChild(detail);
+    }
+  } else if (entry.kind === 'chat') {
     row.className = 'search-result-item';
     row.dataset.session = entry.sessionId;
     const who = document.createElement('div');
@@ -582,7 +624,15 @@ function _draw() {
       frag.appendChild(_groupNode(group.label, group.entries, ''));
     }
     if (_chat.query === query && _chat.state === 'done') {
-      for (const group of _chatGroups(_chat.results)) {
+      // `B1249`: a chat found by its name first, and not again below under
+      // its message hits — each of them opens the same chat.
+      const named = _titleEntries(_chat.chats);
+      if (named.length) frag.appendChild(_groupNode('Chats', named, query));
+      const shown = new Set(named.map((e) => e.sessionId));
+      const said = shown.size
+        ? _chat.results.filter((r) => !shown.has(String((r && r.session_id) || '')))
+        : _chat.results;
+      for (const group of _chatGroups(said)) {
         frag.appendChild(_groupNode(group.label, group.entries, query));
       }
     }
@@ -665,8 +715,33 @@ function _activate(entry, how) {
   }
   // Hand focus back unless what just opened took it.
   const now = document.activeElement;
-  if (!now || now === document.body || _inside(now, el('search-overlay'))) _returnFocusHome();
+  if (!now || now === document.body || _inside(now, el('search-overlay'))) _focusAfterChoice(entry);
   else _returnFocus = null;
+}
+
+/**
+ * `B1204` (CHAT-U-25). Where the focus goes once a choice is made. Back where
+ * it was — the message box, a window's control — as Escape takes it, except
+ * to one of the two Search doors: the door's work is done, and focused by the
+ * keyboard's Enter the sidebar's *Search* row stayed lit (`:focus-visible`)
+ * beside the chat the palette had just opened, a highlight for a place the
+ * person had left. A chat goes on in its message box (not on a phone, where
+ * focusing it would push the keyboard up unasked); anything else keeps the
+ * focus it took, or none.
+ */
+function _focusAfterChoice(entry) {
+  const back = _returnFocus;
+  if (!back || !_SEARCH_DOORS.includes(back.id)) { _returnFocusHome(); return; }
+  _returnFocus = null;
+  if (entry && entry.kind === 'chat' && (window.innerWidth || 0) >= 768) {
+    const box = el('message');
+    if (box && typeof box.focus === 'function') { try { box.focus(); } catch (_) { /* gone */ } }
+    return;
+  }
+  // Off the door, whatever else happens: a focused door is a lit door.
+  if (document.activeElement === back && typeof back.blur === 'function') {
+    try { back.blur(); } catch (_) { /* gone */ }
+  }
 }
 
 /**
@@ -728,8 +803,8 @@ function handleInput(e) {
   if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
   _chatSeq += 1;
   _chat = query
-    ? { query, state: 'pending', results: [], error: '' }
-    : { query: '', state: 'idle', results: [], error: '' };
+    ? { query, state: 'pending', results: [], chats: [], error: '' }
+    : { query: '', state: 'idle', results: [], chats: [], error: '' };
   _draw();
   if (query) _searchChats(query);
 }

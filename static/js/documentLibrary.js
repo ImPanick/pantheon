@@ -2500,6 +2500,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
         if (ico) ico.innerHTML = hdr.svg;
         if (txt) txt.textContent = hdr.label;
       }
+      _lightLibraryRow(tab);
       if (tab === 'chats') _renderLibChats();
       else if (tab === 'archive') _renderLibArchive();
       else if (tab === 'research') _renderLibResearch();
@@ -4229,9 +4230,9 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     // Toggle active on tool button. The sidebar row that opens this modal is
     // #tool-library-btn (app.js wires it → sessionModule.openLibrary(), which
     // delegates straight back here); modalManager's _AUTO_WIRE, ui_visibility,
-    // keyboard-shortcuts and slashCommands all name the same id.
-    const btn = document.getElementById('tool-library-btn');
-    if (btn) btn.classList.add('active');
+    // keyboard-shortcuts and slashCommands all name the same id. `B1204`: lit
+    // for the tab the window opened on, as `_switchLibTab` keeps it.
+    _lightLibraryRow(_activeLibTab);
 
     // `B1275`. Deep Research switched off: no Research tab or panel (removed
     // after the wiring above, which finds them by id, as Documents' below).
@@ -4249,6 +4250,20 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     }
     libraryFetch(false);
     if (window.innerWidth >= 768) searchInput.focus();
+  }
+
+  /** `B1204` (CHAT-U-25). The sidebar's Library row is lit while this window
+   *  shows what that row opens — documents. *manage* (under Chats) opens the
+   *  window on Chats, `/open archive` on the Archive and Deep Research on its
+   *  reports, and the Library row lit beside each said the documents were
+   *  what was open: a highlight for a door nobody pressed. */
+  export function libraryRowLit(tab) {
+    return tab === 'documents';
+  }
+
+  function _lightLibraryRow(tab) {
+    const row = document.getElementById('tool-library-btn');
+    if (row) row.classList.toggle('active', libraryRowLit(tab));
   }
 
   export function closeLibrary() {

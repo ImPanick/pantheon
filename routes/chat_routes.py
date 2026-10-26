@@ -49,7 +49,7 @@ from src.foreground_model_routing import (
     build_foreground_route_descriptors,
     resolve_foreground_model_policy,
 )
-from src.session_search import search_session_messages
+from src.session_search import search_session_messages, search_session_titles
 from src.prompt_security import untrusted_context_message
 from core.exceptions import SessionNotFoundError
 from src.auth_helpers import (
@@ -4007,12 +4007,19 @@ def setup_chat_routes(
         request: Request,
         q: str = Query("", min_length=0),
         limit: int = Query(20, ge=1, le=100),
-    ) -> List[Dict[str, Any]]:
+        chats: bool = Query(False),
+    ) -> Any:
+        """The messages that hold ``q`` — a list, as `/find` reads it.
+
+        `B1249`. With ``chats=1`` (the Ctrl+K palette) the answer is
+        ``{"chats": [...], "results": [...]}``: the chats whose *name* holds the
+        words as well, which the message search never looked at, so a chat could
+        not be found by its own title."""
         if not q or not q.strip():
-            return []
+            return {"chats": [], "results": []} if chats else []
 
         _user = effective_user(request)
-        return [
+        results = [
             result.to_dict()
             for result in search_session_messages(
                 q,
@@ -4022,6 +4029,19 @@ def setup_chat_routes(
                 include_legacy_owner=False,
             )
         ]
+        if not chats:
+            return results
+        from routes.session_routes import _HIDDEN_SYSTEM_SESSION_NAMES
+        return {
+            "chats": search_session_titles(
+                q,
+                owner=_user,
+                restrict_owner=_user is not None,
+                include_legacy_owner=False,
+                hidden_names=("Nobody", "Incognito", *_HIDDEN_SYSTEM_SESSION_NAMES),
+            ),
+            "results": results,
+        }
 
     # ------------------------------------------------------------------ #
     # POST /api/rewrite — lightweight rewrite of last AI message (no tools)
