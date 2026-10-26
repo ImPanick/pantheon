@@ -488,7 +488,10 @@ def test_the_javascript_uses_are_recorded_but_not_this_rows_work():
                 if depth == 0:
                     found.append(text[match.start():pos + 1])
                     break
-    assert len(found) == 13, f"expected 13 --fg-muted uses outside the sheet, found {len(found)}"
+    # `B1524` deleted the admin API-token form, and with it `admin.js`'s one
+    # use — a read-scope pill's `var(--fg-muted,#888)`: twelve now, two of them
+    # with a fallback (`settings.js`, `emailLibrary.js`).
+    assert len(found) == 12, f"expected 12 --fg-muted uses outside the sheet, found {len(found)}"
     bare = [e for e in found if e == "var(--fg-muted)"]
     assert len(bare) == 10, f"expected 10 of them bare, found {len(bare)}"
     # Nothing under `static/js/theme.js` may declare it — that is the mirror
