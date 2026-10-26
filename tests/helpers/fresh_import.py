@@ -65,7 +65,7 @@ def drop_for_fresh_import(monkeypatch, *names):
 
 
 # `B1180`. What `app.py`'s body installs in other modules as it runs, through
-# its seven module-level `set_*` calls: `(module, global)` pairs, each put back
+# its module-level `set_*` calls: `(module, global)` pairs, each put back
 # by `import_app_in_this_test`. Held equal to those calls by
 # `tests/test_importing_the_app_in_a_test_leaves_nothing_behind.py`, so an
 # eighth setter is a red test rather than a new leak.
@@ -78,9 +78,7 @@ APP_INSTALLS = {
                                ("core.models", "_SESSION_MANAGER_INSTANCE")),
     "set_ai_memory_manager": (("src.ai_interaction", "_memory_manager"),
                               ("src.ai_interaction", "_memory_vector")),
-    "set_ai_rag_manager": (("src.ai_interaction", "_rag_manager"),
-                           ("src.ai_interaction", "_personal_docs_manager")),
-}
+}  # `B1545` removed `set_ai_rag_manager`: it installed a copy nothing read.
 
 
 def import_app_in_this_test(monkeypatch):

@@ -43,8 +43,10 @@ MAX_PIPELINE_STEPS = 10
 _session_manager = None
 _memory_manager = None
 _memory_vector = None
-_rag_manager = None
-_personal_docs_manager = None
+# `B1545`: no `_rag_manager` / `_personal_docs_manager` here. `set_rag_manager`
+# stored the boot-time manager and nothing in this module (or any other) read
+# it; after `B1532` it was a stale second copy of `rag_singleton.rag_instance`,
+# which is where a reader asks.
 
 
 def set_session_manager(mgr):
@@ -64,12 +66,6 @@ def set_memory_manager(mgr, vector=None):
     global _memory_manager, _memory_vector
     _memory_manager = mgr
     _memory_vector = vector
-
-
-def set_rag_manager(rag_mgr, personal_docs_mgr=None):
-    global _rag_manager, _personal_docs_manager
-    _rag_manager = rag_mgr
-    _personal_docs_manager = personal_docs_mgr
 
 
 # ---------------------------------------------------------------------------
