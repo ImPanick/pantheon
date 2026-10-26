@@ -316,7 +316,9 @@ export function createTaskSource(opts = {}) {
     for (const e of entries) {
       const key = e && e.task_id != null ? String(e.task_id) : '';
       if (!key || plans.has(key)) continue;
-      plans.set(key, { steps: e.steps, declined: e.declined, when: e.when, depth: e.depth });
+      // `B1066`: `dry` is the server's verdict for the step (`describes`,
+      // `shows-input`, `cannot`, or null), read by the canvas instead of a sentence.
+      plans.set(key, { steps: e.steps, declined: e.declined, when: e.when, depth: e.depth, dry: e.dry || null });
     }
     return { ok: true, plans, partial: !chain, head: String(id) };
   }

@@ -1509,11 +1509,18 @@ def plan_dry_chain(head, rows, *, head_steps, head_declined=None,
     `dry_run_declined`'s sentence (and then no steps), or None — a paused step
     is planned, and its plan says a real run would not start it (`B1036`).
     A successor with no row (deleted) ends that branch, as it does in a run.
+
+    `B1066`: and `dry`, `action_dry_verdict`'s word for the step (`None` for
+    one that is not an action), so a reader marks the two actions a dry run
+    cannot describe from the verdict, not by finding a sentence in `steps`.
     """
+    from src.builtin_actions import action_dry_verdict
+
     by_id = {row.id: row for row in rows}
     name_of = name_of or (lambda task: task.name)
     out = [{"task_id": head.id, "name": name_of(head), "when": None, "depth": 0,
-            "steps": list(head_steps or []), "declined": head_declined}]
+            "steps": list(head_steps or []), "declined": head_declined,
+            "dry": action_dry_verdict(head.task_type, head.action)}]
     seen = {head.id}
     frontier = [head]
     depth = 0
@@ -1533,7 +1540,8 @@ def plan_dry_chain(head, rows, *, head_steps, head_declined=None,
                     for line in dry_run_lines(row)]
                 out.append({"task_id": row.id, "name": name_of(row),
                             "when": edge["when"], "depth": depth,
-                            "steps": steps, "declined": declined})
+                            "steps": steps, "declined": declined,
+                            "dry": action_dry_verdict(row.task_type, row.action)})
         frontier = following
     return out
 

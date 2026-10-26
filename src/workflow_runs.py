@@ -372,11 +372,20 @@ def dry_node_entries(db, run_id: str, graph: dict | None = None) -> list:
     `nodes` key of `POST /api/tasks/{id}/run?dry=true` on a workflow task:
     `{node_id, kind, name, when, depth, steps, declined}`, and `task_id` on a
     Run task step when `graph` (the document the plan was made from) is given
-    — a step record keeps the plan, not the step's settings."""
+    — a step record keeps the plan, not the step's settings.
+
+    `B1066`: `dry` on every entry — `action_dry_verdict`'s word for an Action
+    step, read off `graph`, and `None` for any other step (or with no
+    document) — as wave B's `chain` entries carry it."""
+    from src.builtin_actions import action_dry_verdict
+
     targets = {}
+    verdicts = {}
     for node in (graph or {}).get("nodes") or ():
+        config = node.get("config") or {}
         if node.get("kind") == "run_task":
-            targets[str(node.get("id"))] = (node.get("config") or {}).get("task_id")
+            targets[str(node.get("id"))] = config.get("task_id")
+        verdicts[str(node.get("id"))] = action_dry_verdict(node.get("kind"), config.get("action"))
     out = []
     for rec in run_node_records(db, run_id):
         if not rec.dry:
@@ -390,6 +399,7 @@ def dry_node_entries(db, run_id: str, graph: dict | None = None) -> list:
             "depth": rec.depth if rec.depth is not None else 0,
             "steps": steps if isinstance(steps, list) else [],
             "declined": rec.error,
+            "dry": verdicts.get(rec.node_id),
         }
         if rec.node_id in targets:
             entry["task_id"] = targets[rec.node_id]

@@ -3893,6 +3893,22 @@ DRY_UNCOVERABLE_ACTIONS = frozenset(
 )
 
 
+def action_dry_verdict(task_type: str | None, action: str | None) -> str | None:
+    """`B1066`. What a dry run can say of this step: one of `DRY_VERDICTS`, or
+    `None` for a step that is not a built-in action (or an action this build
+    does not have). The verdict `dry_run_plan` writes its words from, served on
+    every plan entry as `dry` so the canvas reads the verdict, not the
+    sentence: it found *"A dry run cannot tell you what this would change"* in
+    the plan's text, so rewording that sentence made a step silently say what
+    the action would run instead (`Law 7`, `Law 10`)."""
+    if (task_type or "llm") != "action":
+        return None
+    meta = BUILTIN_ACTION_META.get(action or "")
+    if not meta:
+        return None
+    return meta.get("dry") or DRY_DESCRIBES
+
+
 def action_effect_sentences(action: str | None) -> list:
     """What the real run of this action would do, in a person's words."""
     meta = BUILTIN_ACTION_META.get(action or "") or {}
@@ -3928,7 +3944,7 @@ def dry_run_plan(*, task_type: str | None, action: str | None,
         if not meta:
             return [f"Would run the action {action!r}, which this build does not "
                     f"have. A real run would record 'Unknown action'."]
-        verdict = meta.get("dry") or DRY_DESCRIBES
+        verdict = action_dry_verdict(kind, action)
         lines.append(f"Would run: {action} — {meta.get('description') or ''}".rstrip(" —"))
         if owner:
             lines.append(f"As: {owner}")

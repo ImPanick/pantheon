@@ -49,7 +49,8 @@ _REAL_DATABASE_ATTRS = {
     "TaskRun": TaskRun,
 }
 
-ENTRY_KEYS = {"task_id", "name", "when", "depth", "steps", "declined"}
+# `B1066`: `dry` added (the step's dry-run verdict), nothing renamed.
+ENTRY_KEYS = {"task_id", "name", "when", "depth", "steps", "declined", "dry"}
 
 
 @pytest.fixture()

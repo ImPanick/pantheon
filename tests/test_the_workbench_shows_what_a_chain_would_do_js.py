@@ -40,7 +40,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from src.builtin_actions import dry_run_plan  # noqa: E402
+from src.builtin_actions import action_dry_verdict, dry_run_plan  # noqa: E402
 from src.task_scheduler import DRY_RUN_HEADLINE  # noqa: E402
 from test_tool_effect_surfaces_js import _make_sandbox, _run  # noqa: E402
 from test_the_workbench_canvas_js import _SHIM as _CANVAS_SHIM, _UP  # noqa: E402
@@ -114,6 +114,11 @@ def _reply():
          "declined": None},
         {"task_id": "D", "name": "Audit skills", "when": "success", "depth": 2, "steps": _plan("D"), "declined": None},
     ]
+    # `B1066`: each entry carries the server's dry-run verdict for its step,
+    # from the real `action_dry_verdict` (`plan_dry_chain` serves it).
+    for entry in chain:
+        t = _BY_ID[entry["task_id"]]
+        entry["dry"] = action_dry_verdict(t["task_type"], t["action"])
     return {"ok": True, "dry": True, "message": "Dry run — planned, nothing executed", "run_id": "r1",
             "run": run, "chain": chain}
 

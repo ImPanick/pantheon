@@ -1133,6 +1133,8 @@ export function createWorkflowSource({
       plans.set(String(e.node_id), {
         steps: Array.isArray(e.steps) ? e.steps : [], declined: e.declined || null,
         when: e.when || null, depth: Number(e.depth) || 0,
+        // `B1066`: the server's dry-run verdict for the step, as a chain's.
+        dry: e.dry || null,
       });
     }
     return {

@@ -124,13 +124,16 @@ const PLAN_W = 320;
 /** The mark beside a step's line in a plan, by what the plan says of it. */
 const PLAN_MARKS = { planned: '→', cannot: '?', declined: '⊘', aside: '–' };
 /**
- * The sentence `dry_run_plan` (`src/builtin_actions.py`) writes for the two
- * actions a dry run cannot describe (`DRY_UNCOVERABLE_ACTIONS`). The plan is
- * lines of text and says which actions those are in no other way, so the
- * canvas finds the sentence to put it on the step; filed for a structured
- * field on the wire so this stops being read off words.
+ * `B1066`. What a step says when the plan's verdict for it is `cannot`
+ * (`DRY_CANNOT`: the two actions a dry run cannot describe,
+ * `DRY_UNCOVERABLE_ACTIONS`). The verdict is served on each plan entry as
+ * `dry` (`action_dry_verdict`); this was found by matching `dry_run_plan`'s
+ * sentence in the plan's lines, so rewording it there made those steps say
+ * what the action would run instead. The plan box still shows the server's
+ * whole explanation.
  */
-const CANNOT_SAY = 'A dry run cannot tell you what this would change';
+const DRY_CANNOT = 'cannot';
+const CANNOT_SAY = 'A dry run cannot tell you what this would change.';
 const KEY_DIRS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 /** The mark beside a step's last-run word, by `runStatusTone`. `none` is a
  *  step that has not run. */
@@ -1610,10 +1613,8 @@ export function mountCanvas(root, opts = {}) {
     if (!lines.length) {
       return { state: 'declined', sub, line: `Would not run: ${entry.declined || 'nothing was planned'}`, entry };
     }
-    const cannot = lines.find((l) => l.startsWith(CANNOT_SAY));
-    const what = cannot
-      ? cannot.slice(0, cannot.indexOf('.') + 1 || cannot.length)
-      : (lines.find((l) => /^Would\b/.test(l)) || lines[0]);
+    const cannot = entry.dry === DRY_CANNOT;
+    const what = cannot ? CANNOT_SAY : (lines.find((l) => /^Would\b/.test(l)) || lines[0]);
     return { state: cannot ? 'cannot' : 'planned', sub, line: entry.declined ? `${entry.declined} · ${what}` : what, entry };
   }
 
@@ -1645,6 +1646,7 @@ export function mountCanvas(root, opts = {}) {
       byId.set(id, {
         id, when: e.when ? String(e.when) : null, depth: Number(e.depth) || 0,
         steps: Array.isArray(e.steps) ? e.steps : [], declined: e.declined ? String(e.declined) : null, after: '',
+        dry: e.dry ? String(e.dry) : null,
       });
     }
     // How each step is reached: from its first parent in the plan's order,
