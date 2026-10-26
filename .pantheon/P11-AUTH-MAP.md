@@ -78,14 +78,14 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 135 · Depends 21 · total 156
+derived: direct 136 · Depends 21 · total 157
 
 ### tier summary
 
 | tier | sites |
 |---|---|
 | `superuser` | 68 |
-| `operator` | 64 |
+| `operator` | 65 |
 | `power-user` | 3 |
 | `only-because-nothing-finer-existed` | 21 |
 
@@ -162,7 +162,7 @@ derived: direct 135 · Depends 21 · total 156
 | `routes/workstation_routes.py` | `_watched` | `—` | not a route: `GET /api/workstation/screen` and `GET /api/workstation/control` ask it when a `person` is named — an admin may watch another person's workstation screen and who holds it, and only watch (the input, take-over and reset routes take no `person`). Without `person` the caller's own screen, open to anyone the workstation answers. Another person's screen is their data, so this stays the owner's. `B1424` |
 | `routes/person_network_routes.py` | `everyones_networks` | `GET /api/networks/people` | every person's own networks — names, hosts, ranges, trust — and of a linked vault login only that one is linked, never which item or anything in it. Other people's data: the owner's omni-sight (`D-2026-10-25-04` §5). `B1475` |
 
-### `operator` — **64 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
+### `operator` — **65 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -224,6 +224,7 @@ derived: direct 135 · Depends 21 · total 156
 | `routes/workstation_routes.py` | `workstation_backend` | `POST /api/workstation/backend` | the backend switch: saves the choice and starts that backend's services and stops the other's, where Pantheon has the host's Docker. Running the box. `B1478` |
 | `routes/auth_routes.py` | `set_features` | `POST /api/auth/features` | the instance's UI feature toggles. Not auth-exempt since `B542`; on this gate since `B543` |
 | `routes/auth_routes.py` | `settings_flag_sources` | `GET /api/auth/settings/flag-sources` | which layer — setting, environment, default — answers each tri-state flag. `B543` |
+| `routes/auth_routes.py` | `settings_ranges` | `GET /api/auth/settings/ranges` | the range each whole-number setting is held to, for the Settings fields that write them. `B1539` |
 | `routes/auth_routes.py` | `check_networks` | `POST /api/auth/networks/check` | validates a proposed `networks` value and says what it claims; saves nothing. `B543` |
 | `routes/auth_routes.py` | `network_agent_health` | `GET /api/auth/networks/agent` | whether the network agent is there and is the agent. `B543` |
 | `routes/auth_routes.py` | `host_guard_rules` | `GET /api/auth/networks/guard` | the agent's permanent guard list, read-only. `B543` |
@@ -311,7 +312,7 @@ The largest file in the fifteen and the one that matters most. Until `B543` (202
 
 The four role routes (`P11-02`) were the first here on `require_admin`, and they are the reason § A's superuser tier moved from 37 to 41 and this file's count from 35 to 39.
 
-routes: 39
+routes: 40
 
 | route | handler | gate | intended |
 |---|---|---|---|
@@ -347,6 +348,7 @@ routes: 39
 | `GET /api/auth/networks/devices` | `network_devices` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
 | `POST /api/auth/networks/devices/name` | `name_network_device` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
 | `GET /api/auth/settings/flag-sources` | `settings_flag_sources` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `GET /api/auth/settings/ranges` | `settings_ranges` | `middleware + require_admin` | yes — `B1539`: the bounds of settings only an admin writes; read by the admin's Settings fields. |
 | `POST /api/auth/settings` | `set_settings` | `middleware + require_admin` | yes — `B542`: exempt for GET only now, so the write that sets every app setting, credentials included, needs a session, and `require_admin` (`B543`) behind it. |
 | `GET /api/auth/integrations` | `list_integrations_route` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
 | `GET /api/auth/integrations/presets` | `list_presets` | `exempt` | yes — preset templates with `api_key` stripped in the comprehension; nothing instance-specific. |
@@ -518,9 +520,9 @@ the number of admin decisions added — which is the behaviour the map was built
 The paragraph above is about the 107 that predate roles; the counts below are live.
 
 - **68 superuser sites do not move.** They are already right.
-- **64 operator sites are the phase's return.** Today the only way to let someone keep
+- **65 operator sites are the phase's return.** Today the only way to let someone keep
   the instance up is to make them the owner. An `operator` overlay on
-  `DEFAULT_PRIVILEGES` retires the 64 operator sites without touching any of the
+  `DEFAULT_PRIVILEGES` retires the 65 operator sites without touching any of the
   68 superuser sites. (Both counts in the one spelling `check-auth-map.py` checks
   wherever it appears: this sentence said *"48 gates … the 37"* through every gate
   added after it was written, and it is the sentence this section concludes from —

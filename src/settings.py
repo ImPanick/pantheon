@@ -1050,6 +1050,14 @@ def role_limit_ranges() -> dict[str, tuple[int, int]]:
     return ranges
 
 
+# `B1539`. Whole-number settings in `int_setting_ranges` whose shipped value is
+# `None`, and for which `None` (or a blank) is a value a person can choose:
+# *unset — follow the setting this one defaults to*. `auth_events_retention_days`
+# follows `events_retention_days` until an operator gives the audit trail its
+# own window (`B685`), so clearing the field must store `None`, not refuse it.
+INT_SETTINGS_UNSET_BY_NULL = frozenset({"auth_events_retention_days"})
+
+
 def int_setting_ranges() -> dict[str, tuple[int, int]]:
     """The whole-number settings that must sit in a range, and the range.
 
@@ -1090,6 +1098,7 @@ def int_setting_ranges() -> dict[str, tuple[int, int]]:
         MIN_UPLOAD_BURST_LIMIT,
         MIN_UPLOAD_BURST_WINDOW_SECONDS,
     )
+    from src.events import RETENTION_DAYS_RANGE
     # Per-key validation for numeric settings: coerce to int and clamp to a
     # sane range so a bad value can't disable the agent or let it run away.
     #
@@ -1097,6 +1106,11 @@ def int_setting_ranges() -> dict[str, tuple[int, int]]:
     # so the number the route stores and the number the resolver enforces
     # cannot drift into a settings page that lies about itself.
     return {
+        # `B1539`. The two retention windows (`P14-01`, `B685`), from the
+        # module that prunes on them. `0` keeps everything; the audit
+        # trail's may also be unset (`INT_SETTINGS_UNSET_BY_NULL`).
+        "events_retention_days": RETENTION_DAYS_RANGE,
+        "auth_events_retention_days": RETENTION_DAYS_RANGE,
         # `P12-06`. The per-client upload burst gate — N uploads per W
         # seconds, not N uploads in flight, whatever it used to be called.
         "upload_burst_limit": (
@@ -1180,6 +1194,9 @@ def clamp_int_setting(key: str, value: Any, ranges: dict | None = None) -> Any:
     table = int_setting_ranges() if ranges is None else ranges
     if key not in table:
         return value
+    if key in INT_SETTINGS_UNSET_BY_NULL and (
+            value is None or (isinstance(value, str) and not value.strip())):
+        return None   # `B1539`: unset, as it ships
     low, high = table[key]
     return max(low, min(int(value), high))
 

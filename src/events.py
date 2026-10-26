@@ -74,6 +74,13 @@ from typing import Any, Dict, Iterable, List, Optional
 logger = logging.getLogger(__name__)
 
 DEFAULT_RETENTION_DAYS = 90
+# `B1539`. What `events_retention_days` and `auth_events_retention_days` may be
+# set to, in days: `0` keeps everything (the documented *forever*), and ten
+# years is the top — sanity rather than policy, past the point where the number
+# is a decision rather than a typo. A negative window was stored as typed and
+# then read here as the default, so the Settings page showed a number the pruner
+# was not using. `src.settings.int_setting_ranges` holds both keys to this.
+RETENTION_DAYS_RANGE = (0, 3650)
 
 # `P14-06`. The thresholds the decision named, in the code the decision is about.
 #

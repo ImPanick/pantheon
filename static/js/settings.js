@@ -2029,6 +2029,91 @@ async function initInboxCheckInterval() {
   });
 }
 
+/* ── How long records are kept (`B1539`) ──
+   `events_retention_days` (`P14-01`) and `auth_events_retention_days` (`B685`)
+   had no field: an operator who wanted a year of the access trail had to know
+   both keys. Each field's range comes from the server
+   (`GET /api/auth/settings/ranges`, `int_setting_ranges`), which also clamps
+   a save, so the page holds no second copy of the numbers; it reads back what
+   was kept. A blank audit window is *unset* — it follows the other one. */
+async function initRetentionWindows() {
+  var fields = [
+    { key: 'events_retention_days', input: el('set-eventsRetention'), msg: el('set-eventsRetentionMsg') },
+    { key: 'auth_events_retention_days', input: el('set-authEventsRetention'), msg: el('set-authEventsRetentionMsg') },
+  ].filter(function(f) { return f.input && f.msg; });
+  if (!fields.length) return;
+  var ranges = {};
+  var unsettable = [];
+  try {
+    var r = await fetch('/api/auth/settings/ranges', { credentials: 'same-origin' });
+    if (r.ok) {
+      var d = await r.json();
+      ranges = (d && d.ranges) || {};
+      unsettable = (d && d.unset_by_null) || [];
+    }
+  } catch (e) { /* the fields still save; the server still clamps */ }
+
+  function rangeText(key) {
+    var b = ranges[key];
+    return b ? ' Allowed: ' + b[0] + ' to ' + Number(b[1]).toLocaleString() + ' days.' : '';
+  }
+  function describe(f, n) {
+    if (n === null) return 'Follows usage and activity.' + rangeText(f.key);
+    if (n === 0) return 'Kept forever.' + rangeText(f.key);
+    return 'Kept ' + n + (n === 1 ? ' day.' : ' days.') + rangeText(f.key);
+  }
+  function show(f, n) {
+    f.kept = n;
+    f.input.value = n === null ? '' : String(n);
+    f.msg.textContent = describe(f, n);
+    f.msg.style.color = '';
+  }
+  function kept(settings, key) {
+    var v = settings[key];
+    if (v === null || v === undefined || v === '') return null;
+    var n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  async function read() {
+    var res = await fetch('/api/auth/settings', { credentials: 'same-origin' });
+    return res.json();
+  }
+
+  try {
+    var settings = await read();
+    fields.forEach(function(f) { show(f, kept(settings, f.key)); });
+  } catch (e) { /* saving reports its own errors */ }
+
+  fields.forEach(function(f) {
+    var b = ranges[f.key];
+    if (b) { f.input.min = String(b[0]); f.input.max = String(b[1]); }
+    f.input.addEventListener('change', async function() {
+      var blank = f.input.value.trim() === '';
+      var asked = blank ? null : Number(f.input.value);
+      if ((blank && unsettable.indexOf(f.key) < 0) || (!blank && !Number.isInteger(asked))) {
+        f.input.value = f.kept === null || f.kept === undefined ? '' : String(f.kept);
+        f.msg.textContent = 'A whole number of days; 0 keeps everything.' + rangeText(f.key);
+        f.msg.style.color = 'var(--red)';
+        return;
+      }
+      try {
+        var body = {};
+        body[f.key] = asked;
+        await _postSettings(body);
+        var stored = kept(await read(), f.key);
+        show(f, stored);
+        if (asked !== null && stored !== asked) {
+          f.msg.textContent += ' (' + asked + ' is outside the range, so it was kept at ' + stored + '.)';
+        }
+      } catch (e) {
+        f.input.value = f.kept === null || f.kept === undefined ? '' : String(f.kept);
+        f.msg.textContent = _notSaved(e) + ' Left unchanged.';
+        f.msg.style.color = 'var(--red)';
+      }
+    });
+  });
+}
+
 /* ── Switches a deploy can also set (B95) ──
    `metrics_enabled`, `searxng_widen_engines` and `allow_model_download` had no
    field, no toggle and no label anywhere in `static/` — measured 2026-09-15 by
@@ -3131,6 +3216,7 @@ function initAll() {
     initEmailConfirm();   // H18 / B42
     initForgeSettings();   // `B1229`
     initInboxCheckInterval();   // `B1152` (f-mail)
+    initRetentionWindows();   // `B1539`
     initEnvBackedFlags();   // B95
     initAgentBudget();   // H18
     initTaskModel();     // H18

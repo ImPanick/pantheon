@@ -1052,6 +1052,22 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         from src.settings import env_backed_flag_report
         return {"flags": env_backed_flag_report()}
 
+    @router.get("/settings/ranges")
+    async def settings_ranges(request: Request):
+        """Admin only: the range each whole-number setting is held to.
+
+        `B1539`. The bounds travel to the panel rather than being typed into
+        it a second time, so a field can say its floor and ceiling before a
+        save is clamped (`Law 15`) and cannot disagree with the route that
+        clamps (`Law 7`) — `GET /roles`' `limit_ranges` (`P12-02`) for the
+        instance settings. `unset_by_null` names the ones a blank leaves
+        unset. Admin-only, as writing these settings is.
+        """
+        require_admin(request)
+        from src.settings import INT_SETTINGS_UNSET_BY_NULL
+        return {"ranges": {k: list(v) for k, v in sorted(int_setting_ranges().items())},
+                "unset_by_null": sorted(INT_SETTINGS_UNSET_BY_NULL)}
+
     @router.post("/settings")
     async def set_settings(request: Request):
         """Admin only: update app settings."""
