@@ -236,7 +236,9 @@ def note_api(monkeypatch, tmp_path):
     monkeypatch.setenv("AUTH_ENABLED", "true")
     monkeypatch.delenv("LOCALHOST_BYPASS", raising=False)
     app = FastAPI()
-    app.state.auth_manager = SimpleNamespace(is_configured=True)
+    # `B1191`: the notes router asks the person's `can_use_notes` switch, so the
+    # stand-in answers privileges as the real store does — none overridden.
+    app.state.auth_manager = SimpleNamespace(is_configured=True, get_privileges=lambda _name: {})
     app.include_router(nr.setup_note_routes())
     db = factory()
     db.add(Note(id="note-1", owner="alice", title="ship it"))

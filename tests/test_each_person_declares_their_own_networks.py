@@ -270,6 +270,11 @@ def client(world, monkeypatch):
     import routes.person_network_routes as R
     monkeypatch.setattr(R, "get_current_user", lambda request: request.headers.get("x-user"))
     monkeypatch.setattr(R, "request_is_a_person", lambda request: request.headers.get("x-token") is None)
+    # The route module binds `SessionLocal` at import; in a full run the app has
+    # imported it long before this file patched `core.database`, so the routes
+    # read the real database and found no vault item (measured: 400 in the
+    # suite, 200 alone). Point it at this test's database too.
+    monkeypatch.setattr(R, "SessionLocal", world)
 
     def admin_only(request):
         if request.headers.get("x-user") != "root":

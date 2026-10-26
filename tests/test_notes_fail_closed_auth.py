@@ -84,7 +84,10 @@ def _temp_db(tmp_path):
 
 def _build_app(factory, *, configured=True):
     app = FastAPI()
-    app.state.auth_manager = SimpleNamespace(is_configured=configured)
+    # `B1191`: the notes router asks the person's `can_use_notes` switch, so the
+    # stand-in answers privileges as the real store does — none overridden.
+    app.state.auth_manager = SimpleNamespace(is_configured=configured,
+                                             get_privileges=lambda _name: {})
     app.include_router(nr.setup_note_routes())
     return _Identity(app)
 

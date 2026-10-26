@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers.js_source import js_function
+from tests.helpers.js_source import js_definition, js_function
 from tests.test_tool_effect_surfaces_js import _make_sandbox, _run
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,19 +35,12 @@ pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary no
 
 
 def _chat_handover_block() -> str:
-    """The `{ … }` block in `chat.js` that reads the hand-over, by brace balance
-    from the line that opens it."""
+    """The `{ … }` block in `chat.js` that reads the hand-over, cut by the
+    shared reader (`js_definition`, strings, comments and regexes skipped —
+    `B876`) from the brace that opens it."""
     start = CHAT.index("        const _chatForm = el('chat-form');")
     start = CHAT.rindex("{", 0, start)
-    depth = 0
-    for i in range(start, len(CHAT)):
-        if CHAT[i] == "{":
-            depth += 1
-        elif CHAT[i] == "}":
-            depth -= 1
-            if depth == 0:
-                return CHAT[start:i + 1]
-    raise AssertionError("the hand-over block in chat.js is unbalanced")
+    return js_definition(CHAT, start)
 
 
 SHIM = """

@@ -699,7 +699,7 @@ function _renderTaskChips() {
     b.className = 'memory-cat-chip' + (active ? ' active' : '');
     const glyph = value ? _CATEGORY_ICONS[value] : '';
     if (glyph) {
-      b.innerHTML = `<svg class="task-cat-chip-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px;margin-right:4px;">${glyph}</svg>`;
+      b.innerHTML = `<svg class="task-cat-chip-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px;margin-right:4px;">${glyph}</svg>`;
       b.appendChild(document.createTextNode(label));
     } else {
       b.textContent = label;
