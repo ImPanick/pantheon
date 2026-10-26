@@ -170,7 +170,7 @@ def test_add_memory_rejects_other_users_session(monkeypatch):
         )
 
     assert exc.value.status_code == 404
-    assert exc.value.detail == "Session not found"
+    assert exc.value.detail == "That chat no longer exists."   # `B1216`
     session_manager.get_session.assert_called_once_with("bob-session")
     memory_manager.add_entry.assert_not_called()
     memory_manager.save.assert_not_called()

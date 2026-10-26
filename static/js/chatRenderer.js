@@ -21,8 +21,9 @@ import { CHECKLIST_SURFACES, checklistProgress, stepChipClass } from './checklis
 // the rung is the one that reads them — see the header of that module.
 import { buildAllowRuleChooser } from './trustLadder.js';
 // `P4-10`. Why the agent stopped itself — the same line the live stream draws.
-import { renderAgentStop, renderAgentNote, withdrawContinueOffers, compactionFromRecord } from './agentStops.js';
+import { renderAgentStop, renderAgentNote, withdrawContinueOffers, compactionFromRecord, trimFromRecord } from './agentStops.js';
 import { scrollBehavior } from './motion.js';
+import { buildReplyError } from './chatStreamErrors.js';   // `B1200`
 import { memoryConfidencePill } from './memoryFacts.js';
 import { applyAgentThreadNode, verifierCardOptions, approvalOutcome,
          blockedCardOptions, toolOutputPanesHtml, screenshotSummary, shownStep } from './agentThread.js';
@@ -58,6 +59,19 @@ function _safeHref(url) {
     if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return uiModule.esc(url);
   } catch(e) { /* invalid URL */ }
   return '#';
+}
+
+/**
+ * `B1214`. The compaction marker in a drawn chat: the bubble whose record says
+ * `compacted` — the visible line `POST /api/session/{id}/compact` saves. Found
+ * by its flag, never its words: it said *Conversation compacted* until the
+ * writer said *Chat compacted*, and every chat compacted before that keeps the
+ * old words in its history.
+ */
+export function compactMarkerIn(root) {
+  return root && typeof root.querySelector === 'function'
+    ? root.querySelector('.msg[data-compacted]')
+    : null;
 }
 
 export function safeToolScreenshotSrc(raw) {
@@ -3317,13 +3331,9 @@ export function displayMetrics(messageElement, metrics) {
               if (window.sessionModule) await window.sessionModule.selectSession(sid);
               // Scroll to the compacted message (first msg with compacted metadata)
               setTimeout(() => {
-                const msgs = document.querySelectorAll('#chat-history .msg');
-                for (const m of msgs) {
-                  if (m.querySelector('.body')?.textContent.includes('Conversation compacted')) {
-                    m.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
-                    break;
-                  }
-                }
+                // `B1214`: by its flag, whatever its words say.
+                const marker = compactMarkerIn(document.getElementById('chat-history'));
+                if (marker) marker.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
               }, 200);
             } else {
               let detail = 'Compaction failed. Try again later.';
@@ -4050,6 +4060,57 @@ export function dropApprovalPlaceholder(bubble, question) {
 /**
  * Add a message to the chat history.
  */
+/**
+ * `B1200` (fx-chat). A saved reply that failed before it said anything: no
+ * words, `failed: true` (`is_unanswered_reply`, `core/models.py`). It was not
+ * saved at all, so a reload showed the person's message alone; it is drawn as
+ * the live stream drew it — the model's bubble, one sentence and *Retry*.
+ */
+export function isUnansweredReply(content, metadata) {
+  if (!metadata || metadata.failed !== true) return false;
+  return !String(content == null ? '' : content).trim();
+}
+
+/** `B1200`. *Retry* resends the latest message, so it belongs to the latest
+ *  turn only: a later message withdraws an earlier failure's, live and on
+ *  reload alike (as `withdrawContinueOffers` does Continue's). */
+export function withdrawRetryOffers(root) {
+  if (!root || typeof root.querySelectorAll !== 'function') return 0;
+  const offers = Array.from(root.querySelectorAll('.reply-error-retry'));
+  offers.forEach((btn) => btn.remove());
+  return offers.length;
+}
+
+function _drawUnansweredReply(box, modelName, metadata) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg msg-ai';
+  wrap.dataset.failed = 'true';
+  if (metadata._db_id) wrap.dataset.dbId = metadata._db_id;
+  const r = document.createElement('div');
+  r.className = 'role';
+  const pair = replyModelPair(modelName, metadata);
+  const model = pair.actualModel || pair.requestedModel;
+  r.textContent = modelRouteLabel(pair.requestedModel, model, pair.requestedEndpointLabel,
+    pair.actualEndpointLabel, pair.requestedEndpointId, pair.actualEndpointId);
+  applyModelColor(r, model);
+  r.appendChild(roleTimestamp(metadata.timestamp));
+  wrap.appendChild(r);
+  const b = document.createElement('div');
+  b.className = 'body';
+  // The status only: the provider's own words are not saved (`chat_routes`),
+  // so the sentence is the one a status gives and there is no *Details*.
+  const status = Number((metadata.failure || {}).status);
+  b.appendChild(buildReplyError(document,
+    { message: '', status: Number.isInteger(status) ? status : undefined },
+    { model, onRetry: () => {
+      const chat = typeof window !== 'undefined' ? window.chatModule : null;
+      if (chat && typeof chat.retryLastTurn === 'function') chat.retryLastTurn();
+    } }));
+  wrap.appendChild(b);
+  box.appendChild(wrap);
+  return wrap;
+}
+
 export function addMessage(role, content, modelName, metadata) {
   try {
     hideWelcomeScreen();
@@ -4063,9 +4124,15 @@ export function addMessage(role, content, modelName, metadata) {
     // `B915`: and a step limit's Continue offer is withdrawn the same way — it
     // continues the latest reply, so it belongs only to the last turn.
     if (role === 'user') withdrawContinueOffers(box);
+    // `B1200`: and so is a failed reply's Retry.
+    if (role === 'user') withdrawRetryOffers(box);
 
     var esc = uiModule.esc;
     const textRaw = Array.isArray(content) ? markdownModule.renderContent(content) : content;
+
+    if (role === 'assistant' && isUnansweredReply(textRaw, metadata)) {
+      return _drawUnansweredReply(box, modelName, metadata);
+    }
 
     // --- Agent multi-bubble reconstruction from saved metadata ---
     if (
@@ -4197,6 +4264,10 @@ export function addMessage(role, content, modelName, metadata) {
       for (const note of agentNotes) {
         if (noteSlot(note) === 'start') renderAgentNote(box, note, noteOpts);
       }
+      // `B1033`. The route trimmed this turn's context before its first step
+      // (after any compaction, which is a note above): said from the record.
+      const trimmedTurn = trimFromRecord(metadata);
+      if (trimmedTurn) renderAgentNote(box, trimmedTurn);
       for (let roundNum = firstRound; roundNum <= maxRound; roundNum++) {
         const r = roundNum - 1;
         const txt = r >= 0
@@ -4559,6 +4630,8 @@ export function addMessage(role, content, modelName, metadata) {
 
 	    wrap.dataset.raw = text;
 	    if (metadata?._db_id) wrap.dataset.dbId = metadata._db_id;
+    // `B1214`: the compaction marker says what it is, so it is found by that.
+    if (isCompacted && role !== 'user') wrap.dataset.compacted = 'true';
     // Prepend sources box if saved in metadata
     var sourcesPrefix = '';
     var findingsSuffix = '';
@@ -4746,6 +4819,10 @@ export function addMessage(role, content, modelName, metadata) {
       // asked for: the line above it, in the words the live toast used.
       const compaction = compactionFromRecord(metadata);
       if (compaction) renderAgentNote(box, compaction);
+      // `B1033`. And trimmed to fit after that — the second shaping step —
+      // in the words the live toast used.
+      const trimmed = trimFromRecord(metadata);
+      if (trimmed) renderAgentNote(box, trimmed);
     } else {
       // Add timestamp to user header (like AI messages)
       r.appendChild(roleTimestamp(metadata?.timestamp));

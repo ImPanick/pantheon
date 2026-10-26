@@ -41,7 +41,7 @@ import { startToolCard as _startToolCard, drawToolProgress as _drawToolProgress,
 // `P4-10`. The line that says why the agent stopped itself — and (`B915`) the
 // turn's other notes, drawn by the same module for the reload; (`B921`) the
 // compaction notice's words.
-import { renderAgentStop, renderAgentNote, compactionNoticeText } from './agentStops.js';
+import { renderAgentStop, renderAgentNote, compactionNoticeText, trimNoticeText } from './agentStops.js';
 import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArrowUpRecall.js?v=20260714promptrecall';
 import {
   createIncrementalDisplayProjector,
@@ -940,13 +940,55 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     return `${runId}:${event && event.teacher ? 'teacher' : 'primary'}`;
   }
 
+  /** `B1205`: the last Stop's answer — `{ sessionId, answer }`, where
+   *  `answer` resolves to the route's JSON (with `saved`, the reply the run
+   *  saved on its way out) or `null`. */
+  let _lastStopAnswer = null;
+
   /** POST the exact Stop for one observed run identity. */
   function _postExactStop(sessionId, runId) {
-    fetch(`/api/chat/stop/${encodeURIComponent(sessionId)}`, {
+    const answer = fetch(`/api/chat/stop/${encodeURIComponent(sessionId)}`, {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'X-Pantheon-Run-Id': runId },
-    }).catch(() => {});
+    }).then((res) => (res && res.ok ? res.json() : null)).catch(() => null);
+    _lastStopAnswer = { sessionId, answer };
+    return answer;
+  }
+
+  /**
+   * `B1205` (fx-chat). The text a stopped bubble should say, given what it drew
+   * and what the run saved — or `null` to leave it as drawn. The saved reply
+   * is the drawn one carried further when the Stop landed with a delta in
+   * flight (the browser's reader was already cut), so the screen said a word
+   * less than the record and the reload. Only a continuation of what is on
+   * screen is taken: a reply of several steps (one bubble holds the last step,
+   * the record all of them) is left alone. Reasoning drawn ahead of the reply
+   * is kept ahead of it.
+   */
+  export function stoppedReplyRaw(drawn, saved) {
+    const drawnText = String(drawn || '');
+    const said = String(saved || '').trim();
+    const m = /^([\s\S]*<\/think>)\s*/i.exec(drawnText);
+    const visible = (m ? drawnText.slice(m[0].length) : drawnText).trim();
+    if (!said || !visible || said === visible || !said.startsWith(visible)) return null;
+    return m ? m[1] + '\n\n' + said : said;
+  }
+
+  /** `B1205`. Redraw a stopped bubble from the Stop's answer: the saved words
+   *  (`stoppedReplyRaw`), the Stopped · Continue line kept under them, and the
+   *  row's id, so the bubble can be edited and deleted without a reload. */
+  function _showWhatTheStopSaved(holder, drawn, answer, indicator) {
+    const saved = answer && answer.saved;
+    if (!holder || !saved) return;
+    if (saved.id && !holder.dataset.dbId) holder.dataset.dbId = saved.id;
+    const raw = stoppedReplyRaw(drawn, saved.content);
+    const body = raw == null ? null : holder.querySelector('.body');
+    if (!body) return;
+    holder.dataset.raw = raw;
+    body.innerHTML = markdownModule.processWithThinking(markdownModule.squashOutsideCode(raw));
+    if (indicator) body.appendChild(indicator);
+    if (window.hljs) body.querySelectorAll('pre code').forEach((block) => window.hljs.highlightElement(block));
   }
 
   /** Stop only the exact detached run whose identity this browser observed. */
@@ -2210,7 +2252,12 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       _resumeStopRequested.add(_cancelSid);
       _resumeHoldsButton.delete(_cancelSid);   // the idle below is the hand-back
     }
+    _lastStopAnswer = null;
     abortCurrentRequest(true);  // explicit user Stop → also cancel the detached server run
+    // `B1205`: the Stop's answer, when this Stop sent one (a Stop queued
+    // before the run had an identity has none to read).
+    const _stopAnswer = _lastStopAnswer && _lastStopAnswer.sessionId === _cancelSid
+      ? _lastStopAnswer.answer : null;
 
     // Clean up any running agent thread nodes (stop wave animation, remove "running" state)
     document.querySelectorAll('.agent-thread-node.running').forEach(node => {
@@ -2284,7 +2331,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         _hideUserBubble = true;
         _pendingContinue = _stoppedHolder;
         _pendingContinueSteps = false;   // `B941`: a stopped reply's text
-        const cutoff = stoppedContent;
+        // `B1205`: the words on screen when Continue is pressed — the saved
+        // reply's, once the Stop's answer redrew them.
+        const cutoff = _stoppedHolder.dataset.raw || stoppedContent;
         const msgInput = uiModule.el('message');
         if (msgInput) {
           msgInput.value = 'Your previous response was interrupted. It ended with:\n\n' + cutoff.slice(-500) + '\n\nDo NOT repeat what you already said. Continue exactly from where you were cut off.';
@@ -2293,6 +2342,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         }
       });
       _stoppedViewHolder.querySelector('.body').appendChild(stoppedIndicator);
+      if (_stopAnswer) {
+        _stopAnswer.then((answer) => _showWhatTheStopSaved(_stoppedHolder, stoppedContent, answer, stoppedIndicator));
+      }
 
       // Tell server to mark this message as stopped
       const _sid = sessionModule.getCurrentSessionId();
@@ -2373,6 +2425,28 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       });
       note.appendChild(add);
     }
+    box.appendChild(note);
+    try { uiModule.scrollHistory(); } catch (_) {}
+    return note;
+  }
+
+  /**
+   * `B1268` (fx4-models). A send the server refused, said as a note under the
+   * message — the composer's kind of line, as `_sayNoModel`'s is — and not as
+   * a reply. It was typed into the reply holder, under the model's own name
+   * and time, so a model whose server had stopped appeared to say *"… isn't
+   * answering"* about itself. The holder goes; the sentence (the server's,
+   * which says what to do) stays, with no sender and no time.
+   */
+  export function _sayRefused(doc, sentence, holder = null) {
+    const box = doc.getElementById('chat-history');
+    if (holder && typeof holder.remove === 'function') holder.remove();
+    if (!box) return null;
+    const note = doc.createElement('div');
+    note.className = 'send-refused-note';
+    note.setAttribute('role', 'status');
+    note.style.cssText = 'padding:10px 0; color:var(--color-error);';
+    note.textContent = String(sentence || '');
     box.appendChild(note);
     try { uiModule.scrollHistory(); } catch (_) {}
     return note;
@@ -3420,7 +3494,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
             Storage.setJSON(Storage.KEYS.TOGGLES, _st);
           }
         }
-        typewriterInto(holder.querySelector('.body'), errText);
+        _sayRefused(document, errText, holder);   // `B1268`
         enableResearchBtn();
         return;
       }
@@ -4805,11 +4879,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 }
               } else if (json.type === 'context_trimmed') {
                 if (!_isBg) {
-                  const d = json.data || {};
-                  const before = Number(d.messages_before || 0);
-                  const after = Number(d.messages_after || 0);
-                  const detail = before && after && before > after ? ` (${after}/${before} messages sent)` : '';
-                  uiModule.showToast(`Context trimmed for this model${detail}`);
+                  // `B1033`: `trimNoticeText`'s sentence, which the reloaded
+                  // reply's line says too (`trimFromRecord`).
+                  uiModule.showToast(trimNoticeText(json));
                 }
               } else if (json.type === 'agent_terminal' || json.type === 'chat_terminal') {
                 // The backend persisted canonical partial output, sanitized
@@ -8410,12 +8482,21 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       }
     }
 
-    if (!msgIds.length || !sessionId) {
-      // No persisted rows to delete (no DB IDs, or no session at all — e.g. an
-      // error output shown before a model was selected, #1428). Just remove the
-      // DOM so the "x" works regardless.
+    if (!sessionId) {
+      // No session at all — e.g. an error output shown before a model was
+      // selected (#1428): nothing is stored, so removing the bubble is the
+      // whole delete and the "x" works regardless.
       domToRemove.forEach(el => el.remove());
       if (uiModule) uiModule.showToast('Message deleted');
+      return;
+    }
+    if (!msgIds.length) {
+      // `B1331` (fx7-dup). A chat's bubbles with no row id: this was the same
+      // DOM-only removal and the same "Message deleted", and a reloaded chat's
+      // bubbles had no ids — so the rows stayed, in the prompt and in the next
+      // reload. A reloaded bubble carries its id now; one drawn live on this
+      // page may not yet, and the reload is what gives it one.
+      if (uiModule) uiModule.showError('That message has no saved copy on this page yet. Reload the chat, then delete it.');
       return;
     }
 
@@ -8493,7 +8574,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       if (newContent === originalRaw) { cleanup(); return; }
 
       const msgId = msgElement.dataset.dbId;
-      if (!msgId) { if (uiModule) uiModule.showError('Cannot edit: message ID not found'); cleanup(); return; }
+      // `B1331`: what is missing, and what to do — as the delete says it.
+      if (!msgId) { if (uiModule) uiModule.showError('That message has no saved copy on this page yet. Reload the chat, then edit it.'); cleanup(); return; }
 
       const sessionId = sessionModule.getCurrentSessionId();
       if (!sessionId) { cleanup(); return; }
@@ -8874,6 +8956,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     editUserMessage,
     editAIMessage,
     resendUserMessage,
+    // `B1200`: a reloaded failed reply's Retry (`chatRenderer.js`), the live one's.
+    retryLastTurn: _retryLastTurn,
     deleteMessage,
     rewriteWith,
     _appendViewReportLink,

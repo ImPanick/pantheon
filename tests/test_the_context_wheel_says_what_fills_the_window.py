@@ -180,7 +180,7 @@ class _Manager:
     def __init__(self, session):
         self.session = session
 
-    def get_session(self, session_id):
+    def get_session(self, session_id, **_kw):   # `B1201`: the route hands it the row it read
         if session_id != self.session.id:
             raise KeyError(session_id)
         return self.session

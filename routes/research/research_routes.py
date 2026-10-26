@@ -3,7 +3,9 @@
 # pipeline adapted from Tongyi DeepResearch (Alibaba-NLP / Tongyi Lab),
 # licensed Apache-2.0. It is NOT Tongyi's original: it has been changed.
 # Changed by Odysseus, and further by Pantheon on 2026-08-27, and since: the
-# status probe a chat switch makes answers 200 (`P23-04`).
+# status probe a chat switch makes answers 200 (`P23-04`); an unreadable
+# privilege store refuses a delegated owner's research (`B531`), and that
+# check reads through the one privilege rule (`B530`).
 #
 # Upstream licence text (Tongyi DeepResearch): licenses/DeepResearch-Apache-2.0.txt
 # Attribution: CREDITS.md
@@ -525,9 +527,10 @@ def setup_research_routes(research_handler, session_manager=None) -> APIRouter:
                 auth_mgr = getattr(request.app.state, "auth_manager", None)
                 if auth_mgr is not None and getattr(auth_mgr, "is_configured", False):
                     # `B531`: an unreadable store refuses, never grants.
-                    from src.auth_helpers import privileges_or_refuse
+                    from src.auth_helpers import privileges_or_refuse, resolve_privilege
                     privs = privileges_or_refuse(auth_mgr, tool_owner)
-                    if not privs.get("can_use_research", True):
+                    # `B530`: the one rule for a key the map does not answer.
+                    if not resolve_privilege(privs, "can_use_research"):
                         raise HTTPException(403, "Your account is not allowed to use research.")
                 user = tool_owner
         session_id = f"rp-{uuid.uuid4().hex[:12]}"

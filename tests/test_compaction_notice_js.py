@@ -78,7 +78,7 @@ def _arm(opening: str, closing: str) -> str:
 def _run(arm: str, events: list) -> list:
     """Drive the arm over a list of `[json, isBg]` pairs; return the toasts."""
     script = textwrap.dedent("""
-        import { compactionNoticeText } from %s;
+        import { compactionNoticeText, trimNoticeText } from %s;   // `B1033`: the trim arm's builder
         const toasts = [];
         const uiModule = { showToast: (m) => { toasts.push(String(m)); } };
         function draw(json, _isBg) {

@@ -185,6 +185,49 @@ export function compactionFromRecord(record) {
   return { type: 'compacted', data };
 }
 
+/**
+ * `B1033`. What a `context_trimmed` event says — the live toast's words and the
+ * saved line's: *Context trimmed for this model (9/12 messages sent)*. The
+ * counts are read out of `data`, where the event puts them; with none, or none
+ * that shrank, it is the bare sentence, as `compactionNoticeText` is. The two
+ * shaping steps are said by two builders side by side, so neither drifts.
+ */
+export function trimNoticeText(event) {
+  const d = (event && event.data) || {};
+  const before = Number(d.messages_before || 0);
+  const after = Number(d.messages_after || 0);
+  const detail = before && after && before > after ? ` (${after}/${before} messages sent)` : '';
+  return `Context trimmed for this model${detail}`;
+}
+
+/**
+ * `B1033`. The `context_trimmed` event a saved reply's record says happened, or
+ * `null`. `P4-13` saves `context_trimmed` and its four figures on the record of
+ * every trimmed turn (`_apply_shaping_metrics`, `routes/chat_routes.py`), chat
+ * and agent alike; the live stream said it as a toast and nothing read the
+ * record, so a reload never said the model had been sent part of the chat —
+ * `B953`'s split, for the other shaping step. In the event's own shape, so the
+ * line is drawn by `agentNoteNode` in the toast's words.
+ */
+export function trimFromRecord(record) {
+  if (!record || record.context_trimmed !== true) return null;
+  const data = {};
+  for (const [key, saved] of [['messages_before', 'context_messages_before_trim'],
+    ['messages_after', 'context_messages_after_trim'],
+    ['tokens_before', 'context_tokens_before_trim'],
+    ['tokens_after', 'context_tokens_after_trim']]) {
+    const value = Number(record[saved]);
+    if (record[saved] != null && Number.isFinite(value)) data[key] = value;
+  }
+  return { type: 'context_trimmed', data };
+}
+
+/** `B1033`. Lines `agentNoteNode` draws that are never saved as a turn's note:
+ *  a trim is on the reply's record and read from there (`trimFromRecord`), and
+ *  a compare pane draws it from its stream. Kept out of `AGENT_NOTE_TYPES`,
+ *  which is the server's list of what `AgentNotes` saves. */
+const RECORD_LINE_TYPES = Object.freeze(['context_trimmed']);
+
 /** What Continue ▸ asks for after the step limit. */
 export const STEP_LIMIT_CONTINUE_PROMPT = 'You hit the step limit before finishing — the task is not '
   + 'complete. Continue from exactly where you left off and keep going until it is done. Do NOT '
@@ -238,7 +281,7 @@ const QUIET_NOTE_STYLE = 'font-size:11px;opacity:0.6;font-style:italic;padding:4
  *  turn's first bubble (or a function returning it), for Continue ▸. */
 export function agentNoteNode(doc, event, opts = {}) {
   const d = doc || (typeof document !== 'undefined' ? document : null);
-  if (!d || !isAgentNote(event)) return null;
+  if (!d || !(isAgentNote(event) || (!!event && RECORD_LINE_TYPES.includes(event.type)))) return null;
   const node = d.createElement('div');
   node.setAttribute('role', 'note');
   switch (event.type) {
@@ -263,6 +306,11 @@ export function agentNoteNode(doc, event, opts = {}) {
       node.className = 'context-compacted-note';
       node.style.cssText = QUIET_NOTE_STYLE;
       node.textContent = compactionNoticeText(event);
+      return node;
+    case 'context_trimmed':   // `B1033`: the compaction line's twin, in the toast's words
+      node.className = 'context-trimmed-note';
+      node.style.cssText = QUIET_NOTE_STYLE;
+      node.textContent = trimNoticeText(event);
       return node;
     case 'teacher_takeover': {
       node.className = 'teacher-takeover-banner';
@@ -363,5 +411,5 @@ export default {
   isAgentStop, agentStopHeadline, agentStopNode, renderAgentStop,
   AGENT_NOTE_TYPES, STEP_LIMIT_CONTINUE_PROMPT,
   isAgentNote, agentNoteNode, renderAgentNote, withdrawContinueOffers,
-  compactionNoticeText, compactionFromRecord,
+  compactionNoticeText, compactionFromRecord, trimNoticeText, trimFromRecord,
 };

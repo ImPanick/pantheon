@@ -12,6 +12,7 @@ from sqlalchemy import case, func, or_
 from core.database import SessionLocal, Document, DocumentVersion
 from core.database import Session as DbSession
 from src.auth_helpers import get_current_user
+from src.chat_helpers import CHAT_GONE   # `B1216`
 from src.upload_handler import reserve_upload_references
 # `P21-03`: one answer to "what is this file called" for every door.
 from src.file_names import (
@@ -24,9 +25,9 @@ logger = logging.getLogger(__name__)
 def _get_session_or_404(db, session_id: str, user: Optional[str]):
     session = db.query(DbSession).filter(DbSession.id == session_id).first()
     if not session:
-        raise HTTPException(404, "Session not found")
+        raise HTTPException(404, CHAT_GONE)
     if user and session.owner != user:
-        raise HTTPException(404, "Session not found")
+        raise HTTPException(404, CHAT_GONE)
     return session
 
 

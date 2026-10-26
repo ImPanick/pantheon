@@ -738,7 +738,7 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
             if (hist) hist.scrollTop = hist.scrollHeight;
 
           // ── The context summarised to fit (`B954`) ──
-          } else if (json.type === 'compacted') {
+          } else if (json.type === 'compacted' || json.type === 'context_trimmed') {
             // The main chat says it with a toast while it streams and with a
             // line after a reload (`B921`, `B953`); a pane, whose model's
             // history was just summarised away, said nothing. It says it as
@@ -747,6 +747,8 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
             // message — where the first words clear the body would take it
             // with them; later, the loop compacting for a step, it goes where
             // the run is, above the spinner that step waits on.
+            // `B1033`: a trim is the same kind of line, said the same way —
+            // the pane had no arm for it and said nothing.
             const line = agentNoteNode(document, json);
             if (line) {
               if (!accumulated && aiMsgEl._spinner && aiMsgEl._spinner.element) {

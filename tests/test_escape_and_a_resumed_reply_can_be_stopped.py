@@ -70,6 +70,7 @@ function _drainQueuedAgentRequests(sid) { calls.drained.push(sid); }
 const uiModule = { el: () => null, scrollHistory() {} };
 let currentHolder = null, currentAccumulated = '', currentSpinner = null;
 let isStreaming = __STREAMING__, _sendInFlight = false;
+let _lastStopAnswer = null;   // `B1205`: the Stop's answer the stopped bubble is redrawn from
 __FNS__
 const stopped = stopCurrentReply();
 console.log(JSON.stringify(Object.assign(calls, { stopped,

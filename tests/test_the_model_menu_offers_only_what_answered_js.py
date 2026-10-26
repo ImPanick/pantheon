@@ -433,6 +433,7 @@ def _refused_send(status: int, detail: str) -> str:
         document.getElementById = (id) => (id === 'mode-agent-btn' ? agentBtn : id === 'mode-chat-btn' ? chatBtn : null);
         const Storage = { KEYS: { TOGGLES: 't' }, getJSON: () => ({}), setJSON() {} };
         const typewriterInto = (_el, text) => said.push(text);
+        const _sayRefused = (_doc, text) => said.push(text);   // `B1268`: the note a refusal is now
         const enableResearchBtn = () => {};
         %s
         async function run() { %s }

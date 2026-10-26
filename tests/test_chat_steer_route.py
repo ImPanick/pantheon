@@ -497,8 +497,9 @@ def test_the_ownership_refusal_cannot_tell_a_strangers_session_from_one_that_nev
     assert stranger.status_code == imaginary.status_code == 403
     # Compared against the owner check's own wording, so a route that simply
     # is not mounted (FastAPI's bare "Not Found") cannot pass this by accident.
-    assert stranger.json() == {"detail": f"Session {BOB_SID} not found"}
-    assert imaginary.json() == {"detail": "Session sess-does-not-exist not found"}
+    # `B1216`: one sentence for both, with no id in it.
+    assert stranger.json() == {"detail": "That chat no longer exists."}
+    assert imaginary.json() == {"detail": "That chat no longer exists."}
     assert (
         {k.lower() for k in stranger.headers} == {k.lower() for k in imaginary.headers}
     ), "a header present on only one answer is an existence oracle"
