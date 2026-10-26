@@ -5007,6 +5007,16 @@ def setup_email_routes():
                         break
                 results = [{"email": addr, "name": display} for addr, display in matches.items()]
                 return {"contacts": results[:10], "query": name}
+        except EmailNotConfiguredError:
+            # `B1528`: said, so `resolve_contact` does not read the empty list
+            # as "no one by that name in the mail history".
+            return {"contacts": [], "query": name,
+                    "error": "no mail account with an inbox is set up"}
+        except OSError as e:
+            # Refused, timed out, no such host, TLS: the server was not there.
+            logger.error(f"resolve_contact {name!r} failed: {e}")
+            return {"contacts": [], "query": name,
+                    "error": "the mail server could not be reached"}
         except Exception as e:
             logger.error(f"resolve_contact {name!r} failed: {e}")
             return {"contacts": [], "error": "Mail operation failed"}
