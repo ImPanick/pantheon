@@ -23,10 +23,13 @@ def _handler(router):
     raise AssertionError("DELETE /api/auth/users handler not found")
 
 
-def _fake_request(invalidations):
+def _fake_request(invalidations, manager):
+    # `B543`: the route asks `require_admin`, which reads what `AuthMiddleware`
+    # stamps, so the request carries the stamp — and the manager on the app.
+    from tests.helpers.signed_in import through_the_middleware
     state = types.SimpleNamespace(invalidate_token_cache=lambda: invalidations.append(True))
     app = types.SimpleNamespace(state=state)
-    return types.SimpleNamespace(cookies={"_dummy": "x"}, app=app)
+    return through_the_middleware(types.SimpleNamespace(cookies={"_dummy": "x"}, app=app), manager)
 
 
 def _auth_manager(delete_result):
@@ -50,19 +53,21 @@ def _auth_manager_raising():
 
 def test_successful_delete_invalidates_cache():
     invalidations = []
-    router = setup_auth_routes(_auth_manager(delete_result=True))
+    manager = _auth_manager(delete_result=True)
+    router = setup_auth_routes(manager)
     handler = _handler(router)
-    result = asyncio.run(handler(DeleteUserRequest(username="bob"), _fake_request(invalidations)))
+    result = asyncio.run(handler(DeleteUserRequest(username="bob"), _fake_request(invalidations, manager)))
     assert result == {"ok": True}
     assert invalidations == [True], "successful delete must flag the token cache stale"
 
 
 def test_refused_delete_does_not_invalidate_cache():
     invalidations = []
-    router = setup_auth_routes(_auth_manager(delete_result=False))
+    manager = _auth_manager(delete_result=False)
+    router = setup_auth_routes(manager)
     handler = _handler(router)
     try:
-        asyncio.run(handler(DeleteUserRequest(username="admin"), _fake_request(invalidations)))
+        asyncio.run(handler(DeleteUserRequest(username="admin"), _fake_request(invalidations, manager)))
         raised = False
     except Exception:
         raised = True
@@ -72,10 +77,11 @@ def test_refused_delete_does_not_invalidate_cache():
 
 def test_delete_exception_invalidates_cache_for_partial_token_purge():
     invalidations = []
-    router = setup_auth_routes(_auth_manager_raising())
+    manager = _auth_manager_raising()
+    router = setup_auth_routes(manager)
     handler = _handler(router)
     try:
-        asyncio.run(handler(DeleteUserRequest(username="bob"), _fake_request(invalidations)))
+        asyncio.run(handler(DeleteUserRequest(username="bob"), _fake_request(invalidations, manager)))
         raised = False
     except RuntimeError:
         raised = True

@@ -471,6 +471,23 @@ export function whenToolVisibilityReady(ms = 4000) {
   return Promise.race([_ready, new Promise((r) => setTimeout(r, ms))]);
 }
 
+let _statusAsked = false;
+
+/** `B1192`. `app.js` says it has asked for the person's status, so a check that
+ *  needs the answer waits for it rather than guessing ahead of it. */
+export function noteStatusAsked() { _statusAsked = true; }
+
+/** `B1192`. Whether to ask for something only an admin may have: while the
+ *  status the page has asked for is on its way, wait for it (at most `ms`),
+ *  then answer `false` only for a viewer the server called a non-admin.
+ *  Unknown asks, as `SET-M-8`'s gate does, so a slow status never hides an
+ *  admin's own lists. A request the page knows will be refused is a request it
+ *  should not send. */
+export async function viewerMayAdminister(ms = 4000) {
+  if (_statusAsked && !_known.auth) await whenToolVisibilityReady(ms);
+  return _state.isAdmin !== false;
+}
+
 /**
  * The URL door. Wraps a deep-link opener so a path that names a hidden tool
  * says why instead of opening it — after the switches are known, because a

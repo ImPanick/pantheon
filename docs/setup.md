@@ -54,9 +54,12 @@ binds port 7000 only after it has finished importing itself — 35–60 seconds 
 a typical host, because it loads embeddings, the vector store and the MCP
 layer first. Anything that probes the app before then gets `Connection
 refused` on every route and looks exactly like a failed deploy. The `pantheon`
-service carries a healthcheck that asks `127.0.0.1:7000/api/health` for a real
-answer, so `docker ps` distinguishes *running* from *serving*, and this script
-waits for it instead of sleeping a guessed number of seconds.
+service carries a healthcheck that asks `127.0.0.1:7000/api/ready` for a real
+answer — 200 only when the database answers and the data directory takes a
+write, 503 otherwise — so `docker ps` distinguishes *running* from *serving*,
+and this script waits for it instead of sleeping a guessed number of seconds.
+`/api/ready` answers without a sign-in, because a probe cannot sign in, and a
+caller with no session is told `{"ready": true|false}` and nothing else.
 
 Note that Docker does **not** restart a container it marks unhealthy —
 `restart: unless-stopped` acts on process exit. The healthcheck makes a wedged
@@ -632,6 +635,24 @@ Pantheon serves plain HTTP on its app port. Docker Compose binds Pantheon and th
 
 Cloudflare Access, Tailscale, Caddy, nginx, and Traefik can all fit this pattern; none are required by Pantheon. If your access layer reaches Pantheon on the same host, proxy to `http://127.0.0.1:7000`; a request the proxy forwards from loopback signs in like any other. Any proxy that forwards `X-Forwarded-Proto: https` gets `Secure` session cookies without configuration, so `SECURE_COOKIES` only needs setting when you want to override that — force it on for a proxy that forwards no scheme at all, or off while you still serve plain HTTP.
 `ALLOWED_ORIGINS` lists exact permitted origins for cross-origin browser/API clients; ordinary same-origin reverse-proxy access usually does not need a special CORS entry.
+
+#### Serving under a path prefix
+
+To serve Pantheon at `https://host/pantheon/` rather than at the root, have the
+proxy strip the prefix and start uvicorn with the same prefix as its root path:
+
+```bash
+python -m uvicorn app:app --host 127.0.0.1 --port 7000 --root-path /pantheon
+```
+
+`--root-path` is the supported way to put Pantheon behind a prefix: every
+redirect it builds (the sign-in redirect, the `/static` page redirects) and the
+login page's own URLs carry the prefix. **Mounting Pantheon inside another
+Python ASGI app** (`Mount("/pantheon", app=pantheon_app)` in a Starlette or
+FastAPI app of your own) **is not supported**: inside a mount Starlette records
+the outer app's prefix as empty for the mounted one, so Pantheon's redirects —
+the sign-in redirect among them — drop `/pantheon` and send the browser to the
+outer app's root (`B371`). Put a proxy in front instead.
 
 #### Faster over the network: HTTP/2
 

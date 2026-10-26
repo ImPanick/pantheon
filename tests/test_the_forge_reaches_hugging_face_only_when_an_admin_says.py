@@ -187,9 +187,14 @@ def _settings_route():
     core.__path__ = [str(_REPO / "core")]
     from routes.auth_routes import setup_auth_routes
 
-    for route in setup_auth_routes(_Manager()).routes:
+    from tests.helpers.signed_in import through_the_middleware
+    manager = _Manager()
+    for route in setup_auth_routes(manager).routes:
         if getattr(route, "path", "") == "/api/auth/settings" and "POST" in route.methods:
-            return route.endpoint
+            # `B543`: the route asks `require_admin`, which reads the stamp
+            # `AuthMiddleware` puts on a request — so each one is stamped.
+            endpoint = route.endpoint
+            return lambda request: endpoint(through_the_middleware(request, manager))
     raise AssertionError("POST /api/auth/settings not found")
 
 

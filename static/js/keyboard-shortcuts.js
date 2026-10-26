@@ -27,6 +27,33 @@ import { getSettings } from './appConfig.js';
  * the document editor binds Ctrl+F itself, scoped to the editor, and a global
  * binding here would take browser find away from the whole app.
  */
+/** `B1196`, `D-2026-10-25-04` §2. The layers a person's keyboard shortcuts are
+ *  made of: the instance's `keybinds` (an admin sets them, and they are the
+ *  platform's default) and this person's own (`/api/prefs/keybinds`), which
+ *  win for them. A layer that cannot be read is empty, so the built-in
+ *  defaults still answer. Read by the dispatcher below, the Shortcuts panel
+ *  (`settings.js`) and `/shortcuts` (`slashCommands.js`), through
+ *  `mergeKeybinds` — one rule, beside the table it merges over. */
+export async function keybindLayers() {
+  const instance = await getSettings()
+    .then((s) => (s && s.keybinds && typeof s.keybinds === 'object' && !Array.isArray(s.keybinds)) ? s.keybinds : {})
+    .catch(() => ({}));
+  let mine = {};
+  try {
+    const r = await fetch('/api/prefs/keybinds', { credentials: 'same-origin' });
+    if (r && r.ok) {
+      const d = await r.json();
+      if (d && d.value && typeof d.value === 'object' && !Array.isArray(d.value)) mine = d.value;
+    }
+  } catch (_) { /* unread: the instance's and the built-in defaults answer */ }
+  return { instance, mine };
+}
+
+/** The built-in defaults, under the instance's, under the person's own. */
+export function mergeKeybinds(defaults, layers = {}) {
+  return { ...(defaults || {}), ...(layers.instance || {}), ...(layers.mine || {}) };
+}
+
 export const KEYBIND_DEFAULTS = {
   search: 'ctrl+k', toggle_sidebar: 'ctrl+alt+b', new_session: 'ctrl+alt+n',
   fav_session: 'ctrl+alt+f', delete_session: 'ctrl+alt+d',
@@ -248,9 +275,9 @@ export function initKeyboardShortcuts(modules) {
     if (chatModule) chatModule.stopCurrentReply();
   });
 
-  // Load saved keybinds
-  getSettings()
-    .then(s => { if (s.keybinds) window._pantheonKeybinds = { ..._defaultKeybinds, ...s.keybinds }; })
+  // Load saved keybinds: the instance's, under the person's own (`B1196`).
+  keybindLayers()
+    .then(layers => { window._pantheonKeybinds = mergeKeybinds(_defaultKeybinds, layers); })
     .catch(() => {});
 
   // `P23-01`. Two more Escape rules lived here: a capture listener that pressed

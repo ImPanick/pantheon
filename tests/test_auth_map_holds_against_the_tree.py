@@ -429,17 +429,21 @@ def test_the_ssh_targets_line_is_derived(checker, map_text):
     assert any("`derived-ssh-targets:` line" in p for p in found), found
 
 
-def test_the_exemption_is_matched_on_path_alone(checker):
-    """`B542`'s premise, taken from `app.py` rather than asserted.
+def test_the_exemption_is_matched_on_method_and_path(checker):
+    """`B542`, taken from `app.py` rather than asserted.
 
-    `_is_auth_exempt(path)` takes one argument. `/api/auth/settings` is on the
-    list so the pre-login page can read keybinds, and the POST that writes every
-    app setting shares the path.
+    This pinned the defect until 2026-10-26: `_is_auth_exempt(path)` took one
+    argument, so `/api/auth/settings` — on the list so the pre-login page can
+    read keybinds — exempted the POST that writes every app setting. Each entry
+    names its methods now, and the checker reads them as the middleware does.
     """
     exact, patterns = checker.auth_exempt(ROOT)
     assert "/api/auth/settings" in exact
     assert "/api/auth/login" in exact
-    assert checker.is_exempt("/api/auth/settings", exact, patterns)
+    assert checker.is_exempt("/api/auth/settings", exact, patterns, "GET")
+    assert not checker.is_exempt("/api/auth/settings", exact, patterns, "POST")
+    assert not checker.is_exempt("/api/auth/features", exact, patterns, "POST")
+    assert checker.is_exempt("/api/auth/login", exact, patterns, "POST")
     assert not checker.is_exempt("/api/auth/users", exact, patterns)
     # The `/static` prefix is a prefix, not an exact match.
     assert checker.is_exempt("/static/js/app.js", exact, patterns)

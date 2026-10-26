@@ -517,20 +517,16 @@ def test_the_route_python_serves_is_the_one_the_picker_reads(sandbox, monkeypatc
 # ---------------------------------------------------------------------------
 
 
-def test_admin_js_reads_the_catalogue_from_its_one_home():
+def test_admin_js_keeps_no_copy_of_the_catalogue():
     """`Law 7`. Absence anywhere in the file is the claim, so a file-wide
-    check is the right one (`Law 20`'s one exception); the import is read
-    from code with comments and strings blanked."""
+    check is the right one (`Law 20`'s one exception); read from code with
+    comments and strings blanked. `B902` deleted the unreachable admin MCP form
+    that imported the catalogue, so `admin.js` neither holds a copy nor imports
+    it now — the Settings form is its one reader."""
     admin = ADMIN.read_text(encoding="utf-8")
     with pytest.raises(AssertionError):
         js_binding(admin, "MCP_PRESETS")
-    # `js_code` blanks string bodies with offsets kept, so the statement is
-    # found in code and its specifier read from the source at the same place.
-    code = js_code(admin)
-    found = re.search(r"\bimport\s*\{[^}]*\bMCP_PRESETS\b[^}]*\}\s*from\b", code)
-    assert found, "admin.js does not import MCP_PRESETS"
-    spec = admin[found.end():].split(";", 1)[0].strip()
-    assert spec == "'./settings/mcpPresets.js'"
+    assert not re.search(r"\bMCP_PRESETS\b", js_code(admin))
 
 
 def _settings_picker_binding() -> str:

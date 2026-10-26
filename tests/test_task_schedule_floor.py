@@ -395,9 +395,15 @@ async def test_the_floor_setting_is_clamped_where_every_other_number_is(monkeypa
     monkeypatch.setattr(auth_routes, "_load_settings", lambda: dict(store))
     monkeypatch.setattr(auth_routes, "_save_settings",
                         lambda updated: (store.clear(), store.update(updated)))
-    router = auth_routes.setup_auth_routes(_AuthManager())
-    post = next(r.endpoint for r in router.routes
-                if r.path == "/api/auth/settings" and "POST" in r.methods)
+    from tests.helpers.signed_in import through_the_middleware
+    manager = _AuthManager()
+    router = auth_routes.setup_auth_routes(manager)
+    _post = next(r.endpoint for r in router.routes
+                 if r.path == "/api/auth/settings" and "POST" in r.methods)
+
+    def post(request):
+        # `B543`: the route asks `require_admin`, which reads the middleware's stamp.
+        return _post(through_the_middleware(request, manager))
 
     await post(_Request({"min_task_interval_minutes": -5,
                          "index_max_file_mb": -1,

@@ -322,19 +322,6 @@ _LOOKUPS = (
 ABSENT_BY_DESIGN = [
     {
         "where": "static/js/admin.js",
-        "guard": "if (!cmdEl) return;",
-        "why": "The admin MCP form was replaced by the unified integrations "
-               "form (`uf-mcp-*`, static/js/settings.js). `initMcpForm` and "
-               "`loadMcpServers` both return on their sentinel.",
-        "ids": (
-            "adm-mcpAddBtn", "adm-mcpArgs", "adm-mcpCommand", "adm-mcpEnv",
-            "adm-mcpEnvFields", "adm-mcpEnvRow", "adm-mcpHelp", "adm-mcpList",
-            "adm-mcpMsg", "adm-mcpName", "adm-mcpPreset", "adm-mcpSseRow",
-            "adm-mcpTransport", "adm-mcpUrl",
-        ),
-    },
-    {
-        "where": "static/js/admin.js",
         "guard": "if (!addBtn || addBtn.dataset.bound) return;",
         "why": "API tokens are created and managed in the unified "
                "integrations panel (`unified-integrations-list`, "

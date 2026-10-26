@@ -157,12 +157,12 @@ def test_real_auth_middleware_uses_application_relative_path(tmp_path):
                 return None
 
 
-        def _scope(root_path, route_path, downstream):
+        def _scope(root_path, route_path, downstream, method="GET"):
             full_path = root_path + route_path
             return {
                 "type": "http",
                 "http_version": "1.1",
-                "method": "GET",
+                "method": method,
                 "scheme": "http",
                 "path": full_path,
                 "raw_path": full_path.encode(),
@@ -175,7 +175,7 @@ def test_real_auth_middleware_uses_application_relative_path(tmp_path):
             }
 
 
-        async def _case(root_path, route_path, *, configured):
+        async def _case(root_path, route_path, *, configured, method="GET"):
             manager = _AuthManager(configured)
             app_module.auth_manager = manager
             calls = []
@@ -184,10 +184,10 @@ def test_real_auth_middleware_uses_application_relative_path(tmp_path):
                 calls.append(request)
                 return JSONResponse({"reached": True})
 
-            downstream = Starlette(routes=[Route(route_path, endpoint)])
+            downstream = Starlette(routes=[Route(route_path, endpoint, methods=[method])])
             downstream.state.auth_manager = manager
             middleware = app_module.AuthMiddleware(downstream)
-            scope = _scope(root_path, route_path, downstream)
+            scope = _scope(root_path, route_path, downstream, method)
             sent = []
             request_sent = False
 
@@ -212,7 +212,9 @@ def test_real_auth_middleware_uses_application_relative_path(tmp_path):
 
 
         async def main():
-            setup = await _case("/pantheon", "/api/auth/setup", configured=False)
+            # `B542`: the exemption is a method on a path, and setup's is POST.
+            setup = await _case("/pantheon", "/api/auth/setup", configured=False,
+                                method="POST")
             mounted_api = await _case("/pantheon", "/api/models", configured=True)
             mounted_browser = await _case("/pantheon", "/notes", configured=True)
             webhook = await _case(

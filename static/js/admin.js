@@ -9,9 +9,10 @@ import { sortModelObjects } from './modelSort.js';
 import { PROVIDER_DEVICE_FLOWS, formatDeviceFlowError, runProviderDeviceFlow } from './providerDeviceFlow.js';
 import { getSettings, getTools, invalidateSettings, invalidateTools } from './appConfig.js';
 import { chevronIcon } from './icons.js';
-import { MCP_PRESETS } from './settings/mcpPresets.js';
 // C-ERR: a refused response is read once, by the one reader.
 import { readRefusal } from './workbench/refusal.js';
+import { bindMenuDismiss } from './escMenuStack.js';
+import { topPortalZ } from './toolWindowZOrder.js';
 // `P23-03`: the one table — each switch below names the Tools entry it hides.
 // Same specifier as `app.js` (no query): one instance of the table's state.
 import { hidesLine, toolVisibilityState } from './ui_visibility.js';
@@ -27,6 +28,37 @@ let _authPolicy = { password_min_length: 8, reserved_usernames: [] };
 
 function el(id) { return document.getElementById(id); }
 function esc(s) { return uiModule.esc(s); }
+
+/** `B732`. A panel that could not draw its list says which of four things
+ *  happened, through `P9-07`'s one shape (`ui.renderEmptyState`) — not one grey
+ *  `.admin-empty` sentence for all of them. *Signed out* and *not an
+ *  administrator* are told apart and each says what to do; a failure carries
+ *  the server's own words and *Try again*; an empty list says what to add.
+ *  `.admin-empty` rides along so the panel's spacing is unchanged (`Law 2`). */
+function _goSignIn() {
+  try { window.location.assign('/login'); } catch (_) { /* no window */ }
+}
+function _refusedState(host, status, reason, onRetry) {
+  if (status === 401) {
+    return uiModule.renderEmptyState(host, {
+      kind: 'error', className: 'admin-empty', title: 'You are signed out',
+      message: 'Your sign-in has ended. Sign in again to manage this.',
+      action: { label: 'Sign in', onClick: _goSignIn },
+    });
+  }
+  if (status === 403) {
+    return uiModule.renderEmptyState(host, {
+      kind: 'error', className: 'admin-empty',
+      title: 'You are not signed in as an administrator',
+      message: 'Only an administrator can see and change this. Sign in with an administrator\'s account.',
+      action: { label: 'Sign in as someone else', onClick: _goSignIn },
+    });
+  }
+  return uiModule.renderEmptyState(host, {
+    kind: 'error', className: 'admin-empty', title: 'Could not load this',
+    reason: reason || (status ? `The server answered ${status}.` : ''), onRetry,
+  });
+}
 
 /* ═══════════════════════════════════════════
    USERS TAB
@@ -124,9 +156,20 @@ async function loadUsers() {
   const list = el('adm-userList');
   try {
     const res = await fetch('/api/auth/users', { credentials: 'same-origin' });
-    if (res.status === 401 || res.status === 403) { list.innerHTML = '<div class="admin-empty">Access denied</div>'; return; }
+    if (!res.ok) {
+      const refused = res.status === 401 || res.status === 403
+        ? '' : (await readRefusal(res, `The server answered ${res.status}.`)).sentence;
+      _refusedState(list, res.status, refused, loadUsers);
+      return;
+    }
     const data = await res.json();
-    if (!data.users || data.users.length === 0) { list.innerHTML = '<div class="admin-empty">No users found</div>'; return; }
+    if (!data.users || data.users.length === 0) {
+      uiModule.renderEmptyState(list, {
+        kind: 'empty', className: 'admin-empty', title: 'No accounts yet',
+        message: 'Add one with the form below.',
+      });
+      return;
+    }
     list.innerHTML = '';
     // `SET-M-11` (P23-03). *Revoke admin* was offered on the only admin, and
     // pressing it confirmed and then answered "Cannot demote the last admin".
@@ -150,8 +193,13 @@ async function loadUsers() {
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
           ${u.is_admin ? '' : `<button type="button" class="admin-btn-sm" data-adm-privs="${esc(u.username)}" aria-expanded="false" style="font-size:11px;">Privileges</button>`}
           ${u.is_admin && adminCount <= 1 ? '' : `<button type="button" class="admin-btn-sm" data-adm-toggle-admin="${esc(u.username)}" data-make-admin="${u.is_admin ? '0' : '1'}" style="font-size:11px;">${u.is_admin ? 'Revoke admin' : 'Make admin'}</button>`}
-          <button type="button" class="admin-btn-sm" data-adm-rename-user="${esc(u.username)}" style="font-size:11px;">Rename</button>
-          ${u.is_admin ? '' : `<button type="button" class="admin-btn-delete" data-adm-del-user="${esc(u.username)}" style="font-size:11px;">Remove</button>`}
+          <span class="admin-user-more" style="position:relative;display:inline-block;">
+            <button type="button" class="admin-btn-sm" data-adm-user-more="${esc(u.username)}" aria-haspopup="menu" aria-expanded="false" aria-label="More for ${esc(u.username)}" title="More" style="font-size:11px;padding:4px 8px;line-height:1;"><svg width="14" height="4" viewBox="0 0 14 4" fill="currentColor" aria-hidden="true"><circle cx="2" cy="2" r="1.4"/><circle cx="7" cy="2" r="1.4"/><circle cx="12" cy="2" r="1.4"/></svg></button>
+            <div class="admin-user-more-menu" role="menu" style="display:none;position:absolute;top:calc(100% + 4px);right:0;min-width:130px;padding:4px;background:var(--panel,var(--bg));border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.22);flex-direction:column;gap:1px;">
+              <button type="button" role="menuitem" class="admin-btn-sm adm-more-item" data-adm-rename-user="${esc(u.username)}" style="background:none;border:0;border-radius:5px;padding:7px 9px;width:100%;text-align:left;font-size:12px;font-weight:normal;color:var(--fg);cursor:pointer;">Rename</button>
+              ${u.is_admin ? '' : `<button type="button" role="menuitem" class="admin-btn-sm adm-more-item" data-adm-del-user="${esc(u.username)}" style="background:none;border:0;border-radius:5px;padding:7px 9px;width:100%;text-align:left;font-size:12px;font-weight:normal;color:var(--color-error);cursor:pointer;">Remove</button>`}
+            </div>
+          </span>
           ${u.is_admin ? '' : chevronIcon({ size: 12, className: 'admin-user-chevron', style: 'opacity:0.3;transition:transform 0.2s,opacity 0.2s;' })}
         </div>
       `;
@@ -216,7 +264,7 @@ async function loadUsers() {
         // Toggle panel visibility + rotate chevron + load models
         let _modelsLoaded = false;
         header.addEventListener('click', (e) => {
-          if (e.target.closest('.admin-btn-delete, [data-adm-rename-user], [data-adm-toggle-admin]')) return;
+          if (e.target.closest('.admin-btn-delete, [data-adm-rename-user], [data-adm-toggle-admin], .admin-user-more')) return;
           privPanel.classList.toggle('hidden');
           const isOpen = !privPanel.classList.contains('hidden');
           const chevron = header.querySelector('.admin-user-chevron');
@@ -242,6 +290,36 @@ async function loadUsers() {
         privPanel.querySelectorAll('[data-priv]').forEach(input => {
           input.addEventListener('change', () => _savePrivilege(input));
         });
+      }
+
+      // `B1198` (`SET-U-7`'s other half). Rename and Remove sat beside
+      // Privileges at one size; they live behind the row's ⋯ now — the
+      // pattern the endpoint cards already use (`#adm-epLocalMoreMenu`) — and
+      // Privileges stays on the row. The two items keep their handlers below.
+      const moreBtn = row.querySelector('[data-adm-user-more]');
+      const moreMenu = row.querySelector('.admin-user-more-menu');
+      if (moreBtn && moreMenu) {
+        let dismiss = null;
+        const shut = () => {
+          moreMenu.style.display = 'none';
+          moreBtn.setAttribute('aria-expanded', 'false');
+          dismiss = null;
+        };
+        const closeMore = () => { const d = dismiss; if (d) d(); shut(); };
+        moreBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (moreMenu.style.display !== 'none') { closeMore(); return; }
+          // Above the rows below it, from the one stack (`check-zindex.py`).
+          moreMenu.style.zIndex = String(topPortalZ());
+          moreMenu.style.display = 'flex';
+          moreBtn.setAttribute('aria-expanded', 'true');
+          dismiss = bindMenuDismiss(moreMenu, shut,
+            (ev) => !moreMenu.contains(ev.target) && !moreBtn.contains(ev.target));
+        });
+        // Capture: the items stop their own clicks from bubbling.
+        moreMenu.addEventListener('click', (e) => {
+          if (e.target.closest('.adm-more-item')) closeMore();
+        }, true);
       }
 
       // Rename button
@@ -331,7 +409,7 @@ async function loadUsers() {
 
       list.appendChild(row);
     });
-  } catch (e) { list.innerHTML = '<div class="admin-error">Failed to load users</div>'; }
+  } catch (e) { _refusedState(list, 0, `Could not reach the server: ${e.message}`, loadUsers); }
 }
 
 async function _loadModelsForUser(username, allowedSet, modelsRestricted, blockAllModels, privPanel) {
@@ -1935,23 +2013,12 @@ function initEndpointForm() {
    TOOLS TAB — MCP
    ═══════════════════════════════════════════ */
 
-const _GOOGLE_OAUTH_HELP = `To get Google OAuth credentials:
-1. Go to console.cloud.google.com
-2. Click the project dropdown (top left) > New Project > name it > Create
-3. APIs & Services > Library > enable the API you need (Gmail, Calendar, Drive, etc.)
-4. APIs & Services > OAuth consent screen > configure (External, app name + email)
-5. Under Audience, click Add Users > add your Google email as a test user
-6. APIs & Services > Credentials > + Create Credentials > OAuth Client ID > Desktop App
-7. Copy the Client ID and Client Secret into the fields above
-8. After adding the server, click Authorize to sign in with Google
-9. If accessing remotely: sign in, then copy the URL from the error page and paste it back`;
-
-// `P8-45`. The preset catalogue that stood here moved to
-// `static/js/settings/mcpPresets.js`, its one home (`Law 7`): the Settings
-// MCP form's "Start from" picker reads it, and `initMcpForm` below — which
-// returns on `adm-mcpCommand`, an id no template renders — reads the same
-// array, imported at the top of this file, rather than a second copy that
-// could drift from the live one.
+// `B902`. The admin MCP form that stood here (`initMcpForm`, `loadMcpServers`,
+// `_saveMcpToolState`, and the `_GOOGLE_OAUTH_HELP` text nothing read) returned
+// on ids no template renders, and everything it did is the Settings MCP form's
+// (`static/js/settings.js`, its presets in `settings/mcpPresets.js`) — one place
+// to add a server, not two (`D-2026-09-27-01`). Deleted, as `B1445` deleted the
+// dead lookups in `app.js`.
 // ── Built-in tools management ──
 const TOOL_META = {
   bash:              { name: 'Shell',            desc: 'Execute bash commands',           cat: 'Code',       ctx: '~200' },
@@ -2002,7 +2069,13 @@ async function loadBuiltinTools() {
     invalidateTools();
     const data = await getTools();
     const tools = data.tools || [];
-    if (!tools.length) { list.innerHTML = '<div class="admin-empty">No tools found</div>'; return; }
+    if (!tools.length) {
+      uiModule.renderEmptyState(list, {
+        kind: 'empty', className: 'admin-empty', title: 'No tools are registered',
+        message: 'The server reported no built-in tools. Its log says what it loaded at start.',
+      });
+      return;
+    }
 
     // Group by category
     const groups = {};
@@ -2170,357 +2243,9 @@ async function loadBuiltinTools() {
     });
   } catch (e) {
     console.error('Failed to load tools:', e);
-    list.innerHTML = '<div class="admin-empty">Failed to load tools</div>';
+    // `B732`: the reason, and a way to ask again — not the "nothing here" grey.
+    _refusedState(list, 0, `The tool list did not load: ${e.message}`, loadBuiltinTools);
   }
-}
-
-async function loadMcpServers() {
-  const list = el('adm-mcpList');
-  if (!list) return;  // MCP section not visible / not yet rendered
-  try {
-    const res = await fetch('/api/mcp/servers', { credentials: 'same-origin' });
-    const servers = await res.json();
-    if (!servers.length) { list.innerHTML = '<div class="admin-empty">No MCP servers configured</div>'; return; }
-    list.innerHTML = servers.map(s => {
-      const statusColor = s.needs_oauth ? '#e5a33a' : s.status === 'connected' ? 'var(--fg)' : s.status === 'error' ? 'var(--red)' : 'color-mix(in srgb, var(--fg) 50%, transparent)';
-      const toolInfo = s.status === 'connected' ? `${s.enabled_tool_count}/${s.tool_count} tools enabled` : '';
-      const statusText = s.needs_oauth ? 'Needs authorization' : s.status === 'connected' ? `Connected (${toolInfo})` : s.status === 'error' ? `Error: ${s.error || 'unknown'}` : 'Disconnected';
-      const hasTools = s.status === 'connected' && s.tool_count > 0;
-      return `<div class="admin-user-row" data-adm-mcp-id="${s.id}">
-        <div style="display:flex;align-items:center;justify-content:space-between;${hasTools ? 'cursor:pointer;' : ''}padding:4px 0;" data-adm-mcp-header="${s.id}">
-          <div class="admin-user-info" style="flex:1;flex-wrap:wrap;gap:0.3rem;">
-            <span class="admin-user-name">${esc(s.name)}</span>
-            <span class="admin-badge" style="background:${statusColor}33;color:${statusColor}">${statusText}</span>
-            ${hasTools ? `<span style="font-size:10px;opacity:0.4;">Click to manage tools</span>` : ''}
-          </div>
-          <div style="display:flex;gap:4px;align-items:center;">
-            ${s.needs_oauth ? `<a href="/api/mcp/oauth/authorize/${s.id}" target="_blank" class="admin-btn-sm" style="background:var(--red);color:#fff;text-decoration:none;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">Authorize</a>` : ''}
-            <button class="admin-btn-sm" data-adm-mcp-reconnect="${s.id}">Reconnect</button>
-            <button class="admin-btn-delete" style="border-color:${s.is_enabled ? 'color-mix(in srgb, var(--red) 30%, transparent)' : 'color-mix(in srgb, var(--fg) 30%, transparent)'};color:${s.is_enabled ? 'var(--red)' : 'var(--fg)'};" data-adm-mcp-toggle="${s.id}" data-adm-mcp-enable="${!s.is_enabled}">${s.is_enabled ? 'Disable' : 'Enable'}</button>
-            <button class="admin-btn-delete" data-adm-mcp-delete="${s.id}">Delete</button>
-            ${hasTools ? chevronIcon({ size: 12, className: 'admin-user-chevron', style: 'opacity:0.3;transition:transform 0.2s,opacity 0.2s;' }) : ''}
-          </div>
-        </div>
-        ${hasTools ? `<div class="mcp-tools-panel hidden" data-adm-mcp-tools-panel="${s.id}"></div>` : ''}
-      </div>`;
-    }).join('');
-    list.querySelectorAll('[data-adm-mcp-reconnect]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const msg = el('adm-mcpMsg'); msg.textContent = 'Reconnecting...'; msg.className = '';
-        try {
-          const res = await fetch(`/api/mcp/servers/${btn.dataset.admMcpReconnect}/reconnect`, { method: 'POST', credentials: 'same-origin' });
-          const data = await res.json();
-          msg.textContent = data.connected ? `Reconnected (${data.tool_count} tools)` : `Failed: ${data.error || 'unknown'}`;
-          msg.className = data.connected ? 'admin-success' : 'admin-error';
-          loadMcpServers();
-        } catch (e) { msg.textContent = 'Failed: ' + e.message; msg.className = 'admin-error'; }
-      });
-    });
-    list.querySelectorAll('[data-adm-mcp-toggle]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const fd = new FormData(); fd.append('is_enabled', btn.dataset.admMcpEnable);
-        await fetch(`/api/mcp/servers/${btn.dataset.admMcpToggle}`, { method: 'PATCH', body: fd, credentials: 'same-origin' });
-        loadMcpServers();
-      });
-    });
-    list.querySelectorAll('[data-adm-mcp-delete]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        if (!await uiModule.styledConfirm('Delete this MCP server?', { confirmText: 'Delete', danger: true })) return;
-        await fetch(`/api/mcp/servers/${btn.dataset.admMcpDelete}`, { method: 'DELETE', credentials: 'same-origin' });
-        loadMcpServers();
-      });
-    });
-    // Tools expand/collapse (click anywhere on card)
-    list.querySelectorAll('[data-adm-mcp-id]').forEach(row => {
-      const header = row.querySelector('[data-adm-mcp-header]');
-      if (!header) return;
-      let _toolsLoaded = false;
-      row.style.cursor = 'pointer';
-      row.addEventListener('click', async (e) => {
-        if (e.target.closest('.admin-btn-sm, .admin-btn-delete, a, .mcp-tools-list, .mcp-tools-header')) return;
-        const sid = header.dataset.admMcpHeader;
-        const panel = row.querySelector(`[data-adm-mcp-tools-panel="${sid}"]`);
-        if (!panel) return;
-        panel.classList.toggle('hidden');
-        const chevron = row.querySelector('.admin-user-chevron');
-        const isOpen = !panel.classList.contains('hidden');
-        if (chevron) {
-          chevron.style.transform = isOpen ? 'rotate(180deg)' : '';
-          chevron.style.opacity = isOpen ? '0.7' : '0.3';
-        }
-        if (!_toolsLoaded && isOpen) {
-          _toolsLoaded = true;
-          panel.innerHTML = '<span style="opacity:0.5;font-size:11px;">Loading tools...</span>';
-          try {
-            const res = await fetch(`/api/mcp/servers/${sid}/tools`, { credentials: 'same-origin' });
-            const tools = await res.json();
-            if (!tools.length) { panel.innerHTML = '<span style="opacity:0.5;font-size:11px;">No tools</span>'; return; }
-            const disabled = new Set(tools.filter(t => t.is_disabled).map(t => t.name));
-            panel.innerHTML = `<div class="mcp-tools-header">
-              <span>Tools</span>
-              <span style="display:flex;gap:8px;align-items:center;">
-                <span class="mcp-tools-count">${tools.length - disabled.size}/${tools.length} enabled</span>
-                <a href="#" data-mcp-select-all="${sid}">All</a>
-                <a href="#" data-mcp-select-none="${sid}">None</a>
-              </span>
-            </div><div class="mcp-tools-list">` + tools.map(t =>
-              `<label title="${esc(t.description)}">
-                <input type="checkbox" data-mcp-tool-name="${esc(t.name)}" ${!t.is_disabled ? 'checked' : ''}>
-                <span><strong>${esc(t.name)}</strong> <span style="opacity:0.5;">— ${esc((t.description || '').slice(0, 80))}</span></span>
-              </label>`
-            ).join('') + '</div>';
-            panel.querySelector(`[data-mcp-select-all="${sid}"]`)?.addEventListener('click', (e) => {
-              e.preventDefault();
-              panel.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = true);
-              _saveMcpToolState(sid, panel);
-            });
-            panel.querySelector(`[data-mcp-select-none="${sid}"]`)?.addEventListener('click', (e) => {
-              e.preventDefault();
-              panel.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = false);
-              _saveMcpToolState(sid, panel);
-            });
-            panel.querySelectorAll('input[type=checkbox]').forEach(cb => {
-              cb.addEventListener('change', () => _saveMcpToolState(sid, panel));
-            });
-          } catch (e) { panel.innerHTML = '<span class="admin-error" style="font-size:11px;">Failed to load tools</span>'; }
-        }
-      });
-    });
-  } catch (e) { if (list) list.innerHTML = '<div class="admin-error">Failed to load MCP servers</div>'; }
-}
-
-async function _saveMcpToolState(serverId, panel) {
-  const disabled = [];
-  panel.querySelectorAll('input[type=checkbox]').forEach(cb => {
-    if (!cb.checked) disabled.push(cb.dataset.mcpToolName);
-  });
-  const total = panel.querySelectorAll('input[type=checkbox]').length;
-  try {
-    await fetch(`/api/mcp/servers/${serverId}/tools`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify({ disabled }),
-    });
-    // Update the count label in the panel
-    const countLabel = panel.querySelector('.mcp-tools-count');
-    if (countLabel) countLabel.textContent = `${total - disabled.length}/${total} enabled`;
-    // Update badge in the server row
-    const row = panel.closest('[data-adm-mcp-id]');
-    if (row) {
-      const badge = row.querySelector('.admin-badge');
-      if (badge) badge.textContent = `Connected (${total - disabled.length}/${total} tools enabled)`;
-    }
-  } catch (e) { /* silent */ }
-}
-
-function initMcpForm() {
-  const cmdEl = el('adm-mcpCommand');
-  if (!cmdEl) return;  // MCP form not present in this build — nothing to wire
-  const transportSel = el('adm-mcpTransport');
-  const sseRow = el('adm-mcpSseRow');
-  const envRow = el('adm-mcpEnvRow');
-  const envFieldsWrap = el('adm-mcpEnvFields');
-  const helpBox = el('adm-mcpHelp');
-  const cmdRow = cmdEl.parentElement;
-  let _activeHelp = null;
-  let _envKeys = []; // track which env keys have dedicated fields
-  let _activeOauthFile = null; // preset oauthFile config (for Google servers)
-  let _activeOauth = null;     // preset OAuth flow config (provider, scopes, etc.)
-
-  function _clearEnvFields() {
-    envFieldsWrap.innerHTML = '';
-    _envKeys = [];
-    envRow.style.display = 'none';
-    el('adm-mcpEnv').value = '';
-    _activeOauth = null;
-  }
-
-  function _buildEnvFields(envObj, help, preset) {
-    _clearEnvFields();
-    const keys = Object.keys(envObj);
-    if (!keys.length) return;
-    _envKeys = keys;
-
-    // Provider dropdown (e.g. for Email IMAP/SMTP)
-    if (preset?.providerDropdown) {
-      const pd = preset.providerDropdown;
-      const row = document.createElement('div');
-      row.className = 'admin-model-form-row';
-      row.style.cssText = 'gap:6px;align-items:center;';
-      const label = document.createElement('span');
-      label.style.cssText = 'font-size:11px;opacity:0.55;min-width:0;white-space:nowrap;';
-      label.textContent = pd.label || 'Provider';
-      const select = document.createElement('select');
-      select.style.cssText = 'flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);font-size:12px;';
-      pd.options.forEach((opt, i) => {
-        const o = document.createElement('option');
-        o.value = i;
-        o.textContent = opt.name;
-        select.appendChild(o);
-      });
-      select.addEventListener('change', () => {
-        const opt = pd.options[parseInt(select.value)];
-        for (const [envKey, field] of Object.entries(pd.targets)) {
-          const inp = envFieldsWrap.querySelector(`.mcp-env-input[data-env-key="${envKey}"]`);
-          if (inp) inp.value = opt[field] || '';
-        }
-      });
-      row.appendChild(label);
-      row.appendChild(select);
-      envFieldsWrap.appendChild(row);
-      // Auto-fill with first provider after inputs are created
-      setTimeout(() => {
-        const first = pd.options[0];
-        for (const [envKey, field] of Object.entries(pd.targets)) {
-          const inp = envFieldsWrap.querySelector(`.mcp-env-input[data-env-key="${envKey}"]`);
-          if (inp && !inp.value) inp.value = first[field] || '';
-        }
-      }, 0);
-    }
-
-    for (const key of keys) {
-      const row = document.createElement('div');
-      row.className = 'admin-model-form-row';
-      row.style.cssText = 'gap:6px;align-items:center;';
-      const label = document.createElement('span');
-      label.style.cssText = 'font-size:11px;opacity:0.55;min-width:0;white-space:nowrap;';
-      label.textContent = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-      const input = document.createElement('input');
-      input.type = key.toLowerCase().includes('secret') || key.toLowerCase().includes('token') || key.toLowerCase().includes('key') || key.toLowerCase().includes('password') ? 'password' : 'text';
-      input.placeholder = key;
-      input.dataset.envKey = key;
-      input.className = 'mcp-env-input';
-      input.style.cssText = 'flex:1;';
-      if (envObj[key]) input.value = envObj[key];
-      row.appendChild(label);
-      row.appendChild(input);
-      envFieldsWrap.appendChild(row);
-    }
-    // Help toggle link
-    if (help) {
-      _activeHelp = help;
-      const helpLink = document.createElement('a');
-      helpLink.textContent = 'How do I get these?';
-      helpLink.href = '#';
-      helpLink.style.cssText = 'font-size:10.5px;opacity:0.5;margin-top:2px;display:inline-block;';
-      helpLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        helpBox.style.display = helpBox.style.display === 'none' ? '' : 'none';
-      });
-      envFieldsWrap.appendChild(helpLink);
-      helpBox.textContent = help;
-      helpBox.style.display = 'none';
-    } else {
-      _activeHelp = null;
-      helpBox.style.display = 'none';
-    }
-  }
-
-  // Collect env from either dedicated fields or raw JSON fallback
-  function _collectEnv() {
-    if (_envKeys.length) {
-      const obj = {};
-      envFieldsWrap.querySelectorAll('.mcp-env-input').forEach(inp => {
-        if (inp.value.trim()) obj[inp.dataset.envKey] = inp.value.trim();
-      });
-      return JSON.stringify(obj);
-    }
-    return el('adm-mcpEnv').value.trim() || '{}';
-  }
-
-  transportSel.addEventListener('change', () => {
-    const isSse = transportSel.value === 'sse';
-    sseRow.style.display = isSse ? '' : 'none';
-    cmdRow.style.display = isSse ? 'none' : '';
-    if (isSse) { _clearEnvFields(); helpBox.style.display = 'none'; }
-  });
-
-  // Preset catalog
-  const presetSel = el('adm-mcpPreset');
-  if (presetSel) {
-    MCP_PRESETS.forEach((p, i) => {
-      const opt = document.createElement('option');
-      opt.value = i;
-      opt.textContent = p.name + (Object.keys(p.env).length ? '  (requires keys)' : '');
-      presetSel.appendChild(opt);
-    });
-    presetSel.addEventListener('change', () => {
-      if (presetSel.value === '') return;
-      const p = MCP_PRESETS[parseInt(presetSel.value)];
-      el('adm-mcpName').value = p.name.toLowerCase().replace(/\s+/g, '-');
-      transportSel.value = 'stdio';
-      el('adm-mcpCommand').value = p.command;
-      el('adm-mcpArgs').value = JSON.stringify(p.args);
-      sseRow.style.display = 'none';
-      cmdRow.style.display = '';
-      _buildEnvFields(p.env, p.help || null, p);
-      _activeOauthFile = p.oauthFile || null;
-      _activeOauth = p.oauth || null;
-      presetSel.value = '';
-      // Focus first env field if keys are needed
-      const firstInput = envFieldsWrap.querySelector('.mcp-env-input');
-      if (firstInput) firstInput.focus();
-      else el('adm-mcpAddBtn').focus();
-    });
-  }
-
-  el('adm-mcpAddBtn').addEventListener('click', async () => {
-    const name = el('adm-mcpName').value.trim();
-    const transport = transportSel.value;
-    const command = el('adm-mcpCommand').value.trim();
-    const args = el('adm-mcpArgs').value.trim() || '[]';
-    const env = _collectEnv();
-    const url = el('adm-mcpUrl').value.trim();
-    const msg = el('adm-mcpMsg');
-    if (!name) { msg.textContent = 'Name is required'; msg.className = 'admin-error'; return; }
-    if (transport === 'stdio' && !command) { msg.textContent = 'Command is required for stdio'; msg.className = 'admin-error'; return; }
-    if (transport === 'sse' && !url) { msg.textContent = 'URL is required for SSE'; msg.className = 'admin-error'; return; }
-    try { JSON.parse(env); } catch { msg.textContent = 'Env must be valid JSON'; msg.className = 'admin-error'; return; }
-    // This panel posts to the same endpoint and never checked Args, so the
-    // server's new 400 landed in the generic failure branch below and read as
-    // "Added but connection failed: unknown" — the one message that is wrong
-    // in both halves.
-    try { JSON.parse(args); } catch { msg.textContent = 'Args must be valid JSON, e.g. ["-y", "pkg"]'; msg.className = 'admin-error'; return; }
-    const fd = new FormData();
-    fd.append('name', name); fd.append('transport', transport); fd.append('command', command); fd.append('args', args); fd.append('env', env); fd.append('url', url);
-    // If preset has oauthFile config, send credentials for file generation
-    if (_activeOauthFile) {
-      const envObj = JSON.parse(env);
-      fd.append('oauth_file', JSON.stringify({
-        dir: _activeOauthFile.dir,
-        filename: _activeOauthFile.filename,
-        client_id: envObj.GOOGLE_CLIENT_ID || '',
-        client_secret: envObj.GOOGLE_CLIENT_SECRET || '',
-      }));
-    }
-    // If preset has OAuth flow config, send it so the server can handle authorization
-    if (_activeOauth) {
-      fd.append('oauth_config', JSON.stringify(_activeOauth));
-    }
-    msg.textContent = 'Adding...'; msg.className = '';
-    try {
-      const res = await fetch('/api/mcp/servers', { method: 'POST', body: fd, credentials: 'same-origin' });
-      const data = await res.json();
-      // `res.ok` was never read. A request the server *rejected* took the same
-      // branch as one it accepted whose connection then failed — and the form
-      // was cleared either way, so the rejected values were gone before the
-      // operator could see which one was wrong.
-      if (!res.ok) {
-        msg.textContent = data.detail || `Failed (${res.status})`; msg.className = 'admin-error';
-        return;
-      }
-      if (data.needs_oauth) {
-        msg.innerHTML = `Added ${esc(name)} — <a href="/api/mcp/oauth/authorize/${data.id}" target="_blank" style="color:var(--red);font-weight:600;">Authorize with Google</a> to connect`;
-        msg.className = 'admin-success';
-      } else if (data.connected) {
-        msg.textContent = `Added ${name} (${data.tool_count} tools discovered)`; msg.className = 'admin-success';
-      } else { msg.textContent = `Added but connection failed: ${data.error || 'unknown'}`; msg.className = 'admin-error'; }
-      el('adm-mcpName').value = ''; el('adm-mcpCommand').value = ''; el('adm-mcpArgs').value = ''; el('adm-mcpUrl').value = '';
-      _clearEnvFields(); helpBox.style.display = 'none'; _activeHelp = null; _activeOauthFile = null; _activeOauth = null;
-      loadMcpServers();
-    } catch (e) { msg.textContent = 'Failed: ' + e.message; msg.className = 'admin-error'; }
-  });
 }
 
 /* ── Embedding model ──
@@ -2534,10 +2259,32 @@ async function loadRag() {
   loadRagStats();   // `B1453`: the count moves with every add, remove and reload
   try {
     const res = await fetch('/api/personal');
+    if (!res.ok) {
+      // `B732`: a refusal is not an empty index.
+      const refused = res.status === 401 || res.status === 403
+        ? '' : (await readRefusal(res, `The server answered ${res.status}.`)).sentence;
+      _refusedState(el('adm-ragDirList'), res.status, refused, loadRag);
+      el('adm-ragFileList').innerHTML = '';
+      return;
+    }
     const data = await res.json();
+    // `B1187`. Whether the index behind these lists is up, and the sentence
+    // saying why not — `P23-02` gave the route both and only the Brain's RAG
+    // tab drew them; this card listed directories over a dead index.
+    const health = el('adm-ragHealth');
+    if (health) {
+      const down = data && data.healthy === false;
+      health.hidden = !down;
+      health.textContent = down ? String(data.reason || 'The knowledge index is off.') : '';
+    }
     const dirList = el('adm-ragDirList');
     const dirs = data.directories || [];
-    if (dirs.length === 0) { dirList.innerHTML = '<div class="admin-empty">No directories indexed</div>'; }
+    if (dirs.length === 0) {
+      uiModule.renderEmptyState(dirList, {
+        kind: 'empty', className: 'admin-empty', title: 'No directories indexed',
+        message: 'Type a directory on this machine below and press Add Directory.',
+      });
+    }
     else {
       dirList.innerHTML = dirs.map(d => `<div class="admin-rag-item"><span class="admin-rag-item-name" title="${esc(d)}">${esc(d)}</span><button class="admin-btn-delete" data-adm-rag-dir="${esc(d)}">Remove</button></div>`).join('');
       dirList.querySelectorAll('[data-adm-rag-dir]').forEach(btn => {
@@ -2554,7 +2301,12 @@ async function loadRag() {
     }
     const fileList = el('adm-ragFileList');
     const files = data.files || [];
-    if (files.length === 0) { fileList.innerHTML = '<div class="admin-empty">No files indexed</div>'; }
+    if (files.length === 0) {
+      uiModule.renderEmptyState(fileList, {
+        kind: 'empty', className: 'admin-empty', title: 'No files indexed',
+        message: 'Drop files on the box above, or add a directory.',
+      });
+    }
     else {
       fileList.innerHTML = files.map(f => {
         const size = f.size ? (f.size > 1024 ? (f.size / 1024).toFixed(1) + ' KB' : f.size + ' B') : '';
@@ -2573,7 +2325,7 @@ async function loadRag() {
       });
     }
   } catch (e) {
-    el('adm-ragDirList').innerHTML = '<div class="admin-error">Failed to load</div>';
+    _refusedState(el('adm-ragDirList'), 0, `The index did not answer: ${e.message}`, loadRag);
     el('adm-ragFileList').innerHTML = '';
   }
 }
@@ -2686,7 +2438,10 @@ function initRag() {
     try {
       const res = await fetch('/api/personal/reload', { method: 'POST' });
       const data = await res.json();
-      ragMsg(`Index reloaded: ${data.count} documents`);
+      // `B1187`: a reload over an index that is off says so, and why.
+      if (!res.ok) ragMsg(data.detail || `Reload failed (${res.status})`, true);
+      else if (data.ok === false) ragMsg(`Re-read ${data.count} files, but ${data.reason || 'the knowledge index is off.'}`, true, true);
+      else ragMsg(`Index reloaded: ${data.count} documents`);
       loadRag();
     } catch (e) { ragMsg('Reload failed: ' + e.message, true); }
     btn.disabled = false; btn.textContent = 'Reload Index';
@@ -3914,7 +3669,7 @@ function initAll() {
   // the cause. Anything added here needs a line in `refreshAll` too, or the
   // panel binds its controls and then renders nothing to use them on.
   const inits = [
-    initSignupToggle, initAddUser, initEndpointForm, initMcpForm,
+    initSignupToggle, initAddUser, initEndpointForm,
     initCalDAV, initBackup, initCleanup, initDangerZone, initTokenForm, initLogsView,
     initWebhookForm, initRag, initUploads,
     () => settingsModule.initIntegrations()
@@ -3930,7 +3685,6 @@ function refreshAll() {
   loadUsers();
   loadEndpoints();
   loadBuiltinTools();
-  loadMcpServers();
   loadTokens();
   loadWebhooks();
   loadRag();

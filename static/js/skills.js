@@ -31,6 +31,7 @@ import { SKILL_GATE_NOTE } from './skillGateNote.js';
 import { markUnreached, quietIfUnreached } from './presets.js';
 
 import { scrollBehavior } from './motion.js';
+import { viewerMayAdminister } from './ui_visibility.js';
 const API = window.location.origin;
 let skills = [];
 let builtinSkills = [];   // read-only agent tool capabilities (TOOL_SECTIONS)
@@ -272,6 +273,9 @@ export async function loadSkills(cascade = false) {
 // point of this screen and they have already loaded by the time this runs.
 async function _loadBuiltinCapabilities() {
   try {
+    // `B1192`: the 403 described above is now not asked for at all — a known
+    // non-admin's section stays empty without a request the server refuses.
+    if (!(await viewerMayAdminister())) { builtinSkills = []; return; }
     const res = await fetch(`${API}/api/skills/builtin`);
     if (!res.ok) { builtinSkills = []; return; }
     const data = await res.json();

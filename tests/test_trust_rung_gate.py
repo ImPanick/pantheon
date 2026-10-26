@@ -1066,12 +1066,16 @@ def _settings_route(monkeypatch, store):
         store.update(updated)
 
     monkeypatch.setattr(auth_routes, "_save_settings", _save)
-    router = auth_routes.setup_auth_routes(_AdminOnly())
-    endpoint = next(
+    from tests.helpers.signed_in import stamped_endpoint
+    manager = _AdminOnly()
+    router = auth_routes.setup_auth_routes(manager)
+    # `B543`: the route asks `require_admin`, which reads the stamp
+    # `AuthMiddleware` puts on a request whose cookie validates.
+    endpoint = stamped_endpoint(next(
         route.endpoint
         for route in router.routes
         if route.path == "/api/auth/settings" and "POST" in route.methods
-    )
+    ), manager)
 
     class _AdminRequest(types.SimpleNamespace):
         def __init__(self, body):

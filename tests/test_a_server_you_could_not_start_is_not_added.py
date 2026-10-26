@@ -38,7 +38,6 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-ADMIN_JS = ROOT / "static" / "js" / "admin.js"
 SETTINGS_JS = ROOT / "static" / "js" / "settings.js"
 
 
@@ -196,47 +195,11 @@ def test_a_valid_env_object_is_still_accepted():
 # --------------------------------------------------------------------------
 
 
-def test_both_panels_check_args_before_posting():
-    """Two forms reach `/api/mcp/servers`, and only one of them checked.
-
-    The Admin panel never validated Args, so the server's 400 fell into its
-    generic failure branch and rendered as *"Added but connection failed:
-    unknown"* — wrong in both halves of one sentence.
-
-    **Updated 2026-09-19 by `P8-46`.** The Settings form no longer carries
-    these two strings, because it no longer has the single-line JSON boxes
-    they were about: its Args and Env fields are built by
-    `static/js/settings/mcpFields.js`, which reads the text and says what is
-    wrong with it rather than naming the format. That side is driven — not
-    grepped — in `tests/test_the_mcp_form_names_the_field_js.py`; what is
-    asserted here is only that the check still happens **before** the post,
-    which is this file's subject. The Admin panel is unchanged and its string
-    assertion stands.
-    """
-    admin = ADMIN_JS.read_text(encoding="utf-8")
-    assert "Args must be valid JSON" in admin
-
-
-def test_the_admin_panel_reads_the_status_before_the_body():
-    """`res.ok` was never read, so a rejection and a success looked alike.
-
-    Worse than looking alike: the form fields were cleared in both cases, so
-    the values the server had just refused were gone before anyone could see
-    which one was wrong.
-    """
-    admin = ADMIN_JS.read_text(encoding="utf-8")
-    # The POST, not the GET four hundred lines above it that loads the list —
-    # written first without `method: 'POST'` in the anchor, which sliced the
-    # wrong handler and failed on code that was already correct.
-    handler = admin[admin.index(
-        "const res = await fetch('/api/mcp/servers', { method: 'POST'"
-    ):]
-    handler = handler[: handler.index("loadMcpServers();")]
-    assert "if (!res.ok)" in handler
-    assert handler.index("if (!res.ok)") < handler.index("data.needs_oauth"), (
-        "the status has to be read before the body is interpreted"
-    )
-    assert "data.detail" in handler, "the server's reason must reach the operator"
+# `B902`. Two tests stood here that sliced the admin MCP form in
+# `static/js/admin.js` for its Args check and its `res.ok` read. That form
+# returned on ids no template rendered and is deleted; the Settings form below
+# is the one place a server is added (`D-2026-09-27-01`), and its check is
+# driven in `tests/test_the_mcp_form_names_the_field_js.py`.
 
 
 def test_the_settings_form_does_not_swallow_the_parse_error():

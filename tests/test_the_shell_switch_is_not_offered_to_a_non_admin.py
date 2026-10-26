@@ -79,7 +79,10 @@ def _workstation(on: bool):
 
 def _client(am) -> TestClient:
     from routes.auth_routes import setup_auth_routes
-    app = FastAPI()
+    from tests.helpers.signed_in import with_session_stamp
+    # `B543`: `/api/auth/users` asks `require_admin`, which reads the stamp
+    # `AuthMiddleware` puts on each request; the bare app gets that stamp.
+    app = with_session_stamp(FastAPI(), am)
     app.include_router(setup_auth_routes(am))
     return TestClient(app)
 

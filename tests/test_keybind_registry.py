@@ -62,7 +62,8 @@ def test_there_is_one_registry_and_the_other_two_import_it():
     assert "export const KEYBIND_LABELS = {" in KEYS
     assert "const SHORTCUT_DEFAULTS = KEYBIND_DEFAULTS;" in SETTINGS
     assert "const SHORTCUT_LABELS = KEYBIND_LABELS;" in SETTINGS
-    assert "import { KEYBIND_DEFAULTS, KEYBIND_LABELS }" in SLASH
+    # `B1196` added the merge rule to the same import, beside the table.
+    assert re.search(r"import \{ KEYBIND_DEFAULTS, KEYBIND_LABELS[ ,}]", SLASH)
 
 
 def test_no_file_keeps_a_second_copy_of_the_combos():

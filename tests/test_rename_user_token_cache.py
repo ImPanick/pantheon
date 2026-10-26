@@ -48,19 +48,22 @@ def rename_endpoint(monkeypatch):
     return _route(ar.setup_auth_routes(am), "rename_user"), am
 
 
-def _request(invalidator):
+def _request(invalidator, am):
+    # `B543`: the route asks `require_admin`, which reads the auth manager off
+    # the app the middleware ran in.
     return SimpleNamespace(
         cookies={"pantheon_session": "t"},
-        app=SimpleNamespace(state=SimpleNamespace(invalidate_token_cache=invalidator)),
+        app=SimpleNamespace(state=SimpleNamespace(invalidate_token_cache=invalidator,
+                                                  auth_manager=am)),
         state=SimpleNamespace(current_user="admin"),
     )
 
 
 def test_rename_invalidates_token_cache(rename_endpoint):
     import asyncio
-    endpoint, _am = rename_endpoint
+    endpoint, am = rename_endpoint
     called = {"n": 0}
-    req = _request(lambda: called.__setitem__("n", called["n"] + 1))
+    req = _request(lambda: called.__setitem__("n", called["n"] + 1), am)
     res = asyncio.run(endpoint("alice", SimpleNamespace(username="alice2"), req))
     assert res["ok"] is True and res["username"] == "alice2"
     assert called["n"] == 1, "bearer-token cache was not invalidated on rename"
@@ -68,10 +71,10 @@ def test_rename_invalidates_token_cache(rename_endpoint):
 
 def test_no_invalidator_does_not_crash(rename_endpoint):
     import asyncio
-    endpoint, _am = rename_endpoint
+    endpoint, am = rename_endpoint
     # app.state without the hook (older wiring) must not break rename.
     req = SimpleNamespace(cookies={"pantheon_session": "t"},
-                          app=SimpleNamespace(state=SimpleNamespace()),
+                          app=SimpleNamespace(state=SimpleNamespace(auth_manager=am)),
                           state=SimpleNamespace(current_user="admin"))
     res = asyncio.run(endpoint("alice", SimpleNamespace(username="alice2"), req))
     assert res["ok"] is True

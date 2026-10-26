@@ -32,10 +32,11 @@ Four populations, derived:
   C  a ratchet on admin decisions made some OTHER way — `is_admin(...)` and
      `owner_is_admin_or_single_user(...)` called directly. `require_admin` is
      one gate with many call sites; these are the separate implementations.
-     `routes/auth_routes.py` holds 22 of them and is the entire
-     user-administration surface, invisible to any audit that greps for
-     `require_admin`. The ceiling may fall as they move onto the role model
-     and may not rise: a further way to ask "is this person an admin" is the
+     `routes/auth_routes.py` held 22 of them — the entire user-administration
+     surface, invisible to any audit that greps for `require_admin` — until
+     `B543` put its 21 gates on `require_admin` (the 22nd is a scrub decision
+     on an exempt read, not a gate). The ceiling may fall as the rest move and
+     may not rise: a further way to ask "is this person an admin" is the
      thing `P11-02` exists to stop.
 
   D  a hole that is filed. Every `intended` cell in the map's route table
@@ -61,7 +62,8 @@ Four populations, derived:
      `text/html` or `application/xhtml+xml`, by the `mimetypes` table
      `StaticFiles` itself uses) must be a key of `ROUTE_OWNED_STATIC_PAGES` in
      `app.py`, which the mount answers with a redirect to the route — and the
-     route stands behind the middleware unless `AUTH_EXEMPT_EXACT` names it.
+     route stands behind the middleware unless `AUTH_EXEMPT_EXACT` names it
+     (for GET, which is how a page is asked for).
      Three developer sandboxes were the documents it had been handing out.
 
 **Sites are keyed by file and enclosing function, never by line number.** All
@@ -285,9 +287,10 @@ def require_admin_aliases(tree: ast.Module) -> set[str]:
 
     `routes/webhook/webhook_routes.py` does `from core.middleware import
     require_admin as _require_admin`, so five real gates answer to a name a
-    grep for `require_admin(` never sees. `routes/shell_routes.py` defines its
-    OWN `_require_admin` and is deliberately not caught here — a second
-    implementation is a different finding, and it is counted in rule C.
+    grep for `require_admin(` never sees. A module that defines its OWN
+    `_require_admin` is deliberately not caught here — a second
+    implementation is a different finding, and its `is_admin` call is counted
+    in rule C. `routes/shell_routes.py` was that module until `B543`.
     """
     names = {"require_admin"}
     for node in ast.walk(tree):
@@ -488,15 +491,20 @@ def ssh_target_routes(root: Path = ROOT, rels: list[str] | None = None) -> list[
     return out
 
 
-def auth_exempt(root: Path = ROOT) -> tuple[set[str], list[re.Pattern]]:
+def auth_exempt(root: Path = ROOT) -> tuple[dict[str, frozenset[str]], list[re.Pattern]]:
     """`AUTH_EXEMPT_EXACT` / `_PREFIXES` / `_PATTERNS`, read out of `app.py`.
 
     Read, not copied. This is the list that decides whether a route needs a
     session at all, and a second copy of it here would be the `Law 7`
     duplicate that goes stale in exactly the direction nobody notices.
+
+    `B542`: `AUTH_EXEMPT_EXACT` maps each path to the methods it exempts, so
+    `exact` is `{path: frozenset(methods)}`. An entry whose methods are not a
+    literal set of strings reads as exempting nothing — the conservative
+    answer, and one the map's gate cells then disagree with out loud.
     """
     tree = _parse(root, "app.py")
-    exact: set[str] = set()
+    exact: dict[str, frozenset[str]] = {}
     prefixes: list[str] = []
     patterns: list[re.Pattern] = []
     if tree is None:
@@ -505,10 +513,12 @@ def auth_exempt(root: Path = ROOT) -> tuple[set[str], list[re.Pattern]]:
         if not isinstance(node, ast.Assign):
             continue
         targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
-        if "AUTH_EXEMPT_EXACT" in targets:
-            for elt in getattr(node.value, "elts", []):
-                if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                    exact.add(elt.value)
+        if "AUTH_EXEMPT_EXACT" in targets and isinstance(node.value, ast.Dict):
+            for key, value in zip(node.value.keys, node.value.values):
+                if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                    exact[key.value] = frozenset(
+                        e.value.upper() for e in getattr(value, "elts", [])
+                        if isinstance(e, ast.Constant) and isinstance(e.value, str))
         if "AUTH_EXEMPT_PREFIXES" in targets:
             for elt in getattr(node.value, "elts", []):
                 if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
@@ -525,17 +535,19 @@ def auth_exempt(root: Path = ROOT) -> tuple[set[str], list[re.Pattern]]:
     return exact, patterns
 
 
-def is_exempt(path: str, exact: set[str], patterns: list[re.Pattern]) -> bool:
-    """Whether AuthMiddleware lets this path through unauthenticated.
+def is_exempt(path: str, exact: dict[str, frozenset[str]], patterns: list[re.Pattern],
+              method: str = "GET") -> bool:
+    """Whether AuthMiddleware lets `method` on this path through unauthenticated.
 
-    Path only, never method — `_is_auth_exempt` in `app.py` takes one argument
-    and that is not a detail: `/api/auth/settings` is on the list for the
-    pre-login page's sake, and `POST /api/auth/settings` writes every app
-    setting under the same path. The write is exempt here too, and only its
-    own in-handler admin check stands behind it.
+    `B542`: method and path, as `_is_auth_exempt` in `app.py` asks. It took the
+    path alone until 2026-10-26, so `/api/auth/settings` — on the list for the
+    pre-login page's read — exempted the POST that writes every app setting,
+    and only that handler's own admin check stood behind it. A path in the
+    table answers for the methods it names and no other; the prefix and
+    pattern arms stay path-only, as the middleware's do.
     """
     if path in exact:
-        return True
+        return method.upper() in exact[path]
     return any(p.match(path) for p in patterns)
 
 
@@ -721,8 +733,9 @@ def parse_map(text: str) -> ParsedMap:
                      ssh_total, static_total)
 
 
-def _gate_from_source(route: Route, exact: set[str], patterns: list[re.Pattern]) -> str:
-    base = "exempt" if is_exempt(route.path, exact, patterns) else "middleware"
+def _gate_from_source(route: Route, exact: dict[str, frozenset[str]],
+                      patterns: list[re.Pattern]) -> str:
+    base = "exempt" if is_exempt(route.path, exact, patterns, route.method) else "middleware"
     if not route.auth:
         return base
     return base + " + " + " + ".join(sorted(route.auth))
@@ -955,7 +968,7 @@ def problems(root: Path, text: str, *, max_other: int) -> tuple[list[str], dict]
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--max", type=int, default=43,
+    ap.add_argument("--max", type=int, default=21,
                     help="ceiling for admin decisions taken outside require_admin "
                          "(may fall, never rise)")
     ap.add_argument("--list", action="store_true")

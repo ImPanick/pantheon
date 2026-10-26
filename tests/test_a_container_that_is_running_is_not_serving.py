@@ -89,7 +89,8 @@ def test_every_compose_file_gives_pantheon_the_same_healthcheck():
 
 def test_the_probe_asks_this_app_over_http_on_the_port_it_binds():
     cmd = _shell_command(COMPOSE_FILES[0])
-    assert "http://127.0.0.1:7000/api/health" in cmd, (
+    # `B441` moved it from `/api/health` (liveness) to `/api/ready` (readiness).
+    assert "http://127.0.0.1:7000/api/ready" in cmd, (
         "the probe must ask the port the app binds. `localhost` is not "
         "interchangeable here: uvicorn binds 0.0.0.0, which is IPv4 only, and "
         "`localhost` can resolve to ::1 first")
@@ -101,18 +102,20 @@ def test_the_probe_asks_this_app_over_http_on_the_port_it_binds():
 def test_the_route_it_probes_is_one_the_auth_middleware_exempts():
     """A probe behind the login wall reports the login page, forever.
 
-    Asked of `app.py`'s exemption set rather than of the compose file, because
-    the compose file cannot know. Comments are stripped first (`Law 20`) — the
-    surrounding prose names several of these paths.
+    Asked of `app.py`'s exemption table rather than of the compose file, because
+    the compose file cannot know — and read as the AST reads it, since `B542`
+    made each entry a path with the methods it exempts: the probe's GET has to
+    be one of them.
     """
-    source = (ROOT / "app.py").read_text(encoding="utf-8")
-    code = re.sub(r"(?m)^\s*#.*$", "", source)
-    block = code[code.index("AUTH_EXEMPT_EXACT = {"):]
-    block = block[:block.index("}")]
-    exempt = set(re.findall(r'"([^"]+)"', block))
-    assert "/api/health" in exempt, (
-        "the compose healthcheck asks for /api/health with AUTH_ENABLED=true. "
-        "It is no longer auth-exempt, so the probe now reads the login redirect")
+    import ast
+    tree = ast.parse((ROOT / "app.py").read_text(encoding="utf-8"))
+    table = next(node.value for node in tree.body
+                 if isinstance(node, ast.Assign)
+                 and any(getattr(t, "id", None) == "AUTH_EXEMPT_EXACT" for t in node.targets))
+    exempt = {k.value: {e.value for e in v.elts} for k, v in zip(table.keys, table.values)}
+    assert "GET" in exempt.get("/api/ready", set()), (
+        "the compose healthcheck GETs /api/ready with no session. It is no longer "
+        "auth-exempt for GET, so the probe now reads 401")
 
 
 def test_start_period_clears_the_slowest_start_anybody_measured():
@@ -136,12 +139,12 @@ def test_start_period_clears_the_slowest_start_anybody_measured():
 # ── the shipped string, run ──────────────────────────────────────────────────
 
 class _Stub(BaseHTTPRequestHandler):
-    behaviour = "healthy"
+    behaviour = "ready"
 
     def do_GET(self):                                      # noqa: N802
         kind = type(self).behaviour
-        if kind == "healthy":
-            body = json.dumps({"status": "healthy", "timestamp": "2026-09-17"}).encode()
+        if kind == "ready":
+            body = json.dumps({"ready": True}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -158,9 +161,13 @@ class _Stub(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
-        elif kind == "degraded":
-            body = json.dumps({"status": "degraded"}).encode()
-            self.send_response(200)
+        elif kind in ("not_ready", "not_ready_but_200", "liveness_only"):
+            # `B441`: 503 is what the app answers when a critical check fails;
+            # a 200 that does not say ready, and `/api/health`'s own body,
+            # must fail the probe too.
+            body = json.dumps({"ready": False} if kind != "liveness_only"
+                              else {"status": "healthy"}).encode()
+            self.send_response(503 if kind == "not_ready" else 200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -201,10 +208,12 @@ def _run_probe(command: str, base: str) -> int:
 
 
 @pytest.mark.parametrize("behaviour,expect_ok", [
-    ("healthy", True),
+    ("ready", True),
     ("login_redirect", False),
     ("login_page", False),
-    ("degraded", False),
+    ("not_ready", False),
+    ("not_ready_but_200", False),
+    ("liveness_only", False),
     ("error", False),
 ])
 def test_the_probe_passes_only_when_the_app_answered_it(stub, behaviour, expect_ok):

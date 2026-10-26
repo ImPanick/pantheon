@@ -269,7 +269,13 @@ def setup_personal_routes(personal_docs_manager, rag_manager, rag_available):
         # remove) and run it off the event loop.
         async with _index_job_lock:
             await run_in_threadpool(personal_docs_manager.refresh_index)
-        return {"ok": True, "count": len(personal_docs_manager.index)}
+        # `B1187`. The files are re-read either way; what the answer must not do
+        # is call that a reloaded index when the index behind it is off. It said
+        # `ok: true` and Settings drew "Index reloaded: 0 documents" over a dead
+        # one. `ok` is false with the sentence saying why, as the list says it.
+        reason = rag_unavailable_reason()
+        return {"ok": not reason, "count": len(personal_docs_manager.index),
+                "reason": reason}
     
     @router.post("/add_directory")
     async def add_directory_to_rag(

@@ -32,9 +32,8 @@ import settingsModule from './settings.js?v=20261009census';
 import cookbookModule from './cookbook.js';
 import { EVAL_PROMPTS } from './compare/index.js?v=20261009census';
 import { PROVIDER_DEVICE_FLOWS, formatDeviceFlowError, runProviderDeviceFlow } from './providerDeviceFlow.js';
-import { getSettings } from './appConfig.js';
 // H19: `/shortcuts` is generated from the one registry, not a third copy.
-import { KEYBIND_DEFAULTS, KEYBIND_LABELS } from './keyboard-shortcuts.js';
+import { KEYBIND_DEFAULTS, KEYBIND_LABELS, keybindLayers, mergeKeybinds } from './keyboard-shortcuts.js';
 // H19: the toggle map lives with the toggles. There were FOUR copies of it
 // and three of them were missing `rag`, which is why `/toggle rag` could not
 // have worked even once it was registered.
@@ -5408,13 +5407,10 @@ async function _cmdShortcuts(args, ctx) {
   //
   // Generated from `KEYBIND_DEFAULTS` now. An unbound action (an empty combo)
   // is skipped rather than printed as a shortcut with no key.
+  // `B1196`: the instance's keybinds under the person's own, by the one rule.
   let keybinds = { ...KEYBIND_DEFAULTS };
-
   try {
-    const settings = await getSettings();
-    if (settings.keybinds) {
-      keybinds = { ...keybinds, ...settings.keybinds };
-    }
+    keybinds = mergeKeybinds(KEYBIND_DEFAULTS, await keybindLayers());
   } catch (e) {}
 
   const formatCombo = (combo) => combo.split('+').map(p => {

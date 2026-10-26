@@ -68,13 +68,52 @@ DEFAULT_PRIVILEGES = {
     "block_all_models": False,
 }
 
-# Admins get everything
-ADMIN_PRIVILEGES = {k: (True if isinstance(v, bool) else (0 if isinstance(v, int) else [])) for k, v in DEFAULT_PRIVILEGES.items()}
-ADMIN_PRIVILEGES["allowed_models_restricted"] = False
-# Admins must never be blocked from using models — the generic dict
-# comprehension above flips every boolean default to True, which would be
-# backwards for this sentinel.
-ADMIN_PRIVILEGES["block_all_models"] = False
+#: `B532`. What *"admins get everything"* is, for each key whose name does not
+#: say. A `can_*` key is a permission and its granted value is `True` — the
+#: name is the declaration. Every other key is a cap, a list or a sentinel, and
+#: whether "everything" is `0`, `[]`, `False` or `True` for it is a fact about
+#: what the key MEANS, which its Python type does not carry: `block_all_models`
+#: is a boolean whose `True` takes every model away. Until 2026-10-26 the
+#: admin map was derived by type (every bool → `True`, every int → `0`,
+#: everything else → `[]`) and the two sentinels were patched back by hand
+#: underneath, so a new restrictive flag silently restricted every admin and a
+#: new cap became "unlimited" only by the accident of meaning that at zero.
+#: Now each such key's admin value is written here, beside the registry, and
+#: `_admin_privileges` refuses to guess one it is not given — the import fails
+#: with the key's name, so the line is added when the key is.
+ADMIN_GRANTS = {
+    "max_messages_per_day": 0,           # 0 is "no daily cap"
+    "allowed_models": [],                # with the two below off: every model
+    "allowed_models_restricted": False,  # the allowlist is not enforced
+    "block_all_models": False,           # the "no model at all" sentinel is off
+}
+
+_GRANT_PREFIX = "can_"
+
+
+def _admin_privileges(registry: Dict[str, Any], grants: Dict[str, Any]) -> Dict[str, Any]:
+    """`B532`. Every declared privilege at its *granted* value, by declaration.
+
+    A `can_*` boolean is granted at `True`; any other key must have its granted
+    value in `grants`. A key that is neither raises, naming the key — the one
+    honest answer when nobody has said what "everything" means for it."""
+    out: Dict[str, Any] = {}
+    for key, declared in registry.items():
+        if key in grants:
+            granted = grants[key]
+            out[key] = list(granted) if isinstance(granted, list) else granted
+        elif key.startswith(_GRANT_PREFIX) and isinstance(declared, bool):
+            out[key] = True
+        else:
+            raise RuntimeError(
+                f"`{key}` is in DEFAULT_PRIVILEGES and nothing says what an admin holds "
+                f"for it. A `can_*` boolean is granted as True; any other key needs its "
+                f"granted value in ADMIN_GRANTS beside it (core/auth.py, `B532`).")
+    return out
+
+
+# Admins get everything — every key at its declared granted value (`B532`).
+ADMIN_PRIVILEGES = _admin_privileges(DEFAULT_PRIVILEGES, ADMIN_GRANTS)
 
 from src.constants import AUTH_FILE, PASSWORD_MIN_LENGTH
 from src.owner_identity import RESERVED_AUTH_USERNAMES
@@ -704,7 +743,9 @@ class AuthManager:
         Promotion stashes the user's current privilege map and demotion
         restores it, so a temporary admin stint can't silently broaden a
         user's non-admin access; users without a stash (created as admin,
-        or promoted before stashing existed) demote to DEFAULT_PRIVILEGES.
+        or promoted before stashing existed) demote to no per-user overrides
+        (`{}`), which resolves to their role and then to DEFAULT_PRIVILEGES
+        (`B680`).
 
         Counting admins and flipping the flag happen in one critical section
         so two concurrent demotions can't race the admin count to zero.
@@ -747,19 +788,25 @@ class AuthManager:
                 )
                 target["privileges"] = dict(ADMIN_PRIVILEGES)
             else:
-                # Restore the stashed pre-admin map. Fall back to defaults for
-                # users created as admins (their stored map is ADMIN_PRIVILEGES,
-                # which must not leak past demotion — e.g. can_use_bash) and
-                # for admins promoted before the stash existed.
+                # Restore the stashed pre-admin map. With no stash — a user
+                # created as an admin, or promoted before the stash existed —
+                # the stored map is ADMIN_PRIVILEGES, which must not leak past
+                # demotion (e.g. can_use_bash), so it is replaced.
                 # `is None`, not falsiness: an empty stash is a real answer
                 # ("this user had no per-user overrides") and `or` cannot tell
                 # it from "there was no stash". The fallback below is for the
                 # second case only.
+                #
+                # `B680`. And the fallback is `{}`, not a copy of
+                # `DEFAULT_PRIVILEGES`: no per-user overrides at all. The
+                # effective map is the same — `get_privileges` resolves an
+                # absent key to the registry's declared value — but a full copy
+                # is eleven-plus per-user overrides, and per-user beats role, so
+                # a role given to this person afterwards granted nothing. That
+                # is `create_user`'s reasoning for a non-admin (`P11-02`),
+                # applied to the one writer it left.
                 stash = target.pop("privileges_before_admin", None)
-                target["privileges"] = (
-                    dict(stash) if isinstance(stash, dict)
-                    else dict(DEFAULT_PRIVILEGES)
-                )
+                target["privileges"] = dict(stash) if isinstance(stash, dict) else {}
                 target["is_admin"] = False
             self._save()
         logger.info("Set is_admin=%s for '%s' (by '%s')", is_admin, username, requesting_user)

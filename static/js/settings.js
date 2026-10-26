@@ -13,7 +13,7 @@ import {
 } from './settings/registry.js';
 // `P23-03`: the one table — who may see the admin's panels, and why a tool's
 // switch in Appearance cannot bring it back. Same specifier as `app.js`.
-import { TOOL_VISIBILITY, hidesLine, onToolVisibilityApplied, toolOff, toolRefusal, toolVisibilityState, viewerIsAdmin } from './ui_visibility.js';
+import { TOOL_VISIBILITY, hidesLine, onToolVisibilityApplied, toolOff, toolRefusal, toolVisibilityState, viewerIsAdmin, viewerMayAdminister } from './ui_visibility.js';
 import {
   collectMcpStdioFields,
   createMcpFieldEditor,
@@ -50,7 +50,7 @@ import { invalidateSettings } from './appConfig.js';
 import { readRefusal } from './workbench/refusal.js';
 // H19: the Shortcuts panel reads the one registry instead of keeping a
 // second copy that disagreed with it about `toggle_sidebar`.
-import { KEYBIND_DEFAULTS, KEYBIND_LABELS } from './keyboard-shortcuts.js';
+import { KEYBIND_DEFAULTS, KEYBIND_LABELS, keybindLayers, mergeKeybinds } from './keyboard-shortcuts.js';
 import { chevronIcon } from './icons.js';
 
 let initialized = false;
@@ -2546,13 +2546,25 @@ async function initShortcuts() {
   const resetBtn = el('shortcuts-reset-btn');
   if (!listEl) return;
 
-  // Load saved keybinds
-  let keybinds = { ...SHORTCUT_DEFAULTS };
-  try {
-    const res = await fetch('/api/auth/settings', { credentials: 'same-origin' });
-    const settings = await res.json();
-    if (settings.keybinds) keybinds = { ...keybinds, ...settings.keybinds };
-  } catch (e) {}
+  // `B1196`, `D-2026-10-25-04` §2. Keybinds were instance settings only, so a
+  // non-admin's rebind was refused "Admin only." and nobody but an admin could
+  // set a key. An admin's change is still the instance's — the platform's
+  // default; anyone else's is their own (`/api/prefs/keybinds`) and wins for
+  // them. "Default" in this panel is what a change goes back to: the built-in
+  // table for an admin, the admin's defaults for everyone else.
+  const personal = !viewerIsAdmin();
+  let layers = { instance: {}, mine: {} };
+  try { layers = await keybindLayers(); } catch (e) {}
+  const fallback = personal
+    ? mergeKeybinds(SHORTCUT_DEFAULTS, { instance: layers.instance })
+    : { ...SHORTCUT_DEFAULTS };
+  let keybinds = mergeKeybinds(SHORTCUT_DEFAULTS, personal ? layers : { instance: layers.instance });
+  const scope = el('shortcuts-scope');
+  if (scope) {
+    scope.textContent = personal
+      ? 'These are yours. An administrator sets the defaults; Reset puts yours back to them.'
+      : 'You are an administrator: these are everyone\'s defaults. A person can change their own.';
+  }
 
   function _findConflicts() {
     const comboMap = {};
@@ -2584,7 +2596,7 @@ async function initShortcuts() {
         // assign one \u2014 they show a "Set" affordance instead of keycaps.
         const label = SHORTCUT_LABELS[action] || action;
         const icon = SHORTCUT_ICONS[action] || '';
-        const isCustom = combo !== (SHORTCUT_DEFAULTS[action] || '');
+        const isCustom = combo !== (fallback[action] || '');
         const hasConflict = combo && conflicts.has(action);
         const row = document.createElement('div');
         row.className = 'shortcut-row' + (hasConflict ? ' shortcut-conflict' : '');
@@ -2613,7 +2625,7 @@ async function initShortcuts() {
     listEl.querySelectorAll('.shortcut-action-btn.is-reset').forEach(btn => {
       btn.addEventListener('click', () => {
         const action = btn.dataset.action;
-        keybinds[action] = SHORTCUT_DEFAULTS[action];
+        keybinds[action] = fallback[action];
         saveKeybinds();
         render();
       });
@@ -2668,7 +2680,7 @@ async function initShortcuts() {
       if (e.key === 'Escape') {
         cleanup();
         btn.innerHTML = _formatKeyCaps(keybinds[action]);
-        const isCustom = keybinds[action] !== SHORTCUT_DEFAULTS[action];
+        const isCustom = keybinds[action] !== fallback[action];
         if (isCustom) {
           actionBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>';
           actionBtn.classList.add('is-reset');
@@ -2709,10 +2721,31 @@ async function initShortcuts() {
 
   async function saveKeybinds() {
     try {
-      await _postSettings({ keybinds });
+      if (personal) {
+        // Only what differs from the admin's defaults is the person's own, so
+        // a default an admin changes later still reaches them where they did
+        // not choose otherwise.
+        const own = {};
+        for (const [action, combo] of Object.entries(keybinds)) {
+          if (combo !== fallback[action]) own[action] = combo;
+        }
+        const res = await fetch('/api/prefs/keybinds', {
+          method: 'PUT', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: own }),
+        });
+        if (!res.ok) {
+          const refusal = await readRefusal(res, 'Not saved.');
+          const err = new Error(refusal.sentence);
+          err.sentence = refusal.sentence;
+          throw err;
+        }
+      } else {
+        await _postSettings({ keybinds });
+      }
       // Update global keybinds so they take effect immediately
-      window._pantheonKeybinds = keybinds;
-      if (uiModule && uiModule.showToast) uiModule.showToast('Shortcut saved');
+      window._pantheonKeybinds = { ...keybinds };
+      if (uiModule && uiModule.showToast) uiModule.showToast(personal ? 'Shortcut saved for you' : 'Shortcut saved');
     } catch (e) {
       uiModule.showError(_notSaved(e));
     }
@@ -2720,7 +2753,7 @@ async function initShortcuts() {
 
   if (resetBtn) {
     resetBtn.addEventListener('click', async () => {
-      keybinds = { ...SHORTCUT_DEFAULTS };
+      keybinds = { ...fallback };
       render();
       await saveKeybinds();
       if (uiModule && uiModule.showToast) uiModule.showToast('Shortcuts reset to defaults');
@@ -3664,13 +3697,17 @@ async function initEmailSettings() {
   // (blind spot 4), and this block is five of the 124 entries in the
   // inventory that produced. Do not build the missing markup: that would be a
   // second CardDAV form, which Law 14 exists to prevent.
-  try {
-    const res = await fetch('/api/contacts/config');
-    const cfg = await res.json();
-    if (el('set-carddav-url')) el('set-carddav-url').value = cfg.url || '';
-    if (el('set-carddav-user')) el('set-carddav-user').value = cfg.username || '';
-    if (el('set-carddav-pass')) el('set-carddav-pass').value = '';
-  } catch (_) {}
+  // `B1192`: and it asked an admin-only route on every Settings open, a
+  // non-admin's included. It asks only when there is a field to fill.
+  if (el('set-carddav-url')) {
+    try {
+      const res = await fetch('/api/contacts/config');
+      const cfg = await res.json();
+      if (el('set-carddav-url')) el('set-carddav-url').value = cfg.url || '';
+      if (el('set-carddav-user')) el('set-carddav-user').value = cfg.username || '';
+      if (el('set-carddav-pass')) el('set-carddav-pass').value = '';
+    } catch (_) {}
+  }
 
   // Save email config
   el('set-email-save')?.addEventListener('click', async () => {
@@ -4118,15 +4155,23 @@ async function initUnifiedIntegrations() {
   }
 
   async function fetchAll() {
+    // `B1192`. Six of these lists are an admin's — the instance's API
+    // integrations, contacts, MCP servers, vault and tokens — and a non-admin's
+    // room asked for all six and was answered 403 six times. Not asked now;
+    // the room shows that person their own (email, calendars, logins, git).
+    const admin = await viewerMayAdminister();
+    const adminList = (url, empty) => (admin
+      ? fetch(url, { credentials: 'same-origin' }).then(r => r.ok ? r.json() : empty).catch(() => empty)
+      : Promise.resolve(empty));
     const [apiRes, calRes, cardRes, contactsRes, emailAccountsRes, mcpRes, vaultRes, tokenRes, calendarsRes, loginsRes, gitRes] = await Promise.all([
-      fetch('/api/auth/integrations', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : { integrations: [] }).catch(() => ({ integrations: [] })),
+      adminList('/api/auth/integrations', { integrations: [] }),
       fetch('/api/calendar/config/accounts', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : { accounts: [] }).catch(() => ({ accounts: [] })),
-      fetch('/api/contacts/config', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-      fetch('/api/contacts/list', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : { contacts: [], count: 0 }).catch(() => ({ contacts: [], count: 0 })),
+      adminList('/api/contacts/config', {}),
+      adminList('/api/contacts/list', { contacts: [], count: 0 }),
       fetch('/api/email/accounts', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : { accounts: [] }).catch(() => ({ accounts: [] })),
-      fetch('/api/mcp/servers', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : []).catch(() => []),
-      fetch('/api/vault/config', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-      fetch('/api/tokens', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : []).catch(() => []),
+      adminList('/api/mcp/servers', []),
+      adminList('/api/vault/config', {}),
+      adminList('/api/tokens', []),
       fetch('/api/calendar/calendars', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : { calendars: [] }).catch(() => ({ calendars: [] })),
       // `P27-01`. The caller's own: never a password or a token in either answer.
       fetch('/api/vault/mine', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
@@ -4327,10 +4372,86 @@ async function initUnifiedIntegrations() {
     else if (type === 'codex') showAgentForm('codex', editId);
     else if (type === 'claude') showAgentForm('claude', editId);
     else if (type === 'vault') showVaultForm();
-    else if (type === 'token') formEl.style.display = 'none';   // listed to be seen and revoked (`SET-U-9`)
+    // `SET-U-9`: a token row is listed to be seen and revoked; `B1193`: a new
+    // one is made here, with a name, what it may do, and the secret shown once.
+    else if (type === 'token') { if (editId === 'new') showTokenForm(); else formEl.style.display = 'none'; }
     // `P27-01`. A login and a git host are edited in their own panels.
     else if (type === 'login') { formEl.style.display = 'none'; open('vault'); }
     else if (type === 'githost') { formEl.style.display = 'none'; open('git'); }
+  }
+
+  // ── API token form ──
+  // `B1193`. `P23-03` listed every `/api/tokens` row as *API token* with
+  // Remove, and the only tokens this room could make were the two agents'. A
+  // plain one — the companion app's, a script's, a Prometheus scrape's
+  // (`metrics:read`) — is made here: a name, what it may do (the server's own
+  // list, `GET /api/tokens/profiles`, rather than a fourth copy of it), and
+  // the secret, shown once, because the server keeps only its hash.
+  async function showTokenForm() {
+    let scopes = ['chat'];
+    try {
+      const r = await fetch('/api/tokens/profiles', { credentials: 'same-origin' });
+      if (r.ok) {
+        const d = await r.json();
+        if (Array.isArray(d.allowed_scopes) && d.allowed_scopes.length) scopes = d.allowed_scopes;
+      }
+    } catch (_) { /* the one scope every token has answers */ }
+    const btn = 'display:inline-flex;align-items:center;gap:5px;background:transparent;color:var(--accent, var(--red));border-color:color-mix(in srgb, var(--accent, var(--red)) 45%, var(--border));';
+    formEl.innerHTML = `
+      <div class="admin-card" style="margin-top:8px">
+        <h2 style="font-size:13px;display:flex;align-items:center;gap:6px;"><span style="display:inline-flex;color:var(--accent, var(--red));">${INTG_TYPES.token.icon}</span>API token</h2>
+        <div class="settings-col">
+          <div class="settings-row"><label class="settings-label" for="uf-token-name">Name</label><input id="uf-token-name" class="settings-input" maxlength="100" placeholder="What will use it: a script, a scrape, a phone"></div>
+          <div class="settings-row" style="align-items:flex-start;">
+            <span class="settings-label">It may</span>
+            <div id="uf-token-scopes" role="group" aria-label="What the token may do" style="display:flex;flex-wrap:wrap;gap:4px 12px;">
+              ${scopes.map((s) => `<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" class="uf-token-scope" value="${esc(s)}"${s === 'chat' ? ' checked' : ''}>${esc(s)}</label>`).join('')}
+            </div>
+          </div>
+          <div id="uf-token-reveal" class="settings-row" style="display:none;flex-direction:column;align-items:stretch;gap:4px;">
+            <div style="font-size:11px;">Copy it now. It is not shown again: Pantheon keeps only a hash of it.</div>
+            <code id="uf-token-value" style="user-select:all;word-break:break-all;font-size:12px;"></code>
+          </div>
+          <div class="settings-row" style="margin-top:10px;align-items:center;justify-content:flex-end;gap:6px;">
+            <span id="uf-token-msg" role="status" style="font-size:11px;flex:1;margin-right:8px"></span>
+            <button type="button" class="admin-btn-add" id="uf-token-create" style="${btn}font-weight:600;">Create</button>
+            <button type="button" class="admin-btn-add" id="uf-token-cancel" style="${btn}">Close</button>
+          </div>
+        </div>
+      </div>`;
+    const msg = el('uf-token-msg');
+    const say = (text, bad) => { msg.textContent = text; msg.style.color = bad ? 'var(--red)' : ''; };
+    el('uf-token-cancel').addEventListener('click', () => { formEl.style.display = 'none'; formEl.innerHTML = ''; });
+    const create = el('uf-token-create');
+    create.addEventListener('click', async () => {
+      const name = el('uf-token-name').value.trim();
+      if (!name) { say('Give it a name, so you can tell it apart when you revoke it.', true); return; }
+      const chosen = [...formEl.querySelectorAll('.uf-token-scope')].filter((c) => c.checked).map((c) => c.value);
+      if (!chosen.length) { say('Choose at least one thing it may do.', true); return; }
+      create.disabled = true;
+      const fd = new FormData();
+      fd.append('name', name);
+      fd.append('scopes', chosen.join(','));
+      try {
+        const r = await fetch('/api/tokens', { method: 'POST', credentials: 'same-origin', body: fd });
+        if (!r.ok) {
+          say((await readRefusal(r, 'Not created.')).sentence, true);
+          create.disabled = false;
+          return;
+        }
+        const d = await r.json();
+        el('uf-token-value').textContent = d.token || '';
+        el('uf-token-reveal').style.display = 'flex';
+        create.style.display = 'none';
+        el('uf-token-name').disabled = true;
+        formEl.querySelectorAll('.uf-token-scope').forEach((c) => { c.disabled = true; });
+        say(`Created "${d.name || name}". It may: ${(d.scopes || chosen).join(', ')}.`);
+        await renderList();
+      } catch (e) {
+        say('Not created: Pantheon did not answer.', true);
+        create.disabled = false;
+      }
+    });
   }
 
   // ── API form ──
@@ -6863,6 +6984,7 @@ async function initUnifiedIntegrations() {
       ['githost', 'Git host token'],
       ['login', 'Login, for agents to sign in'],
       ['mcp', 'MCP Tool Server'],
+      ['token', 'API token'],   // `B1193`
     ];
     const _iconFor = (k) => (INTG_TYPES[k]?.icon || '').replace(/width="14"/, 'width="16"').replace(/height="14"/, 'height="16"');
     const _rowsHtml = _typeOptions.map(([k, label]) => `<button type="button" class="uf-type-option" data-value="${k}" style="display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;background:transparent;border:0;color:var(--fg);font:inherit;cursor:pointer;text-align:left;"><span style="display:inline-flex;color:var(--accent, var(--red));flex-shrink:0;">${_iconFor(k)}</span><span>${esc(label)}</span></button>`).join('');

@@ -446,6 +446,10 @@ def test_rename_serializes_old_and_new_owner_and_stale_set_default_fails_closed(
             )
         ),
     )
+    # `B543`: the rename route asks `require_admin`, which reads the stamp
+    # `AuthMiddleware` puts on a request whose session cookie validates.
+    from tests.helpers.signed_in import through_the_middleware
+    through_the_middleware(request, auth_manager)
     results = {}
 
     def rename_owner():

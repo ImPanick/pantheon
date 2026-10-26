@@ -95,10 +95,14 @@ def _routes():
         sys.modules["core"] = core
     core.__path__ = [root]
     from routes.auth_routes import setup_auth_routes
-    router = setup_auth_routes(_AdminManager())
+    from tests.helpers.signed_in import stamped_endpoint
+    manager = _AdminManager()
+    router = setup_auth_routes(manager)
     found = {}
     for route in router.routes:
-        found[getattr(route, "path", "")] = route.endpoint
+        # `B543`: the admin routes ask `require_admin`, which reads the stamp
+        # `AuthMiddleware` puts on a request whose cookie validates.
+        found[getattr(route, "path", "")] = stamped_endpoint(route.endpoint, manager)
     return found
 
 

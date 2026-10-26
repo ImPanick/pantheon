@@ -16,7 +16,7 @@ from collections import namedtuple
 from pathlib import Path
 from typing import Dict, Any
 from core.platform_compat import IS_APPLE_SILICON, which_tool
-from core.middleware import INTERNAL_TOOL_USER, _internal_request_person, require_admin
+from core.middleware import require_admin
 from src.tmux_attach import attach_command, list_command
 from src.host_docker_access import (
     HOST_DOCKER_ACCESS_HINT,
@@ -52,35 +52,14 @@ from core.platform_compat import (
 )
 
 
-def _require_admin(request: Request):
-    """Reject non-admin callers. Shell exec is admin-only — never expose to
-    regular users; that's RCE-after-signup."""
-    auth_manager = getattr(request.app.state, "auth_manager", None)
-    if not auth_manager:
-        # No auth manager is no one to ask: refused. Until 2026-10-07 this
-        # returned — "No auth at all — only safe in fully-trusted localhost dev
-        # mode" — and there is no such mode (`D-2026-10-07-02` §2). The app
-        # always holds one (`app.state.auth_manager`), so the refusal only meets
-        # an app assembled without it.
-        raise HTTPException(403, "Admin only")
-    user = getattr(request.state, "current_user", None)
-    # In-process tool loopback. The AuthMiddleware already validated the
-    # internal token + loopback client before setting this marker. Naming
-    # nobody, it is Pantheon itself (the Forge lifecycle loop's kill) and
-    # passes. Naming a person the middleware found no account for, it is that
-    # person's request and is asked about them — `B1175`'s question, asked of
-    # the shell too (`B1179`): until 2026-10-03 the marker passed here whoever
-    # the loopback named. A named account is already stamped as itself and
-    # meets the admin check below like its own request.
-    if user == INTERNAL_TOOL_USER:
-        _internal, person = _internal_request_person(request)
-        if person is None:
-            return
-        user = person
-    if not user or user == "api":
-        raise HTTPException(403, "Admin only")
-    if not auth_manager.is_admin(user):
-        raise HTTPException(403, "Admin only")
+# `B543`. This file kept its own `_require_admin` — the same question as
+# `core.middleware.require_admin`, answered a second way, and invisible to any
+# audit of that gate. It is gone: every route here asks the one gate, which
+# holds the two things the copy was kept for. Shell exec is admin-only, never
+# a regular user's ("RCE-after-signup"); and a bearer token's `api` is refused,
+# which `require_admin` now says itself. A loopback naming nobody is Pantheon
+# (the Forge lifecycle loop's kill) and passes; naming a person, it is asked
+# about that person (`B1175`, `B1179`) — what the copy did, case for case.
 
 
 def _reject_cross_site(request: Request):
@@ -982,12 +961,10 @@ def setup_shell_routes() -> APIRouter:
         session that lives on another machine. `P4-15` reads the same endpoint
         for the agent's shell.
 
-        Gated by `core.middleware.require_admin`, not this file's own
-        `_require_admin`. That copy exists for the routes here that *execute*
-        (its docstring: "RCE-after-signup"), and whether those should open with
-        auth off is the owner's question (`B543`). This route executes nothing,
-        so it takes the one gate `Law 14` points at — the one the Forge's
-        state and status routes already use.
+        Gated by `core.middleware.require_admin`, the one gate `Law 14` points
+        at — the one the Forge's state and status routes already use, and,
+        since `B543` folded this file's own copy into it, the one the routes
+        here that *execute* use too.
 
         `B913`: ``action=list`` answers how to list the sessions instead — the
         same placement, `tmux ls` in place of `tmux attach` — for the Forge's
@@ -1007,7 +984,7 @@ def setup_shell_routes() -> APIRouter:
     @router.post("/api/shell/exec")
     async def shell_exec(request: Request, req: ShellExecRequest) -> Dict[str, Any]:
         """Execute a shell command and return output. Admin only."""
-        _require_admin(request)
+        require_admin(request)
         cmd = req.command.strip()
         if not cmd:
             return {"stdout": "", "stderr": "No command provided", "exit_code": 1}
@@ -1025,7 +1002,7 @@ def setup_shell_routes() -> APIRouter:
     @router.post("/api/shell/stream")
     async def shell_stream(request: Request, req: ShellExecRequest):
         """Execute a shell command and stream output line-by-line via SSE. Admin only."""
-        _require_admin(request)
+        require_admin(request)
         cmd = req.command.strip()
         if not cmd:
 
@@ -1244,7 +1221,7 @@ def setup_shell_routes() -> APIRouter:
         server over SSH, inside its venv — otherwise installing on a remote box
         never reflected because the check only ever looked at the local host.
         """
-        _require_admin(request)
+        require_admin(request)
         _reject_cross_site(request)
         import importlib.metadata as importlib_metadata
         import shlex
@@ -1824,7 +1801,7 @@ def setup_shell_routes() -> APIRouter:
         clear "needs sudo password" error instead of hanging when interactive
         sudo is required.
         """
-        _require_admin(request)
+        require_admin(request)
         body = await request.json()
         raw = body.get("packages") or []
         host = (body.get("remote_host") or "").strip()
@@ -1945,7 +1922,7 @@ def setup_shell_routes() -> APIRouter:
         present. This is the missing "force a fresh GPU build" lever for hosts
         stuck on a CPU-only llama-server.
         """
-        _require_admin(request)
+        require_admin(request)
         from routes.cookbook_helpers import _llama_cpp_rebuild_cmd
 
         body = await request.json()

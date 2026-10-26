@@ -61,8 +61,12 @@ def served(world, monkeypatch):  # noqa: F811
             return username == "admin"
 
     monkeypatch.setattr(auth_routes, "migrate_from_settings", lambda: None)
-    app = FastAPI()
-    app.include_router(auth_routes.setup_auth_routes(_AuthManager()))
+    from tests.helpers.signed_in import with_session_stamp
+    manager = _AuthManager()
+    # `B543`: the admin routes ask `require_admin`, which reads the stamp
+    # `AuthMiddleware` puts on each request; the bare app gets that stamp.
+    app = with_session_stamp(FastAPI(), manager)
+    app.include_router(auth_routes.setup_auth_routes(manager))
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
