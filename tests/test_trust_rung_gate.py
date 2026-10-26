@@ -650,7 +650,9 @@ def test_a_rung_refusal_mints_a_real_pending_tool_approval(monkeypatch):
     # Nothing untrusted entered this run, and the seal says so. A card that
     # claimed taint here would launder a rung prompt into a taint grant.
     assert pending.external_untrusted_context_seen is False
-    assert "confirm every effectful action" in cards[0]["description"]
+    # `B1202`: the rung's sentence, as the card says it.
+    assert cards[0]["description"] == ("This chat is set to ask before anything with an effect, "
+                                       "so this needs a yes from you.")
 
     tool_approval_store.consume(
         pending.approval_id, decision="deny", owner="alice", session_id="card"

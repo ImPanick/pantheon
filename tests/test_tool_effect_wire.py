@@ -690,12 +690,13 @@ def test_the_replayed_grant_persists_its_status_too(monkeypatch):
 def test_the_gates_written_reason_reaches_the_card(monkeypatch):
     payload = _first(_gated_run(monkeypatch, _GATED_FETCH, tool="web_fetch"), "ask_user")["data"]
 
-    assert "untrusted context" in payload["description"].lower()
-    assert "web_fetch" in payload["description"]
-    # The sentence names the effect that tripped, and `gate` names it as data.
-    # Two renderings, one decision — a second sentence would be `Law 14`.
+    # `B1202` (`CHAT-U-11`): the gate's sentence reaches the card in a
+    # person's words — why they are asked — and the effect that tripped it is
+    # the `gate` block's, which the card's question and list draw. The tool is
+    # the sealed `action`'s. One decision; the words are the card's.
+    assert payload["description"] == "It has read outside data this turn, so this needs a yes from you."
     assert payload["gate"]["tripped_effects"] == ["network_egress"]
-    assert "network_egress" in payload["description"]
+    assert payload["action"]["tool"] == "web_fetch"
 
 
 def test_the_reloaded_card_gives_the_same_reason_as_the_live_one(monkeypatch):
@@ -705,7 +706,9 @@ def test_the_reloaded_card_gives_the_same_reason_as_the_live_one(monkeypatch):
 
     assert len(saved) == 1
     assert saved[0]["ask_user"]["description"] == live["description"]
-    assert saved[0]["ask_user"]["description"] != _DEFAULT_APPROVAL_REASON, (
-        "the saved card fell back to the generic sentence, so a reloaded card "
-        "would explain the refusal less well than the live one did"
-    )
+    # `B1202`: the effect gate's sentence and the default are one sentence in
+    # the card's words now, on purpose — so "not the default" no longer tells a
+    # reloaded card from one that lost its reason. What the live card knew
+    # beyond the sentence is the `gate` block, and the reloaded one keeps it.
+    assert live["description"] == _DEFAULT_APPROVAL_REASON
+    assert saved[0]["ask_user"]["gate"]["tripped_effects"] == live["gate"]["tripped_effects"] == ["network_egress"]

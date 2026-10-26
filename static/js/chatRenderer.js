@@ -3585,11 +3585,12 @@ function buildApprovalEffects(aq) {
   const box = document.createElement('div');
   box.className = 'approval-effects';
   if (band) box.dataset.effectBand = band;
-
-  const title = document.createElement('div');
-  title.className = 'approval-effects-title';
-  title.textContent = 'What this can do';
-  box.appendChild(title);
+  // `B1202` (`CHAT-U-11`). The box had a heading, *What this can do*, and the
+  // card's question now asks about its lead row (*Let it reach the internet?*,
+  // `approvalTitle`), so the heading said again what the title says. The rows
+  // stand under the question; the name stays for a screen reader.
+  box.setAttribute('role', 'group');
+  box.setAttribute('aria-label', 'What this can do');
 
   const list = document.createElement('ul');
   list.className = 'approval-effect-list';

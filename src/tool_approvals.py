@@ -13,6 +13,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import threading
 import time
@@ -290,6 +291,43 @@ def _binding_payload(
     }
 
 
+# `B1202` (`CHAT-U-11`, the UI/UX audit's § 5). The approval card's reason, in
+# the person's words. The gate writes one sentence for two readers: the model,
+# which reads it as the refusal (`tool_execution`: "Tool 'web_fetch' requires a
+# separate user-authorized action because it can cause network_egress"), and
+# the card, which drew it verbatim under its question. The card's question
+# already names the action (*Let it reach the internet?*, `approvalTitle`) and
+# its list names what the action can do, so the person is told only why they
+# are being asked: *It has read outside data this turn, so this needs a yes
+# from you.* The gate's sentence is untouched — the model and the run's log
+# still read it — and a sentence the gate wrote for a reason of its own (a
+# widening, a hire, a vault login) keeps its words, with the outside-data
+# preamble said the same way. `tests/test_the_approval_card_speaks_plainly.py`
+# drives the real gate's sentences through this, so a change to them shows.
+_READ_OUTSIDE = "It has read outside data this turn"
+_ASKS_EVERY_EFFECT = "This chat is set to ask before anything with an effect"
+_GATE_PREAMBLES = (
+    ("External untrusted context has already influenced this run. ", _READ_OUTSIDE),
+    ("This conversation is set to confirm every effectful action. ", _ASKS_EVERY_EFFECT),
+)
+_GATE_EFFECTS_TAIL = re.compile(
+    r"Tool '[^']+' requires a separate user-authorized action because it can cause [^.]+\."
+)
+
+
+def card_words(reason: str) -> str:
+    """The gate's sentence, as the approval card says it (`B1202`)."""
+    text = (reason or "").strip()
+    for gate_words, person_words in _GATE_PREAMBLES:
+        if not text.startswith(gate_words):
+            continue
+        rest = text[len(gate_words):].strip()
+        if not rest or _GATE_EFFECTS_TAIL.fullmatch(rest):
+            return f"{person_words}, so this needs a yes from you."
+        return f"{person_words}. {rest}"
+    return text
+
+
 @dataclass(frozen=True)
 class PendingToolApproval:
     approval_id: str
@@ -393,15 +431,10 @@ class PendingToolApproval:
                 f"'{self.tool_name}' is not available to this session. "
                 "Approving cannot make it available."
             )
+        # `B1202`: in the person's words (`card_words`, above the class).
         if self.external_untrusted_context_seen:
-            return (
-                "Untrusted context influenced this run, so continuing with "
-                "otherwise-gated actions needs your explicit approval."
-            )
-        return (
-            "This conversation is set to confirm every action that has an "
-            "effect before it runs."
-        )
+            return f"{_READ_OUTSIDE}, so this needs a yes from you."
+        return f"{_ASKS_EVERY_EFFECT}, so this needs a yes from you."
 
     def public_payload(self, *, reason: str | None = None) -> dict[str, Any]:
         return {
@@ -419,7 +452,9 @@ class PendingToolApproval:
             # below; these are two renderings of one decision and not two
             # decisions, which is why the fallback is derived rather than
             # written a second time.
-            "description": reason or self.default_reason(),
+            # `B1202`: in the person's words — `card_words` — while the gate's
+            # own sentence stays what the model reads (`tool_execution`).
+            "description": card_words(reason) if reason else self.default_reason(),
             "options": [
                 {
                     "label": "Allow for this task",

@@ -568,7 +568,9 @@ export function describeCard(card) {
   return {
     hasBox: !!box,
     band: box ? (box.dataset.effectBand || null) : null,
-    title: box ? (card.querySelector('.approval-effects-title').textContent) : '',
+    // `B1202`: the box's heading is gone (the card's question says it); its
+    // name stays for a screen reader.
+    title: box ? (box.getAttribute('aria-label') || '') : '',
     lead: lead ? phraseNode(lead).textContent : '',
     leadIsFirst: !!(lead && rows.length && rows[0] === lead),
     phrases: rows.map((r) => phraseNode(r).textContent),

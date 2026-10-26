@@ -44883,14 +44883,8 @@ body.theme-frosted .modal {
   border-left-style: dashed;
   border-left-width: 3px;
 }
-.approval-effects-title {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  opacity: 0.55;
-  margin-bottom: 5px;
-}
+/* `B1202`: the box's *What this can do* heading is gone — the card's question
+   asks about its lead row — so `.approval-effects-title` has no element. */
 .approval-effect-list {
   list-style: none;
   margin: 0;
