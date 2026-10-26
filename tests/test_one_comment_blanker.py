@@ -396,3 +396,92 @@ def test_check_attachment_language_reads_its_table_through_the_one_blanker(monke
                   "};\n", encoding="utf-8")
     monkeypatch.setattr(mod, "JS", js)
     assert mod.editor_languages() == {"py": "python", "js": "javascript"}
+
+
+# ── `B1515`: a hand-written SCANNER is a copy too ───────────────────────────
+
+
+#: The one walk that may compare against `//` and `/*` itself.
+THE_BLANKER = ".pantheon/check-specifiers.py"
+
+
+def _hand_scanners(rel: str) -> list:
+    """Every function in one file that walks text for comment openers itself:
+    both `"//"` and `"/*"` compared against (`==`, `in`) or searched for
+    (`.startswith`, `.find`, `.index`).
+
+    `B1515`. `_naive_blankers` asks about regexes, and `check-wiring.py`'s
+    `code_only` was a character scanner — the second blanker `B410` was meant to
+    have removed, invisible to the rule that exists to find it. Read with `ast`
+    for the reason `_naive_blankers` is: the files describing the defect quote
+    both openers in prose."""
+    return _scanners_in((ROOT / rel).read_text(encoding="utf-8"))
+
+
+def _scanners_in(source: str) -> list:
+    out = []
+    for fn in ast.walk(ast.parse(source)):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        seen = set()
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Compare):
+                for side in (node.left, *node.comparators):
+                    if isinstance(side, ast.Constant) and isinstance(side.value, str):
+                        seen.add(side.value)
+            elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                  and node.func.attr in ("startswith", "find", "index")):
+                seen |= {a.value for a in node.args
+                         if isinstance(a, ast.Constant) and isinstance(a.value, str)}
+        if "//" in seen and "/*" in seen:
+            out.append((fn.lineno, fn.name))
+    return out
+
+
+def test_no_hand_written_comment_scanner_appears():
+    offenders = []
+    for rel in _tracked("tests", ".pantheon"):
+        if (rel == THE_BLANKER or rel in READS_COMMENTS_AS_DATA
+                or rel.endswith("test_one_comment_blanker.py")):   # the rule itself
+            continue
+        for line, name in _hand_scanners(rel):
+            offenders.append(f"{rel}:{line}  {name}()")
+    assert not offenders, (
+        "a comment scanner was written by hand:\n  " + "\n  ".join(offenders)
+        + "\n\nBlank through `ledger.source.strip_comments` (a checker) or "
+          "`tests/helpers/source_text.py` (a test) — see B290, B1515.")
+
+
+def test_the_scanner_rule_finds_the_one_blanker_and_the_copy_it_replaced(tmp_path):
+    """Not a tautology: the walk this file allows is found, and so is the shape
+    `check-wiring.py` carried until `B1515`."""
+    assert [name for _l, name in _hand_scanners(THE_BLANKER)] == ["strip_comments"]
+    copy = ("def code_only(text):\n"
+            "    i = 0\n"
+            "    while i < len(text):\n"
+            "        two = text[i:i + 2]\n"
+            "        if two == '//':\n"
+            "            i = text.find('\\n', i)\n"
+            "        elif two == '/*':\n"
+            "            i = text.find('*/', i)\n"
+            "        i += 1\n")
+    assert _scanners_in(copy) == [(1, "code_only")]
+
+
+def test_check_wiring_reads_a_template_nested_in_a_hole_as_one_literal():
+    """`B1515`'s defect in `check-wiring.py`'s own brace matcher: it scanned a
+    template to the next backtick, so a template inside a `${…}` hole ended the
+    outer one early and the `}` in the hole's text closed the collection — the
+    ids after it were never read. Through the one walk's `literals` the
+    collection is read whole."""
+    mod = _load_checker("check-wiring")
+    js = ("const PANES = {\n"
+          "  head: `<b>${ok ? `a ${'}'} b` : ''}</b>`,\n"
+          "  first: 'pane-first-id',\n"
+          "  second: 'pane-second-id',\n"
+          "};\n"
+          "PANES.forEach((id) => el(id));\n")
+    ids = mod.collection_ids(mod.code_only(js))
+    assert ids == {"PANES": {"pane-first-id", "pane-second-id"}}, ids
+    assert "strip_comments" in mod.code_only.__code__.co_names, \
+        "check-wiring blanks through the one blanker"

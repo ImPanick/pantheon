@@ -35,6 +35,9 @@ def _tree(tmp_path: Path, files: dict) -> Path:
     # `B571`: the file list comes from the shared `ledger.source.tracked_files`.
     shutil.copytree(CHECKER.parent / "ledger", root / ".pantheon" / "ledger",
                     ignore=shutil.ignore_patterns("__pycache__"))
+    # `B1515`: comments are blanked by the one blanker, which `ledger.source`
+    # loads from `check-specifiers.py` beside it.
+    shutil.copy(CHECKER.parent / "check-specifiers.py", root / ".pantheon" / "check-specifiers.py")
     for rel, text in files.items():
         p = root / rel
         p.parent.mkdir(parents=True, exist_ok=True)

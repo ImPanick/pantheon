@@ -50,7 +50,7 @@ from collections import Counter
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 if str(ROOT / ".pantheon") not in sys.path:
     sys.path.insert(0, str(ROOT / ".pantheon"))
-from ledger.source import tracked_files  # noqa: E402  (`B571`)
+from ledger.source import strip_comments, tracked_files  # noqa: E402  (`B571`, `B1515`)
 
 
 def tracked(*globs):
@@ -71,91 +71,24 @@ def read(f):
 # a `/*` inside a string literal opened a comment that ran to the next `*/`
 # thousands of lines away. Every `id="..."` in the span vanished with it, so the
 # checker reported 153 unresolved ids that are created three lines from where
-# they are looked up. A stripper that silently removes half its input is exactly
-# the defect this file exists to find, which is a fair thing to have to say
-# about one's own fix.
+# they are looked up.
 #
-# Regex literals are the hard part of doing this properly: `/` is division or
-# the start of a pattern depending on what came before it. The rule below is the
-# standard one — a regex may begin only where a value may not — and it is
-# approximate. Being wrong costs a mis-scanned line; the alternative was being
-# wrong by half a file.
-_REGEX_MAY_START_AFTER = set("(,=:[!&|?{};+-*%~^<>") | {""}
-_KEYWORD_BEFORE_REGEX = ("return", "typeof", "instanceof", "in", "of", "new",
-                         "delete", "void", "case", "do", "else", "yield", "await")
+# `B1515`. This file then kept a scanner of its own (`code_only`, and
+# `_literal_span` below it), beside the one `B290` made the repository's only
+# blanker — `check-specifiers.strip_comments`, reached through
+# `ledger.source` as every other checker reaches it (`B410`). The copy scanned a
+# template literal to the next backtick, so a nested template inside a `${…}`
+# hole ended it early; and `test_one_comment_blanker`'s regex scan could not
+# see a character scanner. Both now go through the one walk: comments blanked
+# by `strip_comments`, and a literal's extent taken from the `literals` it
+# reports, holes and nested templates included.
 
 
-def code_only(text: str) -> str:
+def code_only(text: str, literals: list | None = None) -> str:
     """`text` with comments blanked and everything else — strings, templates,
-    regex literals — left exactly as it was. Newlines are preserved so line
-    numbers do not move."""
-    out = []
-    i, n = 0, len(text)
-    prev_significant = ""
-    while i < n:
-        c = text[i]
-        two = text[i:i + 2]
-        if two == "//":
-            j = text.find("\n", i)
-            j = n if j < 0 else j
-            out.append(" " * (j - i))
-            i = j
-            continue
-        if two == "/*":
-            j = text.find("*/", i + 2)
-            j = n if j < 0 else j + 2
-            out.append("".join("\n" if ch == "\n" else " " for ch in text[i:j]))
-            i = j
-            continue
-        if c in "'\"`":
-            quote, j = c, i + 1
-            while j < n:
-                if text[j] == "\\":
-                    j += 2
-                    continue
-                if text[j] == quote:
-                    j += 1
-                    break
-                j += 1
-            out.append(text[i:j])
-            prev_significant = quote
-            i = j
-            continue
-        if c == "/" and _regex_starts_here(text, i, prev_significant):
-            j, in_class = i + 1, False
-            while j < n:
-                ch = text[j]
-                if ch == "\\":
-                    j += 2
-                    continue
-                if ch == "[":
-                    in_class = True
-                elif ch == "]":
-                    in_class = False
-                elif ch == "/" and not in_class:
-                    j += 1
-                    break
-                elif ch == "\n":
-                    break
-                j += 1
-            out.append(text[i:j])
-            prev_significant = "/"
-            i = j
-            continue
-        out.append(c)
-        if not c.isspace():
-            prev_significant = c
-        i += 1
-    return "".join(out)
-
-
-def _regex_starts_here(text: str, i: int, prev_significant: str) -> bool:
-    """Is the `/` at `i` the start of a regex literal rather than division?"""
-    if prev_significant in _REGEX_MAY_START_AFTER:
-        return True
-    head = text[max(0, i - 12):i]
-    stripped = head.rstrip()
-    return any(stripped.endswith(k) for k in _KEYWORD_BEFORE_REGEX)
+    regex literals — left exactly as it was, offsets unchanged. `literals`, when
+    given, receives each literal's span (`strip_comments`' contract)."""
+    return strip_comments(text, mode="js", literals=literals)
 
 
 # Candidates reached INDIRECTLY must look like ids, and in this codebase an
@@ -173,23 +106,29 @@ _IS_LITERAL = re.compile(r"""['"][^'"]*['"]""")
 _ITERATION_WINDOW = 400
 
 
-def _literal_span(text: str, start: int) -> str:
+def _literal_span(text: str, start: int, skip: dict | None = None) -> str:
     """The source of the object/array literal opening at `start`, brace-matched.
 
     Brace matching rather than a regex, because `{ a: { b: 'x' } }` is common
     and a non-greedy match stops at the first `}` — which is how a checker
     reports a clean file and misses half of it.
+
+    `B1515`: a string or template is stepped over by its extent as the one
+    walk reports it (`skip`, `{start: end}` from `strip_comments`' `literals`),
+    so a template whose hole holds another template is one literal, not two
+    halves with a brace count running loose between them.
     """
-    opener = text[start]
-    closer = "}" if opener == "{" else "]"
+    if skip is None:
+        lits: list = []
+        strip_comments(text, mode="js", literals=lits)
+        skip = _literal_extents(lits)
     depth, i, n = 0, start, len(text)
     while i < n:
         c = text[i]
-        if c in "\"'`":
-            quote, i = c, i + 1
-            while i < n and text[i] != quote:
-                i += 2 if text[i] == "\\" else 1
-        elif c in "{[":
+        if i in skip:
+            i = skip[i]
+            continue
+        if c in "{[":
             depth += 1
         elif c in "}]":
             depth -= 1
@@ -199,12 +138,22 @@ def _literal_span(text: str, start: int) -> str:
     return text[start:start + 4000]
 
 
+def _literal_extents(literals: list) -> dict:
+    """`{start: end}` for the outermost literals `strip_comments` reported — a
+    literal inside a template's hole is reported on its own, and lies inside
+    its template's extent, so it is never the one a scan arrives at."""
+    return {start: end for _quote, start, end, _holes in literals}
+
+
 def collection_ids(text: str) -> dict:
     """`{name: {id, ...}}` for every literal collection of id-shaped strings."""
     out = {}
+    lits: list = []
+    strip_comments(text, mode="js", literals=lits)
+    skip = _literal_extents(lits)
     for m in _COLLECTION.finditer(text):
         name, brace_at = m.group(1), m.end(2) - 1
-        body = _literal_span(text, brace_at)
+        body = _literal_span(text, brace_at, skip)
         values = {v for v in re.findall(r"['\"]([^'\"\n]{4,})['\"]", body)
                   if _ID_LIKE.match(v)}
         if values:
