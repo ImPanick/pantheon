@@ -221,13 +221,46 @@ async def test_each_delivery_takes_a_stand_in(task_db, monkeypatch):
     assert calls == [("mcp__mail__send", "[Task] Morning · Step")]
 
 
-def test_the_session_manager_writes_the_stand_in_s_chat():
+@pytest.fixture(params=["nothing", "a stored chat-9", "no tables"])
+def earlier_test_left(request, monkeypatch, tmp_path):
+    """`B1190`: what a test before this one may leave in the shared
+    `core.session_manager.SessionLocal` in a mixed run — the product's
+    in-memory SQLite (`conftest.py`), which several files dispose or drop
+    tables on. Since `B1140`, `ensure_task_session` asks that database whether
+    the chat is stored, so the test below was red after one of them and green
+    alone (seen once in 2,540, `fx-brain`)."""
+    import core.session_manager as sm
+    engine = create_engine(f"sqlite:///{tmp_path / 'left.db'}", poolclass=NullPool)
+    if request.param != "no tables":
+        cdb.Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, autoflush=False)
+    if request.param == "a stored chat-9":
+        db = factory()
+        db.add(cdb.Session(id="chat-9", name="someone else's", endpoint_url="e", model="m"))
+        db.commit()
+        db.close()
+    monkeypatch.setattr(sm, "SessionLocal", factory)
+
+
+@pytest.fixture()
+def sessions_db(earlier_test_left, monkeypatch, tmp_path):
+    """The test's own sessions table, whatever was there before (`B1190`)."""
+    import core.session_manager as sm
+    engine = create_engine(f"sqlite:///{tmp_path / 'sessions.db'}",
+                           connect_args={"check_same_thread": False}, poolclass=NullPool)
+    cdb.Base.metadata.create_all(engine)
+    monkeypatch.setattr(sm, "SessionLocal", sessionmaker(bind=engine, autoflush=False))
+
+
+def test_the_session_manager_writes_the_stand_in_s_chat(sessions_db):
     from core.session_manager import SessionManager
 
+    made = []
     manager = SessionManager.__new__(SessionManager)
     manager.sessions = {}
-    manager.create_session = lambda *a, **k: object()
+    manager.create_session = lambda *a, **k: made.append(a[0]) or object()
     stand_in = wd.WorkflowNodeTask(id="wf", owner="alice", name="Morning · Step")
     SessionManager.ensure_task_session(manager, "chat-9", "[Task] x", "e", "m",
                                        owner="alice", task=stand_in)
     assert stand_in.session_id == "chat-9"
+    assert made == ["chat-9"], "a chat not yet stored is made, not loaded"
