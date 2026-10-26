@@ -243,9 +243,48 @@ def test_the_header_label_sits_on_the_eleven_pixel_floor():
 
     Not a restatement of the test above: that one only asks for separation, and
     separation is also achievable by shrinking the rows, which is the wrong
-    direction on a surface whose smallest text is already 9.75px.
+    direction on a surface whose smallest text was 9.75px until `B784`.
     """
     assert _px(_resolve(HEADER_PATH, "font-size", "16px")) >= 11.0
+
+
+# ── `B784`: the rows themselves, and the glyphs that share their rule ───────
+
+# The spans in a sidebar row that are NOT its label — each a glyph, sized by
+# the same `.list-item span` rule the label used to be. Real classes: the
+# drag handle, the status dot and the session icon from `sessions.js`'s
+# `createSessionItem`, the provider logo it puts in the dot.
+_GLYPH_SPANS = {
+    "drag handle": {"item-drag-handle"},
+    "status dot": {"session-star"},
+    "session icon": {"session-icon"},
+    "provider logo": {"session-star", "provider-logo"},
+}
+
+
+def _row_span(classes):
+    return ROW_PATH[:-1] + [("span", classes, None)]
+
+
+def test_a_sidebar_label_is_on_the_eleven_pixel_floor():
+    """`B784`'s `Verify`, the label half. `.list-item span { 9.75px }` sized every
+    label in the sidebar — the busiest list in the product, under `P5-14`'s
+    11px floor and every other body size in the shell. Measured through the
+    cascade, as the header is, for a shell row and for the row `sessions.js`
+    builds (both a `<span class="grow">` inside `.list-item`)."""
+    shell = _px(_resolve(ROW_PATH, "font-size", "16px"))
+    session = _px(_resolve(_row_span({"grow", "text-ellipsis"}), "font-size", "16px"))
+    assert shell >= 11.0, f"a sidebar label renders at {shell}px"
+    assert session == shell, (session, shell)
+
+
+def test_the_glyphs_beside_the_label_did_not_move():
+    """`B784`'s blast radius, measured: the rule that sized the label also sizes
+    four glyph-bearing spans, so the fix is a scoped selector, not a bigger
+    number. Each glyph still resolves to exactly what it did before."""
+    for name, classes in _GLYPH_SPANS.items():
+        got = _px(_resolve(_row_span(classes), "font-size", "16px"))
+        assert got == 9.75, f"the {name} moved to {got}px — the label's fix reached a glyph"
 
 
 def test_every_sidebar_section_header_uses_the_one_rule():

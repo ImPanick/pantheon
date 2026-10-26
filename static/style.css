@@ -1632,8 +1632,11 @@ body.bg-pattern-sparkles {
          composer chip label already uses (`.tool-chip-label`, P5-12); the
          rows are left where they are
          because shrinking the smallest text in the product is the wrong
-         direction and `.list-item span`'s 9.75px belongs to P5-14. */
-      font-size: 11px; font-weight: 600; font-family: inherit;
+         direction and `.list-item span`'s 9.75px belongs to P5-14.
+         `B784` then lifted the rows onto the 11px floor (`.list-item span.grow`
+         below), so the header moved one step up the census's own sizes, to
+         12px — still 600, still a step above what it names. */
+      font-size: 12px; font-weight: 600; font-family: inherit;
       /* 1.3 (not 1) so Fira Code's tall glyph box isn't vertically clipped in
          Chromium/Edge — mirrors the .list-item fix. The title is flex-centred
          in a fixed-height (29px) header, so this adds headroom without reflow. */
@@ -2293,6 +2296,17 @@ body.bg-pattern-sparkles {
     .list-item span {
       color: var(--fg);
       font-size: 9.75px;
+    }
+    /* `B784`. Every label in the sidebar is a `<span class="grow">` — the
+       shell's markup and `sessions.js`'s row builder alike — so the rule above
+       sized every one of them at 9.75px and `.list-item`'s own 13px reached
+       none. The label gets the 11px floor here, scoped by its class rather
+       than by a bigger number on the rule above: that rule also sizes the
+       drag handle, the status dot, the session icon and the provider logo,
+       which are glyphs and stay exactly as they were. (The phone block's
+       `.list-item .grow { 14px !important }` still wins there.) */
+    .list-item span.grow {
+      font-size: 11px;
     }
     .grow {
       flex: 1;
