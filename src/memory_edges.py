@@ -28,7 +28,7 @@ exactly that. Two predicates for "does this memory surface" is how a proposal
 ends up hidden from search and sent to a model anyway, which is the failure
 `superseded_ids` already exists to prevent. So the module is wider than its name
 by one concept, and saying so here is cheaper than a rename that would touch
-four call sites to move two constants (`Law 2`).
+its call sites to move two constants (`Law 2`).
 """
 
 from __future__ import annotations
@@ -220,7 +220,7 @@ def superseded_ids(memories) -> set:
 
 
 def live(memories, index: Dict = None) -> List[Dict]:
-    """The memories that still surface. One predicate, four callers.
+    """The memories that still surface. One predicate for every caller.
 
     Three reasons a record stays in the store and out of every prompt, and no
     two of them arrived together:

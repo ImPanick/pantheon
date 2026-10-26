@@ -476,7 +476,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         """Cut a session's history back to a boundary.
 
         `B1323` (fx7-dup). `keep_count` is an index into **this session's
-        stored rows**, and the three callers in `static/js/chat.js` — edit a
+        stored rows**, and its callers in `static/js/chat.js` — edit a
         message, resend it, regenerate the reply — each counted `.msg` elements
         in `#chat-history` instead. Those are not the same number: measured on
         `3b40a4e`, an agent turn draws two `.msg` for one saved assistant row

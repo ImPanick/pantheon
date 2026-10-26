@@ -225,7 +225,7 @@ def builtin_connect_spec(server_id: str, base_dir: str | None = None) -> dict | 
     (The row said four entries. It is three: `memory` was removed from this map
     by `B67` and the count was not re-measured.)
 
-    One definition, two callers, so a change to how the browser starts reaches
+    One definition, so a change to how the browser starts reaches
     the restart as well as the start (`Law 14`).
     """
     base_dir = base_dir or get_app_root()

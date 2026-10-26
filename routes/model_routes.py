@@ -463,7 +463,7 @@ def _truthy(value: str | None) -> bool:
     This function is where the eight words came from: it read
     `("true", "1", "yes", "on")` at three body fields while thirteen other HTTP
     sites read `== "true"`, and neither was reachable from the other's callers.
-    Kept as a name rather than deleted — three call sites read better saying
+    Kept as a name rather than deleted — its call sites read better saying
     `_truthy(container_local)` — but it is no longer a *rule*, it is a spelling
     of one.
     """

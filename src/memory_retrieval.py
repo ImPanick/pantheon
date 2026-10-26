@@ -29,7 +29,7 @@ case is executable, and it is `tests/test_retrieval_eval_measures_something.py`.
 
 Two views over one scoring pass:
 
-    retrieve(...)  the memories, best first. What five callers want.
+    retrieve(...)  the memories, best first. What most callers want.
     explain(...)   the same selection with the score and the reason kept.
                    `H11`'s contract: `POST /api/memory/debug` promises to say
                    which memories would be triggered, and could only ever answer
@@ -426,7 +426,7 @@ def _rank(query, memories, k, vector, report, now):
                        # retrieval trace has always said *which* memories
                        # changed an answer and never *why*, which is the row's
                        # own word — and the reason was never missing, only
-                       # discarded at this boundary because five call sites
+                       # discarded at this boundary because its call sites
                        # unpack a list of memories. It rides the out-parameter
                        # rather than a widened return type for that reason.
                        "selected": []})

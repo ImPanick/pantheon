@@ -593,7 +593,7 @@ ENCODING_UNIDENTIFIED = "the encoding could not be identified from so few bytes"
 def sniff_text_encoding(head: bytes) -> str | None:
     """The encoding *head* decodes as, or ``None`` when it does not read as text.
 
-    One decision, two callers: ``looks_like_text`` asks whether there is an
+    One decision for its callers: ``looks_like_text`` asks whether there is an
     answer, ``decode_text_file`` uses the answer. Before `B101` those were
     different questions answered by different code — the probe refused a file on
     the strength of a NUL byte while the reader three frames away had a

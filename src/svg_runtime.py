@@ -462,7 +462,7 @@ def _normalise_ref(text: str) -> str:
     or the legitimate half of `B160` does not work.
 
     Entity decoding is **not** done here — it is done by each caller that has a
-    reason to, because the two callers have different reasons. See
+    reason to, because its callers have different reasons. See
     ``_scan_references``.
     """
     return _REF_NOISE_RE.sub("", text)

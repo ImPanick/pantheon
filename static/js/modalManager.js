@@ -92,7 +92,7 @@ function _emitModalOpened(id, modal) {
 /** `B721`. Announce that a wired window opened, from the first time it does.
  *  `pantheon:modal-opened` came only from `register()`'s observer, and a window
  *  is registered when it is first minimised — so Settings, which opens by
- *  dropping `.hidden` (`settings/lifecycle.js`, and five callers that un-hide it
+ *  dropping `.hidden` (`settings/lifecycle.js`, and callers that un-hide it
  *  themselves), opened in silence until somebody had minimised it once, and a
  *  panel inside it showing live state could only poll or be stale. This
  *  observer only announces: no registration, so no dock chip or badge a window

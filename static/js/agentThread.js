@@ -757,8 +757,8 @@ export function agentThreadNodeHtml(o) {
  * stays visible while the card is shut. So `.agent-thread-content` now holds a
  * single wrapper, and anything added after the card was built goes inside it.
  *
- * Three callers in `chat.js` append here — the screenshot pane, the image
- * progress row and the browser-step block — and all three found the box with
+ * Callers in `chat.js` append here — the screenshot pane, the image
+ * progress row and the browser-step block — and each found the box with
  * `querySelector('.agent-thread-content')`. Pointing them at a helper rather
  * than at a second class name means the next one cannot get it wrong, and the
  * fallback covers a card built by an older cached module (the buster contract

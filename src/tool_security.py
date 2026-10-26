@@ -548,7 +548,7 @@ def feature_disabled_tools(features: Optional[dict] = None) -> Set[str]:
 # measurement behind it: a capability the instance has switched off is off for
 # the agent too, on every channel.
 #
-# One definition, two callers: `stream_agent_loop` contributes it to the turn's
+# One definition: `stream_agent_loop` contributes it to the turn's
 # `TurnToolAccess` so the prompt, the schemas and the dispatcher read one set,
 # and `_build_base_prompt` still asks it for a direct caller.
 _SETTING_TOOLS: dict = {

@@ -541,7 +541,7 @@ class SkillsManager:
     def _iter_skill_files(self) -> Iterable[str]:
         """The user's own skills. **Writable — the library is deliberately not here.**
 
-        Three callers share this, and one of them (`backfill_owner`) *rewrites*
+        Its callers share this, and one of them (`backfill_owner`) *rewrites*
         every file it is handed. Folding the read-only library into this
         iterator would therefore not merely surface it; it would rewrite it in
         place on the next owner backfill. The library gets its own iterator

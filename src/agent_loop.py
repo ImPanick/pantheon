@@ -3188,7 +3188,7 @@ def _is_small_talk_turn(text: str) -> bool:
     """True when there is no request in this text at all: a greeting, a thanks,
     or no words.
 
-    `Law 7`, and the predicate three callers actually wanted. The same
+    `Law 7`, and the predicate its callers actually wanted. The same
     three-part test was written out in three places —
     `_classify_agent_request`'s first branch, `_skills_may_ship_for_turn`, and
     now `_direct_low_signal` — and the fourth copy was the one that went wrong:
@@ -3234,7 +3234,8 @@ def _skills_may_ship_for_turn(last_user: str) -> bool:
     the other half.
 
     `B1370` (fx10-intent): the three-part test this spelled out is now
-    `_is_small_talk_turn`, read by this and by two other callers (`Law 7`).
+    `_is_small_talk_turn`, read by this and by `_classify_agent_request` and
+    `stream_agent_loop` (`Law 7`).
     """
     return not _is_small_talk_turn(last_user)
 
@@ -5151,7 +5152,7 @@ def _skill_query(last_user: str, approved_plan: Optional[str] = None) -> str:
 def _skill_active_toolsets(disabled_tools) -> list:
     """The `active_toolsets` both halves of the skills message gate on.
 
-    `B1361`. One expression, two call sites: the catalogue's
+    `B1361`. One expression, for the catalogue's
     (`_build_base_prompt`) and the matched bodies'
     (`_build_system_prompt`). Before this, only the catalogue computed it and
     the bodies gated on nothing, so a skill declaring `requires_toolsets:
@@ -5501,7 +5502,7 @@ def _build_base_prompt(
             # `P8-06`. The block used to be built here and only here, which
             # is why `GET /api/skills/index` — the endpoint that exists to
             # show a user what the model can see — could return the list and
-            # never the text. One renderer, two callers, no second copy of a
+            # never the text. One renderer, no second copy of a
             # prompt string to fall out of step (`Law 7`).
             #
             # `B1364`. `owner` and `report` were both missing here, and
@@ -7998,7 +7999,7 @@ async def stream_agent_loop(
         # loop, and it had drifted from the one in `src/tool_index.py` in both
         # directions at once: it matched `kw in ql` (raw substring), so
         # "this document is unreadable" force-included the entire email family
-        # — issue #1707's exact defect, fixed in one of the two call sites —
+        # — issue #1707's exact defect, fixed at one call site and not the other —
         # and it ran none of the structural signals, so a pasted URL selected
         # no web tools on the one path that runs when embeddings are down.
         # `Law 13`/`Law 14`: one rule, one place.

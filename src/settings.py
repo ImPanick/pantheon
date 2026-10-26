@@ -1465,7 +1465,7 @@ def env_backed(settings: dict, key: str, env_name: str, default: str = "") -> st
     which is where it was set; the UI cannot unset a variable in the process
     environment and must not pretend it can.
 
-    Takes the dict rather than reading it so the two callers that parse
+    Takes the dict rather than reading it so the callers that parse
     `settings.json` themselves (contacts, email) can use the same rule as the
     ones going through `load_settings`.
     """
@@ -1537,7 +1537,7 @@ def env_backed_flag(settings: dict, key: str, env_name: str,
 
     So this is not a third layering rule. It is `env_backed` plus the shared
     vocabulary, and the reason it is a function rather than two lines at each of
-    the three call sites is that two lines at each of three call sites is how
+    its call sites is that two lines at each call site is how
     this row was written in the first place (`Law 13`).
     """
     return _resolve_env_backed_flag(settings, key, env_name, default)[0]

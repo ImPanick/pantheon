@@ -92,8 +92,8 @@ export function bindSettingsNavigation(modalEl, options = {}) {
  * hand.
  *
  * **Why this runs at module load rather than in `initAll()`.** `settings.js`
- * initialises lazily, on the first `open()`. Four call sites in `calendar.js`
- * and one in `emailLibrary.js` reach past that API — they un-hide
+ * initialises lazily, on the first `open()`. Call sites in `calendar.js`
+ * and `emailLibrary.js` reach past that API — they un-hide
  * `#settings-modal` themselves and then `querySelector('[data-settings-tab=…]')
  * .click()` — so a nav built inside `initAll` would not exist yet for any of
  * them. Rendering when the module is evaluated keeps every one of those paths

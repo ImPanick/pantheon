@@ -78,7 +78,7 @@ logger = logging.getLogger(__name__)
 PANTHEON_MAIL_ORIGIN = "pantheon-ui"
 EMAIL_READ_ATTACHMENT_VERSION = 2
 # `P18-05`. These three were literals and are now views onto the provider
-# registry. The names stay because ten call sites and several tests use them
+# registry. The names stay because call sites and tests use them
 # (`Law 1`); the values stop being a second place Google is written down.
 _GOOGLE_OAUTH_IMAP_HOST = providers.get("google").mail.imap_host
 _GOOGLE_OAUTH_SMTP_HOST = providers.get("google").mail.smtp_host

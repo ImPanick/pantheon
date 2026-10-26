@@ -1065,9 +1065,9 @@ class MemoryManager:
         corpus IDF `0.63, 0.633`. `Law 9` — a number, not an adjective.
 
         `threshold` is accepted and ignored, and that is deliberate rather than
-        sloppy: five call sites pass `threshold=0.05`, and the scorer behind
+        sloppy: call sites pass `threshold=0.05`, and the scorer behind
         this now has three gates that a single similarity floor cannot express.
-        Dropping the parameter breaks all five for no gain; honouring it would
+        Dropping the parameter breaks every one of them for no gain; honouring it would
         mean re-introducing a knob that no longer describes anything. This is a
         compatibility surface and it says so rather than pretending.
 

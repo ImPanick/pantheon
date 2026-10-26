@@ -96,7 +96,7 @@ def env_truthy(raw: object) -> bool | None:
 
     `None` means *the environment did not say* — absent, blank, whitespace, or a
     word outside the vocabulary. It is a third answer rather than a second
-    falsehood because two callers genuinely need it: `SECURE_COOKIES` falls
+    falsehood because callers genuinely need it: `SECURE_COOKIES` falls
     through to scheme auto-detection when nothing was configured, and `B90`'s
     three settings keys need "the operator stored nothing" to read differently
     from "the operator stored no".

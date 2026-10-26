@@ -278,7 +278,7 @@ def fit_to_context_budget(text: str, key: str, owner=None, *,
                           ceiling_default=None, ceiling=None, marker: str = ""):
     """`(text, marker)` — `text` cut to `key`'s budget, `marker` empty if it fit.
 
-    The one place a character budget is *applied*. Six call sites in
+    The one place a character budget is *applied*. The call sites in
     `src/document_processor.py` each had their own `if len(x) > N: x = x[:N]`,
     and three of the six used the same literal for three different decisions.
     """
@@ -870,7 +870,7 @@ TOOL_SUITE_SHARE = 0.4
 def tool_schema_tokens(schemas) -> int:
     """What one tool schema, or a list of them, costs in the window.
 
-    One rule for the three callers that need it: the context wheel's `tools`
+    One rule for the callers that need it: the context wheel's `tools`
     category (`measure_request_segments` below), the suite planner that decides
     whether the whole set fits, and the test that measures it. A second
     computation would answer a different number than the meter draws (`Law 7`).

@@ -269,7 +269,7 @@ function spawnConfetti(cx, cy, count) {
   // 100 particles thrown across the viewport is the exact thing
   // `prefers-reduced-motion` is asking about, and a confetti burst that
   // teleports to its end state is 100 divs appearing and vanishing, which is
-  // worse than none. Nothing else depends on the pieces: all three callers are
+  // worse than none. Nothing else depends on the pieces: every caller is
   // the celebration, and each piece removes itself. So the whole effect is the
   // motion, and skipping it is the reduced form.
   if (prefersReducedMotion()) return;

@@ -1124,7 +1124,7 @@ def _apply_skill_md(skills_manager, name: str, md: str, owner, keep: Optional[di
     """
     # `B791`. A blank answer is not a skill. `Skill.from_markdown("   ")` does
     # not raise — it returns a nameless skill with no description, no
-    # when-to-use and no procedure — and the audit's four callers each guard
+    # when-to-use and no procedure — and the audit's callers each guard
     # with `fixed and fixed.strip() != md.strip()`, which a whitespace reply
     # passes (truthy, and unequal). A local model answering a 16k-token rewrite
     # with a newline therefore blanked the skill it was asked to improve. One

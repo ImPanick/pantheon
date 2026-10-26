@@ -3259,19 +3259,19 @@ export function setSessionHasDocs(sessionId, hasDocs) {
 
 // ── `P9-10` — what chat Tidy does, said once ────────────────────────────────
 //
-// **`POST /api/sessions/auto-sort` has three callers in `static/`, and they
-// reported three different operations.** The sidebar sort dropdown
+// **`POST /api/sessions/auto-sort`'s callers in `static/` reported three
+// different operations.** The sidebar sort dropdown
 // (`app.js:_runTidy`) printed `unfiled_remaining`; the Library's Chats tab
 // printed `updated` and the folder count; `/session sort` in `slashCommands.js`
 // printed `deleted_empty` and not `deleted_throwaway`. Between them the one
 // number nobody was shown on the path that produces it is **how many chats were
 // permanently deleted** — the endpoint returns `deleted_empty` and
-// `deleted_throwaway` on every response, and on the AI path all three callers
+// `deleted_throwaway` on every response, and on the AI path every caller
 // dropped both. A person pressed a button labelled Tidy, nine chats were
 // deleted with no confirmation, and the toast said *"Sorted 5 into 2 folders"*.
 //
 // So this file — which owns chat sessions — owns both halves of the sentence,
-// and the three callers say the same thing because there is only one thing to
+// and its callers say the same thing because there is only one thing to
 // say (`Law 7`).
 //
 // A dry run is the half that is NOT here, and it cannot be: Phase 1's rules run

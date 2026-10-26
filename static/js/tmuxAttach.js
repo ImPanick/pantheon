@@ -13,7 +13,7 @@
 // name for a shell; it is still a name somebody chose — an adopted session is
 // whatever its launcher called it — and it is on its way into the page.
 //
-// Two callers are meant to share this: the Forge's task menu
+// Meant to be shared by the Forge's task menu
 // (`cookbookRunning.js`), and `P4-15`'s attach affordance for the agent's own
 // shell once `B908` gives that shell a session. Neither builds a command.
 //

@@ -235,7 +235,7 @@ class ChatProcessor:
         `P13-14`. The scoring moved to `src/memory_retrieval.py`, which is now
         the only memory scorer in the tree — this method is the chat preface's
         binding to it, not a second implementation. It kept its name and
-        signature because five call sites and their test doubles use both, and
+        signature because its call sites and their test doubles use both, and
         renaming a working seam to advertise a refactor is churn.
         """
         return memory_retrieval.retrieve(

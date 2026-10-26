@@ -1595,7 +1595,7 @@ DEFAULT_TRUST_RUNG = TrustRung.GATE_ON_UNTRUSTED
 #
 # `D-2026-09-08-05`: *"we make our own trust rungs. Because the current
 # posturing of failure detection etc is incorrectly done."* The row asked
-# whether an order exists among the three inherited rungs, because two callers
+# whether an order exists among the three inherited rungs, because callers
 # talk as if one does — a role profile *"may only raise strictness"*, and a turn
 # that says "ask me before using tools" is raised to the strictest rung — while
 # nothing said what "stricter" meant. The owner's test for an order is the

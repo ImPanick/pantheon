@@ -8804,7 +8804,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
    * `B232`/`B233`. POST one container file and get back the Document the
    * server extracted from it.
    *
-   * One helper, two callers — the composer's import banner and
+   * One helper for the composer's import banner and
    * `openAttachment` below — because they were about to grow two copies of the
    * same three lines, and a container that imports one way from the banner and
    * another way from the chip is the `Law 13` this row is (`B233` measured

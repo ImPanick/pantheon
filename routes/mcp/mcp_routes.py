@@ -121,8 +121,8 @@ def _apply_mcp_oauth_env(env: dict, oauth_cfg) -> None:
 #
 # `P8-35` lifted this out of `add_server`'s body. It was a closure; the update
 # endpoint needs exactly the same rule on exactly the same three fields, and a
-# second copy of it is the shape `Law 13` names. One function, two callers, one
-# set of messages an operator can learn once.
+# second copy of it is the shape `Law 13` names. One function for both endpoints,
+# one set of messages an operator can learn once.
 #
 # `B865`. This checked the CONTAINER and nothing inside it. Driven before the
 # fix: `POST /api/mcp/servers` with `env={"PORT": 3000}` stored the row, then

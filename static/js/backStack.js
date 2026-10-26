@@ -576,7 +576,7 @@ export function init() {
   if (_inited || typeof window === 'undefined' || typeof document === 'undefined') return;
   _inited = true;
   const h = _hist();
-  // Six callers rewrite the URL with `replaceState(null, …)` to drop a hash or
+  // Callers rewrite the URL with `replaceState(null, …)` to drop a hash or
   // a query (`sessions.js`, `chatRenderer.js`, `emailInbox.js`, `settings.js`,
   // `group.js`): they mean the URL, not the state, and a `null` would wipe the
   // stack this entry holds. Their URL is kept; the stack stays.

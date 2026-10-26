@@ -75,7 +75,7 @@ import spinnerModule from './js/spinner.js';
 import { initKeyboardShortcuts, KEYBIND_DEFAULTS, formatKeybind, ariaKeyshortcuts } from './js/keyboard-shortcuts.js';
 import { getSettings } from './js/appConfig.js';
 // `syncRailSide` is not named here: initSidebarLayout() publishes it as
-// window.syncRailSide, which is how the two call sites left in this file reach
+// window.syncRailSide, which is how the call sites left in this file reach
 // it. The direct binding existed only for the rail-gear handler that P1-05
 // removed.
 import { initSidebarLayout } from './js/sidebar-layout.js?v=20260715startupclean';

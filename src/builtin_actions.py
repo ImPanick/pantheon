@@ -3873,7 +3873,7 @@ BUILTIN_ACTION_META = {
 }
 
 # Derived, so the descriptions and the registry cannot disagree (`Law 7`).
-# Still a plain dict under the same name: three call sites read it and one test
+# Still a plain dict under the same name: call sites read it and a test
 # substitutes it.
 BUILTIN_ACTION_INFO = {
     name: meta["description"] for name, meta in BUILTIN_ACTION_META.items()

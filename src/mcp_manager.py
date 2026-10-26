@@ -237,8 +237,8 @@ def validate_mcp_server_id(server_id: Any) -> Optional[str]:
 # used the whole `str(uuid.uuid4())`, thirty-six. Both pass
 # `validate_mcp_server_id`, so nothing was broken; that is the shape of
 # `Law 13`. Anything that assumes eight characters — a column width, a log
-# format, a truncating index, a fixture — is right for two callers and wrong
-# for the third, and it would have been found by whoever registered their first
+# format, a truncating index, a fixture — is right for some callers and wrong
+# for another, and it would have been found by whoever registered their first
 # server from the CLI.
 #
 # EIGHT WINS, and the id RULE and the id MINT now live in the same place
@@ -919,7 +919,7 @@ def readonly_verdict(tool: Dict, override: Optional[Dict[str, Any]] = None) -> T
 
     The source is returned rather than re-derived by each consumer, and that is
     the whole point of this function existing beside `mcp_tool_is_readonly`
-    instead of inside three callers: the browser has to be able to say *"the
+    instead of inside each caller: the browser has to be able to say *"the
     server told us"* as against *"we guessed from the name"*, and a second
     implementation of that distinction in JavaScript could not be kept in step
     with this one (`Law 14`). One decision, one place, two values out.
@@ -987,7 +987,7 @@ def mcp_tool_is_readonly(tool: Dict, override: Optional[Dict[str, Any]] = None) 
 
     The verdict itself lives in `readonly_verdict`, which also says where the
     answer came from; this is the same call with the provenance dropped, kept
-    because seven call sites want only the boolean.
+    because call sites want only the boolean.
     """
     return readonly_verdict(tool, override)[0]
 

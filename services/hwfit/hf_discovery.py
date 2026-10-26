@@ -29,7 +29,7 @@ HF_COLLECTION_TTL_SECONDS = 24 * 3600
 #
 # Before 2026-08-31 this walked 13 sources x 20 pages = **260 sequential,
 # unauthenticated requests at huggingface.co from a single button press**, with
-# no delay between them — while two other call sites in this same product
+# no delay between them — while other call sites in this same product
 # (`routes/cookbook_routes.py` and `src/tools/cookbook.py`) send a Bearer token
 # to that same host. The 24h TTL was the only brake, and `force=True` from the
 # UI's refresh button walked straight past it.

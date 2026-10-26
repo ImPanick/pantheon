@@ -580,7 +580,7 @@ def _run_natives(extractors, path: str) -> str | None:
 
 
 # What to say when an Office/EPUB file produced no text. One sentence with one
-# source, because three callers ask it — the composer banner
+# source, because its callers ask it — the composer banner
 # (``document_processor._process_office_document``), the mailbox refusal
 # (``routes/email_routes.attachment_as_doc``) and the index skip reason — and
 # `B240` measured them answering differently: the mailbox said *"Unsupported

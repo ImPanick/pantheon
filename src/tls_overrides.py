@@ -27,7 +27,7 @@ Example (GigaChat):
     LLM_CA_BUNDLE=/etc/pantheon/ca/russian-trusted-root.pem
 
 Scope:
-    `llm_verify()` is intentionally consumed by only two call sites — the
+    `llm_verify()` is intentionally consumed only by the
     shared async client in `src/llm_core.py` and the endpoint probes in
     `routes/model_routes.py`. Both reach LLM provider URLs. The override
     is NOT threaded into web_fetch, search providers, gallery downloads,

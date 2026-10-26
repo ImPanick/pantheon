@@ -136,13 +136,13 @@ export function runStatusTone(status) {
 /**
  * The `.task-log-status-*` suffix a row's dot and stripe take.
  *
- * `''` for a value outside the vocabulary, because the two callers answer that
+ * `''` for a value outside the vocabulary, because its callers answer that
  * differently on purpose: the docked panel has nothing else to go on and says
  * `info`, while the Activity view falls back to a text scan of the result,
  * which is how rows written before the column existed still get a colour.
  * Returning a made-up answer here would delete that fallback (`Law 1`).
  *
- * `failed` is the one input the two callers used to disagree about — `info` in
+ * `failed` is the one input the panel and the Activity view used to disagree about — `info` in
  * the panel, `error` in the Activity view. `error` wins because that is what
  * `runStatusTone` already scores it as and what the Errors chip already counts,
  * and because `.task-log-status-failed` is not a rule that exists.

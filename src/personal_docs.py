@@ -306,7 +306,7 @@ def walk_index_candidates(directory: str, extensions=None, pacer=None):
     EXTENSIONS``) and they mean "everything", so a set that covers the register
     is treated as no filter at all — otherwise the byte-decoded formats, which
     by definition have no registered suffix, would be filtered out by the
-    default argument of the only two callers there are.
+    default argument of its callers.
 
     `P14-07`: a file over ``index_max_file_mb`` is reported as ``SKIP_TOO_LARGE``
     **without being read**, and the walk rests periodically so a long index does

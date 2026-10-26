@@ -19,7 +19,7 @@ import { esc as escapeHtml } from './util/escapeHtml.js';
  * The queue lists sequential first and research lists parallel first. That
  * fourth one is why this module takes an ordered `rows` array rather than a
  * pair of named callbacks: a shared picker that silently reordered one of its
- * two callers would be a `Law 15` regression of the same kind the row warns
+ * callers would be a `Law 15` regression of the same kind the row warns
  * about, arriving through the parameter list nobody thought to check.
  *
  * **Why parameterised and not simply shared.** The row is explicit and it is
