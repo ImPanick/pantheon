@@ -195,7 +195,21 @@ _W_KEYWORD_ALONE = 0.95
 _DURABILITY_SATURATION = 8.0
 
 # Gates. A memory must clear real relevance, not just recency.
-_MIN_VECTOR, _MIN_KEYWORD, _MIN_FINAL = 0.20, 0.08, 0.12
+_MIN_VECTOR, _MIN_KEYWORD = 0.20, 0.08
+# `B714`. The combined floor, **in terms of the vector lane's own**: a memory
+# sharing no words with the question is admitted exactly when its cosine clears
+# `_MIN_VECTOR`, so the constant named after the vector lane is the one that
+# moves it. It was a free-standing 0.12, gated against a score that included the
+# recency tiebreak, so the vector floor it implied ran from 0.127 for a memory
+# saved today to 0.205 for one saved years ago — and lowering `_MIN_VECTOR` to
+# 0.15, 0.10, 0.05 and 0.0 changed nothing on the golden set (`P13-16`'s
+# measurement). Both halves moved together and the golden set did not: every
+# engine's per-query lists are identical before and after
+# (`.pantheon/retrieval_eval.py`, 2026-10-26, with the in-process index on a
+# cached `bge-small-en-v1.5`). The keyword lane is not reconciled the same way
+# and is said here rather than fixed in passing: a keyword-only memory meets
+# this floor at `keyword > _MIN_FINAL / _W_KEYWORD`, above `_MIN_KEYWORD`.
+_MIN_FINAL = _W_VECTOR * _MIN_VECTOR
 
 # What a verbatim match is worth. Carried across from the scorer `P13-14`
 # replaces, at the value it used, because changing a number while moving it is
@@ -489,10 +503,13 @@ def _rank(query, memories, k, vector, report, now):
         # Two capped tiebreakers added side by side is a 10% tiebreaker, which
         # is not a tiebreaker any more.
         tiebreak = _W_RECENCY * max(recency, durability)
+        # `B714`. The relevance terms on their own, for the admission test
+        # below; the tiebreak is added after, for the ranking only.
         if healthy:
-            final = (_W_VECTOR * vector_score) + (_W_KEYWORD * keyword) + tiebreak
+            relevance = (_W_VECTOR * vector_score) + (_W_KEYWORD * keyword)
         else:
-            final = (_W_KEYWORD_ALONE * keyword) + tiebreak
+            relevance = _W_KEYWORD_ALONE * keyword
+        final = relevance + tiebreak
 
         # `P13-14`, carried across from the scorer this replaces rather than
         # lost with it (`Law 1`). A query that appears in a memory word for word
@@ -514,7 +531,16 @@ def _rank(query, memories, k, vector, report, now):
         # half of a contradiction with a real number beside it.
         if not cleared and not verbatim:
             continue
-        if final <= _MIN_FINAL:
+        # `B714`. **Admission reads relevance, not the clock.** This was
+        # `final <= _MIN_FINAL`, and `final` carries the recency/durability
+        # tiebreak, so for a memory sharing no words with the question the gate
+        # was `vector > (0.12 − tiebreak) / 0.55`: 0.127 for one saved today and
+        # 0.205 for one saved years ago — a tiebreak capped at 5% of the score
+        # moving the admission floor by up to 38%, and on an old corpus making
+        # `_MIN_VECTOR` a knob that did nothing. The tiebreak still orders what
+        # is admitted; it no longer decides whether it is. A verbatim match is
+        # admitted as before (its score is `_VERBATIM_SCORE`, above every gate).
+        if not verbatim and relevance <= _MIN_FINAL:
             continue
         ranked.append(row)
 
@@ -567,7 +593,7 @@ def _select(ranked, report=None):
     # No guard on a non-positive top score, and the absence is deliberate. A
     # floor computed from a top of zero would be zero, which keeps everything —
     # the same answer the guard would have given — and in any case a row only
-    # reaches `ranked` by clearing `_MIN_FINAL` (0.12) or by being a verbatim
+    # reaches `ranked` by clearing `_MIN_FINAL` (0.11, `B714`) or by being a verbatim
     # match (0.8), so the best score in hand is always positive. Mutation
     # testing proved the branch could not change an answer, which is
     # `P13-14`'s `cutoff`, `P13-15`'s `sessions <= 1` and `B62`'s seven

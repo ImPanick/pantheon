@@ -207,6 +207,14 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
                 + ". Created anyway — this is a hand-authored skill. If one of "
                 "those answers the same request, edit it instead."
             )
+        # `B1490`. A required tool no turn can have: saved, and never shown.
+        # Said here so the model that just invented the name can fix it.
+        unknown_hint = ""
+        if entry.get("_unknown_toolsets"):
+            from services.memory.skills import describe_skill_gate
+            unknown = list(entry["_unknown_toolsets"])
+            unknown_hint = "\n\n" + describe_skill_gate(
+                {"gate": "requires", "tools": unknown, "unknown": unknown})
         verify_hint = ""
         if entry.get("status") == "draft":
             verify_hint = (
@@ -221,7 +229,8 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
         # here, because nothing was saved.
         return {
             "results": (f"Created skill `{entry['name']}` — "
-                        f"{entry.get('description','')}{overlap_hint}{verify_hint}"),
+                        f"{entry.get('description','')}{overlap_hint}{unknown_hint}"
+                        f"{verify_hint}"),
             "skill_saved": {
                 "name": entry.get("name") or "",
                 "category": entry.get("category") or "",

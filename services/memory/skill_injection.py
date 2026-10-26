@@ -524,14 +524,32 @@ INVOKED_SKILL_NOTE = (
 INVOKED_SKILL_EMPTY_REQUEST = "Use the {name} skill."
 
 
+def invokable_index(skills_manager, owner) -> List[Dict]:
+    """The skills this person may name as `/name`. `B1499`.
+
+    Their catalogue, **with** the tool gates: `index_for` with no
+    `active_toolsets` reads that as *"the caller does not know"* and skips
+    `requires_toolsets` and `fallback_for_toolsets`, so the slash list and the
+    invoke check offered a skill whose required tool this person has switched
+    off — one every prompt of theirs withholds (`B580`). The toolsets are
+    `agent_loop.skill_toolsets_for_owner`, what `GET /api/skills/index` gates
+    on, so the preview, the slash list and the invoke check are one list.
+    """
+    from src.agent_loop import skill_toolsets_for_owner
+
+    return skills_manager.index_for(owner=owner,
+                                    active_toolsets=skill_toolsets_for_owner(owner))
+
+
 def invokable_skill(skills_manager, owner, name: str) -> Optional[Dict]:
     """The index entry `name` may be invoked as, or None. One rule for
-    `POST /api/skills/{name}/invoke` and for the turn that carries it: what
-    the person's catalogue lists (`index_for`) is what a slash may name."""
+    `GET /api/skills/slash-catalog`, `POST /api/skills/{name}/invoke` and the
+    turn that carries it: what `invokable_index` lists is what a slash may
+    name."""
     want = str(name or "").strip()
     if not want:
         return None
-    for entry in skills_manager.index_for(owner=owner):
+    for entry in invokable_index(skills_manager, owner):
         if (entry.get("name") or "").strip() == want:
             return entry
     return None

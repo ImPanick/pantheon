@@ -483,6 +483,41 @@ export function sayUnreachable(doc = (typeof document !== 'undefined' ? document
 }
 
 /**
+ * `B1256`. The loaders' half of `B1245`, beside it so there is one place that
+ * knows what "never reached Pantheon" looks like (`Law 7`).
+ *
+ * Offline, every `/api/` read rejects, and four loaders logged that as an
+ * error on every load (`Failed to load skills`, `Failed to fetch notes`,
+ * `Calendar: failed to fetch events`, `Failed to check TTS availability`) while
+ * the page itself said it once, quietly (`sayUnreachable`). A rejected fetch is
+ * the page's news, not the loader's fault; a refusal — a response that came
+ * back wrong — still is, and still logs as an error.
+ *
+ * `markUnreached(fetchPromise)` marks a rejection of the request itself with
+ * `unreached`, the marker `sessions.js`'s `B1245` already sets, so an error
+ * thrown later (a bad JSON body, a refusal) is never mistaken for one.
+ * `quietIfUnreached(e, what)` answers whether `e` is such a rejection, and says
+ * so once per loader per page, at warn level.
+ */
+export function markUnreached(fetchPromise) {
+  return Promise.resolve(fetchPromise).catch((e) => {
+    if (e && typeof e === 'object') e.unreached = true;
+    throw e;
+  });
+}
+
+const _unreachedSaid = new Set();
+
+export function quietIfUnreached(e, what) {
+  if (!(e && e.unreached)) return false;
+  if (!_unreachedSaid.has(what)) {
+    _unreachedSaid.add(what);
+    console.warn(`${what} not loaded: Pantheon could not be reached.`);
+  }
+  return true;
+}
+
+/**
  * Load presets from server
  */
 export async function loadPresets(showError) {

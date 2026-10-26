@@ -14,6 +14,7 @@ import { applyEdgeDock, clearDockSide } from './modalSnap.js';
 import { topToolWindowZ, topPortalZ } from './toolWindowZOrder.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { chevronIcon, stopIcon } from './icons.js';
+import { markUnreached, quietIfUnreached } from './presets.js';   // `B1256`
 
 import { scrollBehavior } from './motion.js';
 const API_BASE = window.location.origin;
@@ -494,12 +495,13 @@ async function _fetchNotes() {
   _loading = true;
   try {
     const url = `${API_BASE}/api/notes${_showingArchived ? '?archived=true' : ''}`;
-    const res = await fetch(url, { credentials: 'same-origin' });
+    const res = await markUnreached(fetch(url, { credentials: 'same-origin' }));
     if (!res.ok) { _notes = []; return; }
     const data = await res.json();
     _notes = data.notes || data || [];
   } catch (e) {
-    console.error('Failed to fetch notes:', e);
+    // `B1256`: offline is the page's news, said once (`presets.js`).
+    if (!quietIfUnreached(e, 'Notes')) console.error('Failed to fetch notes:', e);
     _notes = [];
   } finally {
     _loading = false;

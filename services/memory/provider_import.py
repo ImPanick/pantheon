@@ -62,6 +62,15 @@ CHATGPT = "chatgpt"
 CLAUDE = "claude"
 GEMINI = "gemini"
 
+#: `B822`. Each provider's name as a person writes it — for the import's one
+#: line (*"ChatGPT export · 412 conversations …"*) and its empty-export
+#: message. One table, on the server, so the panel holds no copy.
+PROVIDER_LABELS = {CHATGPT: "ChatGPT", CLAUDE: "Claude", GEMINI: "Gemini"}
+
+
+def provider_label(provider: str) -> str:
+    return PROVIDER_LABELS.get(str(provider or ""), str(provider or "") or "Unknown")
+
 # The order is the sniffing order and it is deliberate: each key below is
 # unique to its provider's shape, so the order cannot change an answer today —
 # it is fixed so that the day a fourth format overlaps with one of these, the

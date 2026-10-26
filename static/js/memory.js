@@ -18,7 +18,7 @@ import { readRefusal } from './workbench/refusal.js';
 // `chatRenderer.js` needs them too and cannot import this file —
 // `memory.js` -> `sessions.js` -> `chatRenderer.js` is a cycle.
 import { memoryCountPills, memoryConfidencePill, memoryStatusBadge,
-         memoryStatus, countByStatus, statusChips } from './memoryFacts.js';
+         memoryStatus, countByStatus, statusChips, memoryFadeLine } from './memoryFacts.js';
 // `B710`. The status clause itself, imported rather than rewritten: Explore
 // narrows by status through the same function, and two readings of this field
 // differ exactly where it matters — on what an unrecognised value means
@@ -505,9 +505,21 @@ export function skillGateHints({ autoApprove = true, minConfidence = 0.85 } = {}
   // `D-9` (P23-02, Doc 2 § 5): one line each, the words of `BRAIN-U-17`
   // (draft / published, auto-publish). The coupling `P8-05` made visible is
   // kept where it bites — auto-publish off — and is silent when it does not.
+  //
+  // `B584`. **One number, two policies, and the sentence says both.** The
+  // injection path reads `skill_min_confidence` as a floor (`agent_loop`, `0`
+  // disables it) and the audit reads the same value as the bar it publishes at
+  // (`routes/skills_routes._audit_auto_publish_policy`, `0` publishes every
+  // pass), so the slider's loose end is the loosest setting of both at once.
+  // The on-sentences name both readings at every position, so nobody can come
+  // away believing they tightened one when they loosened the other. And the
+  // off-sentence was wrong: with auto-publish off `_audit_finalize_status`
+  // publishes nothing at any confidence, so the number decides nothing — it
+  // said *"it still decides what Audit publishes"*. Splitting it into two
+  // settings is the alternative, and the owner's to choose.
   if (!autoApprove) {
     return {
-      confidence: 'Not used for injection while auto-publish is off — it still decides what Audit publishes.',
+      confidence: 'Decides nothing while auto-publish is off: Audit publishes no draft, and the model is shown published skills only.',
       coupling: 'Auto-publish is off, so only published skills are used. A draft waits until you publish it.',
     };
   }
@@ -516,8 +528,8 @@ export function skillGateHints({ autoApprove = true, minConfidence = 0.85 } = {}
   // skill starts at 80%" told them a number that decided nothing.
   return {
     confidence: value <= 0
-      ? 'No minimum: every draft the teacher writes is used when a message matches it — the loosest setting.'
-      : `Drafts the teacher writes are used from ${pct}%; published skills always. A draft you write is used once you publish it.`,
+      ? 'No minimum, for both things this sets: every draft the teacher writes is used when a message matches it, and Audit publishes every draft that passes — the loosest setting.'
+      : `One bar for two things: drafts the teacher writes are used from ${pct}%, and Audit publishes a draft that passes at ${pct}% or more. Published skills are always used; a draft you write is used once you publish it.`,
     coupling: '',
   };
 }
@@ -677,8 +689,12 @@ async function syncPrefToggle(elementId, prefKey, onMsg, offMsg, dimBelow = true
  * text is "", and this list drew it as an empty card reading only *style ·
  * auto · 5m ago*, counted it ("8 memories" over seven) and gave it a *style*
  * chip. A record with nothing on it to read is not drawn, counted or chipped.
- * Once a profile forms its text is drawn as before: until `B820`'s panel, that
- * card is the one place the profile can be read, corrected or deleted.
+ *
+ * `B820`. Once a profile forms it is read, corrected and deleted in its own
+ * panel (`renderStylePanel`), so it is not a memory card either — when the
+ * answer carries the `style` block the panel draws from. Without one (a server
+ * older than `P13-17`'s block) the formed record is still drawn as a card, the
+ * only place it could be read then (`Law 1`).
  */
 const STYLE_KIND = 'style';
 
@@ -691,7 +707,152 @@ function _memoriesFrom(data) {
   let rows = [];
   if (data && Array.isArray(data.memory)) rows = data.memory;
   else if (Array.isArray(data)) rows = data;
-  return rows.filter((m) => !_isUnformedStyleRecord(m));
+  const panelHasIt = !!(data && data.style && data.style.profile);
+  return rows.filter((m) => !_isUnformedStyleRecord(m)
+    && !(panelHasIt && m && m.kind === STYLE_KIND));
+}
+
+// ---- How you write — `B820` ----
+
+/** `GET /api/memory`'s `style` block, as last read: `{profile, observed, needed}`. */
+let styleBlock = null;
+
+/** `B820`. The lines the panel shows for a formed profile.
+ *
+ *  The stored `text` when it has any — after the person edits it that is
+ *  *their* wording, which is what the observer then leaves alone
+ *  (`style_edited`) and what reaches the model; showing the derived
+ *  `sentences` instead would hide the correction they made. The derived
+ *  sentences when nothing is stored yet.
+ */
+export function styleLines(profile) {
+  if (!profile) return [];
+  const stored = String(profile.text || '').split('\n').map((s) => s.trim()).filter(Boolean);
+  if (stored.length) return stored;
+  return (Array.isArray(profile.sentences) ? profile.sentences : [])
+    .map((s) => String(s || '').trim()).filter(Boolean);
+}
+
+/** What deleting the profile does, said where the person decides it. */
+export const STYLE_FORGET_CONFIRM = 'Forget how you write? This deletes the profile and the'
+  + ' counts it was built from — the assistant starts learning again from your next'
+  + ' message, from nothing.';
+
+async function _saveStyleLines(id, lines) {
+  const text = lines.map((s) => s.trim()).filter(Boolean).join('\n');
+  if (!id || !text) return;
+  try {
+    const response = await fetch(`${window.location.origin}/api/memory/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: new URLSearchParams({ text }),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    showToast('Saved — this is how the assistant will describe your writing.');
+    await loadMemories();
+  } catch (error) {
+    console.error('Saving how you write failed:', error);
+    showError('Could not save that change to how you write.');
+  }
+}
+
+async function _forgetStyle(id) {
+  if (!id) return;
+  if (!await uiModule.styledConfirm(STYLE_FORGET_CONFIRM, { confirmText: 'Forget it', danger: true })) return;
+  try {
+    const response = await fetch(`${window.location.origin}/api/memory/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    showToast('Forgotten. Learning how you write starts again from your next message.');
+    await loadMemories();
+  } catch (error) {
+    console.error('Forgetting how you write failed:', error);
+    showError('Could not delete how you write.');
+  }
+}
+
+/** `B820`. *How you write*, at the top of the Brain.
+ *
+ *  `P13-17` … `P13-20` landed the whole server half — a `kind: "style"` record,
+ *  `GET /api/memory`'s `style` block, `PUT`/`DELETE` that already set
+ *  `style_edited` and write the event — and the Brain drew none of it but the
+ *  record as an ordinary card. `D-2026-09-09-01` makes this the acceptance
+ *  criterion: *"a profile you cannot see is a profile you cannot correct"*, and
+ *  *"edits are the only error signal this feature can have"*. Three things,
+ *  each through the routes the page already calls:
+ *
+ *    * before a profile forms, how far along it is — *"18 of 20 messages
+ *      seen"* — because a panel that can only say nothing reads as broken
+ *      (`Law 15`);
+ *    * once it forms, its lines, each one editable where it is printed; a
+ *      change saves the joined lines through the record's `PUT`;
+ *    * a delete that says it takes the counters with it and learning starts
+ *      over, which a bin icon cannot say.
+ *
+ *  Everything printed is server text, so it goes in through `textContent` and
+ *  `value`, never markup.
+ */
+export function renderStylePanel() {
+  const host = document.getElementById('memory-style-panel');
+  if (!host) return;
+  const style = styleBlock;
+  if (!style || typeof style !== 'object') {
+    host.hidden = true;
+    host.replaceChildren();
+    return;
+  }
+  host.hidden = false;
+  const kids = [];
+  const head = document.createElement('div');
+  head.className = 'memory-style-head';
+  head.textContent = 'How you write';
+  kids.push(head);
+
+  const profile = style.profile;
+  if (!profile) {
+    const seen = Math.max(0, Number(style.observed) || 0);
+    const needed = Math.max(0, Number(style.needed) || 0);
+    const note = document.createElement('div');
+    note.className = 'memory-style-progress';
+    note.textContent = `Still learning — ${seen} of ${needed} messages seen. `
+      + 'What it notices about how you write appears here once there are enough.';
+    kids.push(note);
+    host.replaceChildren(...kids);
+    return;
+  }
+
+  const sub = document.createElement('div');
+  sub.className = 'memory-style-sub';
+  sub.textContent = 'What the assistant has noticed about how you write. Change a line that is'
+    + ' wrong; it saves when you leave the line.';
+  kids.push(sub);
+
+  const lines = styleLines(profile);
+  const list = document.createElement('div');
+  list.className = 'memory-style-lines';
+  const inputs = [];
+  lines.forEach((text, i) => {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'memory-style-line';
+    input.value = text;
+    input.setAttribute('aria-label', `How you write, line ${i + 1}`);
+    input.addEventListener('change', () => {
+      _saveStyleLines(profile.id, inputs.map((el) => el.value));
+    });
+    inputs.push(input);
+    list.appendChild(input);
+  });
+  kids.push(list);
+
+  const forget = document.createElement('button');
+  forget.type = 'button';
+  forget.className = 'memory-toolbar-btn danger memory-style-forget';
+  forget.textContent = 'Forget how I write';
+  forget.title = 'Deletes the profile and the counts behind it. Learning starts again from nothing.';
+  forget.addEventListener('click', () => _forgetStyle(profile.id));
+  kids.push(forget);
+  host.replaceChildren(...kids);
 }
 
 export async function loadMemories() {
@@ -728,17 +889,20 @@ export async function loadMemories() {
 
   if (data !== null) {
     memories = _memoriesFrom(data);
+    styleBlock = (data && !Array.isArray(data) && data.style) || null;   // `B820`
     memoriesKnown = true;
     memoriesStale = false;
     memoriesError = '';
     memoriesRefused = '';
   } else {
     memories = [];
+    styleBlock = null;
     memoriesKnown = false;
   }
   memoriesLoading = false;
   buildCategoryChips();
   buildStatusChips();
+  renderStylePanel();
   renderMemoryList();
   updateMemoryCount();
   // Always wire toggles, even if memory API failed
@@ -1386,6 +1550,15 @@ export function renderMemoryList() {
 
     content.appendChild(textSpan);
     content.appendChild(meta);
+    // `B821`. A memory about to go quiet says so on its card, before the tidy
+    // archives it — the server's reason and days (`memoryFadeLine`).
+    const fades = memoryFadeLine(memory);
+    if (fades) {
+      const line = document.createElement('div');
+      line.className = 'memory-item-fades';
+      line.textContent = fades;
+      content.appendChild(line);
+    }
 
     if (memory.pinned) item.classList.add('memory-pinned');
 
@@ -1941,6 +2114,39 @@ export function exportMemories() {
 
 // ---- Import from file ----
 
+/** `B822`. A provider export's one line, or '' for any other upload.
+ *
+ *  `P13-06`'s route returns `provider`, `conversations`, `messages`,
+ *  `dropped_assistant`, `truncated`, `already_known` and `below_floor`, and the
+ *  panel drew none of them — so *"0 memories imported"* came with no reason,
+ *  which is the failure mode an importer actually has. A file that was misread,
+ *  one with none of your own turns in it, one already imported and one cut
+ *  short at the reading limit each need a different next step, and these
+ *  numbers are what tell them apart:
+ *  *"ChatGPT export · 412 conversations · 3,180 of your messages read ·
+ *  4,102 assistant replies skipped · 7 already known."*
+ *  The provider's name is the server's (`provider_label`). Pure and exported,
+ *  so a test can run it over the shapes the route returns (`Law 20`).
+ */
+export function describeImport(data) {
+  if (!data || !data.provider) return '';
+  const num = (x) => Number(x || 0).toLocaleString('en-US');
+  const many = (x, one, other) => `${num(x)} ${Number(x) === 1 ? one : other}`;
+  const parts = [`${data.provider_label || data.provider} export`];
+  parts.push(many(data.conversations, 'conversation', 'conversations'));
+  parts.push(`${many(data.messages, 'of your messages', 'of your messages')} read`);
+  if (Number(data.dropped_assistant) > 0) {
+    parts.push(`${many(data.dropped_assistant, 'assistant reply', 'assistant replies')} skipped`);
+  }
+  if (Number(data.already_known) > 0) parts.push(`${num(data.already_known)} already known`);
+  if (Number(data.below_floor) > 0) parts.push(`${num(data.below_floor)} too uncertain to keep`);
+  let line = parts.join(' · ') + '.';
+  if (data.truncated) {
+    line += ' Only the start of it was read — it is longer than one import reads.';
+  }
+  return line;
+}
+
 export async function importMemories() {
   const fileInput = document.getElementById('memory-import-file');
   if (!fileInput) return;
@@ -2109,6 +2315,18 @@ async function handleImportFile(file) {
         div.appendChild(actionWrap);
         body.appendChild(div);
       });
+    }
+
+    // `B822`. A provider export's one line under the list: what was read and
+    // what was skipped, from the counts the route returns — the numbers that
+    // tell a wrong file, a file of assistant replies and a file already
+    // imported apart.
+    const summary = describeImport(data);
+    if (summary) {
+      const line = document.createElement('div');
+      line.className = 'memory-import-summary';
+      line.textContent = summary;
+      body.appendChild(line);
     }
 
     modal.classList.remove('hidden');

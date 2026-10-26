@@ -88,17 +88,22 @@ def test_a_store_holding_only_the_record_is_empty(brain):
 
 
 def test_once_a_profile_forms_its_text_is_still_drawn(brain):
-    # `Law 1`: the formed profile's card is how it is read, edited and deleted
-    # today; this row takes away the blank one only.
+    # `Law 1`: the formed profile is still read, edited and deleted in the
+    # Brain. Until `B820` that was its card; `B820`'s *How you write* panel
+    # replaced the card, so the text is drawn there and the list counts the
+    # two memories it holds (`tests/test_the_brain_shows_how_you_write_js.py`).
     out = _brain(brain, """
-        serve([FORMED, ...ROWS], { profile: { id: 'sty', sentences: [] }, observed: 20, needed: 20 });
+        serve([FORMED, ...ROWS], { profile: { id: 'sty', text: FORMED.text, sentences: [] },
+                                   observed: 20, needed: 20 });
         ready(); await tick();
         await openBrain();
-        console.log(JSON.stringify({ cards: cards(), count: count() }));
+        const lines = byId('memory-style-panel').querySelectorAll('input').map((i) => i.value);
+        console.log(JSON.stringify({ cards: cards(), count: count(), lines }));
     """)
     texts = [c["text"] for c in out["cards"]]
-    assert "You write in short sentences and rarely use exclamation marks." in texts
-    assert out["count"] == "3"
+    assert "You write in short sentences and rarely use exclamation marks." in out["lines"]
+    assert "You write in short sentences and rarely use exclamation marks." not in texts
+    assert out["count"] == "2"
 
 
 def test_after_a_tidy_the_redrawn_list_has_no_blank_card(brain):

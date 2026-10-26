@@ -271,6 +271,8 @@ def _import_result(suggestions, filename, export, memory_manager, owner):
         # that reports the size of the upload tells somebody 4,000 messages
         # were imported when 60 were read.
         "provider": export["provider"],
+        # `B822`. The name the Brain's summary line prints.
+        "provider_label": provider_import.provider_label(export["provider"]),
         "conversations": export["conversations"],
         "messages": export["messages"],
         "dropped_assistant": export["dropped_assistant"],
@@ -742,11 +744,17 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
                     # plainly rather than handed to the model as an empty
                     # document: "no facts found" and "nothing of yours was in
                     # the file" are different answers.
+                    # `B822`: the counts the panel's line reads, so the
+                    # message sits beside what was read and what was skipped.
+                    label = provider_import.provider_label(export["provider"])
                     return {"suggestions": [], "provider": export["provider"],
+                            "provider_label": label,
                             "conversations": export["conversations"],
                             "messages": 0, "filename": filename,
+                            "dropped_assistant": export["dropped_assistant"],
+                            "truncated": export["truncated"],
                             "message": f"No messages of yours found in this "
-                                       f"{export['provider']} export"}
+                                       f"{label} export"}
                 text = export["text"]
             # Fast path: a .json upload that already looks like a memories
             # export (list of {text, category, ...} dicts, or list of strings)
