@@ -4982,8 +4982,23 @@ def _skill_active_toolsets(disabled_tools) -> list:
     the bodies gated on nothing, so a skill declaring `requires_toolsets:
     [bash]` was correctly withheld from the catalogue of a turn without `bash`
     and pasted into the same message in full.
+
+    `B1381`. **The gate reads the callable register, not the prose one.** It
+    was `allowed_among(TOOL_SECTIONS.keys())` — the tools that have a prompt
+    section — and `TOOL_SECTIONS` holds fewer names than the register (66 of
+    89 selectable names, measured 2026-10-26), so a skill declaring
+    `requires_toolsets: [ls, grep, read_file]` — an ordinary file-sweep
+    procedure — was saved, listed in the Skills window and indexed for nobody,
+    on any install, in silence: `ls` and `grep` have no section. A prompt
+    section is how a tool is *described*; whether a turn can *call* it is
+    `selectable_tool_names()` (`B1354`, the offer register, routable names
+    only). Still filtered by this turn's cap, so nothing widens past what the
+    turn may call (`FORBIDDEN.md` Part 2): a skill that needs `bash` is still
+    withheld from a turn without it.
     """
-    return list(turn_tool_access(disabled_tools).allowed_among(TOOL_SECTIONS.keys()))
+    from src.tool_policy import selectable_tool_names
+
+    return list(turn_tool_access(disabled_tools).allowed_among(selectable_tool_names()))
 
 
 def _skill_body_tool_in_prompt(relevant_tools, disabled_tools, needs_admin: bool) -> bool:
@@ -5375,6 +5390,50 @@ def _resolve_tool_blocks(
                 f"{len(tool_blocks)} tool blocks. Preview: {resp_preview}")
 
     return tool_blocks, used_native, converted_calls
+
+
+#: `B1344`. How many of a run's last steps carry the step-budget note: the
+#: second-to-last, so a model with work left can plan to finish, and the last,
+#: where a tool it calls will run without its result ever reaching it.
+_STEP_BUDGET_NOTICE_STEPS = 2
+
+
+def _step_budget_note(round_num: int, round_limit: int) -> Optional[Dict]:
+    """`B1344`. The run's own step figure, told to the model near the end.
+
+    `rounds_exhausted` and `agent_budget` told the browser how many steps a
+    run had and when it hit the cap, and nothing told the model — a census of
+    the assembled prompt found no round or step budget on either path. So a
+    run about to be cut wrote no closing summary, and the person's last bubble
+    was a half-finished thought above a Continue button. `B1327` dropped the
+    dead copy's *"you have plenty of rounds"* for exactly this reason: the
+    honest version is a number the loop knows and did not pass on.
+
+    The figure is the loop's own: `round_limit` is the holder the `for`, the
+    stop and every `agent_budget` frame read (`_run_limits`, `P7-12`), which is
+    `agent_run_limits`' answer after the run's own lift (`Law 7`). The cap
+    itself is untouched. `None` on a step with more than
+    `_STEP_BUDGET_NOTICE_STEPS` left, so a turn with room to spare is told
+    nothing.
+    """
+    try:
+        n, limit = int(round_num), int(round_limit)
+    except (TypeError, ValueError):
+        return None
+    if limit <= 0 or n <= 0 or limit - n >= _STEP_BUDGET_NOTICE_STEPS:
+        return None
+    if n >= limit:
+        text = (
+            f"This is step {n} of {limit}, the last this run may take: a tool "
+            "you call now will run, but its result will not reach you. Finish "
+            "now — give your answer, or say plainly what is left undone."
+        )
+    else:
+        text = (
+            f"This is step {n} of {limit}; the run stops after step {limit}. "
+            "Finish the work in the steps left, or say plainly what is left undone."
+        )
+    return {"role": "system", "content": text}
 
 
 def _unknown_native_call_names(native_tool_calls, converted_calls) -> list:
@@ -9142,6 +9201,13 @@ async def stream_agent_loop(
                     candidate_messages,
                 )
                 state["request_messages"] = request_messages
+            # `B1344`. Near the end of the run, the step figure rides this
+            # round's request — and only the request: kept out of `messages`,
+            # so a turn paused for a card does not carry a stale "step N of N"
+            # into a continuation that has its own steps (`B1069`).
+            _budget_note = _step_budget_note(round_num, max_rounds)
+            if _budget_note is not None:
+                request_messages = list(request_messages) + [_budget_note]
             _last_route_request_messages = request_messages
             state["context_length"] = _route_context_lengths.get(
                 (candidate_url, candidate_model),

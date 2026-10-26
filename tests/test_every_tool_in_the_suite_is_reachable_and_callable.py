@@ -149,14 +149,28 @@ def test_a_skill_in_the_store_either_reaches_the_index_or_names_its_blocker(scra
 
 
 def test_the_prompt_section_gate_on_a_skill_is_read_from_the_products_sets():
-    """`tools_with_no_prompt_section` must be the two registers, not a list."""
-    from src.agent_loop import TOOL_SECTIONS
+    """`tools_with_no_prompt_section` must be the two registers, not a list.
+
+    `B1381`. And a missing prompt section no longer keeps a skill out of the
+    index: the gate is the callable register, filtered by the turn's cap. Red
+    before it: `ls` and `grep` have no section, so a skill naming them was
+    indexed for nobody.
+    """
+    from src.agent_loop import TOOL_SECTIONS, _skill_active_toolsets
+    from src.tool_policy import selectable_tool_names
 
     missing = probe.tools_with_no_prompt_section()
     assert set(missing) == set(probe.builtin_tool_names()) - set(TOOL_SECTIONS.keys())
-    # If this ever becomes empty, every skill's declared toolset is nameable in
-    # the prompt and the gate above cannot fire. That is the fix, not a failure.
+    assert {"ls", "grep"} <= set(missing), "the measurement this row was filed on"
     assert probe.skill_toolset_blocker(["read_file"]) == []
+    assert probe.skill_toolset_blocker(["ls", "grep", "read_file"]) == []
+    # The gate is the register a turn may call, nothing wider...
+    assert set(_skill_active_toolsets(set())) == set(selectable_tool_names())
+    # ...and a name no register knows still blocks: the gate did not open.
+    assert probe.skill_toolset_blocker(["no_such_tool"]) == ["no_such_tool"]
+    # The turn's cap still decides: a skill that needs `bash` is withheld from
+    # a turn that cannot call it (`FORBIDDEN.md` Part 2).
+    assert "bash" not in _skill_active_toolsets({"bash"})
 
 
 # ── question 1: reach, per provider shape ───────────────────────────────────
@@ -334,6 +348,10 @@ def test_the_inventory_separates_the_skills_stored_from_the_skills_indexed(scrat
                                               data_dir=world.data_dir,
                                               owner=world.owner(cell))
             assert set(inventory.skills) <= set(inventory.skills_stored)
+            # `B1381`. Measured on `0bd089d`: four written, three indexed —
+            # the fourth, `probe-file-sweep`, names `ls` and `grep`, which have
+            # no prompt section. The gate is the callable register now.
+            assert "probe-file-sweep" in inventory.skills, inventory.skills
             for name in set(inventory.skills_stored) - set(inventory.skills):
                 requires = next(t for n, _c, t, _b in probe.PROBE_SKILLS if n == name)
                 assert probe.skill_toolset_blocker(requires), (

@@ -183,12 +183,15 @@ def skill_names(data_dir: str, owner: Optional[str], *, active_toolsets=None) ->
     """
     try:
         from services.memory.skills import SkillsManager
-        from src.agent_loop import TOOL_SECTIONS
+        from src.agent_loop import _skill_active_toolsets
     except Exception:
         return []
     sm = SkillsManager(data_dir)
     if active_toolsets is None:
-        active_toolsets = list(TOOL_SECTIONS.keys())
+        # `B1381`. The product's own gate for a turn that withholds nothing,
+        # asked rather than restated: it was `TOOL_SECTIONS`, and the helper
+        # copied it.
+        active_toolsets = _skill_active_toolsets(set())
     try:
         idx = sm.index_for(owner=owner, active_toolsets=active_toolsets) or []
     except Exception:
@@ -199,16 +202,14 @@ def skill_names(data_dir: str, owner: Optional[str], *, active_toolsets=None) ->
 def tools_with_no_prompt_section() -> List[str]:
     """Register names that `TOOL_SECTIONS` has no prose for.
 
-    This is not a style complaint. `_build_base_prompt` computes
-    `active_toolsets = set(TOOL_SECTIONS) - disabled` and hands it to
-    `SkillsManager.index_for`, which drops any skill whose
-    `requires_toolsets` is not wholly inside it. So a tool with no prompt
-    section cannot be the declared requirement of **any** indexed skill, on
-    any install, for anybody — and the skill is dropped in silence.
-
-    Measured on `0bd089d`: 74 names in the register, 61 sections, so 13 names
-    are in this list. A tool added tomorrow with a schema and no prose joins
-    it with nobody editing this file.
+    Until `B1381` this was a gate: `_build_base_prompt` handed
+    `set(TOOL_SECTIONS) - disabled` to `SkillsManager.index_for`, which drops
+    any skill whose `requires_toolsets` is not wholly inside it, so a tool with
+    no prompt section could not be the declared requirement of **any** indexed
+    skill. Measured on `0bd089d`: 74 names in the register, 61 sections, 13
+    names here. The gate now reads the callable register
+    (`agent_loop._skill_active_toolsets`), so this list is a fact about prose
+    and no longer about which skills reach anyone.
     """
     from src.agent_loop import TOOL_SECTIONS
 
@@ -216,9 +217,13 @@ def tools_with_no_prompt_section() -> List[str]:
 
 
 def skill_toolset_blocker(requires: Sequence[str]) -> List[str]:
-    """Which of a skill's declared toolsets would exclude it from the index."""
-    missing = set(tools_with_no_prompt_section())
-    return sorted(name for name in (requires or []) if name in missing)
+    """Which of a skill's declared toolsets would exclude it from the index of
+    a turn that withholds nothing — asked of the product's own gate
+    (`_skill_active_toolsets`, `B1381`), so the answer cannot drift from it."""
+    from src.agent_loop import _skill_active_toolsets
+
+    active = set(_skill_active_toolsets(set()))
+    return sorted(name for name in (requires or []) if name not in active)
 
 
 def skills_in_store(data_dir: str, owner: Optional[str]) -> List[str]:
