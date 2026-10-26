@@ -3054,7 +3054,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 const r = await fetch(`${API_BASE}/api/document`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ title, language: documentLanguage(info.name), content }),
+                  // `B1325`: a file's text.
+                  body: JSON.stringify({ title, language: documentLanguage(info.name), content, provenance: 'imported' }),
                 });
                 if (!r.ok) throw new Error('document ' + r.status);
               }
@@ -8940,7 +8941,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           // `P21-03`: the attachment's own name; the server titles the
           // document from it and keeps it as the source.
-          body: JSON.stringify({ session_id: sid || null, ...(name ? { source_name: name } : { title: 'Document' }), content: text, language: documentLanguage(name) }),
+          // `B1325`: an attachment's text, named or not.
+          body: JSON.stringify({ session_id: sid || null, ...(name ? { source_name: name } : { title: 'Document' }), content: text, language: documentLanguage(name), provenance: 'imported' }),
         });
         if (!res.ok) throw new Error('document ' + res.status);
         doc = await res.json();

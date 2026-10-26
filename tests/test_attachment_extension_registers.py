@@ -59,7 +59,8 @@ EXPECTED_TEXT = frozenset({
 # arm, plus the two `B102` gave extractors to. `_process_text_file` would hand
 # the model a binary stream for every one of them.
 EXPECTED_BINARY_DOC = frozenset({
-    ".doc", ".docx", ".epub", ".odt", ".pdf", ".pptx", ".xls", ".xlsx",
+    # `.ods` since `B1178`, which gave the server a reader for it.
+    ".doc", ".docx", ".epub", ".ods", ".odt", ".pdf", ".pptx", ".xls", ".xlsx",
 })
 EXPECTED_ACCEPTED = EXPECTED_TEXT | EXPECTED_BINARY_DOC
 

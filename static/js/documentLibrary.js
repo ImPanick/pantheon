@@ -1526,6 +1526,9 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
           // (the backend also sniffs, but this keeps the tab label correct).
           language: src.language || doc.language || 'markdown',
           content: src.current_content || '',
+          // `B1325`: a copy is made the way its source was; unknown stays
+          // unknown (the server reads it as not the person's own).
+          provenance: src.provenance || undefined,
         }),
       });
       if (!res.ok) throw new Error('Failed to create document');
@@ -1876,11 +1879,12 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
    * `.doc`, `.odt`, `.pptx` and `.epub`: four containers that reached
    * `FileReader.readAsText` and were stored as their own raw bytes.
    *
-   * `.ods` is not in `OFFICE_EXTS` at all — the server has no reader for it —
-   * and is handled by the spreadsheet branch below, which is the only thing
-   * that reads it anywhere in this product.
+   * `.ods` was not in `OFFICE_EXTS` at all until `B1178` gave the server a
+   * reader for it (`src/ooxml_native.py:ods_sheets`, SheetJS's CSV). It is
+   * converted here, by the spreadsheet branch below, as it always was — so it
+   * is one of the client-converted four, not posted to `import-office`.
    */
-  const CLIENT_CONVERTED_EXTS = new Set(['.docx', '.xls', '.xlsx']);
+  const CLIENT_CONVERTED_EXTS = new Set(['.docx', '.xls', '.xlsx', '.ods']);
   const SERVER_EXTRACTED_EXTS = new Set(
     [...OFFICE_EXTS].filter(ext => !CLIENT_CONVERTED_EXTS.has(ext)));
 

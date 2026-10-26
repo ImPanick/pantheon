@@ -136,8 +136,9 @@ def test_the_registers_are_the_union_and_not_a_copy():
     assert INGESTIBLE_EXTS == TEXT_EXTS | EXTRACTED_EXTS
     # The subtraction the row names: what an extractor reads and a text probe
     # cannot. This is the set the 38-extension regex never offered.
+    # `.ods` since `B1178`, which gave the server a reader for it.
     assert sorted(EXTRACTED_EXTS) == [
-        ".doc", ".docx", ".epub", ".odt", ".pdf", ".pptx", ".xls", ".xlsx"]
+        ".doc", ".docx", ".epub", ".ods", ".odt", ".pdf", ".pptx", ".xls", ".xlsx"]
 
 
 def test_the_measured_gap_is_gone_in_both_directions(tmp_path):
@@ -156,7 +157,8 @@ def test_the_measured_gap_is_gone_in_both_directions(tmp_path):
         ".ini", ".conf", ".env", ".vue", ".svelte", ".scss", ".sass", ".less",
     }
     missing = sorted(INGESTIBLE_EXTS - old_regex_exts)
-    assert missing == [".bash", ".doc", ".docx", ".epub", ".nix", ".odt",
+    # `.ods` since `B1178`: the old regex refused it too, and now a reader exists.
+    assert missing == [".bash", ".doc", ".docx", ".epub", ".nix", ".ods", ".odt",
                        ".pdf", ".pptx", ".xls", ".xlsx"], missing
     unnamed = sorted(old_regex_exts - INGESTIBLE_EXTS)
     assert unnamed == [".conf", ".env", ".ini", ".less", ".sass", ".scss",
@@ -165,7 +167,7 @@ def test_the_measured_gap_is_gone_in_both_directions(tmp_path):
     for ext in missing:
         body = OLE2_HEADER if ext == ".doc" else (
             b"%PDF-1.4\n" if ext == ".pdf" else (
-                ZIP_HEADER if ext in {".docx", ".epub", ".odt", ".pptx",
+                ZIP_HEADER if ext in {".docx", ".epub", ".ods", ".odt", ".pptx",
                                       ".xls", ".xlsx"} else b"plain text\n"))
         kind = ingest_kind(_write(tmp_path, "f" + ext, body))
         assert kind in (INGEST_KIND_TEXT, INGEST_KIND_DOCUMENT), (ext, kind)

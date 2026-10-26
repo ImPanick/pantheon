@@ -186,7 +186,9 @@ def test_a_rate_limited_search_is_said_in_words_not_githubs(github):
     with pytest.raises(SkillImportError) as e:
         si.fetch_skill_bundle_report("https://skills.sh/o/r/hidden-skill")
     assert "rate-limited this server for 22 minutes" in str(e.value)
-    assert "PANTHEON_GITHUB_TOKEN" in str(e.value)
+    # `B927`: the sentence names the panel the token is set in, not the
+    # environment variable.
+    assert "GitHub token in MCP & Integrations" in str(e.value)
 
 
 def test_a_bare_repository_that_is_one_skill_imports(github):
@@ -211,7 +213,8 @@ def test_a_refused_listing_keeps_skill_md_and_says_why(github):
     files, _, notes = si.fetch_skill_bundle_report("https://github.com/anthropics/skills/tree/main/skills/pdf")
     assert list(files) == ["skills/pdf/SKILL.md"]
     assert len(notes) == 1 and notes[0].startswith("Only SKILL.md was imported")
-    assert "resets in 22 minutes" in notes[0] and "PANTHEON_GITHUB_TOKEN" in notes[0]
+    # `B927`: the panel, not the environment variable.
+    assert "resets in 22 minutes" in notes[0] and "GitHub token in MCP & Integrations" in notes[0]
 
 
 def test_one_big_file_is_left_out_by_name_and_a_lockfile_is_never_fetched(github):
@@ -322,7 +325,8 @@ _SKILLS_JS = _Path(__file__).resolve().parents[1] / "static" / "js" / "skills.js
 
 def _cut(name: str) -> str:
     src = _SKILLS_JS.read_text(encoding="utf-8")
-    for opener in (f"async function {name}(", f"function {name}(", f"let {name} ="):
+    for opener in (f"async function {name}(", f"function {name}(", f"let {name} =",
+                   f"const {name} ="):
         at = src.find(opener)
         if at >= 0:
             return js_definition(src, at)
@@ -370,15 +374,17 @@ await first; await second;
 console.log(JSON.stringify({ ...seen,
   status: statusEl.textContent, statusClass: statusEl.className, statusHidden: statusEl.hidden,
   btnDisabled: btn.disabled, btnHtml: btn.innerHTML,
-  openButton: statusEl.querySelectorAll('.skill-import-open').length }));
+  openButton: statusEl.querySelectorAll('.skill-import-open').length
+              - statusEl.querySelectorAll('.skill-import-token').length,
+  tokenButton: statusEl.querySelectorAll('.skill-import-token').length }));
 """ % {
         "ok": "true" if status < 400 else "false",
         "status": status,
         "answer": json.dumps(answer),
         "url": json.dumps(url),
         "defs": "const _SCOPE_KEY = 'skillsScope';\n" + "\n".join(
-            _cut(n) for n in ("_readScope", "_makeMount", "_importStatus", "_importInFlight",
-                              "importSkillFromUrl")),
+            _cut(n) for n in ("_readScope", "_makeMount", "GITHUB_TOKEN_DOOR", "_tokenDoor",
+                              "_importStatus", "_importInFlight", "importSkillFromUrl")),
         "after": after,
     }
     (tmp_path / "case.mjs").write_text(case)
@@ -424,3 +430,29 @@ def test_what_github_says_reaches_the_line_as_text(tmp_path):
                         after="seen.markup = statusEl._html;")
     assert '<img src=x onerror="alert(1)">' in out["status"]
     assert not out.get("markup")
+
+
+# ── `B927` — the rate-limit sentence is a door to the token's panel ─────────
+
+def test_a_rate_limited_import_offers_the_token_panel_from_its_own_line(tmp_path, github):
+    """The importer's real note (driven, not typed here) reaches the real status
+    line, and the line carries a button to the GitHub token panel. Before
+    `B927` the note said "set PANTHEON_GITHUB_TOKEN" and offered nothing."""
+    github(raw={"anthropics/skills/main/skills/pdf/SKILL.md": SKILL_MD.format(name="pdf")}, api_limited=True)
+    _, _, notes = si.fetch_skill_bundle_report("https://github.com/anthropics/skills/tree/main/skills/pdf")
+    out = _drive_import(tmp_path, {"ok": True, "skill": {"name": "pdf"}, "files": 1, "notes": notes})
+    assert si.GITHUB_TOKEN_DOOR in out["status"]
+    assert out["tokenButton"] == 1
+    assert out["openButton"] == 1   # *Open it* is still there, beside it
+
+
+def test_an_import_with_nothing_to_lift_offers_no_token_door(tmp_path):
+    out = _drive_import(tmp_path, {"ok": True, "skill": {"name": "s"}, "files": 3, "notes": []})
+    assert out["tokenButton"] == 0
+
+
+def test_the_browser_and_the_importer_name_the_door_in_the_same_words():
+    """The button keys on the sentence's words, so the two constants are one
+    phrase; read out of each module, not retyped here."""
+    js = _cut("GITHUB_TOKEN_DOOR")
+    assert js.split("=", 1)[1].strip().strip(";").strip("'\"") == si.GITHUB_TOKEN_DOOR

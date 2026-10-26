@@ -132,5 +132,8 @@ def initialize_managers(base_dir: str, rag_manager=None) -> Dict[str, Any]:
         "chat_handler": chat_handler,
         "model_discovery": model_discovery,
         "current_presets": preset_manager.presets,
-        "PERSONAL_INDEX": personal_docs_manager.index
+        # `B491`: `PERSONAL_INDEX` (`personal_docs_manager.index`) was here. It
+        # had no reader anywhere in the tree, and reading it is what builds the
+        # index now — so keeping it would have put the whole extraction back at
+        # boot. The index is reached through `personal_docs_manager`.
     }

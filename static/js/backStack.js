@@ -142,6 +142,13 @@ export function configure(hooks) { _hooks = Object.assign({}, _hooks, hooks || {
 /** How to open each window when a reload or Forward needs it: id → `(tab) => void`. */
 export function setOpeners(openers) { _openers = Object.assign({}, _openers, openers || {}); }
 
+/** `B1185`: that opener for one window, or null — a dock chip kept from the
+ *  last load opens its window by the same door a reload would. */
+export function openerOf(id) {
+  const f = id ? _openers[id] : null;
+  return typeof f === 'function' ? f : null;
+}
+
 export function stack() { return _stack.map((e) => ({ id: e.id, from: e.from, tab: e.tab })); }
 export function top() { return _stack.length ? _stack[_stack.length - 1].id : null; }
 export function isTracked(id) { return _TRACKED.has(id); }
@@ -636,7 +643,8 @@ export function _reset() {
 }
 
 const backStack = {
-  ROUTES, ROUTE_ALIASES, TRACKED, DRAWER, elementIdOf, windowForPath, pathFor, configure, setOpeners, stack, top,
+  ROUTES, ROUTE_ALIASES, TRACKED, DRAWER, elementIdOf, windowForPath, pathFor, configure, setOpeners, openerOf,
+  stack, top,
   isTracked, isOpenNow, noteOpener, sync, onPopState, restoreFromHistory, openWindows, chatSwitched, ownsEntry,
   init, ready,
 };

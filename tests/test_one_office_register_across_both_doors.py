@@ -78,7 +78,9 @@ needs_docx = pytest.mark.skipif(not HAVE_DOCX, reason=DOCX_REASON)
 # reason `REFUSED_BEFORE` is: `.doc` and `.odt` (`B102`), and since `B1156`
 # `.docx` and `.xlsx` (`src/ooxml_native.py`). The sweeps below skipped those
 # two until then although they opened.
-READ_WITHOUT_MARKITDOWN = (".doc", ".docx", ".odt", ".xlsx")
+# `B1178` added `.xls` and `.ods`, `B1289` `.pptx` and `.epub` — every format
+# the register names, so the sweeps below skip none of them any more.
+READ_WITHOUT_MARKITDOWN = (".doc", ".docx", ".epub", ".ods", ".odt", ".pptx", ".xls", ".xlsx")
 
 
 def _needs_an_absent_extractor(ext: str) -> bool:
@@ -251,21 +253,18 @@ def test_a_format_whose_extractor_is_not_installed_is_refused_with_the_reason(
     the person is told the same thing by both doors and it happens to be the
     thing they can act on.
     """
-    from src.markitdown_runtime import MARKITDOWN_MISSING
-
     _without_markitdown(monkeypatch)
     result = _drive_mailbox(tmp_path, monkeypatch, "report" + ext,
                             office_fixture(ext))
-    if ext in (".docx", ".xlsx"):
-        # `.docx` has bundled readers, so it does not reach a refusal at all.
-        # Nor, since `B1156` (f-import), does `.xlsx` (`src/ooxml_native.py`):
-        # this case asserted its refusal, which was the defect.
-        assert result.get("doc_id"), result
-        return
-    assert "doc_id" not in result, result
-    assert MARKITDOWN_MISSING in result["error"], result
-    assert "Unsupported attachment type" not in result["error"]
-    assert "report" + ext in result["error"]
+    # `.docx` has bundled readers, so it does not reach a refusal at all. Nor,
+    # since `B1156` (f-import), does `.xlsx`, and since `B1178` (`.xls`) and
+    # `B1289` (`.pptx`, `.epub`) nor does any format in this register: each case
+    # here asserted a refusal, which was the defect. What a refusal says when a
+    # format DOES lack its reader is held by
+    # `test_the_gap_function_names_the_dependency_only_when_it_is_missing` and
+    # `test_the_refusal_reason_is_the_extractors_answer_and_not_this_routes`.
+    assert result.get("doc_id"), result
+    assert OFFICE_SENTINEL in _document_body(result), ext
 
 
 @pytest.mark.parametrize("ext", sorted(NATIVE_OFFICE_EXTS | {".docx", ".xlsx"}))
@@ -377,20 +376,29 @@ def test_the_gap_function_names_the_dependency_only_when_it_is_missing(monkeypat
     )
 
     # `B1156` (f-import): the example was `.xlsx`, which has a bundled reader
-    # now; `.pptx` is a format only markitdown reads.
+    # now; it became `.pptx`, which `B1289` gave a bundled reader too — so no
+    # format in the register is markitdown-only any more, and the condition is
+    # shown on one with its bundled reader taken away.
+    import src.markitdown_runtime as mr
+
     if HAVE_MARKITDOWN:
         # `B858`. The "installed" half of "both sides of the one condition" can
         # only be asserted where it is installed. The half below cannot be
         # faked away and runs everywhere.
         assert office_extraction_gap("/tmp/deck.pptx") == NO_EXTRACTABLE_TEXT
     _without_markitdown(monkeypatch)
+    assert office_extraction_gap("/tmp/deck.pptx") == NO_EXTRACTABLE_TEXT
+    monkeypatch.setattr(mr, "_NATIVE_EXTRACTORS",
+                        {k: v for k, v in mr._NATIVE_EXTRACTORS.items() if k != ".pptx"})
     assert office_extraction_gap("/tmp/deck.pptx") == MARKITDOWN_MISSING
+    monkeypatch.undo()
+    _without_markitdown(monkeypatch)
     # And `B102`'s distinction, which only shows with the dependency gone: the
     # bundled readers are always present, so a `.doc` or an `.odt` that came out
     # empty is empty — telling the person to install markitdown would point them
     # at a dependency that would not have read it either. A `.docx` or `.xlsx`
     # a bundled reader found nothing in is the same (`B1156`, f-import).
-    for ext in sorted(NATIVE_OFFICE_EXTS | {".docx", ".xlsx"}):
+    for ext in sorted(NATIVE_OFFICE_EXTS | MARKITDOWN_EXTS):
         assert office_extraction_gap("/tmp/report" + ext) == NO_EXTRACTABLE_TEXT
 
 

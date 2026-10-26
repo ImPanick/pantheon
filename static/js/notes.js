@@ -14,7 +14,8 @@ import { applyEdgeDock, clearDockSide } from './modalSnap.js';
 import { topToolWindowZ, topPortalZ } from './toolWindowZOrder.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { chevronIcon, stopIcon } from './icons.js';
-import { markUnreached, quietIfUnreached } from './presets.js';   // `B1256`
+import { getNotes } from './appConfig.js';   // `B1228`
+import { quietIfUnreached } from './presets.js';   // `B1256` (`B1228`: `getNotes` marks an unreached read itself)
 
 import { scrollBehavior } from './motion.js';
 import { toolPollMayAsk } from './ui_visibility.js';   // `B1542`
@@ -492,14 +493,19 @@ function _archiveNoteById(id, { card = null, celebrate = false } = {}) {
   return true;
 }
 
+let _activeNotesRead = false;   // `B1228`: a non-archived list was read this load
+
 async function _fetchNotes() {
   _loading = true;
   try {
-    const url = `${API_BASE}/api/notes${_showingArchived ? '?archived=true' : ''}`;
-    const res = await markUnreached(fetch(url, { credentials: 'same-origin' }));
-    if (!res.ok) { _notes = []; return; }
-    const data = await res.json();
+    // `B1228`: shared while in flight — the badge and the reminders both read
+    // the list at boot, and that is one request now, not two.
+    const archived = _showingArchived;
+    // (`getNotes` marks a request that never arrived as `unreached` itself.)
+    const data = await getNotes({ archived });
+    if (!data || data.detail) { _notes = []; return; }
     _notes = data.notes || data || [];
+    if (!archived) _activeNotesRead = true;
   } catch (e) {
     // `B1256`: offline is the page's news, said once (`presets.js`).
     if (!quietIfUnreached(e, 'Notes')) console.error('Failed to fetch notes:', e);
@@ -5726,10 +5732,13 @@ async function _commitNoteReorder() {
 async function _initReminders() {
   // `B1542`: not for a person whose Notes are switched off — the load is a 403.
   if (!(await toolPollMayAsk('notes'))) return;
+  // `B1228`: the badge read the list at boot (`refreshDueBadge`), three
+  // seconds before this; that list is what the loop works on, so asking for it
+  // again was the second `/api/notes` of every load.
+  if (_activeNotesRead) { _startReminderLoop(); return; }
   try {
-    const res = await fetch(`${API_BASE}/api/notes`, { credentials: 'same-origin' });
-    if (res.ok) {
-      const data = await res.json();
+    const data = await getNotes();
+    if (data && !data.detail) {
       _notes = data.notes || data || [];
       _startReminderLoop();
     }

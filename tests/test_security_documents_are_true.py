@@ -89,7 +89,9 @@ def test_the_audit_reads_the_package_the_policy_calls_an_accepted_risk(audit_mod
     puts it in front of the scanner anyway."""
     pins = audit_module.realesrgan_pins()
     assert "basicsr==1.4.2" in pins, pins
-    assert len(pins) == 3, pins  # basicsr, gfpgan, facexlib
+    # basicsr, gfpgan, facexlib — and, since `B373`, realesrgan itself, which
+    # the Forge's Install button installs with them.
+    assert len(pins) == 4, pins
 
 
 def test_the_policy_names_every_file_the_audit_actually_reads(audit_module, security_md):

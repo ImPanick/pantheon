@@ -207,8 +207,9 @@ await importSkillFromUrl(m);
 console.log(JSON.stringify({ ...seen, status: statusEl.textContent }));
 """ % {"answer": json.dumps(answer),
        "defs": "const _SCOPE_KEY = 'skillsScope';\n" + "\n".join(
-           _cut(n) for n in ("_readScope", "_makeMount", "_importStatus", "_importInFlight",
-                             "importSkillFromUrl"))}
+           # `B927`: the status line turns the rate-limit sentence into a door.
+           _cut(n) for n in ("_readScope", "_makeMount", "GITHUB_TOKEN_DOOR", "_tokenDoor",
+                             "_importStatus", "_importInFlight", "importSkillFromUrl"))}
     (tmp_path / "case.mjs").write_text(case)
     proc = subprocess.run(["node", str(tmp_path / "case.mjs")], capture_output=True, text=True, timeout=30)
     assert proc.returncode == 0, proc.stderr

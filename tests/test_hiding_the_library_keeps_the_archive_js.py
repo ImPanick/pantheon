@@ -548,6 +548,12 @@ def test_a_reload_reopens_windows_only_once_the_switches_are_known(tmp_path):
           restoreFromHistory: () => {{ order.push(['restore', V.toolShown('library')]); return true; }},
           ready: () => order.push(['ready']),
         }};
+        // `B1185`: the chips of windows minimised before the reload are drawn
+        // after the switches are known too, so a tool switched off since is
+        // not offered.
+        const WindowManager = {{
+          reviveMinimized: () => {{ order.push(['revive', V.toolShown('library')]); return []; }},
+        }};
         const _deepLink = null;
         {binding};
         const run = _opener();
@@ -558,7 +564,7 @@ def test_a_reload_reopens_windows_only_once_the_switches_are_known(tmp_path):
         await run;
         console.log(JSON.stringify({{ order }}));
     """)
-    assert out["order"] == [["features"], ["restore", False], ["ready"]]
+    assert out["order"] == [["features"], ["restore", False], ["revive", False], ["ready"]]
 
 
 def test_a_reload_of_the_archive_reopens_it_on_its_tab(tmp_path):

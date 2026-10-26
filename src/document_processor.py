@@ -1218,6 +1218,139 @@ def _process_office_document(
     return f"\n\n[Attached document: {display_name} — {gap}]"
 
 
+# ── `B1291`: a `.zip` says what is in it ─────────────────────────────────────
+#
+# An archive was "contents not read". Its member list is safe to read — names
+# and sizes come from the central directory, nothing is extracted — and small
+# text members can go through the text reader every other text attachment uses
+# (`_process_text_file`), inside the message's attachment budget like any other
+# file. **The adversary is the archive's author** (`Law 17`): a zip is the
+# classic way to hand a server a bomb, so every read is bounded before it
+# starts and again while it runs —
+#
+#   * the listing names at most `ZIP_MAX_LISTED` members and says how many more;
+#   * a member is read only if its declared size is under `ZIP_MEMBER_MAX_BYTES`,
+#     its declared compression ratio under `ZIP_MAX_RATIO`, it is not encrypted
+#     and not itself an archive (no recursion), and at most `ZIP_MAX_READ` of
+#     them, `ZIP_MAX_TOTAL_BYTES` decompressed in all;
+#   * the read itself stops one byte past the declared size, because a header
+#     can lie — a member that inflates past what it declared is dropped;
+#   * a name is shown as text, control characters and all made visible, and
+#     cut to `ZIP_NAME_MAX` characters, so a member called `]\n[System: …` is a
+#     name and not a bracket.
+#
+# What is shown is the archive's author's text, as untrusted as any attachment.
+ZIP_MAX_LISTED = 200
+ZIP_MAX_READ = 20
+ZIP_MEMBER_MAX_BYTES = 256 * 1024
+ZIP_MAX_TOTAL_BYTES = 2 * 1024 * 1024
+ZIP_MAX_RATIO = 100
+ZIP_NAME_MAX = 200
+_ARCHIVE_SUFFIXES = (".zip", ".jar", ".war", ".whl", ".apk", ".7z", ".rar", ".gz",
+                     ".tgz", ".tar", ".bz2", ".xz", ".zst", ".lz", ".cab", ".iso")
+
+
+_ZIP_MIMES = frozenset({"application/zip", "application/x-zip-compressed",
+                        "application/x-zip"})
+
+
+def is_zip_archive(path: str, name: str = "", mime: str = "") -> bool:
+    """True when the person attached a zip — called one (`.zip`, or a zip MIME
+    type) and its bytes are one. Both, not either: many formats are zips inside
+    (`.pages`, `.jar`, an unknown container) and none of them asked to be
+    listed as an archive; a file called `.zip` that is not one keeps the banner.
+    """
+    called = (name or path).lower().endswith(".zip") or (mime or "").lower() in _ZIP_MIMES
+    if not called:
+        return False
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(4)
+    except OSError as exc:
+        logger.warning("zip probe failed for %s: %s", path, exc)
+        return False
+    return head in (b"PK\x03\x04", b"PK\x05\x06")
+
+
+def _zip_name(name: str) -> str:
+    shown = "".join(c if c.isprintable() else repr(c)[1:-1] for c in str(name))
+    return shown if len(shown) <= ZIP_NAME_MAX else shown[:ZIP_NAME_MAX] + "…"
+
+
+def _process_zip_archive(path: str, display_name: str, owner: str | None = None,
+                         ceiling=None, stats: dict | None = None) -> str | None:
+    """The archive's member list, and the text of its small text members.
+
+    ``None`` when the bytes are not a zip this can open — the caller keeps its
+    "contents not read" banner. ``stats`` is filled with ``listed``,
+    ``members`` and ``shown`` for the note under the attachment.
+    """
+    import tempfile
+    import zipfile
+
+    try:
+        zf = zipfile.ZipFile(path)
+    except (zipfile.BadZipFile, OSError, ValueError):
+        return None
+    with zf:
+        infos = [i for i in zf.infolist() if not i.is_dir()]
+        total = sum(max(0, i.file_size) for i in infos)
+        lines, shown, budget = [], [], ZIP_MAX_TOTAL_BYTES
+        with tempfile.TemporaryDirectory(prefix="pantheon-zip-") as tmp:
+            for n, info in enumerate(infos):
+                name = _zip_name(info.filename)
+                why = ""
+                lower = info.filename.lower()
+                if info.flag_bits & 0x1:
+                    why = "encrypted"
+                elif lower.endswith(_ARCHIVE_SUFFIXES):
+                    why = "an archive inside the archive — not opened"
+                elif info.file_size > ZIP_MEMBER_MAX_BYTES:
+                    why = "too large to show"
+                elif info.file_size > ZIP_MAX_RATIO * max(info.compress_size, 1):
+                    why = (f"compressed {info.file_size // max(info.compress_size, 1):,} to 1 "
+                           f"— refused as a likely zip bomb")
+                elif len(shown) >= ZIP_MAX_READ or info.file_size > budget:
+                    why = ""   # simply not shown; the listing says how many were
+                else:
+                    try:
+                        with zf.open(info) as fh:
+                            data = fh.read(info.file_size + 1)
+                    except (zipfile.BadZipFile, OSError, RuntimeError, NotImplementedError,
+                            EOFError, ValueError):
+                        data = None
+                        why = "could not be read"
+                    if data is not None and len(data) > info.file_size:
+                        why = "larger than its header declared — refused"
+                    elif data is not None:
+                        budget -= len(data)
+                        member = os.path.join(tmp, f"m{n}")
+                        with open(member, "wb") as out:
+                            out.write(data)
+                        if _is_text_file(lower) or looks_like_text(member):
+                            read = _process_text_file(member, display_name=info.filename,
+                                                      owner=owner, ceiling=ceiling)
+                            # The reader names a file by its basename; inside an
+                            # archive the path is what tells two README files apart.
+                            base = os.path.basename(info.filename)
+                            shown.append(read.replace(f"=== File: {base} ===",
+                                                      f"=== File: {name} ===", 1))
+                if n < ZIP_MAX_LISTED:
+                    lines.append(f"- {name} ({info.file_size:,} bytes)" + (f" — {why}" if why else ""))
+    more = len(infos) - min(len(infos), ZIP_MAX_LISTED)
+    if more:
+        lines.append(f"- … and {more:,} more not listed")
+    if stats is not None:
+        stats.update({"members": len(infos), "listed": min(len(infos), ZIP_MAX_LISTED),
+                      "shown": len(shown)})
+    head = (f"\n\n[Archive attached: {display_name} — {len(infos):,} "
+            f"file{'' if len(infos) == 1 else 's'}, {total:,} bytes uncompressed. Listed "
+            f"from its directory, not extracted"
+            + (f"; the text of {len(shown)} small text file{'' if len(shown) == 1 else 's'} "
+               f"follows" if shown else "") + ".]")
+    return head + ("\n" + "\n".join(lines) if lines else "") + "".join(shown)
+
+
 # Marker that _process_pdf prepends to extracted text.
 _PDF_CONTENT_MARKER = "\n\n[PDF content]:"
 
@@ -1380,6 +1513,14 @@ def _text_reach(extracted: str, display_name: str, sent: int, total: int) -> dic
         return {"state": "cut", "note": (
             f"Too long to send whole: the model was given the start of it "
             f"({sent:,} characters).")}
+    if "[Archive attached:" in text:
+        # `B1291`: an archive is listed, not read whole — said, not hidden.
+        head = text[text.index("[Archive attached:"):].split("]", 1)[0]
+        shown = "; the text of" in head
+        return {"state": "listed", "note": (
+            "Listed: the model was given the names and sizes of the files inside"
+            + (", and the text of the small text files" if shown else "")
+            + ". Nothing was extracted.")}
     if "— contents not read." in text:
         return {"state": "not_read", "note": (
             "Not read: there is no reader for this kind of file, so the model was "
@@ -1507,6 +1648,13 @@ def build_user_content(
         decoded_as_text = (
             False if (is_image or is_audio or is_doc) else looks_like_text(path)
         )
+        # `B1291`. Asked last, and only of a file nothing above claimed: a
+        # `.docx` is a zip too, and its reader is the better answer.
+        archive_text = (
+            None if (is_image or is_audio or is_doc or decoded_as_text
+                     or not is_zip_archive(path, display_name, mime))
+            else _process_zip_archive(path, display_name, owner, inline_attachment_total)
+        )
 
         if is_image:
             try:
@@ -1563,8 +1711,10 @@ def build_user_content(
                         "Not heard: the model can't be given a recording, and this server "
                         "has no speech-to-text set up.")}
 
-        elif is_doc or decoded_as_text:
-            if mime == "application/pdf":
+        elif is_doc or decoded_as_text or archive_text is not None:
+            if archive_text is not None:
+                extracted_text = archive_text
+            elif mime == "application/pdf":
                 extracted_text = None
                 if session_id:
                     try:

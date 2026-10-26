@@ -122,6 +122,13 @@ export function buildTopbar() {
           ${chevronIcon({ size: 9, style: 'opacity:0.7' })}
         </button>
         <div class="ge-save-menu dropdown" id="ge-save-menu" hidden>
+          <!-- \`B1293\`. Shown only when the editor was opened on a picture
+               waiting in the composer (\`gallery.openInEditor(…, { onDone })\`):
+               the edit goes back into the message, in that picture's place. -->
+          <button class="dropdown-item-compact" id="ge-attach-chat" title="Put this edit in the message, in place of the picture it was opened on" hidden>
+            <span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span>
+            <span>Attach to chat</span>
+          </button>
           <div class="dropdown-section-label">Image</div>
           <button class="dropdown-item-compact" id="ge-save" title="Overwrite the original image">
             <span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></span>

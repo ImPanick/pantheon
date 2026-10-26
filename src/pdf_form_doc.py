@@ -241,6 +241,7 @@ def create_plain_pdf_document(
             # `P21-03`: the file this document was made from, as its owner
             # named it.
             source_name=source_name,
+            provenance="imported",   # `B1325`: a file's text
         )
         ver = DocumentVersion(
             id=ver_id,
@@ -428,6 +429,7 @@ def create_form_markdown_document(
             # `P21-03`: the file this document was made from, as its owner
             # named it.
             source_name=source_name,
+            provenance="imported",   # `B1325`: a file's text
         )
         ver = DocumentVersion(
             id=ver_id,

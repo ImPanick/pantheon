@@ -4,7 +4,8 @@ import os
 import re
 import json
 import logging
-from typing import List, Dict, Set, Any, Tuple
+import threading
+from typing import List, Dict, Set, Any, Optional, Tuple
 from dataclasses import dataclass
 
 from src.index_walk import (IndexBudget, IndexPacer, file_is_too_large,
@@ -550,6 +551,13 @@ def _string_list(values) -> list[str]:
 class PersonalDocsManager:
     """Manager class for personal document indexing and retrieval."""
 
+    # `B491`. Defaults at class level as well as in `__init__`, so an instance
+    # made with `object.__new__` (several tests build one that way) is still
+    # "not built yet" rather than missing the attribute.
+    _index = None
+    _skipped: List[Dict[str, str]] = []
+    _rag_manager = None  # `B1532`'s property reads it; same reason as above
+
     @property
     def rag_manager(self):
         """`B1532`. The document index as it stands now, not as it stood at start.
@@ -576,18 +584,67 @@ class PersonalDocsManager:
     def __init__(self, personal_dir: str, rag_manager=None):
         self.personal_dir = personal_dir
         self.rag_manager = rag_manager
-        self.index = []
+        # `B491`. The index is built on first use, not here. `P14-07` bounded
+        # and paced the build; it still ran synchronously at construction —
+        # every tracked directory walked, extracted and chunked at boot, before
+        # anybody had asked a question (measured: 105 MB of notes, 131,200
+        # chunks, ~137 MB of RSS for the life of a process that may never run a
+        # search). `None` is "not built yet"; `index` and `skipped` build it
+        # once, under `_build_lock`, the first time either is read.
+        self._index: Optional[List[Dict[str, Any]]] = None
         # Files walked past and not indexed, with a reason each (`B75`).
-        # Populated by refresh_index; declared here so it exists before the
-        # first refresh and a reader never meets a missing attribute.
-        self.skipped: List[Dict[str, str]] = []
+        self._skipped: List[Dict[str, str]] = []
+        self._build_lock = threading.RLock()
         self.indexed_directories = []  # Track additional directories
         self.excluded_files: Set[str] = set()  # Files removed from RAG listing
         self.directories_file = os.path.join(personal_dir, "indexed_directories.json")
         self._excluded_file = os.path.join(personal_dir, "excluded_files.json")
         self.load_directories()
         self._load_excluded()
-        self.refresh_index()
+
+    # `B491`. The two readers every caller already uses — `personal_routes`'
+    # listing and reload count, the RAG MCP server's list, `retrieve` — read
+    # these attributes, so making them build-on-read makes every one of them
+    # lazy without a second way in (`Law 14`). Assignment still works: tests and
+    # `exclude_file` set the list directly.
+    @property
+    def index(self) -> List[Dict[str, Any]]:
+        return self._ensure_index()
+
+    @index.setter
+    def index(self, value: List[Dict[str, Any]]) -> None:
+        self._index = value
+
+    @property
+    def skipped(self) -> List[Dict[str, str]]:
+        self._ensure_index()
+        return self._skipped
+
+    @skipped.setter
+    def skipped(self, value: List[Dict[str, str]]) -> None:
+        self._skipped = value
+
+    @property
+    def index_built(self) -> bool:
+        """Whether the index has been built — read without building it."""
+        return self._index is not None
+
+    def _lock(self) -> "threading.RLock":
+        lock = self.__dict__.get("_build_lock")
+        if lock is None:
+            lock = self.__dict__.setdefault("_build_lock", threading.RLock())
+        return lock
+
+    def _ensure_index(self) -> List[Dict[str, Any]]:
+        built = self._index
+        if built is not None:
+            return built
+        with self._lock():
+            # Two first readers at once build it once: the second waits on the
+            # lock and finds it done.
+            if self._index is None:
+                self.refresh_index()
+            return self._index
 
     def load_directories(self):
         """Load the list of indexed directories from persistent storage."""
@@ -640,7 +697,11 @@ class PersonalDocsManager:
         """Exclude a file from the listing. Persists across restarts."""
         self.excluded_files.add(os.path.abspath(filepath))
         self._save_excluded()
-        self.index = [f for f in self.index if os.path.abspath(f.get("path", "")) != os.path.abspath(filepath)]
+        # `B491`: an index not built yet is not built to be filtered — the
+        # exclusion is persisted, and the first build honours it.
+        if self._index is not None:
+            self._index = [f for f in self._index
+                           if os.path.abspath(f.get("path", "")) != os.path.abspath(filepath)]
 
     def add_directory(self, directory: str, *, index: bool = True, owner: str = None):
         """Add a directory to the tracking list and optionally index it."""
@@ -757,8 +818,14 @@ class PersonalDocsManager:
         a caller can say which files are in neither index instead of leaving the
         user to discover it by searching and finding nothing.
         """
-        self.index = []
-        self.skipped: List[Dict[str, str]] = []
+        with self._lock():
+            self._refresh_index_locked()
+
+    def _refresh_index_locked(self):
+        # `B491`. Built into locals and published at the end, so a reader on
+        # another thread sees the old index or the new one, never half of one.
+        index: List[Dict[str, Any]] = []
+        skipped: List[Dict[str, str]] = []
 
         # `P14-07`. ONE budget and ONE pacer for the whole refresh, not one per
         # directory. Thirteen folders each politely stopping at their own
@@ -769,13 +836,13 @@ class PersonalDocsManager:
         pacer = IndexPacer()
 
         # Index the base personal directory
-        base_files = load_personal_index(self.personal_dir, skipped=self.skipped,
+        base_files = load_personal_index(self.personal_dir, skipped=skipped,
                                          budget=budget, pacer=pacer)
         for f in base_files:
             if os.path.abspath(f.get("path", "")) in self.excluded_files:
                 continue
             f['source_dir'] = self.personal_dir
-            self.index.append(f)
+            index.append(f)
 
         # Index additional directories
         for directory in self.indexed_directories:
@@ -788,7 +855,7 @@ class PersonalDocsManager:
                 continue
 
             # Load files from this directory
-            dir_files = load_personal_index(directory, skipped=self.skipped,
+            dir_files = load_personal_index(directory, skipped=skipped,
                                             budget=budget, pacer=pacer)
             for f in dir_files:
                 if os.path.abspath(f.get("path", "")) in self.excluded_files:
@@ -796,15 +863,17 @@ class PersonalDocsManager:
                 # Update the name to include the directory for clarity
                 f['source_dir'] = directory
                 f['name'] = f"{os.path.basename(directory)}/{f['name']}"
-                self.index.append(f)
+                index.append(f)
 
         # Kept so `get_stats` can report what was held and what was not. A
         # ceiling nobody can see is a ceiling that gets diagnosed as "search is
         # broken" (`Law 15`).
         self.index_budget = budget
         self.index_pacer = pacer
+        self._skipped = skipped
+        self._index = index
         logger.info(
-            f"Refreshed index: {len(self.index)} documents from "
+            f"Refreshed index: {len(index)} documents from "
             f"{len(self.indexed_directories) + 1} directories "
             f"({budget.used / (1024 * 1024):.0f} MB held"
             + (f", {budget.dropped} file(s) over the ceiling" if budget.dropped else "")

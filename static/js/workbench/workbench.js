@@ -129,10 +129,19 @@ function mountIntegrationsRoom(panel, opts = {}) {
   }).catch((err) => {
     console.error('MCP & Integrations did not load:', err);
   });
+  // `B927`. The skill importer's GitHub token card, drawn for an admin only.
+  const token = import('../githubToken.js').then((m) => m.mount().then(() => m))
+    .catch((err) => { console.error('The GitHub token panel did not load:', err); return null; });
   const handle = {
     ready,
-    /** `serverId` opens that MCP server's card — the list's own Manage. */
+    /** `serverId` opens that MCP server's card — the list's own Manage.
+     *  `view: 'github-token'` is the Skills room's door after a rate limit
+     *  (`B927`): the token card, with the cursor in its box. */
     land(o = {}) {
+      if (o.view === 'github-token') {
+        token.then((m) => m && m.refresh().then(() => m.focusCard()));
+        return;
+      }
       if (o.serverId == null) return;
       ready.then(() => {
         const card = [...panel.querySelectorAll('.intg-card[data-intg-type="mcp"]')]

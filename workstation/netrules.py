@@ -134,7 +134,11 @@ def ruleset(mode: str, *, table: str = GATE_TABLE, uids: Optional[Tuple[int, int
         if not 0 < lo <= hi:
             raise ValueError("a uid range is two positive numbers, low to high")
         who = f"meta skuid {lo}-{hi} "
-    refuse = "reject with icmpx admin-prohibited"
+    # `B1021`: every refusal is counted. A program that swallows its own EPERM
+    # (OpenBSD netcat's `nc -u`, measured: nothing printed, exit 0) leaves
+    # nothing in its output to explain, and the counter is the one witness
+    # (`refused`, read by the gate and the daemon around a routed command).
+    refuse = "counter reject with icmpx admin-prohibited"
     rules = ["ct direction reply accept"]
     if mode == "internet":
         dns = sorted({str(ipaddress.ip_address(r)) for r in resolvers})
@@ -207,6 +211,39 @@ def in_force(table: str, *, run: Runner = _run, nft: Optional[str] = None) -> Op
                 return mode if mode in P.NETWORK_MODES else None
             return None
     return None
+
+
+def refused(table: str, *, run: Runner = _run, nft: Optional[str] = None) -> Optional[int]:
+    """`B1021`: how many packets `table`'s rules have refused since they were
+    loaded — the sum of the counters on its `reject` rules, read from the
+    kernel. `0` when there is no table (mode *full* refuses nothing), None when
+    nft cannot be asked. Rewriting the mode reloads the table and starts the
+    count again, so a reader compares two counts, never one with a memory."""
+    binary = nft or nft_path()
+    if not binary:
+        return None
+    code, out, err = run([binary, "-j", "list", "table", "inet", table], None)
+    if code != 0:
+        return 0 if "No such file or directory" in (err or "") else None
+    try:
+        items = json.loads(out).get("nftables", [])
+    except (ValueError, AttributeError):
+        return None
+    total = 0
+    for item in items:
+        rule = item.get("rule") if isinstance(item, dict) else None
+        if not isinstance(rule, dict):
+            continue
+        exprs = rule.get("expr") or []
+        if not any(isinstance(e, dict) and "reject" in e for e in exprs):
+            continue
+        for e in exprs:
+            if isinstance(e, dict) and isinstance(e.get("counter"), dict):
+                try:
+                    total += int(e["counter"].get("packets") or 0)
+                except (TypeError, ValueError):
+                    continue
+    return total
 
 
 def self_test(*, address: Tuple[str, int] = SELF_TEST_ADDRESS, timeout: float = 1.0,

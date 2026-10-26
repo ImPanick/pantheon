@@ -33,6 +33,10 @@ class DocumentCreate(BaseModel):
     # (`'Clients/Acme'`); none, or `''`, is Unfiled. Read by the folders'
     # own `normalize_folder_path`, so a name it refuses is a 400 here too.
     folder: Optional[str] = None
+    # `B1325`. How the text was made: `authored_here` (typed in this editor),
+    # `imported` or `derived`. Optional; `document_provenance.resolve_created`
+    # decides, and a file's name always means `imported`.
+    provenance: Optional[str] = None
 
 class DocumentUpdate(BaseModel):
     content: str
@@ -69,6 +73,9 @@ def _doc_to_dict(doc: Document) -> Dict[str, Any]:
         "source_email_message_id": getattr(doc, "source_email_message_id", None),
         # `P21-03`. The file this document was made from, as its owner named it.
         "source_name":             getattr(doc, "source_name", None),
+        # `B1325`. How its text was made; NULL (older than the column) is
+        # read as `imported`.
+        "provenance":              getattr(doc, "provenance", None),
     }
     # `P23-08` (DOCS-M-6). On a document made from a PDF only: whether its
     # pages can be drawn here (`render-pages`), so the editor shows the text

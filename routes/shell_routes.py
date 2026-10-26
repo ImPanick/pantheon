@@ -291,6 +291,45 @@ def _package_status_note(name: str, probe: dict) -> str:
     return ""
 
 
+_REALESRGAN_DESC = "AI denoise + upscale (Real-ESRGAN). Used by editor's Denoise and Upscale tools."
+
+
+def _realesrgan_package() -> dict:
+    """The Forge's Real-ESRGAN row, installing the closure CI audits.
+
+    `B373`. This was a plain `pip install realesrgan` — an unpinned resolve on
+    the user's machine, after CI, of a tree CI never saw, and the one path by
+    which a `basicsr` other than the audited 1.4.2 could land in a deployment.
+    The pins are read out of `docker/build-realesrgan-wheels.sh` (the file the
+    image builds from and `.pantheon/audit-dependencies.py` audits) by
+    `src.forge_pins`, so there is no second copy here to drift. When that file
+    is missing the row says so and offers no install rather than resolving
+    freely: an install the audit cannot vouch for is the defect, not a fallback.
+    """
+    from src.forge_pins import realesrgan_install_spec
+
+    spec = realesrgan_install_spec()
+    row = {
+        "name": "realesrgan",
+        "pip": spec or "",
+        "desc": _REALESRGAN_DESC,
+        "category": "Image",
+        "target": "local",
+        "pinned": bool(spec),
+    }
+    if spec:
+        row["desc"] = f"{_REALESRGAN_DESC} Installs the audited pins: {spec}."
+    else:
+        row["kind"] = "system"
+        row["desc"] = (
+            f"{_REALESRGAN_DESC} The audited pins could not be read "
+            "(docker/build-realesrgan-wheels.sh is missing from this install), "
+            "so the Forge will not install it unpinned; install it by hand "
+            "with the pins in that file of Pantheon's source."
+        )
+    return row
+
+
 def _package_pip_update_status(
     pkg: dict, probe: dict | None = None
 ) -> PackageUpdateStatus:
@@ -310,6 +349,14 @@ def _package_pip_update_status(
     if pkg.get("kind") == "system" or not pkg.get("pip"):
         return PackageUpdateStatus(
             False, "Update this system dependency outside Pantheon."
+        )
+    if pkg.get("pinned"):
+        # `B373`. `pip install -U` of an exact pin reinstalls the same pin, so
+        # an Update button would promise a move it cannot make.
+        return PackageUpdateStatus(
+            False,
+            "Pinned to the audited closure in docker/build-realesrgan-wheels.sh; "
+            "it moves when those pins do.",
         )
 
     name = pkg.get("name")
@@ -1413,13 +1460,7 @@ def setup_shell_routes() -> APIRouter:
                 "category": "Image",
                 "target": "local",
             },
-            {
-                "name": "realesrgan",
-                "pip": "realesrgan",
-                "desc": "AI denoise + upscale (Real-ESRGAN). Used by editor's Denoise and Upscale tools.",
-                "category": "Image",
-                "target": "local",
-            },
+            _realesrgan_package(),
             # ── Tools ──
             {
                 "name": "playwright",

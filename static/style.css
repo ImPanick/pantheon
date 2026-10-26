@@ -47203,6 +47203,9 @@ body.settings-sidebar-resize-active {
 .context-chip-omitted { border-left: 3px solid var(--red); }
 .context-chip-omitted .context-chip-name { text-decoration: line-through; }
 .context-meter-empty { color: var(--color-muted-alt); font-size: 10px; }
+/* `B761`. A pending file priced in the composer, before it is sent: the
+   sentence says it is an estimate, and the chips' notes carry the `≈`. */
+.context-meter-estimate { color: var(--color-muted-alt); font-size: 10px; margin-top: 4px; }
 .context-meter-foot {
   display: flex;
   flex-wrap: wrap;

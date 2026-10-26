@@ -9,7 +9,10 @@ a = Analysis(
     # and OFL all require the notice to travel with a redistributed copy, and this
     # bundle is one. Without them the desktop build ships other people's code with
     # their attribution stripped.
-    datas=[('static', 'static'), ('scripts', 'scripts'), ('mcp_servers', 'mcp_servers'), ('services/hwfit/data', 'services/hwfit/data'), ('config', 'config'), ('.env.example', '.env.example'), ('licenses', 'licenses'), ('LICENSE', '.'), ('NOTICE', '.'), ('CREDITS.md', '.')],
+    # `B373`: the Real-ESRGAN wheel script is data too — `src/forge_pins.py`
+    # reads the audited pins out of it for the Forge's Install button, which
+    # refuses to install unpinned when the file is absent.
+    datas=[('static', 'static'), ('scripts', 'scripts'), ('mcp_servers', 'mcp_servers'), ('services/hwfit/data', 'services/hwfit/data'), ('config', 'config'), ('.env.example', '.env.example'), ('licenses', 'licenses'), ('LICENSE', '.'), ('NOTICE', '.'), ('CREDITS.md', '.'), ('docker/build-realesrgan-wheels.sh', 'docker')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

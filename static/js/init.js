@@ -3,6 +3,7 @@
 // ES6 module — extracted from index.html inline scripts
 
 import Storage from './storage.js';
+import { getAuthStatus } from './appConfig.js';   // `B1228`
 
 function markComposerUserEdited() {
   const msgInput = document.getElementById('message');
@@ -43,9 +44,8 @@ document.addEventListener('DOMContentLoaded', markComposerUserEdited, { once: tr
 // in without the previous one logging out cleanly.
 (async () => {
   try {
-    const res = await fetch('/api/auth/status', { credentials: 'same-origin' });
-    if (!res.ok) return;
-    const data = await res.json().catch(() => ({}));
+    // `B1228`: the one status read `app.js` shares, not a second request.
+    const data = await getAuthStatus().catch(() => ({}));
     const liveUser = (data && data.username) || '';
     if (!liveUser) return;
     const KEY = 'pantheon-auth-user';

@@ -18,6 +18,7 @@ from src.upload_handler import reserve_upload_references
 from src.file_names import (
     attachment_disposition, display_name, document_title, upload_display_name,
 )
+from src.document_provenance import resolve_created  # `B1325`
 
 logger = logging.getLogger(__name__)
 
@@ -248,6 +249,10 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 # `P21-03`: the browser-side imports (the library, *Import from
                 # device*, an attachment opened as text) send the file's name.
                 source_name=source_name,
+                # `B1325`. The editor's blank document and a new email say
+                # `authored_here`; a file's name makes it `imported`; a caller
+                # that says nothing gets `derived` (`resolve_created`).
+                provenance=resolve_created(req.provenance, source_name=source_name),
             )
             ver = DocumentVersion(
                 id=ver_id,
@@ -528,6 +533,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 is_active=True,
                 owner=user,
                 source_name=source_name,
+                provenance="imported",   # `B1325`: a file's text
             )
             db.add(doc)
             db.add(DocumentVersion(

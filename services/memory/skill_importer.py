@@ -105,15 +105,43 @@ def _github_credentials() -> str:
     truthy**. This default is `""`, so the `or` falls through exactly as written.
     Do not generalise from this to a numeric setting.
     """
+    return _github_token_and_source()[0]
+
+
+# `B927`. The sentence every rate-limit message ends on, and the words the
+# Skills room's import line turns into a door to the token's panel
+# (`static/js/skills.js:_tokenDoor`). The panel is the MCP & Integrations room
+# — Settings' Integrations entry opens it — beside the other integration secrets.
+GITHUB_TOKEN_DOOR = "Set a GitHub token in MCP & Integrations"
+GITHUB_RATE_WITHOUT_TOKEN = 60
+GITHUB_RATE_WITH_TOKEN = 5000
+
+
+def _github_token_and_source() -> tuple[str, str]:
+    """``(token, source)`` — source is ``"settings"``, ``"environment"`` or ``""``."""
     try:
         from src.settings import get_setting
 
         tok = (get_setting("github_token", "") or "").strip()
     except Exception:
         tok = ""
-    if not tok:
-        tok = (os.environ.get("PANTHEON_GITHUB_TOKEN") or "").strip()
-    return tok
+    if tok:
+        return tok, "settings"
+    tok = (os.environ.get("PANTHEON_GITHUB_TOKEN") or "").strip()
+    return tok, ("environment" if tok else "")
+
+
+def github_token_state() -> dict:
+    """What the token panel may know: whether one is set and where from. Never
+    the token itself — the panel is write-only (`B927`)."""
+    tok, source = _github_token_and_source()
+    return {
+        "configured": bool(tok),
+        "source": source,
+        "env_var": "PANTHEON_GITHUB_TOKEN",
+        "rate_without": GITHUB_RATE_WITHOUT_TOKEN,
+        "rate_with": GITHUB_RATE_WITH_TOKEN,
+    }
 
 
 def _github_host(url: str) -> str:
@@ -656,7 +684,9 @@ def _github_response_error(response: httpx.Response) -> SkillImportError:
                 if wait < 90
                 else f" — wait about {wait / 60:.0f} minutes"
             )
-        authed = " Set a GitHub token in Settings to raise the limit from 60 to 5,000 an hour." if not _github_credentials() else ""
+        # `B927`: names the panel the token is set in (MCP & Integrations).
+        authed = (f" {GITHUB_TOKEN_DOOR} to raise the limit from {GITHUB_RATE_WITHOUT_TOKEN} "
+                  f"to {GITHUB_RATE_WITH_TOKEN:,} an hour.") if not _github_credentials() else ""
         return SkillImportError(
             f"GitHub rate limit reached{when}. Pantheon has stopped calling GitHub until then, "
             f"which is what lets the limit expire.{authed}"
@@ -788,8 +818,10 @@ def _listing_note(err: Exception) -> str:
         return ("Only SKILL.md was imported: GitHub allows 60 folder lookups an hour "
                 "without a token, and this server has used them"
                 + (f" (it resets in {wait.group(1)})" if wait else "")
-                + ". Import the skill again later for its other files, or set "
-                "PANTHEON_GITHUB_TOKEN so imports can list whole folders.")
+                + ". Import the skill again later for its other files. "
+                # `B927`: the panel, not the environment variable.
+                f"{GITHUB_TOKEN_DOOR} so imports can list whole folders "
+                f"({GITHUB_RATE_WITH_TOKEN:,} lookups an hour).")
     return f"Only SKILL.md was imported. The folder's other files could not be listed: {text}"
 
 
@@ -969,8 +1001,10 @@ def _locate_named_skill(src: ResolvedSource) -> None:
                 f"“{src.skill}” is not in the usual folders of {src.owner}/{src.repo}, and "
                 "looking through the whole repository needs GitHub's API, which has "
                 "rate-limited this server" + (f" for {wait.group(1)}" if wait else "")
-                + ". Try again then, set PANTHEON_GITHUB_TOKEN, or paste the GitHub link "
-                "to the skill's own folder."
+                # `B927`: the panel, not the environment variable — "set an
+                # environment variable" was `Law 15`'s tutorial in miniature.
+                + f". Try again then, paste the GitHub link to the skill's own folder, "
+                f"or {GITHUB_TOKEN_DOOR[0].lower()}{GITHUB_TOKEN_DOOR[1:]}."
             ) from e
         if found:
             src.path, src.ref, src.ref_known = found[0], found[1], True

@@ -1131,6 +1131,7 @@ async function _composeNew() {
         title: 'New Email',
         content: 'To: \nSubject: \n---\n',
         language: 'email',
+        provenance: 'authored_here',   // `B1325`: a new email, nothing quoted
       }),
     });
     let res = await createComposeDoc(sid);

@@ -7,7 +7,7 @@ import settingsModule from './settings.js?v=20261009census';
 import { providerLogo, providerLogoFromUrl } from './providers.js';
 import { sortModelObjects } from './modelSort.js';
 import { PROVIDER_DEVICE_FLOWS, formatDeviceFlowError, runProviderDeviceFlow } from './providerDeviceFlow.js';
-import { getSettings, getTools, invalidateSettings, invalidateTools } from './appConfig.js';
+import { getSettings, getTools, invalidateSettings, invalidateTools, invalidateAuthFeatures } from './appConfig.js';
 import { chevronIcon } from './icons.js';
 // C-ERR: a refused response is read once, by the one reader.
 import { readRefusal } from './workbench/refusal.js';
@@ -2581,6 +2581,7 @@ async function _saveFeature(toggle) {
       return false;
     }
     const now = await r.json().catch(() => null);
+    invalidateAuthFeatures();   // `B1228`: the shared read is stale now
     if (typeof window.applyFeatureFlags === 'function') window.applyFeatureFlags(now || { [key]: toggle.checked });
     uiModule.showToast(`${featureLabels[key] || key} ${toggle.checked ? 'on' : 'off'} for everyone. Others see it after their next reload.`);
     return true;
@@ -3271,6 +3272,28 @@ async function loadUsage() {
   }
 }
 
+// `B490` / `B684`. Two more panels of the usage panel's shape — a query each,
+// so loaded on open and not before — whose code lives in its own module, which
+// is imported the first time either is opened.
+const _LAZY_PANELS = [
+  ['evals-panel', () => import('./evalsPanel.js')],
+  ['auth-audit-panel', () => import('./authAudit.js')],
+];
+
+function setupLazyPanels() {
+  for (const [id, load] of _LAZY_PANELS) {
+    const panel = el(id);
+    if (!panel) continue;
+    panel.addEventListener('toggle', () => {
+      if (!panel.open) return;
+      load().then((m) => m.open()).catch((e) => {
+        console.error(`${id} did not load:`, e);
+        uiModule.showError('That panel did not load. Reload the page and try again.');
+      });
+    });
+  }
+}
+
 function setupUsagePanel() {
   const panel = el('usage-panel');
   if (!panel) return;
@@ -3475,6 +3498,7 @@ function initLogsView() {
   loadSelfChecks();
   setupBugReport();   // wires listeners only; assembles nothing until asked
   setupUsagePanel();  // queries only when the panel is opened
+  setupLazyPanels();  // `B490` evals, `B684` sign-ins: the same, in their own modules
   if (refreshBtn) refreshBtn.addEventListener('click', () => { loadLogs(false); loadSelfChecks(); });
   if (levelSelect) levelSelect.addEventListener('change', () => renderLogs(false));
   if (limitSelect) limitSelect.addEventListener('change', () => loadLogs(false));

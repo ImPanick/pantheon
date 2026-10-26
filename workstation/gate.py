@@ -134,8 +134,12 @@ class Gate:
         return self.set_mode(self.kept_mode())
 
     def health(self) -> Dict:
+        # `B1021`: `refused` is the kernel's count of sends and connections its
+        # rules refused since the mode was written — read fresh, so Pantheon
+        # can compare it either side of a command whose output says nothing.
         return {"ok": True, "agent": P.GATE_AGENT_NAME, "protocol": P.PROTOCOL_VERSION,
-                "version": VERSION, "enforcement": "gate", **self._state}
+                "version": VERSION, "enforcement": "gate", **self._state,
+                "refused": netrules.refused(netrules.GATE_TABLE, run=self._run, nft=self._nft)}
 
 
 class GateHandler(BaseHTTPRequestHandler):

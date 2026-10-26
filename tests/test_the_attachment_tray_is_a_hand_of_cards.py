@@ -373,8 +373,10 @@ def test_right_click_opens_the_cards_menu_and_escape_closes_it_first(sandbox):
     """)
     assert out["prevented"], "the browser's own menu would open over the card's"
     assert out["role"] == "menu" and out["name"] == "cat.jpg"
-    assert out["items"] == ["preview", "crop", "gallery", "remove", "remove-all"], out["items"]
-    assert out["labels"] == ["Preview", "Crop", "Save to Gallery", "Remove", "Remove all"]
+    # `B1293`: the image editor, since it can hand the edit back to the hand.
+    assert out["items"] == ["preview", "crop", "edit", "gallery", "remove", "remove-all"], out["items"]
+    assert out["labels"] == ["Preview", "Crop", "Edit in image editor", "Save to Gallery", "Remove",
+                             "Remove all"]
     assert out["selected"] == "true", "the card a menu is for is not the selected card"
     assert out["stack"] == 1, "the menu is not on the Escape stack — Escape would close the window behind it"
     assert out["closedByEscape"] is True and out["after"] is None and out["stackAfter"] == 0
@@ -403,11 +405,12 @@ def test_the_menu_offers_only_what_applies(sandbox):
     assert out["gif"] == ["preview", "gallery", "remove", "remove-all"], (
         "the cropper cannot take a GIF and must not be offered for one"
     )
-    assert out["bmp"] == ["preview", "crop", "remove", "remove-all"], (
+    assert out["bmp"] == ["preview", "crop", "edit", "remove", "remove-all"], (
         "the Gallery refuses .bmp (`IMAGE_EXTS`); offering Save to Gallery promises a failure"
     )
     assert "gallery" not in out["hidden"], "Save to Gallery shown with the Gallery switched off"
-    assert out["solo"] == ["preview", "crop", "gallery", "remove"], "Remove all offered for one file"
+    assert "edit" not in out["hidden"], "the Gallery's editor offered with the Gallery switched off"
+    assert out["solo"] == ["preview", "crop", "edit", "gallery", "remove"], "Remove all offered for one file"
 
 
 @needs_node

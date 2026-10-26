@@ -13,6 +13,7 @@ import { chevronIcon } from './icons.js';
 import backStack from './backStack.js';   // `P23-01`
 import { onToolVisibilityApplied, toolShown } from './ui_visibility.js';   // `B1194`
 import approvalModeModule from './approvalMode.js';   // `D-2026-10-09-01` §2
+import { getDefaultChat } from './appConfig.js';   // `B1228`
 
 const API_BASE = window.location.origin;
 
@@ -2451,8 +2452,8 @@ async function _getPreferredDefaultChat() {
   // now; the page's cached copy is used only when it cannot be asked.
   let dc = null;
   try {
-    const dcRes = await fetch(`${API_BASE}/api/default-chat`);
-    dc = await dcRes.json();
+    // `B1228`: shared with the page's other default-chat readers.
+    dc = await getDefaultChat();
     if (dc && dc.endpoint_url && dc.model) {
       try {
         window.__pantheonDefaultChat = dc;

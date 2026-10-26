@@ -410,7 +410,9 @@ def test_the_features_fetch_records_the_ids_it_hides():
     assert out == ["rail-gallery", "tool-gallery-btn"]
     # And the page's features fetch hands its answer to that applier.
     src = APP_JS.read_text(encoding="utf-8")
-    block = src[src.index("const _prefetchedFeatures"):]
+    # `B1228`: the read is `appConfig.getAuthFeatures()` now (it consumes the
+    # login snapshot itself), assigned to the same `_initFeaturesReady`.
+    block = src[src.index("window._initFeaturesReady = getAuthFeatures()"):]
     block = block[:block.index(".catch(")]
     assert "applyToolVisibility({ features:" in block
 

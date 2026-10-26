@@ -1013,8 +1013,12 @@ class UbuntuSystem(System):
     def network_report(self) -> Dict:
         out = super().network_report()
         if self._network_in_force is not None:
+            from workstation import netrules
             out.update(network_in_force=self._network_in_force,
-                       network_enforcement="accounts")
+                       network_enforcement="accounts",
+                       # `B1021`: what its rules have refused, for the host to
+                       # compare either side of a command.
+                       network_refused=netrules.refused(netrules.ACCOUNTS_TABLE))
         return out
 
     def screen(self, account: str) -> Screen:

@@ -59,7 +59,7 @@ export function wireTopbar(deps) {
     fitZoom, applyZoom,
     exportToGallery, downloadPNG, saveProject, loadProjectPrompt,
     activeLayer, saveState, applyEdgeFeather, composite,
-    registerDocClickAway, uiModule,
+    registerDocClickAway, uiModule, attachToChat,
   } = deps;
 
   // Undo / Redo / History.
@@ -126,6 +126,8 @@ export function wireTopbar(deps) {
 
   // Export / Download / Project Save / Project Load.
   document.getElementById('ge-export-gallery')?.addEventListener('click', exportToGallery);
+  // `B1293`: the edit back into the composer, when it was opened from there.
+  if (attachToChat) document.getElementById('ge-attach-chat')?.addEventListener('click', attachToChat);
   document.getElementById('ge-download')?.addEventListener('click', downloadPNG);
   document.getElementById('ge-save-project')?.addEventListener('click', saveProject);
   document.getElementById('ge-load-project')?.addEventListener('click', loadProjectPrompt);

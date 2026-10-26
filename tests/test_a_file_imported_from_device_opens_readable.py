@@ -357,22 +357,16 @@ def test_every_sheet_of_a_workbook_opens_the_first_in_front(live):
 
 @pytest.mark.parametrize("name", ["Launch deck.pptx", "Field guide.epub"])
 def test_a_format_only_markitdown_reads_opens_or_says_why_not(live, name):
-    """`.pptx`/`.epub` are read by the server's markitdown, which is optional and
-    not in the default image. Installed: the document opens. Not installed (CI,
-    and the default `INSTALL_OPTIONAL=false` image): the person is told so in
-    words, nothing opens, and nothing is stored as its bytes."""
+    """`.pptx`/`.epub` were read only by the server's markitdown, which is
+    optional and not in the default image, so without it the person was told
+    "requires markitdown" and nothing opened. `B1289` gave both a bundled
+    reader (`src/ooxml_native.py`), so the document opens either way — the
+    name is kept for the history; the "says why not" arm is gone with its
+    cause."""
     shown = _device(live, name, office_fixture("." + name.rsplit(".", 1)[1]))
-    docs = _docs(live)
-    if HAVE_MARKITDOWN:
-        (doc,) = docs
-        _readable(doc["content"], OFFICE_SENTINEL)
-        _opened(shown, doc["id"])
-    else:
-        assert shown["pickerOpened"] and shown["sentEmail"] == 0, shown
-        assert docs == [] and shown["tabs"] == []
-        (said,) = shown["errors"]
-        assert said.startswith(f"Couldn't import {name} — "), said
-        assert "requires markitdown" in said and "requirements-optional.txt" in said, said
+    (doc,) = _docs(live)
+    _readable(doc["content"], OFFICE_SENTINEL)
+    _opened(shown, doc["id"])
 
 
 def test_a_photo_is_refused_in_words_and_reaches_nothing(live):
