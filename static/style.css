@@ -47753,6 +47753,18 @@ button.task-card-toggle {
 @media (max-width: 768px) {
   .wb-panel { position: absolute; inset: 0; z-index: 4; }
   .wb-hint { display: none; }
+  /* `B1222`. With the hint gone the line under the toolbar is the say box,
+     and it held its 24px and both of the room's 6px gaps while it had nothing
+     to say: a ~36px empty band between the zoom row and the canvas, measured
+     at 390×844. Empty (no words, no action), it leaves the flow — out of the
+     flex line, so it costs neither its height nor a gap — and the moment it
+     has words it is back where it was. Not `display: none`: the words are a
+     `role="status"` live region, and a region outside the accessibility tree
+     when its words arrive is one a screen reader may never read out. */
+  .wb-say:has(> .wb-say-text:empty):has(> .wb-say-action[hidden]) {
+    position: absolute;
+    min-height: 0;
+  }
   /* `B1051` (branch wb-polish). At phone width every window is a bottom sheet,
      and the sheet rule `.modal-content { height: auto !important }` beat
      `.workbench-modal-content`'s height — measured in Chromium at 390 and 768px:
