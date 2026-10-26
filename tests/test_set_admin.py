@@ -68,7 +68,13 @@ def test_demote_with_two_admins_resets_to_default_privileges(tmp_path):
 
     assert result is auth_mod.SetAdminResult.OK
     assert mgr.is_admin("bob") is False
-    assert mgr.users["bob"]["privileges"] == auth_mod.DEFAULT_PRIVILEGES
+    # What this checks: an account created as an admin keeps no admin
+    # privilege past demotion. `B680` changed the stored map from a full copy
+    # of DEFAULT_PRIVILEGES to `{}` — no per-user overrides — so a role given
+    # afterwards is not shadowed; the *effective* map is still the registry's.
+    assert mgr.users["bob"]["privileges"] == {}
+    assert mgr.get_privileges("bob") == auth_mod.DEFAULT_PRIVILEGES
+    assert mgr.get_privileges("bob")["can_use_bash"] is False
 
 
 def test_demote_last_admin_is_blocked(tmp_path):
