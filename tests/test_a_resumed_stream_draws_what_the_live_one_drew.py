@@ -440,6 +440,8 @@ def _live_driver() -> str:
         ("budget_exceeded", "} else if (json.type === 'budget_exceeded') {"),
         ("teacher_takeover", "} else if (json.type === 'teacher_takeover') {"),
         ("skill_saved", "} else if (json.type === 'skill_saved') {"),
+        # `B1326`: a down MCP server's note.
+        ("mcp_unavailable", "} else if (json.type === 'mcp_unavailable') {"),
     ]
     dispatch = "\n".join(
         f"      {'if' if i == 0 else 'else if'} (json.type === '{name}') {_arm(anchor)}"
@@ -1321,3 +1323,35 @@ def test_a_result_with_no_approval_leaves_every_row_where_it_is(sandbox):
         console.log(JSON.stringify({ rows: rows() }));
     """ % json.dumps(plain))
     assert out["rows"] == [{"asked": True}, {"asked": False}], out["rows"]
+
+
+# ── `B1326`: a down MCP server is said above the reply, in both streams ─────
+
+MCP_DOWN = [
+    {"type": "mcp_unavailable",
+     "servers": [{"name": "Typo server", "reason": "Connection closed"}]},
+    _budget(1, 0),
+    {"delta": "I looked it up another way."},
+    "[DONE]",
+]
+
+
+def test_a_down_mcp_server_is_said_above_the_reply_in_both_streams(sandbox):
+    out = _page(sandbox, """
+        const order = () => history.children.map((n) => String(n.className || '').split(' ')[0]);
+        const said = () => history.querySelectorAll('.mcp-unavailable-note')
+          .map((n) => n.textContent.replace(/\\s+/g, ' ').trim());
+        const events = %s;
+        runLive(events, []);
+        const live = { order: order(), said: said() };
+        clear();
+        // The replay ends in the reload (the note makes the reply rich), which
+        // takes its own view away; the view is read while the reply streams.
+        let resumed = null;
+        await runResumed(events, [], { onEvent: (i) => { if (i === 2) resumed = { order: order(), said: said() }; } });
+        console.log(JSON.stringify({ live, resumed }));
+    """ % json.dumps(MCP_DOWN))
+    for view in (out["live"], out["resumed"]):
+        assert view["said"] and view["said"][0].startswith(
+            "MCP server not answering: Typo server — Connection closed."), view
+        assert view["order"].index("mcp-unavailable-note") < view["order"].index("msg"), view

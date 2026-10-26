@@ -5204,6 +5204,16 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 renderAgentNote(document.getElementById('chat-history'), json);   // `B915`
                 uiModule.scrollHistory();
 
+              } else if (json.type === 'mcp_unavailable') {
+                if (_isBg) continue;
+                // `B1326`. A registered MCP server is down: said before the
+                // turn's first step, above the reply it shaped — where the
+                // reload draws it (`AgentNotes` saves it at round 0).
+                const _mcpBox = document.getElementById('chat-history');
+                const _mcpNote = renderAgentNote(_mcpBox, json);
+                if (_mcpNote && holder && holder.parentNode === _mcpBox) _mcpBox.insertBefore(_mcpNote, holder);
+                uiModule.scrollHistory();
+
               } else if (json.error) {
                 // --- Backend error (timeout, connection issue, etc.) ---
                 console.error('Stream error from backend:', json.error);
@@ -6945,6 +6955,12 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
             // `B917`: the skill notes, by the live stream's builder.
             rich = true;
             if (renderAgentNote(box, json)) uiModule.scrollHistory();
+          } else if (json.type === 'mcp_unavailable') {
+            // `B1326`: as the live arm draws it, above the reply.
+            rich = true;
+            const mcpNote = renderAgentNote(box, json);
+            if (mcpNote && holder.parentNode === box) box.insertBefore(mcpNote, holder);
+            uiModule.scrollHistory();
           } else if (json.type === 'agent_step') {
             rich = true;
             closeRound();

@@ -411,9 +411,12 @@ def fabricated_retrieval_stop(
 #: is the browser's copy, and a test holds the two equal. `B921` added
 #: `compacted`: an agent turn's context summarised to fit, said live by a toast
 #: and saved nowhere a reload drew from.
+#: `B1326` added `mcp_unavailable`: a registered MCP server that is not
+#: answering, said once in the chat the person is in — the model was told in
+#: its prompt (`B1307`) and Settings always knew, and the chat said nothing.
 AGENT_NOTE_TYPES = ("rounds_exhausted", "budget_exceeded", "teacher_takeover",
                     "skill_saved", "escalation_failed", "skill_save_failed",
-                    "compacted")
+                    "compacted", "mcp_unavailable")
 
 
 def _positive_round(value: Any) -> Optional[int]:
@@ -613,10 +616,12 @@ class AgentNotes:
             self._seen.append((dict(data), "takeover", self._round))
             self._taken_over = True
             self._round = 1              # the teacher's run numbers its own rounds
-        elif kind == "compacted":
+        elif kind in ("compacted", "mcp_unavailable"):
             # `B921`. A compaction shapes the request of the round now starting,
             # so it is drawn before that round: after the one before it, or
-            # before the first (`0`).
+            # before the first (`0`). `B1326`: a down MCP server is said before
+            # the turn's first round, for the same reason — it shaped what the
+            # turn could do before the model said anything.
             phase = "teacher" if teacher else ("after" if self._taken_over else "student")
             self._seen.append((dict(data), phase, self._round - 1))
         elif kind in AGENT_NOTE_TYPES:

@@ -2049,6 +2049,14 @@ class McpManager:
         self._cached_prompt_desc_key = cache_key
         return result
 
+    def servers_not_answering(self) -> list:
+        """`[(server_name, reason)]` for every registered server that is not
+        answering — `_servers_not_answering`, the one reader, for a caller
+        outside this class. `B1326`: the chat's own line about a down server
+        (`agent_loop._mcp_unavailable_note`) reads the same list the model's
+        prompt block does, so the person and the model are told one thing."""
+        return self._servers_not_answering()
+
     def _servers_not_answering(self) -> list:
         """`[(server_name, reason)]` for every registered server with no tools.
 

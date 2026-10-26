@@ -364,6 +364,15 @@ def _turn_definition(anchor: str) -> str:
     return js_definition(AGENT_TURN.read_text(encoding="utf-8"), code.index(anchor))
 
 
+def _thread_definition(anchor: str) -> str:
+    """The same, out of `agentThread.js`: `B1199`'s `shownStep`, which the
+    running card names its step through, the real rule and not a stand-in."""
+    path = AGENT_TURN.parent / "agentThread.js"
+    code = blank(path)
+    assert code.count(anchor) == 1, f"{anchor!r} is no longer a unique anchor"
+    return js_definition(path.read_text(encoding="utf-8"), code.index(anchor))
+
+
 _STUBS = r"""
 const calls = [];
 // The round's final render marks what it wrote, so a test can tell a step
@@ -446,6 +455,7 @@ def _script(body: str) -> str:
         # `B918`: the running card, from the module both chat.js and a
         # compare pane import it from, bound to the name chat.js uses.
         _turn_definition("function scrollAfter("),
+        _thread_definition("function shownStep("),   # `B1199`
         _turn_definition("function startToolCard("),
         "const _startToolCard = startToolCard;",
         # `B917`: the teacher's spinner is the one a step opens with —

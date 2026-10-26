@@ -380,6 +380,55 @@ def _stream_fields(result: Any) -> Dict[str, Any]:
     return fields
 
 
+#: `B1326`. Per chat, the down servers this process last said in that chat,
+#: so a server that stays down is said once and not on every turn — and said
+#: again when the set changes (another goes down, or it came back and went
+#: down again). In memory on purpose: after a restart the first turn says it
+#: once more, which is the honest answer to "is it still down".
+_MCP_DOWN_NOTED: "collections.OrderedDict[str, tuple]" = collections.OrderedDict()
+_MCP_DOWN_NOTED_MAX = 512
+
+
+def _mcp_unavailable_note(mcp_mgr, session_id: Optional[str]) -> Optional[Dict[str, Any]]:
+    """`B1326`. The chat's line about a registered MCP server that is down.
+
+    `B1307` told the model, in its prompt, and `GET /api/mcp/servers` has
+    always told Settings; neither put a line in front of a person who is in a
+    chat, asking for a tool, and getting an answer that does not mention the
+    server — measured, zero SSE events of any kind about a server in
+    `status: "error"`. This is that line, as an agent note (`AGENT_NOTE_TYPES`
+    in `src/agent_stops.py`): drawn live, saved with the reply and drawn again
+    on a reload by the same builder (`renderAgentNote`, `B915`). The list is
+    the manager's own (`servers_not_answering`), the one the prompt block
+    reads (`Law 7`). `None` when nothing is down, or when this chat was already
+    told about exactly this set.
+    """
+    if mcp_mgr is None:
+        return None
+    try:
+        down = [(str(name), str(reason)) for name, reason in mcp_mgr.servers_not_answering()]
+    except Exception as exc:   # a note is never worth a turn
+        logger.debug("[mcp] down-server note skipped: %s", exc)
+        return None
+    key = tuple(down)
+    if session_id:
+        if not down:
+            _MCP_DOWN_NOTED.pop(session_id, None)
+            return None
+        if _MCP_DOWN_NOTED.get(session_id) == key:
+            return None
+        _MCP_DOWN_NOTED[session_id] = key
+        _MCP_DOWN_NOTED.move_to_end(session_id)
+        while len(_MCP_DOWN_NOTED) > _MCP_DOWN_NOTED_MAX:
+            _MCP_DOWN_NOTED.popitem(last=False)
+    elif not down:
+        return None
+    return {
+        "type": "mcp_unavailable",
+        "servers": [{"name": name, "reason": reason} for name, reason in down],
+    }
+
+
 def _step_fields(step_offset: int) -> Dict[str, Any]:
     """`B1199`. `step_offset` beside an event's `round`, when there is one.
 
@@ -9219,6 +9268,15 @@ async def stream_agent_loop(
         if current_round >= max_rounds:
             return None
         return f'data: {json.dumps({"type": "agent_step", "round": current_round + 1})}\n\n'
+
+    # `B1326`. A registered MCP server that is down is said in the chat, once,
+    # before the turn's first step — the model is told in its prompt; this is
+    # the person's half. Not on a teacher's inline run: the turn it answers for
+    # already said it.
+    if not _is_teacher_run:
+        _mcp_note = _mcp_unavailable_note(mcp_mgr, session_id)
+        if _mcp_note is not None:
+            yield f"data: {json.dumps(_mcp_note)}\n\n"
 
     for round_num in _round_numbers():
         yield _budget_frame(round_num)   # `P4-23`: a round only starts here

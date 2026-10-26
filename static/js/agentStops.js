@@ -131,7 +131,11 @@ export const AGENT_NOTE_TYPES = Object.freeze(['rounds_exhausted', 'budget_excee
   // `B921`. The turn's context summarised to fit (`P4-13`'s event). Live it is
   // a toast (`chat.js`), which a reload cannot redraw; the route saves it with
   // the reply now, and the reload draws it as a line where it happened.
-  'compacted']);
+  'compacted',
+  // `B1326`. A registered MCP server that is not answering, said in the chat
+  // before the turn's first step — the model is told in its prompt (`B1307`),
+  // and this is the person's half.
+  'mcp_unavailable']);
 
 /**
  * `P4-13` / `B921`. What a `compacted` event says, in the trim notice's words:
@@ -283,6 +287,28 @@ export function agentNoteNode(doc, event, opts = {}) {
         node.appendChild(textPart(d, 'span', `[${event.category}]`, { opacity: '0.6' }));
       }
       return node;
+    case 'mcp_unavailable': {
+      // `B1326`. Which server, why — the server's own words, as Settings
+      // shows them — and where to look. Text nodes only: a name and an error
+      // are the operator's and the server's, not markup.
+      node.className = 'mcp-unavailable-note';
+      node.style.cssText = 'margin:6px 0;padding:6px 10px;border-left:3px solid #c08a3e;background:rgba(192,138,62,0.08);font-size:12px;color:var(--fg);border-radius:4px;';
+      const servers = Array.isArray(event.servers) ? event.servers : [];
+      node.appendChild(textPart(d, 'strong',
+        servers.length > 1 ? 'MCP servers not answering:' : 'MCP server not answering:'));
+      servers.forEach((srv, i) => {
+        node.appendChild(words(d, i ? '; ' : ' '));
+        node.appendChild(textPart(d, 'code', String((srv && srv.name) || 'MCP server')));
+        if (srv && srv.reason) {
+          node.appendChild(words(d, ' — '));
+          node.appendChild(textPart(d, 'span', String(srv.reason)));
+        }
+      });
+      node.appendChild(words(d, servers.length > 1
+        ? '. Their tools are not in this chat; the Workbench\u2019s MCP & Integrations room shows them.'
+        : '. Its tools are not in this chat; the Workbench\u2019s MCP & Integrations room shows it.'));
+      return node;
+    }
     default:   // escalation_failed, skill_save_failed
       node.className = 'escalation-failed-note';
       node.style.cssText = 'margin:6px 0;padding:6px 10px;border-left:3px solid #8a4a4a;background:rgba(138,74,74,0.07);font-size:12px;color:var(--fg);border-radius:4px;';
