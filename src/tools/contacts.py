@@ -38,7 +38,15 @@ async def do_resolve_contact(content: str, owner: Optional[str] = None) -> Dict:
     try:
         import asyncio
         from routes import contacts_routes as cc
-        all_contacts = await asyncio.to_thread(cc._fetch_contacts)
+        # `B1534`. Whether the address book was read, beside what came back:
+        # on a CardDAV failure the list is the last copy read (often empty).
+        read = {}
+        all_contacts = await asyncio.to_thread(cc._fetch_contacts, False, read)
+        if read.get("unread"):
+            not_searched.append(
+                f"The address book was not read: {read['unread']}"
+                + ("; only the copy from its last read was searched." if read.get("stale")
+                   else "."))
         q = name.lower()
         for c in (all_contacts or []):
             hay_name = (c.get("name") or "").lower()
@@ -135,13 +143,22 @@ async def do_manage_contact(content: str, owner: Optional[str] = None) -> Dict:
     import asyncio
     try:
         if action == "list":
-            rows = await asyncio.to_thread(cc._fetch_contacts, True)
+            read = {}
+            rows = await asyncio.to_thread(cc._fetch_contacts, True, read)
+            # `B1534`: an empty list from an address book that was not read is
+            # not "no contacts", and a list from an earlier read says so.
+            if read.get("unread") and not rows:
+                return {"error": f"The address book was not read: {read['unread']}.",
+                        "exit_code": 1}
             if not rows:
                 return {"output": "No contacts.", "exit_code": 0}
             lines = [f"{len(rows)} contacts:"]
             for c in rows:
                 em = ", ".join(c.get("emails") or [])
                 lines.append(f"- {c.get('name') or '(no name)'} <{em}>  [uid={c.get('uid','')}]")
+            if read.get("unread"):
+                lines.append(f"The address book was not read just now: {read['unread']}; "
+                             "these are from its last read.")
             return {"output": "\n".join(lines), "exit_code": 0}
 
         if action == "add":
