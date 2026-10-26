@@ -1485,53 +1485,12 @@ def _imap(account_id: str | None = None, owner: str = ""):
             pass
 
 
-def _raw_8bit_charset(data, charset):
-    """`P23-08` (DOCS-M-10). Name the charset of a header's raw 8-bit bytes.
-
-    A Subject sent with a bare UTF-8 "—" (not RFC 2047 — non-compliant but
-    common) reaches here as a `Header` whose bytes are `unknown-8bit`, which
-    `make_header` renders as "���". Measured on `9560d50` in the list, the
-    reader and the reply. UTF-8 when the bytes are UTF-8, else Windows-1252,
-    the 8-bit charset such mail is usually in (every byte decodes).
-    """
-    if isinstance(data, bytes) and (charset or "").lower() == "unknown-8bit":
-        try:
-            data.decode("utf-8")
-            return data, "utf-8"
-        except UnicodeDecodeError:
-            return data, "windows-1252"
-    return data, charset
-
-
-def _decode_header(raw):
-    if not raw:
-        return ""
-    if isinstance(raw, str) and any("\udc80" <= ch <= "\udcff" for ch in raw):
-        # The same bytes on a str path: surrogate-escaped (`P23-08`).
-        raw = raw.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
-    try:
-        # make_header concatenates per RFC 2047: no spurious space between an
-        # encoded-word and adjacent plain text (plain runs keep their own
-        # whitespace), and the whitespace between two adjacent encoded-words is
-        # dropped. The old " ".join produced "Re:  Jose"-style double spaces on
-        # every non-ASCII subject or sender.
-        parts = [_raw_8bit_charset(d, c) for d, c in email.header.decode_header(raw)]
-        return str(email.header.make_header(parts))
-    except Exception:
-        # Malformed header or unknown/invalid MIME charset (e.g. a spam header
-        # like =?x-unknown-charset?B?...?=) makes make_header raise LookupError;
-        # fall back to a lossy per-part decode. errors="replace" only covers
-        # byte-decode errors, not codec lookup, hence the explicit utf-8 retry.
-        decoded = []
-        for data, charset in email.header.decode_header(raw):
-            if isinstance(data, bytes):
-                try:
-                    decoded.append(data.decode(charset or "utf-8", errors="replace"))
-                except (LookupError, ValueError):
-                    decoded.append(data.decode("utf-8", errors="replace"))
-            else:
-                decoded.append(data)
-        return "".join(decoded)
+# `B1232`. The header decode lives in `src/mail_headers.py` now, so the agent's
+# mail tools (`mcp_servers/email_server.py`, a separate process that cannot
+# import this module) read an 8-bit Subject the way this module does. This
+# name is kept for its importers here and in `src/builtin_actions.py` and
+# `routes/document/document_routes.py` (`Law 1`); it is the same object.
+from src.mail_headers import decode_header as _decode_header  # noqa: E402
 
 
 def _detect_sent_folder(conn):

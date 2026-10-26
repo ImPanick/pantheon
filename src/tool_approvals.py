@@ -65,7 +65,9 @@ DEFAULT_MAX_PENDING_APPROVALS = 2048
 #
 # So expiry was counted and denial did not exist. Now expiry IS the denial: one
 # row, one verdict, and the surfaces that hold the card are told so they can
-# mark it. `Law 10` — `denied_timeout` cannot be misread the way `expired`
+# mark it. (`B560` then gave the store a sweeper — `approval_sweep_loop`, below
+# — so the denial arrives at the deadline on an idle box too, not at whatever
+# store call came next.) `Law 10` — `denied_timeout` cannot be misread the way `expired`
 # could, because `expired` is a statement about a clock and says nothing about
 # what was decided.
 APPROVAL_DENIED_TIMEOUT = "denied_timeout"
@@ -985,6 +987,23 @@ class ToolApprovalStore:
             outcome["reason"] = "expired" if owned else "unknown"
         return found
 
+    def sweep_expired(self, now: float | None = None) -> int:
+        """`B560`. Deny and announce every lapsed card — and nothing else.
+
+        `_purge_expired_locked` was reached only from `create`, `consume`,
+        `peek` and `retire_for_session`, so on an idle box an unanswered card
+        stayed pending past its deadline until somebody next touched the store:
+        measured, no events row and no listener call until the first `peek`,
+        which then produced all three at once, so the row's timestamp was the
+        sweep and not the expiry. `approval_sweep_loop` calls this on a short
+        period. Returns how many lapsed.
+        """
+        now = time.time() if now is None else now
+        with self._lock:
+            expired = self._purge_expired_locked(now)
+        self._announce_expired(expired)
+        return len(expired)
+
     def retire_for_session(self, *, owner: Any, session_id: Any) -> bool:
         """Discard pending actions superseded by an ordinary user turn.
 
@@ -1024,3 +1043,36 @@ class ToolApprovalStore:
 
 
 tool_approval_store = ToolApprovalStore()
+
+
+#: `B560`. How often lapsed approvals are swept when nothing else touches the
+#: store. Against a deadline floor of `MIN_APPROVAL_TTL_SECONDS` (30 s), five
+#: seconds keeps a denial within a sixth of the shortest card's life; a tick
+#: with nothing lapsed is a dict scan under a lock. Jittered like every
+#: recurring job (`P15-10`, `check-jitter.py`), though it reaches nothing off
+#: this machine.
+APPROVAL_SWEEP_SECONDS = 5.0
+
+
+async def approval_sweep_loop(store: "ToolApprovalStore | None" = None, *,
+                              period: float = APPROVAL_SWEEP_SECONDS) -> None:
+    """`B560`. Sweep lapsed approvals for the life of the process.
+
+    Started by `app.py` beside its other background loops. Runs on the event
+    loop rather than a thread, because the expiry listener
+    (`routes/chat_routes.deny_expired_tool_approval`) writes the session the
+    same way an answered card does, and every other store call that announces
+    an expiry runs there too.
+    """
+    from src.jitter import sleep_jittered
+
+    target = store if store is not None else tool_approval_store
+    while True:
+        await sleep_jittered(period)
+        try:
+            target.sweep_expired()
+        except Exception:
+            # Never ends the loop: a missed sweep is caught by the next one, or
+            # by the next store call, as before this row.
+            logger.warning("Approval sweep failed; the next one will retry",
+                           exc_info=True)

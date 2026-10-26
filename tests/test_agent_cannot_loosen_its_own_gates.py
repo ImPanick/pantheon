@@ -142,13 +142,133 @@ def test_the_loop_caps_are_deliberately_not_in_the_set(agent):
     """`agent_max_rounds` and `agent_max_tool_calls` are runaway and cost caps
     with no approval semantics, and "give yourself more steps" is a real thing
     to ask for. Filed as `P7-12` rather than swept in — a restriction that has
-    to be argued each time is one nobody keeps."""
+    to be argued each time is one nobody keeps.
+
+    `B554`: asked of the SET, not of its source text. This split the file on
+    `_SELF_RESTRAINT_KEYS = {` and searched the block, which is code and prose
+    interleaved — so a comment inside the set naming a cap failed it, and a
+    cap really added to the set under another spelling could pass it. The set
+    is at module scope now; membership is the question."""
     from src.agent_tools import admin_tools
+    assert "agent_max_rounds" not in admin_tools._SELF_RESTRAINT_KEYS
+    assert "agent_max_tool_calls" not in admin_tools._SELF_RESTRAINT_KEYS
+    # And the refusal agrees with the set: a cap is written, not refused.
+    call, S = agent
+    call(action="set", key="agent_max_tool_calls", value=7)
+    assert S.get_setting("agent_max_tool_calls") == 7
     source = pathlib.Path(admin_tools.__file__).read_text(encoding="utf-8")
-    block = source.split("_SELF_RESTRAINT_KEYS = {", 1)[1].split("}", 1)[0]
-    assert "agent_max_rounds" not in block
-    assert "agent_max_tool_calls" not in block
     assert "P7-12" in source, "the deliberate omission must point at where it is argued"
+
+
+# ── `B553`: a refusal names a surface that can set the key it refused ──
+
+def _ids_and_labels(html_text):
+    """`{element id: its label text}` from the markup, parsed rather than
+    searched: a `<label for=…>` or the element named by `aria-labelledby`."""
+    from html.parser import HTMLParser
+
+    class _P(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.ids, self.label_for, self.by_id_text = set(), {}, {}
+            self.labelledby = {}
+            self._open = []          # (tag, for_or_id, text parts)
+
+        def handle_starttag(self, tag, attrs):
+            a = dict(attrs)
+            if a.get("id"):
+                self.ids.add(a["id"])
+                if a.get("aria-labelledby"):
+                    self.labelledby[a["id"]] = a["aria-labelledby"].split()
+            if tag == "label" and a.get("for"):
+                self._open.append(("for", a["for"], []))
+            elif a.get("id") and tag in ("div", "span"):
+                self._open.append(("id", a["id"], []))
+            else:
+                self._open.append(None)
+
+        def handle_endtag(self, tag):
+            while self._open:
+                top = self._open.pop()
+                if top is None:
+                    return
+                kind, key, parts = top
+                text = " ".join("".join(parts).split())
+                (self.label_for if kind == "for" else self.by_id_text)[key] = text
+                return
+
+        def handle_data(self, data):
+            for entry in self._open:
+                if entry is not None:
+                    entry[2].append(data)
+
+    parser = _P()
+    parser.feed(html_text)
+    labels = dict(parser.label_for)
+    for element_id, label_ids in parser.labelledby.items():
+        labels.setdefault(element_id, " ".join(parser.by_id_text.get(i, "") for i in label_ids))
+    return parser.ids, labels
+
+
+def _scripts_naming(element_id):
+    js = ROOT / "static" / "js"
+    return [f for f in js.rglob("*.js")
+            if element_id in f.read_text(encoding="utf-8")]
+
+
+def test_every_self_restraint_key_has_a_named_surface():
+    from src.agent_tools import admin_tools
+    assert set(admin_tools._SELF_RESTRAINT_WHERE) == set(admin_tools._SELF_RESTRAINT_KEYS)
+
+
+def _self_restraint_keys():
+    from src.agent_tools import admin_tools
+    return sorted(admin_tools._SELF_RESTRAINT_KEYS)
+
+
+# A value the admin's door accepts, for each key Settings has no control for.
+_DIRECT_VALUES = {
+    "approval_timeout_seconds": 900,
+    "workflow_approval_timeout_seconds": 3600,
+    "workstation_backend": "container",
+    "auth_login_rate_limit": 20,
+    "auth_login_rate_window_seconds": 120,
+    "auth_signup_rate_limit": 5,
+    "auth_signup_rate_window_seconds": 600,
+    "auth_setup_rate_limit": 5,
+    "auth_setup_rate_window_seconds": 600,
+}
+
+
+@pytest.mark.parametrize("key", _self_restraint_keys())
+def test_the_refusal_names_a_surface_that_can_actually_set_it(agent, monkeypatch, key):
+    """`B553`'s `Verify:`, for every key in `_SELF_RESTRAINT_KEYS`. Where the
+    refusal names a Settings control, the control is in the page under that
+    label and a script that saves the key drives it; where it names
+    `POST /api/auth/settings`, that route is called as an admin and stores it."""
+    from src.agent_tools import admin_tools
+
+    call, S = agent
+    for action in ("set", "reset"):
+        response = str(call(action=action, key=key, value=1).get("response", ""))
+        assert admin_tools.self_restraint_where(key) in response, (action, response)
+        assert "Open Settings and change it there" not in response
+
+    where = admin_tools._SELF_RESTRAINT_WHERE[key]
+    if where is not None:
+        section, label, element_id = where
+        ids, labels = _ids_and_labels(INDEX)
+        assert element_id in ids, f"{key}: no #{element_id} in static/index.html"
+        assert labels.get(element_id) == label, (key, labels.get(element_id))
+        assert any(key in f.read_text(encoding="utf-8") for f in _scripts_naming(element_id)), \
+            f"{key}: no script that drives #{element_id} saves {key}"
+    else:
+        assert "POST /api/auth/settings" in admin_tools.self_restraint_where(key)
+        from test_both_doors_hold_a_setting_to_one_range import _route_post
+
+        store = dict(S.DEFAULT_SETTINGS)
+        _route_post(monkeypatch, store)({key: _DIRECT_VALUES[key]})
+        assert store[key] == _DIRECT_VALUES[key], (key, store[key])
 
 
 # ── the other half of the trade ──

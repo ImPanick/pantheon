@@ -1002,6 +1002,8 @@ def role_limit_ranges() -> dict[str, tuple[int, int]]:
     # derivation for the same reason the four above it do. Bounds imported from
     # the module that owns it, never restated (`Law 7`).
     from src.context_budget import (
+        AGENT_INPUT_BUDGET_SETTING,
+        MAX_AGENT_INPUT_BUDGET,
         MAX_SKILL_INJECTION,
         MIN_SKILL_INJECTION,
         SKILL_INJECTION_LIMIT,
@@ -1030,6 +1032,12 @@ def role_limit_ranges() -> dict[str, tuple[int, int]]:
     ranges[UPLOAD_BURST_WINDOW_SETTING] = (
         MIN_UPLOAD_BURST_WINDOW_SECONDS, MAX_UPLOAD_BURST_WINDOW_SECONDS)
     ranges[SKILL_INJECTION_LIMIT] = (MIN_SKILL_INJECTION, MAX_SKILL_INJECTION)
+    # `B751`. The agent's input-token budget, which ships a real default and
+    # resolves with an owner (`context_budget.resolve_agent_input_budget_setting`)
+    # — `B750`'s shape, named beside it in `P12-04` and `P12-09`. A role's floor
+    # is 1, as every key's here; the instance setting's 0 (*no trim*) is not a
+    # role's to set.
+    ranges[AGENT_INPUT_BUDGET_SETTING] = (1, MAX_AGENT_INPUT_BUDGET)
     return ranges
 
 
@@ -1165,6 +1173,42 @@ def clamp_int_setting(key: str, value: Any, ranges: dict | None = None) -> Any:
         return value
     low, high = table[key]
     return max(low, min(int(value), high))
+
+
+def clamp_limit_setting(key: str, value: Any) -> Any:
+    """`value` as a nullable limit (`LIMIT_RANGES`) is stored. `B1027`.
+
+    The settings route's rule for these keys, moved here so the agent's
+    `manage_settings` reads it too (`clamp_int_setting`'s move, `B931`, for the
+    sibling table): `None` or a blank string UNSETS the key — let the
+    environment or the built-in default answer — a boolean is refused (`True`
+    is an int in Python, and a cap of one byte or one request is not what
+    anyone meant), and anything else is `int()`-ed and held to the key's
+    range. Measured before, through the agent's door: `set
+    chat_upload_max_bytes abc` stored `"abc"`, `set context_skill_index_chars 5`
+    stored 5 under the floor of 200, `set upload_max_files_per_request -3`
+    stored -3.
+
+    A key not in `LIMIT_RANGES` is returned unchanged. A value that is not a
+    whole number raises `ValueError` carrying the sentence each door shows —
+    the route as a 400, `manage_settings` as its error.
+    """
+    if key not in LIMIT_RANGES:
+        return value
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    if isinstance(value, bool):
+        what = "seconds" if key.endswith("_seconds") else (
+            "characters" if key.endswith("_chars") else "bytes, files or requests")
+        raise ValueError(f"{key} must be a whole number of {what}, "
+                         f"or null to use the default")
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{key} must be an integer, or null to let the "
+                         f"environment or the built-in default decide") from None
+    low, high = LIMIT_RANGES[key]
+    return max(low, min(number, high))
 
 
 def without_retired_settings(settings: dict) -> dict:

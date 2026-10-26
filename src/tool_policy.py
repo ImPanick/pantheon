@@ -158,7 +158,8 @@ _COMMON_TOOL_NAMES = {
 # detector: all three of `P2-CORRECTED`'s reproductions still fired, and a hit
 # still strips **82** tools (`known_tool_names()`, executed in-tree — the same
 # number the roadmap re-measured on 2026-08-27) plus MCP, tool preprocessing
-# and background extraction.
+# and background extraction. (That 82 was the cold answer `B830` names below;
+# since `B1118` the count is the same in any import order — `B1174`.)
 #
 # What actually distinguishes a request from a mention is not the words, it is
 # **whose words they are and where in the sentence they sit**. So three rules,
@@ -449,8 +450,9 @@ def selectable_tool_names() -> Set[str]:
     try:
         from src.tool_schemas import dispatch_name_for
     except Exception as exc:
-        # The same `tool_schemas`/`agent_tools` cycle `known_tool_names()`
-        # documents below. Said out loud, not swallowed.
+        # An import that cannot be made (`known_tool_names()` below says why
+        # that is no longer an import-order question since `B1118`). Said out
+        # loud, not swallowed.
         _logger.debug("selectable_tool_names: dispatch rule unavailable (%s)", exc)
         return names
     return {name for name in names if dispatch_name_for(name) is not None}
@@ -475,17 +477,15 @@ def known_tool_names() -> Set[str]:
                 names.add(name)
     except Exception as exc:
         # `P2-14`, 2026-09-19. This was a bare `except Exception: pass` while
-        # the two legs below it both logged — and it is the leg that actually
-        # fails. `src/tool_schemas.py` and `src/agent_tools/__init__.py` import
-        # each other, so in a process that reaches THIS module before
-        # `src.agent_loop`, the first call raises `ImportError` here, swallows
-        # it, and answers **82** instead of **84**; `host_shell` and
-        # `manage_rag` are the two it drops. Every later call in the same
-        # process answers 84, because the failed import left the cycle
-        # resolved. The live app imports `agent_loop` at startup and so always
-        # gets 84 — but a number that silently depends on import order is
-        # `Law 5` with no scope attached, and the count of what a guide-only
-        # turn strips was quoted from the degraded answer. `B830`.
+        # the two legs below it both logged — and it was the leg that actually
+        # failed: `src/tool_schemas.py` and `src/agent_tools/__init__.py`
+        # imported each other, so a process that reached THIS module before
+        # `src.agent_loop` answered 82 on its first call and 84 after (`B830`,
+        # as measured then). `B1118` closed that cycle — the facade re-exports
+        # lazily — and the answer is the same in any import order now
+        # (`tests/test_the_tool_modules_import_in_any_order.py`, `B1174`). The
+        # log line stays: an import that fails for any other reason should
+        # still say so.
         #
         # Enforcement does not depend on this list being complete:
         # `block_all_tool_calls` refuses names the denylist never learned. What

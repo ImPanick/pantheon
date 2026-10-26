@@ -555,6 +555,13 @@ _MCP_CALL_TIMEOUT_GRACE = 2.0
 # The SDK spells its read timeout as an `McpError` carrying HTTP 408.
 _MCP_TIMEOUT_CODE = 408
 
+# `B888`. How long one enabled server may take to connect at boot
+# (`connect_all_enabled` → `_connect_with_timeout`) before it is recorded as
+# timed out and the boot moves on. A constant rather than a literal inside the
+# call, so a test shortens the deadline by setting this — not by reaching into
+# `asyncio` to replace `wait_for`, which pinned how the deadline was spelled.
+MCP_BOOT_CONNECT_TIMEOUT_SECONDS = 20.0
+
 
 class McpCallTimeout(Exception):
     """One MCP tool call passed its deadline.
@@ -745,8 +752,9 @@ def load_disabled_map() -> Dict[str, set]:
     the agent loop asks before it advertises a tool, and the loop's private
     `_load_mcp_disabled_map` was the only reader (`Law 14`: one reader, two
     callers). `src/agent_loop._load_mcp_disabled_map` is kept as a name for
-    this function (`Law 1`). `routes/mcp/mcp_routes._load_disabled_map` is a
-    third copy, filed rather than moved (not this package's file).
+    this function (`Law 1`). `GET /api/mcp/tools` reads it too since `B1098`
+    — its own copy of this query is gone — so the tools the browser shows as
+    hidden and the tools the agent is denied come from one read (`B889`).
 
     The database is imported when asked, as the loop's copy did, so a test that
     swaps `core.database.SessionLocal` still reaches this read.
@@ -766,6 +774,43 @@ def load_disabled_map() -> Dict[str, set]:
     finally:
         db.close()
     return disabled_map
+
+
+def dropped_disabled_tools(raw) -> List[str]:
+    """`B864`. The names a server row's `disabled_tools` column holds, as the
+    list a delete hands back. `[]` for empty, unreadable or not-a-list."""
+    if not raw:
+        return []
+    try:
+        names = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    if not isinstance(names, list):
+        return []
+    return [str(n) for n in names if str(n)]
+
+
+def dropped_disabled_tools_sentence(name: str, dropped: List[str]) -> str:
+    """`B864`. What deleting a server took with it, for a person to read.
+
+    `disabled_tools` is a column on the row, so a delete drops the operator's
+    choices with it and a server added again under any id starts with every
+    tool on — a privilege change that was reported nowhere. Every door that
+    deletes a server (the route, `manage_mcp delete`, `pantheon-mcp delete`)
+    hands the list back as `dropped_disabled_tools`, which an automated caller
+    can put back with `PATCH /api/mcp/servers/{id}/tools`; this is the same
+    fact in words, written once so the browser and the agent say one thing
+    (`Law 7`). Empty when there was nothing switched off.
+    """
+    if not dropped:
+        return ""
+    n = len(dropped)
+    them = "them" if n != 1 else "it"
+    return (
+        f"'{name}' had {n} tool{'s' if n != 1 else ''} switched off "
+        f"({', '.join(dropped)}). That choice went with the server: added again, "
+        f"it starts with every tool on, so switch {them} off again after adding it."
+    )
 
 
 def load_tool_overrides(server_id: Optional[str] = None) -> Dict[str, Dict[str, Dict[str, Any]]]:
@@ -970,10 +1015,12 @@ class McpManager:
         async def _owner():
             stack = AsyncExitStack()
             self._stacks[server_id] = stack
+            setup_failed = False
             try:
                 try:
                     payload = await setup(stack)
                 except BaseException as exc:  # noqa: BLE001 — relayed below
+                    setup_failed = True
                     if not ready.done():
                         ready.set_exception(exc)
                     return
@@ -987,9 +1034,25 @@ class McpManager:
                 try:
                     await stack.aclose()
                 except BaseException as exc:  # noqa: BLE001
-                    logger.warning(
-                        "Error closing MCP server %s: %s", server_id, exc
-                    )
+                    if setup_failed:
+                        # `B1392`. Closing what a FAILED connect opened. A
+                        # stdio server that exited during the handshake leaves
+                        # a transport whose task group has already failed, so
+                        # its close raises too (`unhandled errors in a
+                        # TaskGroup`) — the same failure, seen a second time
+                        # from the teardown. The connect's own error is already
+                        # recorded and logged (`connect_server`), and a WARNING
+                        # here read as a second problem naming anyio internals.
+                        # Kept at DEBUG, in words that say what it is.
+                        logger.debug(
+                            "MCP server %s: closing what its failed connect "
+                            "opened also raised (expected after a failed "
+                            "handshake): %s", server_id, exc,
+                        )
+                    else:
+                        logger.warning(
+                            "Error closing MCP server %s: %s", server_id, exc
+                        )
                 if self._stacks.get(server_id) is stack:
                     self._stacks.pop(server_id, None)
                 self._owners.pop(server_id, None)
@@ -1099,8 +1162,8 @@ class McpManager:
             #
             # A cancel actually DELIVERED to this task is a different fact and
             # keeps propagating: shutdown, an abandoned request, and
-            # `_connect_with_timeout`'s own 20-second `wait_for` all arrive
-            # that way, and swallowing one would trade a broken server for a
+            # `_connect_with_timeout`'s own deadline (`asyncio.timeout`, `B888`)
+            # all arrive that way, and swallowing one would trade a broken server for a
             # hung boot (`Law 17` — the adversary does not get to stall the
             # install either).
             current = asyncio.current_task()
@@ -1420,20 +1483,21 @@ class McpManager:
         args = json.loads(srv.args) if srv.args else []
         env = json.loads(srv.env) if srv.env else {}
 
+        deadline = MCP_BOOT_CONNECT_TIMEOUT_SECONDS
         try:
-            # `B880` left this as `asyncio.wait_for` DELIBERATELY. `wait_for`
-            # wraps its coroutine in a Task, and that extra task is what made
-            # `P8-47` reach for `asyncio.timeout` in `src/mcp_scaffold.py`'s `verify_server`
-            # — but measured here, swapping it changed nothing on its own
-            # (child-task connect + `asyncio.timeout` still logged the failed
-            # close). `_open_owned` is the fix: the stack no longer cares which
-            # task called this. `asyncio.timeout` would still be the better
-            # deadline, and `tests/test_multiple_mcp_servers_timeout.py` pins
-            # this spelling by monkeypatching `asyncio.wait_for` itself to
-            # shorten the wait, so the swap is a change to that test as much as
-            # to this line.
-            await asyncio.wait_for(
-                self.connect_server(
+            # `B888`. `asyncio.timeout`, not `asyncio.wait_for`: no wrapper
+            # Task, and none of 3.11's `wait_for` completion race — the
+            # deadline `src/mcp_scaffold.py` already uses. `B880` had kept
+            # `wait_for` only because `tests/test_multiple_mcp_servers_timeout.py`
+            # shortened the wait by monkeypatching `asyncio.wait_for` itself;
+            # it sets `MCP_BOOT_CONNECT_TIMEOUT_SECONDS` now, and passes with
+            # either spelling. (`_open_owned` is what made the task that calls
+            # this irrelevant to the close, `B880`; this is only the deadline.)
+            # A cancel from the deadline reaches `connect_server` as one
+            # delivered to this task, which it re-raises rather than records
+            # (`B1380`), so it arrives here as `TimeoutError`.
+            async with asyncio.timeout(deadline):
+                await self.connect_server(
                     server_id=srv.id,
                     name=srv.name,
                     transport=srv.transport,
@@ -1441,14 +1505,12 @@ class McpManager:
                     args=args,
                     env=env,
                     url=srv.url,
-                ),
-                timeout=20,
-            )
+                )
         except asyncio.TimeoutError:
             logger.warning("Timed out connecting to %s", srv.name)
             self._connections[srv.id] = {
                 "status": "timeout",
-                "error": f"Timed out after 20 seconds",
+                "error": f"Timed out after {deadline:g} seconds",
                 "name": srv.name,
             }
 

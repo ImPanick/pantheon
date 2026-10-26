@@ -9,7 +9,7 @@ back function-locally where needed.
 """
 from typing import Dict, Optional
 
-from src.tools._common import _parse_tool_args
+from src.tools._common import _internal_headers, _parse_tool_args
 from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 
 
@@ -58,8 +58,16 @@ async def do_resolve_contact(content: str, owner: Optional[str] = None) -> Dict:
     async with httpx.AsyncClient(timeout=30,
                                  mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
         # 2. Email history (sent/received)
+        #
+        # `B1182`. As the call's person: `_internal_headers(owner)` carries the
+        # internal token and names them (`B1179`), so `require_owner` answers
+        # from their own mailbox. With no headers at all the middleware
+        # answered 401, the `200` check below dropped it, and an admin's
+        # assistant never resolved a name from their mail history.
         try:
-            resp = await client.get(f"{_INTERNAL_BASE}/api/email/resolve-contact", params={"name": name})
+            resp = await client.get(f"{_INTERNAL_BASE}/api/email/resolve-contact",
+                                    params={"name": name},
+                                    headers=_internal_headers(owner))
             if resp.status_code == 200:
                 for c in (resp.json().get("contacts") or []):
                     email = (c.get("email") or "").strip().lower()

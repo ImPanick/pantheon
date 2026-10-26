@@ -21,6 +21,9 @@ from src.mcp_manager import (
     MCP_TOOL_DESCRIPTION_MAX,
     MCP_TOOL_OVERRIDE_NAME_MAX,
     clean_tool_description,
+    dropped_disabled_tools,
+    dropped_disabled_tools_sentence,
+    load_disabled_map,
     new_mcp_server_id,
     normalize_tool_overrides,
     resolve_mcp_call_timeout,
@@ -100,24 +103,6 @@ def _apply_mcp_oauth_env(env: dict, oauth_cfg) -> None:
         env["GMAIL_OAUTH_PATH"] = keys_file
     if token_file:
         env["GMAIL_CREDENTIALS_PATH"] = token_file
-
-
-def _load_disabled_map():
-    """Load per-server disabled tool sets from DB."""
-    db = SessionLocal()
-    try:
-        disabled_map = {}
-        for srv in db.query(McpServer).all():
-            if srv.disabled_tools:
-                try:
-                    names = json.loads(srv.disabled_tools)
-                    if names:
-                        disabled_map[srv.id] = set(names)
-                except (json.JSONDecodeError, TypeError):
-                    pass
-        return disabled_map
-    finally:
-        db.close()
 
 
 # Parse JSON fields. **None of these three is defaulted on a parse failure**,
@@ -961,19 +946,35 @@ def setup_mcp_routes(mcp_manager: McpManager):
 
     @router.delete("/servers/{server_id}")
     async def delete_server(server_id: str, request: Request):
-        """Remove an MCP server."""
+        """Remove an MCP server.
+
+        `B864`. The row carries the operator's `disabled_tools`, so deleting it
+        deletes those choices, and a server added again starts with every tool
+        on. The delete is not refused — removing a server is the operator's
+        call — but it hands the list back as `dropped_disabled_tools`, which
+        whatever re-adds the server can send to
+        `PATCH /api/mcp/servers/{new_id}/tools` as `{"disabled": [...]}`, and
+        says so in `message` for a person.
+        """
         require_admin(request)
         db = SessionLocal()
         try:
             srv = db.query(McpServer).filter(McpServer.id == server_id).first()
             if not srv:
                 raise HTTPException(404, "Server not found")
+            name = srv.name
+            dropped = dropped_disabled_tools(srv.disabled_tools)
 
             await mcp_manager.disconnect_server(server_id)
 
             db.delete(srv)
             db.commit()
-            return {"status": "deleted"}
+            said = dropped_disabled_tools_sentence(name, dropped)
+            return {
+                "status": "deleted",
+                "dropped_disabled_tools": dropped,
+                "message": f"Removed '{name}'." + (f" {said}" if said else ""),
+            }
         finally:
             db.close()
 
@@ -981,7 +982,12 @@ def setup_mcp_routes(mcp_manager: McpManager):
     def list_tools(request: Request):
         """List all discovered MCP tools across all connected servers."""
         require_admin(request)
-        disabled_map = _load_disabled_map()
+        # `B1098` / `B889`. The one reader of "which tools has an operator
+        # switched off" — the same function the agent loop and a workflow's
+        # MCP step ask — so the tools this panel shows as hidden and the tools
+        # the agent is denied cannot become two sets. This route had its own
+        # copy of the query until then.
+        disabled_map = load_disabled_map()
         return mcp_manager.get_all_tools(disabled_map)
 
     @router.get("/servers/{server_id}/tools")

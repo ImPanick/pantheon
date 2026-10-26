@@ -1284,6 +1284,7 @@ def plan_turn_tool_suite(
     within_allowed=None,
     get_setting_fn=None,
     pinned_tools: Iterable[str] = (),
+    owner: Optional[str] = None,
 ):
     """This turn's tool set: the whole suite, or a deterministic part of it.
 
@@ -1370,7 +1371,7 @@ def plan_turn_tool_suite(
     # number came from, so the receipt can say whether this turn's room was
     # measured off a server's answer or guessed from the model's name.
     window, window_basis = budget_context_basis(endpoint_url or "", model or "", fallback=0)
-    room = tool_suite_room(window, get_setting_fn or get_setting)
+    room = tool_suite_room(window, get_setting_fn or get_setting, owner=owner)  # `B751`
 
     domains = [str(d) for d in (domains or ())]
     # Rule 4: *"If the person's words name a tool, a domain or an MCP server,
@@ -1474,18 +1475,14 @@ def _known_tool_names_for_pruning() -> frozenset:
     and `week` all appear that way — so the pruner only judges a word the
     register knows.
 
-    **Not cached for the life of the process, and that is the point.**
-    `known_tool_names()` is import-order-sensitive by its own admission
-    (`B830`, documented in `src/tool_policy.py`'s `known_tool_names`): in a process that reaches
-    `tool_policy` before `src.agent_loop`, the first call raises inside the
-    `tool_schemas`/`agent_tools` cycle, swallows it and answers **82** instead
-    of 85, dropping `host_shell` and `manage_rag`. The first call here happens
-    while `agent_loop` is still importing — `AGENT_SYSTEM_PROMPT` is built at
-    module level — so a process-lifetime cache would pin that degraded answer
-    for every prompt the install ever builds, and two tools would never be
-    pruned on. Measured on this tree: 10.5µs a call, 85 names; one call per
-    rule block instead of one per line is the right granularity and has no
-    staleness to go wrong.
+    **Not cached for the life of the process.** It was written that way
+    because `known_tool_names()` answered by import order (`B830`: 82 on a
+    cold first call, 85 once the agent loop had loaded), and the first call
+    here happens while `agent_loop` is still importing, so a process-lifetime
+    cache would have pinned the short answer. `B1118` closed that cycle and the
+    answer is the same in any order now (`B1174`: measured the same during this
+    module's import as after it). Kept uncached by choice (`Law 1`): one call
+    per rule block costs microseconds and has no staleness to go wrong.
 
     Fails OPEN: an empty register prunes nothing, which is this function's
     behaviour before the row. Pruning everything on an import error would take
@@ -1745,7 +1742,7 @@ If the user asks for a reminder/alarm before the event, pass `reminder_minutes` 
     "send_to_session": "- ```send_to_session``` — Send a message to another session. Line 1 = session_id, rest = message. Use for orchestrating work across sessions.",
     "search_chats": "- ```search_chats``` — Search past session transcripts for direct conversation evidence. Use when user asks 'did we discuss X?', 'find the conversation about Y', or when prior chat context is more appropriate than persistent memory.",
     "pipeline": "- ```pipeline``` — Run a multi-step AI pipeline. Args (JSON) with ordered steps, each specifying a model and prompt. Use for complex workflows.",
-    "ui_control": "- ```ui_control``` — Control the UI: toggle tools on/off, OPEN PANELS, open email reply drafts, switch models, change themes. Commands: `toggle <name> on/off` (names: bash/shell, web/search, research, incognito, document_editor/documents), `open_panel <name>` (panels: documents, gallery, email, sessions, notes, memories/brain, skills, settings, cookbook), `open_email_reply <uid> <folder> <reply|reply-all|ai-reply> <body text>` (opens an email compose document pre-filled with body, DOES NOT send; use this for normal “write/draft a reply saying X” requests), `set_mode agent/chat`, `switch_model <name>`, `set_theme <preset>`, `create_theme <name> <bg> <fg> <panel> <border> <accent>` (optional key=val for advanced colors AND background effects: bgPattern=<none|dots|synapse|rain|constellations|perlin-flow|petals|sparkles|embers>, bgEffectColor=#RRGGBB, bgEffectIntensity=<num>, bgEffectSize=<num>, frosted=true|false). \"open documents\" / \"open library\" / \"show gallery\" / \"open inbox\" / \"open notes\" / \"open cookbook\" all map to `open_panel <name>`. Built-in theme presets: dark, light, midnight, paper, cyberpunk, retrowave, forest, ocean, ume, copper, terminal, organs, lavender, gpt, claude, cute, guild, codehost, grove, notebook, channel, video, mintchat. For any other vibe/name, use create_theme.",
+    "ui_control": "- ```ui_control``` — Control the UI: toggle tools on/off, OPEN PANELS, open email reply drafts, switch models, change themes. Commands: `toggle <name> on/off` (names: bash/shell, web/search, research, incognito), `open_panel <name>` (panels: documents, gallery, email, sessions, notes, memories/brain, skills, settings, cookbook), `open_email_reply <uid> <folder> <reply|reply-all|ai-reply> <body text>` (opens an email compose document pre-filled with body, DOES NOT send; use this for normal “write/draft a reply saying X” requests), `set_mode agent/chat`, `switch_model <name>`, `set_theme <preset>`, `create_theme <name> <bg> <fg> <panel> <border> <accent>` (optional key=val for advanced colors AND background effects: bgPattern=<none|dots|synapse|rain|constellations|perlin-flow|petals|sparkles|embers>, bgEffectColor=#RRGGBB, bgEffectIntensity=<num>, bgEffectSize=<num>, frosted=true|false). \"open documents\" / \"open library\" / \"show gallery\" / \"open inbox\" / \"open notes\" / \"open cookbook\" all map to `open_panel <name>`. Built-in theme presets: dark, light, midnight, paper, cyberpunk, retrowave, forest, ocean, ume, copper, terminal, organs, lavender, gpt, claude, cute, guild, codehost, grove, notebook, channel, video, mintchat. For any other vibe/name, use create_theme.",
     "ask_user": "- ```ask_user``` — Ask the user a multiple-choice question when the task is genuinely ambiguous and the answer changes what you do next (pick an approach, confirm an assumption, choose a target). Args (JSON): {\"question\": \"...\", \"options\": [{\"label\": \"...\", \"description\": \"...\"?}, ...], \"multi\": false?}. 2-6 options. The user gets clickable buttons; calling this ENDS your turn and their choice comes back as your next message. Prefer sensible defaults — only ask when you truly can't proceed well without their input. LOOK BEFORE YOU ASK: if any tool in this turn's list would answer the question, call it instead — a question whose answer a tool would have printed is the defect, not the caution. Never use this to ask permission for a step the user already asked for; take the step. Holding an act that needs a person is the approval gate's job, not this tool's.",
     "update_plan": "- ```update_plan``` — While executing an approved plan, write the plan back: tick steps done or revise them. Args (JSON): {\"plan\": \"- [x] done step\\n- [ ] next step\"}. Always pass the COMPLETE checklist, not a diff. Call it after finishing each step (mark it `- [x]`) and whenever the user asks to change the plan. The user's docked plan window updates live. Does nothing if there's no active plan. Writing the plan is not doing the work: after this call, take the next unchecked step in the same turn.",
     "list_served_models": "- ```list_served_models``` — Show what the Forge (LLM-serving subsystem) is currently running. NO args. Use this for ANY 'what's running' / 'what's serving' / 'show my cookbook' / 'is anything up' query. DO NOT shell out (`ps aux`, `docker ps`, etc.) — this tool is the source of truth. Failed serve tasks include recent logs plus diagnosis/retry suggestions.\n  Use those suggestions to call `serve_model` again with an adjusted command when appropriate.",
@@ -7853,6 +7850,7 @@ async def stream_agent_loop(
                 mcp_by_server=_suite_mcp_servers,
                 within_allowed=_within_allowed,
                 pinned_tools=pinned_tools or (),
+                owner=owner,
             )
 
         def _log_the_plan(label):
@@ -8338,7 +8336,9 @@ async def stream_agent_loop(
 
         try:
             from src.context_compactor import trim_for_context
-            from src.context_budget import DEFAULT_BUDGET, agent_input_budget
+            from src.context_budget import (
+                agent_input_budget, resolve_agent_input_budget_setting,
+            )
             from src.model_context import budget_context_for_model
 
             candidate_context = budget_context_for_model(
@@ -8347,7 +8347,9 @@ async def stream_agent_loop(
                 fallback=context_length,
             )
             _route_context_lengths[(candidate_url, candidate_model)] = candidate_context
-            soft_budget = int(get_setting("agent_input_token_budget", DEFAULT_BUDGET) or 0)
+            # `B751`: role profile → instance setting → default, the one
+            # resolver the context meter reads too.
+            soft_budget = int(resolve_agent_input_budget_setting(owner).value or 0)
             if soft_budget <= 0:
                 return _without_protection(route_messages)
             before_trim_tokens = estimate_tokens(route_messages)
@@ -8362,7 +8364,7 @@ async def stream_agent_loop(
                                * tool_result_images.IMAGE_TOKEN_RESERVE)
             # `P23-04` (CHAT-M-4): the one computation the context wheel
             # draws too (`src/context_budget.py`).
-            effective_budget = agent_input_budget(candidate_context, get_setting)
+            effective_budget = agent_input_budget(candidate_context, get_setting, owner=owner)
             trimmed_messages = trim_for_context(
                 route_messages,
                 effective_budget,

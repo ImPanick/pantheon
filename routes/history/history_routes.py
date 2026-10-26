@@ -971,7 +971,11 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             if mode == "agent":
                 from src.context_budget import agent_input_budget
                 from src.settings import get_setting
-                agent_budget = int(agent_input_budget(ctx_len if window_known else 0, get_setting) or 0)
+                # `B751`: the budget this person's runs are trimmed to — their
+                # role's number when their role sets one.
+                agent_budget = int(agent_input_budget(
+                    ctx_len if window_known else 0, get_setting,
+                    owner=effective_user(request) or None) or 0)
             window = min(ctx_len, agent_budget) if (agent_budget and ctx_len) else (agent_budget or ctx_len)
             pct = round((used / window) * 100, 1) if window else 0.0
             pct = max(0.0, min(100.0, pct))

@@ -265,7 +265,7 @@ def doubly_implemented(server_tools, handlers) -> list:
 
 
 def main() -> int:
-    import src.agent_tools as agent_tools  # noqa: F401  (breaks a circular import)
+    import src.agent_tools as agent_tools  # noqa: F401  (first by choice; any order works since `B1118`)
     from src.agent_tools import TOOL_TAGS, TOOL_HANDLERS
     from src.tool_capabilities import TOOL_CAPABILITIES
     from src.tool_execution import _MCP_TOOL_MAP

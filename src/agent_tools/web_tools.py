@@ -31,15 +31,13 @@ class WebSearchTool:
         if not query:
             query = raw.split("\n")[0].strip()
         if time_filter is None:
-            q_lc = query.lower()
-            if any(kw in q_lc for kw in ("today", "latest", "breaking", "this morning", "right now", "currently")):
-                time_filter = "day"
-            elif any(kw in q_lc for kw in ("this week", "past week", "recent news", "last few days")):
-                time_filter = "week"
-            elif any(kw in q_lc for kw in ("this month", "past month")):
-                time_filter = "month"
-            elif " news" in q_lc or q_lc.startswith("news ") or q_lc.endswith(" news"):
-                time_filter = "week"
+            # `B1335`. The ladder lives beside the shared news vocabulary it
+            # cites, whole-token (`services/search/query.freshness_for`). These
+            # were this module's own substring lists — a fourth vocabulary, and
+            # one that reached the SearXNG category, because any `time_filter`
+            # sends a query to the news index.
+            from services.search.query import freshness_for
+            time_filter = freshness_for(query)
         loop = asyncio.get_running_loop()
         started = time.monotonic()
         if progress_cb:

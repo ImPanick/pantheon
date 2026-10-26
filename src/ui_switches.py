@@ -43,7 +43,28 @@ TOGGLE_ALIASES: Mapping[str, str] = MappingProxyType({
 
 # The switches `toggle` accepts, after aliasing. Order is irrelevant; the error
 # message sorts them.
-TOGGLES = frozenset({"web", "bash", "rag", "research", "incognito", "document_editor"})
+#
+# `B898`. `document_editor` was here, advertised by the tool schema and the
+# prompt, and answered "Toggle 'document_editor' set to on" — and nothing in
+# the browser reads it: the chat has no Document Editor switch
+# (`static/js/chatStream.js` `TOGGLE_CHECKBOX_IDS`), because the Document
+# Editor is a server feature flag an admin sets for everyone (`H05`), not a
+# per-browser toggle. A command that reports success and does nothing is
+# `Law 13`, so it is refused now, with the sentence below saying where the
+# switch really is. Its aliases still resolve to it, so `toggle documents off`
+# gets the same sentence rather than "Unknown toggle 'documents'". Wiring a
+# chat switch later means a `TOGGLE_CHECKBOX_IDS` entry, a name here and its
+# words in `tool_capabilities._REACH_SWITCHES` (a test fails without them).
+TOGGLES = frozenset({"web", "bash", "rag", "research", "incognito"})
+
+NOT_A_CHAT_SWITCH: Mapping[str, str] = MappingProxyType({
+    "document_editor": (
+        "There is no Document Editor switch in the chat. The Document Editor is "
+        "on or off for everyone, and an admin sets it in Settings → Agent Tools → "
+        "Switched on for everyone. To open the document library, use "
+        "open_panel documents."
+    ),
+})
 
 MODES = ("agent", "chat")
 
@@ -87,6 +108,8 @@ def switch_request(content: Any) -> dict | None:
         # union of all three, so no spelling any of them took is lost.
         state = tool_arg_truthy(parts[2])
         toggle_name = TOGGLE_ALIASES.get(toggle_name, toggle_name)
+        if toggle_name in NOT_A_CHAT_SWITCH:
+            return {"error": NOT_A_CHAT_SWITCH[toggle_name]}
         if toggle_name not in TOGGLES:
             return {"error": f"Unknown toggle '{toggle_name}'. Valid: {', '.join(sorted(TOGGLES))}"}
         return {

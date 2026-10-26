@@ -46,11 +46,30 @@ def _settings(values=None):
     return lambda key, default=None: values.get(key, default)
 
 
-def test_the_agent_budget_is_the_floor_when_the_window_is_unknown():
+def _stored_budget(monkeypatch, value):
+    """`B751`: the budget is read on the role chain now
+    (`context_budget.resolve_agent_input_budget_setting`), whose instance layer
+    is the settings store — not the `get_setting` handed in, which still reads
+    the auto ceiling. So a stored budget is stored, the way the resolver reads
+    one: present and not the shipped default."""
+    import src.settings as settings
+    real = settings.get_setting
+    monkeypatch.setattr(settings, "setting_is_explicit",
+                        lambda key, **kw: key == "agent_input_token_budget")
+    monkeypatch.setattr(settings, "get_setting",
+                        lambda key, default=None: value if key == "agent_input_token_budget"
+                        else real(key, default))
+
+
+def test_the_agent_budget_is_the_floor_when_the_window_is_unknown(monkeypatch):
+    import src.settings as settings
+    monkeypatch.setattr(settings, "setting_is_explicit", lambda key, **kw: False)
     assert agent_input_budget(0, _settings()) == DEFAULT_BUDGET == 6000
     assert agent_input_budget(128_000, _settings()) == int(128_000 * 0.85)
-    assert agent_input_budget(0, _settings({"agent_input_token_budget": 0})) == 0
-    assert agent_input_budget(128_000, _settings({"agent_input_token_budget": 9000})) == 9000
+    _stored_budget(monkeypatch, 0)
+    assert agent_input_budget(0, _settings()) == 0
+    _stored_budget(monkeypatch, 9000)
+    assert agent_input_budget(128_000, _settings()) == 9000
 
 
 # ── the route ───────────────────────────────────────────────────────────────

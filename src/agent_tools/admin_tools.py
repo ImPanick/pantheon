@@ -340,6 +340,13 @@ async def do_manage_mcp(content: str, owner: Optional[str] = None) -> Dict:
             if not srv:
                 return {"error": f"Server {sid} not found", "exit_code": 1}
             name = srv.name
+            # `B864`: the row's switched-off tools go with it — said, and
+            # handed back, as `DELETE /api/mcp/servers/{id}` does.
+            from src.mcp_manager import (
+                dropped_disabled_tools,
+                dropped_disabled_tools_sentence,
+            )
+            dropped = dropped_disabled_tools(srv.disabled_tools)
             mcp = get_mcp_manager()
             if mcp:
                 try:
@@ -348,7 +355,9 @@ async def do_manage_mcp(content: str, owner: Optional[str] = None) -> Dict:
                     pass
             db.delete(srv)
             db.commit()
-            return {"response": f"Deleted MCP server '{name}'", "exit_code": 0}
+            said = dropped_disabled_tools_sentence(name, dropped)
+            return {"response": f"Deleted MCP server '{name}'." + (f" {said}" if said else ""),
+                    "dropped_disabled_tools": dropped, "exit_code": 0}
         finally:
             db.close()
 
@@ -647,6 +656,245 @@ async def do_manage_tokens(content: str, owner: Optional[str] = None) -> Dict:
 # Settings/preferences management tool
 # ---------------------------------------------------------------------------
 
+# `B42`. Settings that exist to keep a human in the loop, which the
+# agent may READ and may not WRITE.
+#
+# `B554`: at module scope, so a test asks the set itself — "is
+# `agent_max_rounds` a member" — instead of searching this block's source text,
+# which is code and prose interleaved and cannot tell a key from a sentence
+# about one (`Law 20`). It was a local inside `do_manage_settings`, which is
+# why the test read source.
+#
+# Measured before it was written: `manage_settings set
+# agent_email_confirm false` moved the stored value from True to False,
+# and `set trust_rung allow_listed` moved the confirmation ladder from
+# `gate_on_untrusted`. Both succeeded. The agent could take off the gate
+# that requires a person to approve an email before it sends, and lower
+# the ladder that decides when it has to ask at all.
+#
+# That is reachable by prompt injection, because the tool call is the
+# same whether the instruction came from the operator or from a web page
+# the agent was asked to read. **A gate whose purpose is "a human must
+# confirm" cannot be removable through the channel the gate exists to
+# distrust** — not even at what looks like the operator's own request,
+# because looking like it is precisely what an injection does. Settings
+# is where a request provably came from the person, and `H18` is the
+# commit that gives all three of these a control there.
+#
+# `agent_loop.py` already argues this for role profiles: a profile "may
+# only raise strictness — a profile that lowers the rung hands a user a
+# way to switch their own confirmation gate off." The same sentence
+# applies with more force to the agent itself.
+#
+# Deliberately NOT here: `agent_max_rounds` and `agent_max_tool_calls`.
+# They are runaway and cost caps with no approval semantics, "give
+# yourself more steps" is a real thing to ask for, and a restriction
+# that has to be argued each time is one nobody keeps. Filed as `P7-12`.
+#
+# `P7-12`, decided (`D-2026-09-08-04`) and built 2026-09-27: they stay
+# writable, with the decision's failsafes. A raise is for the run that
+# asked and is never saved (`_loop_cap_raise` below, through
+# `src/run_limits.py`); a raise of a number the owner typed asks every
+# time (`self_escalation_for`); a lowering is saved as it always was;
+# and the loop's information ledger stops a run that brings nothing new.
+_SELF_RESTRAINT_KEYS = frozenset({
+    "agent_email_confirm",
+    # `P12-10`. The deadline after which an unanswered approval card
+    # closes as denied. Declaring it made it settable, and this is the
+    # same argument `agent_email_confirm` makes: a longer deadline is a
+    # card that stays answerable instead of closing denied, and a
+    # shorter one is the gate the operator set moving without them. The
+    # request looks identical whether it came from the person or from a
+    # page the agent was told to read, which is the whole reason the
+    # gate exists.
+    "approval_timeout_seconds",
+    # `P22-17` (`D-2026-10-02-01` §1). The same deadline for a parked
+    # workflow step's card, for the same reason.
+    "workflow_approval_timeout_seconds",
+    # Added by `H16`, which declared it — and declaring a key hands it
+    # to the agent as well as to the person, because `DEFAULT_SETTINGS`
+    # is the allowlist for both. A checker that the checked party can
+    # switch off is not a check.
+    "agent_verifier_subagent",
+    # `P12-05b`. The six auth throttles, for the reason above in its
+    # sharpest form: `FORBIDDEN.md` Part 2 lists the auth rate limiters
+    # as a control against credential stuffing, and declaring them so an
+    # admin can tune them declares them to the agent at the same time.
+    # A throttle that prompt injection can raise is not a throttle, and
+    # the tool call looks identical whether the instruction came from the
+    # operator or from a page the agent was asked to read.
+    #
+    # The upload throttle and the ten byte caps are NOT here. They are
+    # capacity, not an auth gate — "give me a bigger upload limit" is a
+    # real thing to ask for, and a restriction that has to be argued
+    # each time is one nobody keeps: the reasoning `agent_max_rounds` and
+    # `agent_max_tool_calls` already carry above this set. (This sentence
+    # once had to avoid those two names, because a test searched this
+    # block's text for them; it asks the set now — `B554`.)
+    "auth_login_rate_limit",
+    "auth_login_rate_window_seconds",
+    "auth_signup_rate_limit",
+    "auth_signup_rate_window_seconds",
+    "auth_setup_rate_limit",
+    "auth_setup_rate_window_seconds",
+    # `P20-02`. The workstation is the wall between the agent's shell
+    # and the process that holds every key (`D-2026-09-30-03`), so each
+    # of its switches is a wall the agent would be moving from inside.
+    # Off, or routing off, puts `bash` back in Pantheon's container; a
+    # new address sends the token and every command to whoever answers
+    # there; `sudo` and the network mode widen what a run can reach.
+    # Declaring them for the admin declared them to the agent — the
+    # `H16` lesson again — and the token is already a secret by suffix.
+    "workstation_enabled",
+    "workstation_url",
+    "workstation_backend",
+    "workstation_sudo",
+    "workstation_network",
+    "workstation_route_tools",
+    # `B980`: which certificate is trusted decides who receives the
+    # token and every command over `https://`.
+    "workstation_tls_pin",
+    # `P24-10`. An agent that could unpause all agents, or raise how
+    # many run at once, would be moving its own wall from inside.
+    "agents_paused",
+    "agents_max_concurrent",
+})
+#
+# `trust_rung` is NOT here, and the first version of this set had it.
+# Removing it is a correction, not a softening.
+#
+# The claim was "the agent lowered the confirmation ladder from
+# `gate_on_untrusted` to `allow_listed`". The measurement was right and
+# the word "lowered" was not: `allow_listed` is one of
+# `_RUNGS_THAT_ASK_UNTAINTED`, so it asks in clean runs that
+# `gate_on_untrusted` lets through. It may well be the *stricter* of
+# the two.
+#
+# And the rungs are not a ladder that can be read from outside.
+# `decision_for` carries the reproduction: on `ask_every_time`,
+# approving one harmless command in a clean run used to spend a bypass
+# that a later hostile page then rode — so "the two stricter rungs were
+# strictly less protected than the one they sit below." That is fixed,
+# and the lesson is that no total order exists to check a write against.
+#
+# There is also a reasoned test in the other direction:
+# `test_the_chat_tool_still_sets_a_rung_it_does_implement` sets
+# `ask_every_time` from chat, and `P7-03`'s framing is "a person being
+# able to set it". Asking for more confirmation in the same breath as
+# the work is a real thing to want.
+#
+# So: shipping a refusal here would have been a security change resting
+# on an ordering the codebase says does not hold. Filed as `P7-13`.
+#
+# `P7-13`, answered 2026-09-27. The ordering exists now, in one place:
+# `TRUST_LADDER` (`src/tool_capabilities.py`), where each rung is the
+# set of situations it stops and asks in, a strict superset of the one
+# below — and `decision_for` reads those sets, so the ladder is the
+# gate. The direction this write should not take unasked can be named —
+# *looser* (`rung_direction`) — and it already does not take it
+# unasked: this tool is `admin_change`, which every rung that has a
+# looser rung below it stops and asks about in a clean chat, and every
+# rung asks about once untrusted content is in. The one path with no
+# card is a standing allow rule the person saved for this call on
+# `allow_listed` — their own standing yes. So the key stays writable,
+# as `D-2026-09-11-01` and `D-2026-09-12-01` decided, and the reply
+# below says which way a move went, in the ladder's words.
+
+# One sentence per key, because they are not the same kind of thing and
+# a refusal that describes the wrong one reads as a canned excuse.
+_SELF_RESTRAINT_WHY = {
+    "agents_paused":
+        "is the switch a person uses to stop every hired agent at once",
+    "agents_max_concurrent":
+        "is how many hired agents a person lets run at once",
+    "agent_email_confirm":
+        "decides whether a person has to approve an email before I send it",
+    "agent_verifier_subagent":
+        "is the check on whether I actually did what I said I did",
+    "auth_login_rate_limit":
+        "is the throttle that stops someone guessing passwords at your login",
+    "auth_login_rate_window_seconds":
+        "is the window that login throttle counts attempts over",
+    "auth_signup_rate_limit":
+        "is the throttle on account creation",
+    "auth_signup_rate_window_seconds":
+        "is the window that signup throttle counts attempts over",
+    "auth_setup_rate_limit":
+        "is the throttle on first-run admin setup",
+    "auth_setup_rate_window_seconds":
+        "is the window that setup throttle counts attempts over",
+    "approval_timeout_seconds":
+        "is how long you have to answer an approval before it is denied",
+    "workflow_approval_timeout_seconds":
+        "is how long a paused workflow step waits for your approval before it is denied",
+    "workstation_enabled":
+        "decides whether my shell runs in the workstation or beside your keys",
+    "workstation_route_tools":
+        "decides whether my shell and file tools run in the workstation",
+    "workstation_url":
+        "is where the workstation is, and whoever answers there gets my commands",
+    "workstation_backend":
+        "is which kind of machine the workstation is, which an admin decides",
+    "workstation_sudo":
+        "decides whether I can act as root inside the workstation",
+    "workstation_network":
+        "is how much of the network the workstation may reach",
+    "workstation_tls_pin":
+        "is which certificate Pantheon trusts for the workstation, and so who gets "
+        "my commands",
+}
+
+# `B553`. Where a person can change each of those — the place the refusal
+# sends them. The refusal used to say "Open Settings and change it there" for
+# every key, and for nine of them there was nothing there to open: the six auth
+# throttles, the two approval deadlines and the workstation's backend have no
+# control in the Settings page (`P12-07`, which would have added them, was
+# deferred: `D-2026-10-17-02` §5). A signpost to a panel with no such control is
+# worse than either a plain refusal or a working control (`Law 15`).
+#
+# `(Settings section, the control's label, its element id)` where the page has
+# a control — the test holds the id and the label to `static/index.html` and
+# the key to the script that saves it — and `None` where it has none, which the
+# refusal answers with the door that does exist: an admin's
+# `POST /api/auth/settings`, which accepts every declared key, or the settings
+# file. A key added to `_SELF_RESTRAINT_KEYS` without an entry here fails that
+# test rather than falling back to a sentence that may be false.
+_SELF_RESTRAINT_WHERE = {
+    "agent_email_confirm": ("Email", "Hold agent email for approval", "set-emailConfirm"),
+    "agent_verifier_subagent": ("Agent Tools", "Verify effectful turns", "set-agentVerifier"),
+    "agents_paused": ("Agents", "Pause all agents", "agents-pausedToggle"),
+    "agents_max_concurrent": ("Agents", "Most agent runs at once", "agents-maxInput"),
+    "workstation_enabled": ("Workstation", "Workstation on", "ws-enabled"),
+    "workstation_url": ("Workstation", "Address", "ws-url"),
+    "workstation_tls_pin": ("Workstation", "Certificate", "ws-tls-pin"),
+    "workstation_sudo": ("Workstation", "Agents may use sudo", "ws-sudo"),
+    "workstation_network": ("Workstation", "Network", "ws-network"),
+    "workstation_route_tools": (
+        "Workstation", "Agent shell, Python and file tools run in the workstation",
+        "ws-route-tools"),
+    "workstation_backend": None,
+    "approval_timeout_seconds": None,
+    "workflow_approval_timeout_seconds": None,
+    "auth_login_rate_limit": None,
+    "auth_login_rate_window_seconds": None,
+    "auth_signup_rate_limit": None,
+    "auth_signup_rate_window_seconds": None,
+    "auth_setup_rate_limit": None,
+    "auth_setup_rate_window_seconds": None,
+}
+
+
+def self_restraint_where(key: str) -> str:
+    """`B553`. One sentence naming a surface that can set `key`, for a refusal."""
+    where = _SELF_RESTRAINT_WHERE.get(key)
+    if where:
+        section, label, _element_id = where
+        return f"Change it in Settings → {section} → “{label}”."
+    return (f"Settings has no control for it yet, so an admin sets it directly: "
+            f"POST /api/auth/settings with {{\"{key}\": …}}, or the settings.json "
+            f"file in Pantheon's data folder.")
+
+
 async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
     """Manage user settings and preferences."""
     try:
@@ -664,8 +912,10 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
         # engine / reminder channel from chat actually takes effect.
         from src.settings import (
             DEFAULT_SETTINGS,
+            LIMIT_RANGES,
             RETIRED_SETTING_KEYS,
             clamp_int_setting,
+            clamp_limit_setting,
             int_setting_ranges,
             load_settings,
             save_settings,
@@ -677,187 +927,6 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
             "brave_api_key", "google_pse_key", "google_pse_cx",
             "tavily_api_key", "serper_api_key", "app_public_url",
         }
-        # `B42`. Settings that exist to keep a human in the loop, which the
-        # agent may READ and may not WRITE.
-        #
-        # Measured before it was written: `manage_settings set
-        # agent_email_confirm false` moved the stored value from True to False,
-        # and `set trust_rung allow_listed` moved the confirmation ladder from
-        # `gate_on_untrusted`. Both succeeded. The agent could take off the gate
-        # that requires a person to approve an email before it sends, and lower
-        # the ladder that decides when it has to ask at all.
-        #
-        # That is reachable by prompt injection, because the tool call is the
-        # same whether the instruction came from the operator or from a web page
-        # the agent was asked to read. **A gate whose purpose is "a human must
-        # confirm" cannot be removable through the channel the gate exists to
-        # distrust** — not even at what looks like the operator's own request,
-        # because looking like it is precisely what an injection does. Settings
-        # is where a request provably came from the person, and `H18` is the
-        # commit that gives all three of these a control there.
-        #
-        # `agent_loop.py` already argues this for role profiles: a profile "may
-        # only raise strictness — a profile that lowers the rung hands a user a
-        # way to switch their own confirmation gate off." The same sentence
-        # applies with more force to the agent itself.
-        #
-        # Deliberately NOT here: `agent_max_rounds` and `agent_max_tool_calls`.
-        # They are runaway and cost caps with no approval semantics, "give
-        # yourself more steps" is a real thing to ask for, and a restriction
-        # that has to be argued each time is one nobody keeps. Filed as `P7-12`.
-        #
-        # `P7-12`, decided (`D-2026-09-08-04`) and built 2026-09-27: they stay
-        # writable, with the decision's failsafes. A raise is for the run that
-        # asked and is never saved (`_loop_cap_raise` below, through
-        # `src/run_limits.py`); a raise of a number the owner typed asks every
-        # time (`self_escalation_for`); a lowering is saved as it always was;
-        # and the loop's information ledger stops a run that brings nothing new.
-        _SELF_RESTRAINT_KEYS = {
-            "agent_email_confirm",
-            # `P12-10`. The deadline after which an unanswered approval card
-            # closes as denied. Declaring it made it settable, and this is the
-            # same argument `agent_email_confirm` makes: a longer deadline is a
-            # card that stays answerable instead of closing denied, and a
-            # shorter one is the gate the operator set moving without them. The
-            # request looks identical whether it came from the person or from a
-            # page the agent was told to read, which is the whole reason the
-            # gate exists.
-            "approval_timeout_seconds",
-            # `P22-17` (`D-2026-10-02-01` §1). The same deadline for a parked
-            # workflow step's card, for the same reason.
-            "workflow_approval_timeout_seconds",
-            # Added by `H16`, which declared it — and declaring a key hands it
-            # to the agent as well as to the person, because `DEFAULT_SETTINGS`
-            # is the allowlist for both. A checker that the checked party can
-            # switch off is not a check.
-            "agent_verifier_subagent",
-            # `P12-05b`. The six auth throttles, for the reason above in its
-            # sharpest form: `FORBIDDEN.md` Part 2 lists the auth rate limiters
-            # as a control against credential stuffing, and declaring them so an
-            # admin can tune them declares them to the agent at the same time.
-            # A throttle that prompt injection can raise is not a throttle, and
-            # the tool call looks identical whether the instruction came from the
-            # operator or from a page the agent was asked to read.
-            #
-            # The upload throttle and the ten byte caps are NOT here. They are
-            # capacity, not an auth gate — "give me a bigger upload limit" is a
-            # real thing to ask for, and a restriction that has to be argued
-            # each time is one nobody keeps: the reasoning the two loop caps
-            # already carry a few lines above this set, spelled without naming
-            # them because `test_the_loop_caps_are_deliberately_not_in_the_set`
-            # scopes a substring search to this block and cannot tell a key
-            # from prose about one (`Law 20`, `H02`'s exact shape).
-            "auth_login_rate_limit",
-            "auth_login_rate_window_seconds",
-            "auth_signup_rate_limit",
-            "auth_signup_rate_window_seconds",
-            "auth_setup_rate_limit",
-            "auth_setup_rate_window_seconds",
-            # `P20-02`. The workstation is the wall between the agent's shell
-            # and the process that holds every key (`D-2026-09-30-03`), so each
-            # of its switches is a wall the agent would be moving from inside.
-            # Off, or routing off, puts `bash` back in Pantheon's container; a
-            # new address sends the token and every command to whoever answers
-            # there; `sudo` and the network mode widen what a run can reach.
-            # Declaring them for the admin declared them to the agent — the
-            # `H16` lesson again — and the token is already a secret by suffix.
-            "workstation_enabled",
-            "workstation_url",
-            "workstation_backend",
-            "workstation_sudo",
-            "workstation_network",
-            "workstation_route_tools",
-            # `B980`: which certificate is trusted decides who receives the
-            # token and every command over `https://`.
-            "workstation_tls_pin",
-            # `P24-10`. An agent that could unpause all agents, or raise how
-            # many run at once, would be moving its own wall from inside.
-            "agents_paused",
-            "agents_max_concurrent",
-        }
-        #
-        # `trust_rung` is NOT here, and the first version of this set had it.
-        # Removing it is a correction, not a softening.
-        #
-        # The claim was "the agent lowered the confirmation ladder from
-        # `gate_on_untrusted` to `allow_listed`". The measurement was right and
-        # the word "lowered" was not: `allow_listed` is one of
-        # `_RUNGS_THAT_ASK_UNTAINTED`, so it asks in clean runs that
-        # `gate_on_untrusted` lets through. It may well be the *stricter* of
-        # the two.
-        #
-        # And the rungs are not a ladder that can be read from outside.
-        # `decision_for` carries the reproduction: on `ask_every_time`,
-        # approving one harmless command in a clean run used to spend a bypass
-        # that a later hostile page then rode — so "the two stricter rungs were
-        # strictly less protected than the one they sit below." That is fixed,
-        # and the lesson is that no total order exists to check a write against.
-        #
-        # There is also a reasoned test in the other direction:
-        # `test_the_chat_tool_still_sets_a_rung_it_does_implement` sets
-        # `ask_every_time` from chat, and `P7-03`'s framing is "a person being
-        # able to set it". Asking for more confirmation in the same breath as
-        # the work is a real thing to want.
-        #
-        # So: shipping a refusal here would have been a security change resting
-        # on an ordering the codebase says does not hold. Filed as `P7-13`.
-        #
-        # `P7-13`, answered 2026-09-27. The ordering exists now, in one place:
-        # `TRUST_LADDER` (`src/tool_capabilities.py`), where each rung is the
-        # set of situations it stops and asks in, a strict superset of the one
-        # below — and `decision_for` reads those sets, so the ladder is the
-        # gate. The direction this write should not take unasked can be named —
-        # *looser* (`rung_direction`) — and it already does not take it
-        # unasked: this tool is `admin_change`, which every rung that has a
-        # looser rung below it stops and asks about in a clean chat, and every
-        # rung asks about once untrusted content is in. The one path with no
-        # card is a standing allow rule the person saved for this call on
-        # `allow_listed` — their own standing yes. So the key stays writable,
-        # as `D-2026-09-11-01` and `D-2026-09-12-01` decided, and the reply
-        # below says which way a move went, in the ladder's words.
-
-        # One sentence per key, because they are not the same kind of thing and
-        # a refusal that describes the wrong one reads as a canned excuse.
-        _SELF_RESTRAINT_WHY = {
-            "agents_paused":
-                "is the switch a person uses to stop every hired agent at once",
-            "agents_max_concurrent":
-                "is how many hired agents a person lets run at once",
-            "agent_email_confirm":
-                "decides whether a person has to approve an email before I send it",
-            "agent_verifier_subagent":
-                "is the check on whether I actually did what I said I did",
-            "auth_login_rate_limit":
-                "is the throttle that stops someone guessing passwords at your login",
-            "auth_login_rate_window_seconds":
-                "is the window that login throttle counts attempts over",
-            "auth_signup_rate_limit":
-                "is the throttle on account creation",
-            "auth_signup_rate_window_seconds":
-                "is the window that signup throttle counts attempts over",
-            "auth_setup_rate_limit":
-                "is the throttle on first-run admin setup",
-            "auth_setup_rate_window_seconds":
-                "is the window that setup throttle counts attempts over",
-            "approval_timeout_seconds":
-                "is how long you have to answer an approval before it is denied",
-            "workstation_enabled":
-                "decides whether my shell runs in the workstation or beside your keys",
-            "workstation_route_tools":
-                "decides whether my shell and file tools run in the workstation",
-            "workstation_url":
-                "is where the workstation is, and whoever answers there gets my commands",
-            "workstation_backend":
-                "is which kind of machine the workstation is, which an admin decides",
-            "workstation_sudo":
-                "decides whether I can act as root inside the workstation",
-            "workstation_network":
-                "is how much of the network the workstation may reach",
-            "workstation_tls_pin":
-                "is which certificate Pantheon trusts for the workstation, and so who gets "
-                "my commands",
-        }
-
         def _is_self_restraint(k):
             return k in _SELF_RESTRAINT_KEYS
 
@@ -1040,11 +1109,12 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
             if _is_self_restraint(key):
                 # Names the setting and says where to change it: a refusal that
                 # does not say where to go is a refusal the person works around.
+                # `B553`: and names a place that can actually set it.
                 return {"response": f"'{key}' {_self_restraint_why(key)}, so I can't change it "
                                     f"from chat — including if you ask me to, because a message "
                                     f"asking for that looks the same whether it came from you or "
-                                    f"from something I was reading. Open Settings and change it "
-                                    f"there.", "exit_code": 0}
+                                    f"from something I was reading. "
+                                    f"{self_restraint_where(key)}", "exit_code": 0}
             raised = _loop_cap_raise(args)
             if raised is not None:
                 return raised
@@ -1088,6 +1158,25 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
                     clamp_note = (f" {asked:,} is outside the range Settings allows "
                                   f"({low:,} to {high:,}), so it was clamped to "
                                   f"{value:,}, as Settings does.")
+            # `B1027`. The sibling table: the nullable limits (`LIMIT_RANGES` —
+            # byte caps, context budgets, files per request, the skills
+            # catalogue) through the route's own rule, `clamp_limit_setting`.
+            # Their shipped value is `None`, so `_coerce` above passes whatever
+            # the model wrote straight through: `set chat_upload_max_bytes abc`
+            # stored "abc" (the resolver fell back to its default while the
+            # panel showed `abc`), and `set context_skill_index_chars 5` stored
+            # 5 under the floor of 200.
+            if key in LIMIT_RANGES:
+                asked = value
+                try:
+                    value = clamp_limit_setting(key, value)
+                except ValueError as exc:
+                    return {"error": f"{exc}. Nothing changed.", "exit_code": 1}
+                if value is not None and value != int(asked):
+                    low, high = LIMIT_RANGES[key]
+                    clamp_note = (f" {int(asked):,} is outside the range Settings allows "
+                                  f"({low:,} to {high:,}), so it was clamped to "
+                                  f"{value:,}, as Settings does.")
             s = load_settings()
             # `P7-13`. Which way the ladder moved, said on the reply — read
             # before the write, so "stricter than" names what it was.
@@ -1114,6 +1203,10 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
                     "response": f"Set {key} = {value}. {rung_move_sentence(rung_before, value)}",
                     "exit_code": 0,
                 }
+            if value is None and key in LIMIT_RANGES:
+                # `B1027`: blank or null unsets a nullable limit, as Settings does.
+                return {"response": f"Cleared {key}: the environment or the built-in "
+                                    f"default decides it now.", "exit_code": 0}
             return {"response": f"Set {key} = {value}.{clamp_note}", "exit_code": 0}
 
         elif action == "delete" or action == "reset":
@@ -1130,7 +1223,8 @@ async def do_manage_settings(content: str, owner: Optional[str] = None) -> Dict:
                 # is a rule that inverts the day someone changes a default, and
                 # a control the agent cannot touch is easier to reason about
                 # than one it can touch carefully.
-                return {"response": f"'{key}' {_self_restraint_why(key)}. Reset it in Settings.",
+                return {"response": f"'{key}' {_self_restraint_why(key)}, so I can't reset it "
+                                    f"from chat. {self_restraint_where(key)}",
                         "exit_code": 0}
             # `P7-12`. Resetting a cap below its default *raises* it: a run's,
             # never the saved one.

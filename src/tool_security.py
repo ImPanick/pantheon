@@ -584,10 +584,10 @@ def plan_mode_disabled_tools() -> Set[str]:
     non-admin path — see `MCP_NAMESPACE_BLOCK_REASON` above, which is about a
     different question and is accurate."""
     try:
-        # agent_tools / tool_parsing / tool_schemas form a mutually-circular
-        # cluster that only resolves cleanly when entered via agent_tools.
-        # Import it first so the lazy schema import works even from a cold
-        # import (e.g. tests) — not just after the app has wired everything up.
+        # `B1174`. `agent_tools` first is kept by choice (`Law 1`); since
+        # `B1118` the three tool modules import in any order, cold or warm
+        # (`tests/test_the_tool_modules_import_in_any_order.py`), so this
+        # line no longer guards a cycle.
         import src.agent_tools  # noqa: F401
         from src.tool_schemas import FUNCTION_TOOL_SCHEMAS
 

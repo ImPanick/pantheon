@@ -546,11 +546,14 @@ def test_an_override_does_not_re_enable_a_hidden_tool():
     _patch(Factory, mgr, {"overrides": {"tail_log": {"read_only": True}}})
     assert json.loads(_row(Factory)["disabled_tools"]) == ["tail_log"]
 
-    from routes.mcp.mcp_routes import _load_disabled_map
+    # `B1098`: the route's own copy of this read is gone; `GET /api/mcp/tools`
+    # reads `mcp_manager.load_disabled_map`, which imports the session from
+    # `core.database` when called.
+    from src.mcp_manager import load_disabled_map
 
-    with mock.patch("routes.mcp.mcp_routes.SessionLocal", Factory), \
+    with mock.patch("core.database.SessionLocal", Factory), \
             mock.patch("src.mcp_manager.SessionLocal", Factory):
-        payload = {t["name"]: t for t in mgr.get_all_tools(_load_disabled_map())}
+        payload = {t["name"]: t for t in mgr.get_all_tools(load_disabled_map())}
     assert payload["tail_log"]["is_disabled"] is True
     assert payload["tail_log"]["is_readonly"] is True
 

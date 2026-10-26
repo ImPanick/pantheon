@@ -252,10 +252,20 @@ def test_an_unknown_window_takes_the_conservative_branch_and_says_so():
     assert room["room"] < tool_suite_room(W128K, _settings())["room"]
 
 
-def test_an_explicit_input_budget_is_honoured_by_the_rooms_budget():
-    """`CHAT-M-4`'s computation is the one that answers, not a second one."""
-    gs = _settings({"agent_input_token_budget": 9000})
-    assert tool_suite_room(W128K, gs)["budget"] == 9000
+def test_an_explicit_input_budget_is_honoured_by_the_rooms_budget(monkeypatch):
+    """`CHAT-M-4`'s computation is the one that answers, not a second one.
+
+    `B751`: the budget is read on the role chain, whose instance layer is the
+    settings store, so the stored budget is set there rather than in the
+    `get_setting` handed in (which still reads the auto ceiling)."""
+    import src.settings as settings
+    real = settings.get_setting
+    monkeypatch.setattr(settings, "setting_is_explicit",
+                        lambda key, **kw: key == "agent_input_token_budget")
+    monkeypatch.setattr(settings, "get_setting",
+                        lambda key, default=None: 9000 if key == "agent_input_token_budget"
+                        else real(key, default))
+    assert tool_suite_room(W128K, _settings())["budget"] == 9000
 
 
 # ── 3. the plan: the whole suite, or a deterministic part ────────────────────

@@ -38,6 +38,7 @@ from src.settings import (
     LIMIT_RANGES,
     RETIRED_SETTING_KEYS,
     clamp_int_setting,
+    clamp_limit_setting,
     for_browser as _settings_for_browser,
     int_setting_ranges,
 )
@@ -1133,27 +1134,14 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                 except (TypeError, ValueError):
                     raise HTTPException(400, f"{key} must be an integer")
             if key in _NULLABLE_INT_RANGES:
-                lo, hi = _NULLABLE_INT_RANGES[key]
-                if val is None or (isinstance(val, str) and not val.strip()):
-                    val = None
-                else:
-                    if isinstance(val, bool):
-                        # `True` is an int in Python and a cap of 1 is not what
-                        # anyone meant. Refuse rather than store a limit of one
-                        # byte or one request.
-                        raise HTTPException(
-                            400,
-                            f"{key} must be a whole number of "
-                            f"{'seconds' if key.endswith('_seconds') else 'bytes or requests'}, "
-                            f"or null to use the default")
-                    try:
-                        val = int(val)
-                    except (TypeError, ValueError):
-                        raise HTTPException(
-                            400,
-                            f"{key} must be an integer, or null to let the "
-                            f"environment or the built-in default decide")
-                    val = max(lo, min(val, hi))
+                # `B1027`. The rule — blank or null unsets, a boolean is
+                # refused, an integer is held to the range — is
+                # `src.settings.clamp_limit_setting` now, so the agent's
+                # `manage_settings` stores what this route stores.
+                try:
+                    val = clamp_limit_setting(key, val)
+                except ValueError as exc:
+                    raise HTTPException(400, str(exc))
             if key == "netagent_url" and str(val or "").strip():
                 # `P17-01`. Same reasoning as the `networks` block below, and
                 # `P17-09`'s lesson applied before it can happen again: this
