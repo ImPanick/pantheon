@@ -100,7 +100,7 @@ document.addEventListener('DOMContentLoaded', markComposerUserEdited, { once: tr
 /* Publish the icon rail's + wide sidebar's current widths as CSS vars so
    fullscreen panels can reserve space on the left for whichever is
    currently visible (the two are mutually exclusive — see
-   sidebar-layout.js:57). Updates live as either resizes; toggles to 0
+   sidebar-layout.js's _applyStoredSidebarMode). Updates live as either resizes; toggles to 0
    when hidden so the fullscreen view reclaims the space. */
 {
   const rail = document.getElementById('icon-rail');

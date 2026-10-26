@@ -6739,7 +6739,7 @@ def setup_email_routes():
                 # P18-07. The port and the security mode are set together
                 # because they were not, and the pair they produced is one this
                 # app's own validator rejects: `smtp_security` defaults to
-                # `"ssl"` (core/database.py:416, and `_smtp_security_mode`
+                # `"ssl"` (`EmailAccount.smtp_security` in core/database.py, and `_smtp_security_mode`
                 # returns `ssl` for the 465 default the create endpoint uses),
                 # so an account whose SMTP host was blank came out of this
                 # branch as **SSL on port 587** — and the transport guard

@@ -179,7 +179,7 @@ def _build_provider_chain(primary: str) -> List[str]:
 #
 # The decision (`Law 1`/`Law 14`): wire it to the path that exists rather than
 # remove it. The **content** half of the same pipeline has cached for two hours
-# the whole time (`content.py:195`, reached from `comprehensive_web_search`), so
+# the whole time (`content.py`'s `fetch_webpage_content`, reached from `comprehensive_web_search`), so
 # this extends scaffolding that is already here and already proven on the live
 # path; what was missing was the cheap half, which is the half with somebody
 # else's provider quota behind it.
@@ -573,7 +573,7 @@ def comprehensive_web_search(
     # Fetch content in parallel
     fetched_content = []
     # Why a page is missing from FETCHED PAGE CONTENT. `_empty_result`
-    # (`content.py:161`) has carried an `error` since it was written and every
+    # (in `content.py`) has carried an `error` since it was written and every
     # caller dropped it, so the block said "fetched 3 pages" of five and never
     # which two, or why. The owner's 2026-10-09 search is the case: 3 of 5, and
     # *which* two failed is not recoverable from the export — which is the

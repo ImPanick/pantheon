@@ -619,7 +619,7 @@ initSteerControl();
  *
  * There were three copies of this map and they disagreed. This one was
  * complete; the two in `slashCommands.js` were missing `rag` and `incognito`,
- * which is why `_cmdToggleRag` — a handler that exists, at `:1220` — could not
+ * which is why `_cmdToggleRag` — a handler that exists, in `slashCommands.js` — could not
  * have worked even if it had been registered: `toggleMap['rag']` was
  * `undefined`, `getElementById(undefined)` was null, and the function returned
  * without doing anything or saying so.

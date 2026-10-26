@@ -211,7 +211,7 @@ OWN_MATERIAL_CLOSE = "<<<END_USER_SAVED_MATERIAL>>>"
 #
 # `FIX-2026-10-09` item 1. Two things Pantheon adds per turn arrived as bare
 # `user` messages with no mark on them at all: the delivery register
-# (`ChatProcessor._style_and_register`, `src/chat_processor.py:591`) and the
+# (`ChatProcessor._style_and_register` in `src/chat_processor.py`) and the
 # date/time (`src/user_time.py`). `src/llm_core.py`'s consecutive-user merge
 # then joined them to the person's own words with `\n\n`, so the model received
 # one turn reading *"How to pitch this reply: … \n\n <the person's question>"*.
@@ -223,7 +223,7 @@ OWN_MATERIAL_CLOSE = "<<<END_USER_SAVED_MATERIAL>>>"
 # instruction for this turn, and they cannot live in a `system` message —
 # `llm_core` hoists and concatenates every `system` message into one leading
 # block, and local llama.cpp / LM Studio backends key their KV cache off that
-# block byte-for-byte (issue #2927, `src/chat_processor.py:186-199`). So they
+# block byte-for-byte (issue #2927, `ChatProcessor.build_context_preface`). So they
 # stay `user`-role messages and get one plain header instead, which is also
 # what lets the merge keep them off the person's turn.
 TURN_NOTE_HEADER = (

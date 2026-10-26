@@ -1151,7 +1151,7 @@ async function _composeNew() {
   }
 }
 
-// `B866`'s sweep: was a DOM round-trip, which does not escape `"`. `:77`/`:79`
+// `B866`'s sweep: was a DOM round-trip, which does not escape `"`. `_emailTagPillHtml`'s pills
 // interpolate into `data-calendar-event-uid="…"`, `data-email-filter-tag="…"`
 // and `title="…"`, and the tag comes off a third-party message.
 function _esc(text) {

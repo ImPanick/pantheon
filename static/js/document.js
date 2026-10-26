@@ -2165,7 +2165,7 @@ import { scrollBehavior } from './motion.js';
       const e = document.getElementById(id);
       if (!e || !e.parentElement) return false;
       // Only count items still LIVING in the header itself — the runtime
-      // rearrangement (~line 3217) moves several buttons into the footer, and
+      // rearrangement (in `openPanel`) moves several buttons into the footer, and
       // we don't want a button parked elsewhere to keep this top row alive.
       if (!hdr.contains(e)) return false;
       return e.style.display !== 'none';
@@ -9174,7 +9174,7 @@ import { scrollBehavior } from './motion.js';
   }
 
   // `B866`'s sweep: escaped four characters, not five. Also handed to
-  // `documentLibrary.js` as `config.esc` (`:163`), so it was two files' escaper.
+  // `documentLibrary.js` as `config.esc` (in `init`), so it was two files' escaper.
   function _esc(s) {
     return uiModule.esc(s || '');
   }
@@ -11203,7 +11203,7 @@ import { scrollBehavior } from './motion.js';
     if (extra > 0) parts.push(`<span>+${extra} more changes</span>`);
     return parts.join('<br>');
   }
-  // `B866`'s sweep: escaped `& < >` and not `"`, and `:3434` interpolates it
+  // `B866`'s sweep: escaped `& < >` and not `"`, and `_loadPantheonAttachItems` interpolates it
   // into `src="…"` for an email attachment thumbnail.
   function _escHtml(s) {
     return uiModule.esc(String(s == null ? '' : s));

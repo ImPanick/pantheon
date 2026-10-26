@@ -6,7 +6,7 @@
 **THE DEFECT THAT OPENED THIS HAS A MEASURABLE CONSEQUENCE.** *Can this account
 send mail* was written by hand in three places:
 
-    routes/email_routes.py:1334   host and user and (password or oauth_provider)
+    routes/email_routes.py        host and user and (password or oauth_provider)
     routes/note/note_routes.py    host and user and (password or oauth_provider)
     mcp_servers/email_server.py   host and user and  password
 

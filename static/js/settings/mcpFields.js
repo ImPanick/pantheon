@@ -382,7 +382,7 @@ export function parseJsonField(raw, kind) {
  * what shape would have worked. The Settings form read `r.status` and threw
  * `data` away, so *"args must be a JSON array, e.g. [\"-y\", \"pkg\"]"* was
  * rendered as **"Failed (400)"** — the server explaining itself into a socket
- * nobody was listening on. Measured 2026-09-19 at `settings.js:5686`.
+ * nobody was listening on. Measured 2026-09-19 in `settings.js`'s `showMcpForm`.
  */
 export function describeServerRefusal(status, body) {
   const payload = body && typeof body === 'object' ? body : {};
@@ -454,9 +454,9 @@ export function formatCommandLine(command, args) {
 // ── Tool schemas (`P8-48`, read half) ───────────────────────────────────────
 //
 // **Measured 2026-09-19, and the row's premise is half true.**
-// `McpManager.get_all_tools` (`src/mcp_manager.py:606-622`) puts
+// `McpManager.get_all_tools` (`src/mcp_manager.py`) puts
 // `input_schema` on every entry, and `GET /api/mcp/servers/{id}/tools`
-// (`routes/mcp/mcp_routes.py:415-433`) returns those entries unchanged — so
+// (`routes/mcp/mcp_routes.py`) returns those entries unchanged — so
 // the schema *is* carried to the browser today. The panel that received it
 // drew a checkbox, the tool name, and `description.slice(0, 80)`, and dropped
 // the schema on the floor: `grep -c input_schema static/` returned **0** over
@@ -1056,7 +1056,7 @@ export function createMcpFieldEditor(spec) {
  * string here is written by a third-party MCP server — and it also closes a
  * live escaping hole in the markup this replaces: the panel put the tool's
  * description into `title="${esc(t.description)}"`, and that `esc` (declared
- * at `settings.js:5552`) replaced `&` and `<` and **not** `"`, so a
+ * inside `settings.js`'s `showMcpForm`) replaced `&` and `<` and **not** `"`, so a
  * description containing a double quote closed the attribute early. Measured
  * 2026-09-19.
  *

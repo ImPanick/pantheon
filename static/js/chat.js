@@ -1802,8 +1802,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   /**
    * Per-item mode and model (P6-04), applied through the mechanisms that
    * already exist: `window.__pantheonSetChatMode` is the composer's own mode
-   * setter (`app.js:1842`) and `window.__pantheonLastPickedRoute` is the route
-   * override the model picker writes (`modelPicker.js:647`) and the send path
+   * setter (`app.js`'s `setMode`) and `window.__pantheonLastPickedRoute` is the route
+   * override the model picker writes (`modelPicker.js`'s `_pick`) and the send path
    * already reads (`chat.js` `selectedRouteForSend`). No second per-send model
    * channel, and no new wire field.
    *
@@ -1877,12 +1877,12 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   }
 
   /**
-   * Queue rows in the shape `static/js/tasks.js` `_runToActivityEntry` emits
-   * (`tasks.js:2020`). This is `P6-07`'s half that lives in this file: the
+   * Queue rows in the shape `static/js/tasks.js` `_runToActivityEntry` emits.
+   * This is `P6-07`'s half that lives in this file: the
    * queue panel renders these, and so does the Tasks activity view once
    * `tasks.js`'s activity-source registry has them, because they already speak
-   * its vocabulary — the six `TaskRun.status` values documented at
-   * `core/database.py:810+`.
+   * its vocabulary — the six `TaskRun.status` values documented in
+   * `core/database.py` (`TASK_RUN_STATUSES`).
    *
    * `aborted` is never folded into `error` here. `skipped` is used for an item
    * whose chat no longer exists: it deliberately did not run, and calling that
@@ -8987,7 +8987,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   // `tasks.js` belongs to another change landing in parallel, and a static
   // import of a name that moves would fail the whole chat module at load. This
   // degrades to "queue rows do not appear under Tasks ▸ Activity" instead.
-  // `app.js:32` already imports `tasks.js` at boot, so this resolves from cache.
+  // `app.js` already imports `tasks.js` at boot, so this resolves from cache.
   let _activitySourceHandle = null;
   function _registerQueueActivitySource() {
     import('./tasks.js?v=20261009census').then((mod) => {

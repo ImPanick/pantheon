@@ -470,7 +470,7 @@ FUNCTION_TOOL_SCHEMAS = [
             # `B1012`. It said `bash` "cannot reach" the host's services and
             # network stack. Measured 2026-10-01 on Docker Desktop 29.7.2
             # (`B975`, `D-2026-10-01-03`): a container reaches the host's
-            # LAN-facing services (its `:445`) and the router. What a container
+            # LAN-facing services (its SMB, port 445) and the router. What a container
             # never reaches is the machine itself — its files beyond what is
             # mounted, its processes, its own network configuration — and that
             # is what this names. Whether a service bound only to the host's

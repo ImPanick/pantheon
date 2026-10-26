@@ -534,7 +534,7 @@ function _createGroupBubble(model, box) {
   wrap.innerHTML = `<div class="role">${uiModule.esc(roleLabel)} <span class="role-timestamp">${roleTs}</span></div><div class="body"></div>`;
   chatRenderer.applyModelColor(wrap.querySelector('.role'), model.mid);
 
-  // Spinner — identical to chat.js line 3062
+  // Spinner — the one chat.js's `resumeStream` draws
   const spinner = spinnerModule.create('Generating response', 'right');
   const bodyDiv = wrap.querySelector('.body');
   bodyDiv.appendChild(spinner.createElement());

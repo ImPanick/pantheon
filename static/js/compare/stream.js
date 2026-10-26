@@ -429,7 +429,7 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
     } else {
       // Chat/Image: pure chat only — no tools, no search, no bash, no RAG.
       // Explicitly send mode='chat' so the backend's compare_mode strip
-      // (chat_routes.py line 385) actually triggers — otherwise the form
+      // (`_compare_strip` in chat_routes.py's `chat_stream`) actually triggers — otherwise the form
       // field was missing and chat_mode defaulted to "", which meant
       // bash/python/web_search were never added to disabled_tools and
       // models would still attempt to run Python.

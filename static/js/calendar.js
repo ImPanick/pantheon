@@ -688,7 +688,7 @@ function _getModal() {
   // *"Calendar doesn't support fullscreen snap so no fsClass / enter/exit
   // callbacks here."* Both halves of that are true and neither matters, because
   // **`windowDrag.js`'s fullscreen machinery is dead in every window**:
-  // `enableFullscreen` is hard-coded `false` at `windowDrag.js:65`, three lines
+  // `enableFullscreen` is hard-coded `false` in `windowDrag.js`'s `makeWindowDraggable`, three lines
   // under a JSDoc that promises *"Default true when onEnterFullscreen is
   // supplied"*, so `_enterFs` has no caller anywhere in the product. What
   // actually maximises a window is `tileManager.js`, which listens on

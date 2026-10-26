@@ -231,8 +231,9 @@ def validate_mcp_server_id(server_id: Any) -> Optional[str]:
 # ── Minting one (`B870`) ───────────────────────────────────────────────────
 #
 # Three sites minted a server id and two of them disagreed:
-# `routes/mcp/mcp_routes.py:262` and `src/agent_tools/admin_tools.py:299` used
-# `str(uuid.uuid4())[:8]` — eight hex characters — and `scripts/pantheon-mcp:150`
+# `routes/mcp/mcp_routes.py`'s `add_server` and `src/agent_tools/admin_tools.py`'s
+# `do_manage_mcp` used `str(uuid.uuid4())[:8]` — eight hex characters — and
+# `scripts/pantheon-mcp`'s `cmd_add`
 # used the whole `str(uuid.uuid4())`, thirty-six. Both pass
 # `validate_mcp_server_id`, so nothing was broken; that is the shape of
 # `Law 13`. Anything that assumes eight characters — a column width, a log
@@ -522,11 +523,11 @@ def _tool_entries(tools_result: Any) -> List[Dict[str, Any]]:
 #
 # Before this, `_do_call` awaited `session.call_tool(...)` with no bound of any
 # kind. The MCP SDK's own `read_timeout_seconds` defaults to `None`
-# (`mcp/shared/session.py:285-291`, `timeout = None` → `anyio.fail_after(None)`),
+# (`mcp/shared/session.py`'s `BaseSession.send_request`, `timeout = None` → `anyio.fail_after(None)`),
 # so a server that accepts a `tools/call` and never answers left the await
 # pending for as long as the process lived. That await is inside the agent's
-# turn (`src/tool_execution.py:1345/1360`) and inside the scheduler's delivery
-# path (`src/task_scheduler.py:2710/3588`), so one hung tool hung the turn and
+# turn (`src/tool_execution.py`'s `_execute_tool_block_impl`) and inside the scheduler's
+# delivery path (`TaskScheduler._deliver_via_mcp` and `_execute_checkin`), so one hung tool hung the turn and
 # the task with it — with nothing in the UI to say why, because no exception
 # was ever raised.
 #
@@ -923,7 +924,7 @@ class McpManager:
     #
     #   * `connect_all_enabled` connects inside `asyncio.create_task` children
     #     while `disconnect_all` closes from the parent;
-    #   * `app.py:1462` runs the whole startup connect in its own task, which
+    #   * `app.py`'s `_startup_mcp_connections` runs the whole startup connect in its own task, which
     #     has finished long before shutdown reaches `disconnect_all`;
     #   * `routes/mcp/mcp_routes.py` disconnects from a request task, and the
     #     connection it is closing was opened by a different request.
@@ -1422,7 +1423,7 @@ class McpManager:
         try:
             # `B880` left this as `asyncio.wait_for` DELIBERATELY. `wait_for`
             # wraps its coroutine in a Task, and that extra task is what made
-            # `P8-47` reach for `asyncio.timeout` in `src/mcp_scaffold.py:643`
+            # `P8-47` reach for `asyncio.timeout` in `src/mcp_scaffold.py`'s `verify_server`
             # — but measured here, swapping it changed nothing on its own
             # (child-task connect + `asyncio.timeout` still logged the failed
             # close). `_open_owned` is the fix: the stack no longer cares which
@@ -1871,7 +1872,7 @@ class McpManager:
         above says what this answers and why it matters — *"saying `True` here
         **mutes a server**"* — and the predicate that does the muting,
         `is_builtin(id) and id != "builtin_browser"`, was written out at three
-        sites in this file. (`src/task_scheduler.py:4405` is a fourth reader of
+        sites in this file. (`TaskScheduler._execute_checkin` is a fourth reader of
         the same question and deliberately a **different** rule — check-in
         discovery looks for servers a person registered, so it skips
         `builtin_browser` too; it is read and left alone rather than folded in

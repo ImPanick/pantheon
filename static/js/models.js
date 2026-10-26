@@ -11,7 +11,7 @@
 
 // Side-effect import, not a value import: dragSort.js sets `window.dragSortModule`
 // at module scope, and sessions.js reads that global to enable session drag-sort
-// (sessions.js:2505). models.js is the only module statically imported at boot
+// (sessions.js's initDragSort). models.js is the only module statically imported at boot
 // that pulls dragSort.js in — galleryEditor.js, the other importer, is loaded
 // lazily by panels.js. Removing this line silently disables session reordering.
 import './dragSort.js';

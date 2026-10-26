@@ -2880,7 +2880,7 @@ async function _cmdTourCompare(args, ctx) {
 
   // ── Phase 1: model-selector modal ──
   // Scope every selector to #compare-model-overlay so we don't accidentally
-  // match the Group Chat panel's .compare-parallel-toggle (line 1053 of
+  // match the Group Chat panel's .compare-parallel-toggle (in
   // index.html), which has the same class name and is hidden — its zero
   // bounding-rect was putting the tooltip in the top-left corner.
   const phase1 = [

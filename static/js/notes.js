@@ -4794,7 +4794,7 @@ function _cancelAgentSolve(noteId, idx) {
   if (!run) return;
   // Dropping the SSE only removes a subscriber — the run is detached and keeps
   // going (routes/chat_routes.py, chat_stream). The real stop needs the run id:
-  // /api/chat/stop fails closed without it (src/agent_runs.py:266).
+  // /api/chat/stop fails closed without it (src/agent_runs.py's stop).
   _postAgentSolveStop(run);
   try { run.abort.abort(); } catch (_) {}
   uiModule.showToast?.('Stopping the agent run…');

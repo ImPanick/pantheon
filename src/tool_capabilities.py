@@ -1341,7 +1341,7 @@ RUNG_BLOCKED_EFFECTS = POST_EXTERNAL_BLOCKED_EFFECTS - frozenset({ToolEffect.REA
 #
 # How often the approval gate asks. One value, resolved once per run, and it is
 # the *only* thing on this ladder the gate implements — which is worth stating,
-# because `.pantheon/design/pantheon-v10.html:1721` draws five rungs and only
+# because `.pantheon/design/pantheon-v10.html`'s `#rungs` draws five rungs and only
 # three of them are gate settings.
 #
 #   rung 0 "plan only"          — NOT here. Plan mode is a tool allowlist plus a

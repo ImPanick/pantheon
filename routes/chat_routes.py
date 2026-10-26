@@ -205,7 +205,7 @@ def _stream_is_steerable(
     ``is_image_session`` accepts a thunk because it is the only expensive term:
     `_is_image_generation_session` opens a DB session and queries the endpoint
     table, while the other three are locals. The route cannot hand over the
-    answer it already has — `image_generation_session` at `:1457` is computed
+    answer it already has — `image_generation_session` in `chat_stream` is computed
     BEFORE `build_chat_context` normalises the session's model, and this
     predicate's question is about the normalised one — so the choice is a second
     query or a deferred one. Deferred: a chat turn, a research turn and a compare

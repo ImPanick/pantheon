@@ -3,7 +3,7 @@
 //
 // `B872`. One place decides which Mermaid theme this product draws with.
 //
-// **What was wrong.** `markdown.js:94` initialised Mermaid with
+// **What was wrong.** `markdown.js`'s `ensureMermaid` initialised Mermaid with
 // `theme: 'dark'` written into the call, once, for every diagram this product
 // has ever drawn — chat messages, the document preview, the slash-command
 // preview and `P8-34`'s workflow card. Four of the sixteen shipped palettes
@@ -40,7 +40,7 @@
  */
 export const SCHEME_THEMES = Object.freeze({ light: 'neutral', dark: 'dark' });
 
-/** The shipped default, for a document that has not said (`theme.js:35`). */
+/** The shipped default, for a document that has not said (`theme.js`'s `DEFAULT_THEME`). */
 export const DEFAULT_SCHEME = 'dark';
 
 /** The Mermaid theme name for a CSS `color-scheme` value. */
@@ -51,7 +51,7 @@ export function mermaidTheme(scheme) {
 /**
  * The `color-scheme` the palette wrote, or the shipped default.
  *
- * `theme.js:292` computes `_isLightBackground(colors.bg)` and writes the
+ * `theme.js`'s `applyColors` computes `_isLightBackground(colors.bg)` and writes the
  * answer onto `<html>` with `setProperty` every time a palette is applied —
  * and so do `index.html`'s and `login.html`'s first-paint scripts, which run
  * before any module boots. All three write it as an INLINE declaration on

@@ -1444,24 +1444,25 @@ export function buildFindingsBox(findings, expanded) {
    `todowrite` (`src/agent_tools/coding_tools.py`) keeps a structured task list
    for the current session, persists it to `DATA_DIR/agent_todos/<sid>.json`,
    and the system prompt tells the model to use it for multi-step work
-   (`src/agent_loop.py:1242`). It had no renderer anywhere in `static/`, so a
+   (`src/agent_loop.py`'s `_workspace_coding_rules`). It had no renderer anywhere in `static/`, so a
    model doing exactly what it was told showed the person a JSON blob inside a
    collapsed tool card.
 
    ── Where the data comes from, measured rather than assumed ────────────────
    The executor returns a *normalised* `todos` array alongside its text output
-   (`coding_tools.py:66`), but nothing forwards it: `src/agent_loop.py:6056`
+   (`TodoWriteTool.execute`), but nothing forwards it: `stream_agent_loop`
    builds the `tool_output` SSE event from `tool` / `command` / `output` /
    `exit_code` plus a fixed whitelist of document, image, ui_event, screenshot
-   and diff keys, and the persisted `tool_event` (`agent_loop.py:6242`) carries
+   and diff keys, and the persisted `tool_event` (also `stream_agent_loop`) carries
    the same four. So the array never reaches the browser and this renderer
    cannot use it.
 
    What does reach the browser is `command`. For any non-document tool
-   `cmd_display` is the untruncated block content (`agent_loop.py:5695-5697`),
+   `cmd_display` is the untruncated block content (`stream_agent_loop`),
    and for `todowrite` that content is `json.dumps(args)`
-   (`src/tool_schemas.py:1451` for a native tool call; the fenced form is the
-   same JSON object — see the prompt example at `agent_loop.py:634`). That is
+   (`src/tool_schemas.py`'s `function_call_to_tool_block` for a native tool call;
+   the fenced form is the same JSON object — see the prompt example in
+   `TOOL_SECTIONS["todowrite"]`). That is
    the parse source, identical live and on reload. `output` — the executor's
    own `"[x] text (priority)"` listing, capped at `MAX_OUTPUT_CHARS` = 10,000
    which a task list never approaches — is the fallback for anything that
@@ -1471,7 +1472,7 @@ export function buildFindingsBox(findings, expanded) {
    The block is emitted into the `.agent-thread-node` the tool already
    produces. The rows are the checklist idiom `markdown.js` emits for `- [ ]`
    lines — `li.task-item` / `.task-check` / `.task-text` / `.task-done`,
-   `markdown.js:851` — and the in-progress row and its chips are
+   `mdToHtml`'s task-list rule in `markdown.js` — and the in-progress row and its chips are
    `.plan-step-now` / `.plan-step-meta` / `.plan-step-chip`, introduced by the
    docked plan window (P6-11). One visual language for "the step the agent is
    on", whether it came from `update_plan` or from `todowrite`.
@@ -1490,11 +1491,11 @@ const SKILL_PILL_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="n
 
 const TODO_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>';
 
-/** The three statuses `todowrite` accepts — `coding_tools.py:34`. */
+/** The three statuses `todowrite` accepts — `TodoWriteTool.execute`'s `allowed_statuses`. */
 const TODO_STATUSES = { pending: 1, in_progress: 1, completed: 1 };
 /** The three priorities it accepts; anything else is coerced to `medium`. */
 const TODO_PRIORITIES = { low: 1, medium: 1, high: 1 };
-/** The markers the executor prints in its text output — `coding_tools.py:60`. */
+/** The markers the executor prints in its text output — `TodoWriteTool.execute`. */
 const TODO_OUT_MARKS = { ' ': 'pending', '>': 'in_progress', x: 'completed' };
 // `X` is in the class deliberately: models emit both cases, and the
 // normaliser below folds it. Without it the uppercase branch there was
@@ -1503,7 +1504,7 @@ const TODO_OUT_RE = /^\[([ xX>])\]\s+(.*?)(?:\s+\(([a-zA-Z]+)\))?$/;
 
 /**
  * Normalise one raw todo the same way the executor does
- * (`coding_tools.py:31-49`): `content` or its `text` alias, status defaulting
+ * (`TodoWriteTool.execute`): `content` or its `text` alias, status defaulting
  * to `pending` and priority to `medium`, unknown priority coerced rather than
  * rejected. Returns null for a record the executor would itself have refused.
  */
@@ -1524,7 +1525,7 @@ function _normalizeTodo(raw) {
  *
  * Returns null for a FAILED call on purpose. `todowrite` rejects a list with
  * two `in_progress` items, an empty `content`, or an unknown status
- * (`coding_tools.py:24-51`) and nothing is written to disk — drawing the
+ * (`TodoWriteTool.execute`) and nothing is written to disk — drawing the
  * rejected list as if it were state would be the renderer telling the same
  * kind of lie this phase exists to remove. The red node and its error text
  * stand instead.

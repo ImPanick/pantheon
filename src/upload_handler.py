@@ -396,8 +396,8 @@ class UploadHandler:
         one side goes stale (`Law 7`).
 
         Who still spells it this way, measured 2026-09-18 over tracked `.py`:
-        `tests/test_upload_multifile.py:59` sets it on its stand-in handler,
-        `src/config.py:106` declares an unread copy of it (`B562`), and
+        `tests/test_upload_multifile.py`'s `_fake_handler` sets it on its stand-in,
+        `SecurityConfig` in `src/config.py` declares an unread copy of it (`B562`), and
         `routes/upload_routes.py` reads it as the fallback for a handler that
         predates the rename. One of those three is a real caller and the gate
         still has to work for it.

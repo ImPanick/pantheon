@@ -53,7 +53,7 @@ def _save_settings(settings):
 # `H07`. These three read `settings.get(k, os.environ.get(K, ""))`, and a dict
 # default fires only on **absence**. Three UI paths write these keys
 # unconditionally — including empty values, and one of them is **Remove, which
-# deliberately PUTs three empty strings** (`static/js/settings.js:3059,3990,3598`)
+# deliberately PUTs three empty strings** (`static/js/settings.js`: `initEmailSettings`, `showCardDavForm`, `renderList`)
 # — so after any of the three, `CARDDAV_URL/USERNAME/PASSWORD` were unreachable
 # forever, with nothing in `settings.json` that looks wrong: the operator sees
 # their own `""`. Blank now means unset, which is what `env_backed` is for.

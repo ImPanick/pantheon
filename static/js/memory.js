@@ -415,7 +415,7 @@ function syncToggleDim(toggle) {
 // It used to be at the right. Dragging a control labelled "Minimum confidence"
 // as far right as it goes stored **0**, and 0 is the single value that turns
 // the gate off completely — `get_relevant_skills` only filters at all inside
-// `if min_confidence > 0` (services/memory/skills.py:748). So the strictest
+// `if min_confidence > 0` (services/memory/skills.py, `get_relevant_skills`). So the strictest
 // setting was one notch short of the end, the end itself was the loosest
 // setting on the control, and it was labelled "All", which reads as a promise
 // about coverage rather than a confession that nothing is being checked.
@@ -492,7 +492,7 @@ export async function syncPrefSlider(elementId, prefKey, labelId, defaultVal, pr
  *  minimum. `autoApprove` is `auto_approve_skills`.
  *
  *  The coupling is the part nobody could see from the surface.
- *  `src/agent_loop.py:3091-3093` sets the injection floor to **2.0** when
+ *  `src/agent_loop.py`'s `_build_system_prompt` sets the injection floor to **2.0** when
  *  auto-approve is off — a number no confidence can reach — so turning off a
  *  toggle whose label only mentions the audit silently makes injection
  *  published-only. It is a real and defensible behaviour; it was simply

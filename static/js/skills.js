@@ -1622,7 +1622,7 @@ function _renderTestLog(logEl, verdictEl, job, card, name) {
 }
 
 // `P8-08`. `POST /api/skills/{name}/test` has read `body.task` since it was
-// written (routes/skills_routes.py:1499) and the UI had never sent one, so
+// written (routes/skills_routes.py, `test_skill`) and the UI had never sent one, so
 // every test in the product's history ran the server's invented fallback and
 // nothing said so. One textarea closes that, and it also makes the panel
 // honest about the two things a first-time user cannot otherwise know: that
@@ -2637,7 +2637,7 @@ async function _loadSkillApprovalThreshold() {
  * `routes/skills_routes.py` writes six values through `set_audit`: `pass`,
  * `needs_work`, `fail`, `inconclusive`, `skipped` and `unknown`. Only two of
  * them are a judgement against the skill. The audit prompt says so in its own
- * words at `routes/skills_routes.py:193-196` — *"if the run could NOT proceed
+ * words in `routes/skills_routes.py`'s `_eval_skill_run` — *"if the run could NOT proceed
  * because it lacked an input or target the test never provided … that is NOT
  * the skill's fault. Return verdict 'inconclusive' — do NOT mark it fail or
  * needs_work"* — so deleting on `inconclusive` deletes a skill for the test
@@ -2651,7 +2651,7 @@ const _FAILING_AUDIT_VERDICTS = new Set(['fail', 'needs_work']);
  *
  * This is a **data-loss** row: the button it feeds calls
  * `DELETE /api/skills/{name}`, which removes the whole skill directory
- * including its version history (`services/memory/skills.py:938-963`). There is
+ * including its version history (`SkillsManager.delete_skill`). There is
  * no trash and no server-side restore, which is why the caller below now holds
  * every SKILL.md it is about to remove.
  *
@@ -2660,14 +2660,14 @@ const _FAILING_AUDIT_VERDICTS = new Set(['fail', 'needs_work']);
  * until an audit has actually run — `load_all` reads it out of the usage
  * sidecar and it is absent until `set_audit` writes one. The backend reads the
  * same absence the opposite way, in three places, and every one of them means
- * *this one still needs auditing*: `routes/skills_routes.py:1769`, `:1785` and
- * `src/builtin_actions.py:2211` build the **audit queue** from
+ * *this one still needs auditing*: `routes/skills_routes.py`'s `audit_all_skills`
+ * (twice) and `src/builtin_actions.py`'s `action_audit_skills` build the **audit queue** from
  * `not s.get("audit_verdict")`. So a skill written by hand thirty seconds ago
  * was on the audit queue and in the delete set at the same time.
  *
  * **2. THE BUNDLED LIBRARY WAS THE WHOLE SET.** `/api/skills` folds in the
  * read-only bundled entries, and `load_all` does not even *read* a verdict for
- * them (`services/memory/skills.py:659-671` sets `uses` and `last_used` and
+ * them (`SkillsManager.load_all` sets `uses` and `last_used` and
  * stops), so all of them matched `!== 'pass'` permanently and could never stop
  * matching. `DELETE` refuses them — `_verify_owner` 404s on `owner: null` and
  * `delete_skill` never walks the library directory — so nothing was destroyed,
@@ -2684,13 +2684,13 @@ const _FAILING_AUDIT_VERDICTS = new Set(['fail', 'needs_work']);
  * a group loses its duplicates and keeps the one the UI told you to keep.
  *
  * **4. MISSING CONFIDENCE IS NOT ZERO.** `Number(sk.confidence || 0)` read an
- * absent value as 0, which is below every threshold. `services/memory/skills.py:1100-1119`
+ * absent value as 0, which is below every threshold. `SkillsManager.get_relevant_skills`
  * states the opposite rule for the same field and says why: *"Missing confidence =
  * treat as 1.0 (legacy skills shouldn't silently vanish)."* And the threshold
  * comparison could not have been meaningful before an audit anyway: `add_skill`
  * writes `confidence: 0.8` by default, `skill_autosave_min_confidence` defaults
- * to `0.85` (`src/settings.py:557`), and a pass writes `0.95`
- * (`routes/skills_routes.py:933`) — so every skill is below the bar from the
+ * to `0.85` (`DEFAULT_SETTINGS` in `src/settings.py`), and a pass writes `0.95`
+ * (`routes/skills_routes.py`'s `_audit_one_skill`) — so every skill is below the bar from the
  * moment it is created until an audit lifts it. The bar therefore applies to
  * skills that have been scored, which is the only time it means anything.
  */
@@ -2736,7 +2736,7 @@ function _selectedNonPassingSkills(_selectedNames) {
  * the delete — with `source: 'user'`, which is what exempts it from
  * `add_skill`'s dedup-at-creation; `POST /{name}/markdown` then writes the
  * exact bytes back, and it pins the stored name rather than the one in the
- * frontmatter (`routes/skills_routes.py:1846-1848`), so the round trip is
+ * frontmatter (`routes/skills_routes.py`'s `save_skill_markdown`), so the round trip is
  * byte-stable.
  */
 async function _restoreDeletedSkills(saved) {
@@ -3377,7 +3377,7 @@ async function _runSkillLint(m, opts) {
 }
 
 // `P8-02`. The four fields below were never a wiring gap — `SkillAddRequest`
-// (routes/skills_routes.py:38) has taken `pitfalls`, `verification`,
+// (routes/skills_routes.py) has taken `pitfalls`, `verification`,
 // `platforms` and `requires_toolsets` all along, and the raw SKILL.md editor
 // reaches every one of them. They were a `Law 15` failure: the only route to
 // them was knowing the frontmatter format. So they go on the form that already
@@ -4160,7 +4160,7 @@ export function closeSkillsWindow() {
 
 /** Every control one mount holds, wired to that mount. Was this file's
  *  `DOMContentLoaded` handler, reaching each control by its page-wide id
- *  (`:3616-3674` when design § 2 measured it); `P22-21` gave it the mount, so
+ *  (when design § 2 measured it); `P22-21` gave it the mount, so
  *  the same lines wire the window and the room. */
 function _wireMount(m) {
   if (m.wired) return;

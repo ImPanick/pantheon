@@ -87,7 +87,7 @@ def _find_npx() -> str:
 # Here the two are identical in surface — the same five actions and the same
 # four properties, the prose descriptions differing in wording only — so
 # routing buys nothing, and it would cost something real:
-# `src/app_initializer.py:65` builds a `MemoryVectorStore` in THIS process and
+# `src/app_initializer.py`'s `initialize_managers` builds a `MemoryVectorStore` in THIS process and
 # holds it for the process lifetime, and retrieval reads it during a turn. A
 # write performed in the subprocess updates the subprocess's index; this
 # process's does not learn about it. Memory added during a turn would be

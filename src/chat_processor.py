@@ -614,7 +614,7 @@ class ChatProcessor:
 
         **That absence is also what makes the placement affordable.** The
         message is a `user`-role one appended to the end of the preface, never
-        folded into a `system` message — `src/user_time.py:216` documents why in
+        folded into a `system` message — `src/user_time.py`'s `current_datetime_context_message` documents why in
         full (issue #2927: local llama.cpp / LM Studio backends key their
         KV-cache prefix off the system block byte-for-byte, so per-turn text in
         there invalidates the cache on every single request). Everything above

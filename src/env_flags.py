@@ -135,7 +135,7 @@ def env_flag(name: str, default: bool = False) -> bool:
 # Derived the way the environment set was derived, and from the same tree: every
 # token below is one an HTTP site here already accepted on 2026-09-15.
 # `routes/model_routes._truthy` read `("true", "1", "yes", "on")` at three body
-# fields and `routes/model_routes.py:1442` read `("false", "0", "no", "off")` at
+# fields and `routes/model_routes._parse_supports_tools` read `("false", "0", "no", "off")` at
 # one — so the eight words are not a preference, they are what the largest
 # existing owner of this boundary already answered to.
 REQUEST_ON_VALUES = ON_VALUES
@@ -218,8 +218,9 @@ def request_flag(raw: object, default: bool = False) -> bool:
 # ── The model tool-argument rule (`B97`) ───────────────────────────────────
 #
 # The union of the three answers this tree already gave, and nothing else:
-# `src/ai_interaction.py:652` took ("on","true","1","yes","enable","enabled"),
-# `:810` took four of those, and `src/builtin_actions.py:2782` took
+# `src/ai_interaction.do_ui_control` took ("on","true","1","yes","enable","enabled")
+# for a toggle and four of those for a background's `frosted`, and
+# `src/builtin_actions.action_check_email_urgency` took
 # ("1","true","yes","y"). Three sites, three vocabularies, one question.
 #
 # Wider than the operator's set on purpose, and this is the boundary where the

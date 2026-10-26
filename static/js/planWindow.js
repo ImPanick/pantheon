@@ -5,8 +5,9 @@
  * The docked plan window (P6-11) and the step model behind it (P6-13).
  *
  * Four prompt strings have been telling the model that "the user's docked plan
- * window updates live" — `src/agent_loop.py:759`, `:3402`, `src/tool_index.py:109`
- * and `src/tool_schemas.py:545`. Nothing ever drew it. `chat.js` received the
+ * window updates live" — `update_plan`'s prompt section in `src/agent_loop.py`
+ * and a second string there, its `BUILTIN_TOOL_DESCRIPTIONS` entry in
+ * `src/tool_index.py`, and its schema in `src/tool_schemas.py`. Nothing ever drew it. `chat.js` received the
  * `plan_update` SSE event, wrote the markdown to `localStorage` under a comment
  * that claimed it refreshed that window, and rendered nothing. This module is
  * the window those strings describe.
@@ -19,7 +20,7 @@
  * names and delegates here — no second store, no second extractor (Law 7/14).
  *
  * ── The step model, and why the ids are derived (P6-13) ─────────────────────
- * `update_plan`'s schema (`src/tool_schemas.py:545`) tells the model to send the
+ * `update_plan`'s schema (in `src/tool_schemas.py`) tells the model to send the
  * COMPLETE markdown checklist every time, never a diff, and that file is not
  * ours to change. Silently teaching the model a different wire format would
  * make the prompt lie a second time. So ids are **derived from the markdown,

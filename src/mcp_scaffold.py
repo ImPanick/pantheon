@@ -132,7 +132,7 @@ def scaffold_root(data_dir: Optional[str] = None) -> str:
 
     `data_dir` exists for tests and for an operator with more than one volume;
     it is not read from the environment, because `PANTHEON_DATA_DIR` is already
-    the one place that decision is made (`src/constants.py:33`).
+    the one place that decision is made (`DATA_DIR` in `src/constants.py`).
     """
     if data_dir is None:
         from src.constants import DATA_DIR

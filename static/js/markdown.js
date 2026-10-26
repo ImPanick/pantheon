@@ -107,10 +107,11 @@ function _loadStylesheet(href) {
  * light, and on those the dark theme drew light-grey arrows onto a near-white
  * panel at 1.17-1.29:1. The decision moved to `markdown/mermaidTheme.js` so
  * that every caller gets it from one place (`Law 13`) rather than each working
- * around it with a per-diagram directive. `B872` said "four callers"; counted
- * on the tree it is seven call sites in six files — see `_stashDiagramSource`
- * for the list. The claim it was making holds either way, but the number was
- * wrong.
+ * around it with a per-diagram directive. `B872` stated a caller count, and
+ * it was wrong the day it was written and again when it was corrected
+ * (`B1503`), so no count is kept here: every caller draws through
+ * `renderMermaid`, which is the claim that matters, and
+ * `git grep "renderMermaid(" -- static/js` lists them.
  */
 export function ensureMermaid() {
   return (_mermaidPromise ??= _loadScript(MERMAID_SRC)
@@ -155,12 +156,14 @@ function _themeMermaid(mermaid) {
  * diagrams this product generates, 202 to 1685 bytes each.
  *
  * It runs here, inside `renderMermaid`, and not where the markup is built,
- * because the markup is built in two places — `mdToHtml` below (`:866`) and
- * `tasks.js:2374` for `P8-34`'s workflow card — and drawn from seven call
- * sites across six files (`chat.js:5299`, `chatRenderer.js:3939` and `:4272`,
- * `document.js:9832`, `group.js:954`, `slashCommands.js:476`,
- * `tasks.js:2395`). All of them draw through this one function (`Law 13`), so
- * this is the only place that sees every diagram exactly once.
+ * because the markup is built in two places — `mdToHtml` below and
+ * `tasks.js`'s `_showWorkflowDiagram` for `P8-34`'s workflow card — and drawn
+ * from callers across the frontend (`chat.js`'s `handleChatSubmit`,
+ * `chatRenderer.js`'s `addMessage`, `document.js`'s
+ * `_setMarkdownPreviewActive`, `group.js`'s `_streamToHolder`,
+ * `slashCommands.js`'s `typewriterReply`, `_showWorkflowDiagram`, and
+ * `_watchScheme` here). All of them draw through this one function
+ * (`Law 13`), so this is the only place that sees every diagram exactly once.
  *
  * Defensive about `setAttribute` on purpose: `renderMermaid` is handed
  * whatever a caller's `querySelectorAll` returned, and the older tests in
@@ -249,7 +252,7 @@ function _undrawStale(scheme) {
 /**
  * Notice the palette changing.
  *
- * `theme.js:292` and the two first-paint scripts all write `color-scheme` as
+ * `theme.js`'s `applyColors` and the two first-paint scripts all write `color-scheme` as
  * an INLINE declaration on `<html>` — the same fact `documentScheme()` reads,
  * which is why this watches the `style` attribute of one element rather than
  * asking every palette writer to announce itself. No new event and no second
