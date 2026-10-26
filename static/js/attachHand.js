@@ -33,10 +33,11 @@
 // a new place: Preview is the chat's own lightbox (`.attach-lightbox`); Crop is
 // the composer's own cropper, which until now only a phone ever saw; Save to
 // Gallery is `POST /api/gallery/upload`, the route the Gallery's own upload
-// uses; Remove and Remove all are the old strip's × and its pill's ×. The image
-// editor is not offered: it has no way to hand an edit back to the composer, so
-// from here it would edit a copy the message never sends (filed with this row
-// in the fx5-cards handoff).
+// uses; Remove and Remove all are the old strip's × and its pill's ×. *Edit in
+// image editor* is the Gallery's editor, offered since `B1293` gave it a way to
+// hand an edit back (`gallery.openInEditor(…, { onDone })` → *Attach to chat*):
+// the edit takes the original's place in the hand, as a crop does. Before that
+// it was left out rather than edit a copy the message never sends.
 //
 // No DOM is assumed beyond what `fileHandler.js`'s node harnesses give it:
 // every call into the page is one the shims in `tests/` answer.
@@ -360,6 +361,11 @@ export function actionsFor(f) {
   const out = [{ id: 'preview', label: 'Preview', run: () => openPreview(f) }];
   if (image && typeof _host.canCrop === 'function' && _host.canCrop(f)) {
     out.push({ id: 'crop', label: 'Crop', run: (kb) => _crop(f, kb) });
+    // `B1293`: the editor lives in the Gallery, so it is offered where the
+    // Gallery is.
+    if (typeof _host.editImage === 'function' && toolShown('gallery')) {
+      out.push({ id: 'edit', label: 'Edit in image editor', run: () => _host.editImage(f) });
+    }
   }
   const sentAs = typeof _host.wireName === 'function' ? _host.wireName(f) : displayName(f);
   if (image && GALLERY_EXTS.includes(_ext(sentAs)) && toolShown('gallery')) {

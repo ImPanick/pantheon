@@ -1785,20 +1785,9 @@ function _openDetail(img) {
   const _openInEditor = () => {
     try {
       detail.style.display = 'none';
-      const modal = document.getElementById('gallery-modal');
-      if (modal) {
-        modal.querySelectorAll('.gallery-tab').forEach(t => t.classList.remove('active'));
-        modal.querySelector('.gallery-tab[data-tab="editor"]')?.classList.add('active');
-      }
-      const imagesContainer = document.getElementById('gallery-images-container');
-      const albumsContainer = document.getElementById('gallery-albums-container');
-      if (imagesContainer) imagesContainer.style.display = 'none';
-      if (albumsContainer) albumsContainer.style.display = 'none';
-      const editorContainer = document.getElementById('gallery-editor-container');
-      if (editorContainer) editorContainer.style.display = 'flex';
       const baseFilename = (img.filename || '').replace(/\.[^.]+$/, '');
       const label = img.prompt?.trim() || baseFilename || 'Photo';
-      openEditor(img.url, img.id, null, label);
+      openInEditor(img.url, img.id, label);   // `B1293`: the one open sequence
     } catch (e) {
       console.error('[edit] failed:', e);
       if (uiModule) uiModule.showError('Failed to open editor: ' + (e?.message || 'unknown'));
@@ -2015,6 +2004,31 @@ import * as Modals from './modalManager.js?v=20261009census';
 import { chevronIcon } from './icons.js';
 
 import { scrollBehavior } from './motion.js';
+/**
+ * `B1293`. Open the image editor on `url` — the one sequence for every door to
+ * it: the Gallery open, its tabs on Edit, the image and album lists hidden, the
+ * editor's container shown. It was written out twice (here, for the Gallery's
+ * *Edit*, and in `chatRenderer.js`, for a sent picture's *Edit in image
+ * editor*). `onDone(file)`, when given, is what *Attach to chat* hands the
+ * flattened edit to — the composer's way to get an edit of a picture it is
+ * waiting to send (`fileHandler.js`'s card menu).
+ */
+export async function openInEditor(url, id = null, label = 'Photo', { onDone = null, name = null } = {}) {
+  if (!isGalleryOpen()) openGallery();
+  const modal = document.getElementById('gallery-modal');
+  if (modal) {
+    modal.querySelectorAll('.gallery-tab').forEach(t => t.classList.remove('active'));
+    modal.querySelector('.gallery-tab[data-tab="editor"]')?.classList.add('active');
+  }
+  const imagesContainer = document.getElementById('gallery-images-container');
+  const albumsContainer = document.getElementById('gallery-albums-container');
+  if (imagesContainer) imagesContainer.style.display = 'none';
+  if (albumsContainer) albumsContainer.style.display = 'none';
+  const editorContainer = document.getElementById('gallery-editor-container');
+  if (editorContainer) editorContainer.style.display = 'flex';
+  return openEditor(url, id, null, label, null, onDone ? { onDone, name: name || label } : {});
+}
+
 export function openGallery() {
   // If already minimized — restore in place, preserve all state
   if (Modals.isRegistered('gallery-modal') && Modals.isMinimized('gallery-modal')) {
@@ -3191,6 +3205,7 @@ function _humanSize(bytes) {
 const galleryModule = {
   openGallery,
   openGalleryImage,
+  openInEditor,   // `B1293`
   closeGallery,
   isGalleryOpen,
 };

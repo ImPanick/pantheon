@@ -11,7 +11,6 @@ import { providerLogo, providerLabel } from './providers.js';
 import settingsModule from './settings.js?v=20261009census';
 import spinnerModule from './spinner.js';
 import { bindMenuDismiss, registerMenuDismiss } from './escMenuStack.js';
-import { loadPanel } from './panels.js';
 import { matchModelKey } from './model/matchKey.js';
 import { getTools } from './appConfig.js';
 import { CHECKLIST_SURFACES, checklistProgress, stepChipClass } from './checklist.js';
@@ -2069,26 +2068,10 @@ export function buildImageBubble(imageUrl, prompt, model, size, quality, imageId
   editBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
     try {
-      const [galleryMod, editorMod] = await Promise.all([
-        import('./gallery.js?v=20260708match1'),
-        loadPanel('editor'),
-      ]);
-      // Ensure the Gallery modal is open so the editor has a container
-      // to render into; switch its tabs to the Edit tab.
-      galleryMod.default.openGallery();
-      const modal = document.getElementById('gallery-modal');
-      if (modal) {
-        modal.querySelectorAll('.gallery-tab').forEach(t => t.classList.remove('active'));
-        modal.querySelector('.gallery-tab[data-tab="editor"]')?.classList.add('active');
-      }
-      const imagesContainer = document.getElementById('gallery-images-container');
-      const albumsContainer = document.getElementById('gallery-albums-container');
-      if (imagesContainer) imagesContainer.style.display = 'none';
-      if (albumsContainer) albumsContainer.style.display = 'none';
-      const editorContainer = document.getElementById('gallery-editor-container');
-      if (editorContainer) editorContainer.style.display = 'flex';
+      // `B1293`: the Gallery's one open-the-editor sequence, not a copy of it.
+      const galleryMod = await import('./gallery.js?v=20260708match1');
       const label = (prompt || '').trim().slice(0, 60) || 'Generated image';
-      editorMod.openEditor(imageUrl, null, null, label);
+      await galleryMod.openInEditor(imageUrl, null, label);
     } catch (err) {
       console.error('[chat] open in editor failed', err);
     }

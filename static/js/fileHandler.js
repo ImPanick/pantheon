@@ -830,6 +830,36 @@ async function _cropPending(f) {
   return true;
 }
 
+/**
+ * `B1293`. Edit a waiting picture in the image editor and keep the edit in its
+ * place in the hand. The editor saved only to the Gallery, so the card menu
+ * left it out rather than open a copy the message never sends (`Law 13`); now
+ * `gallery.openInEditor(…, { onDone })` hands the flattened edit back here, and
+ * it replaces the original exactly as a crop does. Leaving the editor without
+ * *Attach to chat* leaves the file as it was.
+ */
+async function _editPending(f) {
+  if (!f || !_isCroppableImage(f)) return false;
+  const url = _getPreviewUrl(f);
+  const label = (f && f.name) || 'pasted-image';
+  const gallery = await import('./gallery.js?v=20260708match1');
+  await gallery.openInEditor(url, null, label, {
+    name: label,
+    onDone: (edited) => {
+      _syncBucket();
+      // Looked up when the edit comes back: the file may have been removed,
+      // sent, or left behind in another chat while the editor was open.
+      const idx = pendingFiles.indexOf(f);
+      if (idx < 0 || !edited) return false;
+      _revokePreviewUrl(f);
+      pendingFiles.splice(idx, 1, edited);
+      renderAttachStrip();
+      return true;
+    },
+  });
+  return true;
+}
+
 // What the hand may do to the pending set. Read through functions, never
 // captured: `pendingFiles` is a different array after every chat switch.
 const _handHost = {
@@ -840,6 +870,7 @@ const _handHost = {
   clear: () => clearPending(),
   canCrop: (f) => _isCroppableImage(f),
   crop: (f) => _cropPending(f),
+  editImage: (f) => _editPending(f),   // `B1293`
   redraw: () => renderAttachStrip(),
   apiBase: () => API_BASE,
   toast: (msg) => uiModule.showToast(msg),

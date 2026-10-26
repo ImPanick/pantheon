@@ -3212,6 +3212,7 @@ function _buildEditor(container) {
     fitZoom: () => _fitZoom(),
     applyZoom: () => _applyZoom(),
     exportToGallery, downloadPNG,
+    attachToChat,   // `B1293`
     saveProject: () => _saveProject(),
     loadProjectPrompt: () => _loadProjectPrompt(),
     activeLayer,
@@ -3667,6 +3668,39 @@ function _saveButtonBusy(label) {
   };
 }
 
+/**
+ * `B1293`. The editor could save only to the Gallery (`exportToGallery`, or
+ * over the original by id); nothing returned an edit to a chat, so a picture
+ * waiting in the composer could not be edited and sent. Opened through
+ * `gallery.openInEditor(…, { onDone })`, *Attach to chat* flattens the canvas
+ * the way a save does and hands the picture to `onDone` — the composer puts it
+ * where the original was — then closes the editor.
+ */
+export async function attachToChat() {
+  const done = state.onDone;
+  if (typeof done !== 'function') return false;
+  try {
+    const flat = flatten();
+    const ext = (state.originalExt || 'png').toLowerCase();
+    const isJpeg = ext === 'jpg' || ext === 'jpeg';
+    const mime = isJpeg ? 'image/jpeg' : 'image/png';
+    const blob = await new Promise((resolve, reject) => {
+      flat.toBlob(b => b ? resolve(b) : reject(new Error('Canvas encode failed')), mime, isJpeg ? 0.92 : undefined);
+    });
+    const base = String(state.onDoneName || 'edited').replace(/\.[^.]+$/, '') || 'edited';
+    const file = new File([blob], `${base} (edited).${isJpeg ? 'jpg' : 'png'}`, { type: mime });
+    state.onDone = null;
+    await done(file);
+    if (uiModule) uiModule.showToast('Edit attached to the message');
+    closeEditor();
+    return true;
+  } catch (e) {
+    console.error('[attach-to-chat] error:', e);
+    if (uiModule) uiModule.showError('Could not attach the edit: ' + (e?.message || 'unknown'));
+    return false;
+  }
+}
+
 export async function exportToGallery() {
   const endBusy = _saveButtonBusy('Saving copy…');
   let blob = null;
@@ -4064,8 +4098,12 @@ function _unmountEditorLoading() {
   state.editorLoadingEl = null;
 }
 
-export function openEditor(imageUrl, imageId, presetSize, displayName, draftId) {
+export function openEditor(imageUrl, imageId, presetSize, displayName, draftId, opts = {}) {
   _setEditTabLabel(displayName || (presetSize ? 'New canvas' : 'Untitled'));
+  // `B1293`. Opened on a picture waiting in the composer: `onDone(file)` puts
+  // the edit back in its place, and *Attach to chat* is offered for it.
+  state.onDone = typeof (opts && opts.onDone) === 'function' ? opts.onDone : null;
+  state.onDoneName = (opts && opts.name) || displayName || 'edited';
   state.imageId = imageId || null;
   // Track original file extension so save-over-original can re-encode in the
   // same format. JPEG re-encoding cuts upload size 5-10x for camera photos,
@@ -4105,6 +4143,9 @@ export function openEditor(imageUrl, imageId, presetSize, displayName, draftId) 
     if (uiModule) uiModule.showError('Editor failed to build: ' + (e?.message || 'unknown'));
     return;
   }
+  // `B1293`: *Attach to chat* only for an edit the composer is waiting on.
+  const attachBtn = document.getElementById('ge-attach-chat');
+  if (attachBtn) attachBtn.hidden = !state.onDone;
 
   function _initCanvas(w, h) {
     state.imgWidth = w;
