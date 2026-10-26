@@ -19,6 +19,7 @@ new form here, once.
 """
 import re
 from pathlib import Path
+from tests.helpers.js_source import js_definition
 
 ROOT = Path(__file__).resolve().parents[2]
 THEME_JS = ROOT / "static" / "js" / "theme.js"
@@ -162,14 +163,10 @@ def palettes(root_tokens: dict) -> dict:
     takes, by `theme.js`'s own `_isLightBackground` rule (`P3-09`).
     """
     src = THEME_JS.read_text(encoding="utf-8")
-    body = src[src.index("export const THEMES = {"):]
-    body = body[body.index("{"):]
-    depth = 0
-    for i, ch in enumerate(body):
-        depth += (ch == "{") - (ch == "}")
-        if depth == 0:
-            body = body[:i + 1]
-            break
+    # The object literal, cut by the shared reader (`B876`: strings, comments
+    # and regexes skipped) rather than a hand-rolled brace counter.
+    at = src.index("export const THEMES = {")
+    body = js_definition(src, src.index("{", at))
 
     out = {}
     for match in re.finditer(r"(\w+)\s*:\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}", body):

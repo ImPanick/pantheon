@@ -309,8 +309,12 @@ jobs:
       # `--max-env` 51 -> 33 (`B1022`, wave n): model discovery x3, the
       # service-health probe, CardDAV x6, the embedding endpoint check, STT
       # and TTS moved onto `paced_http` (46 measured on the base, 33 after).
+      # `--max` 109 -> 91 on 2026-10-26: the same thirteen calls left the
+      # unpaced inventory (104 -> 91). The ledger's `fan-out` claim no longer
+      # repeats this number (`B411` moved its repro to the budget it states),
+      # so nothing holds it high.
       - name: check-outbound
-        run: python3 .pantheon/check-outbound.py --max 109 --max-env 33
+        run: python3 .pantheon/check-outbound.py --max 91 --max-env 33
       # P3-15. The other half of the same disease check-wiring measures: an
       # element id with no markup and a route with no caller are both something
       # that was built and never wired, and nothing in CI noticed because

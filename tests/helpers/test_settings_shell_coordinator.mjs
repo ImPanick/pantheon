@@ -822,6 +822,9 @@ const STUBS = new Map([
       KEYBIND_LABELS: { search: 'Search conversations', toggle_sidebar: 'Toggle sidebar' },
       KEYBIND_LOCAL_ONLY: new Set(),
       _matchesCombo() { return false; },
+      // `B1196`: the layered shortcuts, as the real module merges them.
+      keybindLayers: async () => ({ instance: {}, mine: {} }),
+      mergeKeybinds: (defaults, layers = {}) => ({ ...(defaults || {}), ...(layers.instance || {}), ...(layers.mine || {}) }),
     },
   ],
   [

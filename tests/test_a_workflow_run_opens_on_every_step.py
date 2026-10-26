@@ -33,7 +33,8 @@ NODE_RECORD_KEYS = {"id", "node_id", "kind", "label", "seq", "status", "attempt"
                     # `P22-11`/`P22-12` (`C-W`): the For-each item and what a
                     # parked step waits for.
                     "item", "waiting"}
-PLAN_KEYS = {"node_id", "kind", "name", "when", "depth", "steps", "declined"}
+# `B1066`: each entry carries `dry`, the verdict the canvas reads.
+PLAN_KEYS = {"node_id", "kind", "name", "when", "depth", "steps", "declined", "dry"}
 
 
 def _run(factory, task_id, *, records=(), steps=None, status="error", days_ago=0, result="last words"):

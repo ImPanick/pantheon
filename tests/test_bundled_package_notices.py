@@ -446,7 +446,9 @@ def repo(tmp_path):
 
     dst = tmp_path / "repo"
     dst.mkdir()
-    for rel in ("CREDITS.md", "NOTICE", "README.md"):
+    # `package.json` since `B623`'s rule 9: the credits' npm rows are checked
+    # against it, and without it every row reads as no longer declared.
+    for rel in ("CREDITS.md", "NOTICE", "README.md", "package.json"):
         if (ROOT / rel).is_file():
             shutil.copy2(ROOT / rel, dst / rel)
     for rel in ("licenses", ".pantheon", "static/lib", "static/fonts",

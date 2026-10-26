@@ -511,7 +511,6 @@ STILL_BALANCES_BY_HAND = {
     "tests/test_settings_the_model_could_change.py",
     "tests/test_sidebar_headers_outrank_their_rows_css.py",
     "tests/test_toast_dismiss_pointer_events.py",
-    "tests/test_tool_effect_surfaces_js.py",
     "tests/test_tool_elapsed_is_server_truth.py",
 }
 
@@ -591,7 +590,9 @@ def test_the_allow_list_has_no_stale_entries():
 
 def test_the_rule_is_not_a_tautology():
     assert len(_tracked_tests()) > 200
-    assert len(STILL_BALANCES_BY_HAND) >= 27
+    # 27 -> 26: `B396` moved `test_tool_effect_surfaces_js.py`'s colour resolver
+    # into `tests/helpers/css_colour.py`, which cuts with `js_definition`.
+    assert len(STILL_BALANCES_BY_HAND) >= 26
 
 
 # ── the walker this file's rule sent to a helper ────────────────────────────

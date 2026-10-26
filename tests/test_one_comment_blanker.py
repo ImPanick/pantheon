@@ -165,8 +165,11 @@ def _naive(text: str) -> str:
         lambda m: "".join("\n" if c == "\n" else " " for c in m.group(0)), text)
 
 
+# `settings.js` 1000 -> 250 (2026-10-26): `B1193`'s token form and `B1196`'s
+# shortcut layers moved which `/*`-bearing string opens the naive span; it still
+# erases 267 lines of live code, which is the claim.
 @pytest.mark.parametrize("name,at_least", [
-    ("calendar.js", 1500), ("notes.js", 1500), ("settings.js", 1000),
+    ("calendar.js", 1500), ("notes.js", 1500), ("settings.js", 250),
     ("gallery.js", 1000), ("document.js", 900),
 ])
 def test_the_naive_form_really_does_blank_these_modules(name, at_least):
