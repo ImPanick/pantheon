@@ -258,20 +258,53 @@ def in_words(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def sees_images(model: str, endpoint_url: str) -> bool:
     """Whether this model is sent pictures: the rule a person's image
     attachment follows (`src/chat_handler.py`) — the `vision_enabled` switch,
-    then `model_supports_vision` (the endpoint's own answer where it gives one,
-    the model's name otherwise). Not a second rule (`Law 7`)."""
+    then `vision_answer` (the endpoint's own answer where it gives one, a name
+    the list knows sees, and otherwise *unknown*). Not a second rule (`Law 7`).
+
+    `B1281`. Unknown sends the picture. This asked `model_supports_vision`,
+    which keeps the name list's *no* when the endpoint says nothing, so a
+    `computer` screenshot to a model the list did not know was replaced by
+    words — the `D-2026-10-07-02` §1 shape `B1279` closed for a person's
+    picture. It was left because a refusal comes mid-run and the run had no
+    way to drop the picture and say so; the agent loop has one now: a round
+    refused for its picture is sent again in words, the rest of the turn
+    carries words, and the chat says so once (`PICTURES_REFUSED_NOTE`)."""
     try:
         from src.settings import get_setting
         if not get_setting("vision_enabled", True):
             return False
     except Exception:  # noqa: BLE001 — unreadable settings keep the default
         pass
-    from src.chat_helpers import model_supports_vision
+    from src.chat_helpers import vision_answer
     try:
-        return bool(model_supports_vision(model or "", endpoint_url or ""))
-    except Exception as e:  # noqa: BLE001 — cannot tell is "cannot see": words, not an error
+        return vision_answer(model or "", endpoint_url or "") is not False
+    except Exception as e:  # noqa: BLE001 — cannot tell is unknown: sent, and a refusal is recovered
         logger.warning("could not tell whether %s sees images: %s", model, e)
+        return True
+
+
+# `B1281`. What a provider says when a request carries a picture its model
+# will not take — llama.cpp ("image input is not supported … provide the
+# mmproj"), OpenAI ("image_url is only supported by certain models"), vLLM
+# ("… is not a multimodal model"), Ollama ("missing data required for image
+# input"). Read only for a request that did carry one.
+_PICTURE_REFUSAL = re.compile(
+    r"\b(image|images|image_url|input_image|vision|multimodal|multi-modal|mmproj)\b", re.I)
+
+PICTURES_REFUSED_NOTE = (
+    "_This model would not take the picture a tool returned, so for the rest of this "
+    "turn it is told what the tools saw in words. A model that can see images can work "
+    "from the screenshots themselves._"
+)
+
+
+def refused_for_its_picture(error_chunk: str, request_messages: Any) -> bool:
+    """`B1281`. Was this failed request refused because of a picture it
+    carried? Only when it carried one (`count_image_parts`) and the provider's
+    error names one — any other failure is the run's ordinary failure."""
+    if not error_chunk or not count_image_parts(request_messages or []):
         return False
+    return bool(_PICTURE_REFUSAL.search(str(error_chunk)))
 
 
 async def for_model(messages: List[Dict[str, Any]], model: str,
