@@ -218,28 +218,51 @@ def _smtp_security_mode(cfg: dict) -> str:
 
 
 def _send_smtp_message(cfg: dict, from_addr: str, recipients: list[str], message: str | bytes, timeout: int = 30) -> None:
-    """Send through SMTP using the configured transport security mode."""
+    """Send through SMTP using the configured transport security mode.
+
+    `B1526`: opened under `_MAIL_CONNECT_SECONDS` — the TCP connect, the TLS
+    handshake, the greeting and STARTTLS — and only then given `timeout` for
+    the sign-in and the send. smtplib takes one timeout for all of it, so a
+    send to a mail server that was not there waited the whole 30 s before the
+    pollers or the send route could say so; `P23-07` made this split for the
+    IMAP opener below and `B1230` for the agent's own SMTP opener.
+    """
     host = cfg["smtp_host"]
     port = int(cfg.get("smtp_port") or 465)
     user = cfg.get("smtp_user") or ""
     password = cfg.get("smtp_password") or ""
+    opening = min(timeout, _MAIL_CONNECT_SECONDS) if timeout else _MAIL_CONNECT_SECONDS
 
     def _auth_smtp(smtp):
         # P18-03: one spelling, in `src/mail_auth.py`. `user`/`password` above
         # are read from the same cfg, so passing cfg loses nothing.
         _mail_auth.authenticate_smtp(smtp, cfg)
 
+    def _opened(smtp):
+        # The session's reads and writes: the caller's full timeout.
+        sock = getattr(smtp, "sock", None)
+        if sock is not None:
+            try:
+                sock.settimeout(timeout)
+            except OSError:
+                # A socket the server already closed: the next command
+                # raises `SMTPServerDisconnected`, which the callers turn into
+                # their sentence (`_smtp_send_failure`); nothing to add here.
+                pass
+
     security = _smtp_security_mode(cfg)
 
     if security == "ssl":
-        with smtplib.SMTP_SSL(host, port, timeout=timeout) as smtp:
+        with smtplib.SMTP_SSL(host, port, timeout=opening) as smtp:
+            _opened(smtp)
             _auth_smtp(smtp)
             smtp.sendmail(from_addr, recipients, message)
         return
 
-    with smtplib.SMTP(host, port, timeout=timeout) as smtp:
+    with smtplib.SMTP(host, port, timeout=opening) as smtp:
         if security == "starttls":
             smtp.starttls()
+        _opened(smtp)
         _auth_smtp(smtp)
         smtp.sendmail(from_addr, recipients, message)
 
@@ -1337,7 +1360,12 @@ _IMAP_TIMEOUT_SECONDS = _coerce_imap_timeout_seconds(os.environ.get("PANTHEON_IM
 # `32df791`: `GET /api/email/unread-state` 30.0 s, `GET /api/email/list`
 # 30.0 s). A reachable server has greeted well inside five seconds; the reads
 # that follow keep the full timeout (a large mailbox's UID SEARCH can be slow).
-_IMAP_CONNECT_SECONDS = 5
+#
+# `B1526`: the same five seconds open the routes' SMTP sender
+# (`_send_smtp_message`), so the number is stated once for both openers and
+# `_IMAP_CONNECT_SECONDS` keeps its name for the IMAP side and its tests.
+_MAIL_CONNECT_SECONDS = 5
+_IMAP_CONNECT_SECONDS = _MAIL_CONNECT_SECONDS
 
 
 def _open_imap_connection(
