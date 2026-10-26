@@ -14,21 +14,32 @@ Driven in the real app in headless Chromium (booted as
 `/static/` registration is replaced, the worker controls `/`, a reload is
 served through it, no `/api/` answer ever comes from it, an offline reload
 draws the app, and a signed-out visit still lands on the login page.
+
+"Offline" is this file's own server stopped mid-drive (`B1423`, after
+`test_a_kept_page_says_the_server_is_down.py`): Chromium's offline emulation
+does not reach a service worker's own `fetch`, so it measured the live server.
 """
 
 import json
-import os
 import subprocess
 
 import pytest
 
-from test_the_command_palette_in_a_browser import NODE, _SKIP, app_url  # noqa: F401,E402
+from test_the_command_palette_in_a_browser import NODE, SERVED, _SKIP, app_url  # noqa: F401,E402
 
 _SCRIPT = r"""
 const { chromium } = require('playwright');
 const BASE = process.argv[2];
+const SERVER_PGID = Number(process.argv[3]);
 const wait = async (page, fn, ms) => {
   try { await page.waitForFunction(fn, null, { timeout: ms }); return true; } catch (_) { return false; }
+};
+const down = async () => {
+  for (let i = 0; i < 100; i++) {
+    try { await fetch(BASE + '/login'); } catch (_) { return true; }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  return false;
 };
 (async () => {
   const browser = await chromium.launch({ args: ['--no-sandbox'] });
@@ -71,27 +82,45 @@ const wait = async (page, fn, ms) => {
     api: seen.filter(r => r.url.startsWith('/api/')).length,
   };
 
-  // Offline: the app draws from the cache, on `/` and on a window's URL. A
-  // page error from here on is the app's own requests failing with no network
-  // (recorded apart; the worker's job is that the page runs at all).
   out.onlineErrors = out.errors.slice();
-  await context.setOffline(true);
+
+  // Signed out, the server's redirect still wins over the cached app. Asked
+  // while the server is up, and then signed back in for the offline half.
+  await context.clearCookies();
+  await page.goto(BASE + '/', { waitUntil: 'load' });
+  out.signedOut = new URL(page.url()).pathname;
+  await page.request.post(BASE + '/api/auth/login', { data: { ...creds, remember: true } });
+  await page.goto(BASE + '/', { waitUntil: 'load' });
+  await wait(page, () => window.__pantheonAppStarted === true, 90000);
+  out.errors.length = out.onlineErrors.length;
+
+  // Offline: the app draws from the cache, on `/` and on a window's URL.
+  // `B1423`: the server is really stopped. `context.setOffline(true)` (and
+  // `context.route` aborting everything) leave the worker's own `fetch`
+  // untouched — measured, the worker fetched `/` from the live server — so
+  // those two cases were answered by the server, not by the worker's fallback.
+  // `fromWorker` and the kept-copy notice (which only the fallback adds) are
+  // the proof it was the worker. A page error from here on is the app's own
+  // requests failing with no server (recorded apart; the worker's job is that
+  // the page runs at all).
+  process.kill(-SERVER_PGID, 'SIGTERM');
+  out.serverStopped = await down();
   out.offline = {};
   for (const path of ['/', '/tasks']) {
     try {
-      await page.goto(BASE + path, { waitUntil: 'domcontentloaded', timeout: 20000 });
-      out.offline[path] = await wait(page, () => !!document.getElementById('tool-workbench-btn'), 20000);
+      const res = await page.goto(BASE + path, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      out.offline[path] = {
+        fromWorker: !!(res && res.fromServiceWorker()),
+        keptCopyNotice: await page.evaluate(() => !!document.getElementById('kept-copy-notice')),
+        drawn: await wait(page, () => !!document.getElementById('tool-workbench-btn'), 20000),
+        // `B1508`: the page's JavaScript ran, not just its static HTML.
+        started: await wait(page, () => window.__pantheonAppStarted === true, 20000),
+      };
     } catch (e) {
       out.offline[path] = String(e && e.message || e).slice(0, 80);
     }
   }
-  await context.setOffline(false);
   out.offlineErrors = out.errors.slice(out.onlineErrors.length);
-
-  // Signed out, the server's redirect still wins over the cached app.
-  await context.clearCookies();
-  await page.goto(BASE + '/', { waitUntil: 'load' });
-  out.signedOut = new URL(page.url()).pathname;
 
   console.log(JSON.stringify(out));
   await browser.close();
@@ -100,25 +129,14 @@ const wait = async (page, fn, ms) => {
 
 
 @pytest.fixture(scope="module")
-def file_database(tmp_path_factory):
-    """A database file for the server `app_url` boots (`tests/conftest.py`'s
-    in-memory default is one database per connection; see
-    `test_the_assistant_has_a_sidebar_door.py`)."""
-    before = os.environ.get("DATABASE_URL")
-    os.environ["DATABASE_URL"] = "sqlite:///" + str(tmp_path_factory.mktemp("sw-db") / "app.db")
-    yield
-    if before is None:
-        os.environ.pop("DATABASE_URL", None)
-    else:
-        os.environ["DATABASE_URL"] = before
-
-
-@pytest.fixture(scope="module")
-def drive(file_database, app_url, tmp_path_factory):  # noqa: F811
+def drive(app_url, tmp_path_factory):  # noqa: F811
+    # `B1085`: `app_url` gives the server a database file of its own now, so
+    # the module fixture this file kept to point `DATABASE_URL` at one is gone.
     script = tmp_path_factory.mktemp("sw-pw") / "sw.cjs"
     script.write_text(_SCRIPT, encoding="utf-8")
-    proc = subprocess.run([NODE, str(script), app_url], capture_output=True, text=True,
-                          timeout=300, cwd=str(script.parent))
+    # `B1423`: the drive stops this file's own server mid-way, by its group.
+    proc = subprocess.run([NODE, str(script), app_url, str(SERVED[app_url].pgid)],
+                          capture_output=True, text=True, timeout=300, cwd=str(script.parent))
     assert proc.returncode == 0, proc.stderr[-4000:]
     lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
     return json.loads(lines[-1])
@@ -152,7 +170,32 @@ def test_no_api_answer_comes_from_the_worker(drive):
 
 
 def test_an_offline_reload_draws_the_app(drive):
-    assert drive["offline"] == {"/": True, "/tasks": True}, drive["offline"]
+    """`B1423`: with the server really down, so the worker's navigation
+    fallback is what answers — the kept-copy notice is only ever its doing."""
+    assert drive["serverStopped"] is True
+    for path in ("/", "/tasks"):
+        got = drive["offline"][path]
+        assert isinstance(got, dict), (path, got)
+        assert got["fromWorker"] is True, (path, got)
+        assert got["keptCopyNotice"] is True, (path, got)
+        assert got["drawn"] is True, (path, got)
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "B1508: measured with the server stopped — every module the page imports is "
+    "in the worker's cache under its exact URL, stored with `Vary: Origin` (the "
+    "CORS middleware's), and precached by a plain `fetch` that sends no Origin. A "
+    "module request is CORS-mode and sends one, so `caches.match(e.request)` "
+    "honours the Vary and misses: `net::ERR_FAILED`, 33 of 36 failed requests, "
+    "`import()` fails while `fetch()` of the same URL gets the cached 200. "
+    "`static/sw.js`'s two cache lookups need `{ ignoreVary: true }` (measured: the "
+    "app then starts with the server down, 0 module failures). That file is the "
+    "coordinator's; this case turns red when the fix lands — remove this mark."))
+def test_offline_the_apps_javascript_runs(drive):
+    """`B1508`. `test_an_offline_reload_draws_the_app` passes on the static HTML's
+    `#tool-workbench-btn` alone; this is the claim that the app itself ran."""
+    for path in ("/", "/tasks"):
+        assert drive["offline"][path]["started"] is True, (path, drive["offline"][path])
 
 
 def test_a_signed_out_visit_still_lands_on_the_login_page(drive):
@@ -167,5 +210,9 @@ def test_offline_the_early_requests_raise_no_unhandled_error(drive):
     """`PERF-M-9`'s early fetch rejects with no network before any module
     awaits it; it is marked handled where it is made (the module that awaits it
     still sees the failure). Found by this drive: one `TypeError: Failed to
-    fetch` per offline load, from the inline script."""
+    fetch` per offline load, from the inline script.
+
+    `B1423`: only meaningful on a page the worker drew — with no fallback the
+    navigation is an error page that raises nothing, and this passed on that."""
+    assert all(isinstance(v, dict) and v["drawn"] for v in drive["offline"].values()), drive["offline"]
     assert drive["offlineErrors"] == [], drive["offlineErrors"]
