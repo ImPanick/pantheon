@@ -76,14 +76,12 @@ def world(tmp_path, monkeypatch):
     scheduler = TaskScheduler(None)
     previous = event_bus.get_task_scheduler()
     event_bus.set_task_scheduler(scheduler)
-    with F._plans_lock:
-        F._plans.clear()
+    # `B1018`: waiting plans are rows in this test's own database now (the
+    # `document_plans` table), so there is no process dict to clear.
     try:
         yield type("World", (), {"db": ts, "scheduler": scheduler})
     finally:
         event_bus.set_task_scheduler(previous)
-        with F._plans_lock:
-            F._plans.clear()
 
 
 def doc(world, title, owner="bob", content="something", created=LONG_AGO):
@@ -563,14 +561,14 @@ console.log(JSON.stringify({{ shown, errors: ui.errors, urls: sent.map((s) => s.
 def test_it_waits_longer_than_an_agent_s_plan(world, mess, monkeypatch):
     """An agent's plan lapses after 30 minutes, because the person is in the
     chat that asked. Nobody is waiting on the tidy's, so it waits a week."""
-    import time as _time
-
     run_seeded_tidy(world)
     plan_id = the_notice(world)["review"]["plan_id"]
-    start = _time.monotonic()
-    monkeypatch.setattr(F.time, "monotonic", lambda: start + 3 * 24 * 3600)
+    # `B1018`: a plan's expiry is wall-clock UTC now (it outlives the process),
+    # so the clock moved is the one the plan store reads.
+    start = F.utcnow_naive()
+    monkeypatch.setattr(F, "utcnow_naive", lambda: start + timedelta(days=3))
     assert [p.plan_id for p in F.waiting_reviews("bob")] == [plan_id]
-    monkeypatch.setattr(F.time, "monotonic", lambda: start + 8 * 24 * 3600)
+    monkeypatch.setattr(F, "utcnow_naive", lambda: start + timedelta(days=8))
     assert F.waiting_reviews("bob") == []
 
 
