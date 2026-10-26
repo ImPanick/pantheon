@@ -108,6 +108,9 @@ the next one is cut.
 
 ### Added
 
+- **Ctrl+K finds a chat by its name,** not only by a word in its messages (`B1249`).
+- **The mail unread count shows on the sidebar with the mail window closed** (`B812`).
+
 - **A person keeps their own keyboard shortcuts;** an admin's are everyone's default (`B1196`).
 - **A plain API token can be minted** from Settings › Integrations (`B1193`).
 - **A build says which commit it is:** `GET /api/version` carries `commit` (`B453`).
@@ -201,6 +204,11 @@ the next one is cut.
   button all close it. `/toggle mode [agent|chat]` is the same control, typed.
 
 ### Changed — read this before upgrading
+
+- **A message you just sent can be deleted before a reload:** the chat stream announces the sent
+  message's row id in a new `user_message_saved` event (`B1507`).
+- **`GET /api/search?chats=1`** returns `{chats, results}`; without the flag the answer is the
+  plain list as before (`B1249`).
 
 - **`GET /api/ready` answers without a sign-in,** with only `{"ready": bool}` and 200 or 503 to a
   caller with no session; the compose healthchecks ask it instead of `/api/health` (`B441`).
@@ -323,6 +331,17 @@ the next one is cut.
   arming that a non-empty memory store did on its own.
 
 ### Fixed
+
+- **Every mail path gives up on a silent server in seconds** — the routes' sender joins the agent's
+  tools (`B1526`); an email task no longer rewrites `settings.json` to pass itself flags
+  (`B801`); a reminder Odysseus queued is still a reminder (`B1161`).
+- ***Delete all unsorted* deletes all of them,** not the hundred the sidebar holds (`B1225`); a
+  compacted chat's summary reloads first (`B1506`); the palette names Settings groups as the
+  Settings window does (`B1206`).
+- **The RAG chip says when no index answered** (`B1287`); the search cache is swept after a
+  restart (`B1336`); a page that fails once is asked once more (`B1337`); the Forge's local
+  Ollama probe goes direct, not through a proxy (`B1262`); a failed GGUF scan says its sentence
+  (`B1261`).
 
 - **The kept offline page runs its JavaScript** — cached modules were missed on `Vary: Origin`
   (`B1508`).

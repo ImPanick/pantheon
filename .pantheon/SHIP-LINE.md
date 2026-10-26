@@ -243,6 +243,10 @@ Re-measured 2026-10-26, after the fourth wave of three: **93 filed, 299 closed**
 
 **Direction as of 2026-10-26, after the fourth wave: the open count is falling.**
 
+Re-measured 2026-10-26, after the fifth wave: **86 filed, 321 closed**, open **400 → 165** — falling, by twenty-four in one wave. Thirty-one rows closed by two agents; eight filed, one closed in it (`B1536`). The window moved on by one interval, so its start reads 400 where the last reading said 395. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1497`–`B1536`) block.
+
+**Direction as of 2026-10-26, after the fifth wave: the open count is falling.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus

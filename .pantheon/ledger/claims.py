@@ -440,12 +440,12 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="tests",
         area="Verification apparatus",
-        headline="Test files 792 -> 1730, and a suite of 20,309 passing with nothing red.",
+        headline="Test files 792 -> 1760, and a suite of 20,309 passing with nothing red.",
         stock="792 test files.",
-        pantheon=("1730 test files, and 20,309 tests passing, 0 failing, 113 skipped, "
+        pantheon=("1760 test files, and 20,309 tests passing, 0 failing, 113 skipped, "
                   "0 xfailed when the suite was last run whole — 2026-10-18, at `c66fe54`."),
         before="792 test files",
-        after="1730 test files · 20,309",
+        after="1760 test files · 20,309",
         provenance="diffed",
         repro=f"git ls-tree -r --name-only {FORK_POINT} | grep -c '^tests/test_.*\\.py$' && python3 -m pytest -q",
         evidence=("tests",),
@@ -728,7 +728,7 @@ CLAIMS: Tuple[Claim, ...] = (
         before="260 requests per click",
         after="40, budgeted and shared",
         provenance="counted",
-        # `B411`. The repro was `check-outbound.py --max 109`, which counts
+        # `B411`. The repro was `check-outbound.py`'s ceiling, which counts
         # unpaced call sites across the tree — a different metric that never
         # prints 40. The 40 is `HF_MAX_REQUESTS_PER_REFRESH`, so the repro now
         # prints it from the module that spends it, and runs the tests that hold
