@@ -35,6 +35,7 @@ from src.tool_capabilities import (
     ToolGateDecision,
     capabilities_for_action,
     describe_effects,
+    self_escalation_for,
 )
 
 logger = logging.getLogger(__name__)
@@ -510,6 +511,14 @@ class PendingToolApproval:
                 # nothing is two contradicting statements on one surface.
                 "taint_trail": [dict(entry) for entry in self.taint_trail],
                 "tainted": bool(self.external_untrusted_context_seen),
+                # `B900`. The action widens the assistant's own reach (`P7-02`:
+                # a switch turned on, a limit the person set raised). No allow
+                # rule covers one — the store refuses `exact` for it and the
+                # gate asks before every one whatever a `prefix` or `any` rule
+                # says — so the card offers no "stop asking" chooser on it.
+                # Derived from the sealed tool and content by the gate's own
+                # question, never stored, never read back as authority.
+                "widening": self_escalation_for(self.tool_name, self.content) is not None,
             },
         }
 
