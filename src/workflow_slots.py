@@ -410,6 +410,29 @@ def path_text(path) -> str:
     return out
 
 
+_FIELD_SEG = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)|\[(\d+)\]")
+
+
+def path_of(field) -> tuple | None:
+    """`conditions[0].left` → `("conditions", 0, "left")`: `path_text` read
+    back, for a field a panel names (`B1099`). `None` for text that is not
+    one — anything between the segments but a dot."""
+    text = str(field or "")
+    out, at = [], 0
+    for m in _FIELD_SEG.finditer(text):
+        gap = text[at:m.start()]
+        index = m.group(2) is not None
+        # A name follows a dot (or starts the field); an index follows
+        # anything but a dot — exactly what `path_text` writes.
+        if gap != ("" if index or not out else "."):
+            return None
+        out.append(int(m.group(2)) if index else m.group(1))
+        at = m.end()
+    if at != len(text) or not out:
+        return None
+    return tuple(out)
+
+
 def config_leaves(value, path=()):
     """`(path, text)` for every text inside a step's settings, in order."""
     if isinstance(value, str):
@@ -658,7 +681,7 @@ __all__ = [
     "MAPPING_VALUE", "MAPPING_NEVER", "MAPPINGS", "CARRY_INLINE", "CARRY_CONTEXT",
     "CARRIES", "WHY_WHERE", "WHY_WHAT", "WHY_WHEN", "WHY_NOT_TEXT", "WHYS", "Slot",
     "NODE_SLOTS", "CONTENT_WORDS", "FORMAT_WORDS", "ARGUMENT_WORDS", "ADDRESS_FORMATS",
-    "classify_argument", "action_param_slots", "slot_for", "declared_fields",
+    "classify_argument", "action_param_slots", "slot_for", "declared_fields", "path_of",
     "path_text", "config_leaves", "name_parts", "SlotError", "RenderedCall",
     "render_call", "SLOT_MAX_CHARS", "CALL_MAX_BYTES", "MISSING",
 ]

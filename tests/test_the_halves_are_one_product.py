@@ -349,7 +349,7 @@ _JS_PREAMBLE = (
     "  const h = host();\n"
     "  const got = [];\n"
     "  SF.mountStepFields(h, { node: { id: `x-${kind}`, kind, label: '', config: {} }, palette: PAL,\n"
-    "    pickField, onApply: (s) => got.push(s), ...more });\n"
+    "    pickField, classify: globalThis.__classify || null, onApply: (s) => got.push(s), ...more });\n"
     "  how(h);\n"
     "  fire(h.querySelector('.wf-step-done'), 'click');\n"
     "  const p = h.querySelector('.wf-sf-problem');\n"
@@ -473,16 +473,31 @@ def test_every_field_a_panel_offers_a_picker_on_is_one_the_renderer_fills(js_box
     with `[]` for each index, then its last name) is the slot the rule and the
     renderer decide for that path (`workflow_slots.slot_for`): no field offers
     *Insert a field…* where a reference would be refused, and every `never`
-    the panel says is the rule's. One gap, fail-closed and filed: an HTTP
-    query or body value is `value` only by its entry's name, which the palette
-    cannot answer once per kind, so the panel says `never` for all of them."""
+    the panel says is the rule's.
+
+    `B1099` closed the one gap this filed: an HTTP query or body value is
+    `value` only by its entry's name, which the palette cannot answer once per
+    kind (it says `never`); the form now asks the rule as the name is typed
+    (`POST /api/workflows/slot`). Its answers here are the door's own
+    (`field_slot_answer`) for the names the forms type, and each field is
+    judged by the slot it was LAST given — the palette's `never` first, the
+    rule's answer after the name."""
+    from routes.workflow.workflow_routes import field_slot_answer
     from src import workflow_slots as ws
     from tests.helpers.workflow_cw_fake import ENV_MCP_TOOLS
-    o = _js(js_box, _FILL_ALL)
+    answers = {name: field_slot_answer({"node": {"kind": "http", "config": {"query": [{"name": name}]}},
+                                        "field": "query[0].value"})
+               for name in ("status", "text")}
+    script = ("globalThis.__classify = async (node, field) => {\n"
+              "  const list = Object.keys(node.config)[0];\n"
+              f"  return {{ ok: true, ...{json.dumps(answers)}[node.config[list][0].name] }};\n"
+              "};\n" + _FILL_ALL.replace("out({ forms, seenSlots });",
+                                          "await settle(400); out({ forms, seenSlots });"))
+    o = _js(js_box, script)
     forms = o["forms"]
     schema = ENV_MCP_TOOLS[0]["input_schema"]
     nodes = {kind: {"id": f"x-{kind}", **step} for kind, step in forms.items()}
-    seen = o["seenSlots"]
+    seen = list(dict(o["seenSlots"]).items())        # the last slot each field was given
     assert seen, "the panels decorated their fields"
     unknown = [field for field, mapping in seen if mapping is None]
     assert unknown == [], f"a field the palette gave no slot: {unknown}"
@@ -505,7 +520,10 @@ def test_every_field_a_panel_offers_a_picker_on_is_one_the_renderer_fills(js_box
         elif rule != mapping:
             (gap if kind == "http" and path[-1] == "value" else mismatched).append((kind, field, rule))
     assert mismatched == [], mismatched
-    assert gap == [("http", "body[0].value", "value")], "the one filed gap, and only it"
+    # `B1099`: the gap this filed — `http body[0].value`, `never` on the panel
+    # and `value` in the rule — is closed.
+    assert gap == [], gap
+    assert ("body[0].value", ws.MAPPING_VALUE) in seen, "a body entry named `text` offers the picker"
 
 
 @pytestmark_js

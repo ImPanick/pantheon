@@ -237,6 +237,12 @@ export function createWorkflowApi({ fetch } = {}) {
     getPalette() {
       return call('GET', `/api/workflows/palette`);
     },
+    /** `B1099`. What one field of a step, as it stands, may be filled with —
+     *  the rule's answer (`slot_for`), for a field the palette decides per
+     *  entry (an HTTP query or body value, by its name). → `{ mapping, why }` */
+    fieldSlot(node, field) {
+      return call('POST', `/api/workflows/slot`, { node, field });
+    },
     /** `C-W`. The fields a step can pick from the steps before it, each with
      *  an example and where it came from. → `{ sources: [{ node_id, label,
      *  kind, origin, at, fields: [{ ref, path, type, example }] }] }` */

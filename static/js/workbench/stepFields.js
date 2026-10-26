@@ -10,7 +10,9 @@
 // (`/work/notes/SLICE-CD-DESIGN.md` § 2, § 3's JS contract):
 //
 //   mountStepFields(host, { node, palette, upstream, pickField, onApply, onCancel,
-//                           problem?, editInner? }) → { read, showProblem, paletteChanged, destroy }
+//                           problem?, editInner?, classify? }) → { read, showProblem, paletteChanged, destroy }
+//   (`classify(node, field)` → `{ ok, mapping, why }`, `B1099`: the rule's slot
+//   for one field of the step as it stands — an HTTP entry's value by its name.)
 //   mountAiOptions(host, { node, palette, pickField }) → { read, destroy }
 //
 // **Nothing here is a language** (`D-2026-10-01-05` §2). A condition is a
@@ -180,6 +182,9 @@ function _button(cls, text, title) {
 
 let _ids = 0;
 const _nextId = () => `wf-sf-${++_ids}`;
+/** `B1099`. How long after the last key in an HTTP entry's name its value's
+ *  slot is asked (one request per pause, not per key). */
+export const CLASSIFY_DELAY_MS = 250;
 
 const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
 
@@ -607,16 +612,45 @@ function buildHttp(ctx) {
       empty: 'None.',
       draw(row, item, i) {
         const it = item && typeof item === 'object' ? item : {};
+        const field = `${list}[${i}].value`;
         const k = _textField(row, 'Name', { value: it.name || '', field: `${list}[${i}].name` });
         const hk = ctx.decorate(k, `${list}[${i}].name`);
-        const v = _textField(row, 'Value', { value: it.value == null ? '' : it.value, field: `${list}[${i}].value` });
-        const hv = ctx.decorate(v, `${list}[${i}].value`);
+        const v = _textField(row, 'Value', { value: it.value == null ? '' : it.value, field });
+        let hv = ctx.decorate(v, field);
+        // `B1099`. Whether another step may fill this value depends on the
+        // entry's name (`classify_argument`), which the palette cannot say
+        // once per kind (it says `never`). The rule is asked as the name is
+        // typed, and the value offers *Insert a field…* or says why not, before
+        // Done. A Pantheon without the door keeps the palette's `never`.
+        let alive = true;
+        let asked = null;
+        let timer = null;
+        const ask = async () => {
+          const name = String(k.value).trim();
+          if (!ctx.classify || !name || name === asked) return;
+          asked = name;
+          let r = null;
+          try { r = await ctx.classify({ kind: 'http', config: { [list]: [{ name }] } }, `${list}[0].value`); } catch (_) { r = null; }
+          if (!alive || String(k.value).trim() !== name || !r || r.ok === false) return;
+          if (r.mapping !== 'value' && r.mapping !== 'never') return;
+          try { if (hv && hv.destroy) hv.destroy(); } catch (_) { /* gone */ }
+          hv = ctx.decorateSlot(v, { field, slot: { mapping: r.mapping, why: r.why || '' } });
+        };
+        k.addEventListener('input', () => {
+          if (timer) clearTimeout(timer);
+          timer = setTimeout(() => { timer = null; ask(); }, CLASSIFY_DELAY_MS);
+        });
+        if (String(k.value).trim()) ask();
         return {
           snapshot: () => ({ name: k.value, value: v.value }),
           read: (j) => (String(k.value).trim()
             ? { value: { name: String(k.value).trim(), value: String(v.value) } }
             : { refusal: 'Give this a name, or remove it.', field: `${list}[${j}].name` }),
-          destroy() { for (const h of [hk, hv]) { try { if (h && h.destroy) h.destroy(); } catch (_) { /* gone */ } } },
+          destroy() {
+            alive = false;
+            if (timer) clearTimeout(timer);
+            for (const h of [hk, hv]) { try { if (h && h.destroy) h.destroy(); } catch (_) { /* gone */ } }
+          },
         };
       },
     });
@@ -627,7 +661,7 @@ function buildHttp(ctx) {
   const bodyKv = kv('Body (sent as JSON)', 'body', 'Add a body field', Array.isArray(cfg.body) ? cfg.body : []);
   body.appendChild(_el('p', 'wf-sf-hint', 'Whether a value may come from an earlier step depends on its name: words that '
     + 'carry content (text, message, subject, title, summary…) may; a name that says where something goes never does. '
-    + 'Saving says which, on the field.'));
+    + 'The value says which as you type the name.'));
   const sync = () => {
     const i = integrations.find((x) => String(x.id) === integ.value);
     desc.textContent = i && i.description ? String(i.description) : '';
@@ -850,7 +884,7 @@ function showOnField(root, handles, problem, fallbackEl) {
  */
 export function mountStepFields(host, {
   node, palette = null, upstream = [], pickField = null, onApply = null, onCancel = null, problem = null, editInner = null,
-  needs = null, openRoom = null,
+  needs = null, openRoom = null, classify = null,
 } = {}) {
   const n = node && typeof node === 'object' ? node : {};
   const kind = String(n.kind || '');
@@ -873,6 +907,7 @@ export function mountStepFields(host, {
   const onPalette = [];
   const ctx = {
     body, cfg, palette, upstream, slots, editInner, openRoom,
+    classify: typeof classify === 'function' ? classify : null,
     limits: palette && palette.limits ? palette.limits : {},
     operators: palette && Array.isArray(palette.operators) && palette.operators.length ? palette.operators : DEFAULT_OPERATORS,
     onDestroy: (fn) => destroyers.push(fn),

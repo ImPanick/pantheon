@@ -687,6 +687,23 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         finally:
             db.close()
 
+    @router.post("/slot")
+    @_answers
+    async def field_slot(request: Request):
+        """`B1099`. What one field of a step, as it stands in the panel, may be
+        filled with — `{mapping: "value" | "never", why}` — decided by the
+        rule (`workflow_slots.slot_for`), which the save route and the
+        renderer ask too (`Law 7`).
+
+        The palette answers once per kind, and an HTTP step's query and body
+        values are decided per entry by the entry's NAME
+        (`classify_argument`): the palette said them all `never`, so the
+        panel offered no picker on a body entry named `text` that the save
+        would take. The panel asks here as a name is typed. Nothing is read
+        or written: this is the rule applied to what the browser sent.
+        """
+        return field_slot_answer(await _body(request))
+
     @router.post("/{workflow_id}/runs/{run_id}/answer")
     @_answers
     async def answer_step(request: Request, workflow_id: str, run_id: str):
@@ -864,6 +881,29 @@ def _with_node(graph: dict, node: dict) -> dict:
         nodes.append(node)
     out["nodes"] = nodes
     return out
+
+
+def field_slot_answer(body) -> dict:
+    """`B1099`. `{mapping, why}` for `body["field"]` (a field as a panel
+    names it, `query[0].value`) of `body["node"]` (`{kind, config}`), by
+    `workflow_slots.slot_for`. An MCP argument is answered on the palette
+    (`mcp_tools[].args`), so an MCP step is refused here rather than
+    answered without its tool's schema (which would say every argument
+    `never`)."""
+    from src import workflow_slots as ws
+    node = body.get("node") if isinstance(body, dict) else None
+    field = body.get("field") if isinstance(body, dict) else None
+    if not isinstance(node, dict) or not isinstance(node.get("kind"), str):
+        raise WorkflowRefused(400, "Send the step as it stands (node, with its kind and config).")
+    if node.get("config") is not None and not isinstance(node.get("config"), dict):
+        raise WorkflowRefused(400, "A step's config is an object.")
+    if node["kind"] == "mcp":
+        raise WorkflowRefused(400, "An MCP tool's arguments are answered on the palette (mcp_tools[].args).")
+    path = ws.path_of(field)
+    if path is None:
+        raise WorkflowRefused(400, "Name the field as the panel does, for example body[0].value.")
+    slot = ws.slot_for({"kind": node["kind"], "config": node.get("config") or {}}, path)
+    return {"mapping": slot.mapping, "why": slot.why}
 
 
 def _field(record, key):

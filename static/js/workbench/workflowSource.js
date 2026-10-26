@@ -1202,6 +1202,18 @@ export function createWorkflowSource({
     return { ok: true };
   }
 
+  /** `B1099`. The rule's slot for one field of a step as it stands in its
+   *  panel — `{ ok, mapping, why }`. A read: nothing in the draft moves. */
+  async function fieldSlot(node, field) {
+    if (!api || typeof api.fieldSlot !== 'function') return { ok: false, sentence: 'This Pantheon cannot say.' };
+    try {
+      const out = await api.fieldSlot(node, field);
+      return { ok: true, mapping: out && out.mapping, why: (out && out.why) || '' };
+    } catch (err) {
+      return answer(err);
+    }
+  }
+
   /** Pin a sample on a saved step, or with `null` unpin it (`P22-08`). It is
    *  never a version and never a change to the draft's content. */
   async function setPin(id, data) {
@@ -1496,7 +1508,7 @@ export function createWorkflowSource({
     },
     ready,
     load, connect, disconnect, loadPositions, savePositions, openPanel, newItem, removeItem, dryRun,
-    state, refresh, reloadPalette, rename, save, discard, setPin, test, runNow, switchOn, restoreChain,
+    state, refresh, reloadPalette, rename, save, discard, setPin, fieldSlot, test, runNow, switchOn, restoreChain,
     versions, showVersion, restoreVersion, answer: answerStep, listFields, upstreamOf,
     // Slice E (C-A).
     marked, checkSteps, planLines, fix, exportFile, explain: explainStep,

@@ -411,7 +411,7 @@ export function createWorkflowPanels({
   /** One step's editor in `formHost`: the task form for a task kind (with
    *  the hooks), the step forms for the rest. */
   function mountEditor(formHost, { step, tasks, pal, upstream, fields, problem, inForeach = null, onApply, onCancel, editInner,
-    needs = null }) {
+    needs = null, classify = null }) {
     const n = step || {};
     const kind = String(n.kind || 'llm');
     const entry = entryOf(pal, kind);
@@ -440,7 +440,7 @@ export function createWorkflowPanels({
     }
     if (!STEP_FIELD_KINDS.includes(kind)) return null;
     return mountStepFields(formHost, {
-      node: n, palette: pal, upstream, pickField, problem, editInner, needs, openRoom,
+      node: n, palette: pal, upstream, pickField, problem, editInner, needs, openRoom, classify,
       onApply: (change) => { if (typeof onApply === 'function') onApply(change); },
       onCancel: () => { if (typeof onCancel === 'function') onCancel(); },
     });
@@ -486,12 +486,16 @@ export function createWorkflowPanels({
         done(made || null);
       };
       inner = mountEditor(innerHost, {
-        step: innerStep, tasks, pal, upstream, fields, problem: null, inForeach: listNow,
+        step: innerStep, tasks, pal, upstream, fields, problem: null, inForeach: listNow, classify,
         onApply: (made) => close({ ...made, kind: innerStep.kind }), onCancel: () => close(null), editInner: null,
       }) || { destroy() {} };
     };
+    // `B1099`: the rule's slot for a field decided by what is typed (an HTTP
+    // entry's value, by its name), asked through the source.
+    const classify = source && typeof source.fieldSlot === 'function'
+      ? (node, field) => source.fieldSlot(node, field) : null;
     const form = mountEditor(formHost, {
-      step: n, tasks, pal, upstream, fields, problem, onApply, onCancel, editInner,
+      step: n, tasks, pal, upstream, fields, problem, onApply, onCancel, editInner, classify,
       needs: check && Array.isArray(check.needs) ? check.needs : null,
     });
     if (!form) formHost.textContent = 'The step form did not load. Close the Workbench and open it again to retry.';
