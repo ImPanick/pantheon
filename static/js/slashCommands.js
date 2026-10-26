@@ -2223,6 +2223,31 @@ async function _cmdTts(args, ctx) {
   return true;
 }
 
+// ── Tours: what a step points at ──
+
+/** `B1346`. The one rule every tour's step runner uses to find what a step
+ *  points at: for each comma-separated selector, the first element it matches
+ *  that is rendered — `checkVisibility()`, where the browser has it — not
+ *  merely present. `querySelector` finds a `display: none` control, and a step
+ *  pointed at one put its halo and tooltip at a zero rect (the top-left
+ *  corner) and, on a click-to-continue step, waited for a click that could
+ *  never come. The first-run tour filtered this way (`D-2026-10-09-01` §4);
+ *  its copies in the other tours did not, so the rule lives here once. */
+function _tourTargets(sel) {
+  const out = [];
+  for (const one of String(sel || '').split(',').map((x) => x.trim()).filter(Boolean)) {
+    const hit = Array.prototype.find.call(document.querySelectorAll(one),
+      (n) => (typeof n.checkVisibility === 'function' ? n.checkVisibility() : true));
+    if (hit) out.push(hit);
+  }
+  return out;
+}
+
+/** The first of them, or `null` when nothing the step names is on screen. */
+function _tourTarget(sel) {
+  return _tourTargets(sel)[0] || null;
+}
+
 // ── Demo ──
 
 async function _cmdDemo(args, ctx) {
@@ -2453,13 +2478,12 @@ async function _cmdDemo(args, ctx) {
 
       // Support multiple selectors (comma-separated)
       const sels = sel.split(',').map(s => s.trim());
-      // Rendered, not merely present. `querySelector` finds a `display: none`
-      // control, and a click-to-continue step pointed at one waits for a click
-      // that can never come — which is what the Agent-mode step did on a phone,
-      // where the chat bar's container query drops `.mode-toggle`
+      // Rendered, not merely present (`_tourTargets`, the one rule — `B1346`).
+      // A click-to-continue step pointed at a `display: none` control waits for
+      // a click that can never come — which is what the Agent-mode step did on
+      // a phone, where the chat bar's container query drops `.mode-toggle`
       // (`D-2026-10-09-01` §4). A step with nothing to point at is skipped.
-      const targets = sels.map(s => document.querySelector(s)).filter(
-        (n) => n && (typeof n.checkVisibility === 'function' ? n.checkVisibility() : true));
+      const targets = _tourTargets(sel);
       if (!targets.length) return resolve('skip');
 
       const clickMode = mode === 'click';
@@ -2828,8 +2852,12 @@ async function _cmdTourCompare(args, ctx) {
     const advanceOnClick = !!opts.advanceOnClick;
     return new Promise(resolve => {
       _clearHalos();
-      const target = document.querySelector(sel);
-      if (!target) return resolve('skip');
+      // `B1346`. Rendered, not merely present (`_tourTarget`); a step with
+      // nothing on screen to point at is passed over (`'absent'`), as the
+      // first-run tour's is — it used to be highlighted at a zero rect and, on
+      // a click-to-continue step, waited on for good.
+      const target = _tourTarget(sel);
+      if (!target) return resolve('absent');
       _halos.push(_makeHalo(target));
       target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
 
@@ -2881,7 +2909,8 @@ async function _cmdTourCompare(args, ctx) {
   // Scope every selector to #compare-model-overlay so we don't accidentally
   // match the Group Chat panel's .compare-parallel-toggle (in
   // index.html), which has the same class name and is hidden — its zero
-  // bounding-rect was putting the tooltip in the top-left corner.
+  // bounding-rect was putting the tooltip in the top-left corner. (`B1346`:
+  // `_tourTarget` now passes over a hidden match whatever the selector.)
   const phase1 = [
     { sel: '#compare-model-overlay .modal-body',
       text: 'Pick the kind of test: <b>Chat</b>, <b>Agent</b>, <b>Search</b> or <b>Deep Research</b>.',
@@ -2898,14 +2927,19 @@ async function _cmdTourCompare(args, ctx) {
       text: '<b>Shuffle</b> picks models from your whole list. With <b>Blind Mode</b>, it is a fair test.' },
   ];
 
+  // `B1346`: a step passed over (`'absent'`) is passed in the direction the
+  // person was going — back past it after ←, on past it otherwise.
+  let dir = 1;
   for (let i = 0; i < phase1.length; i++) {
     const step = phase1[i];
     const res = await _showStep(step.sel, step.text, {
       isFirst: i === 0,
       isLast: false,
     });
+    if (res === 'absent') { if (dir < 0) { if (i > 0) i -= 2; else dir = 1; } continue; }
     if (res === 'skip') { _clear(); return true; }
-    if (res === 'back') { if (i > 0) i -= 2; continue; }
+    if (res === 'back') { dir = -1; if (i > 0) i -= 2; continue; }
+    dir = 1;
   }
 
   // ── Wait for the modal to close and the compare panes to come up ──
@@ -2918,7 +2952,7 @@ async function _cmdTourCompare(args, ctx) {
   // Anchor the tooltip next to the actual "Start" button so
   // the user's eye is drawn to the next click. Halo on it too so it
   // glows the same way as the previous steps.
-  const startBtn = document.querySelector('#compare-model-overlay .research-start-btn');
+  const startBtn = _tourTarget('#compare-model-overlay .research-start-btn');
   if (startBtn) {
     _halos.push(_makeHalo(startBtn));
     requestAnimationFrame(() => _positionTooltip(startBtn));
@@ -2968,6 +3002,7 @@ async function _cmdTourCompare(args, ctx) {
       advanceOnClick: true },
   ];
 
+  dir = 1;
   for (let i = 0; i < phase2.length; i++) {
     const step = phase2[i];
     const res = await _showStep(step.sel, step.text, {
@@ -2975,8 +3010,10 @@ async function _cmdTourCompare(args, ctx) {
       isLast: i === phase2.length - 1,
       advanceOnClick: !!step.advanceOnClick,
     });
+    if (res === 'absent') { if (dir < 0) { if (i > 0) i -= 2; else dir = 1; } continue; }
     if (res === 'skip') { _clear(); return true; }
-    if (res === 'back') { if (i > 0) i -= 2; continue; }
+    if (res === 'back') { dir = -1; if (i > 0) i -= 2; continue; }
+    dir = 1;
   }
 
   _clear();
@@ -3118,7 +3155,7 @@ async function _cmdTourCookbook(args, ctx) {
     return new Promise(resolve => {
       _clearHalos();
       if (before) { try { before(); } catch (_) {} }
-      const target = document.querySelector(sel);
+      const target = _tourTarget(sel);   // `B1346`: rendered, not merely present
       if (!target) return resolve('skip');
       _halos.push(_makeHalo(target));
       target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
@@ -3353,7 +3390,7 @@ async function _cmdTourTheme(args, ctx) {
       _clearHalos();
       if (before) { try { before(); } catch (_) {} }
       setTimeout(() => {
-        const target = document.querySelector(sel);
+        const target = _tourTarget(sel);   // `B1346`: rendered, not merely present
         if (!target) return resolve('skip');
         _halos.push(_makeHalo(target));
         const extra = extraSel ? document.querySelector(extraSel) : null;
@@ -3600,7 +3637,7 @@ async function _cmdTourSettings(args, ctx) {
       _clearHalos();
       if (before) { try { before(); } catch (_) {} }
       setTimeout(() => {
-        const target = document.querySelector(sel);
+        const target = _tourTarget(sel);   // `B1346`: rendered, not merely present
         if (!target) return resolve('skip');
         _halos.push(_makeHalo(target));
         target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
@@ -3851,7 +3888,7 @@ async function _cmdTourGallery(args, ctx) {
       _clearHalos();
       if (before) { try { before(); } catch (_) {} }
       setTimeout(() => {
-        const target = document.querySelector(sel);
+        const target = _tourTarget(sel);   // `B1346`: rendered, not merely present
         if (!target) return resolve('skip');
         _halos.push(_makeHalo(target));
         target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
@@ -4065,7 +4102,7 @@ async function _cmdTourNotes(args, ctx) {
       _clearHalos();
       if (before) { try { before(); } catch (_) {} }
       setTimeout(() => {
-        const target = document.querySelector(sel);
+        const target = _tourTarget(sel);   // `B1346`: rendered, not merely present
         if (!target) return resolve('skip');
         _halos.push(_makeHalo(target));
         target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
@@ -4266,7 +4303,7 @@ async function _cmdTourBrain(args, ctx) {
       _clearHalos();
       if (before) { try { before(); } catch (_) {} }
       setTimeout(() => {
-        const target = document.querySelector(sel);
+        const target = _tourTarget(sel);   // `B1346`: rendered, not merely present
         if (!target) return resolve('skip');
         _halos.push(_makeHalo(target));
         target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
@@ -4465,7 +4502,7 @@ async function _runTaskTour(steps, doneText, opts) {
       clearHalos();
       if (step.before) { try { step.before(); } catch (_) {} }
       setTimeout(() => {
-        const target = document.querySelector(step.sel);
+        const target = _tourTarget(step.sel);   // `B1346`: rendered, not merely present
         if (!target) return resolve('skip');
         target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
         halos.push(makeHalo(target));
@@ -4711,7 +4748,7 @@ async function _cmdTourResearch(args, ctx) {
     return new Promise(resolve => {
       _clearHalos();
       if (before) { try { before(); } catch (_) {} }
-      const target = document.querySelector(sel);
+      const target = _tourTarget(sel);   // `B1346`: rendered, not merely present
       if (!target) return resolve('skip');
       _halos.push(_makeHalo(target));
       target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
@@ -4928,7 +4965,7 @@ async function _cmdTourLibrary(args, ctx) {
     return new Promise(resolve => {
       _clearHalos();
       if (before) { try { before(); } catch (_) {} }
-      const target = document.querySelector(sel);
+      const target = _tourTarget(sel);   // `B1346`: rendered, not merely present
       if (!target) return resolve(optional ? 'next' : 'skip');
       _halos.push(_makeHalo(target));
       target.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });

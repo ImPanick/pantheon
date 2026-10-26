@@ -268,10 +268,8 @@ async function showModelSelector() {
     body.className = 'modal-body';
     body.style.padding = '12px 16px';
 
-    const desc = document.createElement('p');
-    desc.style.cssText = 'color:color-mix(in srgb, var(--fg) 55%, transparent);font-size:0.85em;margin:0 0 12px;';
-    desc.textContent = 'Select models to compare side-by-side. Send the same prompt to all.';
-    body.appendChild(desc);
+    // `B1203` (`CHAT-U-23`): no lead sentence — the dialog's title and its
+    // controls say what it is for.
 
     // Options row
     toggleRow.style.cssText = 'display:flex;gap:4px;align-items:flex-start;flex-wrap:wrap;';
@@ -281,7 +279,9 @@ async function showModelSelector() {
     modeLabel.className = 'compare-section-label';
     // The active modes (+colors) are appended in a span shown only on mobile,
     // where the toggle text labels are hidden so the icons alone are ambiguous.
-    modeLabel.innerHTML = 'Mode: <span class="compare-mode-current"></span>';
+    // `B1203`: *Mode*, as written — not drawn in capitals (`.compare-section-
+    // label`), and its colon only where the readout follows it (a phone).
+    modeLabel.innerHTML = 'Mode<span class="compare-label-colon">:</span> <span class="compare-mode-current"></span>';
     modeWrap.appendChild(modeLabel);
     modeWrap.appendChild(toggleRow);
     // Contextual one-liner describing the mode you just toggled.
@@ -313,7 +313,7 @@ async function showModelSelector() {
     typeLabel.className = 'compare-section-label';
     // The active type name (+icon) is appended in a span shown only on mobile,
     // where the tab text labels are hidden so the icons alone are ambiguous.
-    typeLabel.innerHTML = 'Type: <span class="compare-type-current"></span>';
+    typeLabel.innerHTML = 'Type<span class="compare-label-colon">:</span> <span class="compare-type-current"></span>';
     typeWrap.appendChild(typeLabel);
     const tabBar = document.createElement('div');
     tabBar.className = 'compare-mode-tabs compare-type-tabs';
