@@ -47,7 +47,7 @@ keep the admin gate and the one-run-at-a-time rule (`Law 14`).
 by hand rather than by a pydantic model so that a malformed one is answered in
 a sentence too, never FastAPI's 422 list.
 
-**The route ceiling** (`check-unreachable.py --max-routes 37`): every path here
+**The route ceiling** (`check-unreachable.py --max-routes`, in `ci.yml`): every path here
 is spelled literally in `static/js/workbench/workflowApi.js`, its one caller,
 so the count of routes no page reaches does not move (design § 5).
 """

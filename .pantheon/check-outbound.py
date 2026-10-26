@@ -3,7 +3,7 @@
 """Every call that leaves the process is paced, or it is named. `P15-06`.
 
     python3 .pantheon/check-outbound.py             # the inventory
-    python3 .pantheon/check-outbound.py --max 96    # fail if it grows
+    python3 .pantheon/check-outbound.py --max N     # fail above N (CI's N: ci.yml)
     python3 .pantheon/check-outbound.py --quiet     # findings only
 
 THE ROW'S `Verify:` IS THIS FILE.

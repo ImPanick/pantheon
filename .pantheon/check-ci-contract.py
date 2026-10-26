@@ -689,6 +689,79 @@ def rule_job_installs_what_it_imports() -> list[str]:
     return problems
 
 
+# ── rule 9 — a ratchet's value lives in ci.yml ───────────────────────────────
+#
+# `B585`. `Law 13` — the law against carrying numbers — said *"The number is
+# 124 unresolved element-id targets"* while `check-wiring.py` printed 40 and
+# `ci.yml` pinned `--max 40`; then it said 40 while CI pinned `--max 0`.
+# The third time a count in this programme's own governing documents went stale
+# while the checker beside it was right, and each time nothing compared them.
+# `check-tracker.py` recomputes the status table; this recomputes the copies.
+#
+# A ratchet is a `check-<name>.py --<flag> N` step in `ci.yml`, and its value
+# lives there. Anywhere else in the tree the same invocation is a COPY: it must
+# carry CI's number, or no number at all (`--max N`, "the ceiling in ci.yml").
+# So must the two prose spellings the wiring ratchet's value has been quoted in.
+#
+# Scope (`Law 5`): every tracked text file except the ones that are a record of
+# what was true *then* — the tracker, the changelog, the ledger's prose,
+# `.pantheon/runs/` and the release notes — and `tests/`, whose fixtures pass
+# numbers on purpose.
+RATCHET_CALL = re.compile(r"check-([a-z][a-z-]*)\.py((?:[ \t]+--[a-z][a-z-]*(?:[ \t]+\d+)?)+)")
+RATCHET_FLAG = re.compile(r"--([a-z][a-z-]*)[ \t]+(\d+)")
+WIRING_PROSE = re.compile(r"\*\*(\d+)\*\* unresolved|[Rr]un it today and it says \**(\d+)")
+RATCHET_HISTORY = (".pantheon/ROADMAP.md", "CHANGELOG.md", "LEDGER.md")
+RATCHET_HISTORY_DIRS = (".pantheon/runs/", "docs/release-notes/", "tests/")
+
+
+def ci_ratchets(text: str) -> dict[tuple[str, str], list[int]]:
+    """`(checker, flag) -> [value, …]`, every occurrence in `text`, in order."""
+    found: dict[tuple[str, str], list[int]] = {}
+    for call in RATCHET_CALL.finditer(text):
+        for flag in RATCHET_FLAG.finditer(call.group(2)):
+            found.setdefault((call.group(1), flag.group(1)), []).append(int(flag.group(2)))
+    return found
+
+
+def ratchet_copies() -> list[tuple[str, int, str, str, int]]:
+    """`(path, line, checker, flag, value)` for every copy outside ci.yml."""
+    proc = subprocess.run(
+        ["git", "grep", "-n", "-I", "-E",
+         r"check-[a-z-]+\.py[ \t]+--[a-z]|\*\*[0-9]+\*\* unresolved|it says \**[0-9]"],
+        cwd=str(ROOT), capture_output=True, text=True)
+    copies = []
+    for row in proc.stdout.splitlines():
+        path, _, rest = row.partition(":")
+        line_no, _, line = rest.partition(":")
+        if (path == CI.relative_to(ROOT).as_posix() or path in RATCHET_HISTORY
+                or path.startswith(RATCHET_HISTORY_DIRS)):
+            continue
+        for (checker, flag), values in ci_ratchets(line).items():
+            copies += [(path, int(line_no), checker, flag, v) for v in values]
+        for m in WIRING_PROSE.finditer(line):
+            copies.append((path, int(line_no), "wiring", "max", int(m.group(1) or m.group(2))))
+    return copies
+
+
+def rule_ratchet_values_live_in_ci() -> list[str]:
+    problems: list[str] = []
+    held = ci_ratchets(CI.read_text(encoding="utf-8"))
+    for (checker, flag), values in sorted(held.items()):
+        if len(set(values)) > 1:
+            problems.append(
+                f"ci.yml states {len(set(values))} values for check-{checker}.py "
+                f"--{flag} ({', '.join(map(str, sorted(set(values))))}); a job name "
+                f"and its step are two copies of one ceiling (`B585`)")
+    for path, line_no, checker, flag, value in ratchet_copies():
+        values = held.get((checker, flag))
+        if values and value not in values:
+            problems.append(
+                f"{path}:{line_no} quotes check-{checker}.py --{flag} as {value}; "
+                f"ci.yml holds {values[0]}. Write it without the number and point "
+                f"at ci.yml, which is where CI reads it (`B585`)")
+    return problems
+
+
 # ── run ───────────────────────────────────────────────────────────────────────
 
 
@@ -726,6 +799,7 @@ def main() -> int:
         ("one list of which files are ours", rule_one_file_list()),
         ("a skip proves itself", rule_skip_proves_itself()),
         ("a job installs what it imports", rule_job_installs_what_it_imports()),
+        ("a ratchet's value lives in ci.yml", rule_ratchet_values_live_in_ci()),
     ]
 
     problems = [(title, p) for title, ps in rules for p in ps]

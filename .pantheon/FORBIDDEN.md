@@ -142,12 +142,19 @@ row cannot keep saying this, which is why it says it here instead.
 
 These are deliberate, one-time, and documented as a break. Everything else above stays.
 
-`ODYSSEUS_*` env prefix (99 names) · 113 browser-storage keys · 6 vector collections
-(**orphans all memories, RAG and tool index — migrate, don't rename**) · session cookie ·
-6 outbound headers · 4 user-agents · data dir · systemd unit · compose service and
-container user · SearXNG sentinel · macOS bundle id (**OS treats it as a different app**) ·
-service-worker cache · PWA manifest · 19 CLI scripts (**user crontabs break**) ·
-2 Swift executables · 3 DOM events · 2 integration plugin ids.
+**Every old and new name, how many there are and what each costs is
+[`docs/release-notes/0.2.0.md` § *Breaking renames — coming from Odysseus*](../docs/release-notes/0.2.0.md#breaking-renames--coming-from-odysseus)**,
+where `tests/test_the_release_notes_name_every_rename.py` derives each table from the list
+that owns the fact. This section names the kinds and counts none of them: its own counts
+were typed once and never re-measured, and four of five were wrong (`B1163`, `Law 7`).
+
+The `ODYSSEUS_*` env prefix · browser-storage keys · the vector collections (**RAG starts
+empty — re-index your directories**; memories re-fill themselves at boot from the stored
+memories, `src/app_initializer.py`, and the tool index is built the first time it is asked
+for, `get_tool_index`) · session cookie · outbound headers · user-agents · data dir ·
+systemd unit · compose service and container user · SearXNG sentinel · macOS bundle id
+(**OS treats it as a different app**) · service-worker cache · PWA manifest · CLI scripts
+(**user crontabs break**) · Swift executables · DOM events · integration plugin ids.
 
 ---
 

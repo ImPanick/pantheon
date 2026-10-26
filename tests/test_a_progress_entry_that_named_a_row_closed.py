@@ -219,6 +219,14 @@ def test_closed_is_told_from_filed_ruled_and_left_open():
     # a range expands, and `filed` after the semicolon does not join it
     ("537 tracked, 326 done. `B02`, `B151`–`B153` and `B250` closed; fifteen "
      "rows filed.", ["B02", "B151", "B152", "B153", "B250"]),
+    # `B1265`. A range of zero-padded phase rows keeps the padding: every `P`
+    # row below `-10` is written with two digits, and this read `P23-0` …
+    # `P23-8` — nine ids no row has — until the low end's width was kept.
+    ("`P23-00`–`P23-08` closed.",
+     [f"P23-0{n}" for n in range(9)]),
+    # ...across the carry into two digits, and for a padded `B` range too
+    ("`P0-08`–`P0-11` closed.", ["P0-08", "P0-09", "P0-10", "P0-11"]),
+    ("`B09`–`B11` closed.", ["B09", "B10", "B11"]),
     # a dash between two ids that cannot make a range is read as two ids, not
     # as two hundred invented ones
     ("`B12`–`P3-04` closed.", ["B12", "P3-04"]),

@@ -119,6 +119,9 @@ CLAIM_TOKEN = re.compile(
 # Both kinds of row, so a claim about a `B` row and a claim about a `P` row are
 # resolved against the same ticks the table is recounted from.
 ANY_TASK = re.compile(r"^- \[([ x~·])\] \*\*((?:P\d+-\d+\w*|[BH]\d+))\*\*")
+# `B831`. The same marker anywhere on a line, and a backticked backlog id.
+ANY_MARKER = re.compile(r"- \[([ x~·])\] \*\*((?:P\d+-\d+\w*|[BH]\d+))\*\*")
+CITED_ROW = re.compile(r"`([BH]\d+)`")
 
 
 def count(lines):
@@ -218,7 +221,8 @@ def closed_claims(headline):
                 ids.append(tok.group("one").strip("`"))
                 continue
             prefix = re.match(r"`([BH]|P\d+-)", low)
-            a = int(re.search(r"(\d+)`$", low).group(1))
+            digits = re.search(r"(\d+)`$", low).group(1)
+            a = int(digits)
             b = int(re.search(r"(\d+)`$", high).group(1))
             if not prefix or re.match(r"`([BH]|P\d+-)", high).group(1) != prefix.group(1) or a >= b:
                 # Not a range anybody can expand — a `B12`–`P3-04` is a typo,
@@ -226,7 +230,12 @@ def closed_claims(headline):
                 # two that are actually written.
                 ids += [low.strip("`"), high.strip("`")]
                 continue
-            ids += [f"{prefix.group(1)}{n}" for n in range(a, b + 1)]
+            # `B1265`. Each id keeps the low end's width. Every phase row below
+            # `-10` is written with two digits (`P0-01`, `P23-00`), and `int()`
+            # drops the padding, so *"`P23-00`–`P23-08` closed"* used to claim
+            # `P23-0` … `P23-8` — nine ids no row has.
+            ids += [f"{prefix.group(1)}{str(n).zfill(len(digits))}"
+                    for n in range(a, b + 1)]
     return list(dict.fromkeys(ids))
 
 
@@ -366,6 +375,44 @@ def main(path=None) -> int:
                     f"Progress: \"{title}\" says {row_id} closed, and {row_id} is "
                     f"{shown} — tick it, or say in the entry what is still open"
                 )
+
+    # `B831`. A row id this tracker cites, against the rows it has. `B750` was
+    # cited by three rows as *"Filed as `B750` with the one edit it needs"* and
+    # never filed: its content survived only because the next agent to work
+    # `P2-09` was handed it in a brief. Nothing recomputed the set of
+    # referenced-but-absent ids, so the citation read as authoritative and the
+    # row it pointed at did not exist. Same shape as the `§ Progress` rule above
+    # and the `B1406` rule below: both ends are named.
+    #
+    # Scope (`Law 5`): an id is a CITATION when it is written in backticks —
+    # the tracker's one convention for naming a row (`` `B750` ``). A bare
+    # *"batch B1"* is a word, not a citation. Fenced code is skipped, as every
+    # rule here skips it. A row RESOLVES when its marker starts a line, because
+    # that is the only row this file's other rules count: `- [ ] **B01**`
+    # glued to the end of `B54`'s line was in the tracker and in nobody's
+    # tally, so a marker anywhere else on a line is reported too.
+    cited_rows, fenced = {}, False
+    for i, line in enumerate(lines, 1):
+        if line.startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        for m in ANY_MARKER.finditer(line):
+            if m.start() > 0:
+                bad.append(
+                    f"line {i}: the row marker for {m.group(2)} sits mid-line, after "
+                    f"other text, so no rule here counts it — start it on its own line"
+                )
+        for row_id in CITED_ROW.findall(line):
+            cited_rows.setdefault(row_id, i)
+    for row_id, line_no in sorted(cited_rows.items(),
+                                  key=lambda kv: (kv[0][0], int(kv[0][1:]))):
+        if row_id not in marks_by_id:
+            bad.append(
+                f"{row_id} is cited at line {line_no} and there is no row with that "
+                f"id — file the row, or correct the citation"
+            )
 
     # `B1406`. A decision id this tracker cites, against the file that defines
     # decisions. `D-2026-10-17-01` was cited by **five** rows and defined

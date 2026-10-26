@@ -564,6 +564,31 @@ def test_a_tier_count_restated_in_prose_is_checked_too(checker, map_text):
     assert any("in prose" in p for p in found), found
 
 
+def test_section_c_concludes_from_counts_the_checker_holds(checker, map_text):
+    """`B1143`. § C's conclusion — *"an `operator` overlay retires … without
+    touching …"* — said *"48 gates … the 37"* while § A's tables held 54 and 45,
+    and drifted through every gate added after it because the checker reads one
+    spelling, `N <tier> sites`, and that sentence used another. It now uses the
+    checked spelling for both tiers, and each one moved by a site fails the
+    checker. Computed, not typed (`B520`): the counts come from the tables."""
+    counts = {tier: 0 for tier in checker.TIERS}
+    for row in checker.parse_map(map_text).sites.values():
+        counts[row["tier"]] += 1
+    lines = map_text.split("\n")
+    at = next(i for i, ln in enumerate(lines) if "`operator` overlay on" in ln)
+    sentence = " ".join(lines[at:at + 3])
+    stated = dict((tier, int(n)) for n, tier in checker._TIER_PROSE.findall(sentence))
+    assert stated == {"operator": counts["operator"], "superuser": counts["superuser"]}, (
+        sentence, counts)
+    for tier in ("operator", "superuser"):
+        real = f"{counts[tier]} {tier} sites"
+        start = map_text.index("`operator` overlay on")
+        cut = map_text.index(real, start)
+        mutated = map_text[:cut] + f"{counts[tier] + 1} {tier} sites" + map_text[cut + len(real):]
+        found, _ = checker.problems(ROOT, mutated, max_other=_ci_ceiling())
+        assert any(f"`{counts[tier] + 1} {tier} sites` in prose" in p for p in found), found
+
+
 def test_the_derived_line_is_derived(checker, map_text, sites):
     direct = sum(1 for s in sites if s.kind == "direct")
     mutated = map_text.replace(f"derived: direct {direct}", f"derived: direct {direct - 4}")

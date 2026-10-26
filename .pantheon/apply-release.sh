@@ -79,9 +79,35 @@ git checkout "$BRANCH"
 echo
 echo "== fast-forwarding $BRANCH =="
 if ! git merge --ff-only "refs/remotes/bundle/$BRANCH"; then
-  printf '\nnot a fast-forward: your %s has commits the bundle does not.\n' "$BRANCH" >&2
-  printf 'Nothing has been changed. These are yours alone:\n' >&2
-  git --no-pager log --oneline "refs/remotes/bundle/$BRANCH..$BRANCH" >&2
+  # `B1411`. A refused `--ff-only` has more than one cause, and this used to
+  # name one for all of them: *"your main has commits the bundle does not"*,
+  # followed by an empty list — on a clone where a previous run had stopped
+  # part-way and left two of the bundle's new files behind, untracked, and git
+  # had said so three lines up. So the cause is READ, not guessed: if `main`
+  # has no commit the bundle lacks, it was not a divergence, and the paths the
+  # bundle adds that an untracked file already occupies are named instead.
+  MINE="$(git --no-pager log --oneline "refs/remotes/bundle/$BRANCH..$BRANCH")"
+  if [ -n "$MINE" ]; then
+    printf '\nnot a fast-forward: your %s has commits the bundle does not.\n' "$BRANCH" >&2
+    printf 'Nothing has been changed. These are yours alone:\n' >&2
+    printf '%s\n' "$MINE" >&2
+    exit 1
+  fi
+  ADDED="$(git diff --name-only --no-renames --diff-filter=A "$BRANCH" "refs/remotes/bundle/$BRANCH")"
+  BLOCKING=""
+  if [ -n "$ADDED" ]; then
+    BLOCKING="$(git ls-files --others --exclude-standard | grep -Fx -f <(printf '%s\n' "$ADDED") || true)"
+  fi
+  printf '\nnot applied, and not a divergence: your %s has no commits the bundle lacks.\n' "$BRANCH" >&2
+  if [ -n "$BLOCKING" ]; then
+    printf 'The bundle adds these files, and an untracked file is already at each path\n' >&2
+    printf '(a previous run that stopped part-way leaves exactly this):\n' >&2
+    printf '%s\n' "$BLOCKING" | sed 's/^/  /' >&2
+    printf 'Move them out of the way or delete them, then run this again. Nothing has been changed.\n' >&2
+  else
+    printf 'git refused the fast-forward for another reason, and its own message above is\n' >&2
+    printf 'the cause. Nothing has been changed.\n' >&2
+  fi
   exit 1
 fi
 

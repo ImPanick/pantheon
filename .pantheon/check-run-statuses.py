@@ -63,6 +63,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT / ".pantheon") not in sys.path:
+    sys.path.insert(0, str(ROOT / ".pantheon"))
+from ledger.source import strip_comments  # noqa: E402  (`B410`)
+
 DB = ROOT / "core" / "database.py"
 JS = ROOT / "static" / "js" / "runStatus.js"
 # This file, spelled the way `git ls-files` spells it. Question 4 reads strings
@@ -129,9 +133,10 @@ def _module_constants(path: Path) -> dict[str, object]:
 def _blank_comments(js: str) -> str:
     """`B87`. Every file in this area documents the ladder it used to own, so a
     text search finds the vocabulary in the prose explaining why it is not there
-    any more. Block and line comments go before anything is read."""
-    js = re.sub(r"/\*.*?\*/", "", js, flags=re.S)
-    return re.sub(r"^\s*//.*$", "", js, flags=re.M)
+    any more. Block and line comments go before anything is read — by the one
+    blanker (`B410`), not a `/* … */` regex that cannot tell a comment from a
+    string."""
+    return strip_comments(js, mode="js")
 
 
 def _js_array(js: str, name: str) -> list[str] | None:

@@ -493,7 +493,11 @@ The paragraph above is about the 107 that predate roles; the counts below are li
 - **50 superuser sites do not move.** They are already right.
 - **56 operator sites are the phase's return.** Today the only way to let someone keep
   the instance up is to make them the owner. An `operator` overlay on
-  `DEFAULT_PRIVILEGES` retires 48 gates without touching a single one of the 37.
+  `DEFAULT_PRIVILEGES` retires the 56 operator sites without touching any of the
+  50 superuser sites. (Both counts in the one spelling `check-auth-map.py` checks
+  wherever it appears: this sentence said *"48 gates … the 37"* through every gate
+  added after it was written, and it is the sentence this section concludes from —
+  `B1143`.)
 - **3 power-user sites are one privilege key.** `allowed_models` already exists in
   `DEFAULT_PRIVILEGES`; a user who has it still cannot list the endpoints it names.
 - **21 only-because-nothing-finer-existed sites are not an auth job at all.** Contacts,

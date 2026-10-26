@@ -7,7 +7,7 @@ something was built and never wired, and nothing in CI noticed because nothing
 was broken. This counts the JS half of it.
 
     python3 .pantheon/check-wiring.py            # report
-    python3 .pantheon/check-wiring.py --max 78   # fail if it grew
+    python3 .pantheon/check-wiring.py --max N    # fail above N (CI's N: ci.yml)
 
 Scope, stated so the number means something (Law 5): `getElementById("...")`
 calls with a string literal, PLUS ids reached through a literal collection that

@@ -55,6 +55,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT / ".pantheon") not in sys.path:
+    sys.path.insert(0, str(ROOT / ".pantheon"))
+from ledger.source import strip_comments  # noqa: E402  (`B410`)
+
 PY = ROOT / "src" / "document_processor.py"
 # `B232`. The extractor registers live with their extractors — one register per
 # extractor is the rule ``INGESTIBLE_EXTS`` is stated as a union to keep — so
@@ -276,10 +280,11 @@ def js_answers(names: list[str]) -> dict[str, list[str]] | None:
 
 
 def editor_languages() -> dict[str, str]:
-    """`EDITOR_LANGUAGE` read out of the JS with comments blanked (`B87`)."""
-    text = JS.read_text(encoding="utf-8")
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    text = re.sub(r"^\s*//.*$", "", text, flags=re.M)
+    """`EDITOR_LANGUAGE` read out of the JS with comments blanked (`B87`).
+
+    `B410`: blanked by the one blanker, which knows a string from a comment,
+    rather than by a `/* … */` regex that does not."""
+    text = strip_comments(JS.read_text(encoding="utf-8"), mode="js")
     m = re.search(r"\bconst\s+EDITOR_LANGUAGE\s*=\s*\{(.*?)\n\};", text, flags=re.S)
     if not m:
         return {}

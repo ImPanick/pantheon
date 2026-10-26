@@ -3,7 +3,7 @@
 """Working code with no door. `P3-15`.
 
     python3 .pantheon/check-unreachable.py                # the inventory
-    python3 .pantheon/check-unreachable.py --max-routes 60
+    python3 .pantheon/check-unreachable.py --max-routes N   # CI's N: ci.yml
     python3 .pantheon/check-unreachable.py --quiet
 
 THE AUDIT THIS AUTOMATES RAN BY HAND AND PRODUCED THE 21 `H` ROWS.
