@@ -982,7 +982,11 @@ def _resolve_task_timezone(db, task) -> str | None:
 # built-in task the user has altered. schedule "daily" uses scheduled_time;
 # "cron" uses cron_expression.
 HOUSEKEEPING_DEFAULTS = {
-    "tidy_sessions":        {"name": "Chat Sessions Tidy",       "trigger_type": "event", "trigger_event": EVENT_SESSION_CREATED, "trigger_count": 5, "schedule": None, "scheduled_time": None, "cron_expression": None, "legacy_names": ["Tidy Chat Sessions"]},
+    # `B1215`. "Chats Tidy": a person meets chats, not sessions (`P23-05`).
+    # The old name is a legacy name, so an install's stored row is still the
+    # built-in and `ensure_defaults` renames it (`D-2026-09-18-04`: the name
+    # is stored, so a rename has a read-old path, and this is it).
+    "tidy_sessions":        {"name": "Chats Tidy",               "trigger_type": "event", "trigger_event": EVENT_SESSION_CREATED, "trigger_count": 5, "schedule": None, "scheduled_time": None, "cron_expression": None, "legacy_names": ["Tidy Chat Sessions", "Chat Sessions Tidy"]},
     "tidy_documents":       {"name": "Documents Tidy",           "trigger_type": "event", "trigger_event": EVENT_DOCUMENT_CREATED, "trigger_count": 5, "schedule": None, "scheduled_time": None, "cron_expression": None, "legacy_names": ["Tidy Documents"]},
     "consolidate_memory":   {"name": "Memory Tidy",              "trigger_type": "event", "trigger_event": EVENT_MEMORY_ADDED, "trigger_count": 5, "schedule": None, "scheduled_time": None, "cron_expression": None, "legacy_names": ["Tidy Memory"]},
     "tidy_research":        {"name": "Research Tidy",            "trigger_type": "event", "trigger_event": EVENT_RESEARCH_COMPLETED, "trigger_count": 5, "schedule": None, "scheduled_time": None, "cron_expression": None, "legacy_names": ["Tidy Research"]},
@@ -994,6 +998,17 @@ HOUSEKEEPING_DEFAULTS = {
     "check_email_urgency":   {"name": "Email Tags",               "schedule": "cron",  "scheduled_time": None,    "cron_expression": "0 * * * *", "ship_paused": True, "old_cron_expressions": ["*/15 * * * *"], "legacy_names": ["Email Triage", "Urgent Email"]},
     "audit_skills":          {"name": "Skills Audit",             "trigger_type": "event", "trigger_event": EVENT_SKILL_ADDED, "trigger_count": 5, "schedule": None, "scheduled_time": None, "cron_expression": None, "legacy_names": ["Audit Skills"]},
 }
+
+
+def housekeeping_default_names(action) -> frozenset:
+    """`B1063`. The names a built-in housekeeping task's row has had — its
+    current name and every legacy one. A row of that action under one of these
+    names is the built-in (or a copy of it the defaults made); under any other
+    it is a task a person made, or renamed, and is theirs."""
+    defs = HOUSEKEEPING_DEFAULTS.get(action or "")
+    if not defs:
+        return frozenset()
+    return frozenset({defs["name"], *(defs.get("legacy_names") or ())})
 
 RETIRED_HOUSEKEEPING_ACTIONS = frozenset({
     "tidy_calendar",
@@ -7514,8 +7529,22 @@ class TaskScheduler:
                 ScheduledTask.task_type == "action",
                 ScheduledTask.action.in_(list(HOUSEKEEPING_DEFAULTS.keys())),
             ).all()
+            # `B1063`. Only the rows the defaults made are deduped and
+            # normalised — those named as the built-in is, now or by a legacy
+            # name. This was every action task whose action is a housekeeping
+            # one, so a task a person made with that action ("Tidy memories",
+            # `consolidate_memory`, on a webhook) lost to the built-in's score
+            # and was `db.delete`d on the next list with no word, and a person
+            # whose own was the only one for its action had its trigger forced
+            # back to the built-in's. The form offers these actions and
+            # `P22-04`'s chain runs through two of them; a person's own task is
+            # theirs. A built-in the person renamed is left as they left it
+            # (and `existing_actions` above still keeps it from being seeded
+            # twice).
             by_action = {}
             for task in builtin_tasks:
+                if (task.name or "") not in housekeeping_default_names(task.action):
+                    continue
                 by_action.setdefault(task.action, []).append(task)
             removed_dupes = []
             kept_ids = set()

@@ -271,6 +271,9 @@ def _persist_session_headers(session_id: str, headers: dict | None) -> None:
 
 
 _HIDDEN_SYSTEM_SESSION_NAMES = {
+    # `B1215`. The built-in was renamed "Chats Tidy"; a chat its old name
+    # made is still hidden (`Law 1`), and one its new name makes is too.
+    "[Task] Chats Tidy",
     "[Task] Chat Sessions Tidy",
     "[Task] Documents Tidy",
     "[Task] Memory Tidy",
