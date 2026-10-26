@@ -564,14 +564,20 @@ export function applyToolVisibility(patch = {}, doc = (typeof document !== 'unde
 }
 
 /** May the person signed in see the admin's Settings? The status's answer
- *  when someone is signed in. Nobody signed in once `/api/auth/status` has
- *  answered (`window._isAdmin` set, to `false`) is an install with auth off,
- *  whose one operator the server's `require_admin` lets in — the owner. Not
- *  answered yet: not shown, until it says. */
+ *  when someone is signed in; otherwise only a page whose status said
+ *  `is_admin` (`window._isAdmin === true`). Not answered yet: not shown, until
+ *  it says.
+ *
+ *  `B1523`. The fallback answered `window._isAdmin !== undefined`, so a status
+ *  that said `false` (nobody signed in — a session that lapsed before the page
+ *  asked) read as an admin. That was auth-off mode's rule — its one operator
+ *  was let in by `require_admin` — and there is no auth-off install any more
+ *  (`D-2026-10-07-02` §2, `core/middleware.py:require_admin`): a viewer the
+ *  server called a non-admin is one. */
 export function viewerIsAdmin() {
   if (_state.isAdmin !== null) return _state.isAdmin;
   const said = typeof window !== 'undefined' ? window._isAdmin : undefined;
-  return said !== undefined;
+  return said === true;
 }
 
 /** A read-only view of what is known, for the Settings rows that explain a

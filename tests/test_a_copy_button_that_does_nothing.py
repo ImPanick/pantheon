@@ -14,7 +14,7 @@ argued the correct order in a comment and implemented it twice.
 copy and nineteen touching `navigator.clipboard`, across twenty-three call
 sites — and two of those had **no fallback at all**:
 
-  * `admin.js`'s API-token copy button — a bare
+  * `admin.js`'s API-token copy button (that form is deleted since `B1524`) — a bare
     `navigator.clipboard.writeText(v).then(...)`, no `catch`. Over plain `http`
     on a LAN `navigator.clipboard` is `undefined`, so the property access threw,
     nothing was copied, nothing was said. On the one control in this app that
@@ -209,13 +209,23 @@ def test_an_image_copy_is_exempt_by_shape_not_by_name(monkeypatch):
 
 def test_the_token_button_does_not_claim_success_it_did_not_have():
     """A checkmark on a failed copy is worse than no button: it says the token
-    is on the clipboard when it is not, and it is shown once."""
+    is on the clipboard when it is not, and it is shown once.
+
+    `B1524` changed what this pins. The button it sliced was the admin
+    API-token form's (`admin.js`), which returned on `adm-token*` ids no
+    template renders and is deleted. The one form that shows a new token is
+    Settings → MCP & Integrations' (`settings.js` `showTokenForm`, `B1193`): its
+    secret is selectable text and it has no copy button, so nothing there can
+    claim a copy; a copy added to it goes through `copyText`, which says when it
+    failed."""
+    from tests.helpers.js_source import js_function
     admin = (ROOT / "static" / "js" / "admin.js").read_text(encoding="utf-8")
-    handler = admin[admin.index("adm-tokenCopyBtn').addEventListener"):]
-    handler = handler[: handler.index("}, 1600);")]
-    assert "copyText" in handler
-    assert "if (!ok)" in handler, "the success path runs whatever happened"
-    assert handler.index("if (!ok)") < handler.index("TOKEN_CHECK_ICON")
+    assert "adm-tokenCopyBtn" not in admin, "the dead token form came back"
+    settings = (ROOT / "static" / "js" / "settings.js").read_text(encoding="utf-8")
+    form = js_function(settings, "async function showTokenForm")
+    assert 'id="uf-token-value"' in form and "user-select:all" in form
+    assert "navigator.clipboard" not in form, "a copy that bypasses copyText"
+    assert "Copied" not in form or "copyText" in form
 
 
 def test_the_webhook_button_no_longer_says_copied_regardless():

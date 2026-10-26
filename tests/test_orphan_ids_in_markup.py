@@ -13,7 +13,8 @@ this session") lives in a `.dropdown.hidden` in `index.html` that nothing opens;
 `sessions.js` builds the session menu at runtime now and carried Rename,
 Archive, Delete and Favorite across. `memoryModule.extractMemory(sessionId)` is
 complete, backed by a live route, exported on `window.memoryModule` — and called
-by nothing. The action is back in the menu.
+by nothing. The action is back in the menu. (`B1208` then deleted the static
+dropdown, which held nothing the runtime menu does not.)
 
 **Two blind spots this measurement had, both corrected here**, because an
 orphan list is only worth what its "nothing reads this" claim is worth:
@@ -186,10 +187,13 @@ def unreached_ids():
 
 # The itemisation, as of 2026-09-08. Grouped by what each one actually is,
 # because "24 orphan ids" is a number and this is the finding.
-SUPERSEDED_MARKUP = {          # a runtime menu replaced this block
-    "session-actions-dropdown", "rename-session-option", "delete-session-option",
-    "memory-session-option",
-}
+# `B1208`: the one superseded block — `#session-actions-dropdown` and its
+# Rename, Delete and Extract-memories items, opened by nothing — is deleted.
+# It was kept here while its *Extract memories* had no other door; `B51` gave
+# it one in the runtime ··· menu (`sessions.js`), which carries every action
+# the static block listed (`test_extract_memory_has_a_door_again`,
+# `test_the_runtime_menu_still_offers_what_it_carried_across`).
+SUPERSEDED_MARKUP: set = set()
 NEVER_BUILT = {                # empty anchors for features that never shipped
     "pinned-tools-bar", "welcome-setup", "set-reminder-llm-persona-msg",
 }
@@ -249,8 +253,9 @@ def test_the_itemisation_is_complete_and_current():
 def test_nothing_in_the_itemisation_was_deleted():
     """Law 1, and the row's own history: `P3-10` would have deleted the RAG
     module four days after another row brought it to life. Every one of these is
-    a live element, an anchor for something unbuilt, or superseded markup whose
-    replacement lost an action — none is a dead element to remove."""
+    a live element or an anchor for something unbuilt — none is a dead element
+    to remove. (The superseded session dropdown was, once its one lost action
+    had a door again; `B1208` deleted it and took it out of the itemisation.)"""
     for i in sorted(ITEMISED):
         assert f'id="{i}"' in INDEX, f"{i} was deleted rather than recorded"
 
@@ -260,7 +265,7 @@ def test_nothing_in_the_itemisation_was_deleted():
 
 def test_extract_memory_has_a_door_again():
     """The implementation, the route and the export all existed; the only markup
-    that pointed at them sits in a dropdown nothing opens."""
+    that pointed at them sat in a dropdown nothing opened (deleted by `B1208`)."""
     assert "export async function extractMemory(sessionId)" in MEMORY
     assert "/api/memory/extract" in MEMORY
     assert "extractMemory," in MEMORY, "it left the module's export surface"
@@ -333,3 +338,19 @@ def test_a_generic_suffix_does_not_silence_everything_that_ends_with_it():
         "no id ends in `-toggle` without a matching base, so this test proves "
         "nothing about the rule it is checking"
     )
+
+
+# --- B1208 -----------------------------------------------------------------
+
+def test_the_dead_session_dropdown_is_gone_and_its_actions_are_not():
+    """`B1208`. `#session-actions-dropdown` was opened by nothing, and the test
+    above forbade deleting it while its *Extract memories* had no other door.
+    It has one (`B51`), so the block went; every action it listed is in the
+    runtime ··· menu. The ids are absent from the whole page, and no script
+    looks one up."""
+    for gone in ("session-actions-dropdown", "rename-session-option",
+                 "delete-session-option", "memory-session-option"):
+        assert f'id="{gone}"' not in INDEX, f"{gone} is back in the markup"
+        assert re.search(rf"""['"#]{gone}['"]""", JS) is None, f"a script reaches for {gone}"
+    for label in ("<span>Rename</span>", "<span>Delete</span>", "<span>Extract memories</span>"):
+        assert label in SESSIONS, label

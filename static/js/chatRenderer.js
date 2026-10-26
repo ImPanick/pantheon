@@ -10,7 +10,7 @@ import { addAITTSButton } from './tts-ai.js';
 import { providerLogo, providerLabel } from './providers.js';
 import settingsModule from './settings.js?v=20261009census';
 import spinnerModule from './spinner.js';
-import { bindMenuDismiss } from './escMenuStack.js';
+import { bindMenuDismiss, registerMenuDismiss } from './escMenuStack.js';
 import { loadPanel } from './panels.js';
 import { matchModelKey } from './model/matchKey.js';
 import { getTools } from './appConfig.js';
@@ -463,9 +463,11 @@ function _openImageLightbox(att) {
 // cache (PUT /api/upload/{id}/vision), so any subsequent message that
 // references the same file picks up the corrected text.
 let _visionEditorEl = null;
-let _visionEditorEsc = null;
+let _visionEditorUnreg = null;
 function _closeVisionEditor() {
-  if (_visionEditorEsc) { document.removeEventListener('keydown', _visionEditorEsc); _visionEditorEsc = null; }
+  const unreg = _visionEditorUnreg;
+  _visionEditorUnreg = null;
+  if (unreg) unreg();
   if (_visionEditorEl) { _visionEditorEl.remove(); _visionEditorEl = null; }
 }
 function _openVisionEditor(att, userMsgEl) {
@@ -563,10 +565,19 @@ function _openVisionEditor(att, userMsgEl) {
   overlay.style.zIndex = String(topPortalZ());
   _visionEditorEl = overlay;
 
-  // ESC closes the popup. Registered on document so it works regardless of
-  // focus (the textarea swallows the event otherwise).
-  _visionEditorEsc = (e) => { if (e.key === 'Escape') _closeVisionEditor(); };
-  document.addEventListener('keydown', _visionEditorEsc);
+  // `B1531`, the twin of `B1294`. Escape closes the editor through the Escape
+  // stack, not a `document` listener of its own. That listener (bubble phase)
+  // ran after the `ui.js` arbiter, which found nothing on the stack, closed
+  // the window behind the editor and stopped the key — so with a window open
+  // behind it, the first Escape closed the window and left the editor over
+  // the place it had been. The arbiter's first question (`dismissTopMenu`) is
+  // asked before its text-field rule, so Escape typed in the textarea closes
+  // the editor as it did. `registerMenuDismiss` rather than `bindMenuDismiss`:
+  // this is a dialog with a text box, not a menu — an outside click is the
+  // backdrop's (above), and Tab must not close it the way it closes a
+  // keyboard-opened menu. `overlay._dismiss` lets a sweep close it properly.
+  _visionEditorUnreg = registerMenuDismiss(_closeVisionEditor);
+  overlay._dismiss = _closeVisionEditor;
 
   fetch(`/api/upload/${att.id}/vision`, { credentials: 'same-origin' })
     .then(r => r.ok ? r.json() : Promise.reject(r))

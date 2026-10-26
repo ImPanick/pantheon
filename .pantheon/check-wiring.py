@@ -320,18 +320,9 @@ _LOOKUPS = (
 # happens. `set-researchSearchMsg` was UNguarded and live, and `notes-panel`
 # was guarded and broken — both were in the same 120.
 ABSENT_BY_DESIGN = [
-    {
-        "where": "static/js/admin.js",
-        "guard": "if (!addBtn || addBtn.dataset.bound) return;",
-        "why": "API tokens are created and managed in the unified "
-               "integrations panel (`unified-integrations-list`, "
-               "static/js/settings.js:5619+), not in a form of their own.",
-        "ids": (
-            "adm-tokenAddBtn", "adm-tokenCopyBtn", "adm-tokenList",
-            "adm-tokenMsg", "adm-tokenName", "adm-tokenReveal",
-            "adm-tokenScopes", "adm-tokenValue",
-        ),
-    },
+    # `B1524`. The admin API-token form's eight `adm-token*` ids were declared
+    # here; the form is deleted (tokens are Settings → MCP & Integrations',
+    # `B1193`), so there is nothing left to declare.
     {
         "where": "static/js/admin.js",
         "guard": "if (!urlIn || !saveBtn) return;",

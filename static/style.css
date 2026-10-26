@@ -1640,6 +1640,17 @@ body.bg-pattern-sparkles {
       line-height: 1.3; letter-spacing: 0; text-transform: none;
       color: var(--fg);
     }
+    /* `B1213`. A title that is a <button> (Email's) draws as the spans do: the
+       global `button` rules — a 32px height, a padded box, a background that
+       light mode and hover repaint — are taken off here, and the keyboard
+       focus keeps the global `:focus-visible` ring. */
+    .section-header-flex button.section-title,
+    .section-header-flex button.section-title:hover,
+    :root.light .section-header-flex button.section-title {
+      height: auto; min-width: 0; padding: 0; border: 0; border-radius: 0;
+      background: none; color: var(--fg); text-align: left;
+      -webkit-appearance: none; appearance: none;
+    }
     .section-icon,
     .sidebar-action-icon {
       flex-shrink: 0;

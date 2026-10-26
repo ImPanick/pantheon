@@ -220,7 +220,8 @@ export function createLoadingRow(){return {};}
 export function createWhirlpool(){return { element: { style: {} }, destroy(){} };}
 export default { createWhirlpool: () => ({ element: { style: {} }, destroy(){} }) };
 """,
-    "escMenuStack.js": "export function bindMenuDismiss(){return () => {};}\nexport function dismissOrRemove(){}\n",
+    # `B1531`: `chatRenderer.js` puts the OCR editor on the Escape stack too.
+    "escMenuStack.js": "export function bindMenuDismiss(){return () => {};}\nexport function registerMenuDismiss(){return () => {};}\nexport function dismissOrRemove(){}\n",
     "panels.js": "export function loadPanel(){}\n",
     "appConfig.js": "export function getTools(){return Promise.resolve({ tools: [] });}\nexport function getSettings(){return Promise.resolve({});}\n",
     # `model/matchKey.js` is deliberately NOT stubbed. It is a pure, DOM-free

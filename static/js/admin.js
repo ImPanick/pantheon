@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // static/js/admin.js — Admin panel module (ES6)
-// Admin-only: users, endpoints, MCP, RAG, embeddings, tokens, webhooks, features
+// Admin-only: users, endpoints, RAG, embeddings, webhooks, features. MCP servers and API tokens live in Settings → MCP & Integrations (`B902`, `B1524`).
 
 import uiModule from './ui.js';
 import settingsModule from './settings.js?v=20261009census';
@@ -15,7 +15,7 @@ import { bindMenuDismiss } from './escMenuStack.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 // `P23-03`: the one table — each switch below names the Tools entry it hides.
 // Same specifier as `app.js` (no query): one instance of the table's state.
-import { hidesLine, toolVisibilityState } from './ui_visibility.js';
+import { hidesLine, viewerMayAdminister } from './ui_visibility.js';
 
 import { scrollBehavior } from './motion.js';
 let initialized = false;
@@ -2448,192 +2448,12 @@ function initRag() {
   });
 }
 
-/* ═══════════════════════════════════════════
-   SYSTEM TAB — Tokens
-   ═══════════════════════════════════════════ */
-// Catalog mirrors the one in settings.js integration form. Keep keys in
-// sync with the backend scope allowlist.
-const _TOKEN_SCOPES = [
-  { key: 'todos:read',        label: 'Todos read',        detail: 'Read notes and checklists' },
-  { key: 'todos:write',       label: 'Todos write',       detail: 'Create, update, delete, and toggle todo items' },
-  { key: 'documents:read',    label: 'Documents read',    detail: 'Read documents when a document API is enabled' },
-  { key: 'documents:write',   label: 'Documents write',   detail: 'Create and update draft documents' },
-  { key: 'email:read',        label: 'Email read',        detail: 'Read email when an email API is enabled' },
-  { key: 'email:draft',       label: 'Email draft',       detail: 'Create email reply drafts without sending' },
-  { key: 'email:send',        label: 'Email send',        detail: 'Send email directly' },
-  { key: 'calendar:read',     label: 'Calendar read',     detail: 'Read calendar events when enabled' },
-  { key: 'calendar:write',    label: 'Calendar write',    detail: 'Create and update calendar events' },
-  { key: 'memory:read',       label: 'Memory read',       detail: 'Read memory when enabled' },
-  { key: 'memory:write',      label: 'Memory write',      detail: 'Write memory when enabled' },
-  { key: 'cookbook:read',     label: 'Forge read',     detail: 'List cookbook tasks + tail their tmux output' },
-  { key: 'cookbook:launch',   label: 'Forge launch',   detail: 'Launch and stop cookbook serve tasks' },
-];
-
-function _renderTokenScopeRows(t) {
-  const have = new Set(t.scopes || []);
-  return _TOKEN_SCOPES.map(s => {
-    const action = (s.key.split(':')[1] || '').toLowerCase();
-    const pill = action === 'read'
-      ? 'background:rgba(150,150,150,0.18);color:var(--fg-muted,#888);'
-      : 'background:color-mix(in srgb, var(--accent, var(--red)) 18%, transparent);color:var(--accent, var(--red));';
-    const tool = s.label.replace(/\s+(read|write|draft|send|launch)$/i, '');
-    return `
-      <label style="display:flex;align-items:center;gap:8px;min-height:28px;padding:1px 0;">
-        <span class="settings-label" style="width:90px;flex-shrink:0;padding:0;font-size:12px;">${esc(tool)}</span>
-        <span style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;padding:1px 7px;border-radius:999px;flex-shrink:0;min-width:44px;text-align:center;box-sizing:border-box;${pill}">${esc(action)}</span>
-        <span style="font-size:11px;line-height:1.35;opacity:0.62;flex:1;min-width:0;">${esc(s.detail)}</span>
-        <label class="admin-switch" style="margin-left:auto;flex-shrink:0;"><input type="checkbox" class="adm-tok-scope" data-token-id="${esc(t.id)}" data-scope="${esc(s.key)}" ${have.has(s.key) ? 'checked' : ''}><span class="admin-slider"></span></label>
-      </label>`;
-  }).join('');
-}
-
-async function loadTokens() {
-  const list = el('adm-tokenList');
-  if (!list) return;
-  try {
-    const res = await fetch('/api/tokens', { credentials: 'same-origin' });
-    const tokens = await res.json();
-    if (!tokens.length) { list.innerHTML = '<div class="admin-empty" style="color:var(--accent, var(--red));opacity:0.7;font-size:10px;">No API tokens</div>'; return; }
-    list.innerHTML = tokens.map(t => `
-      <div class="admin-user-row" data-adm-tok-row="${esc(t.id)}" style="display:block;">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <div class="admin-user-info" style="flex:1;min-width:0;flex-wrap:wrap;gap:0.3rem;">
-            <input type="text" class="adm-tok-rename" data-token-id="${esc(t.id)}" value="${esc(t.name || '')}" placeholder="Token name" style="font-size:13px;font-weight:600;padding:3px 6px;background:transparent;border:1px solid transparent;border-radius:4px;min-width:160px;" title="Click to rename">
-            <span class="admin-badge">${esc(t.token_prefix)}...</span>
-            ${t.owner ? `<span style="font-size:0.75rem;opacity:0.5;">Owner: ${esc(t.owner)}</span>` : ''}
-            ${t.last_used_at ? `<span style="font-size:0.75rem;opacity:0.5;">Last used: ${new Date(t.last_used_at).toLocaleDateString()}</span>` : '<span style="font-size:0.75rem;opacity:0.4;">Never used</span>'}
-          </div>
-          <button class="admin-btn-sm" data-adm-tok-toggle="${esc(t.id)}" style="opacity:0.75;">Permissions</button>
-          <button class="admin-btn-delete" data-adm-del-token="${esc(t.id)}">Revoke</button>
-        </div>
-        <div data-adm-tok-perm="${esc(t.id)}" style="display:none;margin-top:8px;padding:8px 4px 0;border-top:1px solid var(--border);">
-          ${_renderTokenScopeRows(t)}
-          <div class="adm-tok-scope-msg" data-token-id="${esc(t.id)}" style="font-size:11px;min-height:14px;margin-top:4px;"></div>
-        </div>
-      </div>`).join('');
-
-    // Revoke
-    list.querySelectorAll('[data-adm-del-token]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        if (!await uiModule.styledConfirm('Revoke this API token? External integrations using it will stop working.', { confirmText: 'Revoke', danger: true })) return;
-        await fetch(`/api/tokens/${btn.dataset.admDelToken}`, { method: 'DELETE', credentials: 'same-origin' });
-        loadTokens();
-        // Codex / Claude integration cards on the Integrations panel are
-        // backed by these tokens — let them re-render so the deleted token
-        // disappears there too.
-        try { window.dispatchEvent(new CustomEvent('pantheon-integrations-changed')); } catch (_) {}
-      });
-    });
-    // Toggle permissions panel
-    list.querySelectorAll('[data-adm-tok-toggle]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const panel = list.querySelector(`[data-adm-tok-perm="${btn.dataset.admTokToggle}"]`);
-        if (!panel) return;
-        panel.style.display = panel.style.display === 'none' ? '' : 'none';
-      });
-    });
-    // Rename
-    list.querySelectorAll('.adm-tok-rename').forEach(input => {
-      const original = input.value;
-      const commit = async () => {
-        const name = (input.value || '').trim();
-        if (!name || name === original) return;
-        try {
-          const r = await fetch(`/api/tokens/${input.dataset.tokenId}`, {
-            method: 'PATCH', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name }),
-          });
-          if (!r.ok) throw new Error('Save failed');
-          loadTokens();
-        } catch (_) { input.value = original; }
-      };
-      input.addEventListener('blur', commit);
-      input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } });
-    });
-    // Scope toggle change → PATCH the whole scopes array for this token.
-    list.querySelectorAll('.adm-tok-scope').forEach(cb => {
-      cb.addEventListener('change', async () => {
-        const tokenId = cb.dataset.tokenId;
-        const panel = list.querySelector(`[data-adm-tok-perm="${tokenId}"]`);
-        const msg = list.querySelector(`.adm-tok-scope-msg[data-token-id="${tokenId}"]`);
-        const scopes = Array.from(panel.querySelectorAll('.adm-tok-scope:checked')).map(input => input.dataset.scope);
-        try {
-          const r = await fetch(`/api/tokens/${tokenId}`, {
-            method: 'PATCH', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ scopes }),
-          });
-          const d = await r.json().catch(() => ({}));
-          if (!r.ok) throw new Error(d.detail || 'Failed');
-          if (msg) { msg.textContent = 'Saved'; msg.style.color = 'var(--green, #50fa7b)'; setTimeout(() => { msg.textContent = ''; }, 1200); }
-        } catch (err) {
-          cb.checked = !cb.checked;
-          if (msg) { msg.textContent = (err && err.message) || 'Failed'; msg.style.color = 'var(--red)'; }
-        }
-      });
-    });
-  } catch (e) { list.innerHTML = '<div class="admin-error">Failed to load tokens</div>'; }
-}
-
-function initTokenForm() {
-  const addBtn = el('adm-tokenAddBtn');
-  if (!addBtn || addBtn.dataset.bound) return;
-  addBtn.dataset.bound = '1';
-  addBtn.addEventListener('click', async () => {
-    const msg = el('adm-tokenMsg');
-    const reveal = el('adm-tokenReveal');
-    msg.textContent = ''; msg.className = ''; reveal.style.display = 'none';
-    const name = el('adm-tokenName').value.trim();
-    if (!name) { msg.textContent = 'Token name is required'; msg.className = 'admin-error'; return; }
-    const fd = new FormData(); fd.append('name', name);
-    const scopes = (el('adm-tokenScopes')?.value || '').trim();
-    if (scopes) fd.append('scopes', scopes);
-    try {
-      const res = await fetch('/api/tokens', { method: 'POST', body: fd, credentials: 'same-origin' });
-      const data = await res.json();
-      if (res.ok) {
-        el('adm-tokenValue').textContent = data.token;
-        reveal.style.display = '';
-        el('adm-tokenName').value = '';
-        if (el('adm-tokenScopes')) el('adm-tokenScopes').value = '';
-        loadTokens();
-      }
-      else { msg.textContent = data.detail || 'Failed'; msg.className = 'admin-error'; }
-    } catch (e) { msg.textContent = 'Request failed'; msg.className = 'admin-error'; }
-  });
-  const TOKEN_COPY_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-  const TOKEN_CHECK_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-  el('adm-tokenCopyBtn').addEventListener('click', async () => {
-    const val = el('adm-tokenValue').textContent;
-    const btn = el('adm-tokenCopyBtn');
-    // `B59`, and **this is the site that made the row worth doing.** It was a
-    // bare `navigator.clipboard.writeText(...).then(...)` with no `catch` and
-    // no fallback. Over plain `http` on a LAN `navigator.clipboard` is
-    // `undefined`, so the property access throws, nothing is copied, nothing
-    // is said, and the button appears to do nothing — on the one control in
-    // this app that shows an API token **once**. Losing it means minting
-    // another.
-    const ok = await uiModule.copyText(val);
-    // A checkmark on a failed copy is worse than no button: it tells somebody
-    // the token is safely on their clipboard when it is not, and this one is
-    // shown once. Written first as `.then(...)` on the boolean-returning
-    // helper, which runs on `false` as happily as on `true`.
-    if (!ok) {
-      uiModule.showError?.('Copy failed — select the token and press Ctrl/Cmd+C');
-      el('adm-tokenValue')?.focus?.();
-      return;
-    }
-    btn.innerHTML = TOKEN_CHECK_ICON;
-    btn.style.color = 'var(--accent, var(--red))';
-    btn.style.opacity = '1';
-    setTimeout(() => {
-      btn.innerHTML = TOKEN_COPY_ICON;
-      btn.style.color = '';
-      btn.style.opacity = '0.7';
-    }, 1600);
-  });
-}
+/* `B1524`. The admin API-token form (`initTokenForm`, `loadTokens`,
+   `_TOKEN_SCOPES`) stood here and returned on `adm-token*` ids no template
+   renders. A token is made, listed and revoked in Settings → MCP &
+   Integrations (`settings.js` `showTokenForm`, `B1193`), which reads what a
+   token may do from the server's own list (`GET /api/tokens/profiles`)
+   rather than a copy of it. Deleted, as `B902` deleted the admin MCP form. */
 
 /* ── Webhooks ── */
 async function loadWebhooks() {
@@ -3670,7 +3490,7 @@ function initAll() {
   // panel binds its controls and then renders nothing to use them on.
   const inits = [
     initSignupToggle, initAddUser, initEndpointForm,
-    initCalDAV, initBackup, initCleanup, initDangerZone, initTokenForm, initLogsView,
+    initCalDAV, initBackup, initCleanup, initDangerZone, initLogsView,
     initWebhookForm, initRag, initUploads,
     () => settingsModule.initIntegrations()
   ];
@@ -3685,7 +3505,6 @@ function refreshAll() {
   loadUsers();
   loadEndpoints();
   loadBuiltinTools();
-  loadTokens();
   loadWebhooks();
   loadRag();
   loadUploads();
@@ -3696,15 +3515,27 @@ function refreshAll() {
 /* ═══════════════════════════════════════════
    PUBLIC API
    ═══════════════════════════════════════════ */
+let _initAsking = null;
+
 export function _initData() {
   // `SET-M-8` (P23-03). Everything this module loads is admin-only on the
   // server; for anyone else it was fifteen 403s per Settings open and panels
-  // drawn over refusals. Read from the table's state, where `isAdmin` is
-  // `false` only for a signed-in non-admin (`null` with auth off, where the
-  // server lets the owner in).
-  if (toolVisibilityState().isAdmin === false) return;
-  if (!initialized) initAll();
-  else refreshAll();
+  // drawn over refusals.
+  //
+  // `B1525`. The check read the table's state as it stood, and before
+  // `/api/auth/status` has answered `isAdmin` is `null` — so Settings opened
+  // in that window ran every loader, `/api/personal` (`B1192`'s tenth) among
+  // them, for a guest too. Now it asks `viewerMayAdminister`, which waits for
+  // the status the page has asked for (at most its four seconds) and answers
+  // no only for a viewer the server called a non-admin. Asked again while it
+  // waits, it is the same wait, not a second set of loaders.
+  if (_initAsking) return _initAsking;
+  _initAsking = viewerMayAdminister().then((may) => {
+    if (!may) return;
+    if (!initialized) initAll();
+    else refreshAll();
+  }).finally(() => { _initAsking = null; });
+  return _initAsking;
 }
 
 export function open(tab) {

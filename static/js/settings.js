@@ -7052,9 +7052,8 @@ async function initUnifiedIntegrations() {
 /* ── Admin visibility sync ── */
 function syncAdminVisibility() {
   if (!modalEl) return;
-  // `P23-03`. A signed-in non-admin, not "anyone `window._isAdmin` is not
-  // true for": with auth off that is the install's one operator, whom the
-  // server's `require_admin` lets in.
+  // `P23-03`. The table's answer (`viewerIsAdmin`): the status's `is_admin`;
+  // `B1523`, a page the status called a non-admin is not shown admin panels.
   const isAdmin = viewerIsAdmin();
   modalEl.querySelectorAll('.admin-only').forEach(el => {
     el.style.display = isAdmin ? '' : 'none';

@@ -1259,25 +1259,19 @@
           </div>
         </div>
       </div>
-      <!-- Hidden dropdown for session actions -->
-      <div id="session-actions-dropdown" class="dropdown hidden">
-        <div class="dropdown-item" id="rename-session-option">
-          <h4>Rename</h4>
-          <p>Change the chat name</p>
-        </div>
-        <div class="dropdown-item" id="delete-session-option">
-          <h4>Delete</h4>
-          <p>Remove this chat permanently</p>
-        </div>
-        <div class="dropdown-item" id="memory-session-option">
-          <h4>Extract memories</h4>
-          <p>Extract memories from this chat</p>
-        </div>
-      </div>
+      <!-- `B1208`. A static session-actions dropdown stood here that nothing
+           opened; a chat's ··· menu is built at run time (`sessions.js`) and
+           carries Rename, Archive, Delete, Copy chat and — since `B51` —
+           Extract memories, everything this one listed. Deleted. -->
 
       <div class="section" id="email-section">
         <div class="section-header-flex">
-          <span class="section-title" id="email-section-title" style="cursor:pointer;" title="Open email inbox"><svg class="section-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg><span>Email</span></span>
+          <!-- `B1213`. The Email title is a button: it was a `<span>` with a
+               pointer cursor, which a mouse could press and the keyboard could
+               not reach. It opens the inbox (the header's click, `emailInbox.js`
+               `_bindEvents`; this section does not collapse —
+               `section-management.js` skips it), which is what its title says. -->
+          <button type="button" class="section-title" id="email-section-title" title="Open email inbox"><svg class="section-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg><span>Email</span></button>
           <button type="button" class="section-header-btn list-item-plus-btn" id="email-compose-btn" title="Compose email">
             <svg class="list-item-plus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             <span class="list-item-plus-label">new</span>
@@ -2686,7 +2680,7 @@
               </label>
               <label class="vis-row">
                 <span class="vis-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v2m0 14v2m-7-9H3m18 0h-2m-1.5-6.5L16 7m-8-1.5L6.5 7m11 11l-1.5-1.5M8 18l-1.5 1.5"/><circle cx="12" cy="12" r="4"/></svg></span>
-                <span class="vis-label">Welcome scene <span class="vis-hint">Logo, tips and the voyage on an empty chat</span></span>
+                <span class="vis-label">Welcome scene <span class="vis-hint">Logo, tips and the scenery on an empty chat</span></span>
                 <input type="checkbox" checked data-ui-key="welcome-text"><span class="vis-switch"></span>
               </label>
               <label class="vis-row">
