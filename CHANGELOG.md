@@ -108,6 +108,13 @@ the next one is cut.
 
 ### Added
 
+- **Each Tools entry can be switched off for everyone** — Assistant, Calendar, Compare, Email,
+  Notes, Tasks, Theme and Workbench, in Settings → Agent Tools — beside the per-person switch:
+  the door hides, the routes refuse everyone, the agent's tools go, and background work holds
+  with a sentence; nothing is deleted (`B1488`).
+- **`auth_events_retention_days`** keeps the sign-in audit trail on its own clock; unset follows
+  `events_retention_days`, 0 keeps it forever (`B685`).
+
 - **Ctrl+K finds a chat by its name,** not only by a word in its messages (`B1249`).
 - **The mail unread count shows on the sidebar with the mail window closed** (`B812`).
 
@@ -204,6 +211,16 @@ the next one is cut.
   button all close it. `/toggle mode [agent|chat]` is the same control, typed.
 
 ### Changed — read this before upgrading
+
+- **The assistant asks before it switches on or redirects its own settings** — image generation,
+  the teacher, speech, model downloads, metrics, wider search or LAN reach, a higher remote-image
+  mode, a new address for any destination, or a tool an admin switched off — every time, at every
+  trust rung (`B897`, `B912`, `D-2026-10-25-01`).
+- **One handler compacts a chat:** `POST /api/session/{id}/compact` leaves a visible *Chat
+  compacted* marker in order and answers a chat too short to compact with a 400 and a sentence
+  (`B1529`).
+- **The search providers are paced** like every other outbound call, a 429 counts once, and an
+  empty fallback chain sends nothing to DuckDuckGo (`B1533`, `B1538`).
 
 - **A message you just sent can be deleted before a reload:** the chat stream announces the sent
   message's row id in a new `user_message_saved` event (`B1507`).
@@ -331,6 +348,14 @@ the next one is cut.
   arming that a non-empty memory store did on its own.
 
 ### Fixed
+
+- **A truncated plan update is sent back** instead of erasing approved steps (`B1415`); a
+  read-only MCP tool is not held like a destructive one (`B1329`); a model nobody ruled out gets
+  a tool's picture, and a refusal of it falls back to words (`B1281`); an event that lands
+  mid-run runs after it (`B1512`).
+- **The approval card speaks plainly** (`B1202`), a widening card offers no rule it cannot keep
+  (`B900`), the OCR editor and a dimmed opener follow the Escape stack and the keyboard
+  (`B1531`, `B1221`), and the sidebar's Email title is a button (`B1213`).
 
 - **Every mail path gives up on a silent server in seconds** — the routes' sender joins the agent's
   tools (`B1526`); an email task no longer rewrites `settings.json` to pass itself flags

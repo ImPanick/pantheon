@@ -3187,6 +3187,25 @@ tool advertises, and the owner chose to keep it behind consent rather than remov
 
 What reopens it: the owner asking for (a) instead, or for some self-switch to run unasked.
 
+**Extended 2026-10-26 under this ruling (`B897`, `B912`).** Measured: at the default rung in a clean
+run `manage_settings` switched on `image_gen_enabled`, `teacher_enabled`, `teacher_tier2_enabled` and
+`stt_enabled`, set `allow_model_download` and `metrics_enabled`, and moved destination keys to new
+addresses — and the gate asked about none of it. These now ask every time, at every rung, past any
+blanket yes (`_settings_escalation` in `src/tool_capabilities.py`, the key tables in
+`src/settings_requests.py`, which the executor and the gate both read):
+
+- **Switching on:** `image_gen_enabled`, `teacher_enabled`, `teacher_tier2_enabled`, `stt_enabled`,
+  `allow_model_download`, `metrics_enabled`, `searxng_widen_engines`, `agent_lan_reach`, and
+  `remote_images` moving up its order (block < ask < proxy).
+- **Moving a destination to a new address** (the card shows it): `otlp_endpoint`, `search_url`,
+  `search_provider`, `research_search_provider`, `reminder_email_to`, `reminder_ntfy_topic`,
+  `netagent_url`, `issue_tracker_url`, `source_url`.
+- **`manage_settings enable_tool`** for a tool listed in `disabled_tools` (`B912`): the card names what
+  it would free, and nothing moves until the person says yes.
+
+Narrowing, and a call that changes nothing, stay unasked; a settings store that cannot be read asks.
+`forge_model_hubs` is left out, because `src/settings.py` already says the agent may set it.
+
 ---
 
 ## D-2026-10-25-02 — the agent may act on the operator's own networks, and the hard gates loosen for that

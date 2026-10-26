@@ -247,6 +247,10 @@ Re-measured 2026-10-26, after the fifth wave: **86 filed, 321 closed**, open **4
 
 **Direction as of 2026-10-26, after the fifth wave: the open count is falling.**
 
+Re-measured 2026-10-26, after the sixth wave: **66 filed, 334 closed**, open **406 → 138** — falling, by twenty-seven in one wave. Thirty-three rows closed; seven filed, one closed in it (`B1538`, an empty fallback chain that still meant DuckDuckGo). The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1504`–`B1543`) block.
+
+**Direction as of 2026-10-26, after the sixth wave: the open count is falling.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
