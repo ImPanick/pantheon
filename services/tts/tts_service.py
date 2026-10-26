@@ -213,7 +213,10 @@ class TTSService:
         }
 
         try:
-            r = httpx.post(url, json=payload, headers=headers, timeout=60)
+            # `B1022`: paced and routed (`paced_http`), as the STT call beside it.
+            from src import paced_http
+            r = paced_http.post_sync(url, json=payload, headers=headers, timeout=60,
+                                     follow_redirects=False)
             r.raise_for_status()
             logger.info(f"API TTS: {len(r.content)} bytes from {base_url}")
             return r.content

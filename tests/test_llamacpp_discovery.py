@@ -9,6 +9,11 @@ Companion to test_lmstudio_discovery.py; the llama.cpp fingerprint is checked
 """
 from src.model_discovery import ModelDiscovery
 
+# `B1022`: the discovery probes go through `paced_http.get_sync` (routed by
+# `NO_PROXY` ranges, paced by the limiter) instead of a module-level
+# `httpx.get`, so the fakes below stand where that call now is, and take
+# the `follow_redirects=False` it passes.
+
 
 class _FakeResponse:
     def __init__(self, payload, ok=True):
@@ -61,7 +66,7 @@ class TestLlamaCppFingerprint:
         'llamacpp'."""
         discovery = ModelDiscovery(default_host="localhost")
 
-        def fake_get(url, timeout=None):
+        def fake_get(url, timeout=None, **kw):
             if url.endswith("/api/v1/models"):
                 # OpenAI-compatible shape, not the LM Studio native shape.
                 return _FakeResponse({"data": [{"id": "gemma-4-12b"}]})
@@ -69,7 +74,7 @@ class TestLlamaCppFingerprint:
                 return _FakeResponse(self.LLAMACPP_PROPS)
             return _FakeResponse({}, ok=False)
 
-        monkeypatch.setattr("src.model_discovery.httpx.get", fake_get)
+        monkeypatch.setattr("src.model_discovery.paced_http.get_sync", fake_get)
         assert discovery._fingerprint_provider("localhost", 8080) == "llamacpp"
 
     def test_lmstudio_still_wins_when_both_match(self, monkeypatch):
@@ -81,47 +86,47 @@ class TestLlamaCppFingerprint:
                         "architecture": "qwen35", "format": "gguf"}]
         }
 
-        def fake_get(url, timeout=None):
+        def fake_get(url, timeout=None, **kw):
             if url.endswith("/api/v1/models"):
                 return _FakeResponse(lmstudio_native)
             if url.endswith("/props"):
                 return _FakeResponse(self.LLAMACPP_PROPS)
             return _FakeResponse({}, ok=False)
 
-        monkeypatch.setattr("src.model_discovery.httpx.get", fake_get)
+        monkeypatch.setattr("src.model_discovery.paced_http.get_sync", fake_get)
         assert discovery._fingerprint_provider("localhost", 8080) == "lmstudio"
 
     def test_props_without_llamacpp_keys_not_detected(self, monkeypatch):
         """A /props-style response lacking llama-server marker keys → None."""
         discovery = ModelDiscovery(default_host="localhost")
 
-        def fake_get(url, timeout=None):
+        def fake_get(url, timeout=None, **kw):
             if url.endswith("/api/v1/models"):
                 return _FakeResponse({"data": []})
             if url.endswith("/props"):
                 return _FakeResponse({"unrelated": "value"})
             return _FakeResponse({}, ok=False)
 
-        monkeypatch.setattr("src.model_discovery.httpx.get", fake_get)
+        monkeypatch.setattr("src.model_discovery.paced_http.get_sync", fake_get)
         assert discovery._fingerprint_provider("localhost", 8080) is None
 
     def test_props_unreachable_returns_none(self, monkeypatch):
         """No /api/v1/models and a failing /props → None (not an exception)."""
         discovery = ModelDiscovery(default_host="localhost")
 
-        def fake_get(url, timeout=None):
+        def fake_get(url, timeout=None, **kw):
             if url.endswith("/api/v1/models"):
                 return _FakeResponse({}, ok=False)
             raise OSError("connection refused")
 
-        monkeypatch.setattr("src.model_discovery.httpx.get", fake_get)
+        monkeypatch.setattr("src.model_discovery.paced_http.get_sync", fake_get)
         assert discovery._fingerprint_provider("localhost", 8080) is None
 
     def test_check_port_attaches_llamacpp_provider(self, monkeypatch):
         """End-to-end: _check_port tags a discovered llama-server as 'llamacpp'."""
         discovery = ModelDiscovery(default_host="localhost")
 
-        def fake_get(url, timeout=None):
+        def fake_get(url, timeout=None, **kw):
             if url.endswith("/v1/models"):
                 return _FakeResponse({"data": [{"id": "gemma-4-12b"}]})
             if url.endswith("/api/v1/models"):
@@ -130,7 +135,7 @@ class TestLlamaCppFingerprint:
                 return _FakeResponse(self.LLAMACPP_PROPS)
             return _FakeResponse({}, ok=False)
 
-        monkeypatch.setattr("src.model_discovery.httpx.get", fake_get)
+        monkeypatch.setattr("src.model_discovery.paced_http.get_sync", fake_get)
         result = discovery._check_port("localhost", 8080)
         assert result is not None
         assert result["provider"] == "llamacpp"
@@ -161,7 +166,7 @@ class TestDockerLoopbackScan:
 
         discovery = _MD(default_host="localhost")
 
-        def fake_get(url, timeout=None):
+        def fake_get(url, timeout=None, **kw):
             if url.endswith("/v1/models") or url.endswith("/api/v1/models"):
                 return _FakeResponse({"data": [{"id": "gemma-4-12b"}]})
             if url.endswith("/props"):
@@ -172,7 +177,7 @@ class TestDockerLoopbackScan:
                 })
             return _FakeResponse({}, ok=False)
 
-        monkeypatch.setattr("src.model_discovery.httpx.get", fake_get)
+        monkeypatch.setattr("src.model_discovery.paced_http.get_sync", fake_get)
         result = discovery._check_port("host.docker.internal", 8080)
         assert result is not None
         assert "host.docker.internal" in result["url"]

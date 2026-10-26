@@ -3,6 +3,11 @@
 and native-API provider fingerprinting."""
 from src.model_discovery import ModelDiscovery
 
+# `B1022`: the discovery probes go through `paced_http.get_sync` (routed by
+# `NO_PROXY` ranges, paced by the limiter) instead of a module-level
+# `httpx.get`, so the fakes below stand where that call now is, and take
+# the `follow_redirects=False` it passes.
+
 
 class _FakeResponse:
     def __init__(self, payload, ok=True):
@@ -70,24 +75,24 @@ class TestFingerprintProvider:
     def test_lmstudio_native_format_detected(self, monkeypatch):
         discovery = ModelDiscovery(default_host="localhost")
         monkeypatch.setattr(
-            "src.model_discovery.httpx.get",
-            lambda url, timeout=None: _FakeResponse(self.LMSTUDIO_NATIVE),
+            "src.model_discovery.paced_http.get_sync",
+            lambda url, timeout=None, **kw: _FakeResponse(self.LMSTUDIO_NATIVE),
         )
         assert discovery._fingerprint_provider("localhost", 1234) == "lmstudio"
 
     def test_lmstudio_detected_on_nonstandard_port(self, monkeypatch):
         discovery = ModelDiscovery(default_host="localhost")
         monkeypatch.setattr(
-            "src.model_discovery.httpx.get",
-            lambda url, timeout=None: _FakeResponse(self.LMSTUDIO_NATIVE),
+            "src.model_discovery.paced_http.get_sync",
+            lambda url, timeout=None, **kw: _FakeResponse(self.LMSTUDIO_NATIVE),
         )
         assert discovery._fingerprint_provider("localhost", 8080) == "lmstudio"
 
     def test_openai_compatible_server_not_lmstudio(self, monkeypatch):
         discovery = ModelDiscovery(default_host="localhost")
         monkeypatch.setattr(
-            "src.model_discovery.httpx.get",
-            lambda url, timeout=None: _FakeResponse({"data": [{"id": "gpt-4o"}]}, ok=False),
+            "src.model_discovery.paced_http.get_sync",
+            lambda url, timeout=None, **kw: _FakeResponse({"data": [{"id": "gpt-4o"}]}, ok=False),
         )
         assert discovery._fingerprint_provider("localhost", 8000) is None
 
@@ -95,27 +100,27 @@ class TestFingerprintProvider:
         discovery = ModelDiscovery(default_host="localhost")
         ollama_shape = {"models": [{"name": "llama3", "modified_at": "x", "size": 1}]}
         monkeypatch.setattr(
-            "src.model_discovery.httpx.get",
-            lambda url, timeout=None: _FakeResponse(ollama_shape),
+            "src.model_discovery.paced_http.get_sync",
+            lambda url, timeout=None, **kw: _FakeResponse(ollama_shape),
         )
         assert discovery._fingerprint_provider("localhost", 11434) is None
 
     def test_unreachable_returns_none(self, monkeypatch):
         discovery = ModelDiscovery(default_host="localhost")
-        def boom(url, timeout=None):
+        def boom(url, timeout=None, **kw):
             raise OSError("connection refused")
-        monkeypatch.setattr("src.model_discovery.httpx.get", boom)
+        monkeypatch.setattr("src.model_discovery.paced_http.get_sync", boom)
         assert discovery._fingerprint_provider("localhost", 1234) is None
 
     def test_check_port_attaches_provider(self, monkeypatch):
         discovery = ModelDiscovery(default_host="localhost")
 
-        def fake_get(url, timeout=None):
+        def fake_get(url, timeout=None, **kw):
             if url.endswith("/api/v1/models"):
                 return _FakeResponse(self.LMSTUDIO_NATIVE)
             return _FakeResponse({"data": [{"id": "qwen3.6-27b"}]})
 
-        monkeypatch.setattr("src.model_discovery.httpx.get", fake_get)
+        monkeypatch.setattr("src.model_discovery.paced_http.get_sync", fake_get)
         result = discovery._check_port("localhost", 1234)
         assert result is not None
         assert result["provider"] == "lmstudio"

@@ -15,6 +15,7 @@ import io
 import os
 import inspect
 import httpx
+from src import paced_http  # `B1022`
 from pathlib import Path
 from datetime import datetime
 from urllib.parse import urljoin, urlparse, urlunparse
@@ -362,11 +363,15 @@ def _fetch_via_report(cfg, auth):
     `href` field, or None if the server doesn't support it / errors."""
     from defusedxml import ElementTree as ET
     try:
-        r = httpx.request(
+        # `B1022`: every CardDAV call goes through `paced_http` — routed by
+        # `NO_PROXY` ranges (a LAN Radicale is the common case) and paced by
+        # the limiter (free for a local server, polite to a hosted one) —
+        # never following a redirect, as the module-level `httpx` calls did not.
+        r = paced_http.request_sync(
             "REPORT", cfg["url"],
             content=_ADDRESSBOOK_QUERY.encode("utf-8"),
             headers={"Content-Type": "application/xml; charset=utf-8", "Depth": "1"},
-            auth=auth, timeout=10,
+            auth=auth, timeout=10, follow_redirects=False,
         )
         if r.status_code not in (207, 200):
             return None
@@ -420,7 +425,8 @@ def _fetch_contacts(force=False):
         contacts = _fetch_via_report(cfg, auth)
         if contacts is None:
             # Fallback: plain GET, concatenated vCards, no hrefs.
-            r = httpx.get(cfg["url"], auth=auth, timeout=10)
+            r = paced_http.get_sync(cfg["url"], auth=auth, timeout=10,
+                                    follow_redirects=False)   # `B1022`
             if r.status_code != 200:
                 logger.warning(f"CardDAV returned {r.status_code}")
                 return _contact_cache["contacts"]
@@ -483,12 +489,13 @@ def _create_contact(name: str, email: str = "", address: str = "", phones: Optio
         auth = None
         if cfg["username"]:
             auth = (cfg["username"], cfg["password"])
-        r = httpx.put(
-            url,
+        r = paced_http.request_sync(   # `B1022`
+            "PUT", url,
             data=vcard.encode("utf-8"),
             headers={"Content-Type": "text/vcard; charset=utf-8"},
             auth=auth,
             timeout=10,
+            follow_redirects=False,
         )
         if r.status_code in (200, 201, 204):
             # Invalidate cache
@@ -573,10 +580,10 @@ def _import_vcards(text: str) -> Dict:
         vcard = block.replace("\n", "\r\n") + "\r\n"
         url = base_url + "/" + quote(uid, safe="") + ".vcf"
         try:
-            r = httpx.put(
-                url, data=vcard.encode("utf-8"),
+            r = paced_http.request_sync(   # `B1022`
+                "PUT", url, data=vcard.encode("utf-8"),
                 headers={"Content-Type": "text/vcard; charset=utf-8"},
-                auth=auth, timeout=15,
+                auth=auth, timeout=15, follow_redirects=False,
             )
             if r.status_code in (200, 201, 204):
                 imported += 1
@@ -744,12 +751,13 @@ def _update_contact(uid: str, name: str, emails: List[str], phones: List[str], a
     try:
         url = _resolve_resource_url(uid)
         auth = (cfg["username"], cfg["password"]) if cfg["username"] else None
-        r = httpx.put(
-            url,
+        r = paced_http.request_sync(   # `B1022`
+            "PUT", url,
             data=vcard.encode("utf-8"),
             headers={"Content-Type": "text/vcard; charset=utf-8"},
             auth=auth,
             timeout=10,
+            follow_redirects=False,
         )
         if r.status_code in (200, 201, 204):
             _contact_cache["fetched_at"] = None
@@ -773,7 +781,8 @@ def _delete_contact(uid: str) -> bool:
     try:
         url = _resolve_resource_url(uid)
         auth = (cfg["username"], cfg["password"]) if cfg["username"] else None
-        r = httpx.delete(url, auth=auth, timeout=10)
+        r = paced_http.request_sync("DELETE", url, auth=auth, timeout=10,
+                                    follow_redirects=False)   # `B1022`
         if r.status_code in (200, 204, 404):
             # Invalidate cache so the next fetch sees the server truth.
             _contact_cache["fetched_at"] = None

@@ -275,12 +275,15 @@ def setup_embedding_routes():
 
         # Quick health check
         try:
-            import httpx
-            resp = httpx.post(
+            # `B1022`: paced and routed (`paced_http`), not a module-level
+            # `httpx.post`; a local embedding server costs nothing there.
+            from src import paced_http
+            resp = paced_http.post_sync(
                 url,
                 json={"input": ["test"], "model": model or "test"},
                 headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
                 timeout=10,
+                follow_redirects=False,
             )
             resp.raise_for_status()
         except Exception as e:

@@ -146,9 +146,14 @@ def _detail_for(category: str) -> str:
 
 
 def _http_get(url: str, timeout: float = _PROBE_TIMEOUT):
-    """Single network entry point for the HTTP probes (monkeypatched in tests)."""
-    import httpx
-    return httpx.get(url, timeout=timeout)
+    """Single network entry point for the HTTP probes (monkeypatched in tests).
+
+    `B1022`: through `paced_http` — routed by `NO_PROXY` ranges, and paced by
+    the limiter, which costs a local service nothing — instead of a module-level
+    `httpx.get` that `B1014`'s rule cannot reach. Redirects stay unfollowed:
+    a probe reports what the address itself answered."""
+    from src import paced_http
+    return paced_http.get_sync(url, timeout=timeout, follow_redirects=False)
 
 
 def _bounded_map(items: List[Any], worker: Callable[[int, Any], Dict[str, Any]],
