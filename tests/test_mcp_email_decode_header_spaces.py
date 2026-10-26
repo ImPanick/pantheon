@@ -91,6 +91,35 @@ def test_empty_header():
     assert es._decode_header("") == ""
 
 
+@pytest.mark.parametrize("raw, shown", [
+    ("Spring menu site — quote accepted".encode("utf-8"), "Spring menu site — quote accepted"),
+    ("Café menu".encode("latin-1"), "Café menu"),            # 8-bit, not UTF-8
+])
+def test_a_raw_8bit_subject_reads_as_the_sender_wrote_it(raw, shown):
+    """`B1232`. A bare 8-bit Subject (not RFC 2047) reaches `_decode_header` as
+    an `email.header.Header` of `unknown-8bit` bytes. The MCP server's own copy
+    rendered it "Spring menu site ��� quote accepted" for the agent while the
+    routes, fixed by `P23-08`, showed the person the real text."""
+    import email
+
+    msg = email.message_from_bytes(
+        b"From: Ana <ana@example.test>\r\nSubject: " + raw + b"\r\n\r\nhi")
+    out = es._decode_header(msg.get("Subject"))
+    assert out == shown
+    assert "�" not in out
+    # The same bytes reaching a str path surrogate-escaped.
+    assert es._decode_header("x \udce2\udc80\udc94 y") == "x — y"
+
+
+def test_the_agent_and_the_browser_decode_with_one_function():
+    """`B1232`, `Law 7`: the copy that drifted is gone, not re-synchronised."""
+    import routes.email_helpers as helpers
+    from src.mail_headers import decode_header
+
+    assert helpers._decode_header is decode_header
+    assert es._shared_decode_header is decode_header
+
+
 @pytest.mark.asyncio
 async def test_mcp_email_accounts_are_filtered_by_hidden_owner(tmp_path, monkeypatch):
     db_path = tmp_path / "app.db"

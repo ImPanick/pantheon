@@ -35,32 +35,40 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 server = Server("email")
 EMAIL_SOCKET_TIMEOUT = float(os.environ.get("EMAIL_SOCKET_TIMEOUT", "20"))
+# `B1230`. How long OPENING a mail connection may take — the TCP connect, the
+# TLS handshake (or the STARTTLS upgrade) and the server's greeting — apart from
+# the reads after it, which keep `EMAIL_SOCKET_TIMEOUT`. imaplib and smtplib
+# take one timeout for both, so the agent's mail tools, pointed at an address
+# that drops packets, waited the whole 20 s before they could say the server
+# was not there. The routes made this split for their own opener in `P23-07`
+# (`routes/email_helpers._IMAP_CONNECT_SECONDS`, the same five seconds); this
+# process cannot import a request-handler module, so it states the number for
+# its own opener. A reachable server has greeted well inside five seconds.
+EMAIL_CONNECT_TIMEOUT = min(5.0, EMAIL_SOCKET_TIMEOUT) if EMAIL_SOCKET_TIMEOUT > 0 else 5.0
 from src.constants import DATA_DIR as _DATA_DIR, APP_DB, EMAIL_CACHE_DB, SETTINGS_FILE as _SETTINGS_FILE, MAIL_ATTACHMENTS_DIR
 from src.env_flags import env_flag
 from src.file_names import display_name as _display_name, stored_name as _stored_name  # `B1000`
 # P18-02/P18-03. In `src/` rather than `routes/` precisely so this process
 # can import it without reaching into a request-handler module.
 from src import mail_auth as _mail_auth
-# `B131`. `src.agent_tools` FIRST, and the order is load-bearing.
-# `src/tool_schemas.py` imports `src.agent_tools` at its top, and
-# `src/agent_tools/__init__.py:164` imports `FUNCTION_TOOL_SCHEMAS` back out of
-# `src.tool_schemas` — a cycle that resolves only if `agent_tools` is imported
-# first. `B74` made this fatal here: these servers began importing
-# `mcp_tool_schema` as their first `src` import, and **both stopped starting at
-# all** with `ImportError: cannot import name 'FUNCTION_TOOL_SCHEMAS' from
-# partially initialized module`. Eleven email tools and RAG were down from the
-# moment `B74` landed until 2026-09-15.
+# `B1232`. The header decode the routes use, so an 8-bit Subject reads the same
+# to the agent as it does in the browser — one definition, in `src/`.
+from src.mail_headers import decode_header as _shared_decode_header
+# `B131`, then `B1118`. `src.agent_tools` is imported before `src.tool_schemas`
+# here, and since `B1118` the order no longer matters: the facade re-exports
+# `tool_schemas` and `tool_parsing` lazily, so either can be imported first in a
+# fresh interpreter (`tests/test_the_tool_modules_import_in_any_order.py`). The
+# line is kept by choice (`Law 1`) — it is the order that always worked.
 #
-# Nothing in-process could see it. Every test, and `check-mcp-schemas.py`, runs
-# where `src.agent_tools` is already imported — `tests/conftest.py` pre-imports
-# it, which is `B18`'s own fix masking this one. Only a fresh interpreter that
-# imports the server the way `builtin_mcp.py` spawns it shows the failure, and
-# `tests/test_a_server_starts_in_its_own_process.py` is that test.
-#
-# Fixing the cycle itself is a bigger change than a live outage should wait for:
-# `tool_schemas` annotates a module-level function with `Optional[ToolBlock]`
-# and there is a second cycle through `src.tool_parsing` behind it. Filed.
-import src.agent_tools  # noqa: F401 — import order, see above
+# What it remembers: `B74` made these servers import `mcp_tool_schema` as their
+# first `src` import while that order still failed with `ImportError: cannot
+# import name 'FUNCTION_TOOL_SCHEMAS' from partially initialized module`, and
+# eleven email tools and RAG were down from the moment `B74` landed until
+# 2026-09-15. Nothing in-process could see it — `tests/conftest.py` pre-imports
+# `src.agent_tools` (`B18`) — so a fresh interpreter importing the server the
+# way `builtin_mcp.py` spawns it is the test that would:
+# `tests/test_a_server_starts_in_its_own_process.py`.
+import src.agent_tools  # noqa: F401 — kept by choice since `B1118`, see above
 from src.tool_schemas import mcp_tool_schema
 DATA_DIR = Path(_DATA_DIR)
 
@@ -425,17 +433,20 @@ def _imap_connect(account: str | None = None):
     """Connect to IMAP server, returns logged-in connection. account selects
     the mailbox (None = default)."""
     cfg = _load_config(account)
+    # `B1230`: opened under `EMAIL_CONNECT_TIMEOUT` (connect, TLS, greeting and
+    # any STARTTLS upgrade); the session's reads get `EMAIL_SOCKET_TIMEOUT`,
+    # set on the socket below once the server has answered.
     if cfg["imap_ssl"]:
         conn = imaplib.IMAP4_SSL(
             cfg["imap_host"],
             cfg["imap_port"],
-            timeout=EMAIL_SOCKET_TIMEOUT,
+            timeout=EMAIL_CONNECT_TIMEOUT,
         )
     else:
         conn = imaplib.IMAP4(
             cfg["imap_host"],
             cfg["imap_port"],
-            timeout=EMAIL_SOCKET_TIMEOUT,
+            timeout=EMAIL_CONNECT_TIMEOUT,
         )
         if cfg["imap_starttls"]:
             try:
@@ -550,28 +561,13 @@ def _folder_role_from_name(name: str) -> str:
 
 
 def _decode_header(raw):
-    """Decode MIME encoded header."""
-    if not raw:
-        return ""
-    try:
-        # make_header concatenates per RFC 2047: no spurious space between an
-        # encoded-word and adjacent plain text (plain runs keep their own
-        # whitespace), and whitespace between two adjacent encoded-words is
-        # dropped. The old " ".join produced "Re:  Jose" style double spaces
-        # on every non-ASCII subject or sender.
-        return str(email.header.make_header(email.header.decode_header(raw)))
-    except Exception:
-        # Malformed header or unknown charset: lossy per-part decode
-        decoded = []
-        for data, charset in email.header.decode_header(raw):
-            if isinstance(data, bytes):
-                try:
-                    decoded.append(data.decode(charset or "utf-8", errors="replace"))
-                except LookupError:
-                    decoded.append(data.decode("utf-8", errors="replace"))
-            else:
-                decoded.append(data)
-        return "".join(decoded)
+    """Decode a MIME encoded header.
+
+    `B1232`. This was a copy of the routes' decode from before `P23-08`, so a
+    bare UTF-8 "—" in a Subject (`unknown-8bit` bytes) reached the agent as
+    "\ufffd\ufffd\ufffd". It is `src.mail_headers.decode_header` now, the one
+    the routes read; the name is kept for its callers in this file."""
+    return _shared_decode_header(raw)
 
 
 def _uid_from_fetch_meta(meta_b: bytes) -> str:
@@ -1399,11 +1395,14 @@ def _smtp_connect(account=None, cfg=None):
     security = str(cfg.get("smtp_security") or "").strip().lower()
     if security not in {"ssl", "starttls", "none"}:
         security = "starttls" if port == 587 else "ssl"
+    # `B1230`: the same split as `_imap_connect` — opened under
+    # `EMAIL_CONNECT_TIMEOUT`, then the socket gets `EMAIL_SOCKET_TIMEOUT` for
+    # the login and the send.
     if security == "starttls":
         conn = smtplib.SMTP(
             cfg["smtp_host"],
             port,
-            timeout=EMAIL_SOCKET_TIMEOUT,
+            timeout=EMAIL_CONNECT_TIMEOUT,
         )
         try:
             conn.starttls()
@@ -1419,14 +1418,16 @@ def _smtp_connect(account=None, cfg=None):
         conn = smtplib.SMTP_SSL(
             cfg["smtp_host"],
             port,
-            timeout=EMAIL_SOCKET_TIMEOUT,
+            timeout=EMAIL_CONNECT_TIMEOUT,
         )
     else:
         conn = smtplib.SMTP(
             cfg["smtp_host"],
             port,
-            timeout=EMAIL_SOCKET_TIMEOUT,
+            timeout=EMAIL_CONNECT_TIMEOUT,
         )
+    if getattr(conn, "sock", None):
+        conn.sock.settimeout(EMAIL_SOCKET_TIMEOUT)
     # P18-02: `authenticate_smtp` keeps the old "no credentials, no AUTH"
     # behaviour for a local relay, and adds the XOAUTH2 branch that was missing.
     if _mail_auth.is_oauth(cfg) or (cfg["smtp_user"] and cfg["smtp_password"]):

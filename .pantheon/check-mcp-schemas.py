@@ -90,7 +90,7 @@ SERVERS = ("memory_server", "rag_server", "email_server", "image_gen_server")
 
 
 def _function_schemas() -> dict:
-    from src.agent_tools import TOOL_TAGS  # noqa: F401 — breaks the import cycle
+    from src.agent_tools import TOOL_TAGS  # noqa: F401 — order kept by choice; any order works since `B1118`
     from src.tool_schemas import FUNCTION_TOOL_SCHEMAS
     return {
         entry["function"]["name"]: entry["function"]

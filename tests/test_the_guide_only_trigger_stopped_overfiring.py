@@ -115,12 +115,13 @@ def test_past_tense_is_a_report_and_present_tense_is_an_instruction():
 def test_the_disarm_still_costs_every_known_tool_and_the_number_is_measured():
     """The row's second number, recomputed rather than quoted (`Law 6`).
 
-    **And its scope matters** (`Law 5`): `known_tool_names()` answers **82** in
-    a process that has not imported `src.agent_loop`, and **84** in one that
-    has — the `TOOL_SECTIONS` leg is an import cycle and fails quietly, so
-    `host_shell` and `manage_rag` are absent from the cold answer. The live app
-    always gets the larger number. Filed as `B830`; asserted here as a
-    relationship rather than a literal, so it cannot go stale either way."""
+    **And its scope mattered** (`Law 5`): when this was written
+    `known_tool_names()` answered **82** in a process that had not imported
+    `src.agent_loop` and **84** in one that had, because an import cycle failed
+    quietly on the cold call (`B830`). `B1118` closed the cycle and the answer
+    is the same in either order now (`B1174`;
+    `tests/test_the_tool_modules_import_in_any_order.py` pins it). Asserted
+    here as a relationship rather than a literal, so it cannot go stale."""
     known = known_tool_names()
     assert len(known) >= 80, len(known)
     policy = build_effective_tool_policy(
@@ -140,10 +141,11 @@ def test_a_short_tool_list_says_so_instead_of_swallowing_the_reason(caplog):
 
     `known_tool_names()` builds its answer from three imports. Two of them
     logged on failure; the first — `FUNCTION_TOOL_SCHEMAS` — was a bare
-    `except Exception: pass`, and it is the leg that really does raise, because
-    `src/tool_schemas.py` and `src/agent_tools/__init__.py` import each other.
-    That is why the number is **82** on the first call in a cold process and
-    **84** afterwards.
+    `except Exception: pass`, and it was the leg that really did raise while
+    `src/tool_schemas.py` and `src/agent_tools/__init__.py` imported each
+    other: **82** on the first call in a cold process, **84** afterwards. That
+    cycle is closed (`B1118`, `B1174`); the log line is kept for any other
+    reason the import might fail, and this pins that it still speaks.
 
     Driven by forcing the same failure rather than by reading the source
     (`Law 20`): with the module poisoned the answer must still come back, must

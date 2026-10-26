@@ -108,3 +108,37 @@ def test_the_tool_list_does_not_depend_on_what_was_imported_first():
     assert result.returncode == 0, result.stderr[-3000:]
     lists = json.loads(result.stdout.strip().splitlines()[-1])
     assert lists["cold"] == lists["warm"], sorted(set(lists["warm"]) - set(lists["cold"]))
+
+
+# `B1174`. Every place that described the cycle as open, and the sentence it
+# used. A file-wide absence check is the one use `Law 20` allows a substring
+# for: each of these claims is false anywhere in these files now, so its
+# presence anywhere is the defect. The corrected comments were written so they
+# do not quote the old sentences (`H02`).
+_STALE_CLAIMS = {
+    "mcp_servers/email_server.py": ("resolves only if", "Fixing the cycle itself",
+                                    "import order, see above"),
+    "mcp_servers/memory_server.py": ("resolves only if", "Fixing the cycle itself",
+                                     "import order, see above"),
+    "mcp_servers/rag_server.py": ("resolves only if", "Fixing the cycle itself",
+                                  "import order, see above"),
+    "src/tool_security.py": ("mutually-circular",),
+    "src/tool_policy.py": ("cycle `known_tool_names()`\n",
+                           "import each other, so in a process"),
+    "src/agent_loop.py": ("import-order-sensitive",),
+    ".pantheon/check-tool-surface.py": ("breaks a circular import",),
+    ".pantheon/check-mcp-schemas.py": ("breaks the import cycle",),
+    "tests/test_a_server_starts_in_its_own_process.py": ("resolves only if",),
+    "tests/test_the_guide_only_trigger_stopped_overfiring.py": (
+        "is an import cycle and fails quietly", "it is the leg that really does raise"),
+}
+
+
+@pytest.mark.parametrize("path", sorted(_STALE_CLAIMS))
+def test_no_comment_still_says_the_order_matters(path):
+    """`B1174`'s `Verify:` — each site says the order no longer matters."""
+    text = (ROOT / path).read_text(encoding="utf-8")
+    still = [claim for claim in _STALE_CLAIMS[path] if claim in text]
+    assert not still, f"{path} still says the import cycle is open: {still}"
+    if path.startswith("mcp_servers/"):
+        assert "`B1118`" in text, f"{path}: the guard does not say why it is kept"

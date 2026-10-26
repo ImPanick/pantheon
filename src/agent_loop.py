@@ -1474,18 +1474,14 @@ def _known_tool_names_for_pruning() -> frozenset:
     and `week` all appear that way — so the pruner only judges a word the
     register knows.
 
-    **Not cached for the life of the process, and that is the point.**
-    `known_tool_names()` is import-order-sensitive by its own admission
-    (`B830`, documented in `src/tool_policy.py`'s `known_tool_names`): in a process that reaches
-    `tool_policy` before `src.agent_loop`, the first call raises inside the
-    `tool_schemas`/`agent_tools` cycle, swallows it and answers **82** instead
-    of 85, dropping `host_shell` and `manage_rag`. The first call here happens
-    while `agent_loop` is still importing — `AGENT_SYSTEM_PROMPT` is built at
-    module level — so a process-lifetime cache would pin that degraded answer
-    for every prompt the install ever builds, and two tools would never be
-    pruned on. Measured on this tree: 10.5µs a call, 85 names; one call per
-    rule block instead of one per line is the right granularity and has no
-    staleness to go wrong.
+    **Not cached for the life of the process.** It was written that way
+    because `known_tool_names()` answered by import order (`B830`: 82 on a
+    cold first call, 85 once the agent loop had loaded), and the first call
+    here happens while `agent_loop` is still importing, so a process-lifetime
+    cache would have pinned the short answer. `B1118` closed that cycle and the
+    answer is the same in any order now (`B1174`: measured the same during this
+    module's import as after it). Kept uncached by choice (`Law 1`): one call
+    per rule block costs microseconds and has no staleness to go wrong.
 
     Fails OPEN: an empty register prunes nothing, which is this function's
     behaviour before the row. Pruning everything on an import error would take

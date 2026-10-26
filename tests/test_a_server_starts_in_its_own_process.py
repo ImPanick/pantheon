@@ -3,10 +3,11 @@
 
 `B74` gave `rag_server.py` and `email_server.py` a
 `from src.tool_schemas import mcp_tool_schema` as their first `src` import.
-`src/tool_schemas.py` imports `src.agent_tools` at its top, and
-`src/agent_tools/__init__.py:164` imports `FUNCTION_TOOL_SCHEMAS` back out of
-`src.tool_schemas` — a cycle that resolves only if `agent_tools` is imported
-first. So both servers died at import with
+`src/tool_schemas.py` imported `src.agent_tools` at its top, and
+`src/agent_tools/__init__.py` imported `FUNCTION_TOOL_SCHEMAS` back out of
+`src.tool_schemas` — a cycle that, at the time, only the facade-first order
+survived (`B1118` closed it: either order works now). So both servers died at
+import with
 
     ImportError: cannot import name 'FUNCTION_TOOL_SCHEMAS' from partially
     initialized module 'src.tool_schemas'
@@ -77,8 +78,15 @@ def test_the_server_serves_its_tools_in_a_fresh_process(module):
     assert names, f"{module} served no tools"
 
 
-def test_the_import_order_guard_is_what_makes_that_work():
-    """Pins the mechanism so nobody tidies the guard away as a stray import.
+def test_the_import_order_guard_is_kept_by_choice():
+    """Pins a guard kept by choice, not one the servers need (`B1174`).
+
+    Since `B1118` the tool modules import in either order
+    (`tests/test_the_tool_modules_import_in_any_order.py` proves that in a fresh
+    interpreter), so this order is no longer what makes the two tests above
+    pass. It is kept because it is the order that always worked (`Law 1`), and
+    pinned so that removing it is a decision someone makes on purpose rather
+    than a tidy-up — the owner's call to retire it is the only reason to.
 
     Read as code with comments stripped (`Law 20` — the long comment above each
     guard names `src.agent_tools` many times, and a substring search would pass
@@ -92,6 +100,7 @@ def test_the_import_order_guard_is_what_makes_that_work():
         agent_tools = code.index("import src.agent_tools")
         tool_schemas = code.index("from src.tool_schemas import")
         assert agent_tools < tool_schemas, (
-            f"{module}: `src.tool_schemas` is imported before `src.agent_tools`, "
-            f"which is the cycle `B131` is about"
+            f"{module}: `src.tool_schemas` is imported before `src.agent_tools`. "
+            f"Either order imports since `B1118`; this one is kept by choice "
+            f"(`B1174`), so changing it is a decision to record, not a tidy-up"
         )
