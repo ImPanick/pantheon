@@ -151,6 +151,12 @@ def repo(tmp_path):
     (dst / "routes").mkdir()
     (dst / "static").mkdir()
     shutil.copy2(CHECKER, dst / ".pantheon" / "check-unreachable.py")
+    # `B720` / `B571`: the checker reads literals through the one blanker and
+    # lists files through the one listing, both in `.pantheon/ledger/source.py`.
+    shutil.copytree(CHECKER.parent / "ledger", dst / ".pantheon" / "ledger",
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copy2(CHECKER.parent / "check-specifiers.py",
+                 dst / ".pantheon" / "check-specifiers.py")
     # No importable app here, so the source scan is what runs — which is also
     # the path a half-configured checkout takes, and it needs to work.
     (dst / "routes" / "widget_routes.py").write_text(
@@ -189,6 +195,56 @@ def test_a_template_string_caller_counts_as_a_caller(repo):
     subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
     r = run(cwd=repo)
     assert "/api/widget/{wid}/rename" not in r.stdout
+
+
+def _report(repo, js: str) -> str:
+    (repo / "static" / "app.js").write_text(js, encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    r = run(cwd=repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    return r.stdout
+
+
+@pytest.mark.parametrize("js", [
+    "/** Renames one: `POST /api/widget/{wid}/rename`. */\nfetch(`/api/widget/list`);\n",
+    "// calls '/api/widget/${id}/rename' once wired\nfetch(`/api/widget/list`);\n",
+    "/* fetch(`${API_BASE}/api/widget/${id}/rename`) */ fetch('/api/widget/list');\n",
+])
+def test_a_route_mentioned_only_in_a_comment_has_no_caller(repo, js):
+    """`B720` (a), `B760`. A backtick was one of the quotes the reader took, so
+    a route written in a JSDoc sentence read as reached exactly as a `fetch`
+    would. A comment is not a caller."""
+    out = _report(repo, js)
+    assert "/api/widget/{wid}/rename" in out, out
+    assert "/api/widget/list" not in out, out
+
+
+@pytest.mark.parametrize("js", [
+    # `B720` (b): a quoted expression inside a hole cut the old regex short
+    "fetch(`/api/widget/${String(wid == null ? '' : wid)}/rename`);\n",
+    # `B804`: a hole appended to the path's last segment is a query string
+    "fetch(`${API_BASE}/api/widget/${wid}/rename${force ? '?force=true' : ''}`);\n",
+    # `B760`: the same with a nested template in the hole
+    "const q = 'a=1';\nfetch(`${API_BASE}/api/widget/${wid}/rename${q ? `?${q}` : ''}`);\n",
+    # a URL inside a fragment of markup a template builds
+    "el.innerHTML = `<a href=\"/api/widget/${wid}/rename\">x</a>`;\n",
+])
+def test_a_template_caller_with_quotes_and_holes_is_a_caller(repo, js):
+    out = _report(repo, js + "fetch('/api/widget/list');\n")
+    assert "/api/widget/{wid}/rename" not in out, out
+
+
+def test_a_hole_that_is_a_whole_segment_stays_a_parameter(repo):
+    """The literal-prefix rule drops a hole appended to a segment, never one
+    that IS the segment: `/api/widget/${x}` reaches `/api/widget/{wid}`, not
+    `/api/widget` with its tail thrown away."""
+    mod = _checker()
+    n = mod.normalise
+    pats = mod.literal_patterns("/api/widget/" + mod._HOLE)
+    assert n("/api/widget/{wid}") in pats
+    assert pats == {n("/api/widget/{wid}"), n("/api/widget")}, pats  # + its prefix
+    pats = mod.literal_patterns("/api/widget/" + mod._HOLE + "/rename" + mod._HOLE)
+    assert n("/api/widget/{wid}/rename") in pats
 
 
 def test_the_ceiling_fails_when_the_count_grows(repo):

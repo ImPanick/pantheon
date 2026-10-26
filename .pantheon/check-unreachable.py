@@ -52,6 +52,9 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(ROOT / ".pantheon") not in sys.path:
+    sys.path.insert(0, str(ROOT / ".pantheon"))
+from ledger.source import mode_for, strip_comments, tracked_files  # noqa: E402
 
 # Route prefixes whose caller is deliberately not the browser. Each entry says
 # who calls it, because "something else probably uses this" is how a dead route
@@ -117,9 +120,8 @@ _TEMPLATE = re.compile(r"\$\{[^}]*\}")      # `${API_BASE}/api/x/${id}/y`
 
 
 def tracked(*globs):
-    out = subprocess.run(["git", "ls-files", *globs], capture_output=True,
-                         text=True, cwd=ROOT).stdout.split()
-    return [f for f in out if "/lib/" not in f]
+    # `B571`: each path once, however many index stages a merge left it with.
+    return [f for f in tracked_files(*globs, root=ROOT, check=False) if "/lib/" not in f]
 
 
 def normalise(path: str) -> str:
@@ -224,29 +226,95 @@ def routes_from_source() -> list:
 
 # ── the callers ─────────────────────────────────────────────────────────────
 
-_URLISH = re.compile(r"""['"`]([^'"`\n]*?/api/[^'"`\n]*?)['"`]""")
-_BARE = re.compile(r"""['"`](/(?:metrics|docs|redoc|openapi\.json)[^'"`\n]*)['"`]""")
+_BARE = re.compile(r"/(?:metrics|docs|redoc|openapi\.json)\b")
+#: Where a path starts inside a literal, and the characters that end it. A
+#: literal may be a whole HTML fragment — `markdown.js` writes
+#: `` `…style="--em:url('/api/emoji/${code}.svg')"…` `` — so the path is cut at
+#: the first quote, space, bracket or angle bracket after `/api/`.
+_PATH_IN_LITERAL = re.compile(r"/api/[^\s'\"`()<>\\]*")
+#: A template hole, while a literal is being read. Not a character a URL holds.
+_HOLE = "\x00"
+
+
+def literal_texts(text: str, mode: str = "js") -> list:
+    """Every string and template literal in `text`, comments excluded, each
+    with its template holes replaced by `_HOLE`.
+
+    `B720`. This used to be one regex over the raw file —
+    ``['"`]([^'"`\n]*?/api/…)['"`]`` — and it was wrong in both directions:
+    a backtick is a quote to it, so `` `DELETE /api/…` `` written in a JSDoc
+    block read as a caller exactly as a `fetch` does; and it stopped at the
+    first quote *inside* a literal, so
+    ``fetch(`/api/x/${String(id == null ? '' : id)}`)`` yielded a pattern
+    that was not the route's. The walk that already knows where comments,
+    strings, regexes and template holes are — `check-specifiers.py`'s
+    `strip_comments`, the one blanker (`Law 14`) — reports the literals, and
+    this reads them.
+    """
+    found = []
+    strip_comments(text, mode=mode, literals=found)
+    out = []
+    for quote, start, end, holes in found:
+        if quote != "`":
+            body = text[start + 1:end]
+            out.append(body[:-1] if body.endswith((quote, "\n")) else body)
+            continue
+        parts, at = [], start + 1
+        for a, b in holes:
+            parts += [text[at:a], _HOLE]
+            at = b
+        parts.append(text[at:end - 1])
+        out.append("".join(parts))
+    return out
+
+
+def literal_patterns(literal: str) -> set:
+    """The route patterns one literal reaches, every prefix included.
+
+    `B804` / `B760`: a template whose literal path is followed by a hole —
+    ``/api/tasks/${id}/run${force ? '?force=true' : ''}`` — reaches the path
+    its literal prefix spells, because a hole appended to the last segment is
+    a query string or a suffix the route does not see. Without that the last
+    segment read `run*` and matched nothing, and a live route was listed as
+    having no caller. A hole that IS a whole segment stays a parameter.
+    """
+    paths = _PATH_IN_LITERAL.findall(literal)
+    if not paths and _BARE.match(literal):
+        paths = [literal]
+    candidates = set()
+    for path in paths:
+        path = re.sub(_HOLE + "+", _HOLE, path).split("?")[0].split("#")[0]
+        candidates.add(path)
+        if path.endswith(_HOLE) and not path.endswith("/" + _HOLE):
+            candidates.add(path[:-1])
+    seen = set()
+    for each in candidates:
+        pattern = normalise(each.replace(_HOLE, "*"))
+        seen.add(pattern)
+        # A caller may hold the head and build the tail, or vice versa. The
+        # hand audit needed a head-plus-tail probe as its second pass; this
+        # is that, kept cheap: every prefix of the pattern is recorded, so a
+        # route whose tail is assembled elsewhere still counts as reached.
+        parts = pattern.split("/")
+        for i in range(3, len(parts)):
+            seen.add("/".join(parts[:i]))
+    return seen
 
 
 def frontend_paths() -> set:
-    """Every `/api/...`-shaped string the frontend mentions, as a pattern."""
+    """Every `/api/...`-shaped literal the frontend's CODE holds, as a pattern.
+
+    Comments are not callers (`B720`, `B760`): a route whose only mention in
+    `static/` is a sentence about it is reported as having none.
+    """
     seen = set()
     for f in tracked(*_FRONTEND_GLOBS):
         try:
             text = (ROOT / f).read_text(errors="replace")
         except OSError:
             continue
-        for match in list(_URLISH.findall(text)) + list(_BARE.findall(text)):
-            idx = match.find("/api/")
-            path = match[idx:] if idx >= 0 else match
-            seen.add(normalise(path))
-            # A caller may hold the head and build the tail, or vice versa. The
-            # hand audit needed a head-plus-tail probe as its second pass; this
-            # is that, kept cheap: every prefix of the pattern is recorded, so a
-            # route whose tail is assembled elsewhere still counts as reached.
-            parts = normalise(path).split("/")
-            for i in range(3, len(parts)):
-                seen.add("/".join(parts[:i]))
+        for literal in literal_texts(text, mode_for(f)):
+            seen |= literal_patterns(literal)
     return seen
 
 

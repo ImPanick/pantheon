@@ -129,7 +129,7 @@ def mode_for(path) -> str:
 
 
 def strip_comments(text: str, html: bool = False, *, mode: str = "",
-                   embedded: bool = True) -> str:
+                   embedded: bool = True, literals: list | None = None) -> str:
     """Blank out comments so a *sentence about* a thing is not the thing.
 
     This is **the** comment blanker for this repository. Every census that has
@@ -152,6 +152,16 @@ def strip_comments(text: str, html: bool = False, *, mode: str = "",
     Characters are replaced with spaces rather than deleted so every offset and
     line number downstream is unchanged: a line number a census reports is the
     line number in the file.
+
+    `literals`, when a list is passed, receives every string and template
+    literal the walk steps over, as `(quote, start, end, holes)`: `quote` is
+    `'`, `"` or a backtick, `text[start:end]` is the literal with its quotes,
+    and `holes` lists the `(start, end)` of each top-level `${…}` of a template
+    (empty for a string). A literal inside a hole is reported on its own. This
+    is how `check-unreachable.py` reads a URL out of a template whose hole holds
+    a quoted expression (`B720`) — the walk that already knows where literals
+    are is the one that says so, rather than a regex that stops at the first
+    quote inside a template (`Law 14`).
 
     `B84` built the first version of this because a docstring in
     `static/js/runStatus.js` explaining why a module is loaded as
@@ -193,11 +203,13 @@ def strip_comments(text: str, html: bool = False, *, mode: str = "",
             if ch == "\\":
                 i += 2
             elif ch == "`":
-                stack.pop()
+                done = stack.pop()
+                if literals is not None:
+                    literals.append(("`", done[2], i + 1, done[3]))
                 prev, word = "`", ""
                 i += 1
             elif ch == "$" and text[i + 1:i + 2] == "{":
-                stack.append(["expr", 0])
+                stack.append(["expr", 0, i])
                 prev, word = "{", ""
                 i += 2
             else:
@@ -210,16 +222,18 @@ def strip_comments(text: str, html: bool = False, *, mode: str = "",
         # is text — the old blanker read it as opening a string and stopped
         # blanking comments from there on.
         if ch in "\"'" and (mode != "html" or in_tag):
-            quote = ch
+            quote, start = ch, i
             i += 1
             while i < n and text[i] != quote and text[i] != "\n":
                 i += 2 if text[i] == "\\" else 1
             i += 1
+            if literals is not None:
+                literals.append((quote, start, min(i, n), []))
             prev, word = quote, ""
             continue
 
         if mode != "css" and ch == "`":
-            stack.append(["tpl", 0])
+            stack.append(["tpl", 0, i, []])
             i += 1
             continue
 
@@ -250,9 +264,16 @@ def strip_comments(text: str, html: bool = False, *, mode: str = "",
                 body_start = embed.end()
                 close = re.compile(r"</\s*" + embed.group(1), re.I).search(text, body_start)
                 body_end = close.start() if close else n
+                found = [] if literals is not None else None
                 inner = strip_comments(text[body_start:body_end],
-                                       mode="css" if embed.group(1).lower() == "style" else "js")
+                                       mode="css" if embed.group(1).lower() == "style" else "js",
+                                       literals=found)
                 out[body_start:body_end] = list(inner)
+                if found:
+                    literals.extend(
+                        (q, s + body_start, e + body_start,
+                         [(a + body_start, b + body_start) for a, b in holes])
+                        for q, s, e, holes in found)
                 i = body_end
                 continue
             if (ch == "<" and text[i + 1:i + 2].isalpha()) or text.startswith("</", i):
@@ -300,7 +321,8 @@ def strip_comments(text: str, html: bool = False, *, mode: str = "",
                 stack[-1][1] += 1
             elif ch == "}":
                 if stack[-1][1] == 0:
-                    stack.pop()         # back into the template body
+                    hole = stack.pop()  # back into the template body
+                    stack[-1][3].append((hole[2], i + 1))
                     prev, word = "}", ""
                     i += 1
                     continue

@@ -70,9 +70,10 @@ def _specifiers():
 
 
 def strip_comments(text: str, html: bool = False, *, mode: str = "",
-                   embedded: bool = True) -> str:
+                   embedded: bool = True, literals: list | None = None) -> str:
     """`check-specifiers.strip_comments` — see its docstring."""
-    return _specifiers().strip_comments(text, html, mode=mode, embedded=embedded)
+    return _specifiers().strip_comments(text, html, mode=mode, embedded=embedded,
+                                        literals=literals)
 
 
 def mode_for(path) -> str:
