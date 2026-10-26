@@ -189,6 +189,11 @@ class _Station:
         # `B977`: the network mode holding this workstation's commands, from
         # the sync before the call (`workstation_access.network_held`).
         self.network: Optional[str] = None
+        # `B1021`: the rules' refusal count from that same sync — the gate's
+        # (`network_gate.refused`) or the daemon's own (`network_refused`) —
+        # and which of the two to ask again after a command.
+        self.refused_before: Optional[int] = None
+        self.refused_by: Optional[str] = None
 
     async def home(self) -> str:
         if self._home is None:
@@ -450,8 +455,13 @@ async def _shell(st: _Station, tool: str, shell: str, command: str, timeout: flo
         from workstation.protocol import MAX_OUTPUT_BYTES
         result["note"] = (f"The workstation keeps the last {MAX_OUTPUT_BYTES:,} bytes of each "
                           "stream; the start of this output was dropped there.")
-    notes.append(network_refusal_note(st.network, stdout, stderr,
-                                      command=command))   # `B1011`: the command too
+    said = network_refusal_note(st.network, stdout, stderr,
+                                command=command)   # `B1011`: the command too
+    if said is None:
+        # `B1021`: nothing in the output shows a refusal — `nc -u` swallows
+        # its EPERM and exits 0 — so ask the one witness, the rules' counter.
+        said = silent_refusal_note(st.network, st.refused_before, await _refused_now(st))
+    notes.append(said)
     return sp.add_note(result, *notes)
 
 
@@ -530,6 +540,71 @@ NETWORK_SEND_INTERNET_NOTE = (
     "send to your local network, multicast and every other private address at once, which "
     "shows as \"Operation not permitted\". If this send was to one, that is the setting, not a "
     "file permission or a fault to debug.")
+
+
+# ── a refusal nothing printed (`B1021`) ──────────────────────────────────────
+#
+# Measured 2026-10-26 under the gate's real *internet* rules (`netrules.ruleset`
+# loaded into a fresh network namespace with a default route; OpenBSD netcat
+# 1.226): `echo hi | nc -u -w1 192.168.1.1 161` prints nothing and exits 0, with
+# or without `-v` — the kernel's EPERM is swallowed — while the counter on the
+# rule that refused it went 0 → 1. So the counts the gate (and the daemon's own
+# rules) report either side of a routed command are the one witness. **Racy, and
+# said so**: a second command in flight on the same workstation counts too.
+NETWORK_SILENT_NOTE = (
+    "Nothing in this command's output says so, but this workstation's network rules refused "
+    "{n} send{s} or connection{s} while it ran. Its network mode is {mode} (an admin's "
+    "setting){scope}. A program that prints nothing and succeeds — `nc -u` does — may have "
+    "had its packets refused: that is the setting, not \"nothing answered\". (Another "
+    "command running on this workstation at the same time counts too.)")
+
+
+def silent_refusal_note(mode: Optional[str], before: Optional[int],
+                        after: Optional[int]) -> Optional[str]:
+    """`B1021`: the sentence for a command whose output shows no refusal while
+    the rules' counter rose during it, or None — no narrowing mode, a count not
+    read on either side, or no rise. A count that FELL means the rules were
+    reloaded meanwhile (a new mode starts the count again), and says nothing."""
+    if mode not in ("internet", "none"):
+        return None
+    if not isinstance(before, int) or not isinstance(after, int) or after <= before:
+        return None
+    n = after - before
+    scope = (": it refuses your local network, multicast and every other private address"
+             if mode == "internet" else ": it refuses every connection out")
+    return NETWORK_SILENT_NOTE.format(n=n, s="" if n == 1 else "s",
+                                      mode="internet only" if mode == "internet" else "none",
+                                      scope=scope)
+
+
+def refusals_from(daemon: Optional[Dict]) -> tuple:
+    """`(count, by)` from one synced daemon answer: the gate's count when a
+    gate holds the mode, the daemon's own when its accounts table does."""
+    daemon = daemon or {}
+    gate = daemon.get("network_gate")
+    if isinstance(gate, dict):
+        n = gate.get("refused")
+        return (n if isinstance(n, int) else None), "gate"
+    if daemon.get("network_enforcement") == "accounts":
+        n = daemon.get("network_refused")
+        return (n if isinstance(n, int) else None), "accounts"
+    return None, None
+
+
+async def _refused_now(st) -> Optional[int]:
+    """The count after the command, from whoever reported it before."""
+    if st.refused_before is None or st.network not in ("internet", "none"):
+        return None
+    try:
+        if st.refused_by == "gate":
+            from src.workstation_client import gate_for
+            gate = gate_for(st.client)
+            n = (await gate.health()).get("refused") if gate is not None else None
+        else:
+            n = (await st.client.health()).get("network_refused")
+    except WorkstationError:
+        return None
+    return n if isinstance(n, int) else None
 
 
 def _refused_sends(text: str, command: str):
@@ -979,6 +1054,7 @@ async def run_in_workstation(tool: str, content: Any, *, owner: Optional[str],
                   workspace=workspace, chat=sp.chat_key("workstation", account, session_id))
     st.jailed = (daemon or {}).get("sudo") is not True
     st.network = network_held(daemon)   # `B977`
+    st.refused_before, st.refused_by = refusals_from(daemon)   # `B1021`
     try:
         result = await _HANDLERS[tool](content, st)
     except WorkstationError as e:
@@ -1083,4 +1159,5 @@ __all__ = ["WORKSTATION_TOOLS", "describe_workspace", "lifted_tools", "routes",
            "run_in_workstation", "vet_workspace",
            "LIFTED_TOOLS", "WORKSPACE_TOOL", "network_refusal_note",  # `B985`, `B977`
            "NETWORK_SEND_NOTE", "NETWORK_SEND_INTERNET_NOTE",  # `B1011`, added
+           "NETWORK_SILENT_NOTE", "silent_refusal_note", "refusals_from",  # `B1021`, added
            "workspace_named"]  # `B986`

@@ -383,7 +383,9 @@ GATE_PAIRING_DIR_ENV = "PANTHEON_WORKSTATION_NET_PAIRING"
 DEFAULT_GATE_PAIRING_DIR = "/workstation-net-pairing"
 GATE_ROUTES: Dict[str, Tuple[str, str]] = {
     # No token. {"ok", "agent": GATE_AGENT_NAME, "protocol", "mode",
-    #            "enforcement": "gate", "self_test", "applied_at"}
+    #            "enforcement": "gate", "self_test", "applied_at", "refused"}
+    # `B1021`, added: "refused" — packets the rules refused since the mode was
+    # written (an int, or null when nft cannot be asked).
     # `mode` is read back from the kernel's own table after it was written,
     # not remembered; `self_test` is one of GATE_SELF_TESTS.
     "health": ("GET", "/v1/network"),

@@ -132,8 +132,8 @@ def test_internet_refuses_the_excluded_ranges_and_keeps_loopback_and_replies():
     rules = _chain(N.ruleset("internet"))
     assert rules[0] == "ct direction reply accept"
     assert rules.index('oifname "lo" accept') < rules.index(
-        "ip daddr @excluded4 reject with icmpx admin-prohibited")
-    assert "ip6 daddr @excluded6 reject with icmpx admin-prohibited" in rules
+        "ip daddr @excluded4 counter reject with icmpx admin-prohibited")
+    assert "ip6 daddr @excluded6 counter reject with icmpx admin-prohibited" in rules
     text = N.ruleset("internet")
     for net in P.INTERNET_EXCLUDED_V4 + P.INTERNET_EXCLUDED_V6:
         assert net in text
@@ -143,9 +143,9 @@ def test_internet_refuses_the_excluded_ranges_and_keeps_loopback_and_replies():
 def test_none_refuses_everything_but_loopback_and_dockers_resolver_too():
     rules = _chain(N.ruleset("none"))
     assert rules == ["ct direction reply accept",
-                     f"ip daddr {N.DOCKER_DNS} reject with icmpx admin-prohibited",
+                     f"ip daddr {N.DOCKER_DNS} counter reject with icmpx admin-prohibited",
                      'oifname "lo" accept',
-                     "reject with icmpx admin-prohibited"]
+                     "counter reject with icmpx admin-prohibited"]
 
 
 def test_the_accounts_rules_touch_only_the_account_uids():
@@ -482,6 +482,7 @@ def ubuntu_rules(tmp_path, monkeypatch):
     monkeypatch.setattr(N, "nft_path", lambda: "/usr/sbin/nft")
     monkeypatch.setattr(N, "capability", lambda bit, field="CapEff", status=None: state["cap"])
     monkeypatch.setattr(N, "lan_resolvers", lambda *a: [])
+    monkeypatch.setattr(N, "refused", lambda table, **kw: 4 if loaded["mode"] else 0)
 
     def make():
         return U.UbuntuSystem(tmp_path / "homes", prepare=False,
@@ -496,6 +497,7 @@ def test_ubuntu_holds_the_mode_for_accounts_when_it_may(ubuntu_rules):
     assert calls[-1] == N.ruleset("internet", table=N.ACCOUNTS_TABLE, uids=(20000, 59999))
     report = system.network_report()
     assert (report["network_in_force"], report["network_enforcement"]) == ("internet", "accounts")
+    assert report["network_refused"] == 4     # `B1021`: its rules' count, for the host
     # Kept like `sudo`: a restarted daemon starts from the admin's last word.
     again = make()
     assert again.network == "internet"
