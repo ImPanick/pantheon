@@ -1001,8 +1001,8 @@ def _always_available_for_turn(disabled_tools) -> set:
     return turn_tool_access(disabled_tools).allowed_among(ALWAYS_AVAILABLE)
 
 
-def _nothing_looked_at(total_tool_calls: int, tool_events) -> bool:
-    """Whether this turn has run nothing at all, by either route.
+def _nothing_looked_at(total_tool_calls: int) -> bool:
+    """Whether this turn has run nothing at all.
 
     `B1412`. `B1327`'s ask-before-looking nudge asks this, and so does the
     release that hands back the question it held — and the two must be the
@@ -1011,22 +1011,31 @@ def _nothing_looked_at(total_tool_calls: int, tool_events) -> bool:
     with two bodies, and the day somebody tightens one the held question starts
     shipping in a case the nudge had already decided against (`Law 7`).
 
-    The pair is `B1327`'s, unchanged and **not re-justified here**:
-    `B1069`'s resumed turn runs its approved call *outside* this loop and
-    appends to `tool_events` without touching the counter, which is the reason
-    that row gives for reading both. Narrowing it is `B1327`'s call, not this
-    one's — lifting it is about having one body, not about picking a better
-    condition.
+    `B1413`. **One half, measured, not guessed.** It was
+    `total_tool_calls == 0 and not tool_events`, kept because it shipped, with
+    `B1069` as the reason for `tool_events` (*"a resumed turn runs its approved
+    call outside this loop and appends to `tool_events` without touching the
+    counter"*) and no reason for the counter. Driven on 2026-10-26 with each
+    half alone, over a turn whose only call the gate refused and a turn
+    resumed from an approved card:
 
-    **No case in the suite distinguishes the two halves**, and that is recorded
-    rather than papered over: a mutation run dropping either one leaves every
-    case green, because the harness has no gate-refused call and no resumed
-    approval. Whether `total_tool_calls` earns its place independently is open
-    (`B1413`); it is kept because it is what shipped, and because the failure
-    of guessing wrong here is a question released into a turn that had already
-    answered it.
+        case                          both    counter only   events only
+        gate-refused call, then ask   ran     ran            ran
+        resumed approval, then ask    ran     ran            ran
+        nothing, then ask (control)   none    none           none
+
+    Neither half decided a case the other did not. `B1069`'s reason was not
+    true of this tree: the approved replay increments the counter beside its
+    persisted event (since `1b09c568`), and a gate-refused call is counted at
+    the top of the per-block loop *and* recorded by `P4-20`'s blocked event,
+    so the row's other reading did not hold either. The one case that splits
+    them is `B1383`'s: a call for a tool that does not exist is persisted as a
+    refused row and never counted, because nothing ran — and there the events
+    half answered *"looked"* for a turn that had looked at nothing, which is
+    the nudge standing down for the case it exists for. So the counter is the
+    predicate and `tool_events` is no longer read.
     """
-    return total_tool_calls == 0 and not tool_events
+    return total_tool_calls == 0
 
 
 def _turn_has_something_to_look_with(
@@ -10339,7 +10348,7 @@ async def stream_agent_loop(
             # produce the card itself if it asks again. What changes is that
             # silence is no longer one of the outcomes.
             if (_held_ask_user_blocks
-                    and _nothing_looked_at(total_tool_calls, tool_events)):
+                    and _nothing_looked_at(total_tool_calls)):
                 logger.info(
                     "[agent] releasing %d held ask_user call(s) on round %d: the "
                     "turn looked at nothing and did nothing",
@@ -10482,11 +10491,10 @@ async def stream_agent_loop(
                 and not plan_mode
                 and not guide_only
                 and not _force_answer
-                # `B1069`'s resumed turn runs its approved call OUTSIDE this
-                # loop, so a counter alone can read 0 while a tool result is
-                # already in the transcript. `_nothing_looked_at` holds both
-                # paths, and `B1412`'s release asks it the same question.
-                and _nothing_looked_at(total_tool_calls, tool_events)
+                # `B1413`: the counter alone, measured — the approved replay
+                # counts its call too — and `B1412`'s release asks it the
+                # same question.
+                and _nothing_looked_at(total_tool_calls)
                 and _ask_first_nudges < _MAX_ASK_FIRST_NUDGES
                 and all(b.tool_type == "ask_user" for b in tool_blocks)
                 # `B1366`. The turn's offer, not the raw selection set: a name

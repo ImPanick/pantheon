@@ -526,7 +526,8 @@ def test_the_nudge_and_the_release_ask_one_question(monkeypatch):
     BOTH sites have to move together — the nudge stops firing, so there is
     nothing held and nothing to release."""
     _patch_common(monkeypatch)
-    monkeypatch.setattr(al, "_nothing_looked_at", lambda calls, events: False)
+    # `B1413` narrowed the predicate to the call counter; one argument now.
+    monkeypatch.setattr(al, "_nothing_looked_at", lambda calls: False)
     requests, events = _run(
         monkeypatch,
         [ASK_BLOCK, "Prose instead of asking again."],
@@ -726,3 +727,125 @@ def test_plan_mode_resolves_a_format_conflict_instead_of_looping():
     # It tells the model to fold a requested output shape into a step, not to
     # format the plan itself that way.
     assert "one of the checklist steps" in d
+
+
+# ── `B1413`: which half of "nothing has been looked at" decides ────────────
+#
+# The predicate was `total_tool_calls == 0 and not tool_events`, and a mutation
+# dropping either half left every case above green, because the harness had
+# neither a call the gate refused nor a resumed approval. These are those two
+# cases, plus the one case that does tell the halves apart: a call for a tool
+# that does not exist (`B1383`), which is persisted as a refused row and never
+# counted, because nothing ran. Measured with each half alone (the table is in
+# `_nothing_looked_at`'s docstring): the gate-refused and resumed cases were
+# decided the same by both, and only the unknown-name case split them — the
+# `tool_events` half answering "looked" for a turn that had looked at nothing.
+# So the counter is the predicate.
+
+_ASK_CALL = {"name": "ask_user", "arguments": json.dumps({
+    "question": "Which server would you like me to look at?",
+    "options": [{"label": "The running one"}, {"label": "All of them"}]})}
+
+
+def _run_native(monkeypatch, script, *, relevant_tools, exact_approval=None,
+                owner=None, session_id=None):
+    """`_run`, with native calls: each script entry is a list of calls or a
+    string of prose. Returns (requests' system text, events)."""
+    seen: list = []
+    steps = iter(script)
+    monkeypatch.setattr(al, "_agent_route_tool_mode",
+                        lambda *a, **k: (True, False, False), raising=False)
+
+    async def _fake_stream(_candidates, messages, **kwargs):
+        seen.append("\n".join(str(m.get("content") or "") for m in messages
+                               if m.get("role") == "system"))
+        step = next(steps, "Done.")
+        if isinstance(step, list):
+            yield f'data: {json.dumps({"type": "tool_calls", "calls": step})}\n\n'
+        else:
+            yield f'data: {json.dumps({"delta": step})}\n\n'
+        yield "data: [DONE]\n\n"
+
+    async def _fake_exec(block, *a, **k):
+        if block.tool_type == "ask_user":
+            return (block.tool_type, dict(ASK_RESULT))
+        return (block.tool_type, {"output": "ok", "exit_code": 0})
+
+    monkeypatch.setattr(al, "stream_llm_with_fallback", _fake_stream, raising=False)
+    monkeypatch.setattr(al, "execute_tool_block", _fake_exec, raising=False)
+    kwargs = {}
+    if exact_approval is not None:
+        kwargs.update(exact_approval=exact_approval, owner=owner,
+                      session_id=session_id, workspace=None)
+
+    async def _drain():
+        return [c async for c in al.stream_agent_loop(
+            "http://x/v1", "m",
+            [{"role": "user", "content": "check which server is running and tail it"}],
+            max_rounds=6, relevant_tools=set(relevant_tools), **kwargs)]
+
+    events = []
+    for chunk in asyncio.run(_drain()):
+        if chunk.startswith("data: {"):
+            try:
+                events.append(json.loads(chunk[6:]))
+            except Exception:
+                pass
+    return seen, events
+
+
+def test_a_call_the_gate_refused_counts_as_having_looked(monkeypatch):
+    """The row's first case. The gate refuses `read_file` for this person; the
+    call is counted at the top of the per-block loop and the question that
+    follows ships on the next round, unpushed — as it did before `B1413`."""
+    _patch_common(monkeypatch, blocked={"read_file"})
+    read = {"name": "read_file", "arguments": json.dumps({"path": "/etc/hostname"})}
+    requests, events = _run_native(monkeypatch, [[read], [_ASK_CALL]],
+                                   relevant_tools={"read_file", "grep", "ask_user"})
+    assert any(e.get("type") == "tool_blocked" and e.get("tool") == "read_file"
+               for e in events), events
+    assert len(requests) == 2, len(requests)
+    assert not any(LOOK_FIRST in r for r in requests)
+    assert len([e for e in events if e.get("type") == "ask_user"]) == 1
+
+
+def test_a_turn_resumed_from_an_approved_card_has_looked(monkeypatch):
+    """The row's second case, `B1069`'s. The approved call runs before round 1
+    of the continuation, and the counter counts it (it always has: the replay
+    increments it beside its persisted event) — so a question on the
+    continuation's first round ships at once."""
+    from src.tool_approvals import ToolApprovalStore
+    from src.tool_capabilities import capabilities_for_action
+
+    _patch_common(monkeypatch)
+    store = ToolApprovalStore()
+    pending = store.create(
+        owner="alice", session_id="s1", origin_run_id="r1", tool_name="bash",
+        content="printf hi", workspace=None, external_untrusted_context_seen=True,
+        requested_round=1, capabilities=capabilities_for_action("bash", "printf hi"))
+    grant = store.consume(pending.approval_id, decision="approve",
+                          owner="alice", session_id="s1")
+    assert grant is not None
+    requests, events = _run_native(
+        monkeypatch, [[_ASK_CALL]], relevant_tools={"read_file", "grep", "ask_user"},
+        exact_approval=grant, owner="alice", session_id="s1")
+    assert any(e.get("type") == "tool_start" and e.get("approved") for e in events), events
+    assert len(requests) == 1, len(requests)
+    assert not any(LOOK_FIRST in r for r in requests)
+    assert len([e for e in events if e.get("type") == "ask_user"]) == 1
+
+
+def test_a_call_for_a_tool_that_does_not_exist_is_not_looking(monkeypatch):
+    """The case that told the halves apart. Nothing ran — the name is refused
+    before dispatch (`B1383`) — so the question that follows is pushed to look
+    first, and released at the end because the turn still looked at nothing.
+    Red with the `tool_events` half: the refused row read as "looked", the
+    nudge stood down, and the card shipped on a turn that had looked at
+    nothing."""
+    _patch_common(monkeypatch)
+    unknown = {"name": "definitely_not_a_pantheon_tool", "arguments": "{}"}
+    requests, events = _run_native(
+        monkeypatch, [[unknown], [_ASK_CALL], "I'll look at the running one."],
+        relevant_tools={"read_file", "grep", "ask_user"})
+    assert any(LOOK_FIRST in r for r in requests), requests[-1][-400:]
+    assert len([e for e in events if e.get("type") == "ask_user"]) == 1, events
