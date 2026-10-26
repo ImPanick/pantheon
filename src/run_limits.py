@@ -228,7 +228,24 @@ def loop_cap_request(content) -> LoopCapRequest | None:
             return None
     else:
         return None
-    requested = _read_rounds(raw) if key == AGENT_MAX_ROUNDS_KEY else _read_tool_calls(raw)
+    if key == AGENT_MAX_ROUNDS_KEY and action == "set":
+        # `B1030`. A requested step cap is read the way the WRITER stores it
+        # (`clamp_int_setting`, `B931`: 0 is clamped to 1), not the way the
+        # chat route reads a stored value (`_read_rounds`, where a falsy 0 is
+        # the loop's default of 50). The second reading made one request two
+        # numbers: under a saved cap of 20, `set agent_max_rounds 0` was a
+        # raise to 50 for the run and saved nothing; over a cap of 100 it was a
+        # lowering saved as 1. Now it is a lowering to 1 under any cap, and the
+        # executor's reply says it was clamped. `reset`/`delete` write the
+        # shipped default, which the stored-value reading reads exactly.
+        try:
+            from src.settings import clamp_int_setting
+            requested = clamp_int_setting(key, raw)
+        except Exception:
+            # The settings module unreadable: the reading this had before.
+            requested = _read_rounds(raw)
+    else:
+        requested = _read_rounds(raw) if key == AGENT_MAX_ROUNDS_KEY else _read_tool_calls(raw)
     return LoopCapRequest(key, requested, int(raw))
 
 
