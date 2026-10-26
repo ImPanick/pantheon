@@ -3326,8 +3326,11 @@ def test_agent_builds_backup_prompt_and_tool_transport_before_attempt(monkeypatc
 @pytest.mark.parametrize(
     ("primary_context", "backup_context", "expected_fallback_message_count"),
     [
-        (1000, 100, 2),
-        (100, 1000, 22),
+        # `B1344`: each count is one more than the trimmed history, because a
+        # run with `max_rounds=2` is on its last two steps from round 1, and
+        # the step-budget note rides the request after the trim.
+        (1000, 100, 3),
+        (100, 1000, 23),
     ],
 )
 def test_agent_fallback_request_uses_candidate_context_budget(
@@ -3447,6 +3450,7 @@ def test_agent_fallback_request_uses_candidate_context_budget(
     assert trim_budgets == [primary_context, backup_context, backup_context]
     fallback_messages = requests_by_round[0][1]["messages"]
     assert len(fallback_messages) == expected_fallback_message_count
+    assert "This is step 1 of 2" in fallback_messages[-1]["content"]   # `B1344`
     assert fallback_messages[0]["content"] == "route prompt for backup-model"
     assert any(
         message == {"role": "user", "content": latest_user}

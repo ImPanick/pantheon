@@ -7510,6 +7510,104 @@ async def stream_agent_loop(
     # race, and no embedding availability in the answer.
     _suite_mcp_names, _suite_mcp_costs, _suite_mcp_servers = _suite_mcp_tools(
         mcp_mgr, _mcp_disabled_map)
+
+    # `B1394`. The `pantheon-qwen3` route modes, decided here — before the
+    # planner — rather than after it. Every input (the model's name, the turn's
+    # text, the intent's domains, the open document) is known by now, and the
+    # general-no-tool mode's *withholding* was the one cap writer that ran
+    # across the planner: the planner and Site A (`B1350`) read a cap of 2, the
+    # clamp then wrote 85 names into it, and `_base_relevant_tools` — the set
+    # every route candidate copies — held 79-81 names the turn could not call,
+    # breaking `fx11-cap`'s *"never a name this turn cannot call"* 126 lines
+    # after asserting it. Withholding first makes the plan, Site A and the base
+    # set all read the turn's real cap. It narrows nothing that was offered
+    # (`Law 1`): `_route_relevant_tools` already re-asks the cap for every
+    # candidate, a non-qwen fallback included, so the offer was empty either
+    # way; what changes is that the records say so (`capped_after_plan` is
+    # empty, the plan's candidates are the receipt's).
+    _intent_domains = set(_intent.get("domains") or set())
+    _runtime_skill_tools: Set[str] = set()
+
+    def _route_finetune_modes(candidate_model: str):
+        is_ody = _is_pantheon_qwen_model(candidate_model)
+        # `B1100`. A workflow AI step that names its tools (`P22-16`) gets
+        # none of the three `pantheon-qwen3` modes: each sends a fixed prompt
+        # naming its own tools (`manage_notes`, `manage_calendar`,
+        # `manage_tasks`, the document tools, `manage_memory` and the email
+        # tools) and clamps the selection to them — the notes mode even lifts
+        # its three managers out of the denylist the step's list built. The
+        # step's own list is the selection; the full prompt names only it.
+        finetune_modes = is_ody and _allowed_tools is None
+        doc_mode = (
+            finetune_modes
+            and not _runtime_skill_tools
+            and (
+                "documents" in _intent_domains
+                or _active_document_relevant
+                or _prompt_active_document is not None
+            )
+            and "files" not in _intent_domains
+            and not guide_only
+        )
+        notes_mode = (
+            finetune_modes
+            and not _runtime_skill_tools
+            and not doc_mode
+            and (
+                "notes_calendar_tasks" in _intent_domains
+                or _looks_like_notes_turn(_last_user)
+                or (
+                    _looks_like_notes_calendar_followup(_last_user)
+                    and _minimal_recent_notes_tool_context_message(messages) is not None
+                )
+            )
+            and "files" not in _intent_domains
+            and not guide_only
+        )
+        general_no_tool_mode = (
+            finetune_modes
+            and not _runtime_skill_tools
+            and not doc_mode
+            and not notes_mode
+            and not guide_only
+        )
+        return (
+            is_ody,
+            doc_mode,
+            notes_mode,
+            doc_mode and _prompt_active_document is None,
+            general_no_tool_mode,
+        )
+
+    _general_no_tool_withheld = False
+
+    def _withhold_for_general_no_tool():
+        """`B1397` / `B1394`. Every built-in name and this turn's own MCP
+        names, withheld for the turn — once."""
+        nonlocal _general_no_tool_withheld
+        if _general_no_tool_withheld:
+            return
+        try:
+            from src.tool_policy import known_tool_names
+            # `B1397`. `known_tool_names()` is the built-in register and holds
+            # no `mcp__*` spelling, so the operator's MCP tools stayed outside
+            # the cap on the one turn meant to have no tools — withheld only
+            # by a literal in the route clamp. The turn's own MCP names (built
+            # above for the suite planner) go into the same cap, for the same
+            # reason, so the access object is what withholds them.
+            disabled_tools.withhold(
+                set(known_tool_names()) | set(_suite_mcp_names or ()),
+                because=WITHHELD_BY_TURN,
+            )
+            _general_no_tool_withheld = True
+        except Exception as exc:
+            # `P3-17`, and this one fails **open**: the set being built is
+            # `disabled_tools`, so an import that quietly does nothing leaves
+            # tools enabled that an operator switched off.
+            logger.warning("Could not extend the disabled-tool set: %s", exc)
+
+    if _route_finetune_modes(model)[4]:
+        _withhold_for_general_no_tool()
     _tool_suite = None
     # `B1368` (fx9-suite). Whether the selector that produced this turn's set
     # had every MCP tool's **name** in front of it. `_mcp_retrieval_ran` above
@@ -7863,60 +7961,7 @@ async def stream_agent_loop(
             logger.info("[tool-access] selected but not callable this turn: %s", _capped_out)
             _relevant_tools = disabled_tools.allowed_among(_relevant_tools)
 
-    _intent_domains = set(_intent.get("domains") or set())
     _base_relevant_tools = None if _relevant_tools is None else set(_relevant_tools)
-    _runtime_skill_tools: Set[str] = set()
-
-    def _route_finetune_modes(candidate_model: str):
-        is_ody = _is_pantheon_qwen_model(candidate_model)
-        # `B1100`. A workflow AI step that names its tools (`P22-16`) gets
-        # none of the three `pantheon-qwen3` modes: each sends a fixed prompt
-        # naming its own tools (`manage_notes`, `manage_calendar`,
-        # `manage_tasks`, the document tools, `manage_memory` and the email
-        # tools) and clamps the selection to them — the notes mode even lifts
-        # its three managers out of the denylist the step's list built. The
-        # step's own list is the selection; the full prompt names only it.
-        finetune_modes = is_ody and _allowed_tools is None
-        doc_mode = (
-            finetune_modes
-            and not _runtime_skill_tools
-            and (
-                "documents" in _intent_domains
-                or _active_document_relevant
-                or _prompt_active_document is not None
-            )
-            and "files" not in _intent_domains
-            and not guide_only
-        )
-        notes_mode = (
-            finetune_modes
-            and not _runtime_skill_tools
-            and not doc_mode
-            and (
-                "notes_calendar_tasks" in _intent_domains
-                or _looks_like_notes_turn(_last_user)
-                or (
-                    _looks_like_notes_calendar_followup(_last_user)
-                    and _minimal_recent_notes_tool_context_message(messages) is not None
-                )
-            )
-            and "files" not in _intent_domains
-            and not guide_only
-        )
-        general_no_tool_mode = (
-            finetune_modes
-            and not _runtime_skill_tools
-            and not doc_mode
-            and not notes_mode
-            and not guide_only
-        )
-        return (
-            is_ody,
-            doc_mode,
-            notes_mode,
-            doc_mode and _prompt_active_document is None,
-            general_no_tool_mode,
-        )
 
     def _route_relevant_tools(candidate_model: str):
         route_tools = None if _base_relevant_tools is None else set(_base_relevant_tools)
@@ -7981,23 +8026,9 @@ async def stream_agent_loop(
                             because="pantheon-qwen3 notes clamp")
         logger.info("[agent-intent] pantheon notes finetune tool clamp=%s", sorted(_relevant_tools))
     elif _pan_general_no_tool_mode:
-        try:
-            from src.tool_policy import known_tool_names
-            # `B1397`. `known_tool_names()` is the built-in register and holds
-            # no `mcp__*` spelling, so the operator's MCP tools stayed outside
-            # the cap on the one turn meant to have no tools — withheld only
-            # by a literal in the route clamp. The turn's own MCP names (built
-            # above for the suite planner) go into the same cap, for the same
-            # reason, so the access object is what withholds them.
-            disabled_tools.withhold(
-                set(known_tool_names()) | set(_suite_mcp_names or ()),
-                because=WITHHELD_BY_TURN,
-            )
-        except Exception as exc:
-            # `P3-17`, and this one fails **open**: the set being built is
-            # `disabled_tools`, so an import that quietly does nothing leaves
-            # tools enabled that an operator switched off.
-            logger.warning("Could not extend the disabled-tool set: %s", exc)
+        # `B1394`. Withheld above, before the planner; asked again only so a
+        # decision that somehow changed between the two reads still caps.
+        _withhold_for_general_no_tool()
         logger.info("[agent-intent] pantheon general no-tool clamp active")
 
     if (

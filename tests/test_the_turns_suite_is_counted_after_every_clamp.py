@@ -186,9 +186,14 @@ def test_the_receipt_counts_only_what_the_turn_could_call(measured, who, mcp):
         f"the receipt says this turn had {got} tools; the plan counted "
         f"{order.plan_candidates} and the cap held {order.cap_at_prompt} names "
         f"by the time the prompt was built, leaving {honest}")
-    assert got < order.plan_candidates, (
-        "the clamp withheld every known tool after the plan, so the receipt's "
-        "denominator cannot still be the plan's")
+    # `B1394`. The clamp's withholding now runs **before** the planner, so the
+    # plan reads the turn's real cap: its candidates are the receipt's, and
+    # the cap is the same size at the plan and at the prompt. (Before it, the
+    # plan read a cap of 2 and the prompt one of 85, which is what this case
+    # was written to catch: `got < plan_candidates`.)
+    assert got == order.plan_candidates, (got, order.plan_candidates)
+    assert order.cap_at_plan == order.cap_at_prompt, (
+        order.cap_at_plan, order.cap_at_prompt)
 
 
 @pytest.mark.parametrize("who,mcp", [("admin", "up"), ("admin", "absent"),
@@ -206,22 +211,32 @@ def test_the_receipt_and_the_notice_state_one_denominator(measured, who, mcp):
 
 
 @pytest.mark.parametrize("who", ["admin", "user"])
-def test_what_the_cap_withheld_after_the_plan_is_named_not_lost(measured, who):
-    """`Law 1` — the 79 names the old receipt listed are still in the record.
+def test_nothing_is_capped_after_the_plan_on_a_general_no_tool_turn(measured, who):
+    """`B1394`, which this case's predecessor kept from drifting while it was
+    open (`test_what_the_cap_withheld_after_the_plan_is_named_not_lost`).
 
-    They move to a key that says what they are, because a `withheld` list
-    longer than `candidates` has two readings and neither is checkable.
+    `fx11-cap`'s invariant — *never a name this turn cannot call* — was
+    asserted at Site A and broken by the general-no-tool clamp a moment later:
+    the planner, Site A and `_base_relevant_tools` (the set every route
+    candidate copies) all read a cap of 2, then the clamp wrote 85 names into
+    it, so the base set held 79 (mcp absent) or 81 (mcp up) names the turn
+    could not call. `capped_after_plan` **is** that list, measured at the seam
+    where it matters. The clamp's withholding now runs before the planner (its
+    inputs — the model's name, the turn's text, the intent's domains — were
+    all known there), so the list is empty and the plan is the receipt.
+
+    `Law 1`: nothing that was offered is narrowed — the offer was already
+    empty (`test_nothing_is_offered_on_a_general_no_tool_turn`), because every
+    route candidate re-asks the cap — and the clamp still withholds every
+    known tool (`test_the_general_no_tool_clamp_still_withholds_every_known_tool`).
     """
-    order = measured[("general", who, "up")]
-    capped = order.receipt.get("capped_after_plan")
-    assert capped, "the names the clamp withheld after the plan are not recorded"
-    assert len(capped) == order.plan_candidates - int(order.receipt["candidates"])
-    from src.tool_policy import known_tool_names
-    # `B1397` widened the clamp by the turn's own MCP names, so what it
-    # withheld after the plan is the built-in register plus `mcp__*` spellings
-    # and nothing else.
-    assert {n for n in set(capped) - set(known_tool_names())
-            if not n.startswith("mcp__")} == set()
+    for mcp in ("up", "absent"):
+        order = measured[("general", who, mcp)]
+        assert order.receipt.get("capped_after_plan") == [], order.receipt
+        assert order.plan_candidates == int(order.receipt["candidates"])
+        from src.tool_policy import known_tool_names
+        # The plan ran against the clamped cap, not before it.
+        assert order.cap_at_plan >= len(set(known_tool_names()))
 
 
 @pytest.mark.parametrize("who", ["admin", "user"])
