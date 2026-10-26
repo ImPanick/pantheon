@@ -438,7 +438,13 @@ def test_the_keyframe_census_is_not_the_number_on_the_row():
 # matched by `*-variants.html`, so a real page cannot join the exception by
 # being given a similar filename. The unguarded script motion in the two that
 # animate from JavaScript is `B663`.
-_DEVELOPER_SANDBOXES = {"wave-variants.html"}
+#
+# `B663` closed it, 2026-10-26: `wave-variants.html` carries the login page's
+# armoured guard for its one `transition`, and both sandboxes ask `motion.js`
+# before painting a frame (`tests/test_the_sandboxes_hold_still_for_reduce_motion.py`
+# drives them in Chromium both ways). So no page is excused now, and the set
+# stays — empty — so a new exception has to be written down here, with a row.
+_DEVELOPER_SANDBOXES: set = set()
 
 
 def test_every_shipped_page_that_animates_is_under_a_guard():

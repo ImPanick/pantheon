@@ -8,7 +8,12 @@
      from these bytes, which is what makes it run. `B370`: it is served at
      /sandbox/wave-variants to anyone signed in (app.py,
      `DEVELOPER_SANDBOX_PAGES`), and /static/wave-variants.html redirects
-     there — until then the mount handed it to a caller with no session. -->
+     there — until then the mount handed it to a caller with no session.
+     `B663`: the waves are a `setInterval` and a `transition`, so the app's
+     reduced-motion guard could not reach either. The script now asks
+     static/js/motion.js — the one copy of the query, imported, as every module
+     does — on every tick and holds the frame while the answer is yes; the
+     `transition` gets the same armoured guard `login.html` carries. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -144,6 +149,19 @@
       font-size: 13px;
       opacity: .72;
     }
+    /* `B663`: the login page's guard, same shape (`Law 14`). */
+    @media (prefers-reduced-motion: reduce) {
+      :is(#\9#\9#\9, *),
+      :is(#\9#\9#\9, *)::before,
+      :is(#\9#\9#\9, *)::after {
+        animation-duration: 0.01ms !important;
+        animation-delay: 0s !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        transition-delay: 0s !important;
+        scroll-behavior: auto !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -194,7 +212,10 @@
       <pre class="ascii" id="hero-preview" data-ride="dot"></pre>
     </section>
   </main>
-  <script>
+  <script type="module">
+    // `B663`. Relative, so a deployment under a root path still finds it: the
+    // page is served at `<root>/sandbox/wave-variants`.
+    import { prefersReducedMotion } from '../static/js/motion.js';
     const waves = [
       '▁▂▃',
       '▂▃▄',
@@ -232,6 +253,9 @@
     };
     let i = 0;
     setInterval(() => {
+      // Asked every tick rather than once, so turning Reduce Motion on (or off)
+      // holds (or frees) the waves without a reload.
+      if (prefersReducedMotion()) return;
       const wave = waves[i % waves.length];
       const bob = i % 4 === 0 ? -1 : i % 4 === 2 ? 1 : 0;
       document.querySelectorAll('.ascii').forEach(el => render(el, wave, bob, i));

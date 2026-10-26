@@ -10,7 +10,11 @@
      `B370`: it is served at /sandbox/whirlpool-variants to anyone signed in
      (app.py, `DEVELOPER_SANDBOX_PAGES`), and /static/whirlpool-variants.html
      redirects there — until then the mount handed it to a caller with no
-     session. -->
+     session. `B663`: the spirals are drawn by `requestAnimationFrame`, which
+     no CSS guard reaches. The script asks static/js/motion.js — the one copy
+     of the query, imported — every frame, and while the answer is yes it
+     draws the loop's first frame, so the controls still redraw it and nothing
+     moves. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -155,7 +159,10 @@
     <div class="footer">Pick a letter. A is current-ish; B/C/D are smoother loop candidates.</div>
   </main>
 
-  <script>
+  <script type="module">
+    // `B663`. Relative, so a deployment under a root path still finds it: the
+    // page is served at `<root>/sandbox/whirlpool-variants`.
+    import { prefersReducedMotion } from '../static/js/motion.js';
     const variants = [
       { id: 'A', name: 'Current', desc: 'fixed spiral rotation, visible head loop', mode: 'current' },
       { id: 'B', name: 'Soft Tail', desc: 'same spiral, head fades through loop', mode: 'softTail' },
@@ -285,7 +292,9 @@
     }
 
     function tick(now) {
-      for (const canvas of canvases) draw(canvas, canvas.dataset.mode, now);
+      // Read live, so the preference turning on mid-run stops the spirals.
+      const at = prefersReducedMotion() ? started : now;
+      for (const canvas of canvases) draw(canvas, canvas.dataset.mode, at);
       requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
