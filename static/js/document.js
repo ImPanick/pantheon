@@ -54,6 +54,26 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
   let _mdPreviewClickTimes = [];
   let _mdPreviewHintLastAt = 0;
 
+  // `B1513`. `src/document_processor.attachment_language` names a language for
+  // any suffix that reads like one — kotlin, swift, lua, log, diff, perl,
+  // powershell — and since `B1233` the document keeps it. `#doc-language-select`
+  // is a fixed list, and a `<select>` set to a value it has no option for shows
+  // blank: the picker said nothing about a language the document had. So a
+  // language the list lacks gets its option the first time a document carries
+  // it (called from the picker's value setter), and the picker shows what the
+  // document is. Answers whether it added one.
+  function ensureLanguageOption(select, value) {
+    const v = typeof value === 'string' ? value.trim() : '';
+    if (!select || !v) return false;
+    for (const opt of select.options) if (opt.value === v) return false;
+    const opt = select.ownerDocument.createElement('option');
+    opt.value = v;
+    opt.textContent = v;
+    opt.dataset.derived = '1';
+    select.appendChild(opt);
+    return true;
+  }
+
   // Language auto-detection config
   const AUTO_DETECT_DELAY = 500;
   const AUTO_DETECT_MIN_CHARS = 30;
@@ -5528,7 +5548,12 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
       Object.defineProperty(ls, 'value', {
         configurable: true,
         get() { return desc.get.call(this); },
-        set(v) { desc.set.call(this, v); _syncLangPicker(); },
+        set(v) {
+          // `B1513`: a language the list lacks gets its option first.
+          if (ensureLanguageOption(this, v)) _rebuildLangMenu();
+          desc.set.call(this, v);
+          _syncLangPicker();
+        },
       });
     })();
 
@@ -5539,6 +5564,7 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
     // reads/writes langSelect.value keeps working). The native select is
     // visually-hidden but still focusable for accessibility / keyboard.
     let _syncLangPicker = () => {};
+    let _rebuildLangMenu = () => {};   // `B1513`: the menu, after an option is added
     (function _initLangPicker() {
       const ls = document.getElementById('doc-language-select');
       if (!ls || ls.dataset.pickerWired === '1') return;
@@ -5587,6 +5613,7 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
         }
       };
       _buildMenu();
+      _rebuildLangMenu = _buildMenu;
 
       _syncLangPicker = () => {
         const v = ls.value || '';
