@@ -563,6 +563,25 @@ function initializeEventListeners() {
     // something already written out adds nothing. It is still written when
     // nothing else carried it, so a turn can never be lost to this.
     const written = new Set();
+    // `B1334` (fx6-export). The reasoning a reply's folds hold — one part per
+    // step when the turn's fold holds its steps (`.thinking-round`, `B1247`),
+    // else the fold's whole text — read off the page as the person sees it.
+    // This fallback read no fold at all, so *Copy Chat* with the server out of
+    // reach lost every turn's thinking; it is what somebody reads, so it says
+    // what the server's export says (`[THINKING step i]`, `session_routes`).
+    const reasoningOf = (bubble) => {
+      const out = [];
+      for (const fold of bubble.querySelectorAll('.thinking-section')) {
+        const inner = fold.querySelector('.thinking-content-inner');
+        if (!inner) continue;
+        const rounds = inner.querySelectorAll('.thinking-round');
+        for (const part of (rounds.length ? rounds : [inner])) {
+          const said = String(part.innerText || part.textContent || '').trim();
+          if (said) out.push(said);
+        }
+      }
+      return out;
+    };
     for (const child of box.children) {
       if (child.classList?.contains('msg')) {
         const isUser = child.classList.contains('msg-user');
@@ -585,7 +604,14 @@ function initializeEventListeners() {
         if (!text) continue;
         if (child.dataset?.rawEcho === '1' && written.has(text)) continue;
         written.add(text);
-        parts.push(`${label}: ${text}`);
+        const thoughts = isUser ? [] : reasoningOf(child);
+        if (!thoughts.length) { parts.push(`${label}: ${text}`); continue; }
+        // The folds are the reasoning: the raw text's own `<think>` copy of it
+        // is not written a second time.
+        const reply = text.replace(/<(think|thinking)(?:\s[^>]*)?>[\s\S]*?<\/\1>\s*/gi, '').trim();
+        const blocks = thoughts.map((t, i) => `[THINKING${thoughts.length > 1 ? ` step ${i + 1}` : ''}]\n${t}`);
+        if (reply) blocks.push(reply);
+        parts.push(`${label}: ${blocks.join('\n\n')}`);
       } else if (child.classList?.contains('agent-thread')) {
         const lines = ['[Tool calls]'];
         for (const n of child.querySelectorAll('.agent-thread-node')) {
@@ -595,10 +621,9 @@ function initializeEventListeners() {
           const status = n.classList.contains('error') ? 'failed' : 'done';
           let line = `- ${tool} [${status}]`;
           if (cmd) line += `\n  cmd: ${cmd}`;
-          if (output) {
-            const truncated = output.length > 2000 ? output.slice(0, 2000) + '…' : output;
-            line += `\n  out: ${truncated}`;
-          }
+          // `B1334`: all of it. The cap (2,000 characters and `…`) was a
+          // context window's; the clipboard is not one.
+          if (output) line += `\n  out: ${output}`;
           lines.push(line);
         }
         parts.push(lines.join('\n'));
@@ -1212,31 +1237,18 @@ function initializeEventListeners() {
     if (cs.display === 'none' || cs.visibility === 'hidden') return 0;
     return Math.round(r.getBoundingClientRect().width);
   };
-  // Collapse the wide sidebar so the icon rail (48px mini sidebar) shows
-  // in its place. The two are mutually exclusive — sidebar-layout.js:57
-  // only displays the rail when `.sidebar.hidden` is set. Used by /email
-  // and /notes route openers so those fullscreen views keep the rail
-  // visible as the user's navigation strip. Records the prior state on
-  // body so a paired close-handler can restore it without overriding a
-  // manual toggle the user did in between.
-  const _collapseSidebarToRail = () => {
-    const sb = document.getElementById('sidebar');
-    const rail = document.getElementById('icon-rail');
-    if (!sb || !rail) return;
-    const wasVisible = !sb.classList.contains('hidden');
-    if (wasVisible) {
-      document.body.dataset.routeCollapsedSidebar = '1';
-    }
-    sb.classList.add('hidden');
-    rail.classList.remove('rail-hidden');
-    // syncRailSide() flips iconRail.style.display based on the classes
-    // we just set. Exposed by sidebar-layout.js on window.
-    try { window.syncRailSide && window.syncRailSide(); } catch (_) {}
-  };
-  // Paired restore: if the route opener collapsed the sidebar, re-expand
-  // it when the fullscreen view closes. Only restores if the user didn't
-  // manually toggle in between (we clear the marker on manual hamburger
-  // clicks via a MutationObserver on `.sidebar.hidden`).
+  // `B1217` (fx-display, `P23-06`'s rest). `/notes` and `/email` folded the
+  // wide sidebar to the rail before opening (`B483`'s fullscreen-with-rail) —
+  // the last two of "nothing behind a window moves" (the UI/UX audit's § 4.2;
+  // `/calendar` stopped in `P23-06`, `NAV-M-15`). The two windows still open
+  // full-screen; the sidebar stays as the person left it. The restore below
+  // stays: a window docked left (`modalSnap.js`) still folds the sidebar to
+  // make room, and unfolds it through this when the dock clears.
+  //
+  // Paired restore: if something collapsed the sidebar for a window, re-expand
+  // it when that window goes. Only restores if the user didn't manually
+  // toggle in between (we clear the marker on manual hamburger clicks via a
+  // MutationObserver on `.sidebar.hidden`).
   const _restoreSidebarIfRouteCollapsed = () => {
     if (document.body.dataset.routeCollapsedSidebar !== '1') return;
     delete document.body.dataset.routeCollapsedSidebar;
@@ -1264,7 +1276,6 @@ function initializeEventListeners() {
   const _routeOpen = {
     '/notes':    () => {
       if (!notesModule) return;
-      _collapseSidebarToRail();
       notesModule.openPanel();
       // Promote to fullscreen-with-rail-visible: the same state dragging the
       // header to the top edge gives (`B1446` — this looked for a button and a
@@ -1280,9 +1291,6 @@ function initializeEventListeners() {
     '/calendar': () => calendarModule && calendarModule.openCalendar(),
     '/cookbook': () => document.getElementById('tool-cookbook-btn')?.click(),
     '/email':    () => {
-      // Collapse the wide sidebar → icon rail (48px) so the user keeps
-      // navigation visible alongside the fullscreen email view.
-      _collapseSidebarToRail();
       // Spawn a fresh chat first so a reply (or any AI work the user
       // chains off the email) lives in its own session instead of grafting
       // onto whatever was last open. The rail button has the full

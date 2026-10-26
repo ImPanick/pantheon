@@ -308,10 +308,10 @@ function _collapseSidebarToRail() {
   const sidebar = document.getElementById('sidebar');
   const rail = document.getElementById('icon-rail');
   if (!sidebar || !rail) return;
-  // Mark the collapse as route/dock-driven so the paired restore in
-  // app.js (window._restoreSidebarIfRouteCollapsed) knows it owns the
-  // un-collapse. Same marker the /email and /notes openers use — they
-  // can't both be active at once so no conflict.
+  // Mark the collapse as dock-driven so the paired restore in app.js
+  // (window._restoreSidebarIfRouteCollapsed) knows it owns the un-collapse.
+  // (The /email and /notes deep links set it too until `B1217`; they leave
+  // the sidebar alone now.)
   if (!sidebar.classList.contains('hidden')) {
     document.body.dataset.routeCollapsedSidebar = '1';
   }
