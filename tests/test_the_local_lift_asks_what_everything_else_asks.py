@@ -182,3 +182,15 @@ def test_the_composer_promises_the_lift_for_a_registered_ollama(unpinned, regist
     run to 20; now the loop lifts it, and so does the promise."""
     answer = _limits(_limits_endpoint(), endpoint_id="ep-ollama", endpoint_url="")
     assert (answer["round_limit_source"], answer["round_limit"]) == ("local_lift", 100_000)
+
+
+# `B1520`. This file's turns ask their (made-up) endpoint for the model's context
+# window on the way in (`src.model_context`); here that fails as offline, with no
+# connect — `tests/conftest.py` refuses one and names the test.
+import pytest as _pytest_b1520  # noqa: E402
+
+
+@_pytest_b1520.fixture(autouse=True)
+def _no_endpoint_answers(monkeypatch):
+    from tests.helpers.no_endpoint import no_endpoint_answers
+    no_endpoint_answers(monkeypatch)

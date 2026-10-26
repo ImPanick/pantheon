@@ -44,6 +44,7 @@ from src.chat_handler import ChatHandler
 from src.model_context import is_local_endpoint
 from src.preset_manager import PresetManager
 from src.request_models import ChatRequest
+from tests.helpers.no_endpoint import no_endpoint_answers  # B1520
 from test_foreground_model_routing import (  # noqa: E402
     _RouteRequest,
     _chat_endpoint,
@@ -58,6 +59,14 @@ from test_pr6020_rebase_regressions import (  # noqa: E402
 MINIMAX = "example-org/MiniMax-M2.7-BF16-mlx-4Bit"
 LOCAL = "http://192.168.1.22:8091/v1/chat/completions"
 CHOSEN = frozenset({"temperature"})
+
+
+@pytest.fixture(autouse=True)
+def _no_endpoint_answers(monkeypatch):
+    """`B1520`: the model's context-window lookups fail as an unreachable host
+    does, without a connect — this file's endpoints are names and LAN
+    addresses that only stand for one."""
+    no_endpoint_answers(monkeypatch)
 
 
 def test_the_endpoint_under_test_is_local():

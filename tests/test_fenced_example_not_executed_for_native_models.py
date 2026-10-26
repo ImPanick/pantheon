@@ -346,3 +346,15 @@ def test_strip_tool_blocks_always_strips_invoke_and_dsml_regardless_of_skip_fenc
         assert "<invoke" not in cleaned
         assert "Searching now." in cleaned
         assert "Done." in cleaned
+
+
+# `B1520`. This file's turns ask their (made-up) endpoint for the model's context
+# window on the way in (`src.model_context`); here that fails as offline, with no
+# connect — `tests/conftest.py` refuses one and names the test.
+import pytest as _pytest_b1520  # noqa: E402
+
+
+@_pytest_b1520.fixture(autouse=True)
+def _no_endpoint_answers(monkeypatch):
+    from tests.helpers.no_endpoint import no_endpoint_answers
+    no_endpoint_answers(monkeypatch)

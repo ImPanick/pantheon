@@ -48,6 +48,7 @@ import src.agent_loop as agent_loop
 import src.runtime_limits as runtime_limits
 from core.database import Base, ModelEndpoint
 from tests.helpers.js_source import js_definition, js_function
+from tests.helpers.no_endpoint import no_endpoint_answers  # B1520
 from test_foreground_model_routing import _RouteRequest, _chat_stream_endpoint  # noqa: E402
 from test_tool_effect_surfaces_js import _make_sandbox, _run  # noqa: E402
 
@@ -57,6 +58,14 @@ CHAT_JS = ROOT / "static" / "js" / "chat.js"
 SETTINGS_JS = ROOT / "static" / "js" / "settings.js"
 INDEX = ROOT / "static" / "index.html"
 STYLE = ROOT / "static" / "style.css"
+
+
+@pytest.fixture(autouse=True)
+def _no_endpoint_answers(monkeypatch):
+    """`B1520`: the model's context-window lookups fail as an unreachable host
+    does, without a connect — this file's endpoints are names and LAN
+    addresses that only stand for one."""
+    no_endpoint_answers(monkeypatch)
 
 node_only = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 

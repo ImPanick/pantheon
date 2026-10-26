@@ -488,3 +488,15 @@ def test_guide_only_skips_teacher_escalation(monkeypatch):
     )
 
     assert any("Could you tell me" in chunk for chunk in chunks)
+
+
+# `B1520`. This file's turns ask their (made-up) endpoint for the model's context
+# window on the way in (`src.model_context`); here that fails as offline, with no
+# connect — `tests/conftest.py` refuses one and names the test.
+import pytest as _pytest_b1520  # noqa: E402
+
+
+@_pytest_b1520.fixture(autouse=True)
+def _no_endpoint_answers(monkeypatch):
+    from tests.helpers.no_endpoint import no_endpoint_answers
+    no_endpoint_answers(monkeypatch)

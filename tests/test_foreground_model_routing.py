@@ -18,6 +18,7 @@ import routes.chat_helpers as chat_helpers
 import routes.prefs_routes as prefs_routes
 from src.request_models import ChatRequest
 from tests.helpers.patch_estimator import patch_estimator  # B743
+from tests.helpers.no_endpoint import no_endpoint_answers  # B1520
 from src.tool_approvals import document_content_digest
 from src.foreground_model_routing import (
     FOREGROUND_AVAILABILITY_STATUSES,
@@ -26,6 +27,14 @@ from src.foreground_model_routing import (
     build_foreground_model_candidates,
     resolve_foreground_model_policy,
 )
+
+
+@pytest.fixture(autouse=True)
+def _no_endpoint_answers(monkeypatch):
+    """`B1520`: the model's context-window lookups fail as an unreachable host
+    does, without a connect — this file's endpoints are names and LAN
+    addresses that only stand for one."""
+    no_endpoint_answers(monkeypatch)
 
 
 def _collect(gen):

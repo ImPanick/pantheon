@@ -512,11 +512,112 @@ def _isolation_sweep(finished_file):
 
 
 def pytest_runtest_logstart(nodeid, location):
+    _network["test"] = nodeid   # `B1520`: whose attempt it is
     path = location[0]
     if _isolation["file"] == path:
         return
     _isolation_sweep(_isolation["file"])
     _isolation["file"] = path
+
+
+# ---------------------------------------------------------------------------
+# `B1520` — no test leaves this machine
+# ---------------------------------------------------------------------------
+# Measured through the agent proxy's refusal log: four files passed while
+# making HTTPS attempts to `backup`, `paid`, `selected.example` and
+# `api.example.com` — and passed *because* the attempt failed. A test that
+# reaches past the machine is `Law 16` inside the suite: it is slow, it means
+# something different on a host with a network than on one without, and on a
+# host where the name resolves it is a request to a stranger.
+#
+# So every connect in this process is asked where it goes. Loopback (and a Unix
+# socket) is allowed — the suite's fake servers, the app a browser test boots,
+# a loopback proxy a test stands up itself. Anything else is REFUSED as
+# `ConnectionRefusedError` naming the test, which is what an offline host
+# answers, and recorded. So is the proxy this process was started under
+# (`HTTPS_PROXY` and friends, read once here): it is loopback in an agent's
+# sandbox, and it is the way out — a guard that let it through would watch the
+# front door and leave the back one open. A proxy a test sets itself, later,
+# is the test's own fake and is not on that list.
+#
+# Light on purpose: one check per `connect`, no DNS of its own, and a report at
+# the end of the run (`pytest_terminal_summary`) rather than a failure — the
+# shape `B271`'s report has, for the reason it gives.
+import errno as _errno
+import ipaddress as _ipaddress
+import socket as _socket
+from urllib.parse import urlsplit as _urlsplit
+
+_network = {"test": None, "attempts": {}}
+
+
+def _exit_proxies() -> set:
+    out = set()
+    for var in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy",
+                "ALL_PROXY", "all_proxy"):
+        raw = (os.environ.get(var) or "").strip()
+        if not raw:
+            continue
+        try:
+            parts = _urlsplit(raw if "://" in raw else f"http://{raw}")
+            host, port = parts.hostname, parts.port
+        except ValueError:
+            continue
+        if not host or not port:
+            continue
+        names = {host} | ({"127.0.0.1", "::1"} if host == "localhost" else set())
+        out |= {(name, port) for name in names}
+    return out
+
+
+_EXIT_PROXIES = _exit_proxies()
+
+
+def _leaves_the_machine(address) -> bool:
+    if not isinstance(address, tuple) or len(address) < 2:
+        return False                                  # AF_UNIX, or not an address
+    host, port = str(address[0]), address[1]
+    if (host, port) in _EXIT_PROXIES:
+        return True
+    try:
+        ip = _ipaddress.ip_address(host.split("%", 1)[0])
+    except ValueError:
+        return host.lower() != "localhost"            # a name `connect` would resolve
+    return not (ip.is_loopback or ip.is_unspecified)
+
+
+def _refused(address) -> str:
+    who = _network["test"] or "collection"
+    where = f"{address[0]}:{address[1]}"
+    _network["attempts"].setdefault(who, []).append(where)
+    return (f"B1520: {who} tried to reach {where} — a test does not leave this "
+            f"machine. Stand up a loopback server, or stub the call.")
+
+
+_real_connect = _socket.socket.connect
+_real_connect_ex = _socket.socket.connect_ex
+
+
+def _guarded_connect(self, address):
+    if _leaves_the_machine(address):
+        raise ConnectionRefusedError(_errno.ECONNREFUSED, _refused(address))
+    return _real_connect(self, address)
+
+
+def _guarded_connect_ex(self, address):
+    if _leaves_the_machine(address):
+        _refused(address)
+        return _errno.ECONNREFUSED
+    return _real_connect_ex(self, address)
+
+
+_socket.socket.connect = _guarded_connect
+_socket.socket.connect_ex = _guarded_connect_ex
+
+
+def network_attempts() -> dict:
+    """`{test nodeid: [host:port, ...]}` — every refusal so far."""
+    return {k: list(v) for k, v in _network["attempts"].items()}
 
 
 def pytest_sessionstart(session):
@@ -546,6 +647,16 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
             "Every later test in this session measured those names against a "
             "stand-in. Use `monkeypatch.setattr`, which undoes itself."
             + ("" if strict else "  (--strict-isolation makes this a failure)"))
+    attempts = _network["attempts"]
+    if attempts:
+        # `B1520`. Every connect past this machine, refused, by test.
+        terminalreporter.write_sep(
+            "=", f"B1520: {sum(map(len, attempts.values()))} attempts to leave this "
+                 f"machine, refused", yellow=True)
+        for who, where in sorted(attempts.items()):
+            seen = sorted(set(where))
+            terminalreporter.write_line(f"{who}: {len(where)} — {', '.join(seen[:4])}"
+                                        + (" …" if len(seen) > 4 else ""))
     missing = _declared_dependency_gaps()
     if missing:
         terminalreporter.write_sep(

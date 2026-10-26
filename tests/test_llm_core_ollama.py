@@ -1,8 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression tests for native Ollama Cloud provider handling."""
 import httpx
+import pytest
 
 from src import llm_core
+from tests.helpers.no_endpoint import no_endpoint_answers  # B1520
+
+
+@pytest.fixture(autouse=True)
+def _no_endpoint_answers(monkeypatch):
+    """`B1520`: a call asks the endpoint (`https://ollama.com/api`) for the
+    model's context window first; here it fails as offline, with no connect."""
+    no_endpoint_answers(monkeypatch)
 
 
 def test_detects_ollama_cloud_native_provider():

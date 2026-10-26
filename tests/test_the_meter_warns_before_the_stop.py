@@ -44,6 +44,7 @@ import src.agent_loop as agent_loop
 import src.runtime_limits as runtime_limits
 from tests.helpers.js_source import js_definition  # B876
 from tests.helpers.source_text import blank, blank_text  # B290
+from tests.helpers.no_endpoint import no_endpoint_answers  # B1520
 from test_foreground_model_routing import _RouteRequest, _chat_stream_endpoint  # noqa: E402
 from test_tool_effect_surfaces_js import _make_sandbox, _run  # noqa: E402
 from test_the_prep_steps_are_timed_live import (  # noqa: E402
@@ -56,6 +57,14 @@ SPINNER = ROOT / "static" / "js" / "spinner.js"
 CHAT_JS = ROOT / "static" / "js" / "chat.js"
 AGENT_TURN = ROOT / "static" / "js" / "agentTurn.js"   # `B916`
 STYLE = ROOT / "static" / "style.css"
+
+
+@pytest.fixture(autouse=True)
+def _no_endpoint_answers(monkeypatch):
+    """`B1520`: the model's context-window lookups fail as an unreachable host
+    does, without a connect — this file's endpoints are names and LAN
+    addresses that only stand for one."""
+    no_endpoint_answers(monkeypatch)
 
 node_only = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
