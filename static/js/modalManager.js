@@ -82,6 +82,7 @@ function _bringToFront(modal) {
 }
 
 function _emitModalOpened(id, modal) {
+  if (_kept.has(id)) _forgetKept(id);   // `B1185`: it is on screen now
   try {
     window.dispatchEvent(new CustomEvent('pantheon:modal-opened', {
       detail: { id, modal },
@@ -353,19 +354,117 @@ let _dockPos = null; // { left, top } | null
 // existing free-positioned chain to absorb the newcomer.
 const _renderedChipIds = new Set();
 
-// ── Persistence (mobile dock + free-chip positions) ──
+// ── Persistence (mobile dock + free-chip positions + minimised windows) ──
 const _DOCK_STORAGE_KEY = 'pantheon.mobileDockState.v1';
 let _dockStateLoaded = false;
+
+// `B1185` (NAV-M-19's second half). Which windows were minimised lived in
+// `_state` only, so a reload brought back neither their chips nor the windows.
+// The dock state now names them, in dock order, each with the tab it was on,
+// and a load draws their chips again — **without opening them**: a chip kept
+// from the last load (`_kept`) opens its window through the opener a reload
+// uses (`backStack.openerOf`, set by `app.js`) when it is pressed, so the boot
+// pays nothing for it. Only a window with such an opener is kept: one that
+// cannot be opened again would come back as a chip that does nothing. The
+// Document pane (`doc-panel`) has its own per-chat state in `document.js` and
+// comes back with its chat, so it is not kept here twice.
+const _kept = new Map(); // id -> { tab } — chips from the last load, not yet opened
+
+function _doorIds(id) {
+  const wire = _AUTO_WIRE[id];
+  return wire ? [wire.rail, wire.sidebar].filter(Boolean) : [];
+}
+
+function _minimizedToKeep() {
+  const out = [];
+  const seen = new Set();
+  for (const id of [..._dockOrder, ..._state.keys(), ..._kept.keys()]) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const s = _state.get(id);
+    let tab = null;
+    if (s && s.isMinimized) {
+      if (!backStack.openerOf(id)) continue;
+      try {
+        const h = _tabHooks.get(id);
+        tab = h && h.getTab ? h.getTab() : null;
+      } catch (_) { tab = null; }
+    } else if (!s && _kept.has(id)) {
+      tab = _kept.get(id).tab;
+    } else {
+      continue;
+    }
+    out.push(tab == null || tab === '' ? { id } : { id, tab: String(tab) });
+  }
+  return out;
+}
+
+function _forgetKept(id, { render = true } = {}) {
+  if (!_kept.delete(id)) return;
+  _setBadge(_doorIds(id), false);
+  if (render) {
+    _saveDockState();
+    _renderDock();
+  }
+}
+
+/** A chip kept from the last load was pressed: open its window the way a
+ *  reload would, on the tab it was on. */
+function _openKept(id) {
+  const kept = _kept.get(id);
+  const open = backStack.openerOf(id);
+  _forgetKept(id);
+  if (!open) return false;
+  try {
+    const r = open((kept && kept.tab) || null);
+    if (r && typeof r.catch === 'function') r.catch((e) => console.warn('could not reopen', id, e));
+  } catch (e) {
+    console.warn('could not reopen', id, e);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * `B1185` — draw the chips of the windows minimised before the last reload.
+ *
+ * Called once by `app.js` when the tools' visibility is known: a tool an admin
+ * has switched off since (every door hidden) is dropped rather than offered,
+ * and a window the load itself reopened (`backStack.restoreFromHistory`) has no
+ * chip. Returns the ids drawn.
+ */
+export function reviveMinimized() {
+  _loadDockState();
+  for (const id of [..._kept.keys()]) {
+    const doors = _doorIds(id).map((d) => document.getElementById(d)).filter(Boolean);
+    const off = doors.length > 0 && !doors.some(_doorShown);
+    if (off || _state.has(id) || backStack.isOpenNow(id) || !backStack.openerOf(id)) {
+      _forgetKept(id, { render: false });
+    }
+  }
+  if (!_kept.size) return [];
+  for (const id of _kept.keys()) {
+    if (!_dockOrder.includes(id)) _dockOrder.push(id);
+    _setBadge(_doorIds(id), true);
+  }
+  _ensureDock();
+  _renderDock();
+  return [..._kept.keys()];
+}
 
 function _saveDockState() {
   // The dock-pad position is remembered on every platform. The per-chip
   // free-float positions are still a mobile-only gesture, so we only have
   // entries to persist there on touch layouts — but writing the (empty)
   // map on desktop is harmless.
+  // Read what the last load left first, so a save before the dock was ever
+  // drawn cannot write its kept chips away.
+  _loadDockState();
   try {
     const state = {
       dockPos: _dockPos,
       chips: Object.fromEntries(_chipPositions),
+      minimized: _minimizedToKeep(),
     };
     localStorage.setItem(_DOCK_STORAGE_KEY, JSON.stringify(state));
   } catch {}
@@ -378,6 +477,15 @@ function _loadDockState() {
     const raw = localStorage.getItem(_DOCK_STORAGE_KEY);
     if (!raw) return;
     const state = JSON.parse(raw);
+    // `B1185`: the windows minimised when the last load ended, in dock order.
+    if (Array.isArray(state.minimized)) {
+      for (const w of state.minimized) {
+        if (!w || typeof w.id !== 'string' || !w.id || w.id === 'doc-panel') continue;
+        if (_state.has(w.id) || _kept.has(w.id)) continue;
+        _kept.set(w.id, { tab: typeof w.tab === 'string' && w.tab ? w.tab : null });
+        if (!_dockOrder.includes(w.id)) _dockOrder.push(w.id);
+      }
+    }
     if (state.chips && typeof state.chips === 'object') {
       for (const [id, pos] of Object.entries(state.chips)) {
         if (pos && typeof pos.left === 'number' && typeof pos.top === 'number') {
@@ -462,13 +570,19 @@ function _renderDock() {
   // open, or closed — the row's whole complaint is that closing the window is
   // what hides the job. An id here that is not in `_state` is a closed window,
   // and the chip's click opens it through `_AUTO_WIRE` rather than `restore`.
-  const allIds = Array.from(new Set([...minimizedIds, ...persistentIds, ..._work.keys()]));
+  // `B1185`: and a chip kept from the last load whose window is not open yet.
+  let keptGone = false;
+  for (const id of [..._kept.keys()]) {
+    if (_state.has(id) || backStack.isOpenNow(id)) { _forgetKept(id, { render: false }); keptGone = true; }
+  }
+  if (keptGone) _saveDockState();
+  const allIds = Array.from(new Set([...minimizedIds, ...persistentIds, ..._kept.keys(), ..._work.keys()]));
   // Keep _dockOrder for every modal still alive in _state — even when it's
   // currently restored (not in allIds). That way re-minimizing a chip lands
   // back in its original slot instead of being pushed to the right edge.
   // Ids only fall out of _dockOrder once the modal is fully closed
   // (close() → _state.delete()) AND nothing is running in it.
-  _dockOrder = _dockOrder.filter(id => _state.has(id) || _work.has(id));
+  _dockOrder = _dockOrder.filter(id => _state.has(id) || _work.has(id) || _kept.has(id));
   for (const id of allIds) {
     if (!_dockOrder.includes(id)) _dockOrder.push(id);
   }
@@ -566,7 +680,7 @@ function _renderDock() {
     // close control: dismissing the indicator while the job runs on would put
     // the work back out of sight, which is the defect, not the fix. It leaves
     // when `setBackgroundWork(id, null)` is called.
-    const workOnly = !!work && !_state.has(id);
+    const workOnly = !!work && !_state.has(id) && !_kept.has(id);
     const restoreBtn = document.createElement('button');
     restoreBtn.type = 'button';
     restoreBtn.className = 'minimized-dock-restore';
@@ -612,6 +726,9 @@ function _renderDock() {
         // focus went to `<body>` with it. The window takes it, on its move
         // handle — where a door's own press puts it (`a11y.js`).
         focusWindowHandle(id);
+      } else if (_kept.has(id)) {
+        // `B1185`. Minimised before the reload: opened now, by its door.
+        _openKept(id);
       } else {
         // `P9-11`. A work chip for a CLOSED window. There is nothing to
         // restore — the tool has to be opened the way a person would open it,
@@ -1419,6 +1536,7 @@ export function labelOf(id) { return (_LABELS[id] && _LABELS[id].label) || id; }
 
 export function register(id, { restoreFn, closeFn, railBtnId, sidebarBtnId, label, icon, getTab, setTab } = {}) {
   if (typeof getTab === 'function' || typeof setTab === 'function') setTabHooks(id, { getTab, setTab });
+  if (_kept.has(id)) _forgetKept(id, { render: false });   // `B1185`: the live window speaks for itself
   // railBtnId can be a single id or an array; we accept both rail and sidebar separately too.
   const btnIds = [];
   if (railBtnId) btnIds.push(...(Array.isArray(railBtnId) ? railBtnId : [railBtnId]));
@@ -1535,6 +1653,7 @@ export function minimize(id) {
   _setBadge(s.btnIds, true);
   _ensureDock();
   _renderDock();
+  _saveDockState();   // `B1185`: a reload keeps it
   return true;
 }
 
@@ -1563,6 +1682,7 @@ export function restore(id) {
   // one tap. The chip only goes away when the modal is fully closed (see
   // close() above, which does delete the position).
   _renderDock();
+  _saveDockState();   // `B1185`
   try { s.restoreFn(); } catch (e) { console.error('restoreFn:', e); }
   return true;
 }
@@ -1717,7 +1837,11 @@ export function toggle(id) {
 /** Full close — calls closeFn (which should tear down DOM + state) and unregisters. */
 export function close(id) {
   const s = _state.get(id);
-  if (!s) return;
+  if (!s) {
+    // `B1185`: the × on a chip kept from the last load — nothing to tear down.
+    if (_kept.has(id)) _forgetKept(id);
+    return;
+  }
   const modalBeforeClose = document.getElementById(id);
   const contentBeforeClose = modalBeforeClose?.querySelector?.('.modal-content');
   const suspendedDockSide = contentBeforeClose?._dockSuspended
@@ -2005,6 +2129,7 @@ function _scanAndWire() {
     if (!modal) continue;
     injectMinimizeButton(modal, id);
     _watchOpens(id, modal);   // `B721`
+    if (_kept.has(id) && backStack.isOpenNow(id)) _forgetKept(id);   // `B1185`
   }
 }
 // `P23-07` (PERF-M-12). This was `setInterval(_scanAndWire, 1000)`: a wake-up

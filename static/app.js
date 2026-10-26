@@ -1404,6 +1404,9 @@ function initializeEventListeners() {
       // answered 403). Links already wait (`guardRouteOpener`).
       await whenToolVisibilityReady();
       if (!backStack.restoreFromHistory() && _deepLink) _deepLink();
+      // `B1185`. The windows minimised when the last load ended come back as
+      // their chips — opened by these same openers when pressed, not now.
+      WindowManager.reviveMinimized();
     } finally {
       backStack.ready();
     }
