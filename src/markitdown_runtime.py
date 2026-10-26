@@ -32,7 +32,11 @@ MARKITDOWN_EXTS = frozenset({".docx", ".pptx", ".xlsx", ".xls", ".epub"})
 # one. They are a different extractor, so they are a different register: the
 # rule is one register per extractor, and ``OFFICE_EXTS`` is the union the
 # ingest layer asks, never a fourth hand-written copy.
-NATIVE_OFFICE_EXTS = frozenset({".odt", ".doc"})
+#
+# `B1178`: `.ods` joins them. markitdown has no OpenDocument spreadsheet
+# converter, so before this it was in neither register and every server door
+# refused it by type, while the Library read it with SheetJS in the browser.
+NATIVE_OFFICE_EXTS = frozenset({".odt", ".doc", ".ods"})
 
 # Every non-PDF document format chat ingest can extract, whichever code does it.
 OFFICE_EXTS = MARKITDOWN_EXTS | NATIVE_OFFICE_EXTS
@@ -553,6 +557,31 @@ def _extract_xlsx_native(path: str) -> str | None:
     return xlsx_text(path)
 
 
+def _extract_xls_native(path: str) -> str | None:
+    """`B1178`. The Excel 97–2003 workbook as SheetJS's CSV, from its BIFF8
+    records (`ooxml_native.xls_sheets`); the `.xlsx` reader's document."""
+    from src.ooxml_native import xls_text
+    return xls_text(path)
+
+
+def _extract_ods_native(path: str) -> str | None:
+    """`B1178`. The OpenDocument spreadsheet as SheetJS's CSV."""
+    from src.ooxml_native import ods_text
+    return ods_text(path)
+
+
+def _extract_pptx_native(path: str) -> str | None:
+    """`B1289`. The deck slide by slide, in markitdown's own shape."""
+    from src.ooxml_native import pptx_text
+    return pptx_text(path)
+
+
+def _extract_epub_native(path: str) -> str | None:
+    """`B1289`. The book chapter by chapter, in spine order."""
+    from src.ooxml_native import epub_text
+    return epub_text(path)
+
+
 # `B1156` (f-import): the structured `.docx` reader is the first rung and
 # `.xlsx` has one. On a default install the server doors used the bare `<w:t>`
 # walk — paragraphs, no headings — and refused a spreadsheet, while the Library
@@ -562,9 +591,19 @@ def _extract_xlsx_native(path: str) -> str | None:
 # it would make one `.docx` a third document wherever `python-docx` happens to
 # be installed. The `<w:t>` walk is still the last word on a file the others
 # cannot open.
+#
+# `B1178` / `B1289`: `.xls`, `.ods`, `.pptx` and `.epub` have bundled readers
+# too, so on a default install (no markitdown) every format in `OFFICE_EXTS` is
+# read at every server door, and none answers "requires markitdown". With
+# markitdown installed it still answers `.xls`/`.pptx`/`.epub` first, as it
+# does `.docx`/`.xlsx`.
 _NATIVE_EXTRACTORS = {
     ".docx": (_extract_docx_structured, _extract_docx_python_docx, _extract_docx_native),
     ".xlsx": (_extract_xlsx_native,),
+    ".xls": (_extract_xls_native,),
+    ".ods": (_extract_ods_native,),
+    ".pptx": (_extract_pptx_native,),
+    ".epub": (_extract_epub_native,),
     ".odt": (_extract_odf_native,),
     ".doc": (_extract_doc_native,),
 }
@@ -624,11 +663,13 @@ def convert_to_markdown(path: str) -> str | None:
     Returns the extracted Markdown, or ``None`` if markitdown is unavailable or
     the conversion fails — callers degrade gracefully rather than erroring.
 
-    Three shapes, one entry point: `.docx` and `.xlsx` prefer markitdown and
-    fall back to the bundled readers (`_NATIVE_EXTRACTORS`), `.odt`/`.doc` go
-    straight to theirs (markitdown refuses both — `B102`), and `.pptx`/`.xls`/
-    `.epub` still need markitdown installed. A bundled reader's answer may be an
-    `ExtractedText` naming its document's language (`extracted_language`).
+    Two shapes, one entry point: `.docx`, `.xlsx`, `.xls`, `.pptx` and `.epub`
+    prefer markitdown and fall back to the bundled readers
+    (`_NATIVE_EXTRACTORS`); `.odt`/`.doc`/`.ods` go straight to theirs
+    (markitdown refuses or lacks all three — `B102`, `B1178`). Since
+    `B1178`/`B1289` no format here needs markitdown installed. A bundled
+    reader's answer may be an `ExtractedText` naming its document's language
+    (`extracted_language`).
     """
     ext = os.path.splitext(path)[1].lower() if isinstance(path, str) else ""
     native = _NATIVE_EXTRACTORS.get(ext)

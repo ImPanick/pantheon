@@ -76,9 +76,9 @@ export const LANGUAGE_ALIASES = {
 export const PROSE_LANGUAGES = new Set(["log", "text"]);
 const LANGUAGE_TOKEN = /^[a-z][a-z0-9+#]{0,11}$/;
 export const TEXT_EXTS = new Set([".bash", ".c", ".cpp", ".css", ".csv", ".go", ".h", ".htm", ".html", ".java", ".js", ".json", ".jsx", ".log", ".md", ".nix", ".php", ".py", ".rb", ".rs", ".sh", ".sql", ".ts", ".tsx", ".txt", ".xml", ".yaml", ".yml"]);
-export const OFFICE_EXTS = new Set([".doc", ".docx", ".epub", ".odt", ".pptx", ".xls", ".xlsx"]);
+export const OFFICE_EXTS = new Set([".doc", ".docx", ".epub", ".ods", ".odt", ".pptx", ".xls", ".xlsx"]);
 export const PDF_EXTS = new Set([".pdf"]);
-export const INGESTIBLE_EXTS = new Set([".bash", ".c", ".cpp", ".css", ".csv", ".doc", ".docx", ".epub", ".go", ".h", ".htm", ".html", ".java", ".js", ".json", ".jsx", ".log", ".md", ".nix", ".odt", ".pdf", ".php", ".pptx", ".py", ".rb", ".rs", ".sh", ".sql", ".ts", ".tsx", ".txt", ".xls", ".xlsx", ".xml", ".yaml", ".yml"]);
+export const INGESTIBLE_EXTS = new Set([".bash", ".c", ".cpp", ".css", ".csv", ".doc", ".docx", ".epub", ".go", ".h", ".htm", ".html", ".java", ".js", ".json", ".jsx", ".log", ".md", ".nix", ".ods", ".odt", ".pdf", ".php", ".pptx", ".py", ".rb", ".rs", ".sh", ".sql", ".ts", ".tsx", ".txt", ".xls", ".xlsx", ".xml", ".yaml", ".yml"]);
 // ---- end generated ----
 
 /**

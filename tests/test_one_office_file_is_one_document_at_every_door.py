@@ -78,6 +78,12 @@ FILES = {
     "Regional sales.xlsx": office_fixture(".xlsx"),
     "Formats.xlsx": office_sample("formats.xlsx"),
     "Ledger 2026.xlsx": office_sample("ledger.xlsx"),
+    # `B1178`: Excel 97–2003 and OpenDocument, which the Library has always
+    # read with SheetJS and the server doors refused on a default install.
+    "Regional sales.xls": office_fixture(".xls"),
+    "Regional sales.ods": office_fixture(".ods"),
+    "Ledger 2026.xls": office_sample("ledger.xls"),
+    "Ledger 2026.ods": office_sample("ledger.ods"),
 }
 # The spellings the two readers could judge apart (the release gate's
 # VOCABULARY rule asked whose they are): `w:val="off"` on a bold run — mammoth
@@ -205,7 +211,9 @@ def test_the_structure_the_library_keeps_is_kept(env, monkeypatch, library):  # 
         assert line in doc.current_content.splitlines(), line
 
 
-@pytest.mark.parametrize("name", ["Regional sales.xlsx", "Formats.xlsx"])
+@pytest.mark.parametrize("name", ["Regional sales.xlsx", "Formats.xlsx",
+                                  # `B1178`'s `Verify:` — a `.xls` and a `.ods`.
+                                  "Regional sales.xls", "Regional sales.ods"])
 def test_a_one_sheet_workbook_is_one_document_at_every_door(env, monkeypatch, library, name):  # noqa: F811
     _without_markitdown(monkeypatch)
     [lib] = _library_documents(env, name, library[name])
@@ -213,7 +221,7 @@ def test_a_one_sheet_workbook_is_one_document_at_every_door(env, monkeypatch, li
     doors = _server_documents(env, monkeypatch, name, FILES[name])
     for door, doc in doors.items():
         assert _shape(doc) == _shape(lib), door
-    if name == "Regional sales.xlsx":
+    if name.startswith("Regional sales."):
         assert OFFICE_SENTINEL in lib.current_content
 
 
@@ -234,14 +242,17 @@ def test_a_spelling_the_xml_allows_reads_as_the_library_reads_it(env, monkeypatc
             assert lines[0].startswith("2026-10-02,14 Mar 2026,"), lines[0]
 
 
+@pytest.mark.parametrize("name", ["Ledger 2026.xlsx",
+                                  # `B1178`: the same shape, in the two
+                                  # formats the server could not read.
+                                  "Ledger 2026.xls", "Ledger 2026.ods"])
 def test_a_workbook_of_several_sheets_is_the_librarys_sheets_in_one_document(
-        env, monkeypatch, library):  # noqa: F811
+        env, monkeypatch, library, name):  # noqa: F811
     """The Library makes one `csv` document per sheet; a server door answers
     with one document, so it holds each of those sheets, word for word, under
     its name — the one-document form the Library's reader writes for a
     workbook (`readFileContent`). The empty sheet is left out at every door."""
     _without_markitdown(monkeypatch)
-    name = "Ledger 2026.xlsx"
     libs = _library_documents(env, name, library[name])
     assert [d.title for d in libs] == ["Ledger 2026 - Q3 ledger", "Ledger 2026 - Notes"]
     expected = "\n\n".join(f"# Sheet: {d.title.split(' - ', 1)[1]}\n\n{d.current_content}"
@@ -250,6 +261,41 @@ def test_a_workbook_of_several_sheets_is_the_librarys_sheets_in_one_document(
     for door, doc in doors.items():
         assert (doc.title, doc.language, doc.current_content) == \
             ("Ledger 2026", "markdown", expected), door
+    if not name.endswith(".xlsx"):
+        # What SheetJS shows for LibreOffice's grouped number, percentage,
+        # date and quoted fields — read from BIFF records and from ODF cells.
+        assert ('"Rent, office","1,200.00",25%,2026-10-02,"He said ""fine"""'
+                in expected.splitlines()), expected
+
+
+# ── `B1289`: a deck and a book, read without markitdown ─────────────────────
+
+@pytest.mark.parametrize("name, sample, lines", [
+    ("Launch deck.pptx", "deck.pptx", [
+        "<!-- Slide number: 1 -->", "# Quarterly Report", "DECKSENTINEL5e8 on slide one",
+        "<!-- Slide number: 2 -->", "# Outlook", "Hire two engineers.", "A loose text box.",
+        "### Notes:", "Speaker note: mention DECKNOTE9a1."]),
+    ("Field guide.epub", "book.epub", [
+        "The Harbour", "The harbour master logs every tide. BOOKSENTINEL3c7 is written in the margin.",
+        "The Seabed", "Who owns the seabed is a question of law."]),
+])
+def test_a_deck_and_a_book_are_one_document_at_every_door(env, monkeypatch, name, sample, lines):  # noqa: F811
+    """Both needed markitdown, which the default image does not install, so on
+    a default install they were refused at every door (the Library posts them
+    to `import-office`, the chip's door). Now `src/ooxml_native.py` reads them,
+    in slide and spine order, and every door holds the same document."""
+    _without_markitdown(monkeypatch)
+    doors = _server_documents(env, monkeypatch, name, office_sample(sample))
+    shapes = {door: _shape(doc) for door, doc in doors.items()}
+    assert len(set(shapes.values())) == 1, shapes
+    title, language, text = next(iter(shapes.values()))
+    assert (title, language) == (name.rsplit(".", 1)[0], "markdown")
+    got = text.splitlines()
+    for line in lines:
+        assert line in got, (line, text)
+    # In order: slide two after slide one, the second chapter after the first.
+    at = [got.index(line) for line in lines]
+    assert at == sorted(at), text
 
 
 # ── the number formats are SheetJS's own ────────────────────────────────────

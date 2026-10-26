@@ -157,11 +157,12 @@ def test_a_file_that_is_read_reaches_the_model_and_needs_no_note(send, name, raw
 # ── what is not read is said, to the person and to the model ────────────────
 
 @pytest.mark.parametrize("name, raw, mime, says", [
-    ("bundle.zip", _zip(), "application/zip", "Not read: there is no reader for .zip files"),
+    # `B1291` took `bundle.zip` off this list: an archive is listed now
+    # (`tests/test_a_zip_says_what_is_in_it.py`).
     ("blob.bin", bytes(range(256)) * 4, "application/octet-stream", "Not read: there is no reader for .bin files"),
     ("clip.mp4", b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 64, "video/mp4", "Not read: the model can't be given a video."),
     ("clip.webm", b"\x1aE\xdf\xa3" + b"\x00" * 64, "video/webm", "Not read: the model can't be given a video."),
-], ids=["zip", "bin", "mp4", "video-webm"])
+], ids=["bin", "mp4", "video-webm"])
 def test_a_file_nothing_reads_is_said_under_it(send, name, raw, mime, says):
     content, meta = send([(name, raw, mime)])
     assert (meta[name].get("reach_note") or "").startswith(says), meta[name]
@@ -170,12 +171,15 @@ def test_a_file_nothing_reads_is_said_under_it(send, name, raw, mime, says):
     assert not isinstance(content, list), "no part the model's API would refuse"
 
 
-@pytest.mark.skipif(_markitdown_installed(), reason="markitdown reads these where it is installed")
 @pytest.mark.parametrize("ext", [".pptx", ".xls", ".epub"])
-def test_an_office_file_needing_the_optional_reader_says_so(send, ext):
-    _content, meta = send([(f"deck{ext}", office_fixture(ext), "application/octet-stream")])
-    assert meta[f"deck{ext}"]["reach_note"] == (
-        f"Not read: {ext} files need markitdown, an optional install on this server.")
+def test_an_office_file_that_needed_the_optional_reader_now_reaches_the_model(send, ext):
+    """Was `test_an_office_file_needing_the_optional_reader_says_so`: on a
+    default install these three needed markitdown and the note said so.
+    `B1289` (`.pptx`, `.epub`) and `B1178` (`.xls`) gave each a bundled reader,
+    so the file's text reaches the model and there is nothing to say under it."""
+    content, meta = send([(f"deck{ext}", office_fixture(ext), "application/octet-stream")])
+    assert OFFICE_SENTINEL in _text(content)
+    assert not meta[f"deck{ext}"].get("reach_note"), meta[f"deck{ext}"]
 
 
 # ── a recording ──────────────────────────────────────────────────────────────
