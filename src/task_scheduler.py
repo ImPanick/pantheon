@@ -468,6 +468,10 @@ def compose_task_relevant_tools(rag_tools, assistant_always, disabled_tools):
     the default shell/file group, then removes anything the task's crew
     explicitly disabled via its `enabled_tools` allowlist. Per-owner admin
     gating is applied later by stream_agent_loop (blocked_tools_for_owner).
+
+    `B1372`. The scheduler passes no retrieved tools any more: what this
+    answers is the set a scheduled run PINS in the agent loop's own suite
+    plan (`pinned_tools`), not the whole offer.
     """
     tools = set(rag_tools) | set(assistant_always) | set(TASK_DEFAULT_SHELL_TOOLS)
     if disabled_tools:
@@ -4918,25 +4922,26 @@ class TaskScheduler:
             # operator disabled globally.
             logger.warning("Could not read the global disabled-tool list: %s", exc)
 
-        # RAG-select relevant tools for this prompt + always-available assistant tools.
-        # Without this, all 40+ tools get sent and models hit their tool limit.
+        # `B1372`. The run's tools are planned by the agent loop, as a chat
+        # turn's are (`plan_turn_tool_suite`: the whole suite when it fits the
+        # model's proven window, a declared order when it does not), with the
+        # assistant's always-available tools and the shell/file defaults
+        # pinned — and the plan is recorded on the run's receipt the way a
+        # chat turn's is. This was `get_tool_index().get_tools_for_query(
+        # task.prompt, k=8)` unioned with those, so the set depended on whether
+        # an embedding backend answered: a run with the index up got its top-8
+        # retrieval; with it down (`get_tool_index()` → None) the loop planned
+        # without the pinned set — `B1368`'s intermittency, in the one place
+        # nobody is watching when it happens.
         relevant_tools = None
+        pinned_tools = None
         if agent_plan is not None:
             # `P24-05`. An agent's tools are its manifest's, every run — no
             # retrieval guess adds or drops one (`B1414`/`B1416`).
             relevant_tools = set(agent_plan.tools) - set(disabled_tools)
         else:
-            try:
-                from src.tool_index import get_tool_index, ASSISTANT_ALWAYS_AVAILABLE
-                tool_idx = get_tool_index()
-                if tool_idx:
-                    rag_tools = tool_idx.get_tools_for_query(task.prompt or "", k=8)
-                    relevant_tools = compose_task_relevant_tools(
-                        rag_tools, ASSISTANT_ALWAYS_AVAILABLE, disabled_tools
-                    )
-                    logger.info(f"[assistant] RAG selected {len(rag_tools)} tools + {len(ASSISTANT_ALWAYS_AVAILABLE)} always-available + shell/file defaults = {len(relevant_tools)} total for '{task.name}'")
-            except Exception as e:
-                logger.warning(f"[assistant] RAG tool selection failed, using all: {e}")
+            from src.tool_index import ASSISTANT_ALWAYS_AVAILABLE
+            pinned_tools = compose_task_relevant_tools((), ASSISTANT_ALWAYS_AVAILABLE, disabled_tools)
 
         # `P8-23`. What fired this run, as a message the model can read and must
         # not obey. `None` when nothing triggered it, which is every scheduled
@@ -4960,6 +4965,7 @@ class TaskScheduler:
                 # Only when there is something to add: a plain task's call is
                 # the call it always was (an existing stub pins its shape).
                 **({"context_msgs": _context_msgs} if _context_msgs else {}),
+                **({"pinned_tools": pinned_tools} if pinned_tools else {}),   # `B1372`
             )
         except Exception as e:
             logger.warning(f"Agent loop failed for task '{task.name}', falling back to simple call: {e}")
@@ -5245,7 +5251,8 @@ class TaskScheduler:
                               datetime_context_msg: dict | None = None,
                               trigger_context_msg: dict | None = None,
                               run_id: str | None = None,
-                              context_msgs: list | None = None) -> str:
+                              context_msgs: list | None = None,
+                              pinned_tools: set | None = None) -> str:
         """Run the full agent loop with tool access, collecting the final text.
 
         `P22-17`. A workflow step's slot may carry `may_wait` — the step can
@@ -5316,6 +5323,10 @@ class TaskScheduler:
                    if _agent else {}))
         if _slot.get("suppress_skills"):
             _loop_extra["suppress_skills"] = True
+        if pinned_tools:
+            # `B1372`. Kept in the loop's own suite plan, which this run's
+            # tools now come from (`relevant_tools` is a hired agent's only).
+            _loop_extra["pinned_tools"] = set(pinned_tools)
         if _slot.get("workspace"):
             # `B1434`. A hired agent works in the folder its hire names.
             _loop_extra["workspace"] = _slot["workspace"]

@@ -114,13 +114,14 @@ async def test_scheduled_task_honors_global_disabled_tools(monkeypatch):
     async def _capture(endpoint_url, model, task, session_id, *,
                        system_prompt=None, disabled_tools=None, relevant_tools=None,
                        datetime_context_msg=None, trigger_context_msg=None,
-                       run_id=None):
+                       run_id=None, pinned_tools=None):
         # `P8-27` threads `run_id` and `P8-23` threads `trigger_context_msg`
         # through this call. Both are accepted and unused: the stub exists to
         # capture the two tool lists, and a signature that refused a new
         # keyword would fail on the signature rather than on the merge.
         captured["disabled_tools"] = disabled_tools
         captured["relevant_tools"] = relevant_tools
+        captured["pinned_tools"] = pinned_tools
         captured["run_id"] = run_id
         return "done"
 
@@ -154,11 +155,15 @@ async def test_scheduled_task_honors_global_disabled_tools(monkeypatch):
     assert passed_disabled is not None
     assert set(global_off) <= set(passed_disabled)
 
-    # Offer side: globally-disabled tools are gone from relevant_tools, but the
-    # rest of the shell/file defaults and the RAG hit survive.
-    offered = captured["relevant_tools"]
+    # Offer side. `B1372`: the run's tools are planned by the agent loop's
+    # suite planner (no `relevant_tools` of the scheduler's own, and no RAG
+    # hit in them — `web_fetch` was this index's), with the shell/file
+    # defaults and the assistant's tools pinned. Globally-disabled tools are
+    # gone from what is pinned; the rest of the shell defaults survive.
+    assert captured["relevant_tools"] is None
+    offered = captured["pinned_tools"]
     assert "bash" not in offered
     assert "python" not in offered
     assert "read_file" not in offered
     assert "edit_file" in offered   # shell default NOT globally disabled
-    assert "web_fetch" in offered   # RAG-selected tool preserved
+    assert "web_fetch" not in offered, "the embedding lane chose a tool"
