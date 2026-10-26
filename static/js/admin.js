@@ -2226,7 +2226,10 @@ async function loadMcpServers() {
     list.querySelectorAll('[data-adm-mcp-delete]').forEach(btn => {
       btn.addEventListener('click', async () => {
         if (!await uiModule.styledConfirm('Delete this MCP server?', { confirmText: 'Delete', danger: true })) return;
-        await fetch(`/api/mcp/servers/${btn.dataset.admMcpDelete}`, { method: 'DELETE', credentials: 'same-origin' });
+        const res = await fetch(`/api/mcp/servers/${btn.dataset.admMcpDelete}`, { method: 'DELETE', credentials: 'same-origin' });
+        // `B864`: say which switched-off tools went with the server.
+        const out = res.ok ? await res.json().catch(() => ({})) : {};
+        if ((out.dropped_disabled_tools || []).length && out.message) uiModule.showToast(out.message, 9000);
         loadMcpServers();
       });
     });

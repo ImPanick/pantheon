@@ -279,6 +279,78 @@ def test_a_failed_connect_leaves_no_task_parked(server_path, captured):
     assert asyncio.run(scenario()) == {}
 
 
+def test_a_dead_server_at_boot_is_one_problem_in_the_log(captured, monkeypatch):
+    """`B1392`. A stdio server whose command exits during the handshake used to
+    log its real error and then, from `_open_owned`'s teardown, `Error closing
+    MCP server dead: unhandled errors in a TaskGroup (1 sub-exception)` at
+    WARNING — the same failure seen twice, the second time in anyio's words.
+    Driven through `connect_all_enabled`, as boot runs it, with the row's own
+    command, `false`. (A Python that exits does not reproduce it: it starts too
+    slowly to fail inside the handshake the same way — measured.)"""
+    import shutil
+
+    false = shutil.which("false")
+    if not false:
+        pytest.skip("no `false` on PATH")
+
+    class _Dead(_Row):
+        def __init__(self):
+            super().__init__("dead", "")
+            self.command = false
+            self.args = json.dumps([])
+
+    monkeypatch.setattr(mcp_manager, "SessionLocal", lambda: _Db([_Dead()]))
+    manager = McpManager()
+
+    asyncio.run(manager.connect_all_enabled())
+
+    assert manager.get_server_status("dead")["status"] == "error"
+    assert not [m for m in captured.loud if m.startswith("Error closing")], captured.loud
+    assert len(captured.loud) == 1, captured.loud      # the connect's own error
+
+
+def _closing_raises(stack):
+    async def boom(*_exc):
+        raise RuntimeError("unhandled errors in a TaskGroup (1 sub-exception)")
+    stack.push_async_exit(boom)
+
+
+def test_the_teardown_of_a_failed_connect_is_not_a_second_warning(captured):
+    """`B1392`, the mechanism without the race: whether the real transport's
+    close raises depends on how far the handshake got, so the test above cannot
+    always reproduce it. Here the close always raises after a failed setup."""
+    manager = McpManager()
+
+    async def setup(stack):
+        _closing_raises(stack)
+        raise ConnectionError("the server stopped during the handshake")
+
+    async def scenario():
+        with pytest.raises(ConnectionError):
+            await manager._open_owned("dead", setup)
+
+    asyncio.run(scenario())
+    assert captured.loud == [], captured.loud
+    assert any("failed connect" in m for lvl, m in captured.rows if lvl == "DEBUG")
+
+
+def test_a_close_that_fails_after_a_good_connect_still_warns(captured):
+    """The case worth keeping loud: a connection that worked and then would not
+    close is a real fact about a real teardown."""
+    manager = McpManager()
+
+    async def setup(stack):
+        _closing_raises(stack)
+        return "session"
+
+    async def scenario():
+        assert await manager._open_owned("s1", setup) == "session"
+        await manager._close_owned("s1")
+
+    asyncio.run(scenario())
+    assert any(m.startswith("Error closing MCP server s1") for m in captured.loud), captured.loud
+
+
 # ---------------------------------------------------------------------------
 # The control: this file can still see a bad close when there is one.
 # ---------------------------------------------------------------------------

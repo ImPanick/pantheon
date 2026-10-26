@@ -155,19 +155,14 @@ async def test_connect_all_enabled_timeout_does_not_block_other_servers(monkeypa
     )
 
     #
-    # Don't actually wait 20 seconds during the test.
-    # Replace asyncio.wait_for used by mcp_manager with a much shorter timeout.
+    # Don't actually wait 20 seconds during the test. `B888`: the deadline is
+    # a constant the test sets, not `asyncio.wait_for` replaced underneath the
+    # code — which pinned `_connect_with_timeout` to that spelling. This passes
+    # whether the deadline is written with `asyncio.wait_for` or
+    # `asyncio.timeout`.
     #
-    real_wait_for = asyncio.wait_for
-
-    async def short_wait_for(awaitable, timeout):
-        return await real_wait_for(awaitable, timeout=0.2)
-
-    monkeypatch.setattr(
-        mcp_manager.asyncio,
-        "wait_for",
-        short_wait_for,
-    )
+    monkeypatch.setattr(mcp_manager, "MCP_BOOT_CONNECT_TIMEOUT_SECONDS", 0.2,
+                        raising=False)
 
     start = time.perf_counter()
 
@@ -177,3 +172,6 @@ async def test_connect_all_enabled_timeout_does_not_block_other_servers(monkeypa
 
     assert set(completed) == {1, 3}
     assert elapsed < 1
+    # And the hung one is recorded as timed out, with the deadline it had.
+    assert manager._connections[2]["status"] == "timeout"
+    assert manager._connections[2]["error"] == "Timed out after 0.2 seconds"

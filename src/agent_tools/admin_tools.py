@@ -340,6 +340,13 @@ async def do_manage_mcp(content: str, owner: Optional[str] = None) -> Dict:
             if not srv:
                 return {"error": f"Server {sid} not found", "exit_code": 1}
             name = srv.name
+            # `B864`: the row's switched-off tools go with it — said, and
+            # handed back, as `DELETE /api/mcp/servers/{id}` does.
+            from src.mcp_manager import (
+                dropped_disabled_tools,
+                dropped_disabled_tools_sentence,
+            )
+            dropped = dropped_disabled_tools(srv.disabled_tools)
             mcp = get_mcp_manager()
             if mcp:
                 try:
@@ -348,7 +355,9 @@ async def do_manage_mcp(content: str, owner: Optional[str] = None) -> Dict:
                     pass
             db.delete(srv)
             db.commit()
-            return {"response": f"Deleted MCP server '{name}'", "exit_code": 0}
+            said = dropped_disabled_tools_sentence(name, dropped)
+            return {"response": f"Deleted MCP server '{name}'." + (f" {said}" if said else ""),
+                    "dropped_disabled_tools": dropped, "exit_code": 0}
         finally:
             db.close()
 

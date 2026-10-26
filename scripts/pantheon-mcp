@@ -360,9 +360,13 @@ def cmd_delete(args):
         if not s:
             fail(f"no MCP server with id {args.id!r}")
         snap = _serialize(s)
+        # `B864`. The row's switched-off tools go with it; a server added again
+        # starts with every tool on. Handed back so whoever re-adds it can
+        # switch them off again (`PATCH /api/mcp/servers/{id}/tools`).
+        dropped = _json_list(s.disabled_tools)
         db.delete(s)
         db.commit()
-        emit({"ok": True, "deleted": snap}, args)
+        emit({"ok": True, "deleted": snap, "dropped_disabled_tools": dropped}, args)
     finally:
         db.close()
 

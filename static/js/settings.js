@@ -4304,7 +4304,14 @@ async function initUnifiedIntegrations() {
             await fetch('/api/contacts/config', { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ carddav_url: '', carddav_username: '', carddav_password: '' }) });
           }
           else if (type === 'email') await fetch(`/api/email/accounts/${id}`, { method: 'DELETE', credentials: 'same-origin' });
-          else if (type === 'mcp') await fetch(`/api/mcp/servers/${id}`, { method: 'DELETE', credentials: 'same-origin' });
+          else if (type === 'mcp') {
+            // `B864`. The server's switched-off tools go with it, and one
+            // added again starts with every tool on — the route says which,
+            // in its own sentence, and that is shown rather than lost.
+            const r = await fetch(`/api/mcp/servers/${id}`, { method: 'DELETE', credentials: 'same-origin' });
+            const out = r.ok ? await r.json().catch(() => ({})) : {};
+            if ((out.dropped_disabled_tools || []).length && out.message) uiModule.showToast(out.message, 9000);
+          }
           else if (type === 'codex' || type === 'claude' || type === 'token') await fetch(`/api/tokens/${id}`, { method: 'DELETE', credentials: 'same-origin' });
           else if (type === 'vault') await fetch('/api/vault/logout', { method: 'POST', credentials: 'same-origin' });
           else if (type === 'login') await fetch(`/api/vault/mine/items/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'same-origin' });

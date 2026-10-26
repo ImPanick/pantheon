@@ -173,7 +173,8 @@ def _put(Factory, manager, server_id="abcd1234", **overrides):
 
 
 def test_delete_then_add_mints_a_new_id_and_loses_the_disabled_list():
-    """What an operator had to do before, and what it cost them."""
+    """What an operator had to do before, and what it cost them — reported
+    since `B864`."""
     import unittest.mock as mock
 
     Factory = _db()
@@ -184,7 +185,7 @@ def test_delete_then_add_mints_a_new_id_and_loses_the_disabled_list():
     delete = _endpoint(manager, "/api/mcp/servers/{server_id}", "DELETE")
     add = _endpoint(manager, "/api/mcp/servers", "POST")
     with mock.patch("routes.mcp.mcp_routes.SessionLocal", Factory):
-        asyncio.run(delete(server_id=old_id, request=_FakeRequest()))
+        deleted = asyncio.run(delete(server_id=old_id, request=_FakeRequest()))
         created = asyncio.run(add(
             request=_FakeRequest(), name="Files", transport="stdio", command="npx",
             args='["-y", "server-filesystem", "/srv"]', env='{"TOKEN": "t1"}',
@@ -196,6 +197,10 @@ def test_delete_then_add_mints_a_new_id_and_loses_the_disabled_list():
     assert _row(Factory, created["id"])["disabled_tools"] is None, (
         "the disabled list survived — the premise does not hold any more"
     )
+    # `B864` changed what this costs: the loss is no longer silent. The delete
+    # hands back the list it dropped, so the re-add can put it back
+    # (`tests/test_deleting_an_mcp_server_hands_back_what_it_switched_off.py`).
+    assert deleted["dropped_disabled_tools"] == ["wipe"]
     # And the stored reference no longer resolves.
     assert manager.get_server_status(old_id)["status"] == "disconnected"
 
