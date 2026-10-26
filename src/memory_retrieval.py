@@ -210,6 +210,24 @@ _MIN_VECTOR, _MIN_KEYWORD = 0.20, 0.08
 # and is said here rather than fixed in passing: a keyword-only memory meets
 # this floor at `keyword > _MIN_FINAL / _W_KEYWORD`, above `_MIN_KEYWORD`.
 _MIN_FINAL = _W_VECTOR * _MIN_VECTOR
+# `B1509`, the keyword lane's half of `B714`. With no vector lane the relevance
+# is `_W_KEYWORD_ALONE × keyword`, and it was held to `_MIN_FINAL` too — the
+# *vector* lane's floor — so the keyword-only engine admitted at
+# `keyword > 0.11 / 0.95 ≈ 0.116`, above `_MIN_KEYWORD`'s 0.08, and lowering
+# `_MIN_KEYWORD` changed nothing. That engine's floor is stated in its own
+# lane's terms now, exactly as `_MIN_FINAL` is in the vector lane's: a memory is
+# admitted there exactly when its keyword score clears `_MIN_KEYWORD`. The
+# golden set is unchanged: `.pantheon/retrieval_eval.py`'s per-query lists for
+# `manager` and `preface` (the keyword-only call paths) are identical before
+# and after, 2026-10-26 (`local` could not run here: no cached embedding model).
+#
+# With vectors, `_MIN_KEYWORD` is not dead and is unchanged: it is the gate
+# that lets a memory with keyword evidence but a cosine under `_MIN_VECTOR` be
+# scored on both lanes against `_MIN_FINAL` (a cosine of 0.19 with a keyword of
+# 0.07 is refused at 0.08 and admitted at 0.05). A memory with keyword evidence
+# alone still meets the combined floor at `_MIN_FINAL / _W_KEYWORD` there — one
+# linear floor cannot pass through both lanes' gates, and changing the score's
+# shape is a ranking change, not this row. (`_admission_floor` below.)
 
 # What a verbatim match is worth. Carried across from the scorer `P13-14`
 # replaces, at the value it used, because changing a number while moving it is
@@ -373,6 +391,16 @@ def _vector_scores(query, memories, vector, k):
         if mid in known:
             out[mid] = max(row.get("score") or 0.0, 0.0)
     return out, True
+
+
+def _admission_floor(healthy: bool) -> float:
+    """`B714`/`B1509`. The relevance a memory must exceed to be admitted:
+    `_MIN_FINAL` with the vector lane, and the keyword lane's own gate in the
+    keyword-only engine's terms without it — read at call time, so moving
+    `_MIN_KEYWORD` moves that engine's admissions."""
+    if healthy:
+        return _MIN_FINAL
+    return _W_KEYWORD_ALONE * _MIN_KEYWORD
 
 
 def _rank(query, memories, k, vector, report, now):
@@ -540,7 +568,8 @@ def _rank(query, memories, k, vector, report, now):
         # `_MIN_VECTOR` a knob that did nothing. The tiebreak still orders what
         # is admitted; it no longer decides whether it is. A verbatim match is
         # admitted as before (its score is `_VERBATIM_SCORE`, above every gate).
-        if not verbatim and relevance <= _MIN_FINAL:
+        # `B1509`: each engine against its own lane's floor.
+        if not verbatim and relevance <= _admission_floor(healthy):
             continue
         ranked.append(row)
 
