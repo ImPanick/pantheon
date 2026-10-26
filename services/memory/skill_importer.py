@@ -1001,10 +1001,22 @@ def _locate_named_skill(src: ResolvedSource) -> None:
 
 
 def pick_skill_md(files: Dict[str, str]) -> Tuple[str, str]:
+    """The bundle's own SKILL.md: the **shallowest** one, first seen on a tie.
+
+    `B591`. This returned the first match in dict order, so a bundle listing
+    `references/SKILL.md` (an example file, which `MAX_FILES` and the `.md`
+    suffix both allow) ahead of its own `SKILL.md` was installed as the
+    example, with the real skill filed under it as a reference.
+    """
+    best: Optional[Tuple[int, str, str]] = None
     for rel, content in files.items():
         if rel.lower().endswith("skill.md"):
-            return rel, content
-    raise SkillImportError("bundle has no SKILL.md")
+            depth = rel.count("/")
+            if best is None or depth < best[0]:
+                best = (depth, rel, content)
+    if best is None:
+        raise SkillImportError("bundle has no SKILL.md")
+    return best[1], best[2]
 
 
 def default_category_from_source(src: ResolvedSource) -> str:

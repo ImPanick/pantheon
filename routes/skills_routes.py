@@ -19,12 +19,14 @@ from pydantic import BaseModel, Field
 
 from services.memory.skills import SkillsManager
 from services.memory.skill_injection import (
+    INDEX_ASSUMES_FETCH,
+    INDEX_ASSUMES_NO_FETCH,
     INJECTED_FIELDS,
     WITHHELD_FIELDS,
     render_skill_index_block,
 )
 from services.memory.skill_lint import (
-    DUPLICATE_SIMILARITY,
+    DUPLICATE_REFUSAL,
     audit_flag_text as _audit_flag_text,
     audit_generic_blocker as _audit_generic_blocker,
     base_name as _base_name,
@@ -139,6 +141,11 @@ class SkillLintRequest(BaseModel):
     procedure: List[str] = Field(default_factory=list)
     pitfalls: List[str] = Field(default_factory=list)
     verification: List[str] = Field(default_factory=list)
+    # `B613`. The card's SKILL.md editor holds the whole file, not the fields.
+    # When this is set it is what is linted — parsed by the parser the save
+    # uses (`Skill.from_markdown`), under `name` when one is given, because the
+    # save pins the stored name whatever the text says.
+    markdown: Optional[str] = None
 
 
 class SkillImportUrlRequest(BaseModel):
@@ -539,6 +546,16 @@ _skill_test_jobs: dict = {}
 
 # Two for a comparison, plus room to re-run one side without losing the pair.
 MAX_SKILL_TEST_RUNS = 4
+
+#: `B886`. What an unattended audit that stopped for a person's yes tells them
+#: to do — a thing they can do. The audit denied its own copy of the action
+#: (`_retire_skill_approval`), so there is nothing left to "review"; a Test run
+#: from the card reaches the same action and asks on a card that can be answered.
+AUDIT_NEEDS_APPROVAL_SENTENCE = (
+    "The audit stopped at an action that needs your yes, and did not run it. "
+    "Press Test on this skill to run it yourself: it will ask you to allow or "
+    "deny that action."
+)
 
 
 def _retire_skill_approval(approval_id, owner, why: str) -> None:
@@ -945,59 +962,112 @@ def _audit_auto_publish_policy(owner) -> tuple[bool, float]:
     return enabled, max(0.0, min(1.0, min_conf))
 
 
-def _skill_duplicate_blocker(skills_manager, name: str, owner) -> Optional[str]:
-    """Cheap duplicate guard matching the UI's duplicate grouping.
+def _duplicate_keeper_score(sk: dict) -> float:
+    """Which of a duplicate pair the audit keeps: published, then used, then
+    trusted, then not teacher-rewritten, then the shorter name."""
+    return (
+        (100000 if (sk.get("status") == "published") else 0)
+        + int(sk.get("uses") or 0) * 100
+        + round(float(sk.get("confidence") or 0) * 100)
+        + (-5 if sk.get("audit_by_teacher") else 0)
+        - (len(str(sk.get("name") or "")) / 1000)
+    )
 
-    The LLM necessity check catches semantic redundancy, but the UI also has a
-    cheap similarity pass. Use the same broad signal before auto-publishing so
-    a high-scoring lower-priority duplicate stays draft.
 
-    The token / similarity / base-name core moved to `services.memory.skill_lint`
-    for `P8-12`, because the author-facing lint needs exactly this comparison and
-    a second copy of it would be two answers to "is this a duplicate?" that drift
-    (`Law 14`). What stays here is the part that is specific to the audit: which
-    of a duplicate pair is the keeper.
+def _why_the_keeper_was_kept(keeper: dict, other: dict) -> str:
+    """The first of `_duplicate_keeper_score`'s terms that told the two apart,
+    as a clause a person can check against the two cards. `B790`."""
+    if keeper.get("status") == "published" and other.get("status") != "published":
+        return "it is published and this one is not"
+    ku, ou = int(keeper.get("uses") or 0), int(other.get("uses") or 0)
+    if ku > ou:
+        return f"it has been used {ku} time{'s' if ku != 1 else ''} to this one's {ou}"
+    kc = round(float(keeper.get("confidence") or 0) * 100)
+    oc = round(float(other.get("confidence") or 0) * 100)
+    if kc > oc:
+        return f"its confidence is {kc}% to this one's {oc}%"
+    if other.get("audit_by_teacher") and not keeper.get("audit_by_teacher"):
+        return "a teacher model had to rewrite this one and not it"
+    if len(str(keeper.get("name") or "")) < len(str(other.get("name") or "")):
+        return "the two are otherwise equal and its name is the shorter"
+    return "it comes first on the audit's order — published, then used, then trusted"
+
+
+def _skill_duplicate_of(skills_manager, name: str, owner) -> Optional[dict]:
+    """`{"keeper", "reason"}` when the audit should draft `name` as the same
+    skill saved twice, else None. Records the reason on the skill when it does.
+
+    **`B790` — identity demotes, topic only flags.** This used to demote on
+    `DUPLICATE_SIMILARITY` (0.38), a score whose measured precision on the
+    shipped library is **0 of 24** — every pair reaching it is the same
+    procedure for a different technology (`django-security | laravel-security`)
+    — and it did it overnight, unattended. On a default install (`get_current_
+    user` is None with sign-in off) `load(owner=None)` holds all 286 bundled
+    skills, so a person's own draft about django security was measured against
+    the bundled `laravel-security` and drafted. Now the audit drafts a skill
+    only when the pair is the same skill twice: the shared base name `add_skill`
+    appends a `-<n>` to, or a score at `DUPLICATE_REFUSAL` (0.82, which the
+    shipped corpus never reaches). A topic overlap stays the advisory it already
+    is on the author's lint and on the card (`_duplicateMeta`, which groups at
+    0.38 and says *recommended* / *lower-priority*), and changes nothing on disk.
+
+    The token / similarity / base-name core is `services.memory.skill_lint`'s, so
+    the lint and the audit compare with one function (`P8-12`, `Law 14`); what
+    stays here is the audit's own question — which of a pair it keeps, and why.
     """
-
-    def _score(sk: dict) -> float:
-        return (
-            (100000 if (sk.get("status") == "published") else 0)
-            + int(sk.get("uses") or 0) * 100
-            + round(float(sk.get("confidence") or 0) * 100)
-            + (-5 if sk.get("audit_by_teacher") else 0)
-            - (len(str(sk.get("name") or "")) / 1000)
-        )
-
     skills = skills_manager.load(owner=owner)
     current = next((s for s in skills if (s.get("name") or s.get("id")) == name), None)
     if not current:
         return None
-    duplicates = []
     cur_name = current.get("name") or current.get("id") or name
+    same_skill = []
     for other in skills:
         other_name = other.get("name") or other.get("id")
         if not other_name or other_name == cur_name:
             continue
-        if (_base_name(cur_name) == _base_name(other_name)
-                or _skill_similarity(current, other) >= DUPLICATE_SIMILARITY):
-            duplicates.append(other)
-    if not duplicates:
+        same_base = _base_name(cur_name) == _base_name(other_name)
+        score = _skill_similarity(current, other)
+        if same_base or score >= DUPLICATE_REFUSAL:
+            same_skill.append((other, same_base, score))
+    if not same_skill:
+        # A verdict the 0.38 rule wrote before `B790`, in that rule's own
+        # words, is withdrawn: left in the sidecar it would keep drafting the
+        # skill through `_audit_finalize_status`'s `necessary is False` read.
+        nec = current.get("necessity") if isinstance(current.get("necessity"), dict) else {}
+        if (nec.get("necessary") is False
+                and str(nec.get("reason") or "").startswith("Lower-priority duplicate of ")):
+            try:
+                skills_manager.set_necessity(cur_name, True, [], "", owner=owner)
+            except Exception:
+                logger.debug("stale duplicate verdict not withdrawn for %s", cur_name, exc_info=True)
         return None
-    keeper = sorted([current, *duplicates], key=_score, reverse=True)[0]
+    keeper, keeper_base, keeper_score = sorted(
+        [(current, True, 1.0), *same_skill],
+        key=lambda row: _duplicate_keeper_score(row[0]), reverse=True)[0]
     keeper_name = keeper.get("name") or keeper.get("id") or ""
-    if keeper_name and keeper_name != cur_name:
-        try:
-            skills_manager.set_necessity(
-                cur_name,
-                False,
-                [keeper_name],
-                f"Lower-priority duplicate of {keeper_name}",
-                owner=owner,
-            )
-        except Exception:
-            pass
-        return keeper_name
-    return None
+    if not keeper_name or keeper_name == cur_name:
+        return None
+    how = ("its name differs from this one's only by the number a save adds when a "
+           "name is taken" if keeper_base
+           else f"{int(round(keeper_score * 100))}% of their words are the same")
+    # Which copy and why lead, so the audit log's 100-character line says both.
+    reason = (f"Kept {keeper_name} instead: {_why_the_keeper_was_kept(keeper, current)}. "
+              f"This is the same skill saved twice ({how}), so the audit left this "
+              f"one as a draft. Delete it, or change it so it does something "
+              f"{keeper_name} does not.")
+    try:
+        skills_manager.set_necessity(cur_name, False, [keeper_name], reason, owner=owner)
+    except Exception:
+        logger.debug("duplicate reason not recorded for %s", cur_name, exc_info=True)
+    return {"keeper": keeper_name, "reason": reason}
+
+
+def _skill_duplicate_blocker(skills_manager, name: str, owner) -> Optional[str]:
+    """The keeper's name when `name` is the lower-priority copy of the same
+    skill, else None. `_skill_duplicate_of` is the rule; this is its old door,
+    kept because callers and tests ask for a name (`Law 1`)."""
+    found = _skill_duplicate_of(skills_manager, name, owner)
+    return found["keeper"] if found else None
 
 
 def _audit_finalize_status(skills_manager, name: str, owner, verdict: str,
@@ -1022,6 +1092,7 @@ def _audit_finalize_status(skills_manager, name: str, owner, verdict: str,
             skills_manager.set_necessity(name, False, [], generic_reason, owner=owner)
         except Exception:
             pass
+    # `B790`: only the same skill saved twice is held back here; a topic overlap is not.
     duplicate_of = _skill_duplicate_blocker(skills_manager, name, owner) if verdict == "pass" else None
     if duplicate_of:
         necessary = False
@@ -1044,6 +1115,17 @@ def _apply_skill_md(skills_manager, name: str, md: str, owner, keep: Optional[di
     be able to publish itself (design § 5.4). Callers that pass nothing write
     what the text says, as before — today that is none of them.
     """
+    # `B791`. A blank answer is not a skill. `Skill.from_markdown("   ")` does
+    # not raise — it returns a nameless skill with no description, no
+    # when-to-use and no procedure — and the audit's four callers each guard
+    # with `fixed and fixed.strip() != md.strip()`, which a whitespace reply
+    # passes (truthy, and unequal). A local model answering a 16k-token rewrite
+    # with a newline therefore blanked the skill it was asked to improve. One
+    # guard here covers every caller, present and future, instead of five
+    # copies of it at the call sites (`Law 14`).
+    if not (md or "").strip():
+        logger.info("Audit: the rewrite of %s was empty; the skill was left as it was", name)
+        return False
     try:
         from services.memory.skill_format import Skill, slugify
         sk = Skill.from_markdown(md)
@@ -1181,9 +1263,10 @@ async def _run_skill_test_once(md: str, task: str, url, model, headers, owner) -
                 "This automated audit reached an exact action that requires "
                 "a human approval; no action was executed."
             ),
-            "issues": [
-                "Run this skill's manual test and review the sealed action."
-            ],
+            # `B886`. This said *"review the sealed action"* — but the action
+            # was denied two lines up and cannot be reviewed by anyone. What a
+            # person can do is run the test themselves and answer a fresh card.
+            "issues": [AUDIT_NEEDS_APPROVAL_SENTENCE],
             "approval_required": True,
         }
     verdict = await _eval_skill_run(md, task, text, url, model, headers)
@@ -1297,9 +1380,14 @@ async def _audit_one_skill(skills_manager, skill, url, model, headers,
         log(f"{name}: necessity check skipped — {e}")
 
     generic_reason = _audit_generic_blocker(skill, nec, None)
-    duplicate_of = _skill_duplicate_blocker(skills_manager, name, owner)
+    # `B790`. Identity demotes; topic only flags. `_skill_duplicate_of` answers
+    # only for the same skill saved twice and carries the sentence that says
+    # which copy was kept and why — the short "Lower-priority duplicate of X"
+    # it replaces named the keeper and never the reason.
+    dup = _skill_duplicate_of(skills_manager, name, owner)
+    duplicate_of = dup["keeper"] if dup else None
     if generic_reason or duplicate_of or (isinstance(nec, dict) and nec.get("necessary") is False):
-        reason = generic_reason or (f"Lower-priority duplicate of {duplicate_of}" if duplicate_of else str((nec or {}).get("reason") or "Unnecessary skill"))
+        reason = generic_reason or (dup["reason"] if dup else str((nec or {}).get("reason") or "Unnecessary skill"))
         try:
             skills_manager.update_skill(name, {"status": "draft", "confidence": 0.35}, owner=owner)
             skills_manager.set_audit(name, "skipped", by_teacher=False, worker_model=model, owner=owner)
@@ -1341,18 +1429,28 @@ async def _audit_one_skill(skills_manager, skill, url, model, headers,
     log(f"{name}: verdict = {v} ({verdict.get('summary', '')[:80]})")
     if verdict.get("approval_required"):
         # An unattended audit is not authority for an action influenced by the
-        # skill under test. Preserve the skill's current publication/confidence
-        # state and route the exact action to the manual test UI instead of
-        # letting a safety pause demote, rewrite, or auto-publish the skill.
+        # skill under test, so the skill's publication and confidence stay as
+        # they were — a safety pause must not demote, rewrite or publish it.
+        #
+        # `B886`. This comment said the action was *routed to the manual test
+        # UI*. Nothing routes it: `_run_skill_test_once` has already consumed
+        # the sealed action with `decision="deny"`, and no browser file read
+        # `approval_required`. What the person can do is press **Test** on the
+        # card and answer the fresh card that run raises. So the audit records
+        # that it stopped for a yes (`needs_approval`, beside the verdict rather
+        # than folded into it — `Law 10`), the card says so in its own pill,
+        # and the sentence it carries names the button.
         skills_manager.set_audit(
             name,
             "inconclusive",
             by_teacher=False,
             worker_model=model,
             owner=owner,
+            needs_approval=True,
         )
         status = skill.get("status") or "draft"
-        log(f"{name}: {status} unchanged — exact action needs manual approval")
+        log(f"{name}: {status} unchanged — stopped at an action that needs your yes; "
+            "press Test on it to run it yourself")
         return {
             "skill": name,
             "result": "approval_required",
@@ -1482,6 +1580,7 @@ async def _run_audit_all_job(key, skills_manager, names, url, model, headers, te
                         "status": refreshed.get("status"),
                         "confidence": refreshed.get("confidence"),
                         "audit_verdict": refreshed.get("audit_verdict"),
+                        "audit_needs_approval": bool(refreshed.get("audit_needs_approval")),
                         "audit_by_teacher": refreshed.get("audit_by_teacher"),
                         "audit_worker_model": refreshed.get("audit_worker_model"),
                         "audit_teacher_model": refreshed.get("audit_teacher_model"),
@@ -1641,12 +1740,17 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
 
     @router.get("")
     async def list_skills(request: Request):
+        # `B1421`. The person's own skills and the install's shipped ones, read
+        # only — with sign-in on this listed `load(owner)` alone, so the shipped
+        # procedures the model is given had no card and could not be forked.
+        # The vendored library stays out of a signed-in list, as it always was
+        # (see `load_visible`); a vendored skill is still read and forked by name.
         user = _owner(request)
-        skills = skills_manager.load(owner=user)
+        skills = skills_manager.load_visible(owner=user, include_vendored=False)
         return {"skills": skills, "count": len(skills)}
 
     @router.get("/index")
-    async def get_index(request: Request):
+    async def get_index(request: Request, can_fetch: bool = True):
         """What the model is shown — the list **and** the text. `P8-06`.
 
         `prompt` is produced by `render_skill_index_block`, which is the same
@@ -1660,21 +1764,34 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         reach a prompt line, and the procedure, pitfalls and verification stay on
         disk until `manage_skills action=view` fetches them (`P8-07`).
 
-        **One gate the loop applies and this does not:** the loop passes its
-        active toolset list to `index_for`, so a skill whose `requires_toolsets`
-        are switched off is hidden from the prompt and still listed here. This
-        endpoint answers "what does the library make available", not "what did
-        that specific turn carry"; a per-turn answer is what `P4-16`'s receipt is
-        for, and it reads the same list.
+        **`B580`.** This used to skip one gate the loop applies: it called
+        `index_for` with no `active_toolsets`, which `injectable_skills` reads as
+        *"the caller does not know"* and so skips `requires_toolsets` and
+        `fallback_for_toolsets` — a skill needing a tool this person never has
+        was hidden from every prompt and listed here, on the one endpoint
+        written to say what the model actually has. It now passes
+        `agent_loop.skill_toolsets_for_owner`, built from the same withholds
+        every turn of this person carries (`_standing_withholds`). What a single
+        turn adds on top — an explicit web turn, incognito, plan mode — is that
+        turn's, and `P4-16`'s receipt reads it back.
+
+        **`B1376`.** `can_fetch` is a per-turn fact too: whether `manage_skills`
+        is callable on the turn the block is built for. The preview has no turn,
+        so it says which it assumed (`assumes`), and `?can_fetch=false` renders
+        the form a turn without the tool gets, word for word.
         """
+        from src.agent_loop import skill_toolsets_for_owner
+
         user = _owner(request)
-        idx = skills_manager.index_for(owner=user)
+        idx = skills_manager.index_for(owner=user,
+                                       active_toolsets=skill_toolsets_for_owner(user))
         # `P8-21`. The block is rendered through the same budget the loop uses,
         # and the measurement comes back out of the renderer rather than being
         # recomputed here — a preview that re-derives its own numbers is a
         # drawing of the prompt again (`P8-06`, `Law 7`).
         measured: dict = {}
-        block = render_skill_index_block(idx, owner=user, report=measured)
+        block = render_skill_index_block(idx, owner=user, report=measured,
+                                         can_fetch=bool(can_fetch))
         from src.context_budget import context_window_report
         segment = next(
             (seg for seg in context_window_report(user, prompt=measured)["segments"]
@@ -1688,6 +1805,11 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
             "prompt_chars": len(block),
             "injected_fields": list(INJECTED_FIELDS),
             "withheld_fields": list(WITHHELD_FIELDS),
+            # `B1376`. The one sentence of the block that depends on the turn,
+            # and which way this rendering took it (`Law 10`).
+            "can_fetch": bool(can_fetch),
+            "assumes": (INDEX_ASSUMES_FETCH if can_fetch else INDEX_ASSUMES_NO_FETCH)
+            if block else "",
             # What it costs and what it is allowed to cost. `prompt_chars` was
             # already here and answered neither question: 286 published skills
             # render 80,610 characters (24,187 tokens, measured 2026-09-19) and
@@ -1717,10 +1839,31 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         caller's own library, and the response is advice — the save path does
         not consult it and is never gated on it.
         """
-        from services.memory.skill_lint import lint_skill
+        from services.memory.skill_lint import PROBLEM, ADVISORY, lint_skill
 
         user = _owner(request)
         draft = body.model_dump()
+        markdown = draft.pop("markdown", None)
+        if isinstance(markdown, str) and markdown.strip():
+            # `B613`. The card editor is where an existing skill is changed,
+            # and it sent the whole SKILL.md to the save with no check at all.
+            # The text is read the way `POST /{name}/markdown` reads it, so the
+            # findings are about what that save would write.
+            from services.memory.skill_format import Skill
+            try:
+                parsed = Skill.from_markdown(markdown).to_dict()
+            except Exception as e:
+                return {"verdict": "problems", "counts": {PROBLEM: 1, ADVISORY: 0},
+                        "findings": [{
+                            "code": "not-parseable", "severity": PROBLEM, "field": "",
+                            "message": f"Saving would be refused: this is not a SKILL.md "
+                                       f"the save can read ({e}).",
+                            "fix": "Keep the frontmatter between two `---` lines at the top.",
+                        }]}
+            stored = (draft.get("name") or "").strip()
+            if stored:
+                parsed["name"] = stored
+            draft = parsed
         name = (draft.get("name") or "").strip()
         siblings = [s for s in skills_manager.load(owner=user)
                     if (s.get("name") or "") != name]
@@ -2178,9 +2321,12 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
 
     @router.post("/{skill_id}/fork")
     async def fork_skill(request: Request, skill_id: str, body: SkillForkRequest):
-        """A separately named copy of a skill, for when it should diverge. `P8-52`."""
+        """A separately named copy of a skill, for when it should diverge. `P8-52`.
+
+        `B1421`. A shipped skill is in what this person may fork (`load_visible`),
+        and their copy of one replaces it in what their model is shown."""
         user = _owner(request)
-        visible = {s.get("name") for s in skills_manager.load(owner=user)}
+        visible = {s.get("name") for s in skills_manager.load_visible(owner=user)}
         if skill_id not in visible:
             raise HTTPException(404, "Skill not found")
         entry = skills_manager.fork_skill(skill_id, body.name, owner=user)
@@ -2191,11 +2337,26 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
 
     @router.post("/{skill_id}/invoke")
     async def invoke_skill(request: Request, skill_id: str):
-        """Build a skill-pinned prompt for slash-command invocation.
+        """Check a slash invocation, and say what the person's message is.
 
         This is intentionally server-side so availability, ownership, and usage
         accounting use the same rules as the SkillsManager.
+
+        `B1374`. This returned one string with the whole SKILL.md inside it,
+        and the composer sent that string **as the person's message** — so a
+        skill's text spoke in the person's own words, unframed and unescaped.
+        Now `message` is only what they typed (`request`), and `skill` is the
+        name the composer sends beside it; the turn reads the skill's text from
+        the store and frames it with `own_context_message`
+        (`skill_injection.invoked_skill_messages`), the envelope and escaper the
+        matched-skill block uses. The skill's text never travels through the
+        browser.
         """
+        from services.memory.skill_injection import (
+            INVOKED_SKILL_EMPTY_REQUEST,
+            invokable_skill,
+        )
+
         user = _owner(request)
         try:
             body = await request.json()
@@ -2203,11 +2364,7 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
             body = {}
         request_text = (body.get("request") or "").strip() if isinstance(body, dict) else ""
 
-        invokable = {
-            s.get("name"): s for s in skills_manager.index_for(owner=user)
-            if (s.get("name") or "").strip()
-        }
-        match = invokable.get(skill_id)
+        match = invokable_skill(skills_manager, user, skill_id)
         if not match:
             raise HTTPException(404, "Skill is not available for slash invocation")
 
@@ -2218,23 +2375,24 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
             raise HTTPException(404, "Skill source unavailable")
 
         skills_manager.record_use(name, owner=user)
-        message = (
-            "Apply the skill below to my request, following its Procedure / Pitfalls / Verification.\n\n"
-            f"--- BEGIN SKILL ---\n{md}\n--- END SKILL ---\n\n"
-            + (f"Request: {request_text}" if request_text else "Request: (use the skill as appropriate)")
-        )
+        said = request_text or INVOKED_SKILL_EMPTY_REQUEST.format(name=name)
         return {
             "ok": True,
             "type": "skill",
             "name": name,
             "command": f"/{name}",
-            "message": message,
+            "skill": name,
+            "request": said,
+            # The field every caller already reads, now holding only the
+            # person's words (`Law 1` keeps the key; `B1374` empties it of the
+            # skill).
+            "message": said,
         }
 
     @router.get("/{skill_id}")
     async def get_skill(request: Request, skill_id: str):
         user = _owner(request)
-        skills = skills_manager.load(owner=user)
+        skills = skills_manager.load_visible(owner=user)   # `B1421`: a read
         for sk in skills:
             if sk.get("name") == skill_id or sk.get("id") == skill_id:
                 return sk
@@ -2245,11 +2403,15 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         """Return the raw SKILL.md text — used by the slash-invocation flow
         and the editor's 'view source' affordance."""
         user = _owner(request)
-        skills = skills_manager.load(owner=user)
+        # `B1421`. A read: the person's own skills and the shipped ones. A
+        # shipped entry belongs to the install (`owner: None`), so the owner
+        # check is for the person's own records only.
+        skills = skills_manager.load_visible(owner=user)
         match = next((s for s in skills if s.get("name") == skill_id or s.get("id") == skill_id), None)
         if not match:
             raise HTTPException(404, "Skill not found")
-        _verify_owner(match, user)
+        if not match.get("bundled"):
+            _verify_owner(match, user)
         # `B590`. A shipped skill's card reads its own source.
         md = skills_manager.read_skill_md(match.get("name"), owner=user, include_library=True)
         if md is None:

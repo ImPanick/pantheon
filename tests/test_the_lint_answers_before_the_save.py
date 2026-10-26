@@ -155,13 +155,31 @@ def test_the_lint_and_the_nightly_audit_share_one_duplicate_comparison(tmp_path)
         )
         assert skill_similarity(subject, siblings[0]) >= DUPLICATE_SIMILARITY
 
-    # …and the audit reaches the same conclusion through the same function.
-    # Raising `DUPLICATE_SIMILARITY` has to move both of these or they are not
-    # one comparison, whatever the imports say.
-    # Both are published with equal confidence and no uses, so the audit's
-    # tie-break is the last term in `_score`: the shorter name keeps.
-    assert _skill_duplicate_blocker(sm, "rotate-nginx-logs", None) == "clear-nginx-logs"
+    # …and the audit reads the same comparison — and, since `B790`, does NOT
+    # draft either of them for it. This pair shares a subject at 0.58; 0 of the
+    # 24 shipped pairs at or above 0.38 is the same procedure twice, so a score
+    # in this band is the lint's advisory and nothing more. It pinned
+    # `"clear-nginx-logs"` here until that row: the overnight demotion of a
+    # skill for being about the same thing as another.
+    assert _skill_duplicate_blocker(sm, "rotate-nginx-logs", None) is None
     assert _skill_duplicate_blocker(sm, "clear-nginx-logs", None) is None
+
+    # What the audit does act on is identity — the `-<n>` a save appends —
+    # through the same `base_name` the lint's `same-base-name` finding uses.
+    # Both are published with equal confidence and no uses, so the audit's
+    # tie-break is the last term of its score: the shorter name keeps.
+    sm.add_skill(name="rotate-nginx-logs", description=COMPLETE["description"],
+                 category="ops", tags=COMPLETE["tags"],
+                 when_to_use=COMPLETE["when_to_use"],
+                 procedure=COMPLETE["procedure"], source="user",
+                 status="published", owner=None)
+    library = sm.load(owner=None)
+    assert "rotate-nginx-logs-2" in {s["name"] for s in library}
+    clone = next(s for s in library if s["name"] == "rotate-nginx-logs-2")
+    assert "same-base-name" in _codes(lint_skill(
+        clone, [s for s in library if s["name"] != "rotate-nginx-logs-2"]))
+    assert _skill_duplicate_blocker(sm, "rotate-nginx-logs-2", None) == "rotate-nginx-logs"
+    assert _skill_duplicate_blocker(sm, "rotate-nginx-logs", None) is None
 
 
 def test_two_unrelated_skills_are_not_called_duplicates(tmp_path):

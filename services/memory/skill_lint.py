@@ -194,11 +194,51 @@ def describe_overlaps(rows: Optional[Sequence[Dict]]) -> str:
     return ", ".join(parts)
 
 
+# `B595`. The forms of one broad term that the list spells twice. Counting
+# "two broad terms" over a substring match let one word count as two —
+# *"Installation of the widget"* matched both `install` and `installation` —
+# and ran the 90-second retrieval judge on skills the prefilter exists to spare.
+_BROAD_SAME_TERM = {"installation": "install", "networking": "network",
+                    "documents": "document"}
+#: Multi-word entries, matched as consecutive whole tokens and counted once —
+#: "Arch Linux" names one system, not `arch` and `linux` separately.
+_BROAD_PHRASES = tuple(sorted((t for t in BROAD_TAGS if " " in t), key=len, reverse=True))
+
+
+def broad_terms_in(text: str) -> set:
+    """The distinct broad terms `text` contains, as whole tokens. `B595`.
+
+    The substring test this replaces found `arch` inside *search* (itself a
+    broad term, so the one word *search* counted twice) and *march*, and
+    `install` inside *installation*. `get_relevant_skills` learned the same
+    lesson for tags (`tag in query`
+    boosted an `ai` tag for any query containing *email*), and its answer was
+    whole tokens; this is that answer here.
+    """
+    tokens = [t for t in _TOKEN_SPLIT_RE.split(str(text or "").lower()) if t]
+    found: set = set()
+    i = 0
+    while i < len(tokens):
+        for phrase in _BROAD_PHRASES:
+            words = phrase.split()
+            if tokens[i:i + len(words)] == words:
+                found.add(phrase)
+                i += len(words)
+                break
+        else:
+            tok = tokens[i]
+            if tok in BROAD_TAGS:
+                found.add(_BROAD_SAME_TERM.get(tok, tok))
+            i += 1
+    return found
+
+
 def should_check_retrieval_precision(skill: Optional[Dict]) -> bool:
     """Cheap prefilter for the expensive retrieval-precision judge.
 
     Skills with broad tags like "network" or "document" are the ones most likely
-    to over-inject. Narrow command/vendor tags alone are fine.
+    to over-inject. Narrow command/vendor tags alone are fine. Free text trips
+    it at two **distinct** broad terms, counted as whole tokens (`B595`).
     """
     if not isinstance(skill, dict):
         return False
@@ -209,8 +249,8 @@ def should_check_retrieval_precision(skill: Optional[Dict]) -> bool:
         str(skill.get("name") or ""),
         str(skill.get("description") or ""),
         str(skill.get("when_to_use") or ""),
-    ]).lower()
-    return sum(1 for t in BROAD_TAGS if t in text) >= 2
+    ])
+    return len(broad_terms_in(text)) >= 2
 
 
 def audit_flag_text(*parts) -> str:
@@ -385,7 +425,8 @@ def lint_skill(skill: Optional[Dict], siblings: Optional[Sequence[Dict]] = None)
             "same-base-name", PROBLEM, "name",
             f"{describe_overlaps(same_base)} differs from this name only by a "
             "trailing number, which is the suffix a save appends when the name "
-            "is already taken — so this is almost certainly the same skill twice.",
+            "is already taken — so this is almost certainly the same skill twice, "
+            "and the nightly audit will keep one and draft the other.",
             f"Edit `{same_base[0]['name']}` instead, or give this one a name "
             "that says how it differs."))
 
@@ -401,8 +442,10 @@ def lint_skill(skill: Optional[Dict], siblings: Optional[Sequence[Dict]] = None)
             f"{int(round(strongest['score'] * 100))}% of the tokens in the name, "
             "description, when-to-use, procedure and tags are shared with "
             f"`{strongest['name']}` — which may mean the same procedure twice, or "
-            "may just be the same subject. The nightly audit flags a pair this "
-            "close and keeps the higher-priority one published.",
+            # `B790`: the audit drafts only the same skill saved twice now.
+            "may just be the same subject. The nightly audit leaves a pair like "
+            "this as it is; it drafts one only when the two are the same skill "
+            "saved twice.",
             f"If the two answer the same request, edit `{strongest['name']}` "
             "instead. If they do not, say in When to Use what picks this one."))
 

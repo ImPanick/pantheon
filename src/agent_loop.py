@@ -15,7 +15,7 @@ import re
 import time
 import logging
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Iterable, List, Dict, Optional, Set
+from typing import Any, AsyncGenerator, Iterable, List, Dict, NamedTuple, Optional, Set
 from urllib.parse import urlparse
 
 from src.llm_core import (
@@ -1023,6 +1023,10 @@ _DOMAIN_TOOL_MAP = {
     "settings": {"manage_settings", "manage_endpoints", "manage_mcp", "manage_webhooks", "manage_tokens", "app_api"},
     "contacts": {"resolve_contact", "manage_contact"},
     "integrations": {"api_call"},
+    # `B1373`. The person's saved procedures. Seeded by the `skills` intent in
+    # `_classify_agent_request`, so a turn that names a skill gets the tool that
+    # opens one by the words it used, not only when the catalogue ships.
+    "skills": {"manage_skills"},
 }
 
 _WORKSPACE_TERMINUS_TOOLS = (
@@ -1500,6 +1504,11 @@ def _domain_rules_for_tools(tool_names: set) -> list[str]:
     rules = []
     for domain, domain_tools in _DOMAIN_TOOL_MAP.items():
         if not (names & domain_tools):
+            continue
+        # `B1373`. `skills` is a selection domain with no rule pack of its own:
+        # `manage_skills`' section and the catalogue's preamble already say how
+        # to use it, and a third copy would be one more to drift (`Law 7`).
+        if domain not in _DOMAIN_RULES:
             continue
         block = prune_rules_to_available_tools(_DOMAIN_RULES[domain], names)
         extra = [
@@ -3359,6 +3368,13 @@ def _classify_agent_request(messages: List[Dict], last_user: str,
     if has(r"\bapi[ _]call\b", r"\bintegrations?\b",
            r"\b(?:home ?assistant|miniflux|gitea|linkding|jellyfin)\b"):
         domains.add("integrations")
+    # `B1373`. A turn that names a skill, or asks for the procedure or runbook
+    # for something, seeds `manage_skills` the way a turn naming the inbox seeds
+    # the email tools — by its own words, whether or not a catalogue ships.
+    # The same phrases as `tool_index`'s `skills` hint group.
+    if has(r"\b(?:skills?|runbooks?|procedure for|how do we usually)\b",
+           r"\bsave (?:this|that|it) as a skill\b"):
+        domains.add("skills")
 
     # `B1414`. The second pass: the person's words said nothing about any
     # domain, so the plan they told us to execute is what this turn is about.
@@ -5105,6 +5121,70 @@ def _skill_active_toolsets(disabled_tools) -> list:
     from src.tool_policy import selectable_tool_names
 
     return list(turn_tool_access(disabled_tools).allowed_among(selectable_tool_names()))
+
+
+class _StandingWithholds(NamedTuple):
+    """What every turn of one person withholds, by the reason it is recorded under."""
+
+    privilege: Set[str]
+    feature: Set[str]
+    switched_off: Set[str]
+    setting: Set[str]
+
+    def names(self) -> Set[str]:
+        return set(self.privilege) | set(self.feature) | set(self.switched_off) | set(self.setting)
+
+
+def _standing_withholds(owner, *, delegated_credential: bool = False) -> _StandingWithholds:
+    """The tools withheld from **every** turn this person takes. `B580`.
+
+    `stream_agent_loop` applies these four before anything about the turn
+    itself (the route's per-turn withholds, plan mode, the clamps) is known, so
+    they are a fact about the person rather than the request — which is the
+    question `GET /api/skills/index` has to answer to show the catalogue the
+    model gets. One function, read by both, so the two cannot drift (`Law 7`).
+    """
+    privilege = blocked_tools_for_owner(owner)
+    if privilege:
+        # `P20-03`. The shell and file tools a person may use because they run
+        # in their workstation are offered, as the dispatcher runs them; the
+        # token cap below still adds them back for a delegated credential.
+        from src.agent_tools.workstation_tools import lifted_tools as _workstation_lifted
+        privilege = set(privilege) - _workstation_lifted(owner)
+    if delegated_credential:
+        # B70. `owner` here is the admin who minted the token, so the call
+        # above returns the empty set — a token would otherwise inherit the
+        # full admin tool surface from a person who is not driving it. The cap
+        # is the non-admin policy regardless of who minted it.
+        privilege = set(privilege) | delegated_credential_blocked_tools()
+    from src.tool_privileges import withheld_for_owner as _tools_switched_off
+    return _StandingWithholds(
+        privilege=set(privilege or ()),
+        feature=set(feature_disabled_tools() or ()),
+        switched_off=set(_tools_switched_off(owner) or ()),
+        setting=set(setting_disabled_tools(get_setting) or ()),
+    )
+
+
+def skill_toolsets_for_owner(owner) -> list:
+    """`active_toolsets` for a person's skills outside any one turn. `B580`.
+
+    `_skill_active_toolsets` of what every turn of theirs withholds
+    (`_standing_withholds`) and of the install's own switched-off list, which
+    `routes/chat_routes.py` adds to every chat turn. So a skill whose
+    `requires_toolsets` names a tool this person never has is out of
+    `GET /api/skills/index` exactly as it is out of every prompt. What a single
+    turn adds on top (explicit web, incognito, plan mode) is that turn's, and
+    the receipt (`P4-16`) is where it is read back.
+    """
+    withheld = _standing_withholds(owner).names()
+    try:
+        install_off = get_setting("disabled_tools", [])
+        if isinstance(install_off, list):
+            withheld |= {str(n) for n in install_off if n}
+    except Exception:
+        logger.debug("install disabled_tools unreadable for the skills preview", exc_info=True)
+    return _skill_active_toolsets(withheld)
 
 
 def _skill_body_tool_in_prompt(relevant_tools, disabled_tools, needs_admin: bool) -> bool:
@@ -7008,19 +7088,14 @@ async def stream_agent_loop(
         if tool_policy.disable_mcp:
             mcp_mgr = None
     guide_only = bool(tool_policy and tool_policy.mode == "guide_only")
-    public_blocked_tools = blocked_tools_for_owner(owner)
-    if public_blocked_tools:
-        # `P20-03`. The shell and file tools a person may use because they run
-        # in their workstation are offered, as the dispatcher runs them; the
-        # token cap below still adds them back for a delegated credential.
-        from src.agent_tools.workstation_tools import lifted_tools as _workstation_lifted
-        public_blocked_tools = set(public_blocked_tools) - _workstation_lifted(owner)
-    if delegated_credential:
-        # B70. `owner` here is the admin who minted the token, so the call
-        # above returns the empty set — a token would otherwise inherit the
-        # full admin tool surface from a person who is not driving it. The cap
-        # is the non-admin policy regardless of who minted it.
-        public_blocked_tools = set(public_blocked_tools) | delegated_credential_blocked_tools()
+    # `B580`. The four withholds every turn of this person carries whatever the
+    # turn says — privilege, feature flags, their switched-off Tools entries,
+    # the install's settings — are read through `_standing_withholds`, so
+    # `GET /api/skills/index` asks the question this loop asks and the preview
+    # cannot list a skill the injection hides. Applied here exactly as before:
+    # same order, same reasons.
+    _standing = _standing_withholds(owner, delegated_credential=bool(delegated_credential))
+    public_blocked_tools = _standing.privilege
     if public_blocked_tools:
         # `B1348` (fx11-cap). Recorded as a **privilege**, which is the one
         # reason no later clamp may lift: `lift()` refuses it, so the
@@ -7038,22 +7113,19 @@ async def stream_agent_loop(
     # callable. Contributed into the same denylist `plan_mode` uses rather than
     # as a second gate, so it inherits `execute_tool_block`'s enforcement, the
     # prompt cache key below, and one set of tests (`Law 14`).
-    disabled_tools.withhold(feature_disabled_tools(), because=WITHHELD_BY_FEATURE)
+    disabled_tools.withhold(_standing.feature, because=WITHHELD_BY_FEATURE)
     # `B1191` (`D-2026-10-26-01` §5). A Tools entry an admin switched off for
     # this person takes its tools with it — in every run, a chat's or a
     # scheduled one's — recorded as a privilege, which no later clamp lifts.
-    from src.tool_privileges import withheld_for_owner as _tools_switched_off
-    _switched_off = _tools_switched_off(owner)
-    if _switched_off:
-        disabled_tools.withhold(_switched_off, because=WITHHELD_BY_PRIVILEGE)
+    if _standing.switched_off:
+        disabled_tools.withhold(_standing.switched_off, because=WITHHELD_BY_PRIVILEGE)
     # `B1349` (fx11-cap). The settings half of the same question, in the
     # turn's own set rather than in a local copy of it inside
     # `_build_base_prompt` — which is where `generate_image` used to enter, so
     # the prompt withheld it and the native schema list, which filters by this
     # set, sent it anyway. One definition (`tool_security.setting_disabled_tools`),
     # read here and there.
-    disabled_tools.withhold(setting_disabled_tools(get_setting),
-                            because=WITHHELD_BY_FEATURE)
+    disabled_tools.withhold(_standing.setting, because=WITHHELD_BY_FEATURE)
 
     # `P20-04`. The workstation's screen is offered only to a turn whose person
     # the workstation would answer: switched on, with an address, and this

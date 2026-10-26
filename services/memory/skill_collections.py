@@ -45,6 +45,10 @@ MAX_GROUPS = 200
 MAX_GROUP_SKILLS = 2000
 MAX_TITLE = 60
 
+#: `B1421`. How `switched_off` names what holds a shipped skill off when the
+#: person has their own copy of it; the card's pill reads it.
+REPLACED_BY_COPY = "replaced by your copy"
+
 _LOCK = threading.RLock()
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
@@ -90,10 +94,12 @@ class SkillCollections:
             data = {}
         packages = data.get("packages")
         groups = data.get("groups")
+        replaced = data.get("replaced")
         return {
             "version": 1,
             "packages": [p for p in packages if isinstance(p, dict)] if isinstance(packages, list) else [],
             "groups": [g for g in groups if isinstance(g, dict)] if isinstance(groups, list) else [],
+            "replaced": [r for r in replaced if isinstance(r, dict)] if isinstance(replaced, list) else [],
         }
 
     def _save(self, data: Dict) -> None:
@@ -235,7 +241,33 @@ class SkillCollections:
             if _mine(g, owner) and g.get("enabled") is False:
                 for n in g.get("skills") or []:
                     off.setdefault(n, []).append(str(g.get("title") or g.get("id")))
+        for r in data["replaced"]:
+            if _mine(r, owner) and r.get("shipped") and r.get("copy"):
+                off.setdefault(str(r["shipped"]), []).append(
+                    f"{REPLACED_BY_COPY} {r['copy']}")
         return off
+
+    # -- a shipped skill and the person's own copy of it — `B1421` -------------
+
+    def replace_with_copy(self, owner: Optional[str], shipped: str, copy: str) -> None:
+        """`copy` is this person's fork of the shipped skill `shipped`; from now
+        on the model is shown theirs and not the install's.
+
+        A shipped skill is read-only and belongs to everyone on the install, so
+        changing it means forking it, and a fork has a new name — the store's
+        folders are shared between people, so two people could not each keep a
+        copy under the shipped name. Without this the person's edited copy and
+        the procedure they meant to change would both reach every turn. Off
+        wins as everywhere in this file; deleting the copy (`forget_skill`)
+        brings the shipped one back.
+        """
+        if not (shipped and copy) or shipped == copy:
+            return
+        with self._edit() as data:
+            data["replaced"] = [r for r in data["replaced"]
+                                if not (_mine(r, owner) and r.get("shipped") == shipped)]
+            data["replaced"].append({"owner": owner, "shipped": shipped, "copy": copy,
+                                     "at": time.time()})
 
     def disabled_names(self, owner: Optional[str]) -> set:
         return set(self.switched_off(owner))
@@ -258,6 +290,9 @@ class SkillCollections:
             for g in data["groups"]:
                 if _mine(g, owner):
                     g["skills"] = [new if n == old else n for n in g.get("skills") or []]
+            for r in data["replaced"]:
+                if _mine(r, owner) and r.get("copy") == old:
+                    r["copy"] = new
 
     def forget_skill(self, owner: Optional[str], name: str) -> None:
         """A deleted skill leaves its package and its groups — nothing dangles."""
@@ -274,3 +309,6 @@ class SkillCollections:
             for g in data["groups"]:
                 if _mine(g, owner):
                     g["skills"] = [n for n in g.get("skills") or [] if n != name]
+            # `B1421`: a deleted copy gives the shipped skill back.
+            data["replaced"] = [r for r in data["replaced"]
+                                if not (_mine(r, owner) and r.get("copy") == name)]

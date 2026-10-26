@@ -63,6 +63,19 @@ INDEX_PREAMBLE_NO_FETCH = (
     + _INDEX_DRAFT_NOTE
 )
 
+#: `B1376`. Which of the two preambles a rendering with no turn behind it —
+#: `GET /api/skills/index` — took, said in the words a person reads. The
+#: preview and the injection otherwise differ by exactly that one sentence.
+INDEX_ASSUMES_FETCH = (
+    "Shown as a turn that can open a skill gets it. A turn without the skills "
+    "tool — an explicit web search, or incognito — gets the same list with its "
+    "first sentence saying the full text cannot be fetched."
+)
+INDEX_ASSUMES_NO_FETCH = (
+    "Shown as a turn without the skills tool gets it — an explicit web search, "
+    "or incognito — so its first sentence says the full text cannot be fetched."
+)
+
 #: The matched-skill half of the block. `B1362`. This text was eleven inline
 #: `lines.append(...)` calls in `agent_loop._build_system_prompt`, which is why
 #: it had no budget: a block assembled where nothing measures it is a block
@@ -231,8 +244,8 @@ def render_skill_index_block(index: Optional[Sequence[Dict]],
     **`B1360`.** `can_fetch` is whether `manage_skills` is callable on the turn
     this block is being built for. False swaps the preamble for one that does
     not instruct a call the product will refuse — see
-    `INDEX_PREAMBLE_NO_FETCH`. The preview endpoint leaves it True, because it
-    is answering *"what can the model see"* and not building a turn.
+    `INDEX_PREAMBLE_NO_FETCH`. The preview endpoint has no turn, so it takes it
+    as a query parameter (default True) and says which it assumed (`B1376`).
     """
     entries = [s for s in (index or []) if isinstance(s, dict) and s.get("name")]
     if not entries:
@@ -481,3 +494,67 @@ def render_matched_skills_block(skills: Optional[Sequence[Dict]],
                        # one arrived, in part*, which is now the common case.
                        "skill_bodies_shortened": list(shortened)})
     return block
+
+
+# ── A skill the person invoked by name — `B1374` ─────────────────────────────
+#
+# `/skill-name` used to be answered by `POST /api/skills/{name}/invoke` with one
+# string — *"Apply the skill below to my request… --- BEGIN SKILL ---\n{md}\n---
+# END SKILL ---\n\nRequest: …"* — that the composer sent **as the person's own
+# message**. So the skill's text arrived in the one shape `UNTRUSTED_CONTEXT_
+# POLICY` tells the model is *"the request you are answering"*, and the markers
+# `_escape_guard_markers` neutralises on every other surface were not applied: a
+# SKILL.md holding `<<<END_USER_SAVED_MATERIAL>>>` or `--- END SKILL ---` could
+# close its own fence and carry on speaking as the person. Every other skills
+# surface was already framed — the catalogue and the matched bodies in
+# `own_context_message` (`B1328`), the skill under test and a workflow's Skill
+# step in `untrusted_context_message` (`P8-18`). This is the last door, and it
+# goes through the same envelope and the same escaper as the matched block.
+
+#: Pantheon's own note for the turn, beside the framed skill: which skill the
+#: person ran, for which message. The name is a stored slug, never free text.
+INVOKED_SKILL_NOTE = (
+    "The user ran /{name} for the message that follows: apply the skill `{name}` "
+    "— its procedure, pitfalls and verification are in their saved material just "
+    "above — to that request."
+)
+
+#: What the composer sends as the person's message when they typed only the
+#: command. Their words, not the skill's.
+INVOKED_SKILL_EMPTY_REQUEST = "Use the {name} skill."
+
+
+def invokable_skill(skills_manager, owner, name: str) -> Optional[Dict]:
+    """The index entry `name` may be invoked as, or None. One rule for
+    `POST /api/skills/{name}/invoke` and for the turn that carries it: what
+    the person's catalogue lists (`index_for`) is what a slash may name."""
+    want = str(name or "").strip()
+    if not want:
+        return None
+    for entry in skills_manager.index_for(owner=owner):
+        if (entry.get("name") or "").strip() == want:
+            return entry
+    return None
+
+
+def invoked_skill_messages(skills_manager, owner, name: str) -> List[Dict]:
+    """The framed skill and the turn's note, for the person's `/name` turn.
+
+    `[]` when the skill is not one this person may invoke or its source cannot
+    be read — the turn then carries the person's request alone, which is what
+    they typed.
+    """
+    from src.prompt_security import own_context_message, turn_note_message
+
+    entry = invokable_skill(skills_manager, owner, name)
+    if entry is None:
+        return []
+    skill_name = entry.get("name")
+    # `B1419`. The index offers shipped skills; their source is the library's.
+    md = skills_manager.read_skill_md(skill_name, owner=owner, include_library=True)
+    if not md:
+        return []
+    return [
+        own_context_message(f"the skill {skill_name}, which the user invoked by name", md),
+        turn_note_message(INVOKED_SKILL_NOTE.format(name=skill_name)),
+    ]

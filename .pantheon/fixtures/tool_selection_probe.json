@@ -166,7 +166,7 @@
       "reject": [
         "manage_tasks"
       ],
-      "why": "manage_tasks is offered 17 of 39 runs and called 0 (GAP-ANALYSIS.md #3). _SCHEDULE_RE's `\\bevery\\s+\\w+` fires on 'every file' — a quantifier, not a schedule. Filed as B502; this probe is expected to FAIL until it is fixed, which is what a probe is for."
+      "why": "manage_tasks is offered 17 of 39 runs and called 0 (GAP-ANALYSIS.md #3). _SCHEDULE_RE's `\\bevery\\s+\\w+` fires on 'every file' — a quantifier, not a schedule. Filed as B502, and it failed on purpose until B502 made 'every <word>' a schedule only when the word is a cadence (a unit of time or a day, one typo allowed)."
     },
     {
       "query": "run the tests every time i push a commit",
@@ -247,7 +247,7 @@
       "reject": [
         "app_api"
       ],
-      "why": "Sessions. The hint set's own comment says app_api is the wrong answer here because /api/sessions is owner-filtered and returns empty for tool calls."
+      "why": "Sessions. The hint set's own comment says app_api is the wrong answer here because /api/sessions is owner-filtered and returns empty for tool calls. The one recall miss of P17-14's corpus until B503: 'rename the last twelve chats' matched none of the contiguous phrases, and is now a verb-then-noun pattern."
     },
     {
       "query": "turn off shell and switch to chat mode",

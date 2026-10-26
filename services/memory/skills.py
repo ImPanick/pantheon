@@ -389,15 +389,22 @@ class SkillsManager:
 
     def set_audit(self, name: str, verdict: str, by_teacher: bool = False,
                   worker_model: str = "", teacher_model: str = "",
-                  owner: Optional[str] = None) -> None:
+                  owner: Optional[str] = None, needs_approval: bool = False) -> None:
         """Record the last test/audit result for a skill in the usage sidecar
         (so it surfaces in load() without touching SKILL.md). Drives the
-        'verified' check + teacher mark on the card."""
+        'verified' check + teacher mark on the card.
+
+        `needs_approval` (`B886`): the audit stopped at an action that needs a
+        person's yes and ran nothing. A field of its own beside the verdict,
+        which stays `inconclusive` for every reader that already knows that
+        word; every later audit result rewrites it, so it describes the last
+        audit and no earlier one."""
         import time as _t
         usage = self._load_usage()
         key = self._usage_key(name, owner)
         e = usage.setdefault(key, {"uses": 0, "last_used": None})
         e["audit_verdict"] = verdict
+        e["audit_needs_approval"] = bool(needs_approval)
         e["audit_by_teacher"] = bool(by_teacher)
         if worker_model:
             e["audit_worker_model"] = worker_model
@@ -436,9 +443,14 @@ class SkillsManager:
         """
         if not os.path.isdir(self.skills_root):
             return
-        for root, _dirs, files in os.walk(self.skills_root, followlinks=False):
+        for root, dirs, files in os.walk(self.skills_root, followlinks=False):
             if "SKILL.md" in files:
                 yield os.path.join(root, "SKILL.md")
+                # `B591`. A directory holding a SKILL.md is a skill, and what is
+                # under it is that skill's files — `references/SKILL.md` shipped
+                # as an example is a reference, not a second skill with a card,
+                # an index line and a slot in `add_skill`'s dedup namespace.
+                dirs[:] = []
 
     def _iter_library_files(self) -> Iterable[str]:
         """The bundled library. Read-only, and never yielded to a write path."""
@@ -451,9 +463,10 @@ class SkillsManager:
         for lib, root_dir in self.library_roots:
             if not os.path.isdir(root_dir):
                 continue
-            for root, _dirs, files in os.walk(root_dir, followlinks=False):
+            for root, dirs, files in os.walk(root_dir, followlinks=False):
                 if "SKILL.md" in files:
                     yield lib, os.path.join(root, "SKILL.md")
+                    dirs[:] = []   # `B591`, as in `_iter_skill_files`
 
     def library_manifest(self) -> Dict:
         """What the bundled library is, and where it came from. {} if absent."""
@@ -771,6 +784,7 @@ class SkillsManager:
             d["opens"] = int(u.get("opens", 0))
             d["last_opened"] = u.get("last_opened")
             d["audit_verdict"] = u.get("audit_verdict")
+            d["audit_needs_approval"] = bool(u.get("audit_needs_approval"))   # `B886`
             d["audit_by_teacher"] = bool(u.get("audit_by_teacher"))
             d["audit_worker_model"] = u.get("audit_worker_model")
             d["audit_teacher_model"] = u.get("audit_teacher_model")
@@ -824,11 +838,14 @@ class SkillsManager:
                 pass
         return out
 
-    def _library_entries(self, usage: Dict[str, Dict], shadowed: set) -> List[Dict]:
+    def _library_entries(self, usage: Dict[str, Dict], shadowed: set,
+                         *, include_vendored: bool = True) -> List[Dict]:
         """The read-only layers as skill dicts, skipping any name in `shadowed`
         (and adding each name it yields to it, so the first layer wins)."""
         out: List[Dict] = []
         for lib, path in self._iter_library_layers():
+            if not include_vendored and lib == VENDORED_LIBRARY:
+                continue
             d = self._read_skill_dict(path)
             if not d or d.get("name") in shadowed:
                 continue
@@ -868,6 +885,40 @@ class SkillsManager:
 
         return SkillCollections(self.skills_root)
 
+    def load_visible(self, owner: Optional[str] = None, *,
+                     include_vendored: bool = True) -> List[Dict]:
+        """The person's own skills and the install's shipped ones. `B1421`.
+
+        `B1419`. The install's read-only skills belong to every person on it.
+        `load(owner)` is the person's *own* store — what they may edit — and so
+        held none of them, which meant a signed-in person's model never saw a
+        single shipped skill while the same install with sign-in off saw all of
+        them. A person's own skill of the same name still shadows the shipped
+        one.
+
+        `B1421`. The same was true of the Workshop: it listed `load(owner)`, so
+        with sign-in on a person had no card for a shipped skill and no way to
+        fork one — the one way to change a shipped procedure. This is what
+        fork may copy from and what the card's source route reads;
+        `load_active` is this list less what is switched off. The shipped
+        entries carry `bundled: True` and `editable: False`, so every write path
+        still refuses them.
+
+        `include_vendored=False` is the Workshop's list for a signed-in person:
+        Pantheon's own shipped skills, not the 286 vendored ones, which the
+        model is not shown (`D-2026-10-26-01` §8) and which a signed-in list
+        never carried. Measured: drawing them as cards put the Brain's first
+        answer at 4.4–5.3 s against a 3 s bound
+        (`tests/test_the_brain_says_it_is_loading.py`). With sign-in off,
+        `load(None)` is the whole store and this changes nothing.
+        """
+        entries = self.load(owner=owner)
+        if owner is not None:
+            own = {s.get("name") for s in entries}
+            entries = entries + self._library_entries(self._load_usage(), own,
+                                                      include_vendored=include_vendored)
+        return entries
+
     def load_active(self, owner: Optional[str] = None) -> List[Dict]:
         """`load()` without the skills a switched-off package or group holds.
 
@@ -876,16 +927,7 @@ class SkillsManager:
         `load()`, which is what the Skills window reads, so a switched-off
         skill stays in view and editable while it is left out of every prompt.
         """
-        entries = self.load(owner=owner)
-        if owner is not None:
-            # `B1419`. The install's read-only skills belong to every person
-            # on it. `load(owner)` is the person's *own* store — what they may
-            # edit — and so held none of them, which meant a signed-in person's
-            # model never saw a single shipped skill while the same install
-            # with sign-in off saw all of them. A person's own skill of the same
-            # name still shadows the shipped one.
-            own = {s.get("name") for s in entries}
-            entries = entries + self._library_entries(self._load_usage(), own)
+        entries = self.load_visible(owner=owner)
         try:
             off = self.collections.disabled_names(owner)
         except Exception:
@@ -1103,9 +1145,11 @@ class SkillsManager:
         in its body which skill it came from. A bundled skill can be forked
         too; that is the other way, beside shadowing it under its own name.
         """
-        path = self._find_skill_path(name, owner) or self._library_path(name)
+        own_path = self._find_skill_path(name, owner)
+        path = own_path or self._library_path(name)
         if path is None:
             return None
+        shipped = own_path is None
         src = self._read_skill(path)
         if src is None:
             return None
@@ -1137,6 +1181,15 @@ class SkillsManager:
         sk.path = dest
         out = sk.to_dict()
         out["forked_from"] = name
+        if shipped:
+            # `B1421`. A copy of a shipped skill is how a person changes it, so
+            # from here on their copy is the one their model is shown.
+            try:
+                self.collections.replace_with_copy(owner, name, local)
+                out["replaces"] = name
+            except Exception:
+                logger.warning("the copy of %s was made but does not replace it", name,
+                               exc_info=True)
         return out
 
     # ----------------------------------------------------------------------

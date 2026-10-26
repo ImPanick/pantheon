@@ -938,11 +938,16 @@ async def build_chat_context(
     defer_context_shaping: bool = False,
     continuation_context_message: str | None = None,
     persist_user_message: bool = True,
+    invoked_skill: str | None = None,
 ) -> ChatContext:
     """Build the full context (preface + messages) for an LLM call.
 
     This is the shared logic between /chat and /chat_stream — preset extraction,
     message preprocessing, memory/RAG/web injection, compaction, normalization.
+
+    `invoked_skill` (`B1374`): the skill the person ran with `/name` for this
+    message. Its text is read from the store and framed as their own saved
+    material right before their message, which stays exactly what they typed.
     """
     # Preset
     preset = extract_preset(chat_handler, preset_id)
@@ -1094,6 +1099,29 @@ async def build_chat_context(
                 messages.append(_dt_msg)
         except Exception:
             logger.debug("Failed to add current date/time context", exc_info=True)
+
+    # `B1374`. A `/skill-name` turn. The skill went into the person's own
+    # message, unframed; now it is a framed block (`own_context_message`, the
+    # matched-skill block's envelope and escaper) and a one-line note from the
+    # application, placed right before the person's message so a long history
+    # cannot put the two far apart. Read from the store under the invoke
+    # route's own rule (`invokable_skill`), never from what the browser sent.
+    if invoked_skill:
+        try:
+            from services.memory.skill_injection import invoked_skill_messages
+            from services.memory.skills import SkillsManager
+            from src.constants import DATA_DIR
+            _invoked = invoked_skill_messages(SkillsManager(DATA_DIR), user, str(invoked_skill))
+        except Exception:
+            logger.warning("the skill invoked as /%s could not be read", invoked_skill,
+                           exc_info=True)
+            _invoked = []
+        if _invoked:
+            _at = len(messages) - 1 if messages and messages[-1].get("role") == "user" else len(messages)
+            messages[_at:_at] = _invoked
+        else:
+            logger.info("/%s named no skill this person can use; the turn carries their words only",
+                        invoked_skill)
 
     route_messages = list(messages)
     # Explicit fallback routing must shape from the same route-neutral prompt

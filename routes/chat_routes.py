@@ -1697,6 +1697,9 @@ def setup_chat_routes(
         approved_plan = ""
         if not plan_mode:
             approved_plan = (form_data.get("approved_plan") or "").strip()[:8192]
+        # `B1374`. The skill a `/skill-name` invocation pinned to this message —
+        # its name only; `build_chat_context` reads and frames its text.
+        invoked_skill = str(form_data.get("skill") or "").strip()[:128] or None
         # Did the USER explicitly pick agent mode? (vs. us auto-escalating
         # below). Skill extraction should only learn from real agent sessions,
         # not chats we quietly promoted for a notes/calendar intent.
@@ -2077,6 +2080,7 @@ def setup_chat_routes(
                 else None
             ),
             persist_user_message=not tool_approval_continuation,
+            invoked_skill=invoked_skill,   # `B1374`
         )
 
         _research_flags = {"do": do_research}  # Mutable container for generator scope

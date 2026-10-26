@@ -371,9 +371,16 @@ def test_the_pill_explains_the_state_rather_than_naming_it():
     bar (`P23-02` shortened it, D-23; the rule is the same)."""
     titles = SKILLS_JS[SKILLS_JS.index("const _STATUS_PILL_TITLE"):]
     titles = titles[:titles.index("};")]
-    assert "not listed" in titles
-    assert "when a message matches" in titles
-    assert "confidence" in titles
+    # `B581` moved this. Since `B1361` a draft a person writes reaches no turn
+    # at any confidence — only the teacher's drafts are matched past the bar —
+    # so "used when a message matches it" is now said of the teacher's draft
+    # only, and a person's draft says what it is and what to do about it.
+    draft = titles[titles.index("draft:"):titles.index("teacherDraft:")]
+    teacher = titles[titles.index("teacherDraft:"):]
+    assert "not shown" in draft and "Publish" in draft
+    assert "when a message matches" not in draft
+    assert "when a message matches" in teacher
+    assert "confidence" in teacher
 
 
 # ── helper, moved to tests/helpers/js_source.py by `B876` ─────────────

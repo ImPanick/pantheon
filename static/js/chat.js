@@ -3079,6 +3079,23 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       const fd = new FormData();
       fd.append('message', approvalForSend ? '' : _finalMsgWithInject);
       fd.append('session', streamSessionId);
+      // `B1374`. A `/skill-name` invocation hands its skill over on the form
+      // (`slashCommands._invokeSkillByName`), pinned to the exact words it put
+      // in the box. Sent by name only; the server reads and frames the skill.
+      // Read once and cleared either way, so it can ride one message at most.
+      {
+        const _chatForm = el('chat-form');
+        const _pin = _chatForm && _chatForm.dataset ? _chatForm.dataset.invokedSkill : '';
+        if (_pin) {
+          delete _chatForm.dataset.invokedSkill;
+          try {
+            const p = JSON.parse(_pin);
+            if (!approvalForSend && p && p.name && String(p.text || '').trim() === msg.trim()) {
+              fd.append('skill', String(p.name));
+            }
+          } catch {}
+        }
+      }
       if (approvalForSend) {
         fd.append('tool_approval_id', approvalForSend.approval_id);
         fd.append('tool_approval_decision', approvalForSend.decision);
