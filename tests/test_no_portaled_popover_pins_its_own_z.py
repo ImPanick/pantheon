@@ -346,7 +346,8 @@ def test_p3_24_converted_the_population_b65_found():
         "static/js/notes.js": ("tour-hint", 3),
         "static/js/sessions.js": ("session-dropdown-menu, session-folder-submenu", 3),
         "static/js/slashAutocomplete.js": ("slash-autocomplete-popup", 1),
-        "static/js/slashCommands.js": ("tour-halo", 12),
+        # `B1537`: twelve tour-halo copies are one, in the one step runner.
+        "static/js/slashCommands.js": ("tour-halo", 1),
         "static/js/tourHints.js": ("tour-hint", 1),
         "static/js/compare/selector.js": ("compare-probe-overlay", 1),
         "static/js/editor/slider-ux.js": ("ge-slider-bubble", 1),

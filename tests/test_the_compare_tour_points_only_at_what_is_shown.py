@@ -29,7 +29,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers.js_source import js_definition
+from tests.helpers.js_source import js_binding, js_definition
 from tests.helpers.source_text import blank_text
 from test_the_command_palette_in_a_browser import NODE, _SKIP  # noqa: E402
 
@@ -52,6 +52,10 @@ def _harness() -> str:
         "const typewriterReply = async (m) => { window.replies.push(String(m)); };\n"
         + _cut("function _tourTargets(") + "\n"
         + _cut("function _tourTarget(") + "\n"
+        # `B1537`: every tour draws and walks through the one runner now.
+        + js_binding(SLASH, "_TOUR_CSS") + "\n"
+        + _cut("function _clearTourCommand(") + "\n"
+        + _cut("function _tourSession(") + "\n"
         + _cut("async function _cmdTourCompare(") + "\n"
         "window.startTour = () => { window.tour = _cmdTourCompare([], {}); };\n"
     )

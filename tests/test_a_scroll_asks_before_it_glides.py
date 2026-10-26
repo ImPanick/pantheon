@@ -119,11 +119,13 @@ def test_the_sweep_actually_landed_somewhere():
     """Non-vacuity: deleting every call site would also pass the rule above."""
     sites = {rel: len(CALL.findall(text)) for rel, text in _ours()}
     total = sum(sites.values())
-    assert total >= 45, f"only {total} `scrollBehavior()` call sites"
+    # `B1537`: the tours' ten step runners are one, so ten of their call
+    # sites are one too (45 -> 41; slashCommands.js 12 -> 2).
+    assert total >= 41, f"only {total} `scrollBehavior()` call sites"
     assert sum(1 for n in sites.values() if n) >= 15
     # The row's own three heaviest files, so a file-by-file regression shows up
     # as that file rather than as a total that still looks large enough.
-    for name, expected in (("slashCommands.js", 12), ("document.js", 8),
+    for name, expected in (("slashCommands.js", 2), ("document.js", 8),
                            ("emailLibrary.js", 7)):
         got = sites.get(f"static/js/{name}", 0)
         assert got == expected, f"{name} has {got} call sites, the row measured {expected}"

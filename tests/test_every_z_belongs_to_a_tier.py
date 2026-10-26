@@ -111,7 +111,8 @@ def test_the_scan_finds_the_population_it_claims(sites, literals):
     """Non-vacuity. A scan that finds nothing passes every test below it."""
     derived = [s for s in sites if s["kind"] == "derived"]
     assert len(literals) >= 340, f"only {len(literals)} literals found"
-    assert len(derived) >= 60, f"only {len(derived)} derived sites found"
+    # `B1537` made the tours' eleven halo copies one (`_tourSession`): 60 -> 55.
+    assert len(derived) >= 55, f"only {len(derived)} derived sites found"
     assert len({s["file"] for s in literals}) >= 20
 
 

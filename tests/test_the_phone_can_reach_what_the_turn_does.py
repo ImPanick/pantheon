@@ -815,10 +815,13 @@ def test_the_tour_points_at_whichever_control_the_bar_is_showing():
     # (`_tourTargets`); showStep asks it, and it asks `checkVisibility`. The
     # Compare tour's runner is driven in
     # `tests/test_the_compare_tour_points_only_at_what_is_shown.py`.
-    assert "_tourTargets(sel)" in body, (
+    # `B1537`: `showStep` is the one runner every tour uses (`_tourSession`),
+    # and a step with nothing to point at resolves `'absent'`, which its walk
+    # passes — `'skip'` is the person ending the tour.
+    assert "_tourTargets(step.sel)" in body and "_tourTarget(step.sel)" in body, (
         "showStep still highlights a control the page is not showing")
     assert "checkVisibility" in js_function(source, "function _tourTargets")
-    assert "resolve('skip')" in body, "a step with nothing to point at must be skipped"
+    assert "resolve('absent')" in body, "a step with nothing to point at must be passed"
 
     tour = js_function(source, "export async function runFirstRunTour") if (
         "export async function runFirstRunTour" in source) else source
