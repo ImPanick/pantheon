@@ -4993,7 +4993,13 @@ class TaskScheduler:
             await self._deliver_via_email(output, task, result)
             return
 
-        if output != "session":
+        # `B1078`. *Notification* is "Push a browser notification with the
+        # result (also saved to a chat)" in the Output picker
+        # (`task_routes._output_targets`) and "a notification, and a chat" in a
+        # dry run's plan (`_RESULT_PLACES`); this returned for it, so the
+        # result lived only in a toast. The notification is the run's (its
+        # body, in `_execute_task_locked`); the chat is this.
+        if output not in ("session", "notification"):
             return
 
         endpoint_url = task.endpoint_url
@@ -6898,14 +6904,15 @@ class TaskScheduler:
 
     async def _deliver_node_result(self, task, stand_in, text: str, db, model=None) -> None:
         """One step's delivery: `_deliver_task_result`, as a task's — and for
-        `notification`, which that function leaves to the run's notification,
-        the step's own notification with its result, under the trigger's own
-        notification switch (a task with notifications off sends none)."""
+        `notification`, which leaves the notification itself to the run, the
+        step's own notification with its result too, under the trigger's own
+        notification switch (a task with notifications off sends none).
+        `B1078`: and then its chat, as a task's — it was the notification only,
+        though the picker says the result is also saved to a chat."""
         if (stand_in.output_target or "") == "notification":
             if getattr(task, "notifications_enabled", True):
                 self.add_notification(stand_in.name, "success", task.id,
                                       owner=task.owner, body=text)
-            return
         await self._deliver_task_result(stand_in, text, db, model=model)
 
     async def _run_task_node(self, task, node: dict, slot: str):
