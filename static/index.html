@@ -2600,11 +2600,11 @@
               <div id="set-researchSearchMsg" style="font-size:11px;"></div>
               <div class="settings-row">
                 <label class="settings-label">Max Tokens</label>
-                <input id="set-researchMaxTokens" type="text" inputmode="numeric" placeholder="8192 (default)" class="settings-select" style="width:382.5px;flex:0 0 auto;margin-left:auto;">
+                <input id="set-researchMaxTokens" type="text" inputmode="numeric" placeholder="8192 (default)" class="settings-select settings-control-wide">
               </div>
               <div class="settings-row">
                 <label class="settings-label">Extract Timeout</label>
-                <div style="position:relative;width:382.5px;flex:0 0 auto;margin-left:auto;">
+                <div class="settings-control-wide" style="position:relative;">
                   <input id="set-researchExtractTimeout" type="text" inputmode="numeric" placeholder="90 sec" class="settings-select" style="width:100%;padding-right:30px;">
                   <span title="Per-page fetch limit; slow sites are skipped. Default 90 s." style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;opacity:0.55;cursor:help;user-select:none;">?</span>
                 </div>
@@ -2615,28 +2615,28 @@
                    by the per-call defaults. Both had no control. -->
               <div class="settings-row">
                 <label class="settings-label">Plan Timeout</label>
-                <div style="position:relative;width:382.5px;flex:0 0 auto;margin-left:auto;">
+                <div class="settings-control-wide" style="position:relative;">
                   <input id="set-researchPlanTimeout" type="text" inputmode="numeric" placeholder="90 sec" class="settings-select" style="width:100%;padding-right:30px;">
                   <span title="Time for the model to plan. Default 90 s." style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;opacity:0.55;cursor:help;user-select:none;">?</span>
                 </div>
               </div>
               <div class="settings-row">
                 <label class="settings-label">Query Timeout</label>
-                <div style="position:relative;width:382.5px;flex:0 0 auto;margin-left:auto;">
+                <div class="settings-control-wide" style="position:relative;">
                   <input id="set-researchQueryTimeout" type="text" inputmode="numeric" placeholder="90 sec" class="settings-select" style="width:100%;padding-right:30px;">
                   <span title="Time for the model to write each query set. Default 90 s." style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;opacity:0.55;cursor:help;user-select:none;">?</span>
                 </div>
               </div>
               <div class="settings-row">
                 <label class="settings-label">Extract Parallel</label>
-                <div style="position:relative;width:382.5px;flex:0 0 auto;margin-left:auto;">
+                <div class="settings-control-wide" style="position:relative;">
                   <input id="set-researchExtractConcurrency" type="text" inputmode="numeric" placeholder="3" class="settings-select" style="width:100%;padding-right:30px;">
                   <span title="Pages fetched at once. Default 3." style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;opacity:0.55;cursor:help;user-select:none;">?</span>
                 </div>
               </div>
               <div class="settings-row">
                 <label class="settings-label">Timeout</label>
-                <input id="set-researchRunTimeout" type="text" inputmode="numeric" placeholder="1800 sec (0 = no limit)" class="settings-select" style="width:382.5px;flex:0 0 auto;margin-left:auto;">
+                <input id="set-researchRunTimeout" type="text" inputmode="numeric" placeholder="1800 sec (0 = no limit)" class="settings-select settings-control-wide">
               </div>
             </div>
           </div>
@@ -3319,11 +3319,11 @@
             <div class="settings-col">
               <div class="settings-row">
                 <label class="settings-label">Tool call limit</label>
-                <input id="set-agentMaxTools" type="text" inputmode="numeric" placeholder="0 = unlimited" class="settings-select" style="width:382.5px;flex:0 0 auto;margin-left:auto;">
+                <input id="set-agentMaxTools" type="text" inputmode="numeric" placeholder="0 = unlimited" class="settings-select settings-control-wide">
               </div>
               <div class="settings-row">
                 <label class="settings-label">Max steps per message</label>
-                <input id="set-agentMaxRounds" type="text" inputmode="numeric" placeholder="20" class="settings-select" style="width:382.5px;flex:0 0 auto;margin-left:auto;">
+                <input id="set-agentMaxRounds" type="text" inputmode="numeric" placeholder="20" class="settings-select settings-control-wide">
               </div>
               <div class="settings-row">
                 <label class="settings-label" for="set-agentVerifier">Verify effectful turns</label>
@@ -3341,7 +3341,7 @@
                    is the rule; this control is that rule with a face. -->
               <div class="settings-row">
                 <label class="settings-label" for="set-agentBudgetMode">Context sent to the model</label>
-                <select id="set-agentBudgetMode" class="settings-select" style="width:382.5px;flex:0 0 auto;margin-left:auto;">
+                <select id="set-agentBudgetMode" class="settings-select settings-control-wide">
                   <option value="auto">Scale to the model's window</option>
                   <option value="fixed">Fixed number of tokens</option>
                   <option value="off">Send everything (no trimming)</option>
@@ -3349,11 +3349,11 @@
               </div>
               <div class="settings-row" id="set-agentBudgetRow" style="display:none;">
                 <label class="settings-label" for="set-agentBudget">Token budget</label>
-                <input id="set-agentBudget" type="text" inputmode="numeric" placeholder="5999" class="settings-select" style="width:382.5px;flex:0 0 auto;margin-left:auto;">
+                <input id="set-agentBudget" type="text" inputmode="numeric" placeholder="5999" class="settings-select settings-control-wide">
               </div>
               <div class="settings-row">
                 <label class="settings-label" for="set-agentBudgetMax">Ceiling when scaling</label>
-                <input id="set-agentBudgetMax" type="text" inputmode="numeric" placeholder="200000" class="settings-select" style="width:382.5px;flex:0 0 auto;margin-left:auto;">
+                <input id="set-agentBudgetMax" type="text" inputmode="numeric" placeholder="200000" class="settings-select settings-control-wide">
               </div>
               <div class="admin-toggle-sub" style="margin:-4px 0 4px;font-size:11px;opacity:0.6;line-height:1.4;">
                 Caps the scaled budget. A fixed number above is used as typed.
@@ -3370,7 +3370,7 @@
                    own number". Cloud endpoints never get the lift. -->
               <div class="settings-row">
                 <label class="settings-label" for="set-localMaxTokens">Local reply ceiling</label>
-                <input id="set-localMaxTokens" type="text" inputmode="numeric" placeholder="1000000" class="settings-select" style="width:382.5px;flex:0 0 auto;margin-left:auto;">
+                <input id="set-localMaxTokens" type="text" inputmode="numeric" placeholder="1000000" class="settings-select settings-control-wide">
               </div>
               <div class="admin-toggle-sub" style="margin:-4px 0 4px;font-size:11px;opacity:0.6;line-height:1.4;">
                 Most tokens a local model may write per reply. 0 = each preset's own limit.
@@ -3401,11 +3401,11 @@
             <div class="settings-col">
               <div class="settings-row">
                 <label class="settings-label" for="set-taskEndpoint">Endpoint</label>
-                <select id="set-taskEndpoint" class="settings-select" style="width:382.5px;flex:0 0 auto;margin-left:auto;"><option value="">Default chat endpoint</option></select>
+                <select id="set-taskEndpoint" class="settings-select settings-control-wide"><option value="">Default chat endpoint</option></select>
               </div>
               <div class="settings-row">
                 <label class="settings-label" for="set-taskModel">Model</label>
-                <select id="set-taskModel" class="settings-select" style="width:382.5px;flex:0 0 auto;margin-left:auto;"><option value="">Default</option></select>
+                <select id="set-taskModel" class="settings-select settings-control-wide"><option value="">Default</option></select>
               </div>
               <div id="set-taskModelMsg" style="font-size:11px;color:color-mix(in srgb, var(--fg) 45%, transparent);"></div>
             </div>
@@ -3426,11 +3426,11 @@
               </div>
               <div class="settings-row">
                 <label class="settings-label" for="set-skillAuditHour">Hour (local)</label>
-                <input id="set-skillAuditHour" type="text" inputmode="numeric" placeholder="2" class="settings-select" style="width:382.5px;flex:0 0 auto;margin-left:auto;">
+                <input id="set-skillAuditHour" type="text" inputmode="numeric" placeholder="2" class="settings-select settings-control-wide">
               </div>
               <div class="settings-row">
                 <label class="settings-label" for="set-skillAuditBatch">Skills per night</label>
-                <input id="set-skillAuditBatch" type="text" inputmode="numeric" placeholder="8" class="settings-select" style="width:382.5px;flex:0 0 auto;margin-left:auto;">
+                <input id="set-skillAuditBatch" type="text" inputmode="numeric" placeholder="8" class="settings-select settings-control-wide">
               </div>
               <div id="set-skillAuditMsg" style="font-size:11px;color:color-mix(in srgb, var(--fg) 45%, transparent);"></div>
             </div>

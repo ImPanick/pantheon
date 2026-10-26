@@ -49,6 +49,14 @@ const BOXES = () => {
            rows: new Set(items.map((n) => Math.round(n.getBoundingClientRect().top))).size,
            pageScrollX: document.documentElement.scrollWidth - document.documentElement.clientWidth };
 };
+const PANEL = () => {
+  const p = document.querySelector('#settings-modal .settings-panels');
+  const right = p.getBoundingClientRect().right;
+  const wide = [...p.querySelectorAll('.settings-control-wide')].filter((n) => n.offsetParent);
+  return { scrollX: p.scrollWidth - p.clientWidth,
+           wide: wide.map((n) => Math.round(n.getBoundingClientRect().width * 10) / 10),
+           wideOutside: wide.filter((n) => n.getBoundingClientRect().right > right + 0.5).map((n) => n.id || n.firstElementChild.id) };
+};
 (async () => {
   const browser = await chromium.launch({ args: ['--no-sandbox'] });
   const out = { errors: [] };
@@ -81,6 +89,16 @@ const BOXES = () => {
       await page.waitForTimeout(500);
     }
     out[label] = await page.evaluate(BOXES);
+    // `B1255`: every panel, visited as a person visits it, measured for a
+    // sideways scroll and for controls that end past the card.
+    out[label].panels = {};
+    const tabs = await page.evaluate(() => [...document.querySelectorAll('#settings-modal .settings-nav-item[data-settings-tab]')]
+      .filter((n) => n.offsetParent).map((n) => n.dataset.settingsTab));
+    for (const tab of tabs) {
+      await page.evaluate((t) => document.querySelector(`#settings-modal .settings-nav-item[data-settings-tab="${t}"]`).click(), tab);
+      await page.waitForTimeout(250);
+      out[label].panels[tab] = await page.evaluate(PANEL);
+    }
     await context.close();
   }
   console.log(JSON.stringify(out));
@@ -119,3 +137,42 @@ def test_the_desktops_column_of_tabs_is_unchanged(measured):
     got = measured["1400"]
     assert got["rows"] == got["items"] >= 10, got
     assert got["tabs"]["w"] == 220 and got["tabs"]["top"] == got["panel"]["top"], got
+
+
+# ── `B1255`: no panel is wider than the phone ────────────────────────────────
+#
+# Measured before the fix (this tree at `9297d85a`, 390x844): Agent Tools
+# scrolled 51px sideways (`scrollWidth` 441 / `clientWidth` 390) with nine of
+# its controls ending at x = 441, and Deep Research (the Search tab) 98px, its
+# Plan and Query Timeout fields — the two `H18` added after the id list that
+# stacked the other five was written. Sixteen controls carried an inline
+# `width:382.5px;flex:0 0 auto`, which nothing can shrink.
+
+
+def test_at_390_no_settings_panel_scrolls_sideways(measured):
+    panels = measured["390"]["panels"]
+    assert {"tools", "search"} <= set(panels), sorted(panels)
+    sideways = {t: p["scrollX"] for t, p in panels.items() if p["scrollX"] > 0}
+    assert sideways == {}, f"these panels scroll sideways on a phone: {sideways}"
+
+
+def test_at_390_every_desktop_width_control_is_inside_its_card(measured):
+    panels = measured["390"]["panels"]
+    # Nine on Agent Tools, six on Deep Research; the Budget field is hidden
+    # until its mode asks for one, and an unseen control has no box to place.
+    assert len(panels["tools"]["wide"]) >= 9 and len(panels["search"]["wide"]) == 6, panels
+    outside = {t: p["wideOutside"] for t, p in panels.items() if p["wideOutside"]}
+    assert outside == {}, outside
+
+
+def test_the_desktop_keeps_the_one_control_width(measured):
+    """`P23-03`'s `SET-U-12`: one width so they line up with Search's at 1440."""
+    for tab in ("tools", "search"):
+        assert set(measured["1400"]["panels"][tab]["wide"]) == {382.5}, measured["1400"]["panels"][tab]
+
+
+def test_a_window_snapped_narrow_shrinks_them_rather_than_scrolling(measured):
+    panels = measured["snapped"]["panels"]
+    for tab in ("tools", "search"):
+        assert panels[tab]["scrollX"] == 0 and panels[tab]["wideOutside"] == [], panels[tab]
+        assert max(panels[tab]["wide"]) <= 382.5, panels[tab]

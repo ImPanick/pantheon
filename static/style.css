@@ -28814,30 +28814,48 @@ input.settings-select::placeholder { color: color-mix(in srgb, var(--fg) 35%, tr
   outline: none;
   border-color: var(--red);
 }
+/* `B1255`. Sixteen settings controls (Deep Research's and Agent Tools' number
+   fields and selects among them) were written `style="width:382.5px;flex:0 0
+   auto;margin-left:auto;"` in the markup (`P23-03`'s one control width, so
+   they line up with Search's at 1440). An inline width cannot shrink, and a
+   phone's card is 336px: at 390×844 the Agent Tools panel scrolled 51px
+   sideways with nine controls ending off screen, and Deep Research 98px.
+   The width is a class now, and it is a preference rather than a floor: a row
+   narrower than label + 382.5px shrinks the control instead of overflowing
+   (a desktop Settings window snapped narrow), and on a phone the row stacks
+   below (`@media (max-width: 768px)`). Two classes, because the inline
+   style it replaces out-ranked everything and `input[type="text"] { width:
+   100% }` (0,1,1) would otherwise stretch the eight text fields across the
+   card at 1440 — measured, 634 to 674px — while the selects stayed at
+   382.5px; and after `.settings-select`, whose `flex: 1` it overrules. */
+.settings-row > .settings-control-wide {
+  width: 382.5px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  margin-left: auto;
+}
 
 @media (max-width: 768px) {
-  /* Deep Research settings contain desktop-sized inline widths. On mobile,
-     let each control claim the card width instead of escaping the admin block. */
-  .settings-row:has(#set-researchSearch),
-  .settings-row:has(#set-researchMaxTokens),
-  .settings-row:has(#set-researchExtractTimeout),
-  .settings-row:has(#set-researchExtractConcurrency),
-  .settings-row:has(#set-researchRunTimeout) {
+  /* Desktop-width settings controls stack under their label on a phone and
+     take the card's width instead of escaping it. This was a list of five
+     Deep Research ids, and the two `H18` added a row later (Plan and Query
+     Timeout) were not on it, so they ran 98px off a 390px screen; Agent Tools'
+     nine were never on it at all (`B1255`). It is the class now, so a control
+     given the desktop width is given this with it. `#set-researchSearch`
+     keeps its own entry: it is narrower (358.5px, beside its logo) and still
+     inline. */
+  .settings-row:has(> .settings-control-wide),
+  .settings-row:has(#set-researchSearch) {
     flex-wrap: wrap;
     align-items: stretch;
   }
-  .settings-row:has(#set-researchSearch) .settings-label,
-  .settings-row:has(#set-researchMaxTokens) .settings-label,
-  .settings-row:has(#set-researchExtractTimeout) .settings-label,
-  .settings-row:has(#set-researchExtractConcurrency) .settings-label,
-  .settings-row:has(#set-researchRunTimeout) .settings-label {
+  .settings-row:has(> .settings-control-wide) .settings-label,
+  .settings-row:has(#set-researchSearch) .settings-label {
     flex: 1 1 auto;
   }
   #set-researchSearch,
-  #set-researchMaxTokens,
-  #set-researchRunTimeout,
-  .settings-row div:has(> #set-researchExtractTimeout),
-  .settings-row div:has(> #set-researchExtractConcurrency) {
+  .settings-control-wide {
     width: 100% !important;
     max-width: 100% !important;
     flex: 1 1 100% !important;
