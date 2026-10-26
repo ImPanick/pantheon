@@ -9,7 +9,7 @@ import { STEP_LIMIT_CONTINUE_PROMPT, withdrawContinueOffers } from './agentStops
 import { providerLogo } from './providers.js';
 import { initModelPicker, updateModelPicker } from './modelPicker.js?v=20260722ctxheader1';
 import { topPortalZ } from './toolWindowZOrder.js';
-import { chevronIcon } from './icons.js';
+import { chevronIcon, forkIcon } from './icons.js';
 import backStack from './backStack.js';   // `P23-01`
 import { onToolVisibilityApplied, toolShown } from './ui_visibility.js';   // `B1194`
 import approvalModeModule from './approvalMode.js';   // `D-2026-10-09-01` §2
@@ -691,14 +691,16 @@ function createSessionItem(s) {
 
   // Session type icon
   const icon = document.createElement('span');
-  const _isFork = s.name && (s.name.startsWith('Fork:') || s.name.startsWith('\u2ADD'));
+  const { fork: _isFork, title: _forkTitle } = forkTitle(s.name);
   const _isGroup = s.name && s.name.startsWith('[GRP]');
   icon.className = 'session-icon' + (s.has_documents ? ' has-docs' : '');
   if (_isGroup) {
     icon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
   } else if (_isFork) {
-    icon.textContent = '\u2ADD';
-    icon.style.fontSize = '14px';
+    // `B1530`: drawn, not the font's U+2ADD; named, because the glyph is not.
+    icon.innerHTML = forkIcon({ size: 12 });
+    icon.setAttribute('role', 'img');
+    icon.setAttribute('aria-label', 'Fork');
   } else if (s.has_documents) {
     icon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
   } else if (s.has_images) {
@@ -729,8 +731,7 @@ function createSessionItem(s) {
 
   const span = document.createElement('span');
   span.className = 'grow';
-  let chatTitle = s.name || '';
-  if (_isFork) chatTitle = chatTitle.replace(/^Fork:\s*/, '').replace(/^\u2ADD\s*/, '');
+  let chatTitle = _isFork ? _forkTitle : (s.name || '');
   if (_isGroup) chatTitle = chatTitle.replace(/^\[GRP\]\s*/, '');
   // `P23-04` (CHAT-U-7): the row is the chat's title; its model (the same on
   // every row, cut to "scr…") is in the tooltip below.
@@ -2000,7 +2001,7 @@ export async function loadSessions() {
       // Same session — just refresh the header name in case it was auto-generated
       const s = sessions.find(x => x.id === targetId);
       const metaEl = document.getElementById('current-meta');
-      if (metaEl && s) metaEl.textContent = s.name;
+      if (metaEl && s) paintChatName(metaEl, s.name);
     }
 
     // `P23-04` (PERF-U-2). The page hid the welcome screen before first paint
@@ -2192,7 +2193,7 @@ export async function selectSession(id, { keepSidebar = false, showLoading = tru
 
     const currentMetaEl = uiModule.el('current-meta');
     if (currentMetaEl) {
-      currentMetaEl.textContent = meta ? meta.name : 'Pantheon Chat';
+      paintChatName(currentMetaEl, meta ? meta.name : 'Pantheon Chat');
     }
     // Update model picker visibility
     updateModelPicker();
@@ -3350,8 +3351,42 @@ export function describeChatTidy(data) {
   return msg;
 }
 
+// ── A forked chat's name (`B1530`) ─────────────────────────────────────────
+//
+// A fork is named for the chat it came from, with a prefix: `Fork: ` — from
+// `POST /api/session/{id}/fork` since `B1530`, and from the agent's
+// `manage_session` fork all along — or `⫝ ` (U+2ADD), which the route wrote
+// before and which stored chats still carry. Stacked when a fork is forked.
+// One reader for it, so the row, the header and the fork's toast agree on
+// what the chat is called and on whether it is a fork.
+const _FORK_PREFIX = /^(?:(?:Fork:|\u2ADD)\s*)+/;
+
+/** `{ fork, title }`: whether `name` is a fork's, and the name without the
+ *  prefix. A name that is nothing but a prefix keeps its words. */
+export function forkTitle(name) {
+  const text = String(name == null ? '' : name);
+  const m = text.match(_FORK_PREFIX);
+  if (!m || m[0].length === text.length) return { fork: false, title: text };
+  return { fork: true, title: text.slice(m[0].length) };
+}
+
+/** Write a chat's name into a header element: the name, and for a fork the
+ *  drawn fork in front of it — the same mark the sidebar row draws, said in
+ *  words to a screen reader ("Fork: <name>"). */
+export function paintChatName(el, name) {
+  if (!el) return;
+  const { fork, title } = forkTitle(name);
+  el.textContent = title;
+  if (fork) {
+    el.insertAdjacentHTML('afterbegin',
+      `<span class="chat-name-fork" role="img" aria-label="Fork:">${forkIcon({ size: 12 })}</span>`);
+  }
+}
+
 // Export all functions to window for use in main app
 const sessionModule = {
+  forkTitle,
+  paintChatName,
   confirmChatTidy,
   describeChatTidy,
   initDependencies,

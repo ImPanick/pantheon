@@ -8155,7 +8155,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 
       await sessionModule.loadSessions();
       await sessionModule.selectSession(data.id);
-      if (uiModule) uiModule.showToast(`Forked → ${data.name}`);
+      // `B1530`: the chat's name without its prefix — "Forked" already says
+      // it, and the prefix used to be a glyph whose look depended on the font.
+      if (uiModule) uiModule.showToast(`Forked → ${sessionModule.forkTitle(data.name).title}`);
     } catch (err) {
       console.error('Fork failed:', err);
       if (uiModule) uiModule.showError('Fork failed: ' + err.message);

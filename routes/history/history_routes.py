@@ -886,7 +886,13 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
 
             # Create new session
             new_id = str(uuid.uuid4())
-            fork_name = f"\u2ADD {source.name}"
+            # `B1530`: a word, not U+2ADD. The glyph drew as a different mark
+            # in each font that carried it (⫝ in the toast, ⤓ in the header),
+            # and a name is shown in places that cannot draw an icon. "Fork: "
+            # is what the agent's own fork (`manage_session`) already wrote, so
+            # the two doors now name a fork one way; the client draws the mark
+            # (`sessions.js` `forkTitle`, which still reads the old prefix).
+            fork_name = f"Fork: {source.name}"
             new_session = session_manager.create_session(
                 session_id=new_id,
                 name=fork_name,

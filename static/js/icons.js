@@ -376,3 +376,33 @@ export const WORKFLOW_GLYPH =
   + '<rect x="13" y="16" width="7" height="5" rx="1"/>'
   + '<rect x="2" y="16" width="7" height="5" rx="1"/>'
   + '<path d="M7.5 8v4h9v4"/><path d="M5.5 16v-4"/>';
+
+// ── The fork glyph (`B1530`) ────────────────────────────────────────────────
+//
+// A fork was drawn as the text U+2ADD (`⫝`): the sidebar row set it as the
+// icon span's text and `fork_session` put it at the front of the new chat's
+// name, so the header, the toast and every list that shows a name drew it too.
+// Whether that character is a fork depends on the font that happens to carry
+// it — the audit behind `B1204` saw ⫝ in the toast and ⤓ in the header and
+// the row, on one screen. A drawn mark is the same everywhere. It joins the
+// table on the rule the table was built on: the sidebar row, the chat's header
+// and the message action that makes a fork are three modules drawing one
+// picture (`Law 15`).
+//
+// The geometry: the chat it came from at the foot, and the stem dividing into
+// two arms that end where the two chats go on — the same 24-box and stroke as
+// the session-type icons it sits beside in the row.
+
+/** The fork glyph, as bare SVG children for a stroked 24-box. */
+export const FORK_GLYPH =
+  '<circle cx="6" cy="5" r="2"/>'
+  + '<circle cx="18" cy="5" r="2"/>'
+  + '<circle cx="12" cy="19" r="2"/>'
+  + '<path d="M6 7v2a4 4 0 0 0 4 4h4a4 4 0 0 0 4-4V7"/>'
+  + '<path d="M12 13v4"/>';
+
+/** The fork, wrapped: stroked, `currentColor`, hidden from a screen reader
+ *  like every glyph here — the caller says "fork" in words beside it. */
+export function forkIcon(opts = {}) {
+  return iconSvg(FORK_GLYPH, { size: 12, ...opts, outline: true });
+}

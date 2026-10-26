@@ -363,6 +363,8 @@ def test_no_module_hand_writes_a_play_stop_or_chevron_svg_any_more():
     assert importers == {
         "static/js/admin.js": ["chevronIcon"],
         "static/js/chat.js": ["playIcon", "stopIcon"],
+        # `B1530`: the drawn fork, on the message action that makes one.
+        "static/js/chatRenderer.js": ["forkIcon"],
         "static/js/compare/icons.js": ["playIcon"],
         "static/js/compare/index.js": ["chevronIcon", "stopIcon"],
         "static/js/compare/panes.js": ["stopIcon"],
@@ -389,7 +391,7 @@ def test_no_module_hand_writes_a_play_stop_or_chevron_svg_any_more():
         "static/js/queuePanel.js": ["chevronIcon", "playIcon", "stopIcon"],
         "static/js/research/panel.js": ["chevronIcon", "playIcon"],
         "static/js/section-management.js": ["chevronIcon"],
-        "static/js/sessions.js": ["chevronIcon"],
+        "static/js/sessions.js": ["chevronIcon", "forkIcon"],   # `B1530`: the row and the header
         "static/js/settings.js": ["chevronIcon"],
         "static/js/skills.js": ["PLAY_GLYPH", "chevronIcon"],
         "static/js/tasks.js": ["PLAY_GLYPH", "WORKFLOW_GLYPH", "playIcon", "stopIcon"],

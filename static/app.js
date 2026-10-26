@@ -1718,7 +1718,7 @@ function initializeEventListeners() {
             meta.name = newName;
             // P23-05: the header names the chat, as `selectSession` writes it —
             // not "Session: <name> <model> [RAG] v<version>" until the next switch.
-            el('current-meta').textContent = meta.name;
+            sessionModule.paintChatName(el('current-meta'), meta.name);   // `B1530`: a fork keeps its drawn mark
           }
           // Refresh the sessions list
         await sessionModule.loadSessions();

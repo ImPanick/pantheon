@@ -654,6 +654,13 @@ body.bg-pattern-sparkles {
       text-overflow: ellipsis;
       cursor: pointer;
     }
+    /* `B1530`. A fork's header carries the drawn fork the sidebar row draws
+       (`sessions.js` `paintChatName`), in the header's own colour. */
+    .chat-name-fork {
+      display: inline-flex;
+      vertical-align: -1px;
+      margin-right: 5px;
+    }
     .chat-meta-overlay:hover {
       color: color-mix(in srgb, var(--fg) 75%, transparent);
     }

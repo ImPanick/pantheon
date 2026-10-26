@@ -22,6 +22,7 @@ import { buildAllowRuleChooser } from './trustLadder.js';
 // `P4-10`. Why the agent stopped itself — the same line the live stream draws.
 import { renderAgentStop, renderAgentNote, withdrawContinueOffers, compactionFromRecord, trimFromRecord } from './agentStops.js';
 import { scrollBehavior } from './motion.js';
+import { forkIcon } from './icons.js';
 import { buildReplyError } from './chatStreamErrors.js';   // `B1200`
 import { memoryConfidencePill } from './memoryFacts.js';
 import { applyAgentThreadNode, verifierCardOptions, approvalOutcome,
@@ -2259,7 +2260,8 @@ export function createMsgFooter(msgElement) {
       e.stopPropagation();
       if (window.chatModule?.rewriteWith) window.chatModule.rewriteWith(msgElement, 'Explain your last response in simpler terms. Use plain language and short sentences.');
     }},
-    { id: 'fork', icon: '\u2ADD', title: 'Fork', cls: 'msg-action-btn', handler(e) {
+    // `B1530`: the drawn fork the new chat's row and header carry, not U+2ADD.
+    { id: 'fork', icon: forkIcon({ size: 12 }), html: true, title: 'Fork', cls: 'msg-action-btn', handler(e) {
       e.stopPropagation();
       if (window.chatModule?.forkFrom) window.chatModule.forkFrom(msgElement);
     }},
