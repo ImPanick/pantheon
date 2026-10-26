@@ -66,6 +66,11 @@ const RUNS_SHOWN = 30;
  *  flight (queued or running), so a run that ends is read without opening
  *  the room again. Nothing is asked while no run is in flight. */
 export const SHELF_WATCH_MS = 4000;
+/** `B1095`. How often the tasks canvas reads its steps' last runs again while
+ *  it is showing and the page can be seen: `SHELF_WATCH_MS` while a step's
+ *  run is in flight, this otherwise — a scheduled task can start at any
+ *  moment, so the canvas cannot wait for one it knows of. */
+export const TASKS_IDLE_WATCH_MS = 10000;
 /** Said when a workflow is off — the design's words (§ 6.2). */
 // `P23-05` (Doc 2 § 5): the switch itself reads *On* / *Off*; the word beside
 // it adds only what the switch cannot say (driven: "On On" on the merged tree).
@@ -539,7 +544,9 @@ export function mountAutomations(host, opts = {}) {
     tasksBtn.dataset.key = TASKS_KEY;
     tasksBtn.appendChild(_el('span', 'wf-shelf-name', 'Tasks and chains'));
     tasksBtn.appendChild(_el('span', 'wf-shelf-sub', 'Every task, and the arrows between them'));
-    tasksBtn.addEventListener('click', () => openTasks());
+    // `B1095`: pressed again while it shows, it reads the steps' last runs now
+    // (the Workbench's door focusing a step does not — that is not a reload).
+    tasksBtn.addEventListener('click', () => { if (R.view === 'tasks') refreshTasks(); else openTasks(); });
     items.push(tasksBtn);
     let pickWords = null;
     for (const w of R.workflows) {
@@ -778,6 +785,7 @@ export function mountAutomations(host, opts = {}) {
     const c = mountTasks(focusId);
     if (had && focusId != null) c.focusChain(focusId);
     drawShelf();
+    watchTasks();
     return c;
   }
 
@@ -816,7 +824,41 @@ export function mountAutomations(host, opts = {}) {
     runList.replaceChildren();
   }
 
+  // ── `B1095`: the tasks canvas reads its steps' last runs as they change ──
+  // Measured by `integrate-c`: with the Workbench open on *Tasks and chains*,
+  // two tasks ran (and failed) and both boxes read "Not run yet" until the
+  // window was opened again — and pressing *Tasks and chains* again did not
+  // read them either. Now, while the canvas is showing, it is read again
+  // every `SHELF_WATCH_MS` while a step's run is in flight and every
+  // `TASKS_IDLE_WATCH_MS` otherwise, not at all while the page is hidden,
+  // and at once when *Tasks and chains* is pressed again.
+  function stopWatchingTasks() {
+    if (R.tasksTimer) { clearTimeout(R.tasksTimer); R.tasksTimer = null; }
+  }
+
+  function watchTasks(ms = TASKS_IDLE_WATCH_MS) {
+    stopWatchingTasks();
+    if (R.destroyed || R.view !== 'tasks' || !R.tasksCanvas) return;
+    R.tasksTimer = setTimeout(() => {
+      R.tasksTimer = null;
+      const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+      if (hidden) { watchTasks(); return; }
+      refreshTasks();
+    }, ms);
+  }
+
+  async function refreshTasks() {
+    const c = R.tasksCanvas;
+    if (!c || typeof c.refreshOutcomes !== 'function') return null;
+    let r = null;
+    try { r = await c.refreshOutcomes(); } catch (_) { r = null; }
+    if (R.destroyed || R.tasksCanvas !== c) return r;
+    watchTasks(r && (r.active || r.deferred) ? SHELF_WATCH_MS : TASKS_IDLE_WATCH_MS);
+    return r;
+  }
+
   function leaveTasksView() {
+    stopWatchingTasks();
     if (R.tasksCanvas) { try { R.tasksCanvas.destroy(); } catch (_) { /* gone */ } }
     R.tasksCanvas = null;
     tasksHost.replaceChildren();
@@ -2048,6 +2090,7 @@ export function mountAutomations(host, opts = {}) {
     R.destroyed = true;
     if (_win) _win.removeEventListener('beforeunload', onBeforeUnload);
     stopWatchingShelf();
+    stopWatchingTasks();
     closeNewForm();
     closeCheck();
     teardownWorkflow();
@@ -2120,5 +2163,5 @@ export function mountAutomations(host, opts = {}) {
 }
 
 export default {
-  SHELF_WATCH_MS, mountAutomations, runWords, isDryRun, isOn, OFF_WORDS, ON_WORDS, EXAMPLES_MAX, ARRIVED_WORDS, ARRIVED_LEDE, EXPORT_WORDS,
+  SHELF_WATCH_MS, TASKS_IDLE_WATCH_MS, mountAutomations, runWords, isDryRun, isOn, OFF_WORDS, ON_WORDS, EXAMPLES_MAX, ARRIVED_WORDS, ARRIVED_LEDE, EXPORT_WORDS,
 };

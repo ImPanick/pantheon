@@ -498,6 +498,53 @@ export function mountCanvas(root, opts = {}) {
     return true;
   }
 
+  /**
+   * `B1095`. Each step's last-run mark, read again from the source (its
+   * optional `outcomes()`) and redrawn where it moved — the plan, the open
+   * panel, where the steps sit and the person's view are left as they are.
+   * Measured: with the Workbench open on *Tasks and chains*, two tasks ran
+   * and failed and both boxes still read "○ Not run yet" until the window was
+   * opened again; this canvas never asked again. Waits (`deferred`) while a
+   * step or an arrow is being dragged or moved, so a redraw cannot take the
+   * thing in the person's hand. Answers `{ changed, active, deferred }`:
+   * `active` while any step's run is queued or running.
+   */
+  async function refreshOutcomes() {
+    const none = { changed: 0, active: false, deferred: false };
+    if (S.destroyed || typeof src.outcomes !== 'function') return none;
+    if (S.drag || S.link || S.pan || S.connect || S.moving) return { ...none, deferred: true };
+    let next;
+    try { next = await src.outcomes(); } catch (_) { return none; }
+    if (S.destroyed || !(next instanceof Map)) return none;
+    if (S.drag || S.link || S.pan || S.connect || S.moving) return { ...none, deferred: true };
+    let changed = 0;
+    let active = false;
+    for (const it of S.items) {
+      const o = next.get(it.id);
+      if (!o) continue;
+      if (o.active) active = true;
+      const was = it.outcome || {};
+      if (was.tone !== o.tone || was.word !== o.word) {
+        it.outcome = { tone: o.tone, word: o.word };
+        changed += 1;
+      }
+    }
+    if (changed) {
+      // The step that had the keyboard keeps it: a redraw makes new boxes.
+      let had = null;
+      try {
+        const a = typeof document !== 'undefined' ? document.activeElement : null;
+        if (a && a.dataset && a.dataset.itemId != null && S.nodeEls.get(String(a.dataset.itemId)) === a) {
+          had = String(a.dataset.itemId);
+        }
+      } catch (_) { had = null; }
+      render();
+      const back = had != null ? S.nodeEls.get(had) : null;
+      if (back && typeof back.focus === 'function') back.focus();
+    }
+    return { changed, active, deferred: false };
+  }
+
   // ── the view ─────────────────────────────────────────────────────────────
   function viewportRect() {
     try {
@@ -1909,6 +1956,7 @@ export function mountCanvas(root, opts = {}) {
   return {
     ready,
     reload,
+    refreshOutcomes,
     focusChain,
     select: (id) => select(id),
     destroy,

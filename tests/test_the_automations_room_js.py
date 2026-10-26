@@ -154,9 +154,13 @@ _PREAMBLE = (
     "};\n"
     "const { mountAutomations, OFF_WORDS } = await import('./workflowRoom.js');\n"
     "const describeTrigger = (t) => t.trigger_words || (t.scheduled_time ? 'Daily at ' + t.scheduled_time : '');\n"
+    "// `B1095`: a room on its tasks reads them again on a timer, which keeps node\n"
+    "// running; what a case opened is closed when it reports, as a page would be.\n"
+    "const rooms = [];\n"
     "const room = async (o = {}) => {\n"
     "  const root = host();\n"
     "  const h = mountAutomations(root, { fetch: net, mountTaskFields, describeTrigger, ...o });\n"
+    "  rooms.push(h);\n"
     "  await h.ready; await settle(5);\n"
     "  return { root, h };\n"
     "};\n"
@@ -166,7 +170,7 @@ _PREAMBLE = (
     "};\n"
     "const named = (root, name) => root.querySelectorAll('button').find((b) => b.textContent === name && !b.hidden);\n"
     "const called = (name) => W.calls.filter((c) => c[0] === name);\n"
-    "const out = (o) => console.log(JSON.stringify(o));\n"
+    "const out = (o) => { console.log(JSON.stringify(o)); for (const r of rooms) { try { r.destroy(); } catch (_) { /* gone */ } } };\n"
 )
 
 

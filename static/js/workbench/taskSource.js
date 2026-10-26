@@ -33,7 +33,7 @@
 //     chain a workflow* (`P22-06`).
 
 import { EDGE_WORDS, EDGE_COLUMNS, KIND_WORDS, componentOf } from '../tasks/workflowDiagram.js';
-import { runStatusTone, runStatusLabel } from '../runStatus.js';
+import { runStatusTone, runStatusLabel, RUN_ACTIVE_STATUSES } from '../runStatus.js';
 import { PORTS } from './graphLayout.js';
 import { refusalText } from './refusal.js';
 
@@ -188,6 +188,21 @@ export function createTaskSource(opts = {}) {
     };
   }
 
+  /**
+   * `B1095`. Each task's last run, read again: `Map<id, { tone, word, active }>`
+   * (`outcomeOf`'s words; `active` while its run is queued or running). The
+   * canvas drew a step's mark from the list it loaded and never read it
+   * again, so a run that ended while it was open still said "Not run yet".
+   * The rows are taken too, so a panel opened next is handed the fresh row.
+   */
+  async function outcomes() {
+    const res = await net(TASKS_URL, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('GET /api/tasks answered ' + res.status);
+    take(await res.json());
+    return new Map(rows.map((t) => [String(t.id),
+      { ...outcomeOf(t), active: RUN_ACTIVE_STATUSES.includes(t.last_run_status) }]));
+  }
+
   async function connect(from, when, to) {
     const column = EDGE_COLUMNS[when];
     if (!column) return { ok: false, sentence: `This canvas cannot write “${when}” yet.` };
@@ -330,7 +345,7 @@ export function createTaskSource(opts = {}) {
     // what read a task's step by `data-task-id` before the move still does.
     idKey: 'taskId',
     dryRunFrom: 'item',
-    load, connect, disconnect, loadPositions, savePositions, openPanel, openItem, offer, dryRun,
+    load, outcomes, connect, disconnect, loadPositions, savePositions, openPanel, openItem, offer, dryRun,
     /** Every row as served, for the room's chain door. */
     rows: () => rows,
   };
