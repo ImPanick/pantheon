@@ -3268,6 +3268,11 @@ class TaskScheduler:
             # slot is taken (`_wait_until_idle`), so a waiting run holds nothing
             # and the foreground gate has no reason to stop it.
 
+            # `B675`. A run is going: whatever the last one deferred until is
+            # over (a run that defers again says so again, below).
+            if getattr(task, "deferred_until", None) is not None:
+                task.deferred_until = None
+                task.defer_reason = None
             # Flip the run from queued → running. Reset started_at to the
             # actual execution start so queue wait time is visible from
             # created_at vs started_at if we ever surface that.
@@ -3538,6 +3543,11 @@ class TaskScheduler:
                 if run_obj:
                     db.delete(run_obj)
                 task.next_run = when
+                # `B675`. The row goes (a quiet-window defer is not an Activity
+                # row), so the task says it: until when, and the action's own
+                # words. The card's next-run line reads these.
+                task.deferred_until = when
+                task.defer_reason = (str(defer) or "It asked to come back later.")[:300]
                 db.commit()
                 return
             except asyncio.CancelledError:

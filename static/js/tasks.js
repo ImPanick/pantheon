@@ -382,6 +382,21 @@ function _retryWords(task) {
   return `${n} ${n === 1 ? 'retry' : 'retries'} if it fails`;
 }
 
+/**
+ * `B675`. "Deferred until 14:20 (in 20m): <why>" while the task's next run is
+ * the one its last run asked for (`deferred_until`, served beside
+ * `defer_reason`); `''` otherwise — an edit that moved the next run, or a run
+ * since, ends it.
+ */
+function _deferredWords(task) {
+  if (!task || task.status !== 'active' || !task.deferred_until || !task.next_run) return '';
+  const until = new Date(task.deferred_until);
+  if (isNaN(until.getTime()) || until.getTime() !== new Date(task.next_run).getTime()) return '';
+  const clock = until.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const why = String(task.defer_reason || '').trim();
+  return `Deferred until ${clock} (${_relativeTime(task.deferred_until)})` + (why ? `: ${why}` : '');
+}
+
 /** `P22-03`. A run's time limit in the unit a person would say it in. */
 function _timeLimitWords(seconds) {
   const s = Number(seconds) || 0;
@@ -835,7 +850,12 @@ function _renderList() {
     // times" set in the form reads back the same on the card.
     const retries = _retryWords(task);
     if (retries) metaParts.push(retries);
-    if (task.next_run && task.status === 'active') metaParts.push('Next: ' + _relativeTime(task.next_run));
+    // `B675`. A run that asked to come back later leaves no row, so the next
+    // run's line says it, with the action's own reason — or a task deferring
+    // on every tick reads as a task that is simply not running.
+    const deferred = _deferredWords(task);
+    if (deferred) metaParts.push(deferred);
+    else if (task.next_run && task.status === 'active') metaParts.push('Next: ' + _relativeTime(task.next_run));
     if (task.run_count > 0) metaParts.push(task.run_count + ' run' + (task.run_count !== 1 ? 's' : ''));
     const meta = document.createElement('div');
     meta.className = 'memory-item-meta';
