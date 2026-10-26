@@ -2,6 +2,7 @@
 """Background scheduler for ScheduledTask execution."""
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -18,7 +19,10 @@ from src.event_bus import (
     EVENT_RESEARCH_COMPLETED,
     EVENT_SESSION_CREATED,
     EVENT_SKILL_ADDED,
+    ORIGIN_KIND_TASK,
+    ORIGIN_KIND_WORKFLOW,
     build_task_handoff as _build_task_handoff,
+    run_origin as _run_origin,
     trigger_context_message as _trigger_context_message,
     trigger_summary as _trigger_summary,
 )
@@ -3331,6 +3335,20 @@ class TaskScheduler:
                             return
 
                 foreground_monitor = asyncio.create_task(_cancel_if_foreground_active())
+            # `B1077`. Everything this run does is marked as this run's
+            # (`event_bus.run_origin`), for every task and not only a
+            # workflow's walk: `_handle_event` leaves a run's own task out of
+            # what its events wake. A Prompt task on `document_updated` whose
+            # tools edit a document woke itself — `_handle_event` wrote
+            # `next_run = now` before `run_task_now` turned it away as already
+            # running, and an event handled after the run's final `next_run`
+            # write left it due, so the loop ran it again. Entered after the
+            # foreground monitor is made (which does nothing that fires an
+            # event) and left in this `try`'s `finally`, after the delivery.
+            _origin = contextlib.ExitStack()
+            _origin.enter_context(_run_origin(
+                task.id, task.name, run_id,
+                kind=ORIGIN_KIND_WORKFLOW if task_type == "workflow" else ORIGIN_KIND_TASK))
             try:
                 # `P8-32`. This task's own wall-clock ceiling, or no ceiling —
                 # which is what every run has had until now. `max_steps` bounds
@@ -3631,6 +3649,7 @@ class TaskScheduler:
                                              task_id=task_id)
                 return
             finally:
+                _origin.close()              # `B1077`
                 if foreground_monitor and not foreground_monitor.done():
                     foreground_monitor.cancel()
                     try:

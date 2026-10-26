@@ -193,6 +193,11 @@ def clip_field(value, limit: int = TRIGGER_FIELD_MAX_CHARS):
 _clip = clip_field
 
 
+#: `B1077`. What kind of run an origin is, so what it woke can say which.
+ORIGIN_KIND_WORKFLOW = "workflow"
+ORIGIN_KIND_TASK = "task"
+
+
 class RunOrigin(NamedTuple):
     """`P22-05`. Which run an app event came from, when it came from one.
 
@@ -203,11 +208,24 @@ class RunOrigin(NamedTuple):
     `_handle_event` leaves the workflow that caused an event out of the tasks
     that event wakes. `test` marks *Test this step* (`P22-08`): a test fires
     no task at all.
+
+    `B1077`. Every run is marked now, not only a workflow's — a plain Prompt
+    task on `document_updated` whose tools edit a document had the same loop —
+    so `kind` says which it was. `within` is the task ids of the runs this one
+    runs inside (a workflow's *Run task* step runs its target inside the
+    workflow's run): their own events do not wake them either.
     """
     task_id: str
     task_name: str
     run_id: str
     test: bool = False
+    kind: str = ORIGIN_KIND_WORKFLOW
+    within: tuple = ()
+
+    def task_ids(self) -> tuple:
+        """`B1077`. Every task this event must not wake: the run's own, and
+        each run it runs inside."""
+        return (self.task_id, *self.within)
 
 
 _RUN_ORIGIN: "contextvars.ContextVar[Optional[RunOrigin]]" = contextvars.ContextVar(
@@ -215,7 +233,8 @@ _RUN_ORIGIN: "contextvars.ContextVar[Optional[RunOrigin]]" = contextvars.Context
 
 
 @contextmanager
-def run_origin(task_id: str, task_name: str, run_id: str, test: bool = False):
+def run_origin(task_id: str, task_name: str, run_id: str, test: bool = False,
+               kind: str = ORIGIN_KIND_WORKFLOW):
     """Mark every event fired inside this block as caused by that run.
 
     A context variable, so it follows the run through `await`, into tasks it
@@ -224,8 +243,18 @@ def run_origin(task_id: str, task_name: str, run_id: str, test: bool = False):
     without the caller's context — an event fired from there is unmarked, and a
     workflow it triggers runs as if a person had caused it (the residual risk
     `SLICE-B-DESIGN` § 2.5 names).
+
+    `B1077`. A mark inside another keeps the outer one's: its task stays left
+    out of what the inner run's events wake (`within`), and a step test stays a
+    test — a *Run task* step's target, run inside a workflow's run or a test of
+    that step, used to replace the mark and wake the workflow, or anything.
     """
-    token = _RUN_ORIGIN.set(RunOrigin(task_id, task_name, run_id, bool(test)))
+    outer = _RUN_ORIGIN.get()
+    within = ()
+    if outer is not None:
+        within = tuple(t for t in dict.fromkeys(outer.task_ids()) if t and t != task_id)
+        test = test or outer.test
+    token = _RUN_ORIGIN.set(RunOrigin(task_id, task_name, run_id, bool(test), kind, within))
     try:
         yield
     finally:
@@ -275,8 +304,11 @@ def build_trigger(source: str, name: str, data: Optional[dict] = None,
         "data": kept,
     }
     if origin is not None:
+        # `B1077`: `kind` added (nothing renamed) — a plain task's run marks
+        # its events now too, and what it woke says "the task", not "the
+        # workflow".
         envelope["origin"] = {"task_id": origin.task_id, "task": origin.task_name,
-                              "run_id": origin.run_id}
+                              "run_id": origin.run_id, "kind": origin.kind}
     return envelope
 
 
@@ -326,8 +358,11 @@ def trigger_summary(trigger: Optional[dict]) -> str:
         lead = f"Triggered by {source}"
     origin = trigger.get("origin") if isinstance(trigger.get("origin"), dict) else None
     if origin and origin.get("task"):
-        # `P22-05`. An event a workflow's step caused says so.
-        lead = f"{lead} (caused by the workflow “{origin['task']}”)"
+        # `P22-05`. An event a workflow's step caused says so. `B1077`: and
+        # one a plain task's run caused says that — an envelope from before
+        # `kind` existed was a workflow's, the only kind marked then.
+        what = "task" if origin.get("kind") == ORIGIN_KIND_TASK else "workflow"
+        lead = f"{lead} (caused by the {what} “{origin['task']}”)"
     if not data:
         # Said out loud rather than left blank: "no payload" and "the payload
         # did not survive" look identical in an empty string, and the first is
@@ -524,7 +559,8 @@ async def _handle_event(event_name: str, owner: Optional[str] = None,
         else:
             filters.append(ScheduledTask.owner == None)  # noqa: E711
         if origin is not None and origin.task_id:
-            filters.append(ScheduledTask.id != origin.task_id)
+            # `B1077`: the run's own task and every run it runs inside.
+            filters.append(ScheduledTask.id.notin_(list(origin.task_ids())))
 
         tasks = db.query(ScheduledTask).filter(*filters).all()
         if not tasks:

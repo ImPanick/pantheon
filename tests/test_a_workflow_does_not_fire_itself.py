@@ -143,8 +143,10 @@ async def test_a_workflow_that_edits_a_document_does_not_wake_itself(bus, monkey
     first_line = _runs(bus, "other")[0][1][0]["detail"]
     assert first_line.startswith("Triggered by document_updated (caused by the workflow “Doc keeper”)")
     other_trigger = [t for name, t in s.ran if name == "Change log"][0]
+    # `B1077` added `kind` (every run is marked now, a plain task's too).
     assert other_trigger["origin"] == {"task_id": "wf", "task": "Doc keeper",
-                                       "run_id": other_trigger["origin"]["run_id"]}
+                                       "run_id": other_trigger["origin"]["run_id"],
+                                       "kind": "workflow"}
     assert event_bus.current_run_origin() is None, "the mark ends with the run"
 
 
