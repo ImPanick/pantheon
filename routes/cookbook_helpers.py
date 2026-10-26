@@ -558,10 +558,17 @@ def _cached_model_scan_script(model_dirs: list[str] | None = None, add_hf_cache:
         "        seen.add(name)",
         "        models.append({'repo_id':name,'size_bytes':size_bytes,'nb_files':1,'has_incomplete':False,'path':'ollama','backend':'ollama','is_ollama':True})",
         "def scan_ollama_api():",
+        # `B1262`: every address here is the operator's own — this machine,
+        # or the Docker host it runs on — so the probe goes direct. `urlopen`
+        # honours `HTTP(S)_PROXY`, and `NO_PROXY=127.0.0.1,localhost` does not
+        # name `host.docker.internal`, so each Forge open handed a LAN address
+        # to a corporate proxy (`B982`'s shape). An empty `ProxyHandler` is
+        # urllib's own "no proxy" for this one opener.
+        "    direct = urllib.request.build_opener(urllib.request.ProxyHandler({}))",
         "    urls = ['http://127.0.0.1:11434/api/tags', 'http://localhost:11434/api/tags', 'http://host.docker.internal:11434/api/tags']",
         "    for url in urls:",
         "        try:",
-        "            with urllib.request.urlopen(url, timeout=2) as r:",
+        "            with direct.open(url, timeout=2) as r:",
         "                data = json.loads(r.read().decode('utf-8', 'replace'))",
         "        except Exception:",
         "            continue",
