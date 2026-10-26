@@ -108,6 +108,13 @@ the next one is cut.
 
 ### Added
 
+- **A reply that failed before a word is kept,** and a reload draws it as the model's bubble
+  with one sentence and *Retry* (`B1200`).
+- **The Brain shows how you write** — each line editable, and *Forget how I write* — and says
+  when a memory is about to fade (`B820`, `B821`); a provider import says what it read (`B822`).
+- **The Skills preview says why each of your skills is not in the block,** and the Add form
+  takes *Use only when these are unavailable* (`B586`).
+
 - **A signed-in person can fork a shipped skill, and their copy replaces it for them alone.**
   Everyone else on the install keeps the shipped one; deleting the copy brings it back (`B1421`).
 - **A task a workflow step runs waits for your yes on the workflow's card** instead of being
@@ -185,6 +192,17 @@ the next one is cut.
   button all close it. `/toggle mode [agent|chat]` is the same control, typed.
 
 ### Changed — read this before upgrading
+
+- **A task's type is one of three.** `POST`/`PUT /api/tasks` and `manage_tasks` refuse a
+  `task_type` other than `llm`, `research` or `action`, with a sentence; a workflow is made in the
+  Workbench. A row already stored with another word can still be saved while it keeps it (`B1076`).
+- **A refusal about a missing or someone else's chat says *That chat no longer exists.*** at
+  every route, where four spellings of *Session not found* were (`B1216`).
+- ***Test this step* waits for a slow model** up to the workflow's own time limit (else five
+  minutes) instead of the 45-second request ceiling, and stops when the page stops waiting
+  (`B1496`).
+- **A one-off task with retries retries** before it ends (`B1492`), and **a webhook task's
+  pending retry survives a restart** (`B1494`).
 
 - **The built-in *Chat Sessions Tidy* task is now *Chats Tidy*.** An existing install's row shows
   the new name at once and is renamed on the next start; both names stay hidden from the
@@ -281,6 +299,18 @@ the next one is cut.
   arming that a non-empty memory store did on its own.
 
 ### Fixed
+
+- **A task you made is never called built-in,** offered *Revert to default*, or converted into a
+  housekeeping action because of its name (`B1493`, `B1495`); a crew-linked task reads on its
+  crew member's clock (`B1040`); a two-step workflow's run reads *2 steps* (`B1081`).
+- **A stopped reply shows what was saved** (`B1205`), a reloaded message can be deleted
+  (`B1331`), a compacted chat's first page is full (`B1332`), a lapsed approval says *Ask again*
+  (`B561`), a refused send is not drawn as the model's reply (`B1268`), a failed teacher is saved
+  once and both runs' tokens are counted (`B1031`, `B1032`), and the assistant switching a chat's
+  mode no longer becomes your default (`B701`).
+- **A slash skill follows the tool switches** (`B1499`), a skill needing a tool nobody has says so
+  when saved (`B1490`), and a note or reminder turn no longer carries fifteen management tools
+  (`B1489`).
 
 - **A run continued after an approval counts its steps on from the card** instead of starting at
   1 again, and a reload draws the approved call before the rest (`B1199`); a replayed stream
