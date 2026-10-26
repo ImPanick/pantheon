@@ -23,7 +23,6 @@ const SHOW_MODALS = new Set([
   'cookbook-modal',
   'gallery-modal',
   'doclib-modal',
-  'library-modal',     // chat-history library (sessions.js)
   'memory-modal',      // brain / memories
   'tasks-modal',
   'theme-modal',

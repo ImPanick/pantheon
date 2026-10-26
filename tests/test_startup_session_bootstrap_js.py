@@ -62,8 +62,8 @@ _IMPORT_REWRITES = {
     f"import {{ initModelPicker, updateModelPicker }} from './modelPicker.js?v={_MODEL_PICKER_BUSTER}';": (
         "import { initModelPicker, updateModelPicker } from './modelPicker.mjs';"
     ),
-    "import themeModule from './theme.js';": "import themeModule from './theme.mjs';",
-    "import spinnerModule from './spinner.js';": "import spinnerModule from './spinner.mjs';",
+    # (`P9-14`, `B1276`: `theme.js` and `spinner.js` were imported only by the
+    # dead Library window and archive browser, and went with them.)
     # `P3-18` routed the session ⋯ menu's z-index through the shared helper.
     "import { topPortalZ } from './toolWindowZOrder.js';": (
         "import { topPortalZ } from './toolWindowZOrder.mjs';"
@@ -144,8 +144,6 @@ export default ui;
         "export const initModelPicker = () => {};\n"
         "export const updateModelPicker = () => {};\n"
     ),
-    "theme.mjs": "export default {};\n",
-    "spinner.mjs": "export default {};\n",
 }
 
 _HARNESS = r"""
@@ -452,7 +450,9 @@ def test_the_rewrite_table_covers_every_import_sessions_js_has():
     source = _SESSIONS.read_text(encoding="utf-8")
     lines = [l for l in source.splitlines()
              if re.match(r"\s*import\b", l) and re.search(r"from\s*'\./", l)]
-    assert len(lines) >= 13, f"only {len(lines)} relative imports found — the scan stopped looking"
+    # Thirteen until `P9-14`/`B1276` deleted the two windows that alone used
+    # `theme.js` and `spinner.js`.
+    assert len(lines) >= 11, f"only {len(lines)} relative imports found — the scan stopped looking"
     # A key is matched as a PREFIX, because that is how the fixture applies it
     # (`source.replace(original, replacement, 1)`): the `agentStops` line ends
     # in a `// `B941`` comment the key does not carry, and an equality check

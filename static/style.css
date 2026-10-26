@@ -19180,7 +19180,6 @@ span[id$="-logo"] svg:not([width]) {
   outline: none;
   transition: border-color 0.15s;
 }
-#archive-select-btn { height: auto; padding: 5px 8px; }
 .doclib-search:focus {
   border-color: var(--red);
 }
@@ -19863,26 +19862,6 @@ body.right-dock-active:not(.email-doc-split-active) .doc-editor-pane {
 .modal.modal-right-docked .recipient-chip,
 .modal.modal-left-docked .recipient-chip {
   max-width: 100%;
-}
-.archive-list {
-  margin-top: 8px;
-  border-top: 1px solid var(--border);
-  padding-top: 8px;
-}
-#archive-modal .memory-sort-select,
-#archive-modal .memory-toolbar-btn {
-  height: 32px;
-}
-.archive-menu-btn {
-  position: relative;
-  top: 2px;
-}
-#archive-chips .doclib-chip {
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  font-size: 10px;
-  padding: 0 8px;
 }
 /* Library tab panels — Chats / Archive / Research / Documents share the
    same toolbar dimensions so the sort dropdown + Select button line up
@@ -21735,90 +21714,8 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
   }
 }
 
-/* ── Archive browser ── */
-.archive-list {
-  grid-template-columns: 1fr !important;
-  gap: 4px !important;
-}
-.archive-row {
-  flex-direction: row !important;
-}
-.archive-row .doclib-card-header {
-  flex: 1;
-  padding: 8px 10px;
-}
-.archive-row .doclib-card-title {
-  flex: 1;
-  min-width: 0;
-}
-/* Archive column layout */
-.archive-header {
-  display: flex;
-  align-items: center;
-  padding: 4px 10px;
-  gap: 6px;
-  font-size: 9px;
-  font-weight: 600;
-  opacity: 0.35;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-.archive-col-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-left: -4px;
-}
-.archive-col-msgs {
-  width: 40px;
-  flex-shrink: 0;
-  text-align: left;
-  margin-left: -8px;
-}
-.archive-col-model {
-  width: 90px;
-  flex-shrink: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.archive-col-time {
-  width: 55px;
-  flex-shrink: 0;
-  text-align: right;
-}
-.archive-col-menu {
-  width: 24px;
-  flex-shrink: 0;
-}
-.archive-menu-btn {
-  background: transparent;
-  border: none;
-  color: var(--fg);
-  opacity: 0.3;
-  cursor: pointer;
-  padding: 4px;
-  line-height: 0;
-  border-radius: 4px;
-  transition: background .15s, opacity .15s;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-left: 4px;
-  vertical-align: middle;
-  height: 100%;
-}
-.archive-menu-btn svg {
-  display: block;
-  margin-top: -6px;
-}
-.archive-menu-btn:hover {
-  background: color-mix(in srgb, var(--fg) 10%, transparent);
-  opacity: 1;
-}
+/* (`B1276`: the second archive browser's rules were here; the Library
+   window's Archive tab is the one archive, and it draws with `doclib-*`.) */
 
 /* ── Gallery (image library) ── */
 
