@@ -13,8 +13,8 @@
 // had not been reachable, and the form everybody uses — the one `P8-46`
 // rebuilt — asked for a Command and Arguments a person must already know.
 //
-// **What this is.** The catalogue's one home (`Law 7`): `admin.js` imports it
-// from here rather than keeping a copy, and the picker below fills the EXISTING
+// **What this is.** The catalogue's one home (`Law 7`) — and, since `B902`
+// deleted that unreachable admin form, its one reader too — and the picker below fills the EXISTING
 // add-server form — Command, Arguments, Environment — and shows the preset's
 // setup steps in place. It adds no route to save through and no second form
 // (`Law 14`): the person reviews what was filled in and presses the same Save.

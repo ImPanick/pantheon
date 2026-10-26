@@ -2868,6 +2868,8 @@
             <div>
               <h2 style="margin:0;font-size:13px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></svg>Keyboard Shortcuts</h2>
               <p style="font-size:10px;opacity:0.4;margin:2px 0 0;">Click a shortcut to rebind. Press Escape to cancel.</p>
+              <!-- `B1196`: whose shortcuts these are — yours, or everyone's defaults. -->
+              <p id="shortcuts-scope" class="admin-toggle-sub" style="margin:2px 0 0;"></p>
             </div>
             <button type="button" class="vis-reset-btn" id="shortcuts-reset-btn" title="Reset shortcuts to defaults" aria-label="Reset shortcuts to defaults" style="background:none;border:none;padding:2px 4px;cursor:pointer;color:inherit;opacity:0.55;display:inline-flex;align-items:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></button>
           </div>
@@ -3071,7 +3073,7 @@
           </div>
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Users</h2>
-            <div id="adm-userList"><div class="admin-empty">Loading...</div></div>
+            <div id="adm-userList"><div class="lib-loading-row" role="status">Loading…</div></div>
           </div>
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>Add User</h2>
@@ -3467,7 +3469,7 @@
             <div class="admin-toggle-sub" style="margin-bottom:8px">
               On or off for everyone. Off hides the tool and keeps its data. Others see it after their next reload.
             </div>
-            <div id="adm-featureToggles"><div class="admin-empty">Loading...</div></div>
+            <div id="adm-featureToggles"><div class="lib-loading-row" role="status">Loading…</div></div>
           </div>
         </div>
 
@@ -3948,7 +3950,7 @@
             <div class="admin-toggle-sub" style="margin-bottom:8px">
               POSTs a small JSON body to your URL when one of these happens. It may be on your LAN or tailnet — n8n, Home Assistant — or anywhere public; loopback and cloud-metadata addresses are refused. A secret signs each delivery.
             </div>
-            <div id="adm-whList"><div class="admin-empty">Loading...</div></div>
+            <div id="adm-whList"><div class="lib-loading-row" role="status">Loading…</div></div>
             <div class="admin-rag-section-label">Add a webhook</div>
             <div class="admin-rag-dir-row" style="flex-wrap:wrap;">
               <input id="adm-whName" type="text" placeholder="Name, e.g. deploy bot" autocomplete="off" style="min-width:140px;">
@@ -3991,14 +3993,16 @@
             </div>
             <!-- `B1453`: what `GET /api/rag/stats` says — it had no caller. -->
             <div class="admin-toggle-sub" id="adm-ragStats"></div>
+            <!-- `B1187`: why the index is off, from `GET /api/personal`'s `reason`. -->
+            <div class="admin-error" id="adm-ragHealth" role="status" hidden></div>
             <div class="admin-rag-section-label">Indexed directories</div>
-            <div id="adm-ragDirList"><div class="admin-empty">Loading...</div></div>
+            <div id="adm-ragDirList"><div class="lib-loading-row" role="status">Loading…</div></div>
             <div class="admin-rag-dir-row">
               <input id="adm-ragDirInput" type="text" placeholder="/path/to/a/directory on this machine" autocomplete="off">
               <button id="adm-ragAddDirBtn">Add Directory</button>
             </div>
             <div class="admin-rag-section-label">Indexed files</div>
-            <div id="adm-ragFileList"><div class="admin-empty">Loading...</div></div>
+            <div id="adm-ragFileList"><div class="lib-loading-row" role="status">Loading…</div></div>
             <div class="admin-rag-status" id="adm-ragStatus" role="status" aria-live="polite"></div>
           </div>
 

@@ -94,6 +94,25 @@ export function html(id) { const n = document.getElementById(id); return n ? n.i
 """
 
 _ADMIN_STUBS = dict(_STUBS)
+# `B732`: admin.js draws its empty, refused and failed lists through
+# `ui.renderEmptyState` (`P9-07`'s one shape). The stub writes what it was given
+# into the host as readable html — the shim stores `innerHTML` unparsed, so a
+# test reads the state's words in that node's own html — and records each call,
+# actions and all, for a test that presses one.
+_ADMIN_STUBS["ui.js"] = _STUBS["ui.js"].replace("export default {", """
+export const emptyStates = [];
+function renderEmptyState(host, spec = {}) {
+  const kind = ['empty', 'filtered', 'error'].includes(spec.kind) ? spec.kind : 'error';
+  emptyStates.push({ host: host && host.id, kind, spec });
+  const words = [spec.title, spec.message, spec.reason].filter(Boolean).map(esc).join(' · ');
+  const acts = [spec.onRetry ? 'Try again' : '', spec.action && spec.action.label].filter(Boolean)
+    .map((l) => '<button>' + esc(l) + '</button>').join('');
+  if (host) host.innerHTML = '<div class="empty-state empty-state-' + kind + ' ' + esc(spec.className || '')
+    + '" data-empty-state="' + kind + '">' + words + acts + '</div>';
+  return host;
+}
+export default {
+  renderEmptyState,""", 1)
 _ADMIN_STUBS.update({
     "settings.js": "export default { open(){}, close(){}, initIntegrations(){} };\n",
     "providers.js": "export function providerLogo(){ return ''; }\n"

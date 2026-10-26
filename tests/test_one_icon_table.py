@@ -650,18 +650,22 @@ def _expected_now(before: dict) -> dict:
 # control was waiting for it. 57 before `B397`, 56 after; the two sites after
 # it in that module (`_chevronIcon`, the section chevron) move up one place.
 _B397_REMOVED = "static/js/research/panel.js#3"
+# `B902`'s, the same way: the admin MCP form's tool-list chevron
+# (`loadMcpServers`, the fourth and last chevron in `admin.js`), deleted with
+# the unreachable form it was drawn in. 56 before `B902`, 55 after.
+_B902_REMOVED = "static/js/admin.js#4"
+_REMOVED = (_B397_REMOVED, _B902_REMOVED)
 
 
 def _now_key(key: str):
-    """The key a `B230` baseline site has in the tree now, or `None` for the
-    site `B397` removed."""
-    if key == _B397_REMOVED:
+    """The key a `B230` baseline site has in the tree now, or `None` for a
+    site `B397` or `B902` removed."""
+    if key in _REMOVED:
         return None
     mod, n = key.split("#")
-    gone_mod, gone_n = _B397_REMOVED.split("#")
-    if mod == gone_mod and int(n) > int(gone_n):
-        return f"{mod}#{int(n) - 1}"
-    return key
+    shift = sum(1 for gone in _REMOVED
+                if gone.split("#")[0] == mod and int(n) > int(gone.split("#")[1]))
+    return f"{mod}#{int(n) - shift}" if shift else key
 
 
 def test_every_chevron_site_emits_what_its_literal_emitted_plus_B291s_two_changes():
@@ -690,9 +694,10 @@ def test_every_chevron_site_emits_what_its_literal_emitted_plus_B291s_two_change
     assert len(before) == 57
     assert len({k.split("#")[0] for k in before}) == 23
     keys = sorted(before)
-    # `B397`: 56 now — the baseline less `_closeIcon`, renumbered (above).
+    # `B397`, `B902`: 55 now — the baseline less `_closeIcon` and the admin MCP
+    # form's chevron, renumbered (above).
     kept = [k for k in keys if _now_key(k)]
-    assert len(kept) == 56
+    assert len(kept) == 55
     assert sorted(now) == sorted(_now_key(k) for k in kept), \
         sorted(set(now) ^ {_now_key(k) for k in kept})
     rendered = _h("chevrons", json.dumps([now[_now_key(k)] for k in kept]))["rendered"]
@@ -753,8 +758,9 @@ def test_every_chevron_site_emits_what_its_literal_emitted_plus_B291s_two_change
 
 def test_the_table_adds_no_rotation_of_its_own():
     """`B83`'s second objection, and the `Law 1` hazard the row names. Twenty
-    places already rotate a chevron — fourteen stylesheet rules and six JS
-    handlers — and all twenty were written against a base pointing DOWN. The
+    places rotated a chevron — fourteen stylesheet rules and six JS handlers
+    (five since `B902` deleted the admin MCP form) — and all were written
+    against a base pointing DOWN. The
     table emits bare points and no transform, so the sheet stays the only thing
     that turns a chevron and the glyph never gets rotated twice."""
     css = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
@@ -766,7 +772,8 @@ def test_the_table_adds_no_rotation_of_its_own():
         src = _blank(path.read_text(encoding="utf-8"))
         handlers += [path.name for _ in
                      re.finditer(r"chevron\w*\.style\.transform\s*=", src)]
-    assert sorted(handlers) == ["admin.js"] * 4 + ["cookbookRunning.js"] * 2, handlers
+    # `B902` deleted the admin MCP form, and one of admin.js's four with it.
+    assert sorted(handlers) == ["admin.js"] * 3 + ["cookbookRunning.js"] * 2, handlers
     out = _h("chevrons", json.dumps([{}, {"direction": "up"},
                                      {"direction": "left", "className": "x"}]))
     for markup in out["rendered"]:
