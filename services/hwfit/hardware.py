@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import contextvars
 import json
 import os
 import platform
@@ -19,23 +20,70 @@ CACHE_TTL = 24 * 3600  # 24 h — hardware probes are user-initiated via the Res
                        # half-hour during a long session.
 
 
-_remote_host = None  # set by detect_system(host=...)
-_remote_port = None  # set by detect_system(ssh_port=...)
-_remote_platform = None  # set by detect_system(platform=...): "windows", "linux", "termux"
-_last_gpu_error = None  # set by _detect_nvidia() when nvidia-smi errors (driver mismatch, etc.)
+# `B1141`. Which machine a detection asks, and what it learned on the way, is
+# per detection — a `ContextVar` that `detect_system` sets for its own call and
+# resets when it returns. These were module globals that `detect_system` wrote
+# and `_run` read, and the hwfit handlers are sync, so FastAPI runs them on its
+# thread pool: measured on 2026-10-02, a remote detection started 120 ms
+# before a local one made four SSH calls and then three local ones — the
+# serving host's `nvidia-smi` among them — and that mixed answer was cached
+# under the remote host's key for `CACHE_TTL`. A context is copied into each
+# worker thread and each task, so two detections never see each other's.
+#
+# The module names below remain as what a helper reads when it is called
+# outside any detection — a test that sets `hardware._remote_host` and calls
+# `_detect_amd()` directly — and nothing in this module writes them any more.
+_remote_host = None
+_remote_port = None
+_remote_platform = None  # "windows", "linux", "termux"
+_last_gpu_error = None  # `_detect_nvidia`'s driver error, outside a detection
+
+
+class _Probe:
+    """One detection's target and what it found on the way."""
+
+    __slots__ = ("host", "port", "platform", "gpu_error")
+
+    def __init__(self, host=None, port=None, platform=None):
+        self.host = host or None
+        self.port = port or None
+        self.platform = platform or None
+        self.gpu_error = None
+
+
+_PROBE: contextvars.ContextVar = contextvars.ContextVar("hwfit_probe", default=None)
+
+
+def _host():
+    probe = _PROBE.get()
+    return probe.host if probe is not None else _remote_host
+
+
+def _port():
+    probe = _PROBE.get()
+    return probe.port if probe is not None else _remote_port
+
+
+def _set_gpu_error(value):
+    global _last_gpu_error
+    probe = _PROBE.get()
+    if probe is not None:
+        probe.gpu_error = value
+    else:
+        _last_gpu_error = value
 
 
 def _run(cmd):
     try:
-        if _remote_host:
+        if _host():
             # Run command on remote host via SSH
             if isinstance(cmd, list):
                 cmd_str = shlex.join(str(c) for c in cmd)
             else:
                 cmd_str = cmd
             r = run_ssh_command(
-                _remote_host,
-                _remote_port,
+                _host(),
+                _port(),
                 cmd_str,
                 timeout=15,
                 connect_timeout=5,
@@ -83,15 +131,14 @@ def _group_gpus(gpus):
 
 
 def _detect_nvidia():
-    global _last_gpu_error
-    _last_gpu_error = None
+    _set_gpu_error(None)
     out = _run(["nvidia-smi", "--query-gpu=memory.total,name", "--format=csv,noheader,nounits"])
     # Fallback: a non-interactive shell (or WSL) often has a minimal PATH
     # that omits where nvidia-smi lives (/usr/bin, /usr/local/cuda/bin,
     # /usr/lib/wsl/lib), so the first call silently returns nothing →
     # "No GPU" on machines that DO have GPUs.
     # Retry through a login shell with the common CUDA bin dirs on PATH.
-    if not out and _remote_host:
+    if not out and _host():
         out = _run(
             f"bash -lc '{SSH_PATH_OVERRIDE}"
             "nvidia-smi --query-gpu=memory.total,name --format=csv,noheader,nounits'"
@@ -105,7 +152,7 @@ def _detect_nvidia():
         for _p in NVIDIA_PATH_CANDIDATES:
             # Use list form so subprocess.run (local) resolves the absolute path
             # correctly instead of treating the whole string as an executable name.
-            if _remote_host:
+            if _host():
                 out = _run(f"{_p} --query-gpu=memory.total,name --format=csv,noheader,nounits")
             else:
                 out = _run([_p, "--query-gpu=memory.total,name", "--format=csv,noheader,nounits"])
@@ -121,7 +168,7 @@ def _detect_nvidia():
     if ("nvml" in _low or "driver/library version mismatch" in _low
             or "couldn't communicate" in _low or "no devices were found" in _low
             or "failed to initialize" in _low):
-        _last_gpu_error = out.strip().split("\n")[0][:140] or "NVIDIA driver error"
+        _set_gpu_error(out.strip().split("\n")[0][:140] or "NVIDIA driver error")
         return None
 
     gpus = []
@@ -208,7 +255,7 @@ def _detect_amd():
     and APUs / unified-memory SoCs like Strix Halo (which expose
     mem_info_vis_vram_total instead, or only mem_info_gtt_total)."""
     def _read(path):
-        if _remote_host:
+        if _host():
             val = _run(["cat", path])
             return val.strip() if val else None
         try:
@@ -218,7 +265,7 @@ def _detect_amd():
             return None
 
     def _list_drm_cards():
-        if _remote_host:
+        if _host():
             out = _run(["ls", "/sys/class/drm"])
             if not out:
                 return []
@@ -320,7 +367,7 @@ def _detect_apple_silicon():
     (platform.system()=="Darwin") and over SSH (uname -s == Darwin).
     """
     # Gate to macOS — locally via platform, remotely via uname.
-    if _remote_host:
+    if _host():
         if "darwin" not in (_run(["uname", "-s"]) or "").lower():
             return None
         arch = (_run(["uname", "-m"]) or "").lower()
@@ -419,7 +466,7 @@ def _detect_apple_silicon():
 
 def _read_file(path):
     """Read a file, locally or via SSH."""
-    if _remote_host:
+    if _host():
         return _run(["cat", path])
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
@@ -453,7 +500,7 @@ def _get_ram_gb():
 
     # os.sysconf only exists on Unix; on Windows it's absent (AttributeError)
     # and these constants aren't defined — guard so this never raises there.
-    if not _remote_host and hasattr(os, "sysconf") and "SC_PHYS_PAGES" in getattr(os, "sysconf_names", {}):
+    if not _host() and hasattr(os, "sysconf") and "SC_PHYS_PAGES" in getattr(os, "sysconf_names", {}):
         try:
             pages = os.sysconf("SC_PHYS_PAGES")
             page_size = os.sysconf("SC_PAGE_SIZE")
@@ -493,13 +540,13 @@ def _get_cpu_name():
     if brand and brand.strip():
         return brand.strip()
 
-    if not _remote_host:
+    if not _host():
         return platform.processor() or "unknown"
     return "unknown"
 
 
 def _get_cpu_count():
-    if _remote_host:
+    if _host():
         # nproc on Linux; hw.ncpu via sysctl on a remote Mac (no nproc there).
         out = _run(["nproc"]) or _run(["sysctl", "-n", "hw.ncpu"])
         if out:
@@ -528,7 +575,7 @@ def _canonical_cpu_arch(value):
 
 
 def _get_cpu_arch():
-    if _remote_host:
+    if _host():
         return _canonical_cpu_arch(_run(["uname", "-m"]) or "")
     return _canonical_cpu_arch(platform.machine())
 
@@ -626,7 +673,7 @@ def _detect_windows():
         $r | ConvertTo-Json -Compress
     """
     )
-    if _remote_host:
+    if _host():
         # Remote: use -EncodedCommand so OpenSSH/cmd quoting does not break the script.
         out = _powershell_encoded_for_ssh(ps_cmd.strip())
     else:
@@ -705,7 +752,7 @@ def _cache_key(host: str, ssh_port: str, platform_name: str):
 
 def _is_containerized():
     """Best-effort check for whether the local Pantheon process is running in a container."""
-    if _remote_host:
+    if _host():
         return False
 
     if os.path.exists("/.dockerenv"):
@@ -796,15 +843,17 @@ def detect_system(host="", ssh_port="", platform="", fresh=False):
     bypass the cache and re-probe (the "Rescan" button).
     If host is set (e.g. 'user@server'), runs detection commands over SSH.
     platform: "windows", "linux", "termux", or "" (auto-detect).
-    """
-    global _remote_host, _remote_port, _remote_platform
 
+    `B1141`: every command this call runs goes to `host` and no one else's,
+    whatever other detection runs beside it — the target is this call's own
+    context (`_PROBE`), set here and reset on the way out, however it leaves.
+    """
     if host and not platform:
-        _remote_host = host
-        _remote_port = ssh_port or None
-        platform = _probe_remote_platform()
-        _remote_host = None
-        _remote_port = None
+        token = _PROBE.set(_Probe(host, ssh_port))
+        try:
+            platform = _probe_remote_platform()
+        finally:
+            _PROBE.reset(token)
 
     cache_key = _cache_key(host, ssh_port, platform)
     now = time.time()
@@ -813,48 +862,43 @@ def detect_system(host="", ssh_port="", platform="", fresh=False):
         if (now - ts) < CACHE_TTL:
             return cached
 
-    _remote_host = host or None
-    _remote_port = ssh_port or None
-    _remote_platform = platform or None
+    probe = _Probe(host, ssh_port, platform)
+    token = _PROBE.set(probe)
+    try:
+        result = _detect_on(probe, host)
+    finally:
+        _PROBE.reset(token)
+    _cache_by_host[cache_key] = (now, result)
+    return result
 
+
+def _detect_on(probe, host):
+    """The detection itself, inside `detect_system`'s context for `probe`.
+    The caller caches what this returns under that probe's own key."""
     # Windows: single PowerShell command for all hardware info
-    if _remote_platform == "windows" and _remote_host:
+    if probe.platform == "windows" and probe.host:
         result = _detect_windows()
         if result:
-            result = _attach_probe_context(result, host=host)
-            _remote_host = None
-            _remote_platform = None
-            _cache_by_host[cache_key] = (now, result)
-            return result
+            return _attach_probe_context(result, host=host)
         # SSH may work while the PowerShell hardware probe still fails.
-        result = {"error": f"Windows hardware probe failed for {host}", "host": host}
-        _remote_host = None
-        _remote_platform = None
-        _cache_by_host[cache_key] = (now, result)
-        return result
+        return {"error": f"Windows hardware probe failed for {host}", "host": host}
 
     # Local Windows: the Linux /proc + /sys + os.sysconf path returns 0 GB RAM,
     # "unknown" CPU and no GPU on Windows (and os.sysconf doesn't even exist),
     # so detect locally via PowerShell/WMI instead. _detect_windows() runs the
     # same probe used for remote Windows, but _run() executes it locally.
-    if not _remote_host and os.name == "nt":
+    if not probe.host and os.name == "nt":
         result = _detect_windows()
         if result:
-            result = _attach_probe_context(result, host=host)
-            _cache_by_host[cache_key] = (now, result)
-            return result
+            return _attach_probe_context(result, host=host)
         # PowerShell probe failed entirely — fall through to the generic path
         # below so we at least return a well-shaped dict rather than crashing.
 
     # Linux/Termux: existing multi-command detection
     total_ram = round(_get_ram_gb(), 1)
     # If remote host returns 0 RAM, connection likely failed
-    if _remote_host and total_ram <= 0:
-        result = {"error": f"Cannot connect to {host}", "host": host}
-        _cache_by_host[cache_key] = (now, result)
-        _remote_host = None
-        _remote_platform = None
-        return result
+    if probe.host and total_ram <= 0:
+        return {"error": f"Cannot connect to {host}", "host": host}
     available_ram = round(_get_available_ram_gb(), 1)
     cpu_cores = _get_cpu_count()
     cpu_name = _get_cpu_name()
@@ -897,12 +941,8 @@ def detect_system(host="", ssh_port="", platform="", fresh=False):
             "backend": backend,
             # Set when nvidia-smi exists but failed (e.g. driver/library
             # version mismatch) — lets the UI say "GPU driver error" instead
-            # of the misleading "No GPU".
-            "gpu_error": _last_gpu_error,
+            # of the misleading "No GPU". This detection's own (`B1141`).
+            "gpu_error": probe.gpu_error,
         }
 
-    result = _attach_probe_context(result, host=host)
-    _remote_host = None
-    _remote_platform = None
-    _cache_by_host[cache_key] = (now, result)
-    return result
+    return _attach_probe_context(result, host=host)
