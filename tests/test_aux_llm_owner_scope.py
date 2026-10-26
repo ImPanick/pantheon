@@ -10,10 +10,13 @@ def _src(path: str) -> str:
 
 
 def test_registered_manual_compaction_uses_session_owner_for_utility_endpoint():
-    session_src = _src("routes/session_routes.py")
+    # `B1529`: the one compact handler is `history_routes`' now (the one in
+    # `session_routes` shadowed it); it keeps the chat owner's scope, which
+    # `tests/test_history_compact_tool_calls.py` drives through the route.
+    history_src = _src("routes/history/history_routes.py")
 
-    assert 'owner = getattr(session, "owner", None) or effective_user(request)' in session_src
-    assert 'resolve_endpoint("utility", owner=owner)' in session_src
+    assert 'owner = getattr(session, "owner", None) or effective_user(request)' in history_src
+    assert 'resolve_endpoint("utility", owner=owner or None)' in history_src
 
 
 def test_task_name_generation_uses_owner_scoped_session_endpoint():

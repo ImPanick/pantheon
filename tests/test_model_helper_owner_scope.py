@@ -65,8 +65,11 @@ def test_task_parse_resolves_with_owner_scope(monkeypatch):
 
 
 def test_history_compact_resolves_with_owner_scope():
+    # `B1529`: the one compact handler resolves with the chat owner's scope
+    # (falling back to the caller's) — driven in
+    # `tests/test_history_compact_tool_calls.py::test_registered_manual_compact_route_uses_session_owner`.
     body = _function_source("routes/history/history_routes.py", "compact_session")
-    assert "owner = effective_user(request)" in body
+    assert 'owner = getattr(session, "owner", None) or effective_user(request)' in body
     assert 'resolve_endpoint("utility", owner=owner or None)' in body
 
 
