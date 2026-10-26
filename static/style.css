@@ -7238,7 +7238,6 @@ body.bg-pattern-sparkles {
          card fills the skills-list area below them via position:absolute
          (see the #skills-list rule above). Just make sure the tab-panel +
          its card give the list its full height. */
-      #memory-modal .memory-tab-panel[data-memory-panel="skills"] > .admin-card:has(.doclib-card-expanded),
       #skills-modal .skills-view[data-skills-view-panel="browse"] > .admin-card:has(.doclib-card-expanded),
       #skills-room .skills-view[data-skills-view-panel="browse"] > .admin-card:has(.doclib-card-expanded) {
         flex: 1 1 auto !important;
@@ -9417,13 +9416,11 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       }
       /* Same basis:0 fix down the rest of the skills chain so every layer
          fills instead of sizing to content under Firefox. */
-      #memory-modal .memory-tab-panel[data-memory-panel="skills"],
       #skills-modal .skills-view[data-skills-view-panel="browse"],
       #skills-room .skills-view[data-skills-view-panel="browse"] {
         flex: 1 1 0 !important;
         min-height: 0 !important;
       }
-      #memory-modal .memory-tab-panel[data-memory-panel="skills"] > .admin-card,
       #skills-modal .skills-view[data-skills-view-panel="browse"] > .admin-card,
       #skills-room .skills-view[data-skills-view-panel="browse"] > .admin-card {
         flex: 1 1 0 !important;
@@ -13893,28 +13890,11 @@ details a:hover {
   border-color: color-mix(in srgb, var(--fg) 8%, transparent);
   background: color-mix(in srgb, var(--fg) 2%, transparent);
 }
-/* Skills tab — two-column layout: skills list (left, wider) + Add Skill
-   form (right, narrower). Collapses to a single column on narrow screens. */
-.memory-tab-panel[data-memory-panel="skills"] {
-  flex-direction: row;
-  align-items: stretch;
-  gap: 10px;
-}
-.memory-tab-panel[data-memory-panel="skills"] > .admin-card:first-of-type {
-  flex: 2 1 0;
-  min-width: 0;
-}
-.memory-tab-panel[data-memory-panel="skills"] > .admin-card:nth-of-type(2) {
-  flex: 1 1 0;
-  margin-top: 0 !important;
-  min-width: 220px;
-}
-@media (max-width: 640px) {
-  .memory-tab-panel[data-memory-panel="skills"] { flex-direction: column; }
-  .memory-tab-panel[data-memory-panel="skills"] > .admin-card:nth-of-type(2) {
-    margin-top: 12px !important;
-  }
-}
+/* `B1189`: the Brain's Skills tab (a list beside an Add Skill form) had a
+   two-column layout here, and its siblings in three selector lists above and
+   one rule below. `P23-02` deleted the launcher panel, so no element carries
+   `data-memory-panel="skills"` and all of them matched nothing; Skills is its
+   own window (`#skills-modal`, `#skills-room`), styled where those are. */
 .memory-desc {
   margin: 0;
   font-size: 11px;
@@ -21033,13 +21013,8 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
 #wb-skills-list.doclib-grid:has(.doclib-card-expanded) {
   overflow: hidden;  /* expanded card owns its own scroll */
 }
-/* When a skill is expanded, hide the sibling Add-Skill form card so the
-   expanded SKILL.md uses the full panel. Otherwise the two admin-cards
-   split the height ~50/50 and the expanded skill is stuck in its half
-   while the Add form idles in the other. */
-.memory-tab-panel[data-memory-panel="skills"]:has(.doclib-card-expanded) > .admin-card:nth-of-type(2) {
-  display: none !important;
-}
+/* `B1189`: a rule hid the Brain Skills tab's Add-Skill card while a skill
+   was expanded; that tab is gone (`P23-02`), and so is the rule. */
 
 /* Skills cards reuse the doclib expand/footer machinery. The SKILL.md
    preview + the edit textarea need to fill the expanded card and own
