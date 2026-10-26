@@ -15270,6 +15270,70 @@ textarea.memory-add-input {
   content: '\00b7  ';
 }
 
+/* `B821`. The card's line for a memory about to go quiet. A sentence a person
+   acts on, so it is read at full size and at a contrast that passes, not at the
+   9px of the meta strip above it. */
+.memory-item-fades {
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 3px;
+  color: var(--fg-muted);
+}
+
+/* `B820`. How you write — the style profile, at the top of the Brain's list. */
+.memory-style-panel {
+  margin: 6px 0 8px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.memory-style-panel[hidden] { display: none; }
+.memory-style-head {
+  font-size: 12px;
+  font-weight: 600;
+}
+.memory-style-sub,
+.memory-style-progress {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--fg-muted);
+}
+.memory-style-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.memory-style-line {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  color: var(--fg);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  border-radius: 6px;
+}
+.memory-style-line:focus-visible {
+  outline: 2px solid var(--accent, var(--red));
+  outline-offset: 1px;
+}
+.memory-style-forget {
+  align-self: flex-start;
+}
+
+/* `B822`. A provider import's one line under its suggestions: what was read
+   and what was skipped. */
+.memory-import-summary {
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 8px 4px 2px;
+  color: var(--fg-muted);
+}
+
 /* ── `P13-07`. The Brain's reading surface ───────────────────────────────────
    No canvas and no force layout, which is the row's own instruction twice over
    and the reason `P3-19` is moot: what a person wants from a memory graph is
@@ -20977,12 +21041,8 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
   align-items: center;
   gap: 6px;
 }
-.skill-conf-dot {
-  display: inline-block;
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
+/* `B690`. `.skill-conf-dot` was here: its one consumer was the fixed-colour dot
+   on the built-in capability card, which is gone (it reported no status). */
 /* Name + description column. Name wraps to 2 lines (skill slugs are long —
    use the space rather than truncating to "check-model-downl…").
    `B1124`. It was `flex: 1 1 auto; min-width: 0` beside a pill cluster that

@@ -155,20 +155,41 @@ def test_sort_and_filter_are_two_controls_and_an_emptied_list_says_so(box):
 def test_a_draft_reads_draft_and_a_fork_is_not_its_origins_duplicate(box):
     """`BRAIN-U-17`: the pill says *draft* (it said *uncatalogued*, beside
     *active*, *Approve* and *Auto-approve* elsewhere). `BRAIN-M-9`: a fresh
-    fork opened branded "duplicate #1 · lower-priority" of its own origin."""
+    fork opened branded "duplicate #1 · lower-priority" of its own origin.
+
+    `B793` changed the fake server, not the assertions: the page groups by the
+    `similar` rows `GET /api/skills` carries and computes no similarity of its
+    own, so each list below is answered with the rows the real server computes
+    for it (`skill_lint.overlap_map`) — the fork is still the server's pair and
+    still not drawn as one; the copy is, as before."""
+    from services.memory.skill_lint import overlap_map
+
+    base = [{"name": "alpha-logs", "description": "tidy the build logs"},
+            {"name": "beta-print", "description": "clear the print queue"}]
+
+    def similar_for(extra):
+        return overlap_map(base + [extra])
+
+    fork_rows = similar_for({"name": "alpha-logs-fork", "description": "tidy the build logs"})
+    copy_rows = similar_for({"name": "alpha-logs-copy", "description": "tidy the build logs"})
+    assert fork_rows["alpha-logs-fork"] and copy_rows["alpha-logs-copy"], \
+        "the server does not pair them, so the page has nothing to group"
     o = _go(box, """
         const card = (n) => cards('skills-list').find((c) => c.dataset.skillName === n);
         const pills = (n) => (card(n) ? card(n).querySelectorAll('.memory-cat-badge').map((p) => p.textContent.trim()) : null);
+        const answer = (rows) => server.skills.forEach((s) => { s.similar = rows[s.name] || []; });
         server.skills.push({ name: 'alpha-logs-fork', description: 'tidy the build logs', status: 'draft',
                              confidence: 0.8, version: '1.0.0', body_extra: 'Forked from `alpha-logs`.' });
+        answer(%s);
         await skills.loadSkills(); await tick();
         const fork = pills('alpha-logs-fork'), origin = pills('alpha-logs');
         server.skills.pop();
         server.skills.push({ name: 'alpha-logs-copy', description: 'tidy the build logs', status: 'draft',
                              confidence: 0.8, version: '1.0.0' });
+        answer(%s);
         await skills.loadSkills(); await tick();
         out({ fork, origin, copy: pills('alpha-logs-copy') });
-    """)
+    """ % (json.dumps(fork_rows), json.dumps(copy_rows)))
     assert "draft" in o["origin"]
     assert not any("duplicate" in p for p in o["fork"]), o["fork"]
     assert any("duplicate" in p for p in o["copy"]), "the detector no longer sees a real copy"

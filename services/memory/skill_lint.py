@@ -127,12 +127,15 @@ def skill_tokens(sk: Dict) -> set:
     return {t for t in _TOKEN_SPLIT_RE.split(text) if len(t) > 2 and t not in _STOPWORDS}
 
 
-def skill_similarity(a: Dict, b: Dict) -> float:
-    """Jaccard overlap of two skills' comparison tokens. 0.0 when either is empty."""
-    A, B = skill_tokens(a), skill_tokens(b)
+def _token_jaccard(A: set, B: set) -> float:
     if not A or not B:
         return 0.0
     return len(A & B) / max(1, len(A | B))
+
+
+def skill_similarity(a: Dict, b: Dict) -> float:
+    """Jaccard overlap of two skills' comparison tokens. 0.0 when either is empty."""
+    return _token_jaccard(skill_tokens(a), skill_tokens(b))
 
 
 def base_name(n) -> str:
@@ -142,7 +145,8 @@ def base_name(n) -> str:
 
 def skill_overlaps(skill: Optional[Dict], siblings: Optional[Sequence[Dict]] = None,
                    *, floor: float = DUPLICATE_SIMILARITY,
-                   limit: int = MAX_OVERLAPS_REPORTED) -> List[Dict]:
+                   limit: int = MAX_OVERLAPS_REPORTED,
+                   _tokens: Optional[Dict[int, set]] = None) -> List[Dict]:
     """Every sibling `skill` overlaps, strongest first. `P8-15`.
 
     The one comparison loop in the product. The author-facing lint, the nightly
@@ -162,6 +166,19 @@ def skill_overlaps(skill: Optional[Dict], siblings: Optional[Sequence[Dict]] = N
     """
     if not isinstance(skill, dict):
         return []
+
+    def toks(sk: Dict) -> set:
+        # `B793`. `overlap_map` compares a whole list pairwise and hands in one
+        # cache, so each skill is tokenised once rather than once per pair. The
+        # comparison is still `skill_similarity`'s: the same tokens, the same
+        # Jaccard (`_token_jaccard`).
+        if _tokens is None:
+            return skill_tokens(sk)
+        key = id(sk)
+        if key not in _tokens:
+            _tokens[key] = skill_tokens(sk)
+        return _tokens[key]
+
     name = str(skill.get("name") or skill.get("id") or "").strip()
     rows: List[Dict] = []
     for other in (siblings or []):
@@ -171,7 +188,7 @@ def skill_overlaps(skill: Optional[Dict], siblings: Optional[Sequence[Dict]] = N
         if not other_name or other_name == name:
             continue
         same_base = bool(name) and base_name(name) == base_name(other_name)
-        score = skill_similarity(skill, other)
+        score = _token_jaccard(toks(skill), toks(other))
         if same_base or score >= floor:
             rows.append({"name": other_name, "score": round(score, 3),
                          "same_base": same_base})
@@ -179,6 +196,34 @@ def skill_overlaps(skill: Optional[Dict], siblings: Optional[Sequence[Dict]] = N
     # thing the author meant to edit.
     rows.sort(key=lambda r: (r["same_base"], r["score"]), reverse=True)
     return rows[:max(0, int(limit))] if limit else rows
+
+
+def overlap_map(skills: Optional[Sequence[Dict]],
+                *, floor: float = DUPLICATE_SIMILARITY) -> Dict[str, List[Dict]]:
+    """For every named skill in `skills`, each other one it overlaps. `B793`.
+
+    `B731` / `B793`: the Workshop grouped duplicates with a **third**
+    implementation of this comparison — its own tokenizer in `skills.js`, which
+    left `procedure` out — at a 0.38 it carried as its own copy, so the number
+    behind a card's *duplicate* pill and the number the server refuses a
+    creation at were two functions of two field sets. The list route now
+    answers with this map (`GET /api/skills` → each skill's `similar`), and the
+    page groups by it: one comparison (`skill_overlaps`, the loop the lint, the
+    audit and `add_skill` already share), one scale, and the page holds no copy.
+
+    Every row `skill_overlaps` reports at `floor` — a shared base name or a
+    score at or above it — strongest first, with no limit, so a group the page
+    draws is exactly the pairs this reports.
+    """
+    rows = [s for s in (skills or []) if isinstance(s, dict)]
+    cache: Dict[int, set] = {}
+    out: Dict[str, List[Dict]] = {}
+    for sk in rows:
+        name = str(sk.get("name") or sk.get("id") or "").strip()
+        if not name:
+            continue
+        out[name] = skill_overlaps(sk, rows, floor=floor, limit=0, _tokens=cache)
+    return out
 
 
 def describe_overlaps(rows: Optional[Sequence[Dict]]) -> str:
@@ -296,6 +341,62 @@ PROBLEM = "problem"
 ADVISORY = "advisory"
 
 
+# ---------------------------------------------------------------------------
+# Tool names a skill declares — `B1490`
+# ---------------------------------------------------------------------------
+#
+# `requires_toolsets` is gated against the **callable register**
+# (`agent_loop._skill_active_toolsets`, `B1381`: `selectable_tool_names()`
+# filtered by the turn's cap). A name that register does not hold is never
+# active on any turn, so a skill requiring it is withheld from every catalogue
+# for good — and `add_skill` took it, the Skills window listed it and nothing
+# said why. Measured on `ffaf6671`: `requires_toolsets: [no_such_tool]` saved,
+# listed, indexed for nobody, logged nothing.
+
+def unknown_toolsets(names: Optional[Sequence[str]]) -> List[str]:
+    """The entries of `names` that no tool a turn can be offered is called.
+
+    Asked of the register the gate reads (`selectable_tool_names()`), so
+    "unknown" here and "never active" at the gate are one fact (`Law 7`).
+    Empty when the register cannot be read — this is advice, and advice that
+    guesses is worse than none.
+    """
+    wanted = [str(n).strip() for n in (names or []) if str(n or "").strip()]
+    if not wanted:
+        return []
+    try:
+        from src.tool_policy import selectable_tool_names
+        known = set(selectable_tool_names())
+    except Exception:
+        return []
+    return [n for n in wanted if n not in known]
+
+
+def closest_tool_name(name: str) -> str:
+    """The register's nearest spelling of `name` (*web-search* → `web_search`),
+    or "" when nothing is close. For the sentence that says what to type."""
+    import difflib
+    try:
+        from src.tool_policy import selectable_tool_names
+        known = sorted(selectable_tool_names())
+    except Exception:
+        return ""
+    probe = str(name or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if probe in known:
+        return probe
+    hit = difflib.get_close_matches(probe, known, n=1, cutoff=0.75)
+    return hit[0] if hit else ""
+
+
+def describe_unknown_tools(names: Optional[Sequence[str]]) -> str:
+    """`` `no_such_tool` `` / `` `web-search` (did you mean `web_search`?) ``."""
+    parts = []
+    for n in names or []:
+        near = closest_tool_name(n)
+        parts.append(f"`{n}`" + (f" (did you mean `{near}`?)" if near and near != n else ""))
+    return ", ".join(parts)
+
+
 def _finding(code: str, severity: str, field: str, message: str, fix: str) -> Dict:
     return {"code": code, "severity": severity, "field": field,
             "message": message, "fix": fix}
@@ -384,6 +485,30 @@ def lint_skill(skill: Optional[Dict], siblings: Optional[Sequence[Dict]] = None)
             "Category is `general`, so this skill sorts into the catch-all group "
             "in the index the model reads.",
             "Name the area — `dev`, `email`, `system`, whatever groups it with its neighbours."))
+
+    # --- tool names no turn can have — `B1490` -------------------------------
+    unknown_required = unknown_toolsets(skill.get("requires_toolsets"))
+    if unknown_required:
+        findings.append(_finding(
+            "unknown-required-tool", PROBLEM, "requires_toolsets",
+            f"Required tools names {describe_unknown_tools(unknown_required)}, "
+            + ("which is not a tool Pantheon has — so no message ever has it on"
+               if len(unknown_required) == 1 else
+               "which are not tools Pantheon has — so no message ever has them on")
+            + ", and this skill is never shown to the model.",
+            "Use a tool's own name (`bash`, `read_file`, `web_search`), or leave "
+            "Required tools empty."))
+    unknown_fallback = unknown_toolsets(skill.get("fallback_for_toolsets"))
+    if unknown_fallback:
+        findings.append(_finding(
+            "unknown-fallback-tool", ADVISORY, "fallback_for_toolsets",
+            f"\"Only when these are unavailable\" names "
+            f"{describe_unknown_tools(unknown_fallback)}, "
+            + ("which is not a tool Pantheon has — so it is never on"
+               if len(unknown_fallback) == 1 else
+               "which are not tools Pantheon has — so they are never on")
+            + ", and this skill is never hidden for it.",
+            "Use the name of the tool this skill stands in for."))
 
     # --- retrieval precision, from the audit's own prefilter ----------------
     if should_check_retrieval_precision(skill):

@@ -260,6 +260,13 @@ ARCHIVE_FADES = "fades"
 ARCHIVE_HELD = "held"
 ARCHIVE_DUE = "due"
 
+# `B821`. How near its archive a fading memory has to be before its card says
+# so. Every dated, committed memory `fades` — a fresh one in 180 days — so a
+# line on every card would be a line nobody reads; *"about to go quiet"* is the
+# row's phrase and this is its number. On the forecast as `soon`, so the page
+# holds no copy of it (`Law 7`).
+ARCHIVE_WARN_DAYS = 30
+
 
 def last_evidence(memory: Dict) -> int:
     """The most recent moment anything happened to this memory. `P13-04`.
@@ -296,6 +303,22 @@ def last_evidence(memory: Dict) -> int:
 
 
 def archive_forecast(memory: Dict, now: float = None, superseded: bool = False) -> Dict:
+    """Whether this memory fades, how long it has, and whether to say so. `P13-04`.
+
+    `_archive_verdict` below, plus `soon` (`B821`): true when it is `due`, or
+    `fades` within `ARCHIVE_WARN_DAYS` — the memories the Brain's card warns
+    about. A boolean is safe here because it has one reading: *say it on the
+    card*; the verdict itself stays the enum.
+    """
+    out = _archive_verdict(memory, now=now, superseded=superseded)
+    days = out.get("days")
+    out["soon"] = (out["verdict"] == ARCHIVE_DUE
+                   or (out["verdict"] == ARCHIVE_FADES and days is not None
+                       and days <= ARCHIVE_WARN_DAYS))
+    return out
+
+
+def _archive_verdict(memory: Dict, now: float = None, superseded: bool = False) -> Dict:
     """Whether this memory fades, and how long it has. `P13-04`.
 
     Returns `{"verdict": ARCHIVE_HELD | ARCHIVE_FADES | ARCHIVE_DUE,

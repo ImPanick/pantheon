@@ -11,6 +11,7 @@ import { makeWindowDraggable } from './windowDrag.js';
 import { attachColorPicker } from './colorPicker.js';
 import { bindMenuDismiss } from './escMenuStack.js';
 import { ROOM_NAMES } from './workbench/rooms.js';
+import { markUnreached, quietIfUnreached } from './presets.js';   // `B1256`
 import {
   WEEKDAYS, WEEKDAYS_SUN, MONTHS, MON_SHORT,
   CAL_PALETTE, CAL_COLORS, _CAL_CUSTOM_GRADIENT, _TYPE_PALETTE,
@@ -121,7 +122,7 @@ async function _fetchEvents(start, end, force) {
   // Render from pool immediately if we have any cached data
   const hasCache = Object.keys(_allEvents).length > 0;
   if (hasCache) _events = _filterPool(start, end);
-  const fetchPromise = fetch(`${API_BASE}/api/calendar/events?start=${start}&end=${end}`, { credentials: 'same-origin' })
+  const fetchPromise = markUnreached(fetch(`${API_BASE}/api/calendar/events?start=${start}&end=${end}`, { credentials: 'same-origin' }))
     .then(r => {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
@@ -137,7 +138,9 @@ async function _fetchEvents(start, end, force) {
       // Re-render in background when new data arrives (if calendar still open)
       if (_open && hasCache) _render();
     })
-    .catch(e => { console.error('Calendar: failed to fetch events', e); });
+    // `B1256`: offline is the page's news, said once (`presets.js`); a refusal
+    // (`HTTP …` above) is still this loader's error.
+    .catch(e => { if (!quietIfUnreached(e, 'Calendar events')) console.error('Calendar: failed to fetch events', e); });
   // If we have cache, don't block on fetch — return immediately so render is instant
   if (hasCache) return;
   // No cache — must await the fetch

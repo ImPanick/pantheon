@@ -436,7 +436,10 @@ def test_a_recognised_export_with_nothing_of_yours_in_it_says_so(store, monkeypa
                                file=_upload(only_assistant)))
     assert out["suggestions"] == []
     assert out["provider"] == "claude"
-    assert "claude export" in out["message"]
+    # `B822`: the sentence names the provider as a person writes it
+    # (`provider_import.PROVIDER_LABELS`), and carries the counts beside it.
+    assert "Claude export" in out["message"]
+    assert out["provider_label"] == "Claude" and out["dropped_assistant"] == 1
 
 
 def test_a_file_that_sniffs_as_an_export_is_read_as_one(store, monkeypatch):

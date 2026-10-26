@@ -1237,6 +1237,28 @@ def _parent(folder: str) -> str:
     return folder.rsplit("/", 1)[0] if "/" in folder else ""
 
 
+def _outermost(folders: List[str]) -> List[str]:
+    """`folders` less any folder that sits inside another of them. `B1500`.
+
+    `B591`'s rule for the store (`SkillsManager._iter_skill_files`), applied to a
+    package: a directory holding a SKILL.md is a skill, and what is under it is
+    that skill's files — `x/references/SKILL.md` shipped as an example is a
+    reference of `x`, not a second skill. The repository root is not counted as
+    an enclosing skill here: a root SKILL.md beside `skills/<name>/` folders is
+    the layout a one-skill-plus-library repository uses, and both were imported
+    before this rule existed (`Law 1`).
+    """
+    kept = set(folders)
+    out = []
+    for f in folders:
+        cur = _parent(f) if f else ""
+        while cur and cur not in kept:
+            cur = _parent(cur)
+        if not cur:
+            out.append(f)
+    return out
+
+
 def _choose_folders(folders: List[str], declared: List[str]) -> List[str]:
     """Which folders holding a SKILL.md are the package's skills.
 
@@ -1245,6 +1267,11 @@ def _choose_folders(folders: List[str], declared: List[str]) -> List[str]:
     folder at the top level count, and only when there are none of *those* does
     any folder at all — which is what keeps `anthropics/skills`' `template/`
     out of it, and a repository of loose skills importable.
+
+    `B1500`. That last fallback took every folder holding a SKILL.md, so a
+    loose skill nested one level down (`tools/x/`) that carries
+    `references/SKILL.md` installed as two skills. It keeps the outermost ones
+    (`_outermost`), as the store's own walk does.
     """
     chosen = list(declared)
     for f in folders:
@@ -1253,7 +1280,7 @@ def _choose_folders(folders: List[str], declared: List[str]) -> List[str]:
     if chosen:
         return chosen
     top = [f for f in folders if f and "/" not in f]
-    return top or [f for f in folders if f.count("/") < 6]
+    return top or _outermost([f for f in folders if f.count("/") < 6])
 
 
 def _discover_package(arc: _Archive, src: ResolvedSource, *, named_skill: str = "",

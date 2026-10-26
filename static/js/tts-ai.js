@@ -4,6 +4,7 @@
 
 import { getSettings } from './appConfig.js';
 import { playIcon, stopIcon } from './icons.js';
+import { markUnreached, quietIfUnreached } from './presets.js';   // `B1256`
 
 class AITTSManager {
     constructor() {
@@ -46,7 +47,7 @@ class AITTSManager {
                 }
             } catch {}
 
-            const response = await fetch('/api/tts/stats');
+            const response = await markUnreached(fetch('/api/tts/stats'));
             const stats = await response.json();
             this.available = stats.available && stats.ready;
             this.playbackSpeed = stats.speed || 1;
@@ -65,7 +66,10 @@ class AITTSManager {
                 console.warn('TTS: not available');
             }
         } catch (error) {
-            console.error('Failed to check TTS availability:', error);
+            // `B1256`: offline is the page's news, said once (`presets.js`).
+            if (!quietIfUnreached(error, 'Speech')) {
+                console.error('Failed to check TTS availability:', error);
+            }
             this.available = false;
         }
     }

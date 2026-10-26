@@ -17,7 +17,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from services.memory.skills import SkillsManager
+from services.memory.skills import SkillsManager, describe_skill_gate
 from services.memory.skill_injection import (
     INDEX_ASSUMES_FETCH,
     INDEX_ASSUMES_NO_FETCH,
@@ -27,6 +27,8 @@ from services.memory.skill_injection import (
 )
 from services.memory.skill_lint import (
     DUPLICATE_REFUSAL,
+    DUPLICATE_SIMILARITY,
+    overlap_map,
     audit_flag_text as _audit_flag_text,
     audit_generic_blocker as _audit_generic_blocker,
     base_name as _base_name,
@@ -141,6 +143,11 @@ class SkillLintRequest(BaseModel):
     procedure: List[str] = Field(default_factory=list)
     pitfalls: List[str] = Field(default_factory=list)
     verification: List[str] = Field(default_factory=list)
+    # `B1490` / `B586`. The two tool fields the form sends, so the lint can say
+    # when one names a tool Pantheon does not have. Without them here pydantic
+    # dropped both before `lint_skill` saw the draft.
+    requires_toolsets: List[str] = Field(default_factory=list)
+    fallback_for_toolsets: List[str] = Field(default_factory=list)
     # `B613`. The card's SKILL.md editor holds the whole file, not the fields.
     # When this is set it is what is linted — parsed by the parser the save
     # uses (`Skill.from_markdown`), under `name` when one is given, because the
@@ -1747,7 +1754,19 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         # (see `load_visible`); a vendored skill is still read and forked by name.
         user = _owner(request)
         skills = skills_manager.load_visible(owner=user, include_vendored=False)
-        return {"skills": skills, "count": len(skills)}
+        # `B793` (absorbs `B731`). Which of these overlap, and by how much, on
+        # the server's one scale (`skill_lint.overlap_map`). The Workshop's
+        # duplicate pill groups by this and shows the number; it used to carry
+        # its own tokenizer and its own 0.38, a third copy of the comparison.
+        similar = overlap_map(skills)
+        for sk in skills:
+            sk["similar"] = similar.get(str(sk.get("name") or sk.get("id") or ""), [])
+        return {"skills": skills, "count": len(skills),
+                # The two points on that scale, for the pill's sentence: worth a
+                # look (what `similar` is cut at) and the same skill (what
+                # `add_skill` refuses a model's new skill at).
+                "similarity": {"advisory": DUPLICATE_SIMILARITY,
+                               "refusal": DUPLICATE_REFUSAL}}
 
     @router.get("/index")
     async def get_index(request: Request, can_fetch: bool = True):
@@ -1783,8 +1802,13 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         from src.agent_loop import skill_toolsets_for_owner
 
         user = _owner(request)
-        idx = skills_manager.index_for(owner=user,
-                                       active_toolsets=skill_toolsets_for_owner(user))
+        active = skill_toolsets_for_owner(user)
+        idx = skills_manager.index_for(owner=user, active_toolsets=active)
+        # `B586`. The other half of the preview: the person's own skills the
+        # block leaves out, and the gate that did it, from the same gates and
+        # the same `active` (`SkillsManager.withheld_from_index`). A skill they
+        # wrote and cannot find above is otherwise a skill that is not there.
+        not_shown = skills_manager.withheld_from_index(owner=user, active_toolsets=active)
         # `P8-21`. The block is rendered through the same budget the loop uses,
         # and the measurement comes back out of the renderer rather than being
         # recomputed here — a preview that re-derives its own numbers is a
@@ -1805,6 +1829,8 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
             "prompt_chars": len(block),
             "injected_fields": list(INJECTED_FIELDS),
             "withheld_fields": list(WITHHELD_FIELDS),
+            # `B586`. Skills, not fields: `[{name, gate, why, …}]`.
+            "not_shown": not_shown,
             # `B1376`. The one sentence of the block that depends on the turn,
             # and which way this rendering took it (`Law 10`).
             "can_fetch": bool(can_fetch),
@@ -1910,11 +1936,20 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
 
         Mirrors the agent prompt's published-skill index so the UI never offers
         a slash command the model would not normally be allowed to discover.
+
+        `B1499`. It mirrored the index *without* the tool gates — `index_for`
+        with no `active_toolsets` skips them — so a skill whose required tool
+        this person has switched off was offered as `/name` while every prompt
+        withheld it (`B580`'s gap on the slash path). The list is
+        `skill_injection.invokable_index` now, which the invoke route and the
+        turn that carries a `/name` read too: one rule for all three.
         """
+        from services.memory.skill_injection import invokable_index
+
         user = _owner(request)
         all_skills = {s.get("name"): s for s in skills_manager.load(owner=user)}
         entries = []
-        for s in skills_manager.index_for(owner=user):
+        for s in invokable_index(skills_manager, user):
             name = (s.get("name") or "").strip()
             if not name:
                 continue
@@ -2314,9 +2349,16 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         # endpoint. What was missing is the sentence: the skill is created, and
         # the caller is told what it overlaps and by how much, on the same scale
         # `POST /api/skills/lint` shows while they are still typing.
+        # `B1490`. And a required tool no turn can have: the skill is saved and
+        # will never be shown, so the answer names the entry and says so.
+        unknown = list(entry.get("_unknown_toolsets") or [])
         return {"ok": True, "deduped": bool(entry.get("_deduped")),
                 "overlaps": entry.get("_overlaps") or [],
                 "duplicate_score": entry.get("_duplicate_score"),
+                "unknown_toolsets": unknown,
+                "warning": (describe_skill_gate({"gate": "requires", "tools": unknown,
+                                                 "unknown": unknown})
+                            if unknown else ""),
                 "skill": entry}
 
     @router.post("/{skill_id}/fork")

@@ -511,6 +511,11 @@
               <button id="memory-bulk-delete" class="memory-toolbar-btn danger" disabled><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>Delete</button>
               <button id="memory-bulk-cancel" class="memory-toolbar-btn" title="Cancel (Esc)" style="margin-left:4px;padding:3px 6px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
             </div>
+            <!-- `B820`. How you write: the style profile `P13-17` keeps, read,
+                 corrected line by line and deleted here. Drawn by
+                 `memory.js::renderStylePanel` from `GET /api/memory`'s `style`
+                 block; hidden until that answer arrives. -->
+            <section id="memory-style-panel" class="memory-style-panel" aria-label="How you write" hidden></section>
             <div id="memory-list" class="memory-list"></div>
             <div id="memory-suggestions-body" class="memory-suggestions hidden"></div>
             <!-- `P13-07`. The one door to the reading surface, and deliberately
@@ -746,7 +751,7 @@
                   <span class="skill-rich-ph"><span class="k">Tags</span> — comma-separated, e.g. python, build, vllm</span>
                 </div>
                 <details class="skill-more">
-                  <summary>More fields &mdash; pitfalls, verification, platforms, required tools</summary>
+                  <summary>More fields &mdash; pitfalls, verification, platforms, which tools it needs or stands in for</summary>
                   <div class="skill-ph-wrap" style="margin-bottom:6px;">
                     <textarea id="new-skill-pitfalls" placeholder=" " class="memory-add-input skill-hint-input" rows="2" style="resize:vertical;" aria-label="Pitfalls &mdash; one per line"></textarea>
                     <span class="skill-rich-ph skill-rich-ph-top"><span class="k">Pitfalls</span> &mdash; one per line; what usually goes wrong</span>
@@ -762,6 +767,13 @@
                   <div class="skill-ph-wrap" style="margin-bottom:6px;">
                     <input type="text" id="new-skill-toolsets" placeholder=" " class="memory-add-input skill-hint-input" aria-label="Required tools" />
                     <span class="skill-rich-ph"><span class="k">Required tools</span> &mdash; comma-separated; hidden unless all are on</span>
+                  </div>
+                  <!-- `B586`. `fallback_for_toolsets`, phrased as the sentence it
+                       is: a stand-in, hidden while the real tool is on. The
+                       Skills preview names the tool when it hides one. -->
+                  <div class="skill-ph-wrap" style="margin-bottom:6px;">
+                    <input type="text" id="new-skill-fallback" placeholder=" " class="memory-add-input skill-hint-input" aria-label="Use only when these tools are unavailable" />
+                    <span class="skill-rich-ph"><span class="k">Use only when these are unavailable</span> &mdash; comma-separated tools, e.g. web_search; hidden while any is on</span>
                   </div>
                 </details>
                 <!-- `P8-12`. The lint's findings, beside the form that produced

@@ -236,6 +236,26 @@ export function memoryStatusBadge(memory) {
   };
 }
 
+/** `B821`. The line a memory card carries when it is about to go quiet, or ''.
+ *
+ *  `P13-04` puts `archive` on every row of `GET /api/memory` — `{verdict,
+ *  reason, days, soon}`, computed on read — and nothing drew it, so a memory
+ *  faded into the archive with no warning however reversible that was. The
+ *  sentence is the server's `reason` and `days` as they come; `soon` is the
+ *  server's too (`ARCHIVE_WARN_DAYS`), so this file holds no window of its own
+ *  and a fresh memory's 180-day clock is not a line on every card. The sweep
+ *  runs when the Brain is tidied (the audit), and the way to keep one is in
+ *  the sentence: a pinned memory is held.
+ */
+export function memoryFadeLine(memory) {
+  const a = memory && memory.archive;
+  if (!a || !a.soon || !a.reason) return '';
+  const when = a.verdict === 'due'
+    ? 'Fades the next time the Brain is tidied'
+    : `Fades in ${a.days} ${a.days === 1 ? 'day' : 'days'}`;
+  return `${when} — ${a.reason}. Pin it to keep it.`;
+}
+
 /** `{committed, proposed, archived}` over a corpus, in one pass.
  *
  *  Counted rather than filtered-and-measured because the surface needs all

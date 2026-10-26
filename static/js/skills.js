@@ -27,6 +27,8 @@ import { PLAY_GLYPH, chevronIcon } from './icons.js';
 // with the Workbench's workflow steps (one card, one sentence — `Law 14`).
 import { approvalBox } from './approvalBox.js';
 import { SKILL_GATE_NOTE } from './skillGateNote.js';
+// `B1256`. An offline load is the page's news, said once (`presets.js`).
+import { markUnreached, quietIfUnreached } from './presets.js';
 
 import { scrollBehavior } from './motion.js';
 const API = window.location.origin;
@@ -211,7 +213,7 @@ export async function loadSkills(cascade = false) {
   if (_loadPromise) return _loadPromise;
   _loadPromise = (async () => {
   try {
-    const [res] = await Promise.all([fetch(`${API}/api/skills`), _fetchCollections()]);
+    const [res] = await Promise.all([markUnreached(fetch(`${API}/api/skills`)), _fetchCollections()]);
     const data = await res.json();
     // Dedupe by name (case-insensitive) — the API has occasionally
     // returned the same skill twice (built-in shadow + user copy, or
@@ -225,6 +227,12 @@ export async function loadSkills(cascade = false) {
       _seen.add(k);
       return true;
     });
+    // `B793`. The scale the server's `similar` rows are on, for the pill.
+    const scale = (data && data.similarity) || {};
+    _similarityScale = {
+      advisory: Number.isFinite(scale.advisory) ? scale.advisory : null,
+      refusal: Number.isFinite(scale.refusal) ? scale.refusal : null,
+    };
     _loadSkillApprovalThreshold();
     await _loadBuiltinCapabilities();
     loaded = true;
@@ -241,7 +249,9 @@ export async function loadSkills(cascade = false) {
       }).catch(() => {});
     }
   } catch (e) {
-    console.error('Failed to load skills:', e);
+    // `B1256`: a request that never reached Pantheon warns once; a refusal is
+    // still this loader's error.
+    if (!quietIfUnreached(e, 'Skills')) console.error('Failed to load skills:', e);
   } finally {
     _loadPromise = null;
   }
@@ -399,29 +409,24 @@ function _sourcePill(sk) {
   return `<span class="memory-cat-badge" title="Created by teacher escalation: ${esc(teacher)}" style="background:color-mix(in srgb, var(--color-warning, #f0ad4e) 22%, transparent);">teacher-created</span>`;
 }
 
-function _skillTokens(sk) {
-  return new Set(String([
-    sk.name || '',
-    sk.description || '',
-    sk.when_to_use || '',
-    ...(sk.tags || []),
-  ].join(' ')).toLowerCase()
-    .replace(/-\d+\b/g, '')
-    .split(/[^a-z0-9]+/)
-    .filter(t => t.length > 2 && !['the', 'and', 'with', 'for', 'from', 'using'].includes(t)));
+// `B793` (absorbs `B731`). How close two skills are is the server's answer,
+// not this file's. The page carried a third implementation of the comparison —
+// its own tokenizer, which left `procedure` out, grouping at its own copy of
+// 0.38 — so the similarity behind a *duplicate* pill and the one the server
+// refuses a creation at were two functions of two field sets. `GET /api/skills`
+// now puts on each skill the rows `skill_lint.overlap_map` reports (`similar`:
+// `{name, score, same_base}`, already cut at the advisory point) and the two
+// points of the scale (`similarity`); the grouping below reads those and
+// computes no similarity of its own.
+let _similarityScale = { advisory: null, refusal: null };
+
+/** The server's overlap row for skill `a` against the skill named `other`. */
+function _overlapOf(a, other) {
+  const rows = Array.isArray(a && a.similar) ? a.similar : [];
+  return rows.find(r => r && r.name === other) || null;
 }
 
-function _skillSimilarity(a, b) {
-  const A = _skillTokens(a), B = _skillTokens(b);
-  if (!A.size || !B.size) return 0;
-  let inter = 0;
-  for (const t of A) if (B.has(t)) inter++;
-  return inter / (A.size + B.size - inter);
-}
-
-function _baseSkillName(name) {
-  return String(name || '').replace(/-\d+$/, '');
-}
+function _pct(x) { return `${Math.round(Number(x || 0) * 100)}%`; }
 
 function _scoreDuplicateKeeper(sk) {
   return [
@@ -461,9 +466,9 @@ function _duplicateMeta(list) {
       // "Forked from `<name>`." into its body). A fresh fork opened branded
       // "duplicate #1 · lower-priority" of its own origin (measured).
       if (_forkedFrom(a, bn) || _forkedFrom(b, an)) continue;
-      if (_baseSkillName(an) === _baseSkillName(bn) || _skillSimilarity(a, b) >= 0.38) {
-        unite(an, bn);
-      }
+      // `B793`. The server's pair, or no pair: a shared base name or a score
+      // at the advisory point, as `skill_overlaps` decided it.
+      if (_overlapOf(a, bn) || _overlapOf(b, an)) unite(an, bn);
     }
   }
   const groups = new Map();
@@ -483,7 +488,11 @@ function _duplicateMeta(list) {
     const groupNames = sorted.map(s => s.name || s.id).filter(Boolean);
     for (const sk of sorted) {
       const n = sk.name || sk.id;
-      meta.set(n, { group: idx, keep: n === keep, keepName: keep, names: groupNames });
+      // The strongest server row linking this skill to another in its group:
+      // what the pill's tooltip says it shares, and with whom (`B731`).
+      const link = (Array.isArray(sk.similar) ? sk.similar : [])
+        .filter(r => r && r.name !== n && groupNames.includes(r.name))[0] || null;
+      meta.set(n, { group: idx, keep: n === keep, keepName: keep, names: groupNames, link });
     }
     idx++;
   }
@@ -527,9 +536,27 @@ function _necessityPill(sk) {
     : 'possibly-irrelevant';
   const group = sk._duplicateNames || [];
   const why = sk._duplicateGroup
-    ? `Duplicate group #${sk._duplicateGroup}. Recommended keep: ${sk._duplicateKeepName}. Group: ${group.join(', ')}`
+    ? `Duplicate group #${sk._duplicateGroup}. Recommended keep: ${sk._duplicateKeepName}. Group: ${group.join(', ')}.`
+      + _duplicateReason(sk._duplicateLink)
     : (nec.reason || 'May not be worth keeping') + (dup.length ? ' | overlaps: ' + dup.join(', ') : '');
   return `<span class="memory-cat-badge skill-necessity-pill skill-necessity-${kind}" title="${esc(why)}">${label}</span>`;
+}
+
+/** `B731`'s `Verify:` — *"the reason they are [shown as duplicates] is written
+ *  where the pill's tooltip can say it."* The server's row and the server's
+ *  scale: a shared base name is the same skill saved twice; a score is shared
+ *  wording, which the server does not refuse below its own refusal point. */
+function _duplicateReason(link) {
+  if (!link || !link.name) return '';
+  if (link.same_base) {
+    return ` Its name is \`${link.name}\`'s but for the number a save adds when a name is`
+      + ' taken — most likely the same skill saved twice.';
+  }
+  const refusal = _similarityScale.refusal;
+  return ` Shares ${_pct(link.score)} of its wording with \`${link.name}\``
+    + ' (name, description, when to use, procedure, tags) — worth a look, not a verdict:'
+    + (refusal != null ? ` a new skill is refused only at ${_pct(refusal)},` : '')
+    + ' and the nightly audit drafts one only when two are the same skill saved twice.';
 }
 
 // `B886`. An unattended audit that reached an action needing a person's yes
@@ -724,8 +751,13 @@ function _buildBuiltinCards(rows) {
     const header = document.createElement('div');
     header.className = 'doclib-card-header skill-card-header';
     // `P10-06`. The name is the card's keyboard control — see `_CARD_OWN`.
+    // `B690`. No leading dot. It opened every built-in card in one fixed
+    // colour, and on a user skill card a coloured mark is the confidence
+    // (`_confColor`), so the reader was trained to read a status off a mark
+    // that had none to report. A user card has no leading mark either
+    // (`_auditDot` is empty), so the two now line up; *built-in* and *edited*
+    // are already said in words beside the name.
     header.innerHTML = `
-      <span class="skill-conf-dot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent, var(--red));flex-shrink:0;margin-right:6px;opacity:0.55;"></span>
       <div style="flex:1;min-width:0;">
         <div class="doclib-card-title" style="display:flex;align-items:center;gap:6px;min-width:0;">
           <button type="button" class="skill-card-toggle" aria-expanded="false" style="width:auto;flex:0 1 auto;overflow:hidden;"><code style="display:block;font-weight:600;font-size:0.9em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(b.name)}</code></button>
@@ -988,11 +1020,13 @@ function renderSkillsList(m) {
       sk._duplicateKeep = dm.keep;
       sk._duplicateKeepName = dm.keepName;
       sk._duplicateNames = dm.names;
+      sk._duplicateLink = dm.link;
     } else {
       delete sk._duplicateGroup;
       delete sk._duplicateKeep;
       delete sk._duplicateKeepName;
       delete sk._duplicateNames;
+      delete sk._duplicateLink;
     }
     const conf = Math.round((sk.confidence || 0) * 100);
     const uses = sk.uses || 0;
@@ -2641,8 +2675,9 @@ const _FAILING_AUDIT_VERDICTS = new Set(['fail', 'needs_work']);
  * the confirmation, and reported a smaller number afterwards.
  *
  * **3. THE RECOMMENDED KEEPER WAS DELETED WITH ITS DUPLICATES.**
- * `_duplicateMeta` groups client-side at a similarity of 0.38 — the server's
- * own dedup-at-creation uses 0.82 — and marks exactly one member `_duplicateKeep`,
+ * `_duplicateMeta` groups at a similarity of 0.38 — the server's own
+ * dedup-at-creation uses 0.82; since `B793` both are the server's numbers on one
+ * scale, read from `GET /api/skills` — and marks exactly one member `_duplicateKeep`,
  * which the card renders as *"recommended"*. `_necessityKind` returned
  * `'duplicate'` for **every** member including that one, so the delete took the
  * keeper too and the entire group vanished. The recommendation is now honoured:
@@ -2919,6 +2954,7 @@ async function _renderPromptPreview(m) {
   let promptText = '';
   let promptChars = 0;
   let withheld = [];
+  let notShown = [];
   let assumes = '';
   try {
     const res = await fetch(`${API}/api/skills/index`, { credentials: 'same-origin' });
@@ -2937,6 +2973,7 @@ async function _renderPromptPreview(m) {
     promptText = typeof (data && data.prompt) === 'string' ? data.prompt : '';
     promptChars = Number.isFinite(data && data.prompt_chars) ? data.prompt_chars : promptText.length;
     withheld = Array.isArray(data && data.withheld_fields) ? data.withheld_fields : [];
+    notShown = Array.isArray(data && data.not_shown) ? data.not_shown : [];
   } catch (e) {
     panel.replaceChildren(
       _el('div', 'skills-audit-title', _PROMPT_PREVIEW_TITLE),
@@ -2998,6 +3035,23 @@ async function _renderPromptPreview(m) {
         }
         body.appendChild(row);
       }
+    }
+  }
+
+  // `B586`. The other half: a skill you wrote that is not in the block, and
+  // the gate that kept it out, in the server's sentence
+  // (`skills.describe_skill_gate`, read from the gate that decided it). A
+  // stand-in hidden while its real tool is on says so here rather than just
+  // being missing. Text only, like everything above.
+  if (notShown.length) {
+    body.appendChild(_el('div', 'skill-prompt-subhead',
+      'Your skills that are not in that block, and why:'));
+    for (const entry of notShown) {
+      const row = _el('div', 'skill-prompt-row skill-prompt-not-shown');
+      if (entry && entry.gate) row.dataset.gate = String(entry.gate);
+      row.appendChild(_el('code', 'skill-prompt-name', (entry && entry.name) || ''));
+      row.appendChild(_el('span', 'skill-prompt-desc', (entry && entry.why) || ''));
+      body.appendChild(row);
     }
   }
 
@@ -3196,6 +3250,9 @@ function _draftFromForm(m) {
     verification: _linesOf(v('new-skill-verification')),
     platforms: _csvOf(v('new-skill-platforms')),
     requires_toolsets: _csvOf(v('new-skill-toolsets')),
+    // `B586`. The fifth field, phrased on the form as the sentence it is:
+    // "use only when these tools are unavailable".
+    fallback_for_toolsets: _csvOf(v('new-skill-fallback')),
   };
 }
 
@@ -3329,7 +3386,7 @@ async function addSkill(m) {
   const draft = _draftFromForm(m);
   const { name, description, category, when_to_use: whenToUse,
           procedure, tags, pitfalls, verification, platforms,
-          requires_toolsets } = draft;
+          requires_toolsets, fallback_for_toolsets } = draft;
 
   if (!description && !name) {
     uiModule.showError('Description (or name) is required');
@@ -3358,6 +3415,7 @@ async function addSkill(m) {
         verification,
         platforms,
         requires_toolsets,
+        fallback_for_toolsets,
         status: 'draft',
       }),
     });
@@ -3367,13 +3425,20 @@ async function addSkill(m) {
     ['new-skill-name', 'new-skill-title', 'new-skill-description', 'new-skill-when',
      'new-skill-problem', 'new-skill-procedure', 'new-skill-solution', 'new-skill-tags',
      'new-skill-category', 'new-skill-pitfalls', 'new-skill-verification',
-     'new-skill-platforms', 'new-skill-toolsets']
+     'new-skill-platforms', 'new-skill-toolsets', 'new-skill-fallback']
       .forEach(id => { const el = m.el(id); if (el) el.value = ''; });
     _clearDraftNote(m);
     // The form is empty again, so the findings have to say which skill they are
     // about or they read as a verdict on the blank form in front of them.
     if (lint) _renderLint(m, lint, { saved: true, name: savedName });
     await loadSkills();
+    // `B1490`. Saved under a required tool no turn can have: publishing would
+    // not show it either, so the toast is the server's sentence naming the
+    // entry and what to type instead, not the draft's Publish offer.
+    if (added && added.warning) {
+      uiModule.showToast(String(added.warning), { duration: 12000 });
+      return;
+    }
     // `B581`. The form saves a draft, and the model is shown no draft a person
     // wrote (`B1361`). "Skill added (draft)" was the whole of what they were
     // told, so a procedure they had just written was ignored with nothing

@@ -203,7 +203,9 @@ async def test_a_shipped_skills_card_shows_its_source(store):
 
 
 @pytest.mark.asyncio
-async def test_a_shipped_skill_runs_as_a_slash_command(store):
+async def test_a_shipped_skill_runs_as_a_slash_command(store, monkeypatch):
+    from fastapi import HTTPException
+
     from routes.skills_routes import setup_skills_routes
     router = setup_skills_routes(store)
     handler = next(r.endpoint for r in router.routes
@@ -216,6 +218,16 @@ async def test_a_shipped_skill_runs_as_a_slash_command(store):
         async def json(self):
             return {"request": "open firefox"}
 
+    # `B1499`. The invoke check follows the tool gates now, as every prompt
+    # does: this skill requires `computer` and `bash`, and `alice` — no account
+    # in this store, so a non-admin with no workstation — has no `bash`. Her
+    # prompts never carried it, and `/workstation-apps-and-windows` is refused
+    # to her too. A person who has the tools (here, nothing withheld) runs it.
+    with pytest.raises(HTTPException) as refused:
+        await handler(_Req(), "workstation-apps-and-windows")
+    assert refused.value.status_code == 404
+    monkeypatch.setattr(agent_loop, "blocked_tools_for_owner", lambda owner: set(),
+                        raising=False)
     out = await handler(_Req(), "workstation-apps-and-windows")
     # `B1374` moved this. The answer was one string with the SKILL.md inside it,
     # sent as the person's own message, and this case pinned that by finding

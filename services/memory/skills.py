@@ -305,6 +305,112 @@ def _to_float(x, default: float = 0.0) -> float:
 
 
 # ---------------------------------------------------------------------------
+# What keeps a skill out of the model's catalogue — `B1361`, `B586`
+# ---------------------------------------------------------------------------
+
+def skill_gate(s: Dict, *, active_toolsets: Optional[List[str]] = None,
+               platform: Optional[str] = None) -> Optional[Dict]:
+    """Why `s` is kept out of what a turn may show the model, or None.
+
+    The four gates `injectable_skills` has applied since `B1361`, unchanged in
+    order and in meaning, returning the reason instead of a bare `continue` so
+    the preview can say it (`B586`) — one function, two readers (`Law 7`).
+
+    `gate` is an enum (`Law 10`): `vendored` · `status` · `platform` ·
+    `requires` · `fallback`. `tools` names what decided it; for `requires`,
+    `unknown` is the part no tool a turn can have is called (`B1490`), which
+    no switch anywhere can turn on.
+    """
+    # `B869`/`B868`, the owner's call (`D-2026-10-26-01` §8). The 286 vendored
+    # ECC skills stay out of what the model is shown by default, by rule rather
+    # than by the coincidence that they parse as drafts at 0.8 under a 0.85
+    # floor: a later sync that marked them published would otherwise put them
+    # all in every prompt. They stay searchable (`get_relevant_skills`, the
+    # person's search) and viewable (`read_skill_md`, `manage_skills view`).
+    if s.get("library") == VENDORED_LIBRARY:
+        return {"gate": "vendored"}
+    status = s.get("status")
+    # Published + None (pre-status legacy) always included.
+    # Drafts only if the teacher wrote them.
+    if status not in ("published", None):
+        if not (status == "draft" and s.get("source") == "teacher-escalation"):
+            return {"gate": "status", "status": status}
+    # Platform gating
+    if platform and s.get("platforms") and platform not in s["platforms"]:
+        return {"gate": "platform", "tools": list(s["platforms"])}
+    # requires_toolsets: hide unless every required toolset is active.
+    # active_toolsets=None means the caller doesn't know the active set (API
+    # listings, chat preface) — don't gate in that case; only an explicit list
+    # filters.
+    req = s.get("requires_toolsets") or []
+    if req and active_toolsets is not None:
+        missing = [t for t in req if t not in active_toolsets]
+        if missing:
+            from .skill_lint import unknown_toolsets
+            return {"gate": "requires", "tools": missing,
+                    "unknown": unknown_toolsets(missing)}
+    # fallback_for_toolsets: hide when any of those toolsets is active
+    fb = s.get("fallback_for_toolsets") or []
+    if fb and active_toolsets:
+        on = [t for t in fb if t in active_toolsets]
+        if on:
+            return {"gate": "fallback", "tools": on}
+    return None
+
+
+def _ticked(names) -> str:
+    return ", ".join(f"`{n}`" for n in (names or []))
+
+
+def describe_skill_gate(verdict: Optional[Dict]) -> str:
+    """The sentence a person reads for a `skill_gate` verdict (or `off`). `B586`.
+
+    Each one says what kept the skill out and what changes it, in the words the
+    Add form uses for the field that did it (*Required tools*, *Only when these
+    are unavailable*) — a reason with no next step is a complaint (`Law 15`).
+    """
+    v = verdict or {}
+    gate = v.get("gate")
+    if gate == "off":
+        return ("Switched off — a package or group it is in is off. Turn that back "
+                "on in Skills to show it.")
+    if gate == "status":
+        status = v.get("status") or "draft"
+        if status == "draft":
+            return "A draft. The model is shown no draft you write — publish it to use it."
+        return f"Its status is {status}; the model is shown published skills only."
+    if gate == "platform":
+        return f"Only for {_ticked(v.get('tools'))}."
+    if gate == "requires":
+        from .skill_lint import describe_unknown_tools
+        unknown = list(v.get("unknown") or [])
+        off = [t for t in (v.get("tools") or []) if t not in unknown]
+        parts = []
+        if unknown:
+            parts.append(f"Required tools names {describe_unknown_tools(unknown)}, "
+                         + ("which is not a tool Pantheon has" if len(unknown) == 1
+                            else "which are not tools Pantheon has")
+                         + ", so this is never shown. Fix the name under Required tools.")
+        if off:
+            parts.append(f"Needs {_ticked(off)}, which "
+                         + ("is" if len(off) == 1 else "are")
+                         + " not on for you — switched off, or not allowed for your "
+                         "account. Shown again when "
+                         + ("it is" if len(off) == 1 else "they are") + " on.")
+        return " ".join(parts)
+    if gate == "fallback":
+        tools = v.get("tools") or []
+        return (f"Hidden while {_ticked(tools)} "
+                + ("is" if len(tools) == 1 else "are")
+                + " on: it is set to be used only when "
+                + ("that tool is" if len(tools) == 1 else "those tools are")
+                + " unavailable.")
+    if gate == "vendored":
+        return "Part of the vendored library, which the model is not shown."
+    return ""
+
+
+# ---------------------------------------------------------------------------
 # SkillsManager
 # ---------------------------------------------------------------------------
 
@@ -909,14 +1015,22 @@ class SkillsManager:
         model is not shown (`D-2026-10-26-01` §8) and which a signed-in list
         never carried. Measured: drawing them as cards put the Brain's first
         answer at 4.4–5.3 s against a 3 s bound
-        (`tests/test_the_brain_says_it_is_loading.py`). With sign-in off,
-        `load(None)` is the whole store and this changes nothing.
+        (`tests/test_the_brain_says_it_is_loading.py`).
+
+        `B1498`. With no owner, `load(None)` is the whole store — the library
+        layers included — and this used to hand it back whole, so the flag was
+        honoured for a person and ignored for nobody: an owner-less Workshop
+        list drew all 286 vendored cards, the cost `B1421` measured. The flag
+        now means the same thing either way. A person's own skill of a vendored
+        name carries no `library` key (it shadowed the entry), so it stays.
         """
         entries = self.load(owner=owner)
         if owner is not None:
             own = {s.get("name") for s in entries}
             entries = entries + self._library_entries(self._load_usage(), own,
                                                       include_vendored=include_vendored)
+        elif not include_vendored:
+            entries = [s for s in entries if s.get("library") != VENDORED_LIBRARY]
         return entries
 
     def load_active(self, owner: Optional[str] = None) -> List[Dict]:
@@ -1310,6 +1424,17 @@ class SkillsManager:
                 out["_overlaps"] = overlaps
         except Exception:
             logger.debug("overlap report skipped", exc_info=True)
+        # `B1490`. A required tool no turn can have keeps this skill out of
+        # every catalogue for good. Still saved — a person asked for it, and the
+        # name may be a tool they are about to add — but the save says which
+        # entry, so the caller can tell them; and it is logged, so a skill the
+        # model wrote with a made-up tool name is not dropped in silence.
+        from .skill_lint import unknown_toolsets
+        unknown = unknown_toolsets(sk.requires_toolsets)
+        if unknown:
+            out["_unknown_toolsets"] = unknown
+            logger.info("skill %s requires %s, which no tool is called; it will not be "
+                        "shown to the model until that name is fixed", nm, unknown)
         return out
 
     def import_bundle_from_files(
@@ -1603,41 +1728,49 @@ class SkillsManager:
         other callers — `GET /api/skills/search` and `manage_skills
         action=search` — are a *person* searching their own store, where a draft
         is exactly what they are looking for. What narrowed is the prompt.
+
+        `B586`. The gates are `skill_gate`'s, which answers *why* as well as
+        *whether*, so the preview's sentence about a skill left out and this
+        list's decision to leave it out are one reading of the skill.
         """
+        return [s for s in self.load_active(owner=owner)
+                if skill_gate(s, active_toolsets=active_toolsets, platform=platform) is None]
+
+    def withheld_from_index(
+        self,
+        owner: Optional[str] = None,
+        *,
+        active_toolsets: Optional[List[str]] = None,
+        platform: Optional[str] = None,
+    ) -> List[Dict]:
+        """The person's own skills the catalogue leaves out, each with why. `B586`.
+
+        `P8-06`'s preview shows what the model is given; a skill a person wrote
+        and cannot find there needs the other half — the gate that kept it out,
+        in a sentence (`describe_skill_gate`). Their own skills only: the
+        install's shipped ones are the install's, and listing 286 vendored
+        drafts nobody is shown would bury the one line that matters.
+
+        `{"name", "gate", "why", …}` per skill; `gate` is the enum
+        `skill_gate` returns, or `"off"` for a skill a switched-off package or
+        group holds (`P8-51`, applied in `load_active` before any gate).
+        """
+        active_names = {s.get("name") for s in self.load_active(owner=owner)}
         out: List[Dict] = []
-        for s in self.load_active(owner=owner):
-            # `B869`/`B868`, the owner's call (`D-2026-10-26-01` §8). The 286
-            # vendored ECC skills stay out of what the model is shown by
-            # default, by rule rather than by the coincidence that they parse as
-            # drafts at 0.8 under a 0.85 floor: a later sync that marked them
-            # published would otherwise put them all in every prompt. They stay
-            # searchable (`get_relevant_skills`, the person's search) and
-            # viewable (`read_skill_md`, `manage_skills view`).
-            if s.get("library") == VENDORED_LIBRARY:
+        for s in self.load_visible(owner=owner, include_vendored=False):
+            if s.get("bundled"):
                 continue
-            status = s.get("status")
-            # Published + None (pre-status legacy) always included.
-            # Drafts only if the teacher wrote them.
-            if status not in ("published", None):
-                if status == "draft" and s.get("source") == "teacher-escalation":
-                    pass  # let it through
-                else:
-                    continue
-            # Platform gating
-            if platform and s.get("platforms") and platform not in s["platforms"]:
+            name = s.get("name")
+            if name not in active_names:
+                verdict: Optional[Dict] = {"gate": "off"}
+            else:
+                verdict = skill_gate(s, active_toolsets=active_toolsets, platform=platform)
+            if verdict is None:
                 continue
-            # requires_toolsets: hide unless every required toolset is active.
-            # active_toolsets=None means the caller doesn't know the active
-            # set (API listings, chat preface) — don't gate in that case;
-            # only an explicit list filters.
-            req = s.get("requires_toolsets") or []
-            if req and active_toolsets is not None and not all(t in active_toolsets for t in req):
-                continue
-            # fallback_for_toolsets: hide when any of those toolsets is active
-            fb = s.get("fallback_for_toolsets") or []
-            if fb and active_toolsets and any(t in active_toolsets for t in fb):
-                continue
-            out.append(s)
+            row = {"name": name, **verdict}
+            row["why"] = describe_skill_gate(row)
+            out.append(row)
+        out.sort(key=lambda r: str(r.get("name") or ""))
         return out
 
     def index_for(
