@@ -239,14 +239,19 @@ def test_a_probe_that_cannot_read_the_file_says_binary(tmp_path, monkeypatch):
     `looks_like_text` answers "not text" for a path it cannot open, and the
     route's wrapper does the same for anything the probe raises. A route whose
     job is to serve bytes must not 500 because a classification failed.
+
+    `B404` moved the wrapper beside the save that now records the kind
+    (`src/upload_handler.probe_upload_kind`, was `upload_routes._upload_kind`);
+    same rule, and a save must not fail on it either.
     """
-    import routes.upload_routes as upload_routes
+    import src.upload_handler as upload_handler
 
     def boom(*_a, **_k):
         raise OSError("disk went away")
 
-    monkeypatch.setattr(upload_routes, "ingest_kind", boom)
-    assert upload_routes._upload_kind("/nope", "x.txt") == INGEST_KIND_BINARY
+    monkeypatch.setattr(upload_handler, "ingest_kind", boom)
+    assert upload_handler.probe_upload_kind("/nope", "x.txt") == INGEST_KIND_BINARY
+    assert upload_handler.upload_kind({"path": "/nope", "name": "x.txt"}) == INGEST_KIND_BINARY
 
 
 # ── the composer, driven ────────────────────────────────────────────────────

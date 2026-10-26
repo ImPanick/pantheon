@@ -8866,7 +8866,13 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     // `.xlsx` and `.epub` opened as a RAW DOWNLOAD before this row, because
     // neither regex named them, while the server has had a bundled extractor
     // for every one of them since `B102`.
-    const kind = await _uploadKind(url, name, mime);
+    //
+    // `B404`: the server records the verdict when the file is saved, and it
+    // travels with the attachment — the upload response and the message's own
+    // metadata both carry `kind` — so a chip, from history or not, opens
+    // without a second request. Asked only for an attachment saved before
+    // the kind was recorded.
+    const kind = att.kind || await _uploadKind(url, name, mime);
     const isPdf = mime === 'application/pdf' || /\.pdf$/i.test(name);
     const isContainer = kind === INGEST_KIND_DOCUMENT || isExtractedExtension(name);
     const isTextDoc = kind === INGEST_KIND_TEXT;

@@ -27,10 +27,55 @@ from src.upload_limits import (
 # union makes them the same object. The edge is one-way — document_processor
 # takes the handler as a parameter and never imports this module — so a cycle
 # here would fail loudly at import rather than existing quietly.
-from src.document_processor import INGESTIBLE_EXTS, upload_display_name
+from src.document_processor import (
+    INGEST_KIND_BINARY,
+    INGEST_KIND_DOCUMENT,
+    INGEST_KIND_TEXT,
+    INGESTIBLE_EXTS,
+    ingest_kind,
+    upload_display_name,
+)
 # `P21-03`: the person's name for a file, and the readable name it is stored
 # under. One module answers both for every door (`src/file_names.py`).
 from src.file_names import create_unique, display_name, stored_name
+
+
+_UPLOAD_KINDS = frozenset({INGEST_KIND_TEXT, INGEST_KIND_DOCUMENT, INGEST_KIND_BINARY})
+
+
+def probe_upload_kind(path: str, name: str) -> str:
+    """``ingest_kind`` with the I/O failure folded in.
+
+    A probe that cannot open the file answers ``binary`` — the same thing
+    ``looks_like_text`` does with an unreadable path — rather than raising into
+    a caller whose job is to save or serve bytes. (Was `routes/upload_routes`'
+    `_upload_kind`; `B404` moved it here, beside the save that now asks it.)
+    """
+    try:
+        return ingest_kind(path, name)
+    except Exception as exc:
+        logger.warning("ingest kind probe failed for %s: %s", path, exc)
+        return INGEST_KIND_BINARY
+
+
+def upload_kind(info: Optional[Dict[str, Any]], path: str = "", name: str = "") -> str:
+    """`B404`. What an upload is — ``text``, ``document`` or ``binary`` — read
+    off its ``uploads.json`` row.
+
+    The verdict's inputs, the name and the bytes, are both in hand at
+    `save_upload` and immutable afterwards, so it is recorded there as ``kind``
+    beside every other derived fact about an upload (`mime`, `size`, `width`,
+    `checksum_sha256`) and travels with the row. A row saved before `B404` has
+    no ``kind``: it is answered by the probe, exactly as every row was before
+    (recompute on read; no backfill of files already on disk). *path* and
+    *name* override the row's own for that probe — the download route probes
+    the path it resolved.
+    """
+    row = info or {}
+    kind = row.get("kind")
+    if kind in _UPLOAD_KINDS:
+        return kind
+    return probe_upload_kind(path or row.get("path") or "", name or row.get("name") or "")
 
 
 def secure_filename(filename: str) -> str:
@@ -1665,6 +1710,9 @@ class UploadHandler:
                         raise LookupError("upload entry vanished mid-dedupe")
                     existing_file["last_accessed"] = datetime.now().isoformat()
                     existing_file.setdefault("checksum_sha256", file_hash)
+                    # `B404`: a row from before the kind was recorded gets it
+                    # here, since this write-back is happening anyway.
+                    existing_file["kind"] = upload_kind(existing_file)
                     if existing_file.get("uploaded_at"):
                         existing_file.setdefault("created_at", existing_file["uploaded_at"])
                     current[live_key] = existing_file
@@ -1702,6 +1750,7 @@ class UploadHandler:
                     "owner": existing_file.get("owner"),
                     "width": existing_file.get("width"),
                     "height": existing_file.get("height"),
+                    "kind": upload_kind(existing_file),   # `B404`
                     "is_duplicate": True
                 }
         
@@ -1753,6 +1802,11 @@ class UploadHandler:
             "last_accessed": created_at,
             "client_ip": client_ip,
             "owner": owner,
+            # `B404`. What the product can make of the file, asked once, here,
+            # where the name and the bytes are both in hand and final — not on
+            # every download (`X-Upload-Kind`) and every chip click (`HEAD`).
+            # The name is the sanitized one the download route always probed.
+            "kind": probe_upload_kind(file_path, safe_filename),
         }
         # Capture image dimensions (EXIF-rotated) so the chat thumbnail skeleton
         # can size itself to the right aspect ratio before the bytes arrive.
