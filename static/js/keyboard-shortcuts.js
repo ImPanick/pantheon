@@ -207,18 +207,45 @@ export function ariaKeyshortcuts(combo) {
 export const ESCAPE_LAYER_SEL = '.modal, [role="dialog"], [role="alertdialog"], [role="menu"], '
   + '[role="listbox"], .notes-pane, #doc-editor-pane, #search-overlay';
 
+/** `B1252`. Whether a person can see `node` — the browser's own answer where
+ *  it has one (`checkVisibility`), else the computed `display` and
+ *  `visibility`, else what is written inline. */
+function _seenForEscape(node) {
+  try {
+    if (typeof node.checkVisibility === 'function') return !!node.checkVisibility();
+  } catch (_) { /* fall through to the computed style */ }
+  if (node.hidden) return false;
+  const view = (node.ownerDocument && node.ownerDocument.defaultView)
+    || (typeof window !== 'undefined' ? window : null);
+  if (view && typeof view.getComputedStyle === 'function') {
+    try {
+      const cs = view.getComputedStyle(node);
+      if (cs) return cs.display !== 'none' && cs.visibility !== 'hidden';
+    } catch (_) { /* fall through to the inline style */ }
+  }
+  return !(node.style && node.style.display === 'none');
+}
+
 /** What is open on the page that an Escape could close, as one string. The
  *  windows, the palette and every popup appended to `<body>` are its children;
  *  a docked window or the document panel shows on `<body>`'s own classes; a
  *  window animating shut carries `.modal-closing`. (A menu registered with
  *  `escMenuStack.js` never gets this far: the `ui.js` arbiter dismisses it and
- *  stops the key.) */
+ *  stops the key.)
+ *
+ *  `B1252`. Each child prints whether it can be **seen**, beside its class —
+ *  not the `style.display` written on it. The print held the raw inline value,
+ *  so a module that wrote `display: none` onto an element its stylesheet
+ *  already hid "closed something" and the stop let the reply go on
+ *  (`sessions.js`' chat-row menus did, on every first Escape after a list
+ *  render — `B1243` fixed that module; this keeps the next one from doing the
+ *  same). Only a change a person could see counts. */
 export function escapeLayerPrint(doc = document) {
   const body = doc && doc.body;
   if (!body) return '';
   let print = `${body.className}|${doc.querySelectorAll('.modal-closing').length}`;
   for (const c of body.children) {
-    print += `|${c.tagName}#${c.id}.${c.className}:${c.hidden ? 'h' : ''}${(c.style && c.style.display) || ''}`;
+    print += `|${c.tagName}#${c.id}.${c.className}:${_seenForEscape(c) ? 'seen' : 'unseen'}`;
   }
   return print;
 }

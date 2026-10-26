@@ -116,7 +116,16 @@ globalThis.window = globalThis;
 globalThis.document = document;
 globalThis.addEventListener = (...a) => win.addEventListener(...a);
 globalThis.removeEventListener = () => {};
-globalThis.getComputedStyle = () => ({ display: 'block', visibility: 'visible', opacity: '1' });
+// `B1252`: as a browser computes it — what is written inline wins, then the
+// stylesheet (`globalThis.__sheet`, class → display, for the cases that need
+// one), then `block`. The stop now reads what is seen, not what is written.
+globalThis.__sheet = {};
+globalThis.getComputedStyle = (el) => {
+  const inline = el && el.style && el.style.display;
+  const sheet = el && el.classList ? Object.keys(globalThis.__sheet).find((c) => el.classList.contains(c)) : null;
+  const display = inline || (el && el.hidden ? 'none' : '') || (sheet ? globalThis.__sheet[sheet] : '') || 'block';
+  return { display, visibility: 'visible', opacity: '1' };
+};
 
 export const composer = document.body.append(new El('textarea', 'message'));
 /** A tool window as the page has them: a `.modal` child of `<body>`. */
