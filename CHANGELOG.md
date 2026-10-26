@@ -108,6 +108,17 @@ the next one is cut.
 
 ### Added
 
+- **A signed-in person can fork a shipped skill, and their copy replaces it for them alone.**
+  Everyone else on the install keeps the shipped one; deleting the copy brings it back (`B1421`).
+- **A task a workflow step runs waits for your yes on the workflow's card** instead of being
+  denied on the spot — one card, one answer, and the action runs once (`B1173`).
+- **An event or webhook task retries with its payload** when it fails and has retries left; the
+  card says how many (`B805`).
+- **A deferred task says why and until when** on its card (`B675`).
+- **The chat says when an MCP server is not answering** and that its tools are not in this chat
+  (`B1326`).
+- **The skill editor lints as you type,** before the save (`B613`).
+
 - **An admin can switch each Tools entry off for one person** — Assistant, Calendar, Compare,
   Email, Notes, Tasks, Theme and Workbench join Brain, Deep Research, Gallery and the Library
   in Settings → Users. Off hides the entry, its routes refuse that person in the same sentence
@@ -174,6 +185,20 @@ the next one is cut.
   button all close it. `/toggle mode [agent|chat]` is the same control, typed.
 
 ### Changed — read this before upgrading
+
+- **The built-in *Chat Sessions Tidy* task is now *Chats Tidy*.** An existing install's row shows
+  the new name at once and is renamed on the next start; both names stay hidden from the
+  sidebar (`B1215`).
+- **A slash command's skill is sent beside your message, not as it.** `POST
+  /api/skills/{name}/invoke` returns `request`, `message` and `skill` instead of one string with
+  the whole SKILL.md inside it; the skill travels as a `skill` field on the chat form and reaches
+  the model framed and escaped like a matched skill. A client that sent `/invoke`'s old string
+  as the message should send the person's words and the name (`B1374`).
+- **A due task is no longer pushed back fifteen minutes while someone uses Pantheon;** it queues,
+  waits for idle without holding a model slot, and its row says so (`B1094`).
+- **A skill you write in the form is a draft until you publish it,** and now says so — the toast
+  has a Publish button (`B581`). The nightly audit drafts a skill only when it is the same skill
+  saved twice, and names the copy it kept (`B790`).
 
 - **A webhook an admin sets up may point at the LAN.** n8n, Home Assistant, a tailnet or an
   IPv6 ULA address are accepted from Settings, and the save is logged; loopback, link-local and
@@ -256,6 +281,30 @@ the next one is cut.
   arming that a non-empty memory store did on its own.
 
 ### Fixed
+
+- **A run continued after an approval counts its steps on from the card** instead of starting at
+  1 again, and a reload draws the approved call before the rest (`B1199`); a replayed stream
+  draws an approved call once (`B1257`).
+- **A non-admin is told why a tool is held,** and a model that calls a tool that does not exist
+  is told so instead of the turn ending empty (`B1382`, `B1383`). The model is told its step
+  budget on a run's last two steps (`B1344`).
+- **A task's run no longer wakes the task that ran it** (`B1077`); a *Notification* result is
+  also saved to its chat, as the picker said (`B1078`); a Run task step's target says why it
+  stopped (`B1079`); a step test the page said had timed out is stopped and leaves no chat
+  behind (`B1093`); a scheduled research run's chat is registered (`B1171`); a person's own
+  task with a housekeeping action is kept as they made it (`B1063`); a scheduled run's tools no
+  longer depend on the embedding index (`B1372`); a run's step log says when it was cut
+  (`B612`).
+- **A skill needing a switched-off tool is out of the Skills preview as it is out of the
+  prompt** (`B580`), the preview says which kind of turn it shows (`B1376`), a blank rewrite
+  leaves a skill as it was (`B791`), an audit that stopped for a yes says to press Test
+  (`B886`), a SKILL.md inside a skill's folder is one of its files (`B591`), and a broad word is
+  counted once (`B595`).
+- ***every file*** **is not a schedule** (`B502`, `B503`), a question naming a skill gets the skill
+  tool (`B1373`), and an English word such as *eventually* no longer opens the MCP tool array
+  (`B1388`).
+- **A new person's Assistant opens again,** and the Settings panels from Services to System are
+  back in their column — both broken in commits that had not been pushed (`B1501`).
 
 - **A failed call to your own workstation or model server is not held for five seconds** before
   the next one; the hold is for third-party services, and the workstation's own host names are

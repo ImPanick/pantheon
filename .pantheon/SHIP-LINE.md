@@ -227,6 +227,10 @@ Re-measured 2026-10-26, after the owner's seventeen calls from the triage: **55 
 
 **Direction as of 2026-10-26, after the seventeen calls: the open count is falling.**
 
+Re-measured 2026-10-26, after three batches worked in parallel: **68 filed, 159 closed**, open **397 → 306** — falling, by thirty-two in one wave. Forty-three rows closed and thirteen filed, two of them closed in it (`B1497`, `B1501`); the eleven open are the remainders the agents named of rows they closed, and the gate classified none of them as reading-required. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1462`–`B1501`) block.
+
+**Direction as of 2026-10-26, after the three batches: the open count is falling.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
