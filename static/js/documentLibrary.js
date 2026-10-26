@@ -2137,6 +2137,15 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     // Switched off (for everyone, this person or this browser), the window is
     // drawn without its Documents tab and never asks for a document.
     const _docsShown = !window.pantheonToolShown || window.pantheonToolShown('library');
+    // `B1275`: the same for Deep Research. Its routes answer to its own switch
+    // (`require_feature("deep_research")`), so with it off the Research tab was
+    // a 403 state and the archive said "Part of the archive did not load.
+    // Research: …". Off, the window has no Research tab, the archive asks for
+    // no research, and a door that names the Research tab is Deep Research's
+    // door — refused with its sentence.
+    const _researchShown = !window.pantheonToolShown || window.pantheonToolShown('research');
+    if (_openTab === 'research' && !_researchShown
+        && window.pantheonToolDoor && !window.pantheonToolDoor('research')) return;
     // `P23-01` (C-NAV): opened from another window — Deep Research's *Library*
     // — the Library says `← Research`, and closing it re-raises Research.
     if (opts && opts.from) backStack.noteOpener('doclib-modal', opts.from, opts.fromTab);
@@ -2977,10 +2986,13 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       // research; archived documents went with the documents (the route would
       // refuse anyway, and a refusal here reads as "part of the archive did
       // not load").
+      // `B1275`: and with Deep Research switched off, archived research went
+      // with it, for the same reason.
+      const _arcAsked = 1 + (_docsShown ? 1 : 0) + (_researchShown ? 1 : 0);
       Promise.all([
         _arcSource('Chats', API_BASE + '/api/sessions/archived?limit=100&sort=recent'),
         _docsShown ? _arcSource('Documents', API_BASE + '/api/documents/library?archived=true&limit=50') : {},
-        _arcSource('Research', '/api/research/library?archived=true'),
+        _researchShown ? _arcSource('Research', '/api/research/library?archived=true') : {},
       ]).then(([s, d, r]) => {
         // These are all archived by definition — flag them so the expanded
         // chat preview hides its (redundant) "Archive" button.
@@ -2988,7 +3000,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
         _arcDocs = d.documents || [];
         _arcResearch = (r.research || []).map(x => ({ ...x, archived: true }));
         _arcLoadFailures = _arcFail.slice();
-        if (_arcFail.length === (_docsShown ? 3 : 2)) {   // every source asked failed
+        if (_arcFail.length === _arcAsked) {   // every source asked failed
           uiModule.renderEmptyState(grid, {
             kind: 'error',
             className: 'doclib-empty',
@@ -3144,11 +3156,13 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
             action: { label: 'Clear filters', onClick: _arcClearFilters },
           });
         } else {
+          // `B1277`: one line (the voice guide's rule 8). It named documents
+          // and research reports in a window drawn without them (`B1194`,
+          // `B1275`); what can be archived is on every card's own menu.
           uiModule.renderEmptyState(grid, {
             kind: 'empty',
             className: 'doclib-empty',
-            title: 'Nothing archived yet',
-            message: 'Archive a chat, a document or a research report and it moves here instead of being deleted.',
+            title: 'Nothing archived yet.',
           });
         }
         _appendInlineLoadMore(grid, 0, _arcVisibleLimit, () => {});
@@ -4173,6 +4187,12 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     const btn = document.getElementById('tool-library-btn');
     if (btn) btn.classList.add('active');
 
+    // `B1275`. Deep Research switched off: no Research tab or panel (removed
+    // after the wiring above, which finds them by id, as Documents' below).
+    if (!_researchShown) {
+      modal.querySelectorAll('[data-doclib-tab="research"], [data-doclib-panel="research"]')
+        .forEach((n) => n.remove());
+    }
     // `B1194`. The Library switched off: the window is the chat archive's —
     // Chats, Research, Archive — and its Documents tab and panel are not there
     // to be reached (removed after the wiring above, which finds them by id).

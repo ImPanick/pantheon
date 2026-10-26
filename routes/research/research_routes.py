@@ -429,6 +429,11 @@ def setup_research_routes(research_handler, session_manager=None) -> APIRouter:
                     "completed_at": d.get("completed_at", 0),
                     "archived": bool(d.get("archived")),
                     "thumbnail": _research_thumbnail(d),
+                    # `B1188`: why a run that found nothing stopped, as
+                    # `result-peek` already says it (`BRAIN-M-6`). A card drawn
+                    # from this list after a reload had no reason and said
+                    # "Nothing was found." whatever had stopped it.
+                    "stopped": str(d.get("stopped") or ""),
                 })
             except Exception:
                 continue
