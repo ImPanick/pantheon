@@ -189,6 +189,21 @@ def _collect_events(out: _Out) -> None:
             out.add(f"pantheon_approvals_{_WINDOW_LABEL}", int(n or 0),
                     {"outcome": outcome or "unknown"})
 
+        # `B684`. The auth audit trail (`P11-08`), beside the four it was
+        # missing from. `action="login", outcome="error"` is the failed-login
+        # count an operator alerts on; a gauge over the window, like the rest,
+        # because the rows are pruned (see the module docstring).
+        out.metric(f"pantheon_auth_events_{_WINDOW_LABEL}", "gauge",
+                   "Authentication and authorization decisions in the last hour, "
+                   "by action and outcome. action=login,outcome=error is failed "
+                   "sign-ins.")
+        rows = (db.query(Event.name, Event.outcome, func.count(Event.id))
+                  .filter(Event.kind == "auth", Event.ts >= since)
+                  .group_by(Event.name, Event.outcome).all())
+        for name, outcome, n in rows:
+            out.add(f"pantheon_auth_events_{_WINDOW_LABEL}", int(n or 0),
+                    {"action": name or "unknown", "outcome": outcome or "ok"})
+
         out.metric("pantheon_events_rows", "gauge",
                    "Rows in the events table. Bounded by events_retention_days.")
         out.add("pantheon_events_rows", int(db.query(func.count(Event.id)).scalar() or 0))

@@ -78,16 +78,16 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 136 · Depends 21 · total 157
+derived: direct 138 · Depends 21 · total 159
 
 ### tier summary
 
 | tier | sites |
 |---|---|
 | `superuser` | 69 |
-| `operator` | 64 |
+| `operator` | 65 |
 | `power-user` | 3 |
-| `only-because-nothing-finer-existed` | 21 |
+| `only-because-nothing-finer-existed` | 22 |
 
 ### `superuser` — **69 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
 
@@ -163,7 +163,7 @@ derived: direct 136 · Depends 21 · total 157
 | `routes/workstation_routes.py` | `_watched` | `—` | not a route: `GET /api/workstation/screen` and `GET /api/workstation/control` ask it when a `person` is named — an admin may watch another person's workstation screen and who holds it, and only watch (the input, take-over and reset routes take no `person`). Without `person` the caller's own screen, open to anyone the workstation answers. Another person's screen is their data, so this stays the owner's. `B1424` |
 | `routes/person_network_routes.py` | `everyones_networks` | `GET /api/networks/people` | every person's own networks — names, hosts, ranges, trust — and of a linked vault login only that one is linked, never which item or anything in it. Other people's data: the owner's omni-sight (`D-2026-10-25-04` §5). `B1475` |
 
-### `operator` — **64 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
+### `operator` — **65 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -181,6 +181,7 @@ derived: direct 136 · Depends 21 · total 157
 | `routes/diagnostics_routes.py` | `get_diagnostic_bundle` | `GET /api/diagnostics/bundle` | the redacted support bundle |
 | `routes/diagnostics_routes.py` | `list_evals` | `GET /api/diagnostics/evals` | the eval suites this build ships |
 | `routes/diagnostics_routes.py` | `get_diagnostics_logs` | `GET /api/diagnostics/logs` | server logs, which carry every user's activity |
+| `routes/diagnostics_routes.py` | `list_auth_events` | `GET /api/diagnostics/auth-events` | the auth audit log — every account's sign-ins, refusals, role and privilege changes, filtered by either party. Read by the person keeping the instance up after something goes wrong, like the logs above it. `B684` |
 | `routes/diagnostics_routes.py` | `get_self_check` | `GET /api/diagnostics/self-check` | the boot self-check |
 | `routes/diagnostics_routes.py` | `get_service_health` | `GET /api/diagnostics/services` | which subsystems answered |
 | `routes/diagnostics_routes.py` | `get_rag_stats` | `GET /api/rag/stats` | collection sizes |
@@ -240,7 +241,7 @@ derived: direct 136 · Depends 21 · total 157
 | `routes/model_routes.py` | `get_endpoint_dependents` | `GET /api/model-endpoints/{ep_id}/dependents` | what would break if an endpoint went away |
 | `routes/model_routes.py` | `list_endpoint_models` | `GET /api/model-endpoints/{ep_id}/models` | the cached model list for one endpoint |
 
-### `only-because-nothing-finer-existed` — **21 only-because-nothing-finer-existed sites.** The gate is on the shape of the store, not on the act. Contacts, presets and the personal index are one shared file with no owner column, and the receipts are per-run data with no owner scope — so "admin" is standing in for an ownership check nobody has written. These are the rows `P11-02` should retire, and retiring them is a data-model change, not an auth change.
+### `only-because-nothing-finer-existed` — **22 only-because-nothing-finer-existed sites.** The gate is on the shape of the store, not on the act. Contacts, presets and the personal index are one shared file with no owner column, and the receipts are per-run data with no owner scope — so "admin" is standing in for an ownership check nobody has written. These are the rows `P11-02` should retire, and retiring them is a data-model change, not an auth change.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -258,6 +259,7 @@ derived: direct 136 · Depends 21 · total 157
 | `routes/diagnostics_routes.py` | `get_receipt` | `GET /api/diagnostics/receipt/{run_id}` | one run's receipt. A receipt belongs to whoever made the run; admin is standing in for an owner column |
 | `routes/diagnostics_routes.py` | `export_receipt` | `GET /api/diagnostics/receipt/{run_id}/export` | exports one — ownership |
 | `routes/diagnostics_routes.py` | `get_rerun_plan` | `GET /api/diagnostics/rerun/{run_id}` | what re-running that run would do — same ownership question |
+| `routes/diagnostics_routes.py` | `list_recent_runs` | `GET /api/diagnostics/runs` | the newest runs with a receipt — when, which chat, which model — to make eval cases from. Every user's runs, with no owner scope: the receipts' ownership question again. `B490` |
 | `routes/diagnostics_routes.py` | `get_usage` | `GET /api/diagnostics/usage` | token and cost usage. Per-run data with no owner scope, so a second user can neither see their own nor be kept from everyone else's |
 | `routes/diagnostics_routes.py` | `do_rerun` | `POST /api/diagnostics/rerun/{run_id}` | re-runs it. Ownership again, and this one acts |
 | `routes/personal_routes.py` | `api_personal_list` | `GET /api/personal` | lists the indexed personal documents. One shared index with no owner column, so admin is standing in for ownership |
@@ -519,16 +521,16 @@ the number of admin decisions added — which is the behaviour the map was built
 The paragraph above is about the 107 that predate roles; the counts below are live.
 
 - **69 superuser sites do not move.** They are already right.
-- **64 operator sites are the phase's return.** Today the only way to let someone keep
+- **65 operator sites are the phase's return.** Today the only way to let someone keep
   the instance up is to make them the owner. An `operator` overlay on
-  `DEFAULT_PRIVILEGES` retires the 64 operator sites without touching any of the
+  `DEFAULT_PRIVILEGES` retires the 65 operator sites without touching any of the
   69 superuser sites. (Both counts in the one spelling `check-auth-map.py` checks
   wherever it appears: this sentence said *"48 gates … the 37"* through every gate
   added after it was written, and it is the sentence this section concludes from —
   `B1143`.)
 - **3 power-user sites are one privilege key.** `allowed_models` already exists in
   `DEFAULT_PRIVILEGES`; a user who has it still cannot list the endpoints it names.
-- **21 only-because-nothing-finer-existed sites are not an auth job at all.** Contacts,
+- **22 only-because-nothing-finer-existed sites are not an auth job at all.** Contacts,
   presets and the personal index need an owner column; the diagnostics receipts need an
   owner scope. Changing the gate before the store has an owner would swap one wrong
   answer for another.

@@ -334,6 +334,79 @@ def record_auth_event(action: str, *, actor: Optional[str] = None,
     )
 
 
+#: `B684`. The outcomes a reader may ask for. `failures` and `ok` narrow;
+#: `all` keeps both, failures first — the successful logins are the noise.
+AUTH_OUTCOMES = ("all", "failures", "ok")
+#: How far back a party filter looks. The table is pruned on
+#: `auth_events_retention_days`, so this bounds a scan, not the history.
+_AUTH_SCAN_ROWS = 20000
+
+
+def auth_events(limit: int = 100, *, outcome: str = "all",
+                party: Optional[str] = None) -> Dict[str, Any]:
+    """The last *limit* auth audit rows, for a person to read (`B684`).
+
+    `P11-08` wrote `kind="auth"` rows and nothing read them, so *who logged in,
+    who changed a role, what was refused* was answerable only with SQL. Two
+    things a usage view does not need, both from the row:
+
+    * **either party.** `party` matches the actor (the indexed `owner` column)
+      **or** the subject (in `detail`, because an admin action names two people
+      and the table has one owner column — `record_auth_event` says why);
+    * **failures first.** With `outcome="all"` the refusals come before the
+      successes, each newest first, so the first screen is the one worth reading.
+
+    Never raises: an unreadable table is said in `error`, not as an empty list
+    that reads as "nobody has signed in".
+    """
+    out: Dict[str, Any] = {"events": [], "outcome": outcome, "party": party or "",
+                           "limit": 0, "error": None}
+    outcome = outcome if outcome in AUTH_OUTCOMES else "all"
+    out["outcome"] = outcome
+    try:
+        limit = max(1, min(int(limit), 1000))
+    except (TypeError, ValueError):
+        limit = 100
+    out["limit"] = limit
+    who = (party or "").strip().lower()
+    try:
+        from core.database import SessionLocal, Event
+
+        db = SessionLocal()
+        try:
+            q = db.query(Event).filter(Event.kind == AUTH_EVENT_KIND)
+            if outcome == "failures":
+                q = q.filter(Event.outcome != "ok")
+            elif outcome == "ok":
+                q = q.filter(Event.outcome == "ok")
+            rows = q.order_by(Event.ts.desc(), Event.id.desc()).limit(
+                _AUTH_SCAN_ROWS if who else (limit if outcome != "all" else _AUTH_SCAN_ROWS)).all()
+        finally:
+            db.close()
+    except Exception as e:
+        out["error"] = f"The audit log could not be read: {type(e).__name__}: {e}"
+        return out
+
+    def view(e) -> Dict[str, Any]:
+        try:
+            detail = json.loads(e.detail) if e.detail else {}
+        except (TypeError, ValueError):
+            detail = {}
+        subject = detail.pop("subject", None) if isinstance(detail, dict) else None
+        return {"ts": e.ts.isoformat() + "Z" if e.ts else None, "action": e.name or "",
+                "actor": e.owner or "", "subject": subject or "",
+                "outcome": e.outcome or "ok", "detail": detail or {}}
+
+    events = [view(e) for e in rows]
+    if who:
+        events = [v for v in events if who in (v["actor"].lower(), str(v["subject"]).lower())]
+    if outcome == "all":
+        events = ([v for v in events if v["outcome"] != "ok"]
+                  + [v for v in events if v["outcome"] == "ok"])
+    out["events"] = events[:limit]
+    return out
+
+
 def record_llm_round(session_id: str, metrics: Dict[str, Any], *,
                      outcome: str = "ok") -> bool:
     """One row for one model round. Returns True if it landed; never raises.
@@ -801,6 +874,51 @@ def record_run_config(*, sampling: Optional[Dict[str, Any]] = None,
         return False
     return record_event("run_config", session_id=session_id, owner=owner,
                         detail=payload)
+
+
+def recent_runs(limit: int = 30) -> Dict[str, Any]:
+    """The newest runs a receipt exists for — what an eval case is made of (`B490`).
+
+    A case is a `run_id` (`src/evals.py`), and nothing on any page showed one,
+    so building a suite meant reading the database for ids. This is the list the
+    Evals panel picks from: one row per run, newest first, with what a person
+    recognises it by — when, which chat (its name), which model — and never its
+    content, which the events table does not hold (`P4-25`).
+    """
+    out: Dict[str, Any] = {"runs": [], "error": None}
+    try:
+        limit = max(1, min(int(limit), 200))
+    except (TypeError, ValueError):
+        limit = 30
+    try:
+        from core.database import SessionLocal, Event, Session as ChatSession
+
+        db = SessionLocal()
+        try:
+            rows = (db.query(Event.run_id, Event.ts, Event.session_id, Event.owner)
+                      .filter(Event.kind == "run_config", Event.run_id.isnot(None))
+                      .order_by(Event.ts.desc(), Event.id.desc()).limit(limit).all())
+            ids = [r[0] for r in rows]
+            models = dict(db.query(Event.run_id, Event.model)
+                            .filter(Event.kind == "llm_round", Event.run_id.in_(ids),
+                                    Event.model.isnot(None)).all()) if ids else {}
+            sids = {r[2] for r in rows if r[2]}
+            names = dict(db.query(ChatSession.id, ChatSession.name)
+                           .filter(ChatSession.id.in_(sids)).all()) if sids else {}
+        finally:
+            db.close()
+    except Exception as e:
+        out["error"] = f"Recent runs could not be read: {type(e).__name__}: {e}"
+        return out
+    seen = set()
+    for run_id, ts, sid, owner in rows:
+        if run_id in seen:
+            continue
+        seen.add(run_id)
+        out["runs"].append({"run_id": run_id, "ts": ts.isoformat() + "Z" if ts else None,
+                            "chat": names.get(sid) or "", "model": models.get(run_id) or "",
+                            "owner": owner or ""})
+    return out
 
 
 def _tool_fingerprints(tools: Iterable[Any]) -> List[Dict[str, str]]:

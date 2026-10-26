@@ -4085,6 +4085,70 @@
                 <div id="usage-body" class="usage-body"></div>
               </details>
 
+              <!-- Evals (`B490`). `P14-03` built the harness and nothing under
+                   static/ called it: a suite is a few runs and what each should
+                   say, run again against this or another model. Drawn by
+                   `evalsPanel.js` on first open. -->
+              <details id="evals-panel" class="usage-panel">
+                <summary class="usage-summary-toggle">Evals — did that change help?</summary>
+                <p class="usage-empty">A suite is a few past runs and what each answer should say. Run it again after a change — a new model, prompt or skill — and see how many still pass.</p>
+                <div id="evals-list" class="usage-body"></div>
+                <div class="usage-controls">
+                  <label for="evals-model">Run against</label>
+                  <input id="evals-model" type="text" placeholder="the model each run used" autocomplete="off" spellcheck="false">
+                </div>
+                <div id="evals-result" class="usage-body" role="status" aria-live="polite"></div>
+                <details id="evals-build" class="usage-panel">
+                  <summary class="usage-summary-toggle">Add a case</summary>
+                  <div class="usage-controls">
+                    <label for="evals-suite-name">Suite</label>
+                    <input id="evals-suite-name" type="text" placeholder="smoke" autocomplete="off" spellcheck="false">
+                  </div>
+                  <div class="usage-controls">
+                    <label for="evals-run">Run</label>
+                    <select id="evals-run"></select>
+                  </div>
+                  <div class="usage-controls">
+                    <label for="evals-contains">Answer contains</label>
+                    <input id="evals-contains" type="text" placeholder="words, one per line or comma" autocomplete="off">
+                  </div>
+                  <div class="usage-controls">
+                    <label for="evals-not-contains">Answer does not contain</label>
+                    <input id="evals-not-contains" type="text" autocomplete="off">
+                  </div>
+                  <div class="usage-controls">
+                    <label for="evals-max-failures">Tool failures at most</label>
+                    <input id="evals-max-failures" type="number" min="0" step="1" placeholder="any">
+                  </div>
+                  <button type="button" id="evals-add-case" class="btn-secondary">Add case and save</button>
+                  <div id="evals-build-msg" class="usage-empty" role="status" aria-live="polite"></div>
+                </details>
+              </details>
+
+              <!-- Sign-ins and access (`B684`). `P11-08` writes the auth audit
+                   trail and nothing read it: failures first, filtered by either
+                   person an action names. Drawn by `authAudit.js` on open. -->
+              <details id="auth-audit-panel" class="usage-panel">
+                <summary class="usage-summary-toggle">Sign-ins and access</summary>
+                <div class="usage-controls">
+                  <label for="auth-audit-outcome">Show</label>
+                  <select id="auth-audit-outcome">
+                    <option value="all" selected>Failures first, then the rest</option>
+                    <option value="failures">Failures only</option>
+                    <option value="ok">Successes only</option>
+                  </select>
+                  <label for="auth-audit-party">Account</label>
+                  <input id="auth-audit-party" type="text" placeholder="who acted, or who it was done to" autocomplete="off" spellcheck="false">
+                  <label for="auth-audit-limit">Last</label>
+                  <select id="auth-audit-limit">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="500">500</option>
+                  </select>
+                </div>
+                <div id="auth-audit-body" class="usage-body" role="status" aria-live="polite"></div>
+              </details>
+
               <!-- Report a bug (P16-14). Collapsed until asked for: it is for
                    the moment something breaks, not a thing to read past every
                    time you open Settings. Nothing here transmits — the bundle

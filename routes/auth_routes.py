@@ -1188,6 +1188,22 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                         400,
                         "That is not a GitHub token: a token is one word of visible "
                         "characters, at most 255 of them (ghp_…, github_pat_…).")
+            if key == "eval_suites":
+                # `B490`. Written from Diagnostics → Evals. `load_suites` drops
+                # an entry with no name and anything that is not a list, so a
+                # malformed save would answer 200 and then show no suite — the
+                # `P17-09` shape. The suites' own content (checks, run ids) is
+                # judged by `validate_suite` and shown beside each suite, where
+                # a typo is one line to fix rather than a refused save.
+                if not isinstance(val, list) or not all(isinstance(x, dict) for x in val):
+                    raise HTTPException(400, "eval_suites is a list of suites, each an object.")
+                names = [str(x.get("name") or "").strip() for x in val]
+                if not all(names):
+                    raise HTTPException(400, "Every eval suite needs a name.")
+                dupes = sorted({n for n in names if names.count(n) > 1})
+                if dupes:
+                    raise HTTPException(400, f"Two eval suites are called {dupes[0]!r}; "
+                                             "a suite is run by its name, so names are unique.")
             if key in ("host_exec_denylist", "host_exec_allowlist"):
                 # `P17-09`'s lesson a third time: a list stored and then silently
                 # ignored is worse than a refusal, because the operator believes

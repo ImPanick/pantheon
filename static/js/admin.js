@@ -3271,6 +3271,28 @@ async function loadUsage() {
   }
 }
 
+// `B490` / `B684`. Two more panels of the usage panel's shape — a query each,
+// so loaded on open and not before — whose code lives in its own module, which
+// is imported the first time either is opened.
+const _LAZY_PANELS = [
+  ['evals-panel', () => import('./evalsPanel.js')],
+  ['auth-audit-panel', () => import('./authAudit.js')],
+];
+
+function setupLazyPanels() {
+  for (const [id, load] of _LAZY_PANELS) {
+    const panel = el(id);
+    if (!panel) continue;
+    panel.addEventListener('toggle', () => {
+      if (!panel.open) return;
+      load().then((m) => m.open()).catch((e) => {
+        console.error(`${id} did not load:`, e);
+        uiModule.showError('That panel did not load. Reload the page and try again.');
+      });
+    });
+  }
+}
+
 function setupUsagePanel() {
   const panel = el('usage-panel');
   if (!panel) return;
@@ -3475,6 +3497,7 @@ function initLogsView() {
   loadSelfChecks();
   setupBugReport();   // wires listeners only; assembles nothing until asked
   setupUsagePanel();  // queries only when the panel is opened
+  setupLazyPanels();  // `B490` evals, `B684` sign-ins: the same, in their own modules
   if (refreshBtn) refreshBtn.addEventListener('click', () => { loadLogs(false); loadSelfChecks(); });
   if (levelSelect) levelSelect.addEventListener('change', () => renderLogs(false));
   if (limitSelect) limitSelect.addEventListener('change', () => loadLogs(false));

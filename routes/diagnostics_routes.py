@@ -206,6 +206,17 @@ def setup_diagnostics_routes(
             for s in load_suites()
         ]}
 
+    @router.get("/api/diagnostics/runs")
+    async def list_recent_runs(request: Request, limit: int = 30) -> Dict[str, Any]:
+        """The newest runs with a receipt, to make eval cases from (`B490`).
+
+        A case is a `run_id` and no page showed one; the Evals panel picks from
+        this. Admin-only, like the receipts it points at.
+        """
+        require_admin(request)
+        from src.events import recent_runs
+        return recent_runs(limit)
+
     @router.post("/api/diagnostics/evals/{name}/run")
     async def run_eval(request: Request, name: str, model: str = "") -> Dict[str, Any]:
         """Replay every case and score it. POST — it spends a model call each.
@@ -216,6 +227,19 @@ def setup_diagnostics_routes(
         require_admin(request)
         from src.evals import run_suite
         return await run_suite(name, model=model or None)
+
+    @router.get("/api/diagnostics/auth-events")
+    async def list_auth_events(request: Request, limit: int = 100, outcome: str = "all",
+                               party: str = "") -> Dict[str, Any]:
+        """The auth audit log, for an admin to read without a database (`B684`).
+
+        `outcome` is `all` (failures first), `failures` or `ok`; `party` matches
+        the account that acted or the one it was done to. Admin-only: it names
+        every account and every refused sign-in on the instance.
+        """
+        require_admin(request)
+        from src.events import auth_events
+        return auth_events(limit, outcome=outcome, party=party or None)
 
     @router.get("/api/diagnostics/diff/{before_id}/{after_id}")
     async def diff_two_receipts(request: Request, before_id: str,
