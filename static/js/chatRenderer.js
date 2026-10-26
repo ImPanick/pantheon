@@ -440,28 +440,17 @@ function _openImageLightbox(att) {
   });
   full.src = `/api/upload/${att.id}`;
 
-  const _onKey = (e) => { if (e.key === 'Escape') _close(); };
-  const _close = () => {
-    document.removeEventListener('keydown', _onKey);
-    if (_overlayObs) { try { _overlayObs.disconnect(); } catch {} }
-    overlay.remove();
-  };
-  // If the overlay is removed via any path other than our close handler
-  // (session switch, parent re-render, external cleanup), still drop the
-  // document-level keydown listener so it doesn't leak.
-  let _overlayObs = null;
-  try {
-    _overlayObs = new MutationObserver(() => {
-      if (!document.body.contains(overlay)) {
-        document.removeEventListener('keydown', _onKey);
-        _overlayObs.disconnect();
-      }
-    });
-    _overlayObs.observe(document.body, { childList: true, subtree: false });
-  } catch {}
-  overlay.addEventListener('click', _close);
-  document.addEventListener('keydown', _onKey);
   document.body.appendChild(overlay);
+  // `B1294` (fx5-cards). On the Escape stack, as the card preview's
+  // `.attach-lightbox` is (`attachHand.js`) — never a `document` listener of
+  // its own. That listener ran after the `ui.js` arbiter, which found nothing
+  // on the stack, closed the window behind the picture and stopped the key: a
+  // window open behind a chat picture closed first and left the picture over
+  // the place it had been. Now the arbiter's first question
+  // (`dismissTopMenu`) is answered by this picture. A click anywhere closes
+  // it, as before; `overlay._dismiss` lets a sweep close it properly
+  // (`dismissOrRemove`).
+  bindMenuDismiss(overlay, () => overlay.remove(), () => true);
   // `P3-24`. Read the live stack, not a literal. `ui.js` promotes every visible
   // `.modal` from a counter that only climbs, and `#styled-confirm-overlay` is a
   // `.modal` pinned at 99999 — so any hardcoded z ends up underneath. `B65`.

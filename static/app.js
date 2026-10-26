@@ -42,6 +42,7 @@ import settingsModule from './js/settings.js?v=20261009census';
 import * as WindowManager from './js/modalManager.js?v=20261009census';
 // `P23-01`. One back stack: Back = Escape = `←`, the URL names the top window.
 import backStack from './js/backStack.js';
+import { dismissOrRemove } from './js/escMenuStack.js';   // `B1295`
 import { printHtmlInFrame } from './js/printFrame.js';   // `B1320`, `B1333`
 // `D-2026-10-09-01` §4. The phone's turn controls: the chip that replaces the
 // dropped Agent/Chat toggle on a narrow bar, and the sheet behind it.
@@ -405,11 +406,16 @@ function initializeEventListeners() {
     const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
     uiModule.setAutoScroll(atBottom);
   }, 100));
-  // Close all footer popups immediately on any scroll
-  el('chat-history').addEventListener('scroll', () => {
-    document.querySelectorAll('.ctx-popup, .memory-used-detail, .msg-overflow-menu').forEach(p => p.remove());
+  // Close all footer popups immediately on any scroll. `B1295`: each through
+  // its own dismiss (`dismissOrRemove`), never a bare `.remove()` — the ···
+  // menu is on the Escape stack (`bindMenuDismiss`), and removed without it
+  // its entry stayed until the next click, so the next Escape "closed" a menu
+  // already gone and went no further: a window open behind stayed open.
+  function _sweepChatScrollPopups() {
+    document.querySelectorAll('.ctx-popup, .memory-used-detail, .msg-overflow-menu').forEach(p => dismissOrRemove(p));
     document.querySelectorAll('.memory-used-pill').forEach(p => { p._openDetail = null; });
-  }, { passive: true });
+  }
+  el('chat-history').addEventListener('scroll', _sweepChatScrollPopups, { passive: true });
 
   el('chat-history').addEventListener('wheel', (e) => {
     // Only disable auto-scroll when user scrolls UP (deltaY < 0)
@@ -448,9 +454,11 @@ function initializeEventListeners() {
     document.querySelectorAll(
       '.export-dropdown-menu.open, .overflow-menu.open, .model-picker-menu.open, .doc-overflow-menu.open'
     ).forEach(m => { if (m !== except) m.classList.remove('open'); });
+    // `B1295`: through each menu's own dismiss, which takes it off the Escape
+    // stack too (a bare `.remove()` stranded the ··· menu's entry there).
     document.querySelectorAll(
       '.skill-kebab-menu, .note-reminder-menu, .task-dropdown, .doclib-card-dropdown, .email-card-dropdown, .msg-overflow-menu'
-    ).forEach(m => { if (m !== except) m.remove(); });
+    ).forEach(m => { if (m !== except) dismissOrRemove(m); });
   };
   // Window-opening / nav controls (rail buttons, sidebar tool rows + session
   // rows, section headers) count as "other actions" — dismiss popups when one
