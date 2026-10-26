@@ -5071,6 +5071,27 @@ def _record_fenced_channel(tool_names, disabled, compact, owner) -> None:
         pass   # a receipt is never worth a failed run
 
 
+def _prompt_tool_names(relevant_tools, disabled_tools, needs_admin: bool) -> set:
+    """The names a route's prompt lists and its request's array carries, from
+    the route's selection.
+
+    `B1396`. Written out twice — `_build_base_prompt`'s list and
+    `_tool_schemas_for_route`'s schema names — and asked a third time by the
+    run receipt, which had been counting the bare selection instead: on an
+    admin's notes turn the prompt said *"You have 19 of your 81 tools"* and the
+    receipt said `offered: 5`. Both were true about different sets (`Law 10`),
+    and only one of them was written down anywhere an operator reads. One
+    expression now (`Law 7`): the selection, the loop's two primitives
+    (`B1350`, capped like everything else), and on an admin-intent turn the
+    management force-include.
+    """
+    names = set(relevant_tools or ()) | turn_tool_access(disabled_tools).allowed_among(
+        {"ask_user", "update_plan"})
+    if needs_admin:
+        names |= _ADMIN_PROMPT_FORCE_INCLUDE
+    return names
+
+
 def _suite_tally(tool_suite, names, disabled_tools) -> Optional[Dict[str, Any]]:
     """This turn's suite numbers, taken **after** every clamp. One answer.
 
@@ -5211,9 +5232,7 @@ def _build_base_prompt(
         # subtraction two lines down then removed — `relevant_tools` and the
         # cap overlapping again, inside the reader that does the subtracting.
         # Nothing reaches the model that did not before.
-        tool_names = set(relevant_tools) | disabled.allowed_among({"ask_user", "update_plan"})
-        if needs_admin:
-            tool_names |= _ADMIN_PROMPT_FORCE_INCLUDE
+        tool_names = _prompt_tool_names(relevant_tools, disabled, needs_admin)   # `B1396`
         agent_prompt = _assemble_prompt(
             tool_names, disabled, compact=compact,
             suite_notice=_suite_notice_for(tool_suite, tool_names, disabled))
@@ -8032,6 +8051,16 @@ async def stream_agent_loop(
             # says which of the two things they are.
             _record["capped_after_plan"] = _tally["capped_after_plan"]
             _record["reason"] = _tally["reason"]
+            # `B1396`. The numerator the prompt's partial-suite sentence states
+            # — the selection plus the primitives and, on an admin-intent turn,
+            # the management force-include, which the prompt and the array
+            # really carry — beside `offered`, which stays the route's
+            # selection. Two facts, two keys, from the one tally (`Law 10`).
+            _record["prompt_listed"] = len(_suite_tally(
+                _tool_suite,
+                _prompt_tool_names(_relevant_tools, disabled_tools, _needs_admin),
+                disabled_tools,
+            )["offered"])
             _record_run_config(suite=_record, session_id=session_id, owner=owner)
         except Exception as _exc:
             logger.debug("[tool-suite] receipt skipped: %s", _exc)
@@ -8585,10 +8614,8 @@ async def stream_agent_loop(
                 # in `_filter_route_tool_schemas` below.
                 # `B1350` (fx11-cap): the same pin, capped the same way, so
                 # the prompt's list and the schema list stay one decision.
-                schema_names = set(route_relevant_tools) | disabled_tools.allowed_among(
-                    {"ask_user", "update_plan"})
-                if _needs_admin:
-                    schema_names |= _ADMIN_PROMPT_FORCE_INCLUDE
+                schema_names = _prompt_tool_names(
+                    route_relevant_tools, disabled_tools, _needs_admin)   # `B1396`
                 base_schemas = [
                     schema for schema in FUNCTION_TOOL_SCHEMAS
                     if schema.get("function", {}).get("name") in schema_names

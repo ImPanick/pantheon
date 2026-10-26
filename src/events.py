@@ -733,6 +733,15 @@ def record_run_config(*, sampling: Optional[Dict[str, Any]] = None,
             # on every turn where nothing writes to the cap across the planner.
             "capped_after_plan": sorted(
                 {str(n) for n in (suite.get("capped_after_plan") or []) if n}),
+            # `B1396`. **`offered` is the route's selection; `prompt_listed` is
+            # what the prompt and the request carried**, which adds the loop's
+            # primitives and, on an admin-intent turn, the management
+            # force-include — the number the prompt's *"You have N of your M
+            # tools"* states. Both are true and they differ by design (19
+            # against 5 on an admin's notes turn); one key for each, so neither
+            # is read as the other (`Law 10`). `0` on a receipt written before
+            # the key existed.
+            "prompt_listed": int(suite.get("prompt_listed") or 0),
             "reason": str(suite.get("reason") or ""),
             "room_tokens": int(suite.get("room_tokens") or 0),
             "cost_tokens": int(suite.get("cost_tokens") or 0),

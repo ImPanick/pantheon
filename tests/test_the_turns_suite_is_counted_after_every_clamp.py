@@ -272,6 +272,15 @@ def test_the_notice_reaches_the_model_in_plan_mode_and_agrees_with_the_receipt(
     assert order.notice_reached_model is True
     assert order.notice_numbers is not None
     assert order.notice_numbers[1] == int(order.receipt["candidates"])
+    # `B1396`. And the numerator: the sentence's *"You have N"* is the
+    # receipt's `prompt_listed`, the names the prompt and the request carried.
+    # `offered` stays the route's selection and may be smaller — measured on
+    # `bbe6958`, "4 of your 25" against `offered: 1` in plan mode — so the two
+    # facts are two keys and neither is read as the other (`Law 10`).
+    assert "prompt_listed" in order.receipt, order.receipt
+    assert order.notice_numbers[0] == int(order.receipt["prompt_listed"]), (
+        order.notice, order.receipt)
+    assert int(order.receipt["offered"]) <= int(order.receipt["prompt_listed"])
 
 
 @pytest.mark.parametrize("who,mcp", [("admin", "up"), ("user", "up"),
@@ -429,9 +438,12 @@ def test_the_stored_row_keeps_both_lists(monkeypatch):
     ev.record_run_config(suite={
         "offered": 1, "candidates": 2, "withheld": ["b", "b", ""],
         "capped_after_plan": ["z", "a", "a", ""], "reason": "route",
+        "prompt_listed": 4,
     })
     stored = written[0]["detail"]["suite"]
     assert stored["withheld"] == ["b"]
+    # `B1396`: the prompt's numerator survives the store beside the selection's.
+    assert (stored["offered"], stored["prompt_listed"]) == (1, 4)
     assert stored["capped_after_plan"] == ["a", "z"], (
         "the names the clamp withheld after the plan have to survive the store, "
         f"not just the call: {stored}")
