@@ -123,7 +123,9 @@ def _auto_sort_one_throwaway_of_alices(monkeypatch, caller):
 
     session = MagicMock(id=sid, name="New chat", model="gpt-4", endpoint_url="http://localhost", rag=False, archived=False)
     sm = MagicMock()
-    sm.get_sessions_for_user.return_value = {sid: session}
+    # `B1224`: Tidy reads the person's chats through `list_page`, as the
+    # sidebar does (`tests/test_tidy_and_the_agent_see_every_chat.py`).
+    sm.list_page.return_value = ([session], False)
     router = sr.setup_session_routes(sm, {})
     endpoint = next(r.endpoint for r in router.routes
                     if getattr(r, "path", "") == "/api/sessions/auto-sort"

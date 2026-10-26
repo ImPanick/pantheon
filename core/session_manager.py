@@ -419,7 +419,7 @@ class SessionManager:
     # Session CRUD
     # ------------------------------------------------------------------
 
-    def get_session(self, session_id: str) -> Session:
+    def get_session(self, session_id: str, *, row=None) -> Session:
         """Get a session by ID, loading complete DB history when needed.
 
         Sessions seeded by ``load_sessions`` start with empty history, and a
@@ -431,6 +431,10 @@ class SessionManager:
         The gate compares against ``sync_session_metadata``'s reconciled count
         (the real ``chat_messages`` total), never the denormalized column, so a
         hydrate always closes the gap and the next read is a cache hit.
+
+        ``row`` (`B1201`) is the chat's ``sessions`` row when the caller has
+        just read it — ``_verify_session_owner`` returns it — and the refresh
+        uses it instead of reading it again.
         """
         if session_id not in self.sessions:
             self._load_session_from_db(session_id)
@@ -439,7 +443,7 @@ class SessionManager:
         # DB row while a session object is still cached in RAM. Refreshing first
         # also exposes the authoritative message count before completeness is
         # checked. `P23-07`: the same read marks the chat used (`touch`).
-        self.sync_session_metadata(session_id, touch=True)
+        self.sync_session_metadata(session_id, touch=True, row=row)
 
         cached = self.sessions[session_id]
         cached_count = len(cached.history or [])
@@ -467,10 +471,18 @@ class SessionManager:
             seen = last.replace(tzinfo=None) if last.tzinfo else last
             if (now.replace(tzinfo=None) - seen).total_seconds() < self.TOUCH_EVERY_S:
                 return
-        db_session.last_accessed = now
+        if db_session in db:
+            db_session.last_accessed = now
+        else:
+            # `B1201`: a row the caller read in its own (closed) database
+            # session is not this transaction's to flush; the stamp is written
+            # by id, still once a minute at most.
+            db.query(DbSession).filter(DbSession.id == db_session.id).update(
+                {DbSession.last_accessed: now}, synchronize_session=False)
         db.commit()
 
-    def sync_session_metadata(self, session_id: str, *, touch: bool = False) -> bool:
+    def sync_session_metadata(self, session_id: str, *, touch: bool = False,
+                              row=None) -> bool:
         """Refresh non-message session fields from the DB into the cached object.
 
         ``message_count`` is reconciled against the real ``chat_messages`` rows
@@ -481,13 +493,19 @@ class SessionManager:
         an uncached session writes 0. Hydration keys off this number: a
         drifted-high column would reload the whole transcript on every warm
         read, and a drifted-low one would leave the model a truncated one.
+
+        ``row`` (`B1201`): the chat's row as the caller just read it, used in
+        place of reading it here.
         """
         session = self.sessions.get(session_id)
         if session is None:
             return False
         db = SessionLocal()
         try:
-            db_session = db.query(DbSession).filter(DbSession.id == session_id).first()
+            if row is not None and getattr(row, "id", None) == session_id:
+                db_session = row
+            else:
+                db_session = db.query(DbSession).filter(DbSession.id == session_id).first()
             if db_session is None:
                 return False
             headers = db_session.headers

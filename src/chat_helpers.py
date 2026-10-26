@@ -14,6 +14,13 @@ from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
+#: `B1216`. What a person is told when the chat a request names is not there —
+#: deleted in another tab, or an id that was never theirs (the owner check
+#: answers the same, so an id is no oracle). The routes said *Session not
+#: found* in four spellings, some with the id in them; every stale-chat 404 in
+#: `routes/` says this one sentence now, as `coerce_message_and_session` did.
+CHAT_GONE = "That chat no longer exists."
+
 
 def extract_urls(text: str) -> List[str]:
     """Extract URLs from text using regex pattern."""
@@ -512,7 +519,7 @@ def coerce_message_and_session(req_json: dict | None, message: str | None,
                 status_code=404,
                 detail={
                     "error": "SESSION_NOT_FOUND",
-                    "message": "That chat no longer exists."
+                    "message": CHAT_GONE
                 }
             )
 

@@ -30,6 +30,11 @@ def test_delete_does_not_early_return_on_missing_session():
         "deleteMessage must not early-return on a missing session (#1428)"
     )
     # The DOM-removal fallback must also fire when there's no session.
-    assert re.search(r"!msgIds\.length\s*\|\|\s*!sessionId", body), (
+    # `B1331` split the old `!msgIds.length || !sessionId` arm: with no session
+    # the bubble is still simply removed; a session whose bubbles carry no row
+    # id is told so instead (driven in `test_a_reloaded_bubble_can_be_deleted.py`).
+    at = body.index("if (!sessionId) {")
+    arm = body[at:body.index("return;", at)]
+    assert "domToRemove.forEach(el => el.remove())" in arm, (
         "DOM-removal fallback should cover the no-session case"
     )

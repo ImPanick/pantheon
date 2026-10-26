@@ -37,6 +37,7 @@ from services.memory.memory_extractor import (
     store_imported,
 )
 from src.auth_helpers import get_current_user, require_user
+from src.chat_helpers import CHAT_GONE   # `B1216`
 from src.endpoint_resolver import resolve_endpoint
 from src.task_endpoint import resolve_task_endpoint
 from src.upload_limits import read_upload_limited, resolve_byte_limit
@@ -301,7 +302,7 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
         session title. Mirrors session_routes / webhook_routes ownership.
         """
         if user is not None and getattr(session_obj, "owner", None) != user:
-            raise HTTPException(404, "Session not found")
+            raise HTTPException(404, CHAT_GONE)
 
     def _verify_memory_owner(memory: dict, user: Optional[str]):
         """Raise 404 if user doesn't own this memory.
@@ -424,7 +425,7 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
             try:
                 session_obj = session_manager.get_session(memory_data.session_id)
             except KeyError:
-                raise HTTPException(404, "Session not found")
+                raise HTTPException(404, CHAT_GONE)
             _assert_session_owner(session_obj, user)
 
         new_entry = memory_manager.add_entry(
@@ -531,7 +532,7 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
         try:
             sess = session_manager.get_session(session)
         except KeyError:
-            raise HTTPException(404, "Session not found")
+            raise HTTPException(404, CHAT_GONE)
         _assert_session_owner(sess, _owner(request))
 
         system_msg = {

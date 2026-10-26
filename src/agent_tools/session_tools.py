@@ -92,19 +92,26 @@ async def list_sessions(content: str, session_id: Optional[str] = None, owner: O
         from core.database import SessionLocal, Session as DbSession
         from datetime import datetime, timezone
 
-        # Pull every session's last_accessed from the DB so we can sort
-        # by recency. In-memory sessions hold name + model + msg_count;
-        # the DB row holds the timestamps.
-        db = SessionLocal()
-        try:
-            db_rows = {r.id: r for r in db.query(DbSession).all()}
-        finally:
-            db.close()
-
         # SECURITY: scope to the caller's sessions. Passing None returned
         # every user's sessions, which the agent tool then exposed via the
         # "list my chats" reply.
-        sessions = _session_manager.get_sessions_for_user(owner)
+        # `B1224` (fx-ops): the caller's own newest chats from the database,
+        # as the sidebar's first page (`list_page`). It filtered the boot
+        # cache — the 100 most recently used chats of every owner — so a
+        # person whose chats were older than someone else's last 100 was told
+        # they had none.
+        page, has_more = _session_manager.list_page(owner, limit=100)
+        sessions = {sess.id: sess for sess in page}
+
+        # The rows' last_accessed, to sort by recency — this page's only (it
+        # read every owner's row, every call).
+        db = SessionLocal()
+        try:
+            db_rows = {r.id: r for r in db.query(DbSession).filter(
+                DbSession.id.in_(list(sessions))).all()} if sessions else {}
+        finally:
+            db.close()
+
         rows = []
         for sid, sess in sessions.items():
             if (sess.name or "").startswith("SFT trace batch"):
@@ -150,6 +157,8 @@ async def list_sessions(content: str, session_id: Optional[str] = None, owner: O
 
         if not lines:
             return {"results": "No sessions found" + (f" matching '{keyword}'" if keyword else "") + "."}
+        if has_more:
+            lines.append("(Older chats exist; these are the 100 most recently active.)")
 
         return {
             "results": (
@@ -189,7 +198,7 @@ async def send_to_session(content: str, session_id: Optional[str] = None, owner:
 
     # Owner-scope: reject access to another user's session. When the caller is
     # authenticated, a null-owner (legacy / auth-was-off) session is not theirs
-    # either — list_sessions (get_sessions_for_user) and manage_session already
+    # either — list_sessions (`list_page`, owner-exact) and manage_session already
     # exclude those, so treating it as reachable here let an authenticated agent
     # read/write a session the other tools hide. Require an exact owner match.
     if owner and getattr(sess, "owner", None) != owner:

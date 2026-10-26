@@ -87,6 +87,30 @@ def _history_grants_chat_session_approval(
     return False
 
 
+def is_unanswered_reply(message: Any) -> bool:
+    """`B1200` (fx-chat). A reply that failed before it said anything.
+
+    It is saved — `{role: assistant, content: '', metadata: {failed: true,
+    failure}}` — so that a reload still says the reply failed and offers
+    *Retry*, as the live stream did; before, nothing was saved and a reload
+    showed the person's message alone. It is never part of the conversation:
+    the model's replay (`Session.get_context_messages`), a compaction's summary
+    and the chat's message counts leave it out. A failed reply that wrote
+    something keeps its words and stays in, as it always has.
+    """
+    if isinstance(message, dict):
+        role, content, metadata = message.get("role"), message.get("content"), message.get("metadata")
+    else:
+        role = getattr(message, "role", None)
+        content = getattr(message, "content", None)
+        metadata = getattr(message, "metadata", None)
+    if role != "assistant" or not isinstance(metadata, dict) or metadata.get("failed") is not True:
+        return False
+    if isinstance(content, str):
+        return not content.strip()
+    return not content
+
+
 @dataclass
 class ChatMessage:
     """A single chat message."""
@@ -176,6 +200,7 @@ class Session:
             msg.to_dict()
             for msg in self.history
             if (msg.metadata or {}).get("source") != "slash"
+            and not is_unanswered_reply(msg)   # `B1200`
         ]
         if not _history_grants_chat_session_approval(self.history, self.id):
             return messages

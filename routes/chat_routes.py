@@ -42,7 +42,7 @@ from src.context_compactor import (
 # `B921`: `P4-13`'s predicate moved to the compactor, so the agent loop's own
 # `compacted` notice asks it too; imported under the name every caller here uses.
 from src.context_compactor import shaping_shrank as _shaping_shrank
-from src.chat_helpers import coerce_message_and_session
+from src.chat_helpers import CHAT_GONE, coerce_message_and_session   # `B1216`
 from src.endpoint_resolver import normalize_base as _normalize_base, build_chat_url
 from src.foreground_model_routing import (
     build_foreground_model_candidates,
@@ -386,6 +386,60 @@ def _persist_message_metadata(session_id: str, message_id: Any, metadata: dict) 
         return False
     finally:
         db.close()
+
+
+def _add_late_notes(sess, session_id: str, message_id: Any, notes: list) -> bool:
+    """`B1031`. Notes a turn drew after its reply was saved at its terminal —
+    a teacher whose own model failed ends in `agent_terminal`, which saves the
+    reply, and `run_teacher_inline` may then send `escalation_failed` — written
+    onto that reply, in memory and on its row (`_persist_message_metadata`, as
+    update-last-meta writes a late figure), rather than saved as a second reply
+    by the `[DONE]` that follows, or lost."""
+    if not message_id:
+        return False
+    for item in reversed(getattr(sess, "history", None) or []):
+        metadata = getattr(item, "metadata", None)
+        if isinstance(metadata, dict) and metadata.get("_db_id") == message_id:
+            if notes:
+                metadata["agent_notes"] = list(notes)
+            else:
+                metadata.pop("agent_notes", None)
+            return _persist_message_metadata(session_id, message_id, metadata)
+    return False
+
+
+async def _what_the_stop_saved(session_manager, session_id: str, run, *,
+                               wait_s: float = 3.0) -> Optional[Dict[str, Any]]:
+    """`B1205` (fx-chat). The reply a stopped run saved, as ``{"id", "content"}``,
+    or ``None``.
+
+    A Stop cancels the detached run, and the run saves what it had streamed —
+    including the delta that was in flight when the Stop landed, which the
+    browser, its reader already cut, never drew: Escape at *Here is a* left the
+    bubble saying that and the record saying *Here is a long*, so a reload
+    showed a word more than the screen had. The cancellation is waited for
+    (briefly — the save is the first thing the run does with it) and the reply
+    it marked ``stopped`` is read back; the browser redraws the bubble from it.
+    A run that saved nothing, or not yet, answers ``None`` and the bubble keeps
+    what it drew.
+    """
+    task = getattr(run, "task", None)
+    if task is not None and not task.done():
+        try:
+            await asyncio.wait({task}, timeout=wait_s)
+        except Exception:
+            return None
+    try:
+        sess = session_manager.get_session(session_id)
+    except KeyError:
+        return None
+    from routes.history.history_routes import _stoppable_reply
+    msg = _stoppable_reply(getattr(sess, "history", None) or [])
+    meta = getattr(msg, "metadata", None) if msg is not None else None
+    content = getattr(msg, "content", None)
+    if not isinstance(meta, dict) or not meta.get("stopped") or not isinstance(content, str):
+        return None
+    return {"id": meta.get("_db_id"), "content": content}
 
 
 def _iter_session_approval_cards(sess):
@@ -1421,7 +1475,7 @@ def setup_chat_routes(
         try:
             sess = session_manager.get_session(session)
         except KeyError:
-            raise HTTPException(404, f"Session '{session}' not found")
+            raise HTTPException(404, CHAT_GONE)
         owner = effective_user(request)
         if _clear_orphaned_session_endpoint(sess, owner=owner):
             raise HTTPException(400, "Selected model endpoint was removed. Pick another model in Settings.")
@@ -1856,8 +1910,17 @@ def setup_chat_routes(
             owner = effective_user(request)
             if tool_approval_id:
                 _reject_delegated_tool_approval(request)
-                pending_tool_approval = tool_approval_store.peek(tool_approval_id)
+                _peek_outcome: dict = {}
+                pending_tool_approval = tool_approval_store.peek(
+                    tool_approval_id, owner=owner, session_id=session, outcome=_peek_outcome,
+                )
                 normalized_owner = str(owner or "").strip().casefold()
+                if pending_tool_approval is None and _peek_outcome.get("reason") == "expired":
+                    # `B561`. This person's own card, answered after its
+                    # deadline: the one refusal they can act on (*Ask again*),
+                    # which the neutral sentence below swallowed — the peek's
+                    # purge removed the card before `consume` could say so.
+                    raise HTTPException(409, approval_consume_message("expired"))
                 if (
                     pending_tool_approval is None
                     or pending_tool_approval.owner != normalized_owner
@@ -2283,24 +2346,32 @@ def setup_chat_routes(
                 "mcp__email__reply_to_email",
             }, WITHHELD_BY_POLICY)
 
-        # Enforce per-user privileges
-        _privs = {}
+        # Enforce per-user privileges. `B530`: each switch is read through
+        # `resolve_privilege`, the one rule for a key the map does not answer.
+        # They were `_privs.get(key, True)` — harmless while the manager's map
+        # holds every declared key, and a silent grant the day anything hands
+        # this a map it did not build (a role overlay, a cached partial map, a
+        # test double): `can_use_bash` is declared off. For the same reason an
+        # empty map is resolved too, to the registry, and not skipped as one
+        # that grants everything.
+        _privs = None
         _user = ctx.user
         if _user and hasattr(request.app.state, 'auth_manager') and request.app.state.auth_manager:
             # `B531`: a 503 that says why, rather than a 500 or a grant.
             from src.auth_helpers import privileges_or_refuse
             _privs = privileges_or_refuse(request.app.state.auth_manager, _user)
-        if _privs:
-            if not _privs.get("can_use_bash", True):
+        if _privs is not None:
+            from src.auth_helpers import resolve_privilege as _resolve
+            if not _resolve(_privs, "can_use_bash"):
                 # `P20-03`. `can_use_bash` is about a shell on this machine;
                 # when this person's shell and files run in their workstation,
                 # `can_use_workstation` is the grant that governs them.
                 from src.agent_tools.workstation_tools import lifted_tools as _ws_lifted
                 _withholds.deny({"bash", "python", "read_file", "write_file"} - _ws_lifted(_user),
                                 WITHHELD_BY_PRIVILEGE)
-            if not _privs.get("can_use_browser", True):
+            if not _resolve(_privs, "can_use_browser"):
                 _withholds.deny(_BROWSER_MCP_TOOLS, WITHHELD_BY_PRIVILEGE)
-            if not _privs.get("can_use_documents", True):
+            if not _resolve(_privs, "can_use_documents"):
                 # `B995`. `manage_documents` joined these when it opened to
                 # non-admins: before, the non-admin blocklist withheld it from
                 # everyone this switch is shown for, so a person with the
@@ -2309,13 +2380,13 @@ def setup_chat_routes(
                 # refuse them (`require_privilege("can_use_documents")`).
                 _withholds.deny({"create_document", "edit_document", "update_document",
                                  "suggest_document", "manage_documents"}, WITHHELD_BY_PRIVILEGE)
-            if not _privs.get("can_generate_images", True):
+            if not _resolve(_privs, "can_generate_images"):
                 _withholds.deny("generate_image", WITHHELD_BY_PRIVILEGE)
-            if not _privs.get("can_manage_memory", True):
+            if not _resolve(_privs, "can_manage_memory"):
                 _withholds.deny({"manage_memory", "manage_skills"}, WITHHELD_BY_PRIVILEGE)
-            if not _privs.get("can_use_research", True):
+            if not _resolve(_privs, "can_use_research"):
                 _research_flags["do"] = False
-            if not _privs.get("can_use_agent", True):
+            if not _resolve(_privs, "can_use_agent"):
                 _effective_mode = 'chat'
                 chat_mode = 'chat'
         # Global admin disabled tools
@@ -2712,6 +2783,8 @@ def setup_chat_routes(
             yield f'data: {json.dumps(_model_info)}\n\n'
 
             _terminal_saved = False
+            _terminal_saved_id = None   # `B1031`: the reply the terminal saved
+            _terminal_notes = []        # and the notes it was saved with
             if _is_image_generation_session(sess, owner=_user):
                 from src.settings import get_setting
                 if tool_policy.blocks("generate_image"):
@@ -3096,6 +3169,44 @@ def setup_chat_routes(
                                 if _saved_id:
                                     yield f'data: {json.dumps({"type": "message_saved", "id": _saved_id})}\n\n'
                                 yield f'data: {json.dumps({"type": "chat_terminal", "data": _terminal_metrics})}\n\n'
+                            elif not _chat_terminal_saved and not incognito:
+                                # `B1200` (fx-chat). It failed before saying
+                                # anything, and nothing was saved: live it is
+                                # one sentence and *Retry*, and a reload showed
+                                # the person's message alone. Saved now as a
+                                # reply with no words that says it failed — the
+                                # status, never the provider's text (as above) —
+                                # which the reload draws as the live stream did
+                                # and the model's replay leaves out
+                                # (`is_unanswered_reply`). Incognito keeps its
+                                # replay in memory, so it is not given one.
+                                _failure_status = _stream_failure_status(chunk)
+                                _unanswered = {
+                                    "failed": True,
+                                    "failure": {
+                                        "status": _failure_status,
+                                        "message": (
+                                            f"Model request failed (HTTP {_failure_status})"
+                                            if _failure_status is not None
+                                            else "Model request failed"
+                                        ),
+                                    },
+                                    "model": _actual_model or _answered_by or _requested_model,
+                                    "requested_model": _requested_model,
+                                    "endpoint_id": _actual_route.get("endpoint_id"),
+                                    "endpoint_label": _actual_route.get("endpoint_label"),
+                                    "requested_endpoint_id": _requested_route.get("endpoint_id"),
+                                    "requested_endpoint_label": _requested_route.get("endpoint_label"),
+                                }
+                                _saved_id = save_assistant_response(
+                                    sess, session_manager, session, "", _unanswered,
+                                    character_name=ctx.preset.character_name,
+                                    incognito=incognito,
+                                )
+                                _chat_terminal_saved = True
+                                _stream_set(session, status="error")
+                                if _saved_id:
+                                    yield f'data: {json.dumps({"type": "message_saved", "id": _saved_id})}\n\n'
                             yield chunk
                         elif chunk.startswith("event: "):
                             yield chunk
@@ -3465,12 +3576,14 @@ def setup_chat_routes(
                                     else:
                                         terminal_content = failure_note
                                     if not _terminal_saved:
+                                        _terminal_record = _reply_record(terminal_metadata)   # `B939`
+                                        _terminal_notes = _agent_notes.saved()   # `B915`
                                         _saved_id = save_assistant_response(
                                             sess,
                                             session_manager,
                                             session,
                                             terminal_content,
-                                            _reply_record(terminal_metadata),   # `B939`
+                                            _terminal_record,
                                             character_name=ctx.preset.character_name,
                                             web_sources=web_sources,
                                             rag_sources=ctx.rag_sources,
@@ -3478,10 +3591,14 @@ def setup_chat_routes(
                                             fallback_chain=_fallback_chain,
                                             auto_escalation=_auto_escalation_payload if auto_escalated else None,
                                             incognito=incognito,
-                                            agent_notes=_agent_notes.saved(),   # `B915`
+                                            agent_notes=_terminal_notes,
                                         )
                                         _terminal_saved = True
-                                        accumulate_token_usage(session, terminal_metadata, outcome="error")
+                                        _terminal_saved_id = _saved_id   # `B1031`
+                                        # `B1032`: the saved record, so a student's
+                                        # run before a teacher that failed is
+                                        # counted too (`earlier_runs`).
+                                        accumulate_token_usage(session, _terminal_record, outcome="error")
                                         _stream_set(session, status="error")
                                         if _saved_id:
                                             yield f'data: {json.dumps({"type": "message_saved", "id": _saved_id})}\n\n'
@@ -3543,6 +3660,19 @@ def setup_chat_routes(
                         elif chunk.startswith("event: "):
                             yield chunk
                         elif chunk == "data: [DONE]\n\n":
+                            if _terminal_saved:
+                                # `B1031`. The turn was saved at its terminal (a
+                                # teacher whose model failed: its `agent_terminal`,
+                                # then the student's loop's `[DONE]`). This arm
+                                # saved it again — two failed replies after a
+                                # reload, and the post-response tasks of a
+                                # success — so now it saves nothing, and a note
+                                # drawn since the save goes onto the saved reply.
+                                _late_notes = _agent_notes.saved()
+                                if _late_notes != _terminal_notes:
+                                    _add_late_notes(sess, session, _terminal_saved_id, _late_notes)
+                                yield chunk
+                                continue
                             _reply = _reply_record(last_metrics or {})   # `B939`
                             _has_tool_events = bool(_reply.get("tool_events"))
                             if full_response or _has_tool_events:
@@ -3722,8 +3852,16 @@ def setup_chat_routes(
     async def chat_stop(request: Request, session_id: str) -> Dict[str, Any]:
         _verify_session_owner(request, session_id)
         _expected_run_id = request.headers.get("X-Pantheon-Run-Id")
+        _run = agent_runs.get_active_run(session_id)
         stopped = agent_runs.stop(session_id, _expected_run_id)
-        return {"stopped": stopped}
+        out: Dict[str, Any] = {"stopped": stopped}
+        if stopped:
+            # `B1205`: what the run saved on its way out, so the bubble the
+            # person stopped can say the same words the reload will.
+            saved = await _what_the_stop_saved(session_manager, session_id, _run)
+            if saved:
+                out["saved"] = saved
+        return out
 
     # ------------------------------------------------------------------ #
     # POST /api/chat/steer — redirect the run that is already in flight
@@ -3900,7 +4038,7 @@ def setup_chat_routes(
         try:
             sess = session_manager.get_session(session_id)
         except (KeyError, SessionNotFoundError):
-            raise HTTPException(404, "Session not found")
+            raise HTTPException(404, CHAT_GONE)
 
         messages = [
             {"role": "system", "content": (
@@ -4145,7 +4283,7 @@ def setup_chat_routes(
         try:
             return session_manager.get_session(session_id)
         except KeyError:
-            raise HTTPException(404, f"Session '{session_id}' not found")
+            raise HTTPException(404, CHAT_GONE)
 
     @router.get("/api/tool-approval-grants/{session_id}")
     async def list_tool_approval_grants(

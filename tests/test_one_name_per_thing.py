@@ -187,12 +187,8 @@ def _bare_room_hits():
 # ── the hand-off: strings other lanes hold this wave, with who holds them ────
 
 CHAT_RESIDUE = {
-    "static/js/chatRenderer.js": (1, "the compact marker matched by text, "
-                                     "`Conversation compacted`: it is stored in "
-                                     "every compacted chat's history "
-                                     "(`routes/history/history_routes.py`), so the "
-                                     "reader must match both words before the "
-                                     "writer changes — filed, not done here."),
+    # `B1214`: the compact marker is found by its `compacted` flag now
+    # (`compactMarkerIn`), and the writer says *Chat compacted*.
     "static/js/cookbookRunning.js": (1, "the Forge's failed-kill toast, pinned by "
                                         "`tests/test_a_failed_kill_says_how_to_find_"
                                         "the_session.py`; it is a tmux session, and "

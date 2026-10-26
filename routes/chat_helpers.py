@@ -1190,15 +1190,36 @@ def accumulate_token_usage(session_id: str, metrics: dict, *, outcome: str = "ok
     everything, so a missing table on an old install costs a row of history —
     sharing this session would let a failed commit there roll back the counter
     update, and the counters worked before any of this existed.
+
+    `B1032`. A reply two runs made — a student's and the teacher's that took
+    over from it (`merge_runs`, `B939`) — is saved with the last run's figures
+    as its own and the student's under `earlier_runs`. Only the reply's were
+    counted, so a takeover added the teacher's tokens to the chat's totals and
+    the events table and never the student's. Every run is counted now: one
+    event each (an earlier run's outcome is its own — it answered, and was
+    taken over), and every run's tokens in the totals.
     """
+    metrics = metrics or {}
+    runs = [run for run in metrics.get("earlier_runs") or [] if isinstance(run, dict)]
+    runs.append(metrics)
     try:
         from src.events import record_llm_round
-        record_llm_round(session_id, metrics or {}, outcome=outcome)
+        for run in runs:
+            record_llm_round(session_id, run, outcome=outcome if run is metrics else "ok")
     except Exception:
         pass   # history is never worth a failed reply
 
-    in_t = metrics.get("input_tokens", 0)
-    out_t = metrics.get("output_tokens", 0)
+    def _tokens(key):
+        total = 0
+        for run in runs:
+            try:
+                total += int(run.get(key) or 0)
+            except (TypeError, ValueError):
+                continue
+        return total
+
+    in_t = _tokens("input_tokens")
+    out_t = _tokens("output_tokens")
     if not (in_t or out_t):
         return
     db = SessionLocal()

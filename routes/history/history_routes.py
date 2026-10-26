@@ -9,9 +9,10 @@ from typing import Dict, Any, Optional
 
 from fastapi import APIRouter, Request, HTTPException
 
-from core.models import ChatMessage
+from core.models import ChatMessage, is_unanswered_reply
 from core.database import SessionLocal, ChatMessage as DbChatMessage, Session as DbSession
 from src.auth_helpers import effective_user
+from src.chat_helpers import CHAT_GONE   # `B1216`
 from src.tool_approval_scopes import sanitize_client_message_metadata
 from src.agent_stops import RUN_KEYS, is_continue_prompt, merge_runs   # `B941`
 from src.upload_handler import reserve_message_upload_references
@@ -25,6 +26,12 @@ from routes.session_routes import (
 logger = logging.getLogger(__name__)
 
 _HISTORY_INLINE_MEDIA_THRESHOLD = 200_000
+
+#: `B1331`. What a delete that removed nothing says, instead of `"ok"`.
+_NOTHING_NAMED_TO_DELETE = (
+    "Nothing was deleted: no saved message was named. Reload the chat and try again.")
+_NOTHING_TO_DELETE = (
+    "Nothing was deleted: those messages are no longer in this chat. Reload it to see what is.")
 _DATA_IMAGE_RE = re.compile(r"data:image/[^;,\"]+;base64,[A-Za-z0-9+/=\s]+")
 
 
@@ -320,9 +327,37 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                 meta = {}
         if m.timestamp and "timestamp" not in meta:
             meta["timestamp"] = m.timestamp.isoformat() + "Z"
-        if meta:
-            entry["metadata"] = meta
+        # `B1331` (fx7-dup). The row's own id, as `_db_to_session` puts it on
+        # the in-memory copy: the bubble's *Edit* and *Delete* name the row by
+        # it (`data-db-id`). The paged branch below is the one the browser
+        # reads (`?limit=24`), and its entries had none, so after a reload no
+        # bubble could be edited and a delete removed bubbles and kept rows.
+        # Set, not defaulted: a fork copies its source's metadata — `_db_id`
+        # and all — into the rows it writes, and that id is not this row's.
+        meta["_db_id"] = m.id
+        entry["metadata"] = meta
         return entry
+
+    def _hidden_row_ids(db, session_id: str) -> list:
+        """`B1332`. The ids of a chat's rows nobody reads — a compaction's
+        `hidden` summary, kept for the model. Found by a coarse text match the
+        database can do, then confirmed on the parsed metadata, so no row whose
+        metadata merely mentions the word is left out; there are one or two of
+        these in a compacted chat, and none in any other."""
+        out = []
+        for row_id, raw in (
+            db.query(DbChatMessage.id, DbChatMessage.meta_data)
+            .filter(DbChatMessage.session_id == session_id,
+                    DbChatMessage.meta_data.like('%"hidden"%'))
+            .all()
+        ):
+            try:
+                meta = json.loads(raw) or {}
+            except (json.JSONDecodeError, TypeError, ValueError):
+                continue
+            if isinstance(meta, dict) and meta.get("hidden"):
+                out.append(row_id)
+        return out
 
     @router.get("/api/history/{session_id}")
     async def get_session_history(
@@ -338,29 +373,34 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             try:
                 db_session = db.query(DbSession).filter(DbSession.id == session_id).first()
                 if db_session is None:
-                    raise HTTPException(404, f"Session '{session_id}' not found")
+                    raise HTTPException(404, CHAT_GONE)
 
-                total = (
-                    db.query(DbChatMessage)
-                    .filter(DbChatMessage.session_id == session_id)
-                    .count()
-                )
+                # `B1332` (fx7-dup). The page is cut from the rows a reader can
+                # see. `total` and the offset were counted over every row and
+                # the page then dropped the `hidden` ones, so a compacted chat's
+                # newest page came back a message short, `total` was one more
+                # than anything would ever be drawn, and the older-page walk
+                # (`sessions.js`, `offset - limit`) counted in a space the
+                # browser never saw. `offset`, `total` and `has_more_*` are all
+                # in the displayed space now — the one `_resolve_user_message_cut`
+                # counts in too.
+                visible = db.query(DbChatMessage).filter(DbChatMessage.session_id == session_id)
+                hidden_ids = _hidden_row_ids(db, session_id)
+                if hidden_ids:
+                    visible = visible.filter(DbChatMessage.id.notin_(hidden_ids))
+                total = visible.count()
                 page_offset = int(offset) if offset is not None else max(total - page_limit, 0)
                 page_offset = max(0, min(page_offset, total))
                 # Keep display pagination page-scoped. ``get_session`` is the
                 # full model-context hydration seam and must not be entered here.
                 rows = (
-                    db.query(DbChatMessage)
-                    .filter(DbChatMessage.session_id == session_id)
+                    visible
                     .order_by(DbChatMessage.timestamp)
                     .offset(page_offset)
                     .limit(page_limit)
                     .all()
                 )
-                history_dict = [
-                    entry for entry in (_db_history_entry(m) for m in rows)
-                    if not (entry.get("metadata") or {}).get("hidden")
-                ]
+                history_dict = [_db_history_entry(m) for m in rows]
                 return {
                     "history": _with_current_upload_names(request, history_dict),
                     "model": db_session.model,
@@ -378,7 +418,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         try:
             session = session_manager.get_session(session_id)
         except KeyError:
-            raise HTTPException(404, f"Session '{session_id}' not found")
+            raise HTTPException(404, CHAT_GONE)
 
         history_dict = []
         for msg in session.history:
@@ -463,7 +503,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                 try:
                     session = session_manager.get_session(session_id)
                 except KeyError:
-                    raise HTTPException(404, "Session not found")
+                    raise HTTPException(404, CHAT_GONE)
                 keep_count, refusal = _resolve_user_message_cut(session, spec)
                 if refusal:
                     # 409: the session is not in the state the caller described.
@@ -478,7 +518,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         except HTTPException:
             raise
         except KeyError:
-            raise HTTPException(404, "Session not found")
+            raise HTTPException(404, CHAT_GONE)
         except Exception as e:
             logger.error(f"Truncate error {session_id}: {e}")
             raise HTTPException(500, str(e))
@@ -502,7 +542,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             session_manager.add_message(session_id, msg)
             return {"status": "ok"}
         except KeyError:
-            raise HTTPException(404, "Session not found")
+            raise HTTPException(404, CHAT_GONE)
 
     @router.post("/api/session/{session_id}/delete-messages")
     async def delete_messages(request: Request, session_id: str):
@@ -512,6 +552,10 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             body = await request.json()
             msg_ids = body.get("msg_ids", [])
             indices = body.get("indices")  # legacy fallback
+            if not msg_ids and not indices:
+                # `B1331`. It answered `{"status": "ok", "deleted": 0}`, which
+                # reads as done to anything that does not count.
+                raise HTTPException(400, _NOTHING_NAMED_TO_DELETE)
 
             session = session_manager.get_session(session_id)
             db = SessionLocal()
@@ -527,6 +571,10 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                         if db_msg:
                             db.delete(db_msg)
                             deleted += 1
+                    if not deleted:
+                        # `B1331`: none of the ids is a row of this chat, so
+                        # nothing was removed, and the person is told that.
+                        raise HTTPException(404, _NOTHING_TO_DELETE)
 
                     # Remove from in-memory history by matching _db_id
                     def _get_db_id(m):
@@ -547,8 +595,6 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                             deleted += 1
                         if 0 <= idx < len(session.history):
                             session.history.pop(idx)
-                else:
-                    return {"status": "ok", "deleted": 0}
 
                 session.message_count = len(session.history)
                 db_session = db.query(DbSession).filter(DbSession.id == session_id).first()
@@ -562,7 +608,9 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             finally:
                 db.close()
         except KeyError:
-            raise HTTPException(404, "Session not found")
+            raise HTTPException(404, CHAT_GONE)
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Delete messages error {session_id}: {e}")
             raise HTTPException(500, str(e))
@@ -615,7 +663,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             finally:
                 db.close()
         except KeyError:
-            raise HTTPException(404, "Session not found")
+            raise HTTPException(404, CHAT_GONE)
         except HTTPException:
             raise
         except Exception as e:
@@ -670,7 +718,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             session_manager.save_sessions()
             return {"status": "ok"}
         except KeyError:
-            raise HTTPException(404, "Session not found")
+            raise HTTPException(404, CHAT_GONE)
         except Exception as e:
             logger.error(f"Mark stopped error {session_id}: {e}")
             raise HTTPException(500, str(e))
@@ -721,7 +769,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             session_manager.save_sessions()
             return {"status": "ok"}
         except KeyError:
-            raise HTTPException(404, "Session not found")
+            raise HTTPException(404, CHAT_GONE)
         except Exception as e:
             logger.error(f"Update last meta error {session_id}: {e}")
             raise HTTPException(500, str(e))
@@ -812,7 +860,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             session_manager.save_sessions()
             return {"status": "ok", "merged": True}
         except KeyError:
-            raise HTTPException(404, "Session not found")
+            raise HTTPException(404, CHAT_GONE)
         except Exception as e:
             logger.error(f"Merge assistant error {session_id}: {e}")
             raise HTTPException(500, str(e))
@@ -832,9 +880,9 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             try:
                 source = session_manager.get_session(session_id)
             except KeyError:
-                raise HTTPException(404, "Session not found")
+                raise HTTPException(404, CHAT_GONE)
             if not source:
-                raise HTTPException(404, "Session not found")
+                raise HTTPException(404, CHAT_GONE)
 
             # Create new session
             new_id = str(uuid.uuid4())
@@ -888,12 +936,17 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         Streaming footers report the prompt size for the last request. This
         endpoint estimates the persisted session context so the header can show
         when the whole chat is approaching compaction.
+
+        `B1201`. It runs on every chat open and read the chat's row three
+        times — the owner check, ``get_session``'s refresh, and (without
+        ``?mode=``) ``get_session_mode``. The owner check's row is the one read
+        now: the refresh is handed it, and the chat's last mode is its column.
         """
-        _verify_session_owner(request, session_id)
+        row = _verify_session_owner(request, session_id)
         try:
-            session = session_manager.get_session(session_id)
+            session = session_manager.get_session(session_id, row=row)
         except KeyError:
-            raise HTTPException(404, "Session not found")
+            raise HTTPException(404, CHAT_GONE)
 
         try:
             from src.model_context import estimate_tokens, get_context_length_known
@@ -913,11 +966,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             # gets the chat's last mode.
             mode = str(request.query_params.get("mode") or "").strip().lower()
             if mode not in ("agent", "chat"):
-                try:
-                    from core.database import get_session_mode
-                    mode = "agent" if get_session_mode(session_id) == "agent" else "chat"
-                except Exception:
-                    mode = "chat"
+                mode = "agent" if getattr(row, "mode", None) == "agent" else "chat"
             agent_budget = 0
             if mode == "agent":
                 from src.context_budget import agent_input_budget
@@ -929,6 +978,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             visible_messages = sum(
                 1 for m in session.history
                 if not (getattr(m, "metadata", None) or {}).get("hidden")
+                and not is_unanswered_reply(m)   # `B1200`: no words, not a message
             )
             compacted_messages = sum(
                 1 for m in session.history
@@ -988,7 +1038,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         try:
             session = session_manager.get_session(session_id)
         except KeyError:
-            raise HTTPException(404, "Session not found")
+            raise HTTPException(404, CHAT_GONE)
         _reject_compact_during_active_run(session_id)
 
         try:
@@ -1015,6 +1065,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                 f"{_message_role(m).upper()}: "
                 f"{_message_text(m)[:2000]}"
                 for m in older
+                if not is_unanswered_reply(m)   # `B1200`: nothing to summarise
             )
 
             # Use utility model if available
@@ -1044,10 +1095,14 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                 content=f"[Conversation summary — {len(older)} earlier messages were compacted]\n\n{summary}",
                 metadata={"compacted": True, "hidden": True},
             )
-            # Visible assistant message just shows stats
+            # Visible assistant message just shows stats. `B1214`: a chat is
+            # a chat (`D-2026-10-03-01` §3). The browser finds this marker by
+            # its `compacted` flag (`chatRenderer.js`, `compactMarkerIn`), not
+            # by its words, so the chats that already say *Conversation
+            # compacted* are found the same way.
             summary_msg = ChatMessage(
                 role="assistant",
-                content=f"**Conversation compacted** — {len(older)} messages summarized, {len(recent)} kept.",
+                content=f"**Chat compacted** — {len(older)} messages summarized, {len(recent)} kept.",
                 metadata={"compacted": True, "messages_removed": len(older)},
             )
             new_history = [system_summary, summary_msg] + list(recent)

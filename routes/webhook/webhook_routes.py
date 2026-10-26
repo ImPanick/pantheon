@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from core.database import SessionLocal, Webhook, ModelEndpoint
 from src.auth_helpers import owner_filter
+from src.chat_helpers import CHAT_GONE   # `B1216`
 from src.url_security import validate_public_http_url
 from src.webhook_manager import WebhookManager, validate_webhook_url, validate_events
 
@@ -273,7 +274,7 @@ def setup_webhook_routes(
             try:
                 sess = session_manager.get_session(session_id)
             except (KeyError, Exception):
-                raise HTTPException(404, "Session not found")
+                raise HTTPException(404, CHAT_GONE)
             # SECURITY: verify the API-token's user owns this session — without
             # this any token holder could resume any user's chat by passing its
             # ID. The token's user is on request.state.user (set by API-token
@@ -288,7 +289,7 @@ def setup_webhook_routes(
             # chat-scoped token.
             _sess_owner = getattr(sess, "owner", None)
             if not _caller_owns_session(_sess_owner, _tok_user):
-                raise HTTPException(404, "Session not found")
+                raise HTTPException(404, CHAT_GONE)
             # `D-2026-10-07-02` §1: a chat on a model no endpoint lists now is
             # refused with the reason, as the composer's send is.
             from src.endpoint_resolver import usable_model_problem

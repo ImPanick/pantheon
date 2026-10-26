@@ -520,6 +520,14 @@ export function initSteerControl() {
       _steerRunAnswer = null;
     }
     if (_steerSupported === null) await probeSteerSupport();
+    // `B1253` (fx2-doors). The probe is awaited the first time on a page, and
+    // a turn can end inside that wait: a slash command raises the busy edge
+    // before it knows it is one (`handleChatSubmit`) and drops it before the
+    // probe answers. This went on to draw the bar over an idle chat, where it
+    // stayed until the next turn took it down. The run's own flag, read after
+    // the wait — not `_steerChatBusy()`, which typing in the composer holds
+    // true for 15 s (`__pantheonChatBusyUntil`).
+    if (!window.__pantheonChatBusy) return;
     if (_steerSupported !== true) return;
     // The stream can beat the probe on the first run of a page, so its verdict
     // is re-read after the await rather than assumed not to have arrived (`B14`).
@@ -619,6 +627,54 @@ initSteerControl();
  * `Law 14`, the same shape as the keybind table two commits earlier: not a
  * fourth map, the complete one becoming the only one.
  */
+/**
+ * `B701`. Where a mode the assistant set (`ui_control set_mode`) keeps the
+ * person's own mode: `{ own, set }` inside the stored toggles. Read once, at
+ * load, by `restorePersonsMode`; dropped the moment the person picks a mode
+ * themselves, because from then on the mode is theirs again.
+ */
+export const ASSISTANT_MODE_KEY = 'mode_set_by_assistant';
+
+/**
+ * `B701`. On load: the person's own mode back, when the stored one is still the
+ * one the assistant set. A mode changed since — by the person, Nobody, Compare
+ * — is left as it is. Returns whether anything was put back.
+ */
+export function restorePersonsMode(store = Storage) {
+  try {
+    const ts = store.getJSON(store.KEYS.TOGGLES, {}) || {};
+    const marker = ts[ASSISTANT_MODE_KEY];
+    if (marker === undefined) return false;
+    delete ts[ASSISTANT_MODE_KEY];
+    const putBack = !!(marker && typeof marker === 'object' && marker.own && ts.mode === marker.set);
+    if (putBack) ts.mode = marker.own;
+    store.setJSON(store.KEYS.TOGGLES, ts);
+    return putBack;
+  } catch (_) {
+    return false;
+  }
+}
+
+/** `B701`. The person picking a mode themselves makes it theirs: the marker
+ *  goes, so the next load does not put an older one back. */
+function _forgetAssistantMode(event) {
+  if (!event || !event.isTrusted) return;
+  const t = event.target;
+  const btn = t && typeof t.closest === 'function' ? t.closest('#mode-agent-btn, #mode-chat-btn') : null;
+  if (!btn) return;
+  try {
+    const ts = Storage.getJSON(Storage.KEYS.TOGGLES, {}) || {};
+    if (ts[ASSISTANT_MODE_KEY] === undefined) return;
+    delete ts[ASSISTANT_MODE_KEY];
+    Storage.setJSON(Storage.KEYS.TOGGLES, ts);
+  } catch (_) {}
+}
+
+// Before `app.js` reads the stored mode: this module is evaluated as one of
+// its imports, before its body runs.
+restorePersonsMode();
+document.addEventListener('click', _forgetAssistantMode, true);
+
 export const TOGGLE_CHECKBOX_IDS = Object.freeze({
   web: 'web-toggle',
   bash: 'bash-toggle',
@@ -652,9 +708,13 @@ export function handleUIControl(uiData) {
           if (btn) btn.classList.toggle('active', !!uiData.state);
         }
       }
-      var ts = Storage.getJSON(Storage.KEYS.TOGGLES, {});
-      ts[uiData.toggle_name] = !!uiData.state;
-      Storage.setJSON(Storage.KEYS.TOGGLES, ts);
+      // `B701` (p7trust). Applied to the live control and NOT written to the
+      // person's stored toggles. It was written, so `ui_control toggle` —
+      // something the model sent — became the person's saved default
+      // (research and RAG are restored from it on the next load), which is a
+      // stored preference changed by something other than the person. The
+      // person's yes to a self-switch is for that one switch, not a standing
+      // grant (`D-2026-10-25-01`).
 
     } else if (uiEvent === 'set_mode' || uiData.ui_event === 'set_mode') {
       var modeVal = uiData.mode;
@@ -664,7 +724,14 @@ export function handleUIControl(uiData) {
         agentBtn.classList.toggle('active', modeVal === 'agent');
         chatBtn.classList.toggle('active', modeVal !== 'agent');
       }
-      var ts2 = Storage.getJSON(Storage.KEYS.TOGGLES, {});
+      // `B701`. The composer sends with the stored mode (`chat.js` reads it
+      // at send), so the switch is written for this page — with the person's
+      // own mode kept beside it, which the next load puts back
+      // (`restorePersonsMode`). A mode the assistant set is not a default.
+      var ts2 = Storage.getJSON(Storage.KEYS.TOGGLES, {}) || {};
+      var marker = ts2[ASSISTANT_MODE_KEY];
+      var own = (marker && typeof marker === 'object' && marker.own) || ts2.mode || 'chat';
+      ts2[ASSISTANT_MODE_KEY] = { own: own, set: modeVal };
       ts2.mode = modeVal;
       Storage.setJSON(Storage.KEYS.TOGGLES, ts2);
       document.querySelectorAll('[data-mode-tool]').forEach(function(b) {

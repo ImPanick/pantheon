@@ -948,12 +948,41 @@ class ToolApprovalStore:
         finally:
             self._announce_expired(expired)
 
-    def peek(self, approval_id: Any) -> PendingToolApproval | None:
+    def peek(
+        self,
+        approval_id: Any,
+        *,
+        owner: Any = None,
+        session_id: Any = None,
+        outcome: dict[str, Any] | None = None,
+    ) -> PendingToolApproval | None:
+        """The pending action behind `approval_id`, or ``None``. Lapsed cards
+        are purged first, as everywhere.
+
+        `B561`. `outcome`, when given, says why it is ``None``, in `consume`'s
+        words: ``expired`` when the card was here and lapsed **and** `owner`
+        and `session_id` are the card's own (so an id is no oracle to anyone
+        else), else ``unknown``. `POST /api/chat_stream` peeks before it
+        consumes and answered every ``None`` with one neutral 409 — and since
+        this purge removed the lapsed card, `consume`'s ``expired`` (the one
+        reason that says *Ask again*) could never be reached from the chat.
+        """
         now = time.time()
+        approval_key = str(approval_id or "")
         with self._lock:
+            # Read before the purge, as `consume` does: the purge is what
+            # erases "it lapsed" from "it never existed".
+            lapsed = self._pending.get(approval_key)
             expired = self._purge_expired_locked(now)
-            found = self._pending.get(str(approval_id or ""))
+            found = self._pending.get(approval_key)
         self._announce_expired(expired)
+        if found is None and outcome is not None:
+            owned = (
+                lapsed is not None
+                and lapsed.owner == _normalized_owner(owner)
+                and lapsed.session_id == str(session_id or "")
+            )
+            outcome["reason"] = "expired" if owned else "unknown"
         return found
 
     def retire_for_session(self, *, owner: Any, session_id: Any) -> bool:

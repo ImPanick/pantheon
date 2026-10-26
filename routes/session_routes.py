@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 import logging
 
 from core.session_manager import SessionManager
-from core.models import ChatMessage
+from core.models import ChatMessage, is_unanswered_reply
 from src.request_models import SessionResponse
 from core.database import Session as DbSession, SessionLocal, Document, GalleryImage, utcnow_naive
 from src.auth_helpers import (
@@ -21,6 +21,7 @@ from src.auth_helpers import (
     require_chat_api_token_scope,
 )
 from src.session_actions import is_session_recently_active
+from src.chat_helpers import CHAT_GONE   # `B1216`
 from src.upload_handler import reserve_message_upload_references
 from src.tool_approval_scopes import sanitize_client_message_metadata
 from src.env_flags import request_flag
@@ -189,6 +190,28 @@ def _reject_compact_during_active_run(session_id: str) -> None:
         raise HTTPException(409, "Wait for the reply to finish, then compact.")
 
 
+def _every_listed_chat(session_manager, user, *, page_size: int = 200) -> list:
+    """`B1224` (fx-ops). Every chat the sidebar lists for `user`, newest first,
+    read page by page from the database (`SessionManager.list_page`).
+
+    Tidy read `get_sessions_for_user`, which filters the boot cache — the 100
+    most recently used chats **of every owner** — so on a shared install a
+    person whose chats were older than someone else's last 100 got an empty
+    Tidy. A chat the first page carries out of order (pinned, or in a folder)
+    is not counted twice when its own page comes round.
+    """
+    out, seen, offset = [], set(), 0
+    while True:
+        page, has_more = session_manager.list_page(user, limit=page_size, offset=offset)
+        for chat in page:
+            if chat.id not in seen:
+                seen.add(chat.id)
+                out.append(chat)
+        if not has_more:
+            return out
+        offset += page_size
+
+
 def _verify_session_owner(request: Request, session_id: str, session_manager=None):
     """Verify the current user owns the session.
 
@@ -196,25 +219,31 @@ def _verify_session_owner(request: Request, session_id: str, session_manager=Non
     request with no person on it is refused: there is always authentication
     (`D-2026-10-07-02` §2), so the auth-off install that once skipped the owner
     comparison is not a configuration any more.
+
+    Returns the chat's row (its columns loaded, the database session closed),
+    or ``None`` for an in-memory ghost. `B1201`: the check reads the whole row
+    rather than its owner, for the same one statement, so a route that goes on
+    to read the chat hands it to ``SessionManager.get_session(row=...)`` instead
+    of reading the row again. Callers that only needed the check ignore it.
     """
     user = effective_user(request)
     if not user:
         raise HTTPException(401, "Authentication required")
     db = SessionLocal()
     try:
-        row = db.query(DbSession.owner).filter(DbSession.id == session_id).first()
+        row = db.query(DbSession).filter(DbSession.id == session_id).first()
     finally:
         db.close()
     if row is not None:
         if user and row.owner != user:
-            raise HTTPException(404, f"Session {session_id} not found")
-        return
+            raise HTTPException(404, CHAT_GONE)
+        return row
     # No DB row — allow the caller to act on an in-memory ghost they own.
     if session_manager is not None:
         ghost = getattr(session_manager, "sessions", {}).get(session_id)
         if ghost is not None and (not user or getattr(ghost, "owner", None) == user):
-            return
-    raise HTTPException(404, f"Session {session_id} not found")
+            return None
+    raise HTTPException(404, CHAT_GONE)
 
 logger = logging.getLogger(__name__)
 
@@ -598,7 +627,7 @@ def setup_session_routes(
         try:
             session = session_manager.get_session(sid)
         except KeyError:
-            raise HTTPException(404, f"Session {sid} not found")
+            raise HTTPException(404, CHAT_GONE)
         result = {"id": sid}
         if name is not None:
             session_manager.update_session_name(sid, name)
@@ -782,7 +811,7 @@ def setup_session_routes(
         try:
             sess = session_manager.get_session(sid)
         except KeyError:
-            raise HTTPException(404, f"Session {sid} not found")
+            raise HTTPException(404, CHAT_GONE)
         body = await request.json()
         messages = body.get("messages", [])
         from core.models import ChatMessage
@@ -885,7 +914,7 @@ def setup_session_routes(
             if session_manager.delete_session(sid):
                 return {"status": "deleted"}
             else:
-                raise HTTPException(404, "Session not found")
+                raise HTTPException(404, CHAT_GONE)
         except HTTPException:
             raise
         except Exception as e:
@@ -927,7 +956,7 @@ def setup_session_routes(
                     logger.info(f"Archived session {sid}")
                     return {"status": "archived"}
                 else:
-                    raise HTTPException(404, f"Session {sid} not found")
+                    raise HTTPException(404, CHAT_GONE)
                     
             except HTTPException:
                 raise
@@ -939,7 +968,7 @@ def setup_session_routes(
                 db.close()
 
         except KeyError:
-            raise HTTPException(404, f"Session '{sid}' not found")
+            raise HTTPException(404, CHAT_GONE)
     
     @router.post("/session/{sid}/unarchive")
     def unarchive_session(request: Request, sid: str):
@@ -949,7 +978,7 @@ def setup_session_routes(
         try:
             db_session = db.query(DbSession).filter(DbSession.id == sid).first()
             if not db_session:
-                raise HTTPException(404, f"Session {sid} not found")
+                raise HTTPException(404, CHAT_GONE)
             db_session.archived = False
             db_session.updated_at = utcnow_naive()
             db.commit()
@@ -1048,7 +1077,7 @@ def setup_session_routes(
         try:
             session = session_manager.get_session(sid)
         except KeyError:
-            raise HTTPException(404, f"Session {sid} not found")
+            raise HTTPException(404, CHAT_GONE)
 
         safe_name = re.sub(r'[^\w\-_]', '_', session.name)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -1242,7 +1271,7 @@ def setup_session_routes(
 
                     return {"status": "success", "is_important": important}
                 else:
-                    raise HTTPException(404, f"Session {session_id} not found")
+                    raise HTTPException(404, CHAT_GONE)
 
             except HTTPException:
                 raise
@@ -1254,7 +1283,7 @@ def setup_session_routes(
                 db.close()
 
         except KeyError:
-            raise HTTPException(404, f"Session {session_id} not found")
+            raise HTTPException(404, CHAT_GONE)
 
     @router.post("/session/{session_id}/compact")
     async def compact_session(request: Request, session_id: str):
@@ -1263,7 +1292,7 @@ def setup_session_routes(
         try:
             session = session_manager.get_session(session_id)
         except KeyError:
-            raise HTTPException(404, f"Session {session_id} not found")
+            raise HTTPException(404, CHAT_GONE)
         _reject_compact_during_active_run(session_id)
 
         history = list(session.history or [])
@@ -1301,6 +1330,7 @@ def setup_session_routes(
         convo_text = "\n".join(
             f"{_message_role(m).upper()}: {_message_text(m)[:2000]}"
             for m in older
+            if not is_unanswered_reply(m)   # `B1200`: nothing to summarise
         )
         try:
             summary = await llm_call_async(
@@ -1347,7 +1377,7 @@ def setup_session_routes(
         """
         from src.llm_core import llm_call
         user = effective_user(request)
-        user_sessions = session_manager.get_sessions_for_user(user)
+        user_sessions = _every_listed_chat(session_manager, user)
 
         # Delete empty and throwaway sessions before sorting
         from core.database import ChatMessage as DbMsg
@@ -1433,7 +1463,7 @@ def setup_session_routes(
 
         # Re-fetch after cleanup
         if deleted_empty or deleted_throwaway:
-            user_sessions = session_manager.get_sessions_for_user(user)
+            user_sessions = _every_listed_chat(session_manager, user)
 
         # Short-circuit when the caller only wanted the cleanup phase
         # (the "Tidy (no AI)" path). Shape mirrors the post-Phase-1
@@ -1457,7 +1487,7 @@ def setup_session_routes(
         # means each Tidy press only handles new unfiled chats.
         TIDY_BATCH_SIZE = 15
         all_candidates = []
-        for s in user_sessions.values():
+        for s in user_sessions:
             if s.archived or s.name == "Incognito":
                 continue
             if folder_map.get(s.id):
@@ -1623,7 +1653,7 @@ def setup_session_routes(
         _verify_session_owner(request, session_id)
         session = session_manager.get_session(session_id)
         if not session:
-            raise HTTPException(404, "Session not found")
+            raise HTTPException(404, CHAT_GONE)
         if not session.endpoint_url or not session.model:
             return {"context_length": None}
         try:
