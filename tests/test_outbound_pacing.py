@@ -14,6 +14,7 @@ be true before any of the routing was safe:
 import ast
 import asyncio
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -491,6 +492,94 @@ def test_a_function_that_acquires_is_paced(repo):
         encoding="utf-8",
     )
     assert run(["--max", "0"], repo).returncode == 0
+
+
+def _count(repo) -> int:
+    out = run(["--max", "999"], repo).stdout
+    return int(re.search(r"unpaced outbound calls (\d+)", out).group(1))
+
+
+def test_a_paced_branch_does_not_pace_the_branch_beside_it(repo):
+    """`B1023`. Pacing was judged per FUNCTION, so one `paced_http` call in an
+    `if` branch counted every outbound call in the function as paced — the
+    under-report, inside one function. Judged per block now."""
+    (repo / "app.py").write_text(
+        "import httpx\n"
+        "from src import paced_http\n"
+        "async def send(preset, url, client):\n"
+        "    if preset == 'ntfy':\n"
+        "        return await paced_http.request('POST', url, client=client)\n"
+        "    else:\n"
+        "        return await client.post(url, json={})\n",
+        encoding="utf-8",
+    )
+    assert _count(repo) == 1
+    assert run(["--max", "0"], repo).returncode == 1
+
+
+@pytest.mark.parametrize("body", [
+    # an acquire at the top of the function governs a call three blocks down
+    "    outbound.acquire('h')\n"
+    "    if url:\n"
+    "        for _ in range(2):\n"
+    "            return httpx.get(url, timeout=5)\n",
+    # the shape five modules use: acquire in a `try`, refuse on the limit
+    "    try:\n"
+    "        outbound.acquire('h')\n"
+    "    except Exception:\n"
+    "        return None\n"
+    "    with httpx.Client() as client:\n"
+    "        return client.get(url, timeout=5)\n",
+    # a `with` whose item acquires
+    "    with outbound.acquire('h'):\n"
+    "        return httpx.get(url, timeout=5)\n",
+])
+def test_a_block_that_paces_governs_the_calls_inside_and_after_it(repo, body):
+    (repo / "app.py").write_text(
+        "import httpx\n"
+        "from src.rate_limiter import outbound\n"
+        "def grab(url):\n" + body,
+        encoding="utf-8",
+    )
+    assert _count(repo) == 0, run([], repo).stdout
+
+
+@pytest.mark.parametrize("body", [
+    # an acquire in an `except` paces only the handler
+    "    try:\n"
+    "        return httpx.get(url, timeout=5)\n"
+    "    except Exception:\n"
+    "        outbound.acquire('h')\n",
+    # an acquire in a nested function paces that function, not this one
+    "    def later():\n"
+    "        outbound.acquire('h')\n"
+    "    return httpx.get(url, timeout=5)\n",
+])
+def test_a_pacer_out_of_the_calls_path_governs_nothing(repo, body):
+    (repo / "app.py").write_text(
+        "import httpx\n"
+        "from src.rate_limiter import outbound\n"
+        "def grab(url):\n" + body,
+        encoding="utf-8",
+    )
+    assert _count(repo) == 1, run([], repo).stdout
+
+
+def test_reverting_the_discord_test_send_raises_the_count_by_one(repo):
+    """`B1023`'s `Verify`, on the real handler: `B1014`'s mutation run reverted
+    the Discord *Test* send in `routes/auth_routes.test_integration_route` to
+    an unpaced `client.post` and the inventory did not move, because the ntfy
+    branch of the same function paces. It moves by exactly one now."""
+    source = (ROOT / "routes" / "auth_routes.py").read_text(encoding="utf-8")
+    (repo / "routes").mkdir()
+    (repo / "routes" / "auth_routes.py").write_text(source, encoding="utf-8")
+    before = _count(repo)
+    paced = 'r = await paced_http.request("POST", webhook_url, client=client, json=payload)'
+    assert source.count(paced) == 1, "the Discord test send moved; re-aim the mutant"
+    (repo / "routes" / "auth_routes.py").write_text(
+        source.replace(paced, "r = await client.post(webhook_url, json=payload)"),
+        encoding="utf-8")
+    assert _count(repo) == before + 1
 
 
 @pytest.mark.parametrize("host", ["workstation", "192.168.1.20", "100.101.1.2", "nas.lan", "localhost"])

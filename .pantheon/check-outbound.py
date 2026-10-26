@@ -35,8 +35,11 @@ throttled this product. There is no headroom to spend there.
 
 WHAT COUNTS AS PACED.
 
-The enclosing function acquires from the limiter, or it calls through
-`src/paced_http.py`, which does the whole ritual.
+A call is paced when a block it sits in acquires from the limiter, or calls
+through `src/paced_http.py`, which does the whole ritual — the same statement
+list as the call or one enclosing it, inside the enclosing function. `B1023`:
+it used to be the whole function, so a paced `ntfy` branch hid an unpaced
+Discord branch beside it.
 
 Detection is per-function, so it OVER-reports: `webhook_manager._send_request`
 is paced by `_deliver`, which calls it, and still appears in the inventory
@@ -179,9 +182,9 @@ def _enclosing(functions, lineno):
     return None
 
 
-def _is_paced(node) -> bool:
-    if node is None:
-        return False
+def _pacers(node):
+    """Every call inside `node` that paces: a limiter `acquire`, or a request
+    call through `src/paced_http.py`."""
     imported = set()   # `from src.paced_http import get` — names that pace
     for sub in ast.walk(node):
         if isinstance(sub, ast.ImportFrom) and sub.module and _PACED_MODULE in sub.module:
@@ -190,15 +193,80 @@ def _is_paced(node) -> bool:
         if not isinstance(call, ast.Call):
             continue
         name = getattr(call.func, "attr", None) or getattr(call.func, "id", None)
-        if name in _LIMITER_CALLS:
-            return True
         parts = _root_chain(call.func).split(".")
         # `paced_http.get(…)`, `src.paced_http.get(…)` — a request call on the
         # module. `paced_http.direct_mounts(…)` routes and does not pace (`B1014`).
-        if len(parts) >= 2 and parts[-2] == _PACED_MODULE and parts[-1] in _PACED_CALLS:
-            return True
-        if isinstance(call.func, ast.Name) and call.func.id in imported:
-            return True
+        if (name in _LIMITER_CALLS
+                or (len(parts) >= 2 and parts[-2] == _PACED_MODULE and parts[-1] in _PACED_CALLS)
+                or (isinstance(call.func, ast.Name) and call.func.id in imported)):
+            yield call
+
+
+def _is_paced(node, call=None) -> bool:
+    """Whether `call`, inside function `node`, is governed by a pacing call.
+
+    `B1023`. This used to answer for the whole function — any pacing call
+    anywhere in it paced every outbound call in it — so reverting the Discord
+    *Test* send in `routes/auth_routes.test_integration_route` to an unpaced
+    `client.post` left the count unchanged, because the ntfy branch of the
+    same function calls `paced_http.request`. That is the under-report, inside
+    one function; the over-report (a helper paced by its caller, below) is
+    the documented one.
+
+    So a pacing call governs an outbound call only when it sits in a block the
+    call is in: its statement is the call's own statement or one enclosing it
+    (an `async with limiter.acquire(…):` around it, an `if` whose test
+    acquires), or it is a sibling, in the same statement list, of the call's
+    statement or of a statement enclosing it — the `acquire` at the top of the
+    function body governs a call three blocks down. A pacing call in the
+    *other* branch of an `if`, in an `except` beside the `try`, or in a nested
+    function the call is not in, governs nothing. A `try:` or `with` body is
+    unconditional, so a pacer there governs the block's siblings too. Order is
+    not judged.
+
+    Called without `call`, it answers the old question — does anything in
+    `node` pace — for a caller that has no single call in hand.
+    """
+    if node is None:
+        return False
+    pacers = list(_pacers(node))
+    if not pacers:
+        return False
+    if call is None:
+        return True
+    parents = {}
+    for parent in ast.walk(node):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+    lineage, at = {call}, call
+    while at is not node and at in parents:
+        at = parents[at]
+        lineage.add(at)
+    for pacer in pacers:
+        stmt = pacer
+        while not isinstance(stmt, ast.stmt) and stmt in parents:
+            stmt = parents[stmt]
+        # A `try:` body and a `with` body run unconditionally, so a pacer in one
+        # governs what follows the block as well — `try: outbound.acquire(host)
+        # except OutboundRateLimited: return None` and then the request is how
+        # five modules spell it. An `if`, a loop body or an `except` does not
+        # lift: what is conditional there stays conditional.
+        chain = [stmt]
+        while True:
+            parent = parents.get(chain[-1])
+            if not (isinstance(parent, (ast.With, ast.AsyncWith, ast.Try))
+                    and chain[-1] in parent.body):
+                break
+            chain.append(parent)
+        for each in chain:
+            if each in lineage:
+                return True
+            container = parents.get(each)
+            if container is None:
+                continue
+            for _field, value in ast.iter_fields(container):
+                if isinstance(value, list) and each in value and lineage.intersection(value):
+                    return True
     return False
 
 
@@ -268,7 +336,7 @@ def scan():
             if label is None:
                 continue
             node = _enclosing(functions, call.lineno)
-            if _is_paced(node):
+            if _is_paced(node, call):
                 continue
             where = node.name if node else "<module>"
             entry = (rel, where, call.lineno, label)
