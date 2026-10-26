@@ -101,6 +101,55 @@ def _answers(handler):
     return wrapper
 
 
+TEST_REQUEST_GONE = ("The test was stopped: the page that asked for it stopped waiting "
+                     "for the answer, so nothing more of it ran.")
+
+
+async def _request_ends(request) -> None:
+    """`B1093`. Returns when the request has ended: its `receive` answers
+    `http.disconnect` — when the client goes, and, under `BaseHTTPMiddleware`,
+    once a middleware has sent its own answer (`app.py`'s request ceiling).
+    Read for real rather than through `is_disconnected()`, whose cancelled
+    peek sees only the innermost middleware's answer."""
+    while True:
+        message = await request.receive()
+        if (message or {}).get("type") == "http.disconnect":
+            return
+
+
+async def _while_the_request_waits(request, test):
+    """`B1093`. Await a step test (`test`, a coroutine) only while the request
+    that asked for it is still waiting; cancel it the moment it is not.
+
+    Measured on the merged tree: *Test this step* on a local model answered
+    "Not tested: Request exceeded 45s timeout" (`app.py`'s request ceiling,
+    a 504) and the test went on running on the server — its model round
+    finished 46 s after the person was told it had not happened (`Law 10`).
+    The ceiling's `wait_for` stops waiting for the handler, not the handler:
+    `BaseHTTPMiddleware` runs the endpoint in a task group that lets it finish.
+    What the endpoint can see is that its request has ended (`_request_ends`),
+    so it watches, and cancels the test — the cancel reaches the model round.
+    A test still finishes for as long as somebody is waiting for it."""
+    job = asyncio.ensure_future(test)
+    gone = asyncio.ensure_future(_request_ends(request))
+    try:
+        done, _ = await asyncio.wait({job, gone}, return_when=asyncio.FIRST_COMPLETED)
+        if job in done:
+            return job.result()
+        logger.info("A step test's request ended; the test is cancelled")
+        raise WorkflowRefused(503, TEST_REQUEST_GONE)
+    finally:
+        for left in (job, gone):
+            if not left.done():
+                left.cancel()
+                try:
+                    await left
+                except BaseException:
+                    # Cancelled, as asked; what it raised on the way out is
+                    # its own, and nobody is waiting to read it.
+                    pass
+
+
 # `P22-24` (`SLICE-EF-DESIGN` § 0.12). The most any body here may be: a
 # workflow file is the biggest thing posted (a document is at most
 # `WORKFLOW_GRAPH_MAX_BYTES`, 256 KiB, plus what it requires), and `_body` read
@@ -600,8 +649,10 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         finally:
             db.close()
         try:
-            result = await task_scheduler.test_workflow_node(
-                trigger, name, checked, input_envelope=envelope, timeout=None, graph=graph)
+            # `B1093`. Only for as long as somebody is waiting for the answer.
+            result = await _while_the_request_waits(
+                request, task_scheduler.test_workflow_node(
+                    trigger, name, checked, input_envelope=envelope, timeout=None, graph=graph))
         except WorkflowRefused:
             raise
         except Exception as err:

@@ -1680,6 +1680,11 @@ def run_of_slot(slot):
     return slot
 
 
+def is_test_slot(slot) -> bool:
+    """`B1093`. Is this slot a *Test this step*'s (`"test:<uuid>"`)?"""
+    return isinstance(slot, str) and slot.startswith(TEST_SLOT_PREFIX + NODE_SLOT_SEPARATOR)
+
+
 def _waited_words(seconds: float) -> str:
     """`B1060`. How long a run waited for Pantheon to be idle, for its step log."""
     seconds = max(0, int(round(seconds)))
@@ -4845,6 +4850,9 @@ class TaskScheduler:
             db.add(sess)
             task.session_id = session_id
             db.commit()
+            # `B1093`. Which chat this run made, on its slot: a step test
+            # (`test_workflow_node`) removes the one it made.
+            self._state_for(run_id)["made_chat"] = session_id
             if self._session_manager:
                 try:
                     self._session_manager.ensure_task_session(
@@ -5651,6 +5659,7 @@ class TaskScheduler:
             db.add(sess)
             task.session_id = session_id
             db.commit()
+            self._state_for(run_id)["made_chat"] = session_id     # `B1093`
             if self._session_manager:
                 # `B1171`. Asked the way the other two task sites ask
                 # (`ensure_task_session`, which loads the stored row since
@@ -6960,9 +6969,9 @@ class TaskScheduler:
             # the trigger FIRST: the card is sealed to that chat, and the step
             # that resumes after an Allow must run in it, or the seal refuses
             # the replay (as it should — found by the Allow test).
-            self._keep_workflow_chat(db, task, stand_in, kind)
+            self._keep_workflow_chat(db, task, stand_in, kind, slot)
             raise
-        self._keep_workflow_chat(db, task, stand_in, kind)
+        self._keep_workflow_chat(db, task, stand_in, kind, slot)
         if after is not None:
             res = after(res)
         if deliver and res.ok and stand_in.output_target:
@@ -6974,16 +6983,20 @@ class TaskScheduler:
                     NODE_STATUS_ERROR,
                     payload=(f"It worked, but the result could not be delivered: "
                              f"{type(exc).__name__}: {exc}"))
-            self._keep_workflow_chat(db, task, stand_in, kind)
+            self._keep_workflow_chat(db, task, stand_in, kind, slot)
         return res
 
-    def _keep_workflow_chat(self, db, task, stand_in, kind: str) -> None:
+    def _keep_workflow_chat(self, db, task, stand_in, kind: str, slot=None) -> None:
         """A Prompt or Action step that made the workflow's chat leaves it on
         the trigger, so the next step writes into the same "[Task] …" chat.
-        A Research step's report keeps its own session (`node_stand_in`)."""
+        A Research step's report keeps its own session (`node_stand_in`).
+        `B1093`: a step test (`slot` a test's) keeps nothing — the chat it
+        made is removed when the test ends."""
         from core.database import ScheduledTask
         from src import workflow_document as wd
 
+        if is_test_slot(slot):
+            return
         made = getattr(stand_in, "session_id", None)
         if kind == wd.NODE_KIND_RESEARCH or not made or getattr(task, "session_id", None):
             return
@@ -7048,7 +7061,7 @@ class TaskScheduler:
             target_id, bypass_model_slot=True, trigger=self.run_trigger(slot),
             register_handle=False, started_by=self._run_started_by(slot),
             inside={"run": run_of_slot(slot), "name": task.name,
-                    "test": str(slot).startswith(TEST_SLOT_PREFIX + NODE_SLOT_SEPARATOR)})
+                    "test": is_test_slot(slot)})
         current = asyncio.current_task()
         if current is not None and current.cancelling():
             # The target's run answers a cancel by recording it and returning
@@ -7130,8 +7143,38 @@ class TaskScheduler:
                                  else EDGE_WHEN_ERROR if res.status == "error" else None),
             }
         finally:
+            # `B1093`. A test delivers nothing, and that includes a chat: a
+            # Prompt step's test made "[Task] <workflow>" in the Tasks folder at
+            # the press (`_execute_llm_task`, when the trigger had none yet)
+            # and kept it on the trigger, empty, before the workflow had ever
+            # run. The chat the test made is removed, ended or cancelled.
+            made = (self._runs().get(slot) or {}).get("made_chat")
             self._clear_run_state(slot)
             db.close()
+            if made and made != getattr(task, "session_id", None):
+                self._discard_test_chat(made)
+
+    def _discard_test_chat(self, session_id: str) -> None:
+        """`B1093`. Remove the chat a step test made — through the session
+        manager when there is one (`delete_session`: its messages, its cache
+        entry), and a Research step's report file with it."""
+        try:
+            if self._session_manager is not None:
+                self._session_manager.delete_session(session_id)
+            else:
+                from core.database import ChatMessage, Session as DbSession, SessionLocal
+                db = SessionLocal()
+                try:
+                    db.query(ChatMessage).filter(ChatMessage.session_id == session_id).delete()
+                    db.query(DbSession).filter(DbSession.id == session_id).delete()
+                    db.commit()
+                finally:
+                    db.close()
+            from src.research_handler import RESEARCH_DATA_DIR
+            (RESEARCH_DATA_DIR / f"{session_id}.json").unlink(missing_ok=True)
+        except Exception:
+            logger.warning("A step test's chat %s could not be removed", session_id,
+                           exc_info=True)
 
     def _test_context(self, db, task, graph, node: dict, input_envelope) -> dict:
         """What a tested step's references read: the chosen input as the start,
