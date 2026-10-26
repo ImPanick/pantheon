@@ -147,6 +147,52 @@ def offline_runner_lines(cmd: str, repo_id: str) -> list:
     return lines
 
 
-def offline_powershell_lines() -> list:
-    """The PowerShell lines a Windows serve script runs with the switch off."""
-    return [f"$env:{name} = '1'" for name in OFFLINE_ENV]
+def _ps_text(text: str) -> str:
+    """A PowerShell double-quoted string that says `text` whatever code page
+    reads the script. The serve script is written as UTF-8 without a BOM, which
+    Windows PowerShell 5.1 reads as the ANSI code page, so the sentence's "→"
+    would print as "â†’"; each non-ASCII character is spelled `$([char]0x…)`.
+    `` ` ``, `$` and `"` are escaped with a backtick."""
+    out = []
+    for ch in text:
+        if ch in '`$"':
+            out.append("`" + ch)
+        elif ord(ch) > 0x7E or ord(ch) < 0x20:
+            out.append(f"$([char]0x{ord(ch):04X})")
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
+
+
+def offline_powershell_lines(cmd: str = "", repo_id: str = "") -> list:
+    """The PowerShell lines a Windows serve script runs with the switch off.
+
+    `B1267`: the same stop as `offline_runner_lines`. With only the three
+    `*_OFFLINE` variables, a serve naming a repo that is not in the cache was
+    still refused — by `huggingface_hub` itself — but the person read the
+    engine's offline traceback instead of the switch's sentence. So the cache
+    is looked for where `huggingface_hub` looks on Windows (`HF_HUB_CACHE`,
+    else `HF_HOME\\hub`, else `~\\.cache\\huggingface\\hub` — the bash lines'
+    order), and a repo that is not there stops the script before the engine
+    starts, with the exit line the Forge reads (`=== Process exited with code
+    1 ===`). `cmd`/`repo_id` default empty so a caller that passes neither
+    keeps the old three lines (`Law 1`).
+    """
+    lines = [f"$env:{name} = '1'" for name in OFFLINE_ENV]
+    if names_hub_repo(cmd, repo_id):
+        cache_dir = "models--" + repo_id.strip().replace("/", "--")
+        said = _ps_text(repo_id.strip() + " is not on this machine. " + OFF_SENTENCE)
+        lines += [
+            "# `B1259`/`B1267`: Hugging Face and Ollama are off (Settings > Forge), so the",
+            "# engine reads only what is on this machine.",
+            "$_panHub = if ($env:HF_HUB_CACHE) { $env:HF_HUB_CACHE } "
+            "elseif ($env:HF_HOME) { Join-Path $env:HF_HOME 'hub' } "
+            "else { Join-Path $HOME '.cache\\huggingface\\hub' }",
+            f"if (-not (Test-Path -LiteralPath (Join-Path $_panHub '{cache_dir}'))) {{",
+            f"  Write-Host {said}",
+            "  Write-Host ''",
+            "  Write-Host '=== Process exited with code 1 ==='",
+            "  exit 1",
+            "}",
+        ]
+    return lines

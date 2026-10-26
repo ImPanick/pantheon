@@ -2126,7 +2126,8 @@ def setup_cookbook_routes() -> APIRouter:
             if req.gpus:
                 ps_lines.append(f"$env:CUDA_VISIBLE_DEVICES = '{req.gpus}'")
             if not hubs_on and not is_pip_install:
-                ps_lines.extend(model_hubs.offline_powershell_lines())   # `B1259`
+                # `B1259`; `B1267`: with the cache check the bash lines have.
+                ps_lines.extend(model_hubs.offline_powershell_lines(req.cmd, req.repo_id))
             if req.env_prefix:
                 ps_lines.append(_safe_env_prefix(req.env_prefix))
             # Auto-install ollama if the command uses it
