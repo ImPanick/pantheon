@@ -3938,7 +3938,11 @@ def setup_cookbook_routes() -> APIRouter:
                 return {"ok": False, "files": [], "error": f"HF API HTTP {resp.status_code}"}
             data = resp.json()
         except Exception:
-            logger.exception("HF GGUF file scan failed for %s", repo)
+            # `B1261`: this named `repo`, which no scope here defines, so the
+            # handler for a failed scan raised `NameError` and the Direct
+            # Download box read "GGUF scan failed: HTTP 500" instead of this
+            # sentence.
+            logger.exception("HF GGUF file scan failed for %s", repo_id)
             return {"ok": False, "files": [], "error": "HF API request failed"}
         files = [
             str(s.get("rfilename") or "")
