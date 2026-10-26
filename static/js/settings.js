@@ -13,7 +13,7 @@ import {
 } from './settings/registry.js';
 // `P23-03`: the one table — who may see the admin's panels, and why a tool's
 // switch in Appearance cannot bring it back. Same specifier as `app.js`.
-import { TOOL_VISIBILITY, hidesLine, onToolVisibilityApplied, toolOff, toolRefusal, toolVisibilityState, viewerIsAdmin, viewerMayAdminister } from './ui_visibility.js';
+import { TOOL_VISIBILITY, hidesLine, onToolVisibilityApplied, toolOff, toolRefusal, viewerIsAdmin, viewerMayAdminister } from './ui_visibility.js';
 import {
   collectMcpStdioFields,
   createMcpFieldEditor,
@@ -1657,11 +1657,53 @@ async function initResearchSettings() {
     var epId = epSel.value;
     var ep = endpoints.find(function(e) { return e.id === epId; });
     _fillModelSelect(modelSel, ep ? ep.models : [], selectedModel, true);
+    _sayFallback();
   }
+
+  // `B1504`. Left empty, the Research Model is not "the chat model": the
+  // resolver reads Research, then Utility, then the default chat model
+  // (`endpoint_resolver._configured_entry("research")`). The empty choice and
+  // the line under the card name the one that runs — from the settings this
+  // card reads, then from the Utility and Default Chat cards on this same
+  // panel whenever one of them changes, so a change made there shows here
+  // without a reload.
+  var _fb = { utility: ['', ''], chat: ['', ''] };   // [endpoint id, model]
+  function _pairLabel(pair) {
+    var ep = endpoints.find(function(e) { return e.id === pair[0]; });
+    return (ep ? _endpointLabel(ep) : pair[0]) + ' / ' + (pair[1] ? String(pair[1]).split('/').pop() : 'auto');
+  }
+  function _sayFallback() {
+    var f = _fb.utility[0]
+      ? { option: 'Same as utility', said: 'Runs on the utility model: ' + _pairLabel(_fb.utility) + '.' }
+      : { option: 'Same as chat',
+          said: _fb.chat[0] ? 'Runs on the chat model: ' + _pairLabel(_fb.chat) + '.' : 'Runs on the chat model.' };
+    [epSel, modelSel].forEach(function(s) {
+      if (s && s.options[0] && s.options[0].value === '') s.options[0].textContent = f.option;
+    });
+    return f;
+  }
+  [['utility', 'set-utilityEpSelect', 'set-utilityModelSelect'],
+   ['chat', 'set-defaultEpSelect', 'set-defaultModelSelect']].forEach(function(row) {
+    [row[1], row[2]].forEach(function(id) {
+      var s = el(id);
+      if (!s) return;
+      s.addEventListener('change', function() {
+        // After the card's own handler has refilled its model list.
+        setTimeout(function() {
+          var e = el(row[1]), m = el(row[2]);
+          _fb[row[0]] = [(e && e.value) || '', (m && m.value) || ''];
+          _sayFallback();
+          if (!epSel.value) showStatus();
+        }, 0);
+      });
+    });
+  });
 
   try {
     var res = await fetch('/api/auth/settings', { credentials: 'same-origin' });
     var settings = await res.json();
+    _fb.utility = [settings.utility_endpoint_id || '', settings.utility_model || ''];   // `B1504`
+    _fb.chat = [settings.default_endpoint_id || '', settings.default_model || ''];
     if (settings.research_endpoint_id) epSel.value = settings.research_endpoint_id;
     refreshModels(settings.research_model || '');
     if (settings.research_max_tokens) tokensInput.value = settings.research_max_tokens;
@@ -1682,6 +1724,8 @@ async function initResearchSettings() {
       var epName = epSel.options[epSel.selectedIndex].textContent;
       var mName = modelSel.value ? modelSel.value.split('/').pop() : 'auto';
       parts.push(epName + ' / ' + mName);
+    } else {
+      parts.push(_sayFallback().said);   // `B1504`: what runs, not "chat defaults"
     }
     if (tokensInput.value) {
       parts.push('Max tokens: ' + tokensInput.value);
@@ -1698,13 +1742,8 @@ async function initResearchSettings() {
         parts.push(rtv === 0 ? 'Max time: no limit' : 'Max time: ' + rtv + 's');
       }
     }
-    if (parts.length) {
-      msg.textContent = parts.join(' · ');
-      msg.style.color = 'var(--fg)';
-    } else {
-      msg.textContent = 'Using chat defaults';
-      msg.style.color = 'var(--fg)';
-    }
+    msg.textContent = parts.join(' · ');
+    msg.style.color = 'var(--fg)';
   }
   showStatus();
 
@@ -3067,9 +3106,16 @@ function initAll() {
   initialized = true;
   // `SET-M-8` (P23-03). Every one of these reads or writes an admin-only
   // route; for a signed-in non-admin they were sixteen 403s on every Settings
-  // open, behind panels the nav no longer offers them. Unknown (the status has
-  // not answered) runs them, as before.
-  if (toolVisibilityState().isAdmin !== false) {
+  // open, behind panels the nav no longer offers them.
+  //
+  // `B1525`. The check read the table's state as it stood, and before
+  // `/api/auth/status` has answered that is unknown — so Settings opened in
+  // that window ran all of them for a guest too. `viewerMayAdminister` waits
+  // for the status the page has asked for (at most four seconds) and answers
+  // no only for a viewer the server called a non-admin, as `admin.js`
+  // `_initData` asks it.
+  viewerMayAdminister().then((may) => {
+    if (!may) return;
     initDefaultChat();
     initTeacherModel();
     initUtilityModel();
@@ -3091,7 +3137,7 @@ function initAll() {
     initDocStyle();      // H18
     initSafesearch();    // H18
     initReminderSettings();
-  }
+  });
   initAppearance();
   initShortcuts();
   initAccount();

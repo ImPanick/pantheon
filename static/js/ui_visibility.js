@@ -472,19 +472,41 @@ export function whenToolVisibilityReady(ms = 4000) {
 }
 
 let _statusAsked = false;
+// `B1525`. The status has answered, or could not be had: either way a wait for
+// it is over. Its own promise, not `_ready` — that one also waits for the
+// features, which this question does not need.
+let _statusSettled = false;
+let _settleStatus = null;
+const _statusDone = new Promise((resolve) => { _settleStatus = resolve; });
+function _statusArrived() {
+  _statusSettled = true;
+  if (_settleStatus) { _settleStatus(); _settleStatus = null; }
+}
 
 /** `B1192`. `app.js` says it has asked for the person's status, so a check that
  *  needs the answer waits for it rather than guessing ahead of it. */
 export function noteStatusAsked() { _statusAsked = true; }
 
+/** `B1525`. `app.js` says the status could not be had: nothing waits on it
+ *  any longer, and unknown asks. */
+export function noteStatusFailed() { _statusArrived(); }
+
 /** `B1192`. Whether to ask for something only an admin may have: while the
- *  status the page has asked for is on its way, wait for it (at most `ms`),
- *  then answer `false` only for a viewer the server called a non-admin.
- *  Unknown asks, as `SET-M-8`'s gate does, so a slow status never hides an
- *  admin's own lists. A request the page knows will be refused is a request it
- *  should not send. */
-export async function viewerMayAdminister(ms = 4000) {
-  if (_statusAsked && !_known.auth) await whenToolVisibilityReady(ms);
+ *  status the page has asked for is on its way, wait for it, then answer
+ *  `false` only for a viewer the server called a non-admin. Unknown asks, as
+ *  `SET-M-8`'s gate does, so a status that fails never hides an admin's own
+ *  lists. A request the page knows will be refused is a request it should not
+ *  send.
+ *
+ *  `B1525`: the wait is for the status alone, and long enough for a slow one
+ *  (`core/database.py` records `GET /api/auth/status` measured at 4,773 ms): at
+ *  four seconds, a guest whose status took longer was asked for all of it. A
+ *  status that errors ends the wait at once (`noteStatusFailed`); `ms` only
+ *  bounds one that never answers. */
+export async function viewerMayAdminister(ms = 20000) {
+  if (_statusAsked && !_known.auth && !_statusSettled) {
+    await Promise.race([_statusDone, new Promise((r) => setTimeout(r, ms))]);
+  }
   return _state.isAdmin !== false;
 }
 
@@ -531,7 +553,7 @@ export function applyToolVisibility(patch = {}, doc = (typeof document !== 'unde
   if ('privileges' in p) _state.privileges = p.privileges || null;
   if ('isAdmin' in p) _state.isAdmin = p.isAdmin === null || p.isAdmin === undefined ? null : !!p.isAdmin;
   if ('shell' in p) _state.shell = p.shell || null;
-  if (p.auth) _known.auth = true;
+  if (p.auth) { _known.auth = true; _statusArrived(); }
   if ('ui' in p) _state.ui = p.ui || {};
   if (_known.features && _known.auth && _readyResolve) { _readyResolve(); _readyResolve = null; }
 

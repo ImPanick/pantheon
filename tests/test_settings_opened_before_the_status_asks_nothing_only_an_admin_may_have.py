@@ -17,6 +17,7 @@ after the status answers.
 """
 import json
 import shutil
+import subprocess
 
 import pytest
 
@@ -86,3 +87,79 @@ def test_a_status_that_never_answers_does_not_hide_an_admins_lists(sandbox):
         console.log(JSON.stringify({ asked: calls.fetch.map((c) => c.url) }));
     """)
     assert any(u.endswith("/api/webhooks") for u in out["asked"]), out
+
+
+# ── The row's `Verify:`, in the real app ────────────────────────────────────
+#
+# Settings' own admin-only inits (`settings.js` `initAll`: the default chat,
+# utility, research, search… cards — sixteen loaders) had the same check as
+# `_initData` and ran on an unknown status too. Driven as `B1192`'s test drives
+# the page (the real app, a guest signed in, headless Chromium), with
+# `/api/auth/status` held back so Settings opens before it answers.
+
+from test_a_guest_asks_for_nothing_only_an_admin_may_have import file_database  # noqa: E402,F401
+from test_the_command_palette_in_a_browser import NODE as _BROWSER, _SKIP, app_url  # noqa: E402,F401
+
+_SLOW_STATUS = r"""
+const { chromium } = require('playwright');
+const BASE = process.argv[2];
+(async () => {
+  const browser = await chromium.launch({ args: ['--no-sandbox'] });
+  const out = { refused: [], errors: [], asked: 0, statusAt: null, settingsAt: null };
+  const admin = { username: 'boss', password: 'boss-pass-123' };
+  const guest = { username: 'guest', password: 'guest-pass-123' };
+  const setup = await browser.newContext();
+  await setup.request.post(BASE + '/api/auth/setup', { data: admin });
+  await setup.request.post(BASE + '/api/auth/login', { data: { ...admin, remember: true } });
+  out.made = (await setup.request.post(BASE + '/api/auth/users', { data: { ...guest, is_admin: false } })).status();
+  await setup.close();
+
+  const context = await browser.newContext({ viewport: { width: 1280, height: 860 } });
+  await context.addInitScript(() => {
+    try { localStorage.setItem('pantheon-ui-visibility', JSON.stringify({ 'first-run-tours': false })); } catch (_) {}
+  });
+  const page = await context.newPage();
+  page.on('pageerror', (e) => out.errors.push(String((e && e.message) || e)));
+  page.on('response', (r) => {
+    const u = new URL(r.url());
+    if (!u.pathname.startsWith('/api/')) return;
+    out.asked += 1;
+    if (r.status() === 403) out.refused.push(r.request().method() + ' ' + u.pathname);
+  });
+  // The status is slow: held for six seconds, so Settings opens first.
+  await page.route('**/api/auth/status', async (route) => {
+    await new Promise((r) => setTimeout(r, 6000));
+    out.statusAt = Date.now();
+    await route.continue();
+  });
+  out.login = (await page.request.post(BASE + '/api/auth/login', { data: { ...guest, remember: true } })).status();
+  await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#user-bar-settings', { state: 'attached', timeout: 60000 });
+  await page.waitForFunction(() => window.__pantheonAppStarted === true, null, { timeout: 60000 }).catch(() => {});
+  await page.evaluate(() => document.getElementById('user-bar-settings').click());
+  out.settingsAt = Date.now();
+  await page.waitForTimeout(9000);
+  console.log(JSON.stringify(out));
+  await browser.close();
+})().catch((e) => { console.error(e); process.exit(1); });
+"""
+
+
+@pytest.fixture(scope="module")
+def slow_status(file_database, app_url, tmp_path_factory):  # noqa: F811
+    if _BROWSER is None:
+        pytest.skip(_SKIP or "no browser")
+    script = tmp_path_factory.mktemp("b1525-pw") / "slow.cjs"
+    script.write_text(_SLOW_STATUS, encoding="utf-8")
+    proc = subprocess.run([_BROWSER, str(script), app_url], capture_output=True, text=True, timeout=600)
+    assert proc.returncode == 0, proc.stderr[-3000:]
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+def test_a_guest_who_opens_settings_before_the_status_answers_gets_no_403(slow_status):
+    """The row's `Verify:`."""
+    out = slow_status
+    assert out["made"] == 200 and out["login"] == 200, out
+    assert out["statusAt"] and out["settingsAt"] and out["settingsAt"] < out["statusAt"], (
+        "the premise: Settings opened before the status answered")
+    assert out["refused"] == [], f"asked for what only an admin may have: {out['refused']}"
