@@ -64,6 +64,9 @@ def datadir(tmp_path, monkeypatch):
     monkeypatch.setattr(cookbook_routes, "COOKBOOK_STATE_FILE", str(tmp_path / "cookbook_state.json"))
     monkeypatch.setattr(hf, "MLX_COMMUNITY_CACHE", tmp_path / "hwfit" / "mlx.json")
     monkeypatch.setattr(hf, "HF_COLLECTION_MODELS_CACHE", tmp_path / "hwfit" / "hf.json")
+    # `B1260`: the image collection rows are kept on disk beside the two above.
+    monkeypatch.setattr(hf, "IMAGE_COLLECTION_MODELS_CACHE", tmp_path / "hwfit" / "image.json",
+                        raising=False)
     monkeypatch.setattr(hf, "_last_forced_refresh", 0.0)
     monkeypatch.setattr(models, "_refresh_state", {"state": "idle"})
     models.reset_model_cache()
