@@ -134,6 +134,9 @@ const PLAN_MARKS = { planned: '→', cannot: '?', declined: '⊘', aside: '–' 
  */
 const DRY_CANNOT = 'cannot';
 const CANNOT_SAY = 'A dry run cannot tell you what this would change.';
+/** `B1083`. How far inside the canvas's edge a step opened beside its panel
+ *  is kept (px on screen). */
+const KEEP_MARGIN = 16;
 const KEY_DIRS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 /** The mark beside a step's last-run word, by `runStatusTone`. `none` is a
  *  step that has not run. */
@@ -1585,6 +1588,43 @@ export function mountCanvas(root, opts = {}) {
     const offer = id && typeof src.offer === 'function' ? src.offer(id) : null;
     if (dropped) say(dropped);
     else if (offer) say(chainSentence(id), { action: offer });
+    if (id) keepBeside(id);
+  }
+
+  /**
+   * `B1083`. A step a person opens stays in sight beside its panel. The panel
+   * takes its width from the canvas (`.wb-panel` is the viewport's flex
+   * sibling), and the view was not moved: measured at 1400×860 on a run,
+   * clicking *Send me the summary* opened its panel over the very box
+   * clicked. While the view is still the fit, it is fitted again now to the
+   * same steps in what the panel left — what the resize observer would do a
+   * frame later, so it then sees no change — and then, fit or not, the view
+   * is panned just enough to bring the step inside the canvas, its zoom
+   * kept. A failed run's step is fitted with its neighbours since `P23-06`
+   * (`applyFocusChain`); this is every other way a step is opened.
+   */
+  function keepBeside(id) {
+    const p = S.pos.get(String(id));
+    if (!p || S.missing.has(String(id))) return;
+    const r = viewSize();
+    if (!(r.width > 0 && r.height > 0)) return;
+    if (S.fitted && S.fitSize && (Math.abs(r.width - S.fitSize.width) >= 8
+      || Math.abs(r.height - S.fitSize.height) >= 8)) fitTo(S.fitted);
+    const z = S.view.zoom;
+    const w = NODE_W * z;
+    const h = (p.h || NODE_H) * z;
+    const left = S.view.x + p.x * z;
+    const top = S.view.y + p.y * z;
+    let dx = 0;
+    let dy = 0;
+    if (left + w > r.width - KEEP_MARGIN) dx = (r.width - KEEP_MARGIN) - (left + w);
+    if (left + dx < KEEP_MARGIN) dx = KEEP_MARGIN - left;
+    if (top + h > r.height - KEEP_MARGIN) dy = (r.height - KEEP_MARGIN) - (top + h);
+    if (top + dy < KEEP_MARGIN) dy = KEEP_MARGIN - top;
+    if (!dx && !dy) return;
+    S.fitted = null;   // the view was moved for this step; a resize leaves it
+    S.view = { ...S.view, x: S.view.x + dx, y: S.view.y + dy };
+    applyView();
   }
 
   function select(id, opts2) {
