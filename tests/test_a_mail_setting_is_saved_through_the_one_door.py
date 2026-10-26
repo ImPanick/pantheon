@@ -153,17 +153,21 @@ def test_a_writing_style_save_is_answered_at_once_and_survives_the_next_save(sto
     assert _on_disk(S, "email_writing_style") == "short and warm"
 
 
-def test_the_scan_flips_its_flags_where_every_reader_sees_them(store, monkeypatch):
-    """`_run_auto_summarize_once` turns the flags it was asked for on, runs one
-    pass, and puts them back. The pass and everything it calls read through
-    `src.settings`; before, they were flipped behind the cache, so a reader in
-    the pass answered the old flags and a save in it wrote them back off."""
+def test_the_scan_hands_its_flags_to_the_pass_and_leaves_the_settings_alone(store, monkeypatch):
+    """`_run_auto_summarize_once` runs one pass with the flags it was asked for.
+
+    Until `B801` it turned them on in `settings.json` (through `src.settings`,
+    since `B988`), ran the pass, and put them back — so every reader saw them
+    mid-scan and a writer mid-scan saved them as the person's own. `B801`
+    hands them to the pass instead (`flags`); the person's settings say what
+    they said throughout, and a save mid-scan saves only what it changed."""
     import routes.email_pollers as P
     S = store
     assert S.get_setting("email_auto_summarize") is False
     seen = {}
 
-    async def one_pass(**_kw):
+    async def one_pass(**kw):
+        seen["asked"] = kw["flags"]["email_auto_summarize"]
         seen["during"] = S.get_setting("email_auto_summarize")
         _an_unrelated_save(S)                      # any writer, mid-scan
         seen["after_a_save"] = _on_disk(S, "email_auto_summarize")
@@ -171,8 +175,8 @@ def test_the_scan_flips_its_flags_where_every_reader_sees_them(store, monkeypatc
 
     monkeypatch.setattr(P, "_auto_summarize_pass", one_pass)
     assert asyncio.run(P._run_auto_summarize_once(do_summary=True)) == "ok"
-    assert seen == {"during": True, "after_a_save": True}
-    assert S.get_setting("email_auto_summarize") is False, "the flag was not put back"
+    assert seen == {"asked": True, "during": False, "after_a_save": False}
+    assert S.get_setting("email_auto_summarize") is False
     assert _on_disk(S, "email_auto_summarize") is False
     assert _on_disk(S, "b988_unrelated") == 1
 
