@@ -108,6 +108,15 @@ the next one is cut.
 
 ### Added
 
+- **`.xls`, `.ods`, `.pptx` and `.epub` are read on a default install,** and an attached `.zip`
+  lists what is in it and reads its small text files (`B1178`, `B1289`, `B1291`).
+- **Diagnostics → Evals and → Sign-ins and access:** an operator runs an eval suite from a recent
+  run, and reads who signed in, from the page (`B490`, `B684`).
+- **Settings → System → How long records are kept,** and the skill importer's GitHub token in
+  MCP & Integrations (`B1539`, `B927`).
+- **The image editor hands an edit back to the message** (`B1293`), and the composer estimates
+  what a text file will cost before it is sent (`B761`).
+
 - **Each Tools entry can be switched off for everyone** — Assistant, Calendar, Compare, Email,
   Notes, Tasks, Theme and Workbench, in Settings → Agent Tools — beside the per-person switch:
   the door hides, the routes refuse everyone, the agent's tools go, and background work holds
@@ -211,6 +220,12 @@ the next one is cut.
   button all close it. `/toggle mode [agent|chat]` is the same control, typed.
 
 ### Changed — read this before upgrading
+
+- **A document records where it came from** — written here, imported, or derived — and only
+  a document written here is given to the agent as the person's own words (`B1325`); documents
+  older than the column are treated as untrusted.
+- **`pantheon-ui.service` waits for `/api/ready`** before `systemctl start` returns (`B444`).
+- **`src/config.py`'s second settings system is gone** (`B550`).
 
 - **The assistant asks before it switches on or redirects its own settings** — image generation,
   the teacher, speech, model downloads, metrics, wider search or LAN reach, a higher remote-image
@@ -348,6 +363,13 @@ the next one is cut.
   arming that a non-empty memory store did on its own.
 
 ### Fixed
+
+- **Windows minimised to the dock come back after a reload** (`B1185`), every tour passes a step
+  with nothing on screen (`B1537`), a page asks each boot read once (`B1228`), and a
+  switched-off tool's page stops polling its routes (`B1542`).
+- **The chat searches a document index that came up after start** (`B1532`); DuckDuckGo's library
+  path is paced (`B1541`); a silent refused send in the workstation is counted and said
+  (`B1021`); a compare vote names a winner it compared (`B642`).
 
 - **A truncated plan update is sent back** instead of erasing approved steps (`B1415`); a
   read-only MCP tool is not held like a destructive one (`B1329`); a model nobody ruled out gets
