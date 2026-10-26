@@ -521,14 +521,16 @@ def rule_gate_reads_ci() -> list[str]:
             f"runs `pytest {' '.join(suites[0])}` — a local pass is not "
             f"evidence about the run CI will do (`B431`)")
 
-    advisory = re.search(r"run:\s*python3?\s+(\.pantheon/retrieval_eval\.py[^\n#]*)",
-                         text)
-    if advisory is None:
+    # `B505`: every report, the tool-selection eval beside the memory one.
+    advisories = [m.group(1).split() for m in re.finditer(
+        r"run:\s*python3?\s+(\.pantheon/retrieval_eval\.py[^\n#]*)", text)]
+    if not advisories:
         problems.append("ci.yml no longer runs the retrieval eval")
-    elif gate.ci_advisory_argv() != advisory.group(1).split():
+    elif gate.ci_advisory_argvs() != advisories:
+        gate_runs = "; ".join(" ".join(a) for a in gate.ci_advisory_argvs())
+        ci_runs = "; ".join(" ".join(a) for a in advisories)
         problems.append(
-            f"the gate runs `{' '.join(gate.ci_advisory_argv())}` and CI runs "
-            f"`{advisory.group(1)}` (`B431`)")
+            f"the gate runs `{gate_runs}` and CI runs `{ci_runs}` (`B431`, `B505`)")
     return problems
 
 

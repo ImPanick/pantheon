@@ -72,7 +72,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 # Steps that report but never fail the gate. `P3-20`'s lesson: a ratchet on a
 # number nobody has calibrated is worse than no ratchet, and the first honest
 # thing to know is what today's number is.
-ADVISORY = {"retrieval eval"}
+ADVISORY = {"retrieval eval", "tool-selection eval"}
 
 
 def _checkers_from_ci() -> list[tuple[str, list[str]]]:
@@ -133,12 +133,25 @@ def ci_suite_args() -> list[str]:
     return ["-q"]
 
 
-def ci_advisory_argv() -> list[str]:
-    """`P13-13`'s report, with the flags CI gives it. It ran `--verbose` in the
-    workflow and bare here, which is two commands wearing one name."""
-    m = re.search(r"run:\s*python3?\s+(\.pantheon/retrieval_eval\.py[^\n#]*)",
-                  _ci_text())
-    return m.group(1).split() if m else [".pantheon/retrieval_eval.py"]
+def ci_advisory_argvs() -> list[list[str]]:
+    """`P13-13`'s reports, with the flags CI gives them, in workflow order. It
+    ran `--verbose` in the workflow and bare here, which is two commands
+    wearing one name.
+
+    `B505`. Every invocation, not the first: the tool-selection eval
+    (`--kind tools`, `P17-14`) is a second report in the same step shape, and
+    reading one match meant the gate printed the memory number and never the
+    selector's."""
+    found = [m.group(1).split() for m in re.finditer(
+        r"run:\s*python3?\s+(\.pantheon/retrieval_eval\.py[^\n#]*)", _ci_text())]
+    return found or [[".pantheon/retrieval_eval.py"]]
+
+
+def advisory_label(argv: list[str]) -> str:
+    """The name a report's step prints under. `--kind tools` is the selector."""
+    if "--kind" in argv and argv[argv.index("--kind") + 1:][:1] == ["tools"]:
+        return "tool-selection eval"
+    return "retrieval eval"
 
 
 def _node_version() -> str | None:
@@ -306,7 +319,7 @@ def main() -> int:
             for name, _ in extra:
                 print(f"  {name}")
         print("\nthen: py_compile, node --check, "
-              f"{' '.join(ci_advisory_argv())} (advisory)"
+              + ", ".join(f"{' '.join(a)} (advisory)" for a in ci_advisory_argvs())
               + ("" if args.fast else f", pytest {' '.join(ci_suite_args())}"))
         print()
         for line in not_covered(args.fast, not shutil.which("node")):
@@ -333,7 +346,8 @@ def main() -> int:
     for name, argv in extra:
         steps.append((f"{name} (not in CI)", [sys.executable, *argv]))
     steps.append(("py_compile", [sys.executable, "-m", "py_compile", *_python_files()]))
-    steps.append(("retrieval eval", [sys.executable, *ci_advisory_argv()]))
+    for argv in ci_advisory_argvs():
+        steps.append((advisory_label(argv), [sys.executable, *argv]))
     if not args.fast:
         steps.append(("pytest", [sys.executable, "-m", "pytest", *ci_suite_args()]))
 

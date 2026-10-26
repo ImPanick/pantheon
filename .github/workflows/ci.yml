@@ -531,6 +531,13 @@ jobs:
       # a real measurement needs an operator's own memories.
       - name: retrieval eval (report only)
         run: python3 .pantheon/retrieval_eval.py --verbose
+      # `B505`. The other retriever in the product: which tools the selector
+      # offers a turn (`P17-14`). Same rule as the step above — a report printed
+      # on every merge so a change in recall or refusal is noticed, never a gate.
+      # `release-gate.py` reads every `retrieval_eval.py` invocation here, so it
+      # prints this line beside the memory one.
+      - name: tool-selection eval (report only)
+        run: python3 .pantheon/retrieval_eval.py --kind tools --verbose
 
   law16-egress:
     name: Law 16 — no egress on a fresh install

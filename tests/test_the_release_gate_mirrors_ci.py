@@ -292,9 +292,25 @@ def test_a_targeted_pytest_run_in_ci_is_not_mistaken_for_the_suite():
 
 
 def test_the_advisory_step_runs_with_the_flags_ci_gives_it():
-    argv = release_gate.ci_advisory_argv()
-    assert argv[0].endswith("retrieval_eval.py")
-    assert " ".join(argv) in _CI.read_text(encoding="utf-8")
+    # `B505`: one argv per report now (`ci_advisory_argvs`), not the first one.
+    for argv in release_gate.ci_advisory_argvs():
+        assert argv[0].endswith("retrieval_eval.py")
+        assert " ".join(argv) in _CI.read_text(encoding="utf-8")
+
+
+def test_a_merge_prints_the_tool_selection_line_beside_the_memory_one():
+    """`B505`. `--kind tools` (`P17-14`) ran only from a test and by hand, so
+    the selector's recall and refusal were printed on no merge. CI runs it as a
+    second report and the gate reads both — one more advisory step than before,
+    each under its own name."""
+    argvs = release_gate.ci_advisory_argvs()
+    labels = [release_gate.advisory_label(a) for a in argvs]
+    assert labels == ["retrieval eval", "tool-selection eval"], labels
+    assert argvs[1][argvs[1].index("--kind") + 1] == "tools"
+    assert set(labels) <= release_gate.ADVISORY, "a report never fails the gate"
+    out = subprocess.run([sys.executable, str(_GATE), "--list"],
+                         capture_output=True, text=True, cwd=str(_REPO), timeout=120)
+    assert ".pantheon/retrieval_eval.py --kind tools --verbose (advisory)" in out.stdout
 
 
 @pytest.mark.parametrize("tool,derive", [
@@ -330,6 +346,7 @@ def test_every_derived_value_changes_when_the_workflow_does(tmp_path, monkeypatc
         "        with:\n"
         "          node-version: \"99\"\n"
         "      - run: python3 .pantheon/retrieval_eval.py --json\n"
+        "      - run: python3 .pantheon/retrieval_eval.py --kind tools --json\n"
         "      - run: python -m pytest -q --maxfail=7\n",
         encoding="utf-8")
     monkeypatch.setattr(release_gate, "WORKFLOW", other)
@@ -337,8 +354,9 @@ def test_every_derived_value_changes_when_the_workflow_does(tmp_path, monkeypatc
     assert release_gate.ci_python_version() == "3.99"
     assert release_gate.ci_node_version() == "99"
     assert release_gate.ci_suite_args() == ["-q", "--maxfail=7"]
-    assert release_gate.ci_advisory_argv() == [".pantheon/retrieval_eval.py",
-                                               "--json"]
+    assert release_gate.ci_advisory_argvs() == [  # `B505`: every report
+        [".pantheon/retrieval_eval.py", "--json"],
+        [".pantheon/retrieval_eval.py", "--kind", "tools", "--json"]]
 
 
 def test_an_interpreter_that_is_not_cis_is_reported_rather_than_enforced(monkeypatch):
