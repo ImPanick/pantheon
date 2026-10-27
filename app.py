@@ -2035,6 +2035,14 @@ async def _startup_event():
     from src.otlp_export import push_loop as _otlp_push_loop
     _startup_tasks.append(asyncio.create_task(_otlp_push_loop()))
 
+    # `B1581`: the route tables, built here rather than by the first request
+    # that walks past them — see `build_routes`.
+    try:
+        from src.app_helpers import build_routes
+        logger.info("Built %d routers' routes", build_routes(app))
+    except Exception as e:
+        logger.warning("Routes not built ahead of the first request: %s", e)
+
     logger.info("Application startup complete")
 
 async def _shutdown_event():

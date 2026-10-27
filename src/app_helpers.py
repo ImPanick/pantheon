@@ -399,3 +399,35 @@ def inside_base_dir(base_dir: str, path: str) -> bool:
         return os.path.commonpath([base, p]) == base
     except Exception:
         return False
+
+
+def build_routes(app) -> int:
+    """Build every included router's route table now, and say how many were walked.
+
+    `B1581`. FastAPI 0.141 builds an included router's routes lazily: the
+    first request that has to walk past a router (to reach a route behind it)
+    builds every route in it — dependants, response models, path regexes.
+    `app.py` includes 54 routers and serves the page itself (`/`, `/login`)
+    from routes registered after all of them, so the first page load built
+    all 641 routes on the event loop: measured at **352 ms** in-process on a
+    loaded 2-CPU box, and `/login` answered its first request in 689 ms and
+    its second in 56 ms, while an unrelated `/api/auth/status` waited behind
+    it. Called once at start-up, before the server takes a request.
+
+    Duck-typed on purpose: it touches only `effective_candidates` and
+    `effective_low_priority_routes`, the two methods the lazy build hides
+    behind, so a FastAPI that builds eagerly walks nothing and loses nothing.
+    """
+    walked = 0
+    stack = list(getattr(getattr(app, "router", app), "routes", []))
+    while stack:
+        route = stack.pop()
+        build = getattr(route, "effective_candidates", None)
+        if not callable(build):
+            continue
+        walked += 1
+        stack.extend(build())
+        low = getattr(route, "effective_low_priority_routes", None)
+        if callable(low):
+            low()
+    return walked
