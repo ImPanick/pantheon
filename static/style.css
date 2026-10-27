@@ -18754,44 +18754,10 @@ span[id$="-logo"] svg:not([width]) {
    (settings.js) rather than element opacity, so the controls/text stay
    crisp — mirroring the Theme customizer's opacity slider. */
 
-/* Search provider fallback chain — chips + drag-reorder */
-.search-fallback-chain {
-  flex: 1; display: flex; align-items: center;
-  flex-wrap: wrap; gap: 6px; min-height: 28px;
-}
-.search-fb-chip {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 3px 4px 3px 6px;
-  background: color-mix(in srgb, var(--fg) 6%, transparent);
-  border: 1px solid var(--border); border-radius: 10px;
-  font-size: 11px; cursor: grab; user-select: none;
-}
-.search-fb-chip.dragging { opacity: 0.4; }
-.search-fb-grip { opacity: 0.35; font-size: 10px; line-height: 1; cursor: grab; }
-.search-fb-logo {
-  width: 12px; height: 12px;
-  display: inline-flex; align-items: center; justify-content: center;
-  flex-shrink: 0; opacity: 0.85;
-}
-.search-fb-logo svg { width: 12px; height: 12px; }
-.search-fb-remove {
-  background: none; border: none; color: var(--fg);
-  opacity: 0.45; cursor: pointer;
-  font-size: 14px; line-height: 1; padding: 0 2px;
-  transition: opacity 0.15s, color 0.15s;
-}
-.search-fb-remove:hover { opacity: 1; color: var(--red); }
-.search-fb-add {
-  background: var(--bg); color: var(--fg);
-  border: 1px dashed var(--border); border-radius: 10px;
-  padding: 2px 6px; font-family: inherit; font-size: 11px;
-  outline: none; cursor: pointer;
-}
-.search-fb-add:focus,
-.search-fb-add:hover {
-  border-color: var(--accent, var(--red));
-  border-style: solid;
-}
+/* `H21`: the `.search-fallback-chain` / `.search-fb-*` chips that sat here
+   styled a drag-to-reorder chip row nothing ever drew — Settings' fallback
+   chain is `settings.js:_renderFallbackChain`'s `.settings-fallback-row` list.
+   Deleted with the row, re-measured on the day: no JS, HTML or test named one. */
 
 .mcp-tools-search {
   width: 100%;
