@@ -59,6 +59,7 @@ from cli import emit, fail, common_parser, run, REPO_ROOT  # noqa: E402
 
 import hashlib  # noqa: E402
 import json  # noqa: E402
+import posixpath  # noqa: E402
 import re  # noqa: E402
 import subprocess  # noqa: E402
 import time  # noqa: E402
@@ -95,26 +96,141 @@ ROUTES = (
     ("/api/ready", (200, 503), "`B441` — the healthcheck's own route; auth-exempt for GET"),
 )
 
-# Tracked roots whose bytes end up in the image. `.dockerignore` drops `docs/`,
-# `tests/`, `api/`, `/data/`, `/logs/` and the top-level `*.md` files, none of
-# which are below. Markdown, logs and databases are excluded at any depth as
-# well: Docker's `*.md` does not cross a `/`, so `library/**/SKILL.md` does in
-# fact ship, but a manifest that is wrong in the *failing* direction teaches its
-# operator to ignore it. What this covers is every byte of `static/` and every
-# Python module — which is `B360`/`B362`'s class exactly.
-MANIFEST_ROOTS = (
-    "static", "core", "src", "routes", "services", "mcp_servers",
-    "integrations", "netagent", "companion", "library", "config",
-    "scripts", "docker", "app.py", "setup.py", "launcher.py", "Dockerfile",
-    "requirements.txt", "requirements-optional.txt", "requirements-image.txt",
-    "pyproject.toml", "Pantheon.spec", "package.json", "start-macos.sh",
-    "build-macos-app.sh", "install-service.sh",
-    # The three files `B361` measured as legitimately differing from their
-    # blobs. They ship, and they are the only exercise the `eol=crlf`
-    # allowance in `compare_bytes` gets.
-    "build-windows-portable.ps1", "launch-windows.ps1", "update_windows.bat",
-)
-MANIFEST_SKIP = re.compile(r"\.(md|log|db|sqlite3?)$|(^|/)node_modules/|search_analytics\.json$")
+# `B447`. Which tracked files the image carries is `.dockerignore`'s answer,
+# asked the way Docker asks it — the Dockerfile's `COPY . .` copies the whole
+# build context into `/app`, and the context is the checkout minus what
+# `.dockerignore` excludes. This list was a hand-kept copy of that answer
+# (`MANIFEST_ROOTS`, and `MANIFEST_SKIP` dropping `.md`, `.log`, `.db` and
+# `node_modules` at any depth), and the copy was wrong in the quiet direction:
+# Docker's `*` does not cross a `/`, so `*.md` excludes the top-level files and
+# nothing below them. **Measured 2026-10-27** with the Docker CLI 29.9.2 —
+# `docker build` sent its context to a stand-in for the daemon that kept it
+# (`tests/test_the_deploy_manifest_is_what_docker_sends.py`): 1,487 tracked
+# files in the context, 503 of them `.md` (286 skill `SKILL.md` files, which
+# the skills library reads at runtime), and only `CREDITS.md` at the top. The
+# manifest checked 824 of them. It is now built from `.dockerignore` itself
+# (`Law 7`), so it checks the 1,487, and a line added there moves it.
+DOCKERIGNORE = ".dockerignore"
+
+
+def dockerignore_patterns(text: str) -> list:
+    """`.dockerignore`'s lines as Docker reads them:
+    `[(re_includes, pattern, compiled)]`.
+
+    `ignorefile.ReadAll` in the Docker CLI: a line starting `#` is a comment, a
+    line is trimmed, a leading `!` re-includes, the pattern is
+    `filepath.Clean`ed and a leading `/` dropped — `/data/` is `data`."""
+    out = []
+    for n, raw in enumerate(text.splitlines()):
+        line = raw.lstrip("﻿") if n == 0 else raw
+        if line.startswith("#"):
+            continue
+        line = line.strip()
+        if not line:
+            continue
+        include = line.startswith("!")
+        if include:
+            line = line[1:].strip()
+        if line:
+            line = posixpath.normpath(line)
+            if len(line) > 1 and line.startswith("/"):
+                line = line[1:]
+        if line:
+            out.append((include, line, _docker_pattern(line)))
+    return out
+
+
+def _docker_pattern(pattern: str):
+    """`moby/patternmatcher`'s `Pattern.compile`, which `docker build` and
+    BuildKit both use: `("exact" | "prefix" | "suffix" | "regexp", value)`.
+
+    `*` is any run of characters but `/`, `?` one character but `/`, `**` any
+    number of directories (none included) — the rules Docker's documentation
+    states (*"Beyond Go's filepath.Match rules, Docker also supports a special
+    wildcard string `**`"*) — in the shape its code takes, including its two
+    shortcuts: a pattern ending in `**` with nothing wild before it is a prefix
+    test, and one starting `**` with nothing wild after it a suffix test."""
+    kind, regex = "exact", "^"
+    chars = list(pattern)
+    token = 0                          # the Go loop's `i`: one per scanned token
+    while chars:
+        ch = chars.pop(0)
+        if ch == "*":
+            if chars[:1] == ["*"]:
+                chars.pop(0)
+                if chars[:1] == ["/"]:          # `**/` is `**`
+                    chars.pop(0)
+                if not chars:
+                    if kind == "exact":
+                        kind = "prefix"
+                    else:
+                        regex += ".*"
+                        kind = "regexp"
+                else:
+                    regex += "(.*/)?"
+                    kind = "regexp"
+                if token == 0:
+                    kind = "suffix"
+            else:
+                regex += "[^/]*"
+                kind = "regexp"
+        elif ch == "?":
+            regex += "[^/]"
+            kind = "regexp"
+        elif ch in ".+()|{}$":
+            regex += "\\" + ch
+        elif ch == "\\":
+            # An escaped character is itself: `a\.b` keeps out `a.b` and not
+            # `axb` — measured against the CLI, which compares it as a pattern.
+            regex += ("\\" + chars.pop(0)) if chars else "\\\\"
+            kind = "regexp"
+        else:
+            regex += ch
+        token += 1
+    if kind == "regexp":
+        return kind, re.compile(regex + "$")
+    return kind, pattern
+
+
+def _docker_match(compiled, pattern: str, path: str) -> bool:
+    kind, value = compiled
+    if kind == "exact":
+        return path == pattern
+    if kind == "prefix":
+        return path.startswith(pattern[:-2])
+    if kind == "suffix":
+        suffix = pattern[2:]
+        return path.endswith(suffix) or (suffix.startswith("/") and path == suffix[1:])
+    return bool(value.match(path))
+
+
+def dockerignored(path: str, patterns: list) -> bool:
+    """Does `.dockerignore` keep `path` out of the build context?
+
+    `PatternMatcher.MatchesOrParentMatches`: every pattern, in order, tested
+    against the path and against each directory above it; the last one that
+    matches decides, and a `!` pattern re-includes."""
+    parents = path.split("/")[:-1]
+    excluded = False
+    for include, pattern, compiled in patterns:
+        if include != excluded:
+            continue
+        hit = _docker_match(compiled, pattern, path) or any(
+            _docker_match(compiled, pattern, "/".join(parents[:i + 1]))
+            for i in range(len(parents)))
+        if hit:
+            excluded = not include
+    return excluded
+
+
+def read_dockerignore(root=REPO_ROOT) -> list:
+    """The repository's `.dockerignore`, read; none at all excludes nothing."""
+    path = Path(root) / DOCKERIGNORE
+    try:
+        return dockerignore_patterns(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return []
+
 
 # The tag this script parks the outgoing image under before it builds. Docker's
 # own tag store is the state: it survives the script, an operator can see it
@@ -236,15 +352,18 @@ def _git(args: list[str], root=REPO_ROOT) -> str:
     return proc.stdout
 
 
-def manifest_paths(listing: str) -> list[str]:
-    """Filter `git ls-files -s` output down to the paths the image carries."""
+def manifest_paths(listing: str, patterns=None) -> list[str]:
+    """Filter `git ls-files -s` output down to the paths the image carries:
+    the ones `.dockerignore` lets into the build context (`B447`)."""
+    if patterns is None:
+        patterns = read_dockerignore()
     paths = []
     for line in listing.splitlines():
         meta, _, path = line.partition("\t")
         parts = meta.split()
         if len(parts) < 2 or parts[0] == "160000":   # submodule: no blob of ours
             continue
-        if MANIFEST_SKIP.search(path):
+        if dockerignored(path, patterns):
             continue
         paths.append((path, parts[1]))
     return paths
@@ -270,8 +389,8 @@ def declared_eol(paths: list[str], root=REPO_ROOT) -> dict:
 
 def build_manifest(root=REPO_ROOT) -> dict:
     """`{path: {"blob": oid, "eol": "crlf"|...}}` for every file the image ships."""
-    listing = _git(["ls-files", "-s", "--", *MANIFEST_ROOTS], root=root)
-    entries = manifest_paths(listing)
+    listing = _git(["ls-files", "-s"], root=root)
+    entries = manifest_paths(listing, read_dockerignore(root))
     if not entries:
         raise DeployError("git ls-files matched nothing — is this a repository?")
     eol = declared_eol([p for p, _ in entries], root=root)
