@@ -783,6 +783,18 @@ body.bg-pattern-sparkles {
       display: flex; align-items: center; justify-content: center;
       flex-shrink: 0; opacity: 0.5;
     }
+    /* `P7-11a`: Download Chat names its four formats. The row is Markdown, as
+       it always was; each button is its format. */
+    .export-file-formats {
+      display: inline-flex; gap: 4px; margin-left: auto;
+    }
+    .export-file-fmt {
+      font: inherit; font-size: 10px; line-height: 1;
+      padding: 3px 5px; border-radius: 5px; cursor: pointer;
+      background: none; color: var(--fg);
+      border: 1px solid var(--border-control, var(--border));
+    }
+    .export-file-fmt:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
     /* On mobile the chat-header export dropdown was cramped — items
        were 11px font with 6px padding. Bump to readable touch targets:
        larger min-width, taller rows, bigger icons + text. */
@@ -809,6 +821,7 @@ body.bg-pattern-sparkles {
       .export-dropdown-item .dropdown-icon svg {
         width: 18px; height: 18px;
       }
+      .export-file-fmt { font-size: 12px; padding: 7px 8px; }
     }
     .sidebar {
       width: 240px;

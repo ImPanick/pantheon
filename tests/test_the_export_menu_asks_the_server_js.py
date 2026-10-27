@@ -333,7 +333,14 @@ def test_the_menu_has_a_download_and_every_item_has_a_handler():
     app = APP.read_text(encoding="utf-8")
     for item in ids:
         assert f"el('{item}')" in app, f"{item} is in the markup with nothing behind it"
-    assert "Download Chat (.md)" in html[start:end]
+    # `P7-11a`: the item names its four formats, each a button of its own,
+    # Markdown first because the row itself is Markdown. (It said
+    # "Download Chat (.md)" and reached one.)
+    row = html[html.index('id="export-file-btn"', start):end]
+    row = row[:row.index("</div>")]
+    assert re.findall(r'<button type="button" class="export-file-fmt" data-fmt="(\w+)"', row) == \
+        ["md", "txt", "json", "html"], row
+    assert "Download Chat" in row
 
 
 def test_the_copy_on_the_footer_bubble_says_it_is_a_copy():

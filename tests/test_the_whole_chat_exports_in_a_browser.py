@@ -282,13 +282,38 @@ const out = { errors: [], downloads: [] };
   });
   out.frameGone = await page.evaluate(() => !document.getElementById('export-print-frame'));
 
-  // 4. Download Chat (.md).
+  // 4. Download Chat — the row itself, which is Markdown.
   await step('downloadedChat', async () => {
     await openMenu();
     const dl = page.waitForEvent('download', { timeout: 30000 })
       .then((d) => d.suggestedFilename(), () => 'NO DOWNLOAD');
-    await page.click('#export-file-btn', { timeout: 10000 });
+    await page.click('#export-file-btn .export-file-label', { timeout: 10000 });
     return dl;
+  });
+  // 4b. `P7-11a`: each of the four formats, by its own button, and what
+  // arrived — read back from the saved file.
+  await step('formats', async () => {
+    const fs = require('fs');
+    const got = {};
+    for (const fmt of ['md', 'txt', 'json', 'html']) {
+      await openMenu();
+      if (fmt === 'md') {
+        // The menu fits the window it opens in, buttons and all.
+        out.menuFits = await page.evaluate(() => {
+          const r = document.getElementById('export-dropdown-menu').getBoundingClientRect();
+          return r.left >= 0 && r.right <= window.innerWidth;
+        });
+      }
+      const dl = page.waitForEvent('download', { timeout: 30000 });
+      await page.click(`#export-file-btn [data-fmt="${fmt}"]`, { timeout: 10000 });
+      const d = await dl;
+      const body = fs.readFileSync(await d.path(), 'utf8');
+      let shape = null;
+      if (fmt === 'json') { try { shape = JSON.parse(body).messages.length; } catch (e) { shape = 'not json'; } }
+      got[fmt] = { name: d.suggestedFilename(), first: body.includes('Question 1:'), last: body.includes('Answer 21:'),
+                   html: /^\s*<!doctype html/i.test(body), shape };
+    }
+    return got;
   });
   await page.waitForTimeout(600);
   // Saving a file must not navigate the chat away (`download`, not a bare
@@ -299,6 +324,19 @@ const out = { errors: [], downloads: [] };
     chat: !!document.getElementById('chat-history'),
     msgs: document.querySelectorAll('#chat-history .msg').length,
   }));
+
+  // 4c. `P7-11a`: the command's own help names every format.
+  await step('exportHelp', async () => {
+    await page.fill('#message', '/chats export --help');
+    await page.keyboard.press('Escape');
+    await page.focus('#message');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => /\/chats export \[/.test(document.getElementById('chat-history').innerText),
+                               null, { timeout: 30000 }).catch(() => {});
+    const text = await page.evaluate(() => document.getElementById('chat-history').innerText);
+    const at = text.lastIndexOf('/chats export [');
+    return at < 0 ? null : text.slice(at, at + 400);
+  });
 
   // 5. Save to Documents — the door the owner had to use.
   await step('saved', async () => {
@@ -425,6 +463,32 @@ def test_the_pdf_item_prints_the_whole_chat(driven):
 def test_the_menu_downloads_the_whole_chat_as_a_file(driven):
     assert _step(driven, "downloadedChat").startswith("conversation_The_long_export_chat_")
     assert driven["downloadedChat"].endswith(".md")
+
+
+def test_each_of_the_four_formats_downloads_from_the_menu(driven):
+    """`P7-11a`'s `Verify:` — a person exports the chat in each of the four
+    formats without typing a slash command, and each file is the whole chat
+    in that format."""
+    got = _step(driven, "formats")
+    assert sorted(got) == ["html", "json", "md", "txt"], got
+    for fmt, row in got.items():
+        assert row["name"].startswith("conversation_The_long_export_chat_"), row
+        assert row["name"].endswith("." + fmt), (fmt, row["name"])
+        assert row["first"] and row["last"], (fmt, row)
+    assert got["json"]["shape"] == 2 * TURNS, got["json"]
+    assert got["html"]["html"] is True, got["html"]
+    assert driven["menuFits"] is True, "the menu runs off the window"
+
+
+def test_the_export_commands_help_names_all_four_formats(driven):
+    """`P7-11a`'s second half (`H20`): the help said "Download as markdown"
+    while the command took four formats and a `> name.ext` redirect."""
+    text = _step(driven, "exportHelp")
+    assert text, "no help came back"
+    assert text.startswith("/chats export [md|txt|json|html]"), text
+    for word in ("md", "txt", "json", "html", "> name.ext"):
+        assert word in text, (word, text)
+    assert "Download as markdown" not in text
 
 
 def test_saving_the_file_does_not_take_the_chat_away(driven):

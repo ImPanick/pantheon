@@ -1245,6 +1245,12 @@ async function _cmdSessionClear(args, ctx) {
   return true;
 }
 
+// `P7-11a`. The formats `GET /api/session/{sid}/export` serves, Markdown
+// first because it is the default. One list for the parser and the help line:
+// the help said "Download as markdown" while the parser took all four and a
+// `> name.ext` redirect, so three of them were invisible to anyone reading it.
+const _EXPORT_FORMATS = ['md', 'txt', 'json', 'html'];
+
 async function _cmdSessionExport(args, ctx) {
   if (!ctx.sid) { slashReply('No chat open'); return true; }
   // Parse linux-style: cat > file.json, cat > notes.txt, cat > chat.html
@@ -1255,10 +1261,10 @@ async function _cmdSessionExport(args, ctx) {
   if (redir) {
     filename = redir[1].trim();
     const ext = filename.split('.').pop().toLowerCase();
-    if (['json','txt','html','md'].includes(ext)) fmt = ext;
+    if (_EXPORT_FORMATS.includes(ext)) fmt = ext;
   } else if (raw) {
     const a = raw.toLowerCase();
-    if (['json','txt','html','md'].includes(a)) fmt = a;
+    if (_EXPORT_FORMATS.includes(a)) fmt = a;
   }
   const params = new URLSearchParams({ fmt });
   if (filename) params.set('filename', filename);
@@ -4474,7 +4480,9 @@ const COMMANDS = {
       'sort':        { handler: _cmdSessionSort,        alias: [],                 help: 'Auto-sort into folders',      usage: '/chats sort' },
       'info':        { handler: _cmdSessionInfo,        alias: ['stat'],           help: 'Show chat details',           usage: '/chats info' },
       'clear':       { handler: _cmdSessionClear,       alias: [],                 help: 'Clear chat display',          usage: '/chats clear' },
-      'export':      { handler: _cmdSessionExport,      alias: ['cat'],            help: 'Download as markdown',        usage: '/chats export' }
+      'export':      { handler: _cmdSessionExport,      alias: ['cat'],
+                       help: `Download the whole chat as ${_EXPORT_FORMATS.slice(0, -1).join(', ')} or ${_EXPORT_FORMATS.slice(-1)} (${_EXPORT_FORMATS[0]} if none is named), or to a file: > name.ext`,
+                       usage: `/chats export [${_EXPORT_FORMATS.join('|')}]` }   // `P7-11a`
     }
   },
   toggle: {

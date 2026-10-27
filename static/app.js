@@ -651,6 +651,9 @@ function initializeEventListeners() {
   // Export: download the whole chat as a file (`B1320`).
   // The server's four formats existed and only `/export` in the composer could
   // reach them; this is the same route, from the menu the owner was using.
+  // `P7-11a`: and all four of them — the row is Markdown, as it was, and its
+  // `.md` `.txt` `.json` `.html` buttons are each format by name. One listener
+  // on the row reads which was pressed.
   const exportFileBtn = el('export-file-btn');
   if (exportFileBtn) {
     exportFileBtn.addEventListener('click', (e) => {
@@ -658,9 +661,11 @@ function initializeEventListeners() {
       exportMenu.classList.remove('open');
       const sessionId = sessionModule.getCurrentSessionId();
       if (!sessionId) { uiModule.showToast('Nothing to export yet'); return; }
+      const picked = e.target && e.target.closest ? e.target.closest('[data-fmt]') : null;
+      const fmt = (picked && exportFileBtn.contains(picked) && picked.dataset.fmt) || 'md';
       // An attachment response: the browser saves it, nothing navigates.
       const a = document.createElement('a');
-      a.href = `${API_BASE}/api/session/${sessionId}/export?fmt=md`;
+      a.href = `${API_BASE}/api/session/${sessionId}/export?fmt=${encodeURIComponent(fmt)}`;
       a.rel = 'noopener';
       document.body.appendChild(a);
       a.click();
