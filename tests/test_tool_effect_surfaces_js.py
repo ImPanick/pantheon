@@ -1812,7 +1812,14 @@ def test_no_band_recolours_the_phrase_itself():
         assert "color" not in _decls(
             f'.plan-step-effect[data-effect-band="{band}"]'
         ), f"the {band} plan chip sets its own text colour"
-    assert _decls(".approval-effect")["color"] == "var(--fg)"
+    # `B1577`: a row's quiet is a rung of the ladder (`--fg` toward
+    # `--fg-muted`, over 4.5:1 everywhere) where it was `--fg` at `opacity:
+    # 0.72`; still one source, and the lead — the same element — says the
+    # full colour as it said full opacity.
+    assert re.fullmatch(r"color-mix\(in oklab, var\(--fg\) [\d.]+%, var\(--fg-muted\)\)",
+                        _decls(".approval-effect")["color"]), _decls(".approval-effect")
+    assert "opacity" not in _decls(".approval-effect")
+    assert _decls(".approval-effect-lead")["color"] == "var(--fg)"
     assert _decls(".approval-effect-lead")["opacity"] == "1", (
         "a lead faded below full opacity is a recolour by another name"
     )

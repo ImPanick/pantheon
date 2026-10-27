@@ -374,7 +374,20 @@ DECORATION_TRANSPARENT_TEXT = {
 #: `static/style.css`, comments blanked. 0 is hidden, not dim; 0.82 is the
 #: alpha the transparent-mix rule found nothing under clears 4.5:1 with.
 #: It may fall; it may not rise.
-BASELINE_OPACITY_DIMMING = 965
+#:
+#: 965 -> 407 (2026-10-27, `B1577`). 558 rules that dimmed **text** by
+#: opacity moved onto the ladder at the same N (`opacity: 0.6` became
+#: `color-mix(in oklab, var(--fg) 60%, var(--fg-muted))`, or lost the opacity
+#: where the colour was already `--fg-muted`), and the states that lifted them
+#: (`:hover`, `.active`, a context at full opacity) set the colour they now
+#: lift to. The 407 left are not text a person reads at rest: 41 inside
+#: `@keyframes`, the disabled, off, done, paused, dragging and loading states
+#: of whole controls and cards (their dimming is the state), icons, dots,
+#: separators, scenery and previews, hover-revealed controls whose own state
+#: is a hue (`.cookbook-gpu-btn`, `.gallery-tag-x`, `.agent-tool-output-copy`),
+#: and text in a hue (`--red`, `--accent`, success, syntax colours), which a
+#: rung of `--fg` would recolour.
+BASELINE_OPACITY_DIMMING = 407
 
 
 def _css_transparent_text() -> list:

@@ -2050,6 +2050,26 @@ def _cost(band: str, where: str = "desktop") -> dict:
 
 _RULE_PROPS = ("border-left", "border-left-width")
 
+#: `B1408`'s de-emphasis ladder, the one way this block quiets a string.
+_LADDER = re.compile(r"color-mix\(in oklab, var\(--fg\) ([\d.]+)%, var\(--fg-muted\)\)")
+
+
+def _ink(decls: dict) -> float:
+    """How much of `--fg` a string is painted with: 100 for `var(--fg)`, the
+    ladder's N for a rung, times any opacity still on it.
+
+    `B1577`. These strings were all `var(--fg)` and quieted by `opacity`, and
+    the assertions below compared the opacities while the colour checks
+    measured `var(--fg)` alone — so the contrast they proved was never the
+    contrast painted (`.allow-rule-title` was `--fg` at 0.55). Each now names
+    a rung of the ladder, whose every step `check-contrast.py` measures over
+    4.5:1, and this reads the order the opacities used to carry."""
+    colour = (decls.get("color") or "var(--fg)").replace("!important", "").strip()
+    rung = _LADDER.fullmatch(colour)
+    assert rung or colour == "var(--fg)", f"a string here is painted {colour!r}"
+    share = float(rung.group(1)) if rung else 100.0
+    return share * float(decls.get("opacity", "1"))
+
 
 def _rule_px(band: str, where: str = "desktop") -> float:
     resolved = _row(band, where)
@@ -2083,7 +2103,7 @@ def test_the_cost_line_is_never_quieter_than_the_sentence_above_it():
         cost = _cost(band)
         assert _px(cost["font-size"]) >= _px(sentence["font-size"]), band
         assert int(cost["font-weight"]) > int(sentence["font-weight"]), band
-        assert float(cost["opacity"]) >= float(sentence["opacity"]), band
+        assert _ink(cost) >= _ink(sentence), band
     # And the strictest rung's price is louder than the milder one's.
     assert _px(_cost("high")["font-size"]) > _px(_cost("some")["font-size"])
     assert int(_cost("high")["font-weight"]) > int(_cost("some")["font-weight"])
@@ -2101,7 +2121,7 @@ def test_the_widest_allow_scope_is_marked_without_relying_on_colour():
     sentence = _cascade("desktop", ".allow-rule-scope-sentence")
     loud = _cascade("desktop", '.allow-rule-scope[data-scope="any"] .allow-rule-scope-sentence')
     assert int(loud["font-weight"]) > int(sentence["font-weight"])
-    assert float(loud["opacity"]) > float(sentence["opacity"])
+    assert _ink(loud) > _ink(sentence)
 
 
 def test_the_chosen_scope_is_not_carried_by_colour_alone():
@@ -2158,7 +2178,15 @@ def test_no_string_in_either_control_is_less_legible_than_the_prose_beside_it():
     while the harmless line beside it sat at 11.05:1. Colour is not allowed to
     carry either of these controls, and the way that is enforced is that every
     string resolves to the same token on the same ground in every band — so the
-    numbers below are equal by construction, and any recolour breaks them."""
+    numbers below are equal by construction, and any recolour breaks them.
+
+    `B1577`: the prose is on the ladder now, not `--fg` under an `opacity` the
+    measurement never saw, so the numbers are what is painted and are no
+    longer equal by construction. On `cute` and `retrowave` the ladder's rung
+    out-reads `--fg` itself by up to 2% (their `--fg` sits just over the floor
+    and the pivot leans away from the panel), so the price is held to what
+    `P7-06` was about — never *materially* harder to read, the 0.9 the
+    allow-rule box below is held to — and every string to 4.5:1."""
 
     themes = _themes()
     assert len(themes) >= 16, sorted(themes)
@@ -2178,7 +2206,7 @@ def test_no_string_in_either_control_is_less_legible_than_the_prose_beside_it():
             worst = min(worst, _ratio(_cost(band)["color"], row_bg, theme))
         measured[name] = (base, worst)
 
-    dimmer = {n: v for n, v in measured.items() if v[1] < v[0] * 0.999}
+    dimmer = {n: v for n, v in measured.items() if v[1] < v[0] * 0.9 or v[1] < 4.5}
     assert not dimmer, (
         "the price of a strict rung is harder to read than the harmless prose "
         "beside it on " + ", ".join(f"{n} ({v[1]:.2f} vs {v[0]:.2f})"
@@ -2225,6 +2253,13 @@ def test_every_string_on_the_revoke_screen_reads_exactly_as_well_as_the_ladder()
     tint `.allow-rule` uses on the approval card was tried here and dropped: it
     costs up to 8% of contrast (claude, 12.02 -> 11.02), and one of the strings
     it would have dimmed is the line that says a revoke failed.
+
+    `B1577`: "identical" was true of the colours only — the title sat at
+    `opacity: 0.55` and the hint at 0.75, which no ratio here measured. They
+    are ladder rungs now and measured as painted. What holds: every string
+    clears 4.5:1 on every palette, and the four that carry the decision — the
+    rule's name, what it allows, the status that says a revoke failed, and
+    Revoke — are not materially (0.9) less legible than the ladder's prose.
     """
 
     themes = _themes()
@@ -2256,7 +2291,9 @@ def test_every_string_on_the_revoke_screen_reads_exactly_as_well_as_the_ladder()
                 _cascade("desktop", box)["background"],
                 theme,
             )
-            if abs(ratio - base) > 0.001:
+            carries = selector in (".allow-rule-row-label", ".allow-rule-row-sentence",
+                                   ".allow-rule-list-status", ".allow-rule-revoke")
+            if ratio < 4.5 or (carries and ratio < base * 0.9):
                 off[(name, selector)] = (ratio, base)
     assert not off, (
         "a string on the revoke screen no longer reads as well as the prose in "
@@ -2280,7 +2317,7 @@ def test_the_revoke_screen_never_whispers_the_part_that_matters():
     status = _cascade("desktop", ".allow-rule-list-status")
     assert _px(status["font-size"]) >= _px(hint["font-size"])
     assert int(status["font-weight"]) > int(hint["font-weight"])
-    assert float(status["opacity"]) >= float(hint["opacity"])
+    assert _ink(status) >= _ink(hint)
     # And it reserves its line, so a status arriving does not shove the list.
     assert _px(status["min-height"]) > 0
 
@@ -2288,7 +2325,7 @@ def test_the_revoke_screen_never_whispers_the_part_that_matters():
     # that explains the screen, not a footnote to it.
     empty = _cascade("desktop", ".allow-rule-list-empty")
     assert _px(empty["font-size"]) >= _px(hint["font-size"])
-    assert float(empty["opacity"]) >= float(hint["opacity"])
+    assert _ink(empty) >= _ink(hint)
 
     # The button is a control, not a link: its own border and a weight above the
     # sentence beside it, so it is findable without reading the row.
@@ -3211,7 +3248,10 @@ def test_no_string_in_the_grant_list_is_painted_anything_but_the_foreground():
     ours = block[start:block.index("@media (max-width: 768px)", start)]
     colours = re.findall(r"(?<![-\w])color:\s*([^;]+);", ours)
     assert colours, "the grant list paints no text at all"
-    assert set(value.strip() for value in colours) == {"var(--fg)"}, colours
+    # `B1577`: the foreground, or a rung of the ladder down from it toward
+    # `--fg-muted` — the quieting the opacities used to do, in one hue.
+    assert all(value.strip() == "var(--fg)" or _LADDER.fullmatch(value.strip())
+               for value in colours), colours
     # And no accent anywhere in it — not as a fallback, not as a border.
     assert "--accent" not in ours
     assert "--red" not in ours

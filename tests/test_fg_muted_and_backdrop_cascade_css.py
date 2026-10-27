@@ -416,11 +416,16 @@ def test_the_three_populations_hold_at_their_counts():
     # name this token now, as the pivot of the de-emphasis ladder
     # `color-mix(in oklab, var(--fg) N%, var(--fg-muted))` — every rung of
     # which `check-contrast.py` measures over 4.5:1 on every palette.
-    assert len(uses) == 350, f"expected 350 uses of --fg-muted, found {len(uses)}"
+    # 350 -> 880, 342 -> 872 bare: `B1577`. 530 rules that dimmed text with
+    # `opacity` (and the hover and state rules that lifted them) paint a rung
+    # of the same ladder now — the `opacity` let the background through
+    # exactly as the mix toward `transparent` did, under 4.5:1 at every alpha
+    # under 0.82, and `check-contrast.py`'s ratchet on it fell 965 -> 407.
+    assert len(uses) == 880, f"expected 880 uses of --fg-muted, found {len(uses)}"
 
     bare = [expr for _, expr in uses if not _fallback(expr)]
-    assert len(bare) == 342, (
-        f"expected 342 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
+    assert len(bare) == 872, (
+        f"expected 872 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
         "was legitimately added or removed, move this number and say which in "
         "the commit — do not widen the assertion."
     )
@@ -479,7 +484,8 @@ def test_the_bare_uses_split_across_properties_as_measured():
     # `--ctx-stroke` ×3 — the wheel's resting stroke is a graphic, held to 3:1
     # and cleared by the token's 4.5.
     # `B1408` (above): `color` 147 -> 332, the 185 ladder rungs, all text.
-    assert tally == {"color": 332, "border-color": 4, "background": 3, "--ctx-stroke": 3}, tally
+    # `B1577` (above): `color` 332 -> 862, the opacity form moved onto it.
+    assert tally == {"color": 862, "border-color": 4, "background": 3, "--ctx-stroke": 3}, tally
 
 
 def test_the_javascript_uses_are_recorded_but_not_this_rows_work():
@@ -512,9 +518,13 @@ def test_the_javascript_uses_are_recorded_but_not_this_rows_work():
     # 18 -> 54, 16 -> 52 bare: `B1408` moved 36 inline `style=` mixes toward
     # `transparent` (Settings' status lines, Compare, the email library) onto
     # the ladder `color-mix(in oklab, var(--fg) N%, var(--fg-muted))`.
-    assert len(found) == 54, f"expected 54 --fg-muted uses outside the sheet, found {len(found)}"
+    # 54 -> 61, 52 -> 59 bare: `B1575`. The sign-in page links no stylesheet
+    # and declares `--fg-muted` itself; its labels, setup note, sign-up line
+    # and eye button are ladder rungs, and its remember-me switch and version
+    # line paint the token.
+    assert len(found) == 61, f"expected 61 --fg-muted uses outside the sheet, found {len(found)}"
     bare = [e for e in found if e == "var(--fg-muted)"]
-    assert len(bare) == 52, f"expected 52 of them bare, found {len(bare)}"
+    assert len(bare) == 59, f"expected 59 of them bare, found {len(bare)}"
     # Nothing under `static/js/theme.js` may declare it — that is the mirror
     # `B21` is about, and the reason this row put the token in `:root`.
     assert "--fg-muted" not in THEME_JS.read_text(encoding="utf-8"), (
@@ -618,12 +628,19 @@ def test_the_population_compounding_with_opacity_cannot_grow():
     # belong now, not new instances — and took the `opacity` off three that
     # are only text (`.msg .timestamp`, `#welcome-screen .welcome-sub`,
     # `.note-due-inline`). The four left are hover reveals and controls.
-    assert len(compounding) == 42, (
-        f"expected 42 rules that both name --fg-muted and set an opacity, "
+    # 42 -> 21 and 15 -> 6 faint: `B1577` took the `opacity` off the text
+    # among them (`.cookbook-task-session` among them) and gave the states
+    # that lifted them the colour instead. Twelve of the 21 are `opacity: 1`
+    # — seven placeholders held at full ink against Firefox's own placeholder
+    # dimming, and states — and the other nine are five hover reveals at 0,
+    # `.ctx-ring`, a hover at 0.9, and `.cookbook-gpu-btn` and its hover,
+    # whose free and busy states are hues.
+    assert len(compounding) == 21, (
+        f"expected 21 rules that both name --fg-muted and set an opacity, "
         f"found {len(compounding)}: {sorted(c[1] for c in compounding)}"
     )
     faint = [c for c in compounding if float(c[2]) <= 0.45]
-    assert len(faint) == 15, f"expected 15 at 0.45 or below, found {len(faint)}"
+    assert len(faint) == 6, f"expected 6 at 0.45 or below, found {len(faint)}"
 
 
 # ── P1-03: what the value had to avoid ─────────────────────────────────────

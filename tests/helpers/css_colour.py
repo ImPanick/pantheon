@@ -84,7 +84,11 @@ def resolve(expr: str, theme: dict, ground=None) -> tuple:
     if expr.startswith("color-mix("):
         inner = expr[len("color-mix("):-1]
         parts = [p.strip() for p in split_top_level(inner, ",")]
-        assert len(parts) == 3 and parts[0] == "in srgb", (
+        # `B1577`. `in oklab` too: `B1408`'s de-emphasis ladder,
+        # `color-mix(in oklab, var(--fg) N%, var(--fg-muted))`, interpolated
+        # where the browser interpolates it. Opaque operands only, as the
+        # ladder's are; a mix toward `transparent` stays an sRGB composite.
+        assert len(parts) == 3 and parts[0] in ("in srgb", "in oklab"), (
             f"the colour check cannot read {expr!r} — teach `resolve` its form"
         )
         head = re.fullmatch(r"(.+?)\s+([\d.]+)%", parts[1])
@@ -92,10 +96,14 @@ def resolve(expr: str, theme: dict, ground=None) -> tuple:
         first = resolve(head.group(1), theme, ground)
         share = float(head.group(2)) / 100
         if parts[2] == "transparent":
+            assert parts[0] == "in srgb", f"{expr!r}: an OKLab mix toward transparent is not read here"
             assert ground is not None, f"{expr!r} needs a ground to composite onto"
             second = ground
         else:
             second = resolve(parts[2], theme, ground)
+        if parts[0] == "in oklab":
+            a, b = oklab(first), oklab(second)
+            return from_oklab(tuple(a[i] * share + b[i] * (1 - share) for i in range(3)))
         return tuple(first[i] * share + second[i] * (1 - share) for i in range(3))
     if expr.startswith("var("):
         inner = expr[len("var("):-1]
@@ -114,6 +122,39 @@ def resolve(expr: str, theme: dict, ground=None) -> tuple:
         f"the colour check cannot resolve {expr!r} — teach `resolve` its form"
     )
     return rgb(expr)
+
+
+def oklab(colour: tuple) -> tuple:
+    """sRGB 0..255 to OKLab (Björn Ottosson's matrices, as CSS Color 4 uses)."""
+    def linear(value):
+        value /= 255.0
+        return value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+
+    r, g, b = (linear(c) for c in colour)
+    lms = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b,
+           0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b,
+           0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b)
+    l_, m_, s_ = (x ** (1 / 3) for x in lms)
+    return (0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
+            1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_,
+            0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_)
+
+
+def from_oklab(lab: tuple) -> tuple:
+    """OKLab back to sRGB 0..255, clipped into gamut."""
+    big_l, a, b = lab
+    l_ = (big_l + 0.3963377774 * a + 0.2158037573 * b) ** 3
+    m_ = (big_l - 0.1055613458 * a - 0.0638541728 * b) ** 3
+    s_ = (big_l - 0.0894841775 * a - 1.2914855480 * b) ** 3
+    rgb_linear = (4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_,
+                  -1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_,
+                  -0.0041960863 * l_ - 0.7034186147 * m_ + 1.7076147010 * s_)
+
+    def encode(value):
+        value = max(0.0, min(1.0, value))
+        return 255.0 * (12.92 * value if value <= 0.0031308 else 1.055 * value ** (1 / 2.4) - 0.055)
+
+    return tuple(encode(v) for v in rgb_linear)
 
 
 def relative_luminance(colour: tuple) -> float:

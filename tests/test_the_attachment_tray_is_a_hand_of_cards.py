@@ -882,6 +882,10 @@ def test_the_hand_keeps_to_the_palette_and_the_global_focus_ring():
     # named rather than pattern-matched, so a real sixth colour still fails.
     elevation = {f"--shadow-ink-{n}" for n in range(1, 5)}
     own = {t for t in tokens if t.startswith("--hand-") or t in ("--slot", "--z")}
+    # `B1577`: nor is `--fg-muted`, the pivot of the de-emphasis ladder — a
+    # mix of `--fg` in `:root` that the preview's meta line names where it
+    # was `--fg` under an `opacity`.
+    palette = palette | {"--fg-muted"}
     assert tokens - own <= palette | elevation, (
         f"colours outside the five: {sorted(tokens - own - palette - elevation)}")
     assert not re.search(r"rgba\(\s*0\s*,\s*0\s*,\s*0", css), (
