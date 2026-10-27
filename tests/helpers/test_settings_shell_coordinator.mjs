@@ -29,6 +29,10 @@ const REAL_MODULES = new Set([
   // for the same reason: `settings.js` imports it at load, and the shell
   // mounts the picker the module builds.
   path.join(JS, 'settings/mcpPresets.js'),
+  // `B1258`. The Hugging Face token's one editor, real for the same reason:
+  // `settings.js` imports it at load and mounts the field it builds on the
+  // Forge panel. It imports nothing.
+  path.join(JS, 'servingSettings.js'),
   // `P22-22`. *Build an MCP server* and *Try a tool*, real for the same
   // reason: `settings.js` imports the module at load, and its *Try* form is
   // the one schema form (`workbench/argsForm.js`), which it imports in turn.
