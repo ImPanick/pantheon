@@ -204,6 +204,33 @@ def test_an_auth_call_one_helper_away_is_still_an_auth_call(checker, tmp_path):
     ]
 
 
+def test_a_gate_handed_to_a_worker_thread_is_still_a_gate(checker, tmp_path):
+    """`B1580` took `_verify_session_owner` off the event loop as
+    `await asyncio.to_thread(_verify_session_owner, request, sid)`, which
+    raises exactly what the direct call raised. A closure that saw only the
+    called name (`to_thread`) mapped seven routes as ungated by it."""
+    root = _fixture_tree(tmp_path, {"routes/handed.py": """
+        import asyncio
+        from src.auth_helpers import get_current_user
+
+        def setup():
+            router = APIRouter(prefix="/api/handed")
+
+            @router.get("/thread")
+            async def thread(request):
+                return await asyncio.to_thread(get_current_user, request)
+
+            @router.get("/pool")
+            async def pool(request):
+                return await loop.run_in_executor(None, get_current_user, request)
+    """})
+    found = checker.routes_in(root, "routes/handed.py")
+    assert [(r.key, sorted(r.auth)) for r in found] == [
+        ("GET /api/handed/thread", ["get_current_user"]),
+        ("GET /api/handed/pool", ["get_current_user"]),
+    ]
+
+
 def test_a_route_with_no_auth_call_reports_none(checker, tmp_path):
     root = _fixture_tree(tmp_path, {"routes/bare.py": """
         def setup():

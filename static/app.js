@@ -2240,6 +2240,10 @@ function initializeEventListeners() {
       const r = plusBtn.getBoundingClientRect();
       menu.style.left = r.left + 'px';
       menu.style.right = 'auto';
+      // `P25-00`: never past the screen's right edge. At 390 px the rows'
+      // hints made the menu 431 px wide from x=23, 64 px off the screen; the
+      // hints shorten instead (`.overflow-hint`).
+      menu.style.maxWidth = Math.max(170, (window.innerWidth || 1024) - r.left - 8) + 'px';
       menu.style.bottom = 'auto';
       menu.style.maxHeight = '';      // reset so we can measure the natural height
       menu.style.overflowY = '';

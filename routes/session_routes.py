@@ -775,7 +775,7 @@ def setup_session_routes(
             may_use_auto, set_mode_for,
         )
 
-        _verify_session_owner(request, sid)
+        await asyncio.to_thread(_verify_session_owner, request, sid)
         if not request_is_a_person(request):
             raise HTTPException(
                 403,
@@ -798,7 +798,7 @@ def setup_session_routes(
             user, auth_manager=getattr(request.app.state, "auth_manager", None),
         ):
             raise HTTPException(403, AUTO_NOT_ALLOWED_SENTENCE)
-        if not set_mode_for(sid, mode):
+        if not await asyncio.to_thread(set_mode_for, sid, mode):
             raise HTTPException(500, "That did not save. Try again.")
         logger.info(
             "[approval] %s set chat %s to %s", user, sid, mode.value,
@@ -808,7 +808,7 @@ def setup_session_routes(
     @router.post("/session/{sid}/inject_messages")
     async def inject_messages(request: Request, sid: str):
         """Bulk-inject messages into a session's history (for group chat sync)."""
-        _verify_session_owner(request, sid)
+        await asyncio.to_thread(_verify_session_owner, request, sid)
         try:
             sess = session_manager.get_session(sid)
         except KeyError:
@@ -1588,7 +1588,7 @@ def setup_session_routes(
     @router.get("/session/{session_id}/context_info")
     async def get_context_info(request: Request, session_id: str):
         """Get the real context length for a session's model from the endpoint."""
-        _verify_session_owner(request, session_id)
+        await asyncio.to_thread(_verify_session_owner, request, session_id)
         session = session_manager.get_session(session_id)
         if not session:
             raise HTTPException(404, CHAT_GONE)

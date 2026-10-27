@@ -1281,7 +1281,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         url, model, headers = resolve_task_endpoint(owner=user or None)
         if not url or not model:
             # Fall back to default endpoint
-            url, model, headers = resolve_endpoint("default", owner=user or None)
+            url, model, headers = await asyncio.to_thread(resolve_endpoint, "default", owner=user or None)
         if not url or not model:
             raise HTTPException(500, "No endpoint configured for AI tidy")
 

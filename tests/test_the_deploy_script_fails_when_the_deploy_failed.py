@@ -303,15 +303,22 @@ def test_the_manifest_is_the_bytes_git_has(pd):
 
 
 def test_the_manifest_leaves_out_what_the_image_does_not_carry(pd):
+    """`B447`: what the image does not carry is what `.dockerignore` keeps out
+    of the build context, as Docker reads it — so `src/notes.md` and
+    `src/app.log` are carried (`*.md` and `*.log` match the top level only;
+    measured in `tests/test_the_deploy_manifest_is_what_docker_sends.py`),
+    and this used to say they were not."""
     listing = "\n".join([
         "100644 aaa 0\tsrc/keep.py",
         "100644 bbb 0\tsrc/notes.md",
         "100644 ccc 0\tsrc/app.log",
         "100644 ddd 0\tdata/app.db",
         "100644 eee 0\tservices/node_modules/x/index.js",
+        "100644 ggg 0\tREADME.md",
+        "100644 hhh 0\ttests/test_x.py",
         "160000 fff 0\tvendor/submodule",
     ])
-    assert [p for p, _ in pd.manifest_paths(listing)] == ["src/keep.py"]
+    assert [p for p, _ in pd.manifest_paths(listing)] == ["src/keep.py", "src/notes.md", "src/app.log"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────

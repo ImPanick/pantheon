@@ -16,7 +16,8 @@ def test_registered_manual_compaction_uses_session_owner_for_utility_endpoint():
     history_src = _src("routes/history/history_routes.py")
 
     assert 'owner = getattr(session, "owner", None) or effective_user(request)' in history_src
-    assert 'resolve_endpoint("utility", owner=owner or None)' in history_src
+    # `B1580`: the same call, the same owner, in a worker thread.
+    assert 'asyncio.to_thread(resolve_endpoint, "utility", owner=owner or None)' in history_src
 
 
 def test_task_name_generation_uses_owner_scoped_session_endpoint():
@@ -64,9 +65,10 @@ def test_research_routes_fallbacks_are_owner_scoped():
     assert 'resolve_endpoint("utility", owner=user)' in src
     assert 'resolve_endpoint("default", owner=user)' in src
     assert 'resolve_endpoint("chat", owner=user)' in src
-    assert '_merge(*resolve_endpoint("chat", owner=user))' in src
-    assert '_merge(*resolve_endpoint("research", owner=user))' in src
-    assert '_merge(*resolve_endpoint("utility", owner=user))' in src
+    # `B1580`: the spinoff's three, the same calls in a worker thread.
+    assert '_merge(*await asyncio.to_thread(resolve_endpoint, "chat", owner=user))' in src
+    assert '_merge(*await asyncio.to_thread(resolve_endpoint, "research", owner=user))' in src
+    assert '_merge(*await asyncio.to_thread(resolve_endpoint, "utility", owner=user))' in src
     assert "ep = _owned_enabled_endpoint(db, user)" in src
     assert "db.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True).first()" not in src
     # _resolve_research_endpoint derives the scope from the session owner. The

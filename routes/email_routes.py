@@ -2712,7 +2712,10 @@ def setup_email_routes():
         )
         if result and not result.get("error"):
             if offset == 0 and not from_addr and not has_attachments and filter in ("all", "unread", "unanswered", "undone"):
-                _record_email_received_events(owner, account_id, folder, result.get("emails") or [])
+                # `B1580`: it claims rows under `BEGIN IMMEDIATE` and fires an
+                # event that writes its own — a wait for every request on the loop.
+                await _asyncio.to_thread(_record_email_received_events, owner, account_id, folder,
+                                         result.get("emails") or [])
                 _schedule_recent_email_warm(result.get("emails") or [], folder, account_id, owner)
             _list_cache_put(ck, result)
         elapsed_ms = int((_time.monotonic() - started_at) * 1000)
@@ -5359,9 +5362,9 @@ def setup_email_routes():
             # (matches how the background email tasks behave).
             from src.endpoint_resolver import resolve_endpoint
 
-            url, model, headers = resolve_endpoint("utility", owner=owner)
+            url, model, headers = await asyncio.to_thread(resolve_endpoint, "utility", owner=owner)
             if not url or not model:
-                url, model, headers = resolve_endpoint("default", owner=owner)
+                url, model, headers = await asyncio.to_thread(resolve_endpoint, "default", owner=owner)
             if not url or not model:
                 return {"success": False, "error": "No LLM endpoint configured — set a Utility or Default Chat model in Settings → AI Defaults."}
 
@@ -5445,9 +5448,9 @@ def setup_email_routes():
             if att_text:
                 body_for_llm = body + "\n\n--- ATTACHMENTS ---\n\n" + att_text
 
-            url, model, headers = resolve_endpoint("utility", owner=owner)
+            url, model, headers = await asyncio.to_thread(resolve_endpoint, "utility", owner=owner)
             if not url:
-                url, model, headers = resolve_endpoint("default", owner=owner)
+                url, model, headers = await asyncio.to_thread(resolve_endpoint, "default", owner=owner)
             if not url or not model:
                 return {
                     "success": False,
@@ -5577,11 +5580,11 @@ def setup_email_routes():
                 candidates.append((url, model, headers))
 
             try:
-                _add(*resolve_endpoint("utility", owner=owner))
+                _add(*await asyncio.to_thread(resolve_endpoint, "utility", owner=owner))
             except Exception:
                 pass
             try:
-                _add(*resolve_endpoint("default", owner=owner))
+                _add(*await asyncio.to_thread(resolve_endpoint, "default", owner=owner))
             except Exception:
                 pass
             for cand in resolve_utility_fallback_candidates(owner=owner) or []:
@@ -5761,9 +5764,9 @@ def setup_email_routes():
                 # model, then fall back to their Default chat model. Using the
                 # global default here could hit a stale provider/key even when
                 # chat and summaries worked for the current user.
-                url, fallback_model, headers = resolve_endpoint("utility", owner=owner)
+                url, fallback_model, headers = await asyncio.to_thread(resolve_endpoint, "utility", owner=owner)
                 if not url:
-                    url, fallback_model, headers = resolve_endpoint("default", owner=owner)
+                    url, fallback_model, headers = await asyncio.to_thread(resolve_endpoint, "default", owner=owner)
                 if not model:
                     model = fallback_model
 
@@ -5864,13 +5867,13 @@ def setup_email_routes():
             # Primary utility endpoint — this is what the user has actually
             # configured as their background-task model, with fresh creds.
             try:
-                _u_url, _u_model, _u_headers = resolve_endpoint("utility", owner=owner)
+                _u_url, _u_model, _u_headers = await asyncio.to_thread(resolve_endpoint, "utility", owner=owner)
                 _add(_u_url, _u_model, _u_headers)
             except Exception:
                 pass
             # Primary default chat endpoint — last working chat config.
             try:
-                _d_url, _d_model, _d_headers = resolve_endpoint("default", owner=owner)
+                _d_url, _d_model, _d_headers = await asyncio.to_thread(resolve_endpoint, "default", owner=owner)
                 _add(_d_url, _d_model, _d_headers)
             except Exception:
                 pass

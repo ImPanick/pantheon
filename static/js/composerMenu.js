@@ -316,8 +316,12 @@ function _place(node, row) {
   const vh = window.innerHeight || 768;
   if (_isPhone()) {
     node.classList.add('composer-submenu-page');
-    node.style.left = `${Math.max(8, m.left)}px`;
-    node.style.width = `${Math.min(vw - 16, Math.max(m.width, 260))}px`;
+    // `P25-00`: as wide as the menu, but never past the screen's right edge —
+    // it started at the menu's left (23 px at 390) and took the screen's
+    // width less both margins, so it ran 7 px off the right.
+    const left = Math.max(8, Math.min(m.left, vw - 8 - 260));
+    node.style.left = `${left}px`;
+    node.style.width = `${Math.min(vw - 8 - left, Math.max(m.width, 260))}px`;
     node.style.top = 'auto';
     node.style.bottom = `${Math.max(8, vh - m.bottom)}px`;
     node.style.maxHeight = `${Math.max(240, m.bottom - 16)}px`;

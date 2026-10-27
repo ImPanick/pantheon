@@ -126,6 +126,18 @@ class SetUserRoleRequest(BaseModel):
 SESSION_COOKIE = "pantheon_session"
 
 
+async def _audit(action: str, **kw) -> None:
+    """`record_auth_event`, from an async handler, in a worker thread.
+
+    `B1580`. The writer opens its own database session and commits; called
+    inline it ran on the event loop, where a write waiting on a held SQLite
+    lock is a wait for every request the server is answering. Awaited rather
+    than fired and forgotten, so the row is in the table by the time the
+    response is — the audit trail is read by the next request, and a test.
+    """
+    await asyncio.to_thread(record_auth_event, action, **kw)
+
+
 def _secure_cookie(request: Request) -> bool:
     """Decide the ``Secure`` attribute of the session cookie.
 
@@ -196,8 +208,8 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
     async def first_run_setup(body: SetupRequest, request: Request):
         """Create initial admin account. Only works if no accounts exist."""
         if not _setup_limiter.check(request.client.host):
-            record_auth_event("setup", outcome="error",
-                              detail={"reason": "rate_limited"})
+            await _audit("setup", outcome="error",
+                         detail={"reason": "rate_limited"})
             raise HTTPException(429, "Too many requests — try again later")
         if auth_manager.is_configured:
             raise HTTPException(400, "Already configured")
@@ -209,26 +221,26 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(403, "Username is reserved")
         ok = await asyncio.to_thread(auth_manager.setup, body.username, body.password)
         if not ok:
-            record_auth_event("setup", subject=body.username, outcome="error",
-                              detail={"reason": "setup_failed"})
+            await _audit("setup", subject=body.username, outcome="error",
+                         detail={"reason": "setup_failed"})
             raise HTTPException(500, "Setup failed")
-        record_auth_event("user_create", actor=body.username,
-                          subject=body.username,
-                          detail={"via": "setup", "is_admin": True})
+        await _audit("user_create", actor=body.username,
+                     subject=body.username,
+                     detail={"via": "setup", "is_admin": True})
         return {"ok": True, "message": "Admin account created"}
 
     @router.post("/signup")
     async def signup(body: SignupRequest, request: Request):
         """Create a new user account. Only works if signup is enabled by admin."""
         if not _signup_limiter.check(request.client.host):
-            record_auth_event("user_create", outcome="error",
-                              detail={"via": "signup", "reason": "rate_limited"})
+            await _audit("user_create", outcome="error",
+                         detail={"via": "signup", "reason": "rate_limited"})
             raise HTTPException(429, "Too many requests — try again later")
         if not auth_manager.is_configured:
             raise HTTPException(400, "Run setup first")
         if not auth_manager.signup_enabled:
-            record_auth_event("user_create", subject=body.username, outcome="error",
-                              detail={"via": "signup", "reason": "signup_disabled"})
+            await _audit("user_create", subject=body.username, outcome="error",
+                         detail={"via": "signup", "reason": "signup_disabled"})
             raise HTTPException(403, "Registration is disabled. Ask an admin for an account.")
         if len(body.password) < PASSWORD_MIN_LENGTH:
             raise HTTPException(400, f"Password must be at least {PASSWORD_MIN_LENGTH} characters")
@@ -238,18 +250,18 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(403, "Username is reserved")
         ok = await asyncio.to_thread(auth_manager.create_user, body.username, body.password, is_admin=False)
         if not ok:
-            record_auth_event("user_create", subject=body.username, outcome="error",
-                              detail={"via": "signup", "reason": "username_taken"})
+            await _audit("user_create", subject=body.username, outcome="error",
+                         detail={"via": "signup", "reason": "username_taken"})
             raise HTTPException(409, "Username already taken")
-        record_auth_event("user_create", actor=body.username, subject=body.username,
-                          detail={"via": "signup", "is_admin": False})
+        await _audit("user_create", actor=body.username, subject=body.username,
+                     detail={"via": "signup", "is_admin": False})
         return {"ok": True, "message": "Account created"}
 
     @router.post("/login")
     async def login(body: LoginRequest, request: Request, response: Response):
         if not _login_limiter.check(request.client.host):
-            record_auth_event("login", actor=body.username, outcome="error",
-                              detail={"reason": "rate_limited"})
+            await _audit("login", actor=body.username, outcome="error",
+                         detail={"reason": "rate_limited"})
             raise HTTPException(429, "Too many requests — try again later")
         # Verify password first
         username = body.username.strip().lower()
@@ -258,8 +270,8 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             # not, deliberately: the 401 above does not distinguish them and an
             # audit row that does would be a username oracle for anyone who can
             # read it, which on a shared instance is every admin.
-            record_auth_event("login", actor=username, outcome="error",
-                              detail={"reason": "invalid_credentials"})
+            await _audit("login", actor=username, outcome="error",
+                         detail={"reason": "invalid_credentials"})
             raise HTTPException(401, "Invalid credentials")
         # Check 2FA if enabled
         if auth_manager.totp_enabled(username):
@@ -267,14 +279,14 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                 # Password OK but need TOTP — tell client to show code input
                 return {"ok": False, "requires_totp": True, "username": username}
             if not auth_manager.totp_verify(username, body.totp_code):
-                record_auth_event("login", actor=username, outcome="error",
-                                  detail={"reason": "invalid_totp"})
+                await _audit("login", actor=username, outcome="error",
+                             detail={"reason": "invalid_totp"})
                 raise HTTPException(401, "Invalid 2FA code")
         # All checks passed — create session (password already verified above)
         token = await asyncio.to_thread(auth_manager.create_session_trusted, username)
         if not token:
-            record_auth_event("login", actor=username, outcome="error",
-                              detail={"reason": "session_refused"})
+            await _audit("login", actor=username, outcome="error",
+                         detail={"reason": "session_refused"})
             raise HTTPException(401, "Invalid credentials")
         cookie_kwargs = dict(
             key=SESSION_COOKIE,
@@ -287,9 +299,9 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         if body.remember:
             cookie_kwargs["max_age"] = TOKEN_TTL
         response.set_cookie(**cookie_kwargs)
-        record_auth_event("login", actor=username,
-                          detail={"remember": bool(body.remember),
-                                  "totp": auth_manager.totp_enabled(username)})
+        await _audit("login", actor=username,
+                     detail={"remember": bool(body.remember),
+                             "totp": auth_manager.totp_enabled(username)})
         return {"ok": True, "username": username}
 
     @router.post("/logout")
@@ -297,7 +309,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         token = request.cookies.get(SESSION_COOKIE)
         if token:
             # Resolved before the revoke, or there is nobody to name.
-            record_auth_event("logout", actor=auth_manager.get_username_for_token(token))
+            await _audit("logout", actor=auth_manager.get_username_for_token(token))
             auth_manager.revoke_token(token)
         response.delete_cookie(SESSION_COOKIE, path="/")
         return {"ok": True}
@@ -426,14 +438,17 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(400, "Username is required")
         if body.username.lower() in RESERVED_USERNAMES:
             raise HTTPException(403, "Username is reserved")
-        ok = auth_manager.create_user(body.username, body.password, body.is_admin)
+        # `B1580`: in a worker thread, as `signup` does — it hashes a password
+        # and writes the account store, and both are a wait for every request.
+        ok = await asyncio.to_thread(auth_manager.create_user, body.username, body.password,
+                                     body.is_admin)
         if not ok:
-            record_auth_event("user_create", actor=user, subject=body.username,
-                              outcome="error",
-                              detail={"via": "admin", "reason": "username_taken"})
+            await _audit("user_create", actor=user, subject=body.username,
+                         outcome="error",
+                         detail={"via": "admin", "reason": "username_taken"})
             raise HTTPException(409, "Username already taken")
-        record_auth_event("user_create", actor=user, subject=body.username,
-                          detail={"via": "admin", "is_admin": bool(body.is_admin)})
+        await _audit("user_create", actor=user, subject=body.username,
+                     detail={"via": "admin", "is_admin": bool(body.is_admin)})
         return {"ok": True}
 
     @router.put("/users/{username}/privileges")
@@ -443,14 +458,14 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         body = await request.json()
         ok = auth_manager.set_privileges(username, body)
         if not ok:
-            record_auth_event("privilege_change", actor=user, subject=username,
-                              outcome="error",
-                              detail={"reason": "not_found_or_admin"})
+            await _audit("privilege_change", actor=user, subject=username,
+                         outcome="error",
+                         detail={"reason": "not_found_or_admin"})
             raise HTTPException(404, "User not found or is admin")
         # The keys the admin actually moved, and what to. `P11-08` asks for
         # privilege grants specifically; a row saying only "privileges changed"
         # cannot answer *which* grant let somebody do the thing they did.
-        record_auth_event(
+        await _audit(
             "privilege_change", actor=user, subject=username,
             detail={"set": {k: v for k, v in (body or {}).items() if v is not None},
                     "cleared": sorted(k for k, v in (body or {}).items() if v is None)})
@@ -497,11 +512,11 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         try:
             stored = auth_manager.define_role(name, body.overrides)
         except RoleError as exc:
-            record_auth_event("role_define", actor=actor, subject=name,
-                              outcome="error", detail={"reason": str(exc)})
+            await _audit("role_define", actor=actor, subject=name,
+                         outcome="error", detail={"reason": str(exc)})
             raise HTTPException(400, str(exc))
-        record_auth_event("role_define", actor=actor, subject=stored,
-                          detail={"overrides": dict(body.overrides or {})})
+        await _audit("role_define", actor=actor, subject=stored,
+                     detail={"overrides": dict(body.overrides or {})})
         return {"ok": True, "role": describe_role(stored, auth_manager.roles.get(stored))}
 
     @router.delete("/roles/{name}")
@@ -510,10 +525,10 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         require_admin(request)
         actor = get_current_user(request)
         if not auth_manager.delete_role(name):
-            record_auth_event("role_delete", actor=actor, subject=name,
-                              outcome="error", detail={"reason": "not_found"})
+            await _audit("role_delete", actor=actor, subject=name,
+                         outcome="error", detail={"reason": "not_found"})
             raise HTTPException(404, "No such role")
-        record_auth_event("role_delete", actor=actor, subject=name)
+        await _audit("role_delete", actor=actor, subject=name)
         return {"ok": True}
 
     @router.put("/users/{username}/role")
@@ -524,15 +539,15 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         try:
             ok = auth_manager.set_user_role(username, body.role)
         except RoleError as exc:
-            record_auth_event("role_change", actor=actor, subject=username,
-                              outcome="error", detail={"reason": str(exc)})
+            await _audit("role_change", actor=actor, subject=username,
+                         outcome="error", detail={"reason": str(exc)})
             raise HTTPException(400, str(exc))
         if not ok:
-            record_auth_event("role_change", actor=actor, subject=username,
-                              outcome="error", detail={"reason": "user_not_found"})
+            await _audit("role_change", actor=actor, subject=username,
+                         outcome="error", detail={"reason": "user_not_found"})
             raise HTTPException(404, "User not found")
-        record_auth_event("role_change", actor=actor, subject=username,
-                          detail={"role": body.role})
+        await _audit("role_change", actor=actor, subject=username,
+                     detail={"role": body.role})
         return {"ok": True, "username": (username or "").strip().lower(),
                 "role": auth_manager.get_role(username),
                 "privileges": auth_manager.get_privileges(
@@ -826,18 +841,18 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         user = get_current_user(request)
         result = auth_manager.set_admin(username, body.is_admin, user)
         if result is not SetAdminResult.OK:
-            record_auth_event("admin_change", actor=user, subject=username,
-                              outcome="error",
-                              detail={"is_admin": bool(body.is_admin),
-                                      "reason": result.value})
+            await _audit("admin_change", actor=user, subject=username,
+                         outcome="error",
+                         detail={"is_admin": bool(body.is_admin),
+                                 "reason": result.value})
         if result is SetAdminResult.USER_NOT_FOUND:
             raise HTTPException(404, "User not found")
         if result is SetAdminResult.NOT_AUTHORIZED:
             raise HTTPException(403, "Admin only")
         if result is SetAdminResult.LAST_ADMIN:
             raise HTTPException(400, "Cannot demote the last admin")
-        record_auth_event("admin_change", actor=user, subject=username,
-                          detail={"is_admin": bool(body.is_admin)})
+        await _audit("admin_change", actor=user, subject=username,
+                     detail={"is_admin": bool(body.is_admin)})
         target = (username or "").strip().lower()
         return {
             "ok": True,
@@ -888,10 +903,10 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             _invalidate_api_token_cache()
             raise
         if not ok:
-            record_auth_event("user_delete", actor=user, subject=body.username,
-                              outcome="error", detail={"reason": "refused"})
+            await _audit("user_delete", actor=user, subject=body.username,
+                         outcome="error", detail={"reason": "refused"})
             raise HTTPException(400, "Cannot delete user")
-        record_auth_event("user_delete", actor=user, subject=body.username)
+        await _audit("user_delete", actor=user, subject=body.username)
         # delete_user removes the user's ApiToken rows, but the bearer-auth
         # middleware serves from an in-memory prefix->token cache that only
         # rebuilds when flagged dirty. Without this, a deleted user's already

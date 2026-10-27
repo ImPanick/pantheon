@@ -125,6 +125,8 @@ const rect = (page, sel) => page.$eval(sel, (n) => { const r = n.getBoundingClie
       .filter((n) => n.offsetParent !== null).map((n) => n.querySelector('span').textContent.trim()));
     o.hints = await labels(page, '#overflow-menu .overflow-hint');
     o.seps = (await page.$$('#overflow-menu .overflow-menu-sep')).length;
+    const opened = await rect(page, '#overflow-menu');
+    o.menuOpen = { inside: opened.left >= 0 && opened.right <= w + 0.5, rect: [opened.left, opened.right] };
 
     // Agents ›, opened the way each screen opens it.
     if (phone) await page.click('#overflow-agents-btn');
@@ -139,6 +141,9 @@ const rect = (page, sel) => page.$eval(sel, (n) => { const r = n.getBoundingClie
     o.covers = Math.abs(sub.bottom - menu.bottom) < 2 && sub.left <= menu.left + 1;
     o.menuHiddenUnder = await page.$eval('#overflow-menu', (n) => getComputedStyle(n).visibility === 'hidden');
     o.back = await labels(page, '.composer-submenu-back');
+    // `P25-00`: both inside the screen, the menu and its page, at every width.
+    o.inside = { menu: menu.left >= 0 && menu.right <= w + 0.5, sub: sub.left >= 0 && sub.right <= w + 0.5,
+      menuRect: [menu.left, menu.right], subRect: [sub.left, sub.right] };
     await page.fill('.composer-submenu-search', 'morning');
     await page.waitForTimeout(150);
     o.filtered = await labels(page, `${SUB} .composer-submenu-list .composer-submenu-label`);
@@ -196,6 +201,13 @@ const rect = (page, sel) => page.$eval(sel, (n) => { const r = n.getBoundingClie
         n.querySelector('.agent-offer-title').textContent]);
       await page.click('.agent-offer-no');
       o.offerGone = !(await page.$('.agent-offer'));
+      // `P25-00`: *Browser* is a pick like any other row — the menu closes.
+      await page.click('#overflow-plus-btn');
+      await page.waitForTimeout(500);
+      await page.click('#overflow-menu [data-open-agent-browser]');
+      await page.waitForTimeout(900);
+      o.browserPick = { window: !!(await page.$('#agent-browser-modal')),
+        menuClosed: await page.$eval('#overflow-menu', (n) => n.classList.contains('hidden')) };
     }
     out[w] = o;
     await context.close();
@@ -237,6 +249,22 @@ def test_a_submenu_opens_beside_the_menu_on_a_wide_screen(driven):
     assert o["foot"] == ["New agent…", "Build one from this chat…", "Open the hall"], "it ends with the doors to where agents are managed"
     assert len(o["agents"]) == 3
     assert "Morning Brief" in o["filtered"] and len(o["filtered"]) < 10, "typing filters the list"
+
+
+def test_the_menu_and_its_pages_stay_inside_the_screen(driven):
+    """`P25-00`, measured at 390×844: the Git page ran from 23 to 397 px — a
+    page as wide as the screen less its margins, but started at the menu's
+    left edge instead of the screen's."""
+    for w in ("1440", "390"):
+        assert driven[w]["menuOpen"]["inside"], (w, driven[w]["menuOpen"])
+        assert driven[w]["inside"]["sub"], (w, driven[w]["inside"])
+
+
+def test_browser_is_a_pick_that_closes_the_menu(driven):
+    """`P25-00`: *+ → Browser* opened the window and left the menu open over
+    the chat — its door's capture-phase listener stopped the click before the
+    menu's own close."""
+    assert driven["1440"]["browserPick"] == {"window": True, "menuClosed": True}
 
 
 def test_a_submenu_is_a_page_with_a_back_row_on_a_phone(driven):

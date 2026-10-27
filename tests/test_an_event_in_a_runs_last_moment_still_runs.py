@@ -16,6 +16,7 @@ yet written — after the real `_queued_event_due` answers *nothing queued*.
 from __future__ import annotations
 
 import asyncio
+import threading
 
 import src.event_bus as bus
 from src.task_scheduler import TaskScheduler
@@ -30,15 +31,20 @@ TWO = {"document_id": "doc-2", "title": "Two"}
 
 def _fire_elsewhere_now(payload):
     """`document_updated` where no scheduler runs, committed before this
-    returns: with no scheduler the bus never awaits, so its coroutine runs to
-    the end in one step."""
-    coro = bus._handle_event("document_updated", OWNER, payload)
-    try:
-        coro.send(None)
-    except StopIteration:
-        return
-    coro.close()
-    raise AssertionError("the bus awaited something; it did not commit in one step")
+    returns, as the email server's process fires it (`fire_event` with no loop
+    running: `asyncio.run`).
+
+    `B1580` moved the bus's counting into a worker thread it awaits, so the
+    coroutine no longer runs to the end in one step when stepped by hand. It
+    is run to the end on a loop of its own in a thread of its own — the
+    process with no scheduler, which is where this event comes from — and
+    waited for, so it has committed when this returns, whether this is called
+    from the test or from inside the scheduler's loop."""
+    elsewhere = threading.Thread(
+        target=asyncio.run, args=(bus._handle_event("document_updated", OWNER, payload),))
+    elsewhere.start()
+    elsewhere.join(30)
+    assert not elsewhere.is_alive(), "the event did not commit"
 
 
 def _handed(scheduler):

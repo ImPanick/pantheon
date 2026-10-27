@@ -604,14 +604,42 @@ async def _handle_event(event_name: str, owner: Optional[str] = None,
     is not written — so a workflow that edits a document does not fire itself
     on `document_updated`. Other tasks it wakes are told what caused them. An
     event fired by *Test this step* (`origin.test`) wakes nothing at all.
-    """
-    from core.database import SessionLocal, ScheduledTask
 
+    `B1580`. The counting is database work and runs in a worker thread
+    (`_count_event`); only the hand-off to the scheduler is awaited here. It
+    ran on the event loop, with its session held open across each
+    `run_task_now`, for every event any async caller fired.
+    """
     if origin is not None and origin.test:
         logger.debug("Event %r from a step test: no task is woken", event_name)
         return
     resolved_owner = _resolve_event_owner(owner)
     trigger = build_trigger(TRIGGER_SOURCE_EVENT, event_name, payload, origin=origin)
+    try:
+        due = await asyncio.to_thread(_count_event, event_name, resolved_owner, trigger, origin)
+        for task_id, name, threshold in due:
+            if _task_scheduler:
+                logger.info(f"Event '{event_name}' triggered task '{name}' (every {threshold})")
+                # `P8-23`. The Nth event is the one the task runs for, so
+                # that is the payload it is handed. The N-1 events that only
+                # moved the counter are not carried: a task set to fire every
+                # fifth document wants the fifth document, and a list of five
+                # would be a different feature nobody asked for.
+                await _task_scheduler.run_task_now(task_id, trigger=trigger)
+            else:
+                logger.warning(f"Event triggered task '{name}' but no scheduler available")
+    except Exception:
+        logger.exception(f"Error handling event '{event_name}'")
+
+
+def _count_event(event_name: str, resolved_owner: Optional[str], trigger: dict,
+                 origin: Optional[RunOrigin]) -> list:
+    """`_handle_event`'s database half: move each listening task's counter and
+    answer `[(task_id, name, threshold)]` for the ones it brought to their
+    threshold, each already committed with `next_run` and its trigger."""
+    from core.database import SessionLocal, ScheduledTask
+
+    due = []
     db = SessionLocal()
     try:
         filters = [
@@ -628,9 +656,6 @@ async def _handle_event(event_name: str, owner: Optional[str] = None,
             filters.append(ScheduledTask.id.notin_(list(origin.task_ids())))
 
         tasks = db.query(ScheduledTask).filter(*filters).all()
-        if not tasks:
-            return
-
         for task in tasks:
             if _task_scheduler is None and _workflow_run_in_flight(db, task):
                 # The subprocess branch below writes `next_run = now` and lets
@@ -660,22 +685,10 @@ async def _handle_event(event_name: str, owner: Optional[str] = None,
                 # takes this (`TaskScheduler._take_pending_trigger`).
                 task.pending_trigger = json.dumps(trigger, default=str)
                 db.commit()
-                # Fire the task
-                if _task_scheduler:
-                    logger.info(f"Event '{event_name}' triggered task '{task.name}' (every {threshold})")
-                    # `P8-23`. The Nth event is the one the task runs for, so
-                    # that is the payload it is handed. The N-1 events that only
-                    # moved the counter are not carried: a task set to fire every
-                    # fifth document wants the fifth document, and a list of five
-                    # would be a different feature nobody asked for.
-                    await _task_scheduler.run_task_now(task.id, trigger=trigger)
-                else:
-                    logger.warning(f"Event triggered task '{task.name}' but no scheduler available")
+                due.append((task.id, task.name, threshold))
             else:
                 db.commit()
                 logger.debug(f"Event '{event_name}': task '{task.name}' counter {task.trigger_counter}/{threshold}")
-
-    except Exception:
-        logger.exception(f"Error handling event '{event_name}'")
     finally:
         db.close()
+    return due

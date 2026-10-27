@@ -268,6 +268,35 @@ def test_a_call_that_only_lists_is_reported_as_a_read():
     assert r["wrote"] == ["manage_notes", "manage_tasks"], "no arguments on the step: the tool's whole reach"
 
 
+def test_a_refused_call_is_one_step_and_the_report_does_not_say_it_read_or_wrote():
+    """`P24-00`, found by driving a member's Morning Brief: the loop sends a
+    refused call as a `tool_blocked` and then its refusal as a `tool_output`,
+    and the step log kept both — the second an `error` with no arguments, which
+    the report counted by the tool's whole reach (*Wrote with: manage_calendar*
+    for a call that listed events and was refused). Driven through the real
+    scheduler's step log, in the order the events arrive."""
+    from src.agents.runtime import build_report
+    from src.task_scheduler import TaskScheduler
+
+    sched = TaskScheduler(session_manager=None)
+    run = str(uuid.uuid4())
+    reason = "Tool 'manage_calendar' is restricted to admin users on this deployment."
+    sched._record_run_step(run, kind="tool", tool="manage_calendar", round=1,
+                           detail='{"action": "list_events"}', status="blocked", output=reason)
+    sched._close_run_step(run, tool="manage_calendar", round_=1, status="error", output=reason)
+    sched._record_run_step(run, kind="tool", tool="manage_notes", round=2,
+                           detail='{"action": "list"}', status="running")
+    sched._close_run_step(run, tool="manage_notes", round_=2, status="ok", output="No notes found.")
+    # A result whose start was missed still records (`_close_run_step`'s rule).
+    sched._close_run_step(run, tool="manage_tasks", round_=3, status="ok", output="2 tasks")
+    steps = sched._runs()[run]["steps"]
+    assert [(s["tool"], s["status"]) for s in steps] == [
+        ("manage_calendar", "blocked"), ("manage_notes", "ok"), ("manage_tasks", "ok")]
+    r = build_report("**Today** nothing.", steps)
+    assert r["read"] == ["manage_notes"] and r["wrote"] == ["manage_tasks"]
+    assert [x["tool"] for x in r["refused"]] == ["manage_calendar"]
+
+
 def test_the_loop_carries_the_hires_effects_into_its_gate(monkeypatch):
     """The real `stream_agent_loop`, handed a hire's policy: a call with an
     `ask` effect waits for a yes — it is not run — and says why."""

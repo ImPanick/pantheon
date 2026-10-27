@@ -2,6 +2,7 @@
 # routes/memory_routes.py
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, File
 from typing import Dict, Any, Optional, List
+import asyncio
 import json
 import os
 import re
@@ -422,8 +423,9 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
             proposal = next((m for m in existing
                              if not memory_edges.is_committed(m)), None)
             if proposal is not None:
-                verdict = commit_memory(memory_manager, proposal["id"], by=user,
-                                        owner=user, memory_vector=memory_vector)
+                # `B1580`: it writes the store and its verdict row (`record_event`).
+                verdict = await asyncio.to_thread(commit_memory, memory_manager, proposal["id"],
+                                                  by=user, owner=user, memory_vector=memory_vector)
                 return {"ok": verdict["verdict"] == COMMIT_COMMITTED,
                         "count": len(user_mem),
                         "memory_id": proposal["id"],
@@ -714,7 +716,7 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
 
             if sess is None:
                 logger.warning("Session %s not found or inaccessible, falling back to utility endpoint", session)
-                endpoint_url, model, headers = resolve_endpoint("utility", owner=user)
+                endpoint_url, model, headers = await asyncio.to_thread(resolve_endpoint, "utility", owner=user)
             else:
                 endpoint_url, model, headers = resolve_task_endpoint(
                     sess.endpoint_url, sess.model, sess.headers, owner=user

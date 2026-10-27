@@ -961,6 +961,13 @@ function _onDoor(ev) {
   if (!door) return;
   ev.preventDefault();
   ev.stopPropagation();
+  // `P25-00`. The click stops here, so the + menu's own close on a pick
+  // never ran and the menu stayed open over the chat — over the card the
+  // agent's next question draws. A door in it asks for the close the way a
+  // submenu's pick does.
+  if (typeof door.closest === 'function' && door.closest('#overflow-menu')) {
+    document.dispatchEvent(new CustomEvent('composer-menu-close'));
+  }
   openAgentBrowser({ focus: ev.detail === 0 });
 }
 

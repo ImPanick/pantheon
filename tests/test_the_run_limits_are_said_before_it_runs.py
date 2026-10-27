@@ -223,7 +223,11 @@ async def test_the_route_promises_the_caps_chat_stream_hands_the_loop(monkeypatc
 
 @pytest.fixture
 def endpoints(monkeypatch):
-    engine = create_engine("sqlite:///:memory:")
+    # `B1580`: the route looks the endpoint up in a worker thread now, and an
+    # in-memory database is one connection's — so one connection, shared.
+    from sqlalchemy.pool import StaticPool
+    engine = create_engine("sqlite:///:memory:", poolclass=StaticPool,
+                           connect_args={"check_same_thread": False})
     Base.metadata.create_all(bind=engine)
     TestSession = sessionmaker(bind=engine, autoflush=False)
     db = TestSession()

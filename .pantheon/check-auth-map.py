@@ -385,15 +385,31 @@ def gate_sites(root: Path = ROOT, rels: list[str] | None = None,
     return sites
 
 
+#: `B1580`. Calls that run the function they are handed in a worker thread and
+#: answer what it answered — or raise what it raised, which is what makes a
+#: gate handed to one still a gate: `await asyncio.to_thread(_verify_session_owner,
+#: request, sid)` refuses exactly as the direct call did. The position of the
+#: function among the arguments, by name.
+_HANDS_OFF = {"to_thread": 0, "run_in_threadpool": 0, "run_in_executor": 1}
+
+
+def _handed_name(node: ast.Call) -> str | None:
+    """`f` in `asyncio.to_thread(f, …)` and its kin, else None."""
+    at = _HANDS_OFF.get(_called_name(node) or "")
+    if at is None or len(node.args) <= at:
+        return None
+    arg = node.args[at]
+    return arg.attr if isinstance(arg, ast.Attribute) else getattr(arg, "id", None)
+
+
 def _call_graph(tree: ast.Module) -> dict[str, set[str]]:
     graph: dict[str, set[str]] = {}
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
-        called = {
-            n for n in (_called_name(c) for c in ast.walk(node) if isinstance(c, ast.Call))
-            if n
-        }
+        calls = [c for c in ast.walk(node) if isinstance(c, ast.Call)]
+        called = {n for n in (_called_name(c) for c in calls) if n}
+        called |= {n for n in (_handed_name(c) for c in calls) if n}
         graph.setdefault(node.name, set()).update(called)
     return graph
 

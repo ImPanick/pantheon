@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Diagnostics routes — /api/db/stats, /api/rag/stats, the diagnostics panel and /metrics."""
 
+import asyncio
 import logging
 import os
 from typing import Dict, Any
@@ -146,11 +147,11 @@ def setup_diagnostics_routes(
         require_admin(request)
         from src.events import usage_summary, usage_over_time
         days = max(1, min(days, 365))
-        result = usage_summary(days=days, owner=owner or None)
+        result = await asyncio.to_thread(usage_summary, days=days, owner=owner or None)
         # `P14-05` — the same call carries the time series, because a caller
         # that has to make two requests to draw one chart will eventually draw
         # it from one of them.
-        result["over_time"] = usage_over_time(days=days, owner=owner or None)
+        result["over_time"] = await asyncio.to_thread(usage_over_time, days=days, owner=owner or None)
         return result
 
     @router.get("/api/diagnostics/receipt/{run_id}")
@@ -168,7 +169,7 @@ def setup_diagnostics_routes(
         """
         require_admin(request)
         from src.events import receipt
-        return receipt(run_id)
+        return await asyncio.to_thread(receipt, run_id)
 
     @router.get("/api/diagnostics/rerun/{run_id}")
     async def get_rerun_plan(request: Request, run_id: str) -> Dict[str, Any]:
@@ -180,7 +181,7 @@ def setup_diagnostics_routes(
         """
         require_admin(request)
         from src.replay import rerun_plan, describe
-        plan = rerun_plan(run_id)
+        plan = await asyncio.to_thread(rerun_plan, run_id)
         return {**plan, "summary": describe(plan)}
 
     @router.post("/api/diagnostics/rerun/{run_id}")
@@ -226,7 +227,7 @@ def setup_diagnostics_routes(
         """
         require_admin(request)
         from src.events import recent_runs
-        return recent_runs(limit)
+        return await asyncio.to_thread(recent_runs, limit)
 
     @router.post("/api/diagnostics/evals/{name}/run")
     async def run_eval(request: Request, name: str, model: str = "") -> Dict[str, Any]:
@@ -252,7 +253,7 @@ def setup_diagnostics_routes(
         """
         require_operator(request)
         from src.events import auth_events
-        return auth_events(limit, outcome=outcome, party=party or None)
+        return await asyncio.to_thread(auth_events, limit, outcome=outcome, party=party or None)
 
     @router.get("/api/diagnostics/diff/{before_id}/{after_id}")
     async def diff_two_receipts(request: Request, before_id: str,
@@ -268,7 +269,7 @@ def setup_diagnostics_routes(
         """
         require_admin(request)
         from src.receipt_diff import diff_receipts
-        return diff_receipts(before_id, after_id)
+        return await asyncio.to_thread(diff_receipts, before_id, after_id)
 
     @router.get("/api/diagnostics/receipt/{run_id}/export")
     async def export_receipt(request: Request, run_id: str):
@@ -286,8 +287,8 @@ def setup_diagnostics_routes(
         require_admin(request)
         from fastapi.responses import PlainTextResponse
         from src.diagnostic_bundle import build_bundle, render_markdown
-        bundle = build_bundle(note=f"Receipt for run {run_id}", log_limit=0,
-                              run_id=run_id)
+        bundle = await asyncio.to_thread(build_bundle, note=f"Receipt for run {run_id}",
+                                         log_limit=0, run_id=run_id)
         return PlainTextResponse(render_markdown(bundle),
                                  media_type="text/markdown; charset=utf-8")
 
@@ -310,7 +311,7 @@ def setup_diagnostics_routes(
         """
         require_operator(request)
         from src.diagnostic_bundle import build_bundle, render_markdown
-        bundle = build_bundle(note=note, log_limit=log_limit, run_id=run_id)
+        bundle = await asyncio.to_thread(build_bundle, note=note, log_limit=log_limit, run_id=run_id)
         return {
             "status": "success",
             "bundle": bundle,
@@ -347,7 +348,7 @@ def setup_diagnostics_routes(
         require_operator(request)
         try:
             from core.database import get_detailed_stats
-            return get_detailed_stats()
+            return await asyncio.to_thread(get_detailed_stats)
         except Exception as e:
             logger.error(f"DB stats error: {e}")
             raise HTTPException(500, "Failed to retrieve database statistics")

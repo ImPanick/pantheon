@@ -575,7 +575,9 @@ def setup_upload_routes(upload_handler):
             turn = {}
             # `P2-08`: measured against the window of the chat it was sent to.
             window = await asyncio.to_thread(_session_window, session_id, owner)
-            build_user_content(
+            # `B1580`: it reads every file and resolves the chat's model — off the loop.
+            await asyncio.to_thread(
+                build_user_content,
                 "", [f["id"] for f in out], _upload_root(), upload_handler,
                 owner=owner, budget_report=turn, window_tokens=window,
             )
@@ -786,7 +788,9 @@ def setup_upload_routes(upload_handler):
         valid = [fid for fid in wanted if upload_handler.validate_upload_id(fid)]
         turn: dict = {}
         window = await asyncio.to_thread(_session_window, session or None, owner)
-        build_user_content(
+        # `B1580`: as on upload — it reads every file, so not on the event loop.
+        await asyncio.to_thread(
+            build_user_content,
             "", valid, _upload_root(), upload_handler,
             owner=owner, budget_report=turn, window_tokens=window,
         )

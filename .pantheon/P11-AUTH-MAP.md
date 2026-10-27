@@ -582,7 +582,13 @@ signed-in account named, while `GET /api/cookbook/gpus` — one directory away, 
 question — was admin-only. Nobody had compared the two files. There is no ceiling,
 because the number allowed through ungated is zero:
 
-derived-ssh-targets: 15 routes in 3 files, 15 behind require_admin or require_operator
+derived-ssh-targets: 16 routes in 3 files, 16 behind require_admin or require_operator
+
+*15 → 16 on 2026-10-27 (`B1580`) without a route changing: the call graph now
+follows a function handed to `asyncio.to_thread` (and `run_in_threadpool`,
+`run_in_executor`), which runs it and raises what it raises — so a gate handed
+off is still a gate, and a route that reaches an SSH target that way is seen.
+The one it found, `GET /api/cookbook/tasks/status`, was already gated.*
 
 ## F · the `/static` mount hands out no page (`B370`)
 
