@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Gallery routes — browsable library for photos and AI-generated images."""
 
+import asyncio
 import os
 import base64
 import hashlib
@@ -374,71 +375,74 @@ def setup_gallery_routes() -> APIRouter:
         content = await read_upload_limited(
             file, resolve_byte_limit("gallery_upload_max_bytes", user), "Gallery upload")
 
-        # Duplicate detection via SHA-256
-        file_hash = hashlib.sha256(content).hexdigest()
-        db = SessionLocal()
-        try:
-            if album_id and user is not None:
-                _get_or_404_album(db, album_id, user)
+        # `B1223`: the database work, off the event loop.
+        def _off_the_loop():
+            # Duplicate detection via SHA-256
+            file_hash = hashlib.sha256(content).hexdigest()
+            db = SessionLocal()
+            try:
+                if album_id and user is not None:
+                    _get_or_404_album(db, album_id, user)
 
-            # SECURITY: scope the dup-detect to THIS user — otherwise a
-            # caller can probe whether someone else uploaded the same
-            # file (the response leaks the existing row's id+filename).
-            _dup_q = db.query(GalleryImage).filter(
-                GalleryImage.file_hash == file_hash,
-                GalleryImage.is_active == True,
-            )
-            if user:
-                _dup_q = _dup_q.filter(GalleryImage.owner == user)
-            existing = _dup_q.first()
-            if existing:
-                return {"ok": False, "duplicate": True, "filename": existing.filename,
-                        "id": existing.id, "message": "Duplicate photo skipped"}
+                # SECURITY: scope the dup-detect to THIS user — otherwise a
+                # caller can probe whether someone else uploaded the same
+                # file (the response leaks the existing row's id+filename).
+                _dup_q = db.query(GalleryImage).filter(
+                    GalleryImage.file_hash == file_hash,
+                    GalleryImage.is_active == True,
+                )
+                if user:
+                    _dup_q = _dup_q.filter(GalleryImage.owner == user)
+                existing = _dup_q.first()
+                if existing:
+                    return {"ok": False, "duplicate": True, "filename": existing.filename,
+                            "id": existing.id, "message": "Duplicate photo skipped"}
 
-            img_dir = Path(GENERATED_IMAGES_DIR)
-            img_dir.mkdir(parents=True, exist_ok=True)
+                img_dir = Path(GENERATED_IMAGES_DIR)
+                img_dir.mkdir(parents=True, exist_ok=True)
 
-            ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "png"
-            VIDEO_EXTS = {"mp4", "mov", "webm", "mkv", "m4v"}
-            IMAGE_EXTS = {"png", "jpg", "jpeg", "webp", "gif"}
-            if ext not in VIDEO_EXTS and ext not in IMAGE_EXTS:
-                raise HTTPException(400, f"Unsupported file type: .{ext}")
-            is_video = ext in VIDEO_EXTS
-            filename = f"{uuid.uuid4().hex[:12]}.{ext}"
-            img_path = img_dir / filename
-            img_path.write_bytes(content)
+                ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "png"
+                VIDEO_EXTS = {"mp4", "mov", "webm", "mkv", "m4v"}
+                IMAGE_EXTS = {"png", "jpg", "jpeg", "webp", "gif"}
+                if ext not in VIDEO_EXTS and ext not in IMAGE_EXTS:
+                    raise HTTPException(400, f"Unsupported file type: .{ext}")
+                is_video = ext in VIDEO_EXTS
+                filename = f"{uuid.uuid4().hex[:12]}.{ext}"
+                img_path = img_dir / filename
+                img_path.write_bytes(content)
 
-            # Extract EXIF for images only — PIL can't parse video containers
-            # and the failure path logs a noisy WARNING. We'll add ffprobe-based
-            # video metadata extraction in a follow-up.
-            exif = {} if is_video else _extract_exif(content)
-            original_name = file.filename.rsplit(".", 1)[0] if "." in file.filename else file.filename
+                # Extract EXIF for images only — PIL can't parse video containers
+                # and the failure path logs a noisy WARNING. We'll add ffprobe-based
+                # video metadata extraction in a follow-up.
+                exif = {} if is_video else _extract_exif(content)
+                original_name = file.filename.rsplit(".", 1)[0] if "." in file.filename else file.filename
 
-            img_id = str(uuid.uuid4())
-            db.add(GalleryImage(
-                id=img_id,
-                filename=filename,
-                prompt=original_name,
-                model="imported",
-                owner=user,
-                file_hash=file_hash,
-                file_size=len(content),
-                width=exif.get("width"),
-                height=exif.get("height"),
-                taken_at=exif.get("taken_at"),
-                camera_make=exif.get("camera_make"),
-                camera_model=exif.get("camera_model"),
-                gps_lat=exif.get("gps_lat"),
-                gps_lng=exif.get("gps_lng"),
-                album_id=album_id,
-            ))
-            db.commit()
-            resp = {"ok": True, "filename": filename, "id": img_id}
-            if exif.get("exif_error"):
-                resp["exif_warning"] = exif["exif_error"]
-            return resp
-        finally:
-            db.close()
+                img_id = str(uuid.uuid4())
+                db.add(GalleryImage(
+                    id=img_id,
+                    filename=filename,
+                    prompt=original_name,
+                    model="imported",
+                    owner=user,
+                    file_hash=file_hash,
+                    file_size=len(content),
+                    width=exif.get("width"),
+                    height=exif.get("height"),
+                    taken_at=exif.get("taken_at"),
+                    camera_make=exif.get("camera_make"),
+                    camera_model=exif.get("camera_model"),
+                    gps_lat=exif.get("gps_lat"),
+                    gps_lng=exif.get("gps_lng"),
+                    album_id=album_id,
+                ))
+                db.commit()
+                resp = {"ok": True, "filename": filename, "id": img_id}
+                if exif.get("exif_error"):
+                    resp["exif_warning"] = exif["exif_error"]
+                return resp
+            finally:
+                db.close()
+        return await asyncio.to_thread(_off_the_loop)
 
     # ---- POST /api/gallery/{id}/replace ----
     @router.post("/api/gallery/{image_id}/replace")
@@ -493,23 +497,26 @@ def setup_gallery_routes() -> APIRouter:
         photos that have no AI prompt)."""
         user = get_current_user(request)
         data = await request.json()
-        new_name = (data.get("name") or "").strip()
-        if not new_name:
-            raise HTTPException(400, "Name cannot be empty")
-        if len(new_name) > 500:
-            raise HTTPException(400, "Name too long")
-        db = SessionLocal()
-        try:
-            img = db.query(GalleryImage).filter(GalleryImage.id == image_id).first()
-            if not img:
-                raise HTTPException(404, "Image not found")
-            if not user or img.owner != user:
-                raise HTTPException(403, "Not your image")
-            img.prompt = new_name
-            db.commit()
-            return {"ok": True, "name": new_name}
-        finally:
-            db.close()
+        # `B1223`: the database work, off the event loop.
+        def _off_the_loop():
+            new_name = (data.get("name") or "").strip()
+            if not new_name:
+                raise HTTPException(400, "Name cannot be empty")
+            if len(new_name) > 500:
+                raise HTTPException(400, "Name too long")
+            db = SessionLocal()
+            try:
+                img = db.query(GalleryImage).filter(GalleryImage.id == image_id).first()
+                if not img:
+                    raise HTTPException(404, "Image not found")
+                if not user or img.owner != user:
+                    raise HTTPException(403, "Not your image")
+                img.prompt = new_name
+                db.commit()
+                return {"ok": True, "name": new_name}
+            finally:
+                db.close()
+        return await asyncio.to_thread(_off_the_loop)
 
     # ---- POST /api/gallery/{image_id}/rotate ----
     @router.post("/api/gallery/{image_id}/rotate")
@@ -521,52 +528,55 @@ def setup_gallery_routes() -> APIRouter:
         from io import BytesIO
 
         data = await request.json()
-        try:
-            angle = int(data.get("angle", 90))
-        except (TypeError, ValueError):
-            raise HTTPException(400, "Invalid angle")
-        if angle not in (90, -90, 180, 270):
-            raise HTTPException(400, "Angle must be 90, -90, 180, or 270")
+        # `B1223`: the database work, off the event loop.
+        def _off_the_loop():
+            try:
+                angle = int(data.get("angle", 90))
+            except (TypeError, ValueError):
+                raise HTTPException(400, "Invalid angle")
+            if angle not in (90, -90, 180, 270):
+                raise HTTPException(400, "Angle must be 90, -90, 180, or 270")
 
-        user = get_current_user(request)
-        db = SessionLocal()
-        try:
-            img = db.query(GalleryImage).filter(GalleryImage.id == image_id).first()
-            if not img:
-                raise HTTPException(404, "Image not found")
-            if not user or img.owner != user:
-                raise HTTPException(403, "Not your image")
+            user = get_current_user(request)
+            db = SessionLocal()
+            try:
+                img = db.query(GalleryImage).filter(GalleryImage.id == image_id).first()
+                if not img:
+                    raise HTTPException(404, "Image not found")
+                if not user or img.owner != user:
+                    raise HTTPException(403, "Not your image")
 
-            img_path = _gallery_image_path(img.filename)
-            if not img_path.exists():
-                raise HTTPException(404, "Image file not found")
+                img_path = _gallery_image_path(img.filename)
+                if not img_path.exists():
+                    raise HTTPException(404, "Image file not found")
 
-            # PIL rotates counter-clockwise; the API takes "clockwise"
-            # convention so we negate to match user expectation.
-            with Image.open(img_path) as pil:
-                rotated = pil.rotate(-angle, expand=True)
-                # Recompute hash so dedupe stays accurate.
-                buf = BytesIO()
-                ext = img.filename.rsplit(".", 1)[-1].lower()
-                save_kwargs = {}
-                if ext in ("jpg", "jpeg"):
-                    save_kwargs["quality"] = 95
-                    fmt = "JPEG"
-                elif ext == "webp":
-                    fmt = "WEBP"
-                    save_kwargs["quality"] = 95
-                else:
-                    fmt = "PNG"
-                rotated.save(buf, format=fmt, **save_kwargs)
-                content = buf.getvalue()
-                img_path.write_bytes(content)
-                img.file_hash = hashlib.sha256(content).hexdigest()
-                img.file_size = len(content)
-                img.width, img.height = rotated.size
-            db.commit()
-            return {"ok": True, "width": img.width, "height": img.height}
-        finally:
-            db.close()
+                # PIL rotates counter-clockwise; the API takes "clockwise"
+                # convention so we negate to match user expectation.
+                with Image.open(img_path) as pil:
+                    rotated = pil.rotate(-angle, expand=True)
+                    # Recompute hash so dedupe stays accurate.
+                    buf = BytesIO()
+                    ext = img.filename.rsplit(".", 1)[-1].lower()
+                    save_kwargs = {}
+                    if ext in ("jpg", "jpeg"):
+                        save_kwargs["quality"] = 95
+                        fmt = "JPEG"
+                    elif ext == "webp":
+                        fmt = "WEBP"
+                        save_kwargs["quality"] = 95
+                    else:
+                        fmt = "PNG"
+                    rotated.save(buf, format=fmt, **save_kwargs)
+                    content = buf.getvalue()
+                    img_path.write_bytes(content)
+                    img.file_hash = hashlib.sha256(content).hexdigest()
+                    img.file_size = len(content)
+                    img.width, img.height = rotated.size
+                db.commit()
+                return {"ok": True, "width": img.width, "height": img.height}
+            finally:
+                db.close()
+        return await asyncio.to_thread(_off_the_loop)
 
     # ---- POST /api/gallery/ai-upscale ----
     @router.post("/api/gallery/ai-upscale")
@@ -671,7 +681,7 @@ def setup_gallery_routes() -> APIRouter:
 
     # ---- GET /api/gallery/library ----
     @router.get("/api/gallery/library")
-    async def gallery_library(
+    def gallery_library(
         request: Request,
         search: Optional[str] = Query(None),
         tag: Optional[str] = Query(None),
@@ -810,7 +820,7 @@ def setup_gallery_routes() -> APIRouter:
     # ---- Album CRUD (must be before {image_id} catch-all) ----
 
     @router.get("/api/gallery/albums")
-    async def list_albums(request: Request):
+    def list_albums(request: Request):
         user = get_current_user(request)
         db = SessionLocal()
         try:
@@ -852,27 +862,30 @@ def setup_gallery_routes() -> APIRouter:
         import uuid
         user = get_current_user(request)
         data = await request.json()
-        name = (data.get("name") or "").strip()
-        if not name:
-            raise HTTPException(400, "Album name required")
-        db = SessionLocal()
-        try:
-            a = GalleryAlbum(
-                id=str(uuid.uuid4()), name=name,
-                description=data.get("description", ""),
-                owner=user,
-            )
-            db.add(a)
-            db.commit()
-            return {"ok": True, "id": a.id, "name": a.name}
-        finally:
-            db.close()
+        # `B1223`: the database work, off the event loop.
+        def _off_the_loop():
+            name = (data.get("name") or "").strip()
+            if not name:
+                raise HTTPException(400, "Album name required")
+            db = SessionLocal()
+            try:
+                a = GalleryAlbum(
+                    id=str(uuid.uuid4()), name=name,
+                    description=data.get("description", ""),
+                    owner=user,
+                )
+                db.add(a)
+                db.commit()
+                return {"ok": True, "id": a.id, "name": a.name}
+            finally:
+                db.close()
+        return await asyncio.to_thread(_off_the_loop)
 
     # (`B1453`: `GET /api/gallery/stats` was here; the stats line counts what
     # the library returned, and nothing asked for the rest.)
 
     @router.post("/api/gallery/ai-tag-batch")
-    async def ai_tag_batch(
+    def ai_tag_batch(
         request: Request,
         album_id: Optional[str] = Query(None),
         limit: int = Query(200),
@@ -895,7 +908,7 @@ def setup_gallery_routes() -> APIRouter:
 
     # ---- GET /api/gallery/{image_id} ----
     @router.get("/api/gallery/{image_id}")
-    async def get_gallery_image(request: Request, image_id: str) -> Dict[str, Any]:
+    def get_gallery_image(request: Request, image_id: str) -> Dict[str, Any]:
         user = get_current_user(request)
         db = SessionLocal()
         try:
@@ -916,7 +929,7 @@ def setup_gallery_routes() -> APIRouter:
 
     # ---- PATCH /api/gallery/{image_id} ----
     @router.patch("/api/gallery/{image_id}")
-    async def patch_gallery_image(request: Request, image_id: str, req: GalleryPatch) -> Dict[str, Any]:
+    def patch_gallery_image(request: Request, image_id: str, req: GalleryPatch) -> Dict[str, Any]:
         user = get_current_user(request)
         db = SessionLocal()
         try:
@@ -1027,7 +1040,7 @@ def setup_gallery_routes() -> APIRouter:
     # Leaves user `tags` intact. Use when AI-suggested tags like "dog" /
     # "woman" have leaked into the gallery and you want them gone.
     @router.post("/api/gallery/clear-ai-tags")
-    async def clear_gallery_ai_tags(request: Request, image_id: Optional[str] = Query(None)) -> Dict[str, Any]:
+    def clear_gallery_ai_tags(request: Request, image_id: Optional[str] = Query(None)) -> Dict[str, Any]:
         user = get_current_user(request)
         db = SessionLocal()
         try:
@@ -1054,7 +1067,7 @@ def setup_gallery_routes() -> APIRouter:
 
     # ---- DELETE /api/gallery/{image_id} ----
     @router.delete("/api/gallery/{image_id}")
-    async def delete_gallery_image(request: Request, image_id: str) -> Dict[str, str]:
+    def delete_gallery_image(request: Request, image_id: str) -> Dict[str, str]:
         user = get_current_user(request)
         db = SessionLocal()
         try:
@@ -2083,25 +2096,28 @@ def setup_gallery_routes() -> APIRouter:
     async def update_album(request: Request, album_id: str):
         user = get_current_user(request)
         data = await request.json()
-        db = SessionLocal()
-        try:
-            album = _get_or_404_album(db, album_id, user)
-            if data.get("name") is not None:
-                album.name = data["name"]
-            if data.get("description") is not None:
-                album.description = data["description"]
-            if data.get("cover_id") is not None:
-                cover_id = data["cover_id"] or None
-                if cover_id:
-                    _get_or_404_image(db, cover_id, user)
-                album.cover_id = cover_id
-            db.commit()
-            return {"ok": True}
-        finally:
-            db.close()
+        # `B1223`: the database work, off the event loop.
+        def _off_the_loop():
+            db = SessionLocal()
+            try:
+                album = _get_or_404_album(db, album_id, user)
+                if data.get("name") is not None:
+                    album.name = data["name"]
+                if data.get("description") is not None:
+                    album.description = data["description"]
+                if data.get("cover_id") is not None:
+                    cover_id = data["cover_id"] or None
+                    if cover_id:
+                        _get_or_404_image(db, cover_id, user)
+                    album.cover_id = cover_id
+                db.commit()
+                return {"ok": True}
+            finally:
+                db.close()
+        return await asyncio.to_thread(_off_the_loop)
 
     @router.delete("/api/gallery/albums/{album_id}")
-    async def delete_album(request: Request, album_id: str):
+    def delete_album(request: Request, album_id: str):
         user = get_current_user(request)
         db = SessionLocal()
         try:
@@ -2120,43 +2136,49 @@ def setup_gallery_routes() -> APIRouter:
     async def add_to_album(request: Request, album_id: str):
         user = get_current_user(request)
         data = await request.json()
-        ids = data.get("image_ids", [])
-        db = SessionLocal()
-        try:
-            _get_or_404_album(db, album_id, user)
-            # Only move images the caller owns
-            q = db.query(GalleryImage).filter(GalleryImage.id.in_(ids))
-            if user:
-                q = q.filter(GalleryImage.owner == user)
-            q.update({"album_id": album_id}, synchronize_session=False)
-            db.commit()
-            return {"ok": True, "count": len(ids)}
-        finally:
-            db.close()
+        # `B1223`: the database work, off the event loop.
+        def _off_the_loop():
+            ids = data.get("image_ids", [])
+            db = SessionLocal()
+            try:
+                _get_or_404_album(db, album_id, user)
+                # Only move images the caller owns
+                q = db.query(GalleryImage).filter(GalleryImage.id.in_(ids))
+                if user:
+                    q = q.filter(GalleryImage.owner == user)
+                q.update({"album_id": album_id}, synchronize_session=False)
+                db.commit()
+                return {"ok": True, "count": len(ids)}
+            finally:
+                db.close()
+        return await asyncio.to_thread(_off_the_loop)
 
     @router.post("/api/gallery/albums/{album_id}/remove")
     async def remove_from_album(request: Request, album_id: str):
         user = get_current_user(request)
         data = await request.json()
-        ids = data.get("image_ids", [])
-        db = SessionLocal()
-        try:
-            _get_or_404_album(db, album_id, user)
-            q = db.query(GalleryImage).filter(
-                GalleryImage.id.in_(ids), GalleryImage.album_id == album_id
-            )
-            if user:
-                q = q.filter(GalleryImage.owner == user)
-            q.update({"album_id": None}, synchronize_session=False)
-            db.commit()
-            return {"ok": True}
-        finally:
-            db.close()
+        # `B1223`: the database work, off the event loop.
+        def _off_the_loop():
+            ids = data.get("image_ids", [])
+            db = SessionLocal()
+            try:
+                _get_or_404_album(db, album_id, user)
+                q = db.query(GalleryImage).filter(
+                    GalleryImage.id.in_(ids), GalleryImage.album_id == album_id
+                )
+                if user:
+                    q = q.filter(GalleryImage.owner == user)
+                q.update({"album_id": None}, synchronize_session=False)
+                db.commit()
+                return {"ok": True}
+            finally:
+                db.close()
+        return await asyncio.to_thread(_off_the_loop)
 
     # ---- Favorite toggle ----
 
     @router.post("/api/gallery/{image_id}/favorite")
-    async def toggle_favorite(request: Request, image_id: str):
+    def toggle_favorite(request: Request, image_id: str):
         user = get_current_user(request)
         db = SessionLocal()
         try:

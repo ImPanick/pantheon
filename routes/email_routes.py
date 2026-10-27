@@ -6028,7 +6028,7 @@ def setup_email_routes():
         return cfg
 
     @router.put("/config")
-    async def update_email_config(
+    def update_email_config(
         data: dict,
         account_id: str | None = Query(None),
         owner: str = Depends(require_owner),
@@ -6123,7 +6123,7 @@ def setup_email_routes():
     # don't specify an account_id.
 
     @router.get("/accounts")
-    async def list_email_accounts(owner: str = Depends(require_user)):
+    def list_email_accounts(owner: str = Depends(require_user)):
         """List all email accounts with credentials masked."""
         from core.database import SessionLocal, EmailAccount
         from sqlalchemy import and_, or_
@@ -6167,7 +6167,7 @@ def setup_email_routes():
             db.close()
 
     @router.post("/accounts")
-    async def create_email_account(data: dict, owner: str = Depends(require_owner)):
+    def create_email_account(data: dict, owner: str = Depends(require_owner)):
         """Create a new email account."""
         from core.database import SessionLocal, EmailAccount
         from src.secret_storage import encrypt as _enc
@@ -6231,7 +6231,7 @@ def setup_email_routes():
             db.close()
 
     @router.put("/accounts/{account_id}")
-    async def update_email_account(account_id: str, data: dict, owner: str = Depends(require_user)):
+    def update_email_account(account_id: str, data: dict, owner: str = Depends(require_user)):
         """Update an email account. Passwords only overwrite if non-empty."""
         # Path param account_id — dep validated via Query, re-check the path-param value.
         _assert_owns_account(account_id, owner)
@@ -6269,7 +6269,7 @@ def setup_email_routes():
             db.close()
 
     @router.delete("/accounts/{account_id}")
-    async def delete_email_account(account_id: str, owner: str = Depends(require_user)):
+    def delete_email_account(account_id: str, owner: str = Depends(require_user)):
         initial_scope = _discover_email_account_mutation_scope(account_id, owner)
         from core.database import SessionLocal, EmailAccount
         db = SessionLocal()
@@ -6539,7 +6539,7 @@ def setup_email_routes():
         }
 
     @router.post("/accounts/{account_id}/set-default")
-    async def set_default_account(account_id: str, owner: str = Depends(require_user)):
+    def set_default_account(account_id: str, owner: str = Depends(require_user)):
         initial_scope = _discover_email_account_mutation_scope(account_id, owner)
         from core.database import SessionLocal, EmailAccount
         db = SessionLocal()
@@ -6639,7 +6639,7 @@ def setup_email_routes():
         )
 
     @router.get("/oauth/{provider_id}/callback")
-    async def provider_oauth_callback(
+    def provider_oauth_callback(
         provider_id: str,
         code: str = Query(None),
         state: str = Query(None),

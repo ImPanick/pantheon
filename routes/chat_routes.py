@@ -2195,93 +2195,100 @@ def setup_chat_routes(
         _research_flags = {"do": do_research}  # Mutable container for generator scope
 
         # Query active document — prefer explicit ID from frontend, fall back to session lookup
-        active_doc = None
-        _doc_db = SessionLocal()
-        try:
-            if active_doc_id:
-                logger.info(f"[doc-inject] active_doc_id from frontend: {active_doc_id}")
-                # Scope to the caller's documents. The session and in-memory
-                # fallbacks below are already owner/session-bound; this
-                # explicit-id path looked up by id alone, so a user could
-                # inject another user's document by passing its id.
-                _doc_q = _doc_db.query(DBDocument).filter(DBDocument.id == active_doc_id)
-                active_doc = _owner_session_filter(_doc_q, ctx.user).first()
-                if active_doc:
-                    doc_session = active_doc.session_id
-                    doc_owner = getattr(active_doc, "owner", None)
-                    if doc_owner and ctx.user and doc_owner != ctx.user:
-                        logger.warning(
-                            "[doc-inject] ignoring active_doc_id %s owned by another user",
-                            active_doc_id,
-                        )
-                        active_doc = None
-                    else:
-                        # NOTE: previously dropped the doc when doc.session_id
-                        # != current chat session — but that broke the common
-                        # case of "open an email draft from one chat, ask a
-                        # different chat to write into it". The frontend only
-                        # sends active_doc_id for docs currently visible in
-                        # the UI, and we already owner-checked above, so trust
-                        # the explicit signal. We just log the mismatch and
-                        # re-bind the doc to the current session so future
-                        # turns find it via the session-fallback path too.
-                        if doc_session and doc_session != session:
-                            logger.info(
-                                "[doc-inject] cross-session active_doc_id %s (was session %s, now %s) — accepting and rebinding",
-                                active_doc_id, doc_session, session,
+        # `B1223`. The active document is looked up off the event loop: on it,
+        # a held SQLite write lock (a document save, a run finishing) stalled
+        # every other request for as long as this waited.
+        def _find_active_doc():
+            active_doc = None
+            _doc_db = SessionLocal()
+            try:
+                if active_doc_id:
+                    logger.info(f"[doc-inject] active_doc_id from frontend: {active_doc_id}")
+                    # Scope to the caller's documents. The session and in-memory
+                    # fallbacks below are already owner/session-bound; this
+                    # explicit-id path looked up by id alone, so a user could
+                    # inject another user's document by passing its id.
+                    _doc_q = _doc_db.query(DBDocument).filter(DBDocument.id == active_doc_id)
+                    active_doc = _owner_session_filter(_doc_q, ctx.user).first()
+                    if active_doc:
+                        doc_session = active_doc.session_id
+                        doc_owner = getattr(active_doc, "owner", None)
+                        if doc_owner and ctx.user and doc_owner != ctx.user:
+                            logger.warning(
+                                "[doc-inject] ignoring active_doc_id %s owned by another user",
+                                active_doc_id,
                             )
-                            try:
-                                active_doc.session_id = session
-                                _doc_db.commit()
-                            except Exception as _e:
-                                _doc_db.rollback()
-                                logger.warning(f"[doc-inject] session rebind failed: {_e}")
-                        logger.info(f"[doc-inject] found by ID: title={active_doc.title!r}, lang={active_doc.language!r}, is_active={active_doc.is_active}, content_len={len(active_doc.current_content or '')}")
-                else:
-                    logger.warning(f"[doc-inject] NOT FOUND by ID {active_doc_id}")
-            if not active_doc:
-                _email_doc_q = _doc_db.query(DBDocument).filter(
-                    DBDocument.session_id == session,
-                    DBDocument.is_active == True,
-                    DBDocument.language == "email",
-                )
-                active_doc = _owner_session_filter(_email_doc_q, ctx.user).order_by(DBDocument.updated_at.desc()).first()
+                            active_doc = None
+                        else:
+                            # NOTE: previously dropped the doc when doc.session_id
+                            # != current chat session — but that broke the common
+                            # case of "open an email draft from one chat, ask a
+                            # different chat to write into it". The frontend only
+                            # sends active_doc_id for docs currently visible in
+                            # the UI, and we already owner-checked above, so trust
+                            # the explicit signal. We just log the mismatch and
+                            # re-bind the doc to the current session so future
+                            # turns find it via the session-fallback path too.
+                            if doc_session and doc_session != session:
+                                logger.info(
+                                    "[doc-inject] cross-session active_doc_id %s (was session %s, now %s) — accepting and rebinding",
+                                    active_doc_id, doc_session, session,
+                                )
+                                try:
+                                    active_doc.session_id = session
+                                    _doc_db.commit()
+                                except Exception as _e:
+                                    _doc_db.rollback()
+                                    logger.warning(f"[doc-inject] session rebind failed: {_e}")
+                            logger.info(f"[doc-inject] found by ID: title={active_doc.title!r}, lang={active_doc.language!r}, is_active={active_doc.is_active}, content_len={len(active_doc.current_content or '')}")
+                    else:
+                        logger.warning(f"[doc-inject] NOT FOUND by ID {active_doc_id}")
+                if not active_doc:
+                    _email_doc_q = _doc_db.query(DBDocument).filter(
+                        DBDocument.session_id == session,
+                        DBDocument.is_active == True,
+                        DBDocument.language == "email",
+                    )
+                    active_doc = _owner_session_filter(_email_doc_q, ctx.user).order_by(DBDocument.updated_at.desc()).first()
+                    if active_doc:
+                        logger.info(f"[doc-inject] found email draft by session fallback: title={active_doc.title!r}")
+                if not active_doc:
+                    _session_doc_q = _doc_db.query(DBDocument).filter(
+                        DBDocument.session_id == session,
+                        DBDocument.is_active == True
+                    )
+                    active_doc = _owner_session_filter(_session_doc_q, ctx.user).order_by(DBDocument.updated_at.desc()).first()
+                    if active_doc:
+                        logger.info(f"[doc-inject] found by session fallback: title={active_doc.title!r}")
+                # Last resort: the document the agent itself just created/edited
+                # (tracked in-memory by the tool layer). This rescues docs that
+                # got orphaned from their session (session_id NULL) — otherwise
+                # neither lookup above can associate them with this conversation,
+                # so the agent never sees what it just wrote. Guarded so we never
+                # leak a doc that belongs to a DIFFERENT session.
+                if not active_doc:
+                    try:
+                        from src.agent_tools.document_tools import get_active_document
+                        _mem_id = get_active_document()
+                        if _mem_id:
+                            _mem_q = _doc_db.query(DBDocument).filter(DBDocument.id == _mem_id)
+                            cand = _owner_session_filter(_mem_q, ctx.user).first()
+                            if cand and (not cand.session_id or cand.session_id == session):
+                                active_doc = cand
+                                logger.info(f"[doc-inject] found by in-memory active id: title={active_doc.title!r} (session_id={cand.session_id!r})")
+                    except Exception as _e:
+                        logger.debug(f"[doc-inject] in-memory fallback failed: {_e}")
+                if not active_doc:
+                    logger.info(f"[doc-inject] no active doc for session {session}")
                 if active_doc:
-                    logger.info(f"[doc-inject] found email draft by session fallback: title={active_doc.title!r}")
-            if not active_doc:
-                _session_doc_q = _doc_db.query(DBDocument).filter(
-                    DBDocument.session_id == session,
-                    DBDocument.is_active == True
-                )
-                active_doc = _owner_session_filter(_session_doc_q, ctx.user).order_by(DBDocument.updated_at.desc()).first()
-                if active_doc:
-                    logger.info(f"[doc-inject] found by session fallback: title={active_doc.title!r}")
-            # Last resort: the document the agent itself just created/edited
-            # (tracked in-memory by the tool layer). This rescues docs that
-            # got orphaned from their session (session_id NULL) — otherwise
-            # neither lookup above can associate them with this conversation,
-            # so the agent never sees what it just wrote. Guarded so we never
-            # leak a doc that belongs to a DIFFERENT session.
-            if not active_doc:
-                try:
-                    from src.agent_tools.document_tools import get_active_document
-                    _mem_id = get_active_document()
-                    if _mem_id:
-                        _mem_q = _doc_db.query(DBDocument).filter(DBDocument.id == _mem_id)
-                        cand = _owner_session_filter(_mem_q, ctx.user).first()
-                        if cand and (not cand.session_id or cand.session_id == session):
-                            active_doc = cand
-                            logger.info(f"[doc-inject] found by in-memory active id: title={active_doc.title!r} (session_id={cand.session_id!r})")
-                except Exception as _e:
-                    logger.debug(f"[doc-inject] in-memory fallback failed: {_e}")
-            if not active_doc:
-                logger.info(f"[doc-inject] no active doc for session {session}")
-            if active_doc:
-                _doc_db.expunge(active_doc)
-        except Exception as e:
-            logger.warning(f"Failed to query active document: {e}")
-        finally:
-            _doc_db.close()
+                    _doc_db.expunge(active_doc)
+            except Exception as e:
+                logger.warning(f"Failed to query active document: {e}")
+            finally:
+                _doc_db.close()
+            return active_doc
+
+        active_doc = await asyncio.to_thread(_find_active_doc)
 
         # Build disabled-tools set from frontend toggles + user privileges.
         #
@@ -2513,13 +2520,17 @@ def setup_chat_routes(
         _summoned = None
         if summoned_agent:
             from src.agents.summon import SummonRefused, summon as _summon
-            _sdb = SessionLocal()
+
+            def _summon_off_the_loop():   # `B1223`: its reads, off the event loop
+                _sdb = SessionLocal()
+                try:
+                    return _summon(_user, summoned_agent, mode=chat_mode or "chat", db=_sdb)
+                finally:
+                    _sdb.close()
             try:
-                _summoned = _summon(_user, summoned_agent, mode=chat_mode or "chat", db=_sdb)
+                _summoned = await asyncio.to_thread(_summon_off_the_loop)
             except SummonRefused as _refused:
                 raise HTTPException(400, _refused.sentence)
-            finally:
-                _sdb.close()
             tool_policy = _summoned.policy(tool_policy)
         # `B1399`. The names the **policy layer** added on top are the policy's,
         # not the caller's — a guide-only turn disables every tool in the
@@ -2539,7 +2550,9 @@ def setup_chat_routes(
         # turns remain ordinary chat/agent streams and saved messages.
         _effective_mode = 'research' if effective_do_research else (chat_mode or 'chat')
         if _effective_mode in ('agent', 'research', 'chat'):
-            set_session_mode(session, _effective_mode)
+            # `B1223`: a write, so off the event loop — on it, a held lock
+            # stalled every request while this waited.
+            await asyncio.to_thread(set_session_mode, session, _effective_mode)
 
         # `B14`. Decided here, once, and read twice: `agent_runs.start` gates the
         # steer route on it, and the stream announces it so the composer can stop

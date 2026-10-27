@@ -130,7 +130,7 @@ def test_concurrent_first_account_creates_choose_one_default(account_db, monkeyp
     results = {}
 
     def create(name):
-        results[name] = asyncio.run(
+        results[name] = (
             create_account({"name": name, "is_default": False}, owner="alice")
         )
 
@@ -189,12 +189,12 @@ def test_delete_promotion_and_set_default_are_one_serial_transition(
     monkeypatch.setattr(OrmSession, "commit", pause_after_delete_commit)
 
     def delete_old_default():
-        results["delete"] = asyncio.run(
+        results["delete"] = (
             delete_account("alice-a", owner="alice")
         )
 
     def select_new_default():
-        results["set"] = asyncio.run(
+        results["set"] = (
             set_default("alice-c", owner="alice")
         )
 
@@ -453,13 +453,13 @@ def test_rename_serializes_old_and_new_owner_and_stale_set_default_fails_closed(
     results = {}
 
     def rename_owner():
-        results["rename"] = asyncio.run(
+        results["rename"] = (
             rename_user("alice", SimpleNamespace(username="bob"), request)
         )
 
     def select_stale_default():
         try:
-            results["set"] = asyncio.run(
+            results["set"] = (
                 set_default("alice-b", owner="alice")
             )
         except Exception as exc:  # asserted below with its HTTP status

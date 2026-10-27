@@ -576,7 +576,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             return first[:50] if first else "Untitled Task"
 
     @router.get("")
-    async def list_tasks(request: Request, status: Optional[str] = None,
+    def list_tasks(request: Request, status: Optional[str] = None,
                          include_last_run: bool = False):
         user = _owner(request)
         # `P23-07` (`PERF-M-18`): a list is a read. The built-ins are seeded at
@@ -1031,7 +1031,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         return {"notifications": notes}
 
     @router.get("/waiting")
-    async def list_waiting_questions(request: Request):
+    def list_waiting_questions(request: Request):
         """`B1102`. Every plain Prompt task of this person's whose run waits for
         a yes now — re-offered on page load as a workflow's are
         (`static/js/workflowApprovalNotice.js`), because the notification queue
@@ -1116,7 +1116,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         return {"ok": True, "outcome": outcome, "sentence": verdict.sentence}
 
     @router.post("/{task_id}/clear-cache")
-    async def clear_task_cache(request: Request, task_id: str):
+    def clear_task_cache(request: Request, task_id: str):
         """Clear derived cache for one built-in task."""
         user = _owner(request)
         db = SessionLocal()
@@ -1196,7 +1196,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         return {"ok": True, "action": action, "cleared": cleared, "files": removed_files}
 
     @router.get("/{task_id}")
-    async def get_task(request: Request, task_id: str):
+    def get_task(request: Request, task_id: str):
         user = _owner(request)
         db = SessionLocal()
         try:
@@ -1219,7 +1219,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             raise HTTPException(409, task_belongs_to_agent(task.name, hire.name))
 
     @router.put("/{task_id}")
-    async def update_task(request: Request, task_id: str, req: TaskUpdate):
+    def update_task(request: Request, task_id: str, req: TaskUpdate):
         user = _owner(request)
         db = SessionLocal()
         try:
@@ -1365,7 +1365,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             db.close()
 
     @router.delete("/{task_id}")
-    async def delete_task(request: Request, task_id: str):
+    def delete_task(request: Request, task_id: str):
         user = _owner(request)
         db = SessionLocal()
         try:
@@ -1396,7 +1396,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             db.close()
 
     @router.post("/{task_id}/pause")
-    async def pause_task(request: Request, task_id: str):
+    def pause_task(request: Request, task_id: str):
         user = _owner(request)
         db = SessionLocal()
         try:
@@ -1413,7 +1413,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             db.close()
 
     @router.post("/{task_id}/resume")
-    async def resume_task(request: Request, task_id: str):
+    def resume_task(request: Request, task_id: str):
         user = _owner(request)
         db = SessionLocal()
         try:
@@ -1456,7 +1456,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             db.close()
 
     @router.post("/{task_id}/revert")
-    async def revert_task(request: Request, task_id: str):
+    def revert_task(request: Request, task_id: str):
         """Reset a built-in (housekeeping) task to its default config."""
         user = _owner(request)
         db = SessionLocal()
@@ -1624,7 +1624,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         return {"ok": True, "message": "Task stopped"}
 
     @router.get("/runs/recent")
-    async def list_recent_runs(request: Request, limit: int = 50, max_result_chars: int = 6000):
+    def list_recent_runs(request: Request, limit: int = 50, max_result_chars: int = 6000):
         """Recent task runs across ALL tasks for this owner. Drives the Activity view."""
         user = _owner(request)
         limit = max(1, min(limit, 200))
@@ -1704,7 +1704,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             db.close()
 
     @router.get("/{task_id}/runs")
-    async def list_runs(request: Request, task_id: str, limit: int = 20, offset: int = 0):
+    def list_runs(request: Request, task_id: str, limit: int = 20, offset: int = 0):
         user = _owner(request)
         db = SessionLocal()
         try:
@@ -1965,7 +1965,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         return {"ok": True, "message": "Task triggered via webhook"}
 
     @router.post("/{task_id}/webhook-regenerate")
-    async def regenerate_webhook(request: Request, task_id: str):
+    def regenerate_webhook(request: Request, task_id: str):
         user = _owner(request)
         db = SessionLocal()
         try:

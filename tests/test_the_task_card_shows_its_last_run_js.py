@@ -75,7 +75,7 @@ def _served(task_db, monkeypatch) -> dict:
     request = SimpleNamespace(state=SimpleNamespace(current_user=None))
     out = {}
     for asked in (True, False):
-        out[asked] = json.loads(json.dumps(asyncio.run(handler(request, include_last_run=asked))))
+        out[asked] = json.loads(json.dumps(handler(request, include_last_run=asked)))
     return out
 
 

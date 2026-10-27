@@ -110,7 +110,7 @@ async def test_patch_document_rejects_cross_owner_session_link():
         alice_session, bob_session, _alice_doc, bob_doc, _legacy_doc = _seed()
 
         with pytest.raises(HTTPException) as exc:
-            await patch_document(_req("bob"), bob_doc, DocumentPatch(session_id=alice_session))
+            patch_document(_req("bob"), bob_doc, DocumentPatch(session_id=alice_session))
 
         assert exc.value.status_code == 404
         db = _TS()
@@ -135,7 +135,7 @@ async def test_list_documents_filters_foreign_docs_in_visible_session():
         finally:
             db.close()
 
-        rows = await list_documents(_req("alice"), alice_session)
+        rows = list_documents(_req("alice"), alice_session)
         ids = {row["id"] for row in rows}
 
         assert alice_doc in ids

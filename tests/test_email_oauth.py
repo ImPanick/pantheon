@@ -345,7 +345,7 @@ async def test_callback_missing_code_returns_generic_error():
 
     callback = _callback_endpoint()
     state = make_oauth_state("acct-1", "alice")
-    resp = await callback(code=None, state=state, error=None, request=_FakeRequest())
+    resp = callback(code=None, state=state, error=None, request=_FakeRequest())
 
     loc = _location(resp)
     assert "email_oauth_error=missing_code" in loc
@@ -357,7 +357,7 @@ async def test_callback_missing_code_returns_generic_error():
 async def test_callback_provider_error_returns_generic_error():
     """An `error` from Google → generic error redirect, no raw provider text."""
     callback = _callback_endpoint()
-    resp = await callback(code=None, state=None, error="access_denied", request=_FakeRequest())
+    resp = callback(code=None, state=None, error="access_denied", request=_FakeRequest())
 
     loc = _location(resp)
     assert "email_oauth_error=google_error" in loc
@@ -369,7 +369,7 @@ async def test_callback_tampered_state_returns_generic_error_no_leak():
     """Tampered/invalid state → invalid_state redirect; the auth code and any
     token must never appear in the redirect URL."""
     callback = _callback_endpoint()
-    resp = await callback(code="4/secret-auth-code", state="not-a-valid-state",
+    resp = callback(code="4/secret-auth-code", state="not-a-valid-state",
                           error=None, request=_FakeRequest())
 
     loc = _location(resp)
@@ -407,7 +407,7 @@ async def test_callback_owner_mismatch_does_not_write_tokens():
          mock.patch("src.paced_http.get_sync", return_value=userinfo_resp), \
          mock.patch("core.database.SessionLocal", Factory):
         callback = _callback_endpoint()
-        resp = await callback(code="4/code", state=state, error=None, request=_FakeRequest())
+        resp = callback(code="4/code", state=state, error=None, request=_FakeRequest())
 
     loc = _location(resp)
     assert "email_oauth_error=ownership_error" in loc
@@ -455,7 +455,7 @@ async def test_callback_valid_owner_writes_encrypted_tokens_to_intended_account(
          mock.patch("src.paced_http.get_sync", return_value=userinfo_resp), \
          mock.patch("core.database.SessionLocal", Factory):
         callback = _callback_endpoint()
-        resp = await callback(code="4/code", state=state, error=None, request=_FakeRequest())
+        resp = callback(code="4/code", state=state, error=None, request=_FakeRequest())
 
     assert "email_oauth_success=1" in _location(resp)
 
@@ -514,7 +514,7 @@ async def test_callback_redirect_uri_follows_the_request_scheme(scheme, monkeypa
          mock.patch("src.paced_http.get_sync", return_value=userinfo_resp), \
          mock.patch("core.database.SessionLocal", Factory):
         callback = _callback_endpoint()
-        await callback(
+        callback(
             code="4/code", state=state, error=None,
             request=_FakeRequest(scheme=scheme, host="pantheon.example.ts.net:7443"),
         )
@@ -550,7 +550,7 @@ async def test_callback_redirect_uri_env_override_still_wins(monkeypatch):
          mock.patch("src.paced_http.get_sync", return_value=userinfo_resp), \
          mock.patch("core.database.SessionLocal", Factory):
         callback = _callback_endpoint()
-        await callback(code="4/code", state=state, error=None, request=_FakeRequest(scheme="http"))
+        callback(code="4/code", state=state, error=None, request=_FakeRequest(scheme="http"))
 
     assert _posted_redirect_uri(mock_post) == pinned
 
@@ -621,7 +621,7 @@ async def test_callback_rejects_token_for_a_different_mailbox_identity():
     with mock.patch("src.paced_http.post_sync", return_value=token_resp), \
          mock.patch("src.paced_http.get_sync", return_value=userinfo_resp), \
          mock.patch("core.database.SessionLocal", Factory):
-        resp = await _callback_endpoint()(
+        resp = _callback_endpoint()(
             code="4/code",
             state=state,
             error=None,
@@ -670,7 +670,7 @@ async def test_callback_rejects_reconnect_without_a_fresh_refresh_token():
     with mock.patch("src.paced_http.post_sync", return_value=token_resp), \
          mock.patch("src.paced_http.get_sync") as userinfo_get, \
          mock.patch("core.database.SessionLocal", Factory):
-        resp = await _callback_endpoint()(
+        resp = _callback_endpoint()(
             code="4/code",
             state=state,
             error=None,
@@ -724,7 +724,7 @@ async def test_callback_requires_verified_mailbox_identity(userinfo_result):
     with mock.patch("src.paced_http.post_sync", return_value=token_resp), \
          mock.patch("src.paced_http.get_sync", userinfo_call), \
          mock.patch("core.database.SessionLocal", Factory):
-        resp = await _callback_endpoint()(
+        resp = _callback_endpoint()(
             code="4/code",
             state=state,
             error=None,
@@ -902,7 +902,7 @@ async def test_account_list_response_does_not_expose_token_values():
     assert list_accounts is not None, "accounts list route not found"
 
     with mock.patch("core.database.SessionLocal", Factory):
-        result = await list_accounts(owner="alice")
+        result = list_accounts(owner="alice")  # `B1223`: a plain `def` now (Starlette's thread pool)
 
     blob = json.dumps(result)
     assert raw_access not in blob, "raw access token must not appear in list response"

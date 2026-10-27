@@ -112,7 +112,7 @@ async def test_list_documents_refuses_none_user_when_auth_enabled_is_false(monke
         list_docs = _endpoint("GET", "/api/documents/{session_id}")
         session_id, _doc_id = _seed()
         with pytest.raises(HTTPException) as exc:
-            await list_docs(_req(None), session_id)
+            list_docs(_req(None), session_id)
         assert exc.value.status_code == 403
     finally:
         droutes.SessionLocal = previous
@@ -126,7 +126,7 @@ async def test_get_document_refuses_none_user_when_auth_enabled_is_false(monkeyp
         get_doc = _endpoint("GET", "/api/document/{doc_id}")
         _session_id, doc_id = _seed()
         with pytest.raises(HTTPException) as exc:
-            await get_doc(_req(None), doc_id)
+            get_doc(_req(None), doc_id)
         assert exc.value.status_code == 403
     finally:
         droutes.SessionLocal = previous
@@ -170,7 +170,7 @@ async def test_list_documents_rejects_none_user_when_auth_enabled(monkeypatch):
         session_id, _doc_id = _seed()
 
         with pytest.raises(HTTPException) as exc:
-            await list_docs(_req(None), session_id)
+            list_docs(_req(None), session_id)
 
         assert exc.value.status_code == 403
     finally:
@@ -187,7 +187,7 @@ async def test_get_document_rejects_none_user_when_auth_enabled(monkeypatch):
         _session_id, doc_id = _seed()
 
         with pytest.raises(HTTPException) as exc:
-            await get_doc(_req(None), doc_id)
+            get_doc(_req(None), doc_id)
 
         assert exc.value.status_code == 403
     finally:
@@ -238,7 +238,7 @@ async def test_get_document_rejects_wrong_owner(monkeypatch):
         _session_id, doc_id = _seed(owner="alice")
 
         with pytest.raises(HTTPException) as exc:
-            await get_doc(_req("bob"), doc_id)
+            get_doc(_req("bob"), doc_id)
 
         assert exc.value.status_code == 404
     finally:
@@ -270,7 +270,7 @@ async def test_list_documents_hides_wrong_owner_docs(monkeypatch):
         finally:
             db.close()
 
-        rows = await list_docs(_req("alice"), alice_session)
+        rows = list_docs(_req("alice"), alice_session)
         ids = [row["id"] for row in rows]
         assert alice_doc in ids
         assert bob_doc not in ids, "wrong-owner docs must be hidden"

@@ -120,7 +120,7 @@ def _linked_row(provider_id="google", email="alice@nyu.edu"):
     with mock.patch("src.paced_http.post_sync", return_value=token_resp), \
          mock.patch("src.paced_http.get_sync", return_value=userinfo_resp), \
          mock.patch("core.database.SessionLocal", Factory):
-        resp = asyncio.run(
+        resp = (
             callback(provider_id=provider_id, code="4/code", state=state,
                      error=None, request=None)
         )
@@ -224,7 +224,7 @@ def test_every_other_caller_still_needs_a_name():
     import routes.email_routes as er
 
     source = EMAIL_ROUTES.read_text(encoding="utf-8")
-    guard = source[source.index("async def create_email_account"):]
+    guard = source[source.index("def create_email_account"):]
     guard = guard[: guard.index("imap_port, port_err")]
     assert 'return {"ok": False, "error": "name required"}' in guard
 

@@ -1252,7 +1252,7 @@ def setup_session_routes(
     # change, and an OpenAI chat is an endpoint like any other.)
 
     @router.post("/session/{session_id}/important")
-    async def mark_session_important(request: Request, session_id: str, important: bool = Form(True)):
+    def mark_session_important(request: Request, session_id: str, important: bool = Form(True)):
         """Mark a session as important to protect it from automatic cleanup."""
         _verify_session_owner(request, session_id)
         try:

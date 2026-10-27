@@ -1099,7 +1099,7 @@ def setup_calendar_routes(upload_handler=None) -> APIRouter:
 
 
     @router.delete("/calendars/{cal_id}")
-    async def delete_calendar(request: Request, cal_id: str):
+    def delete_calendar(request: Request, cal_id: str):
         owner = _require_user(request)
         db = SessionLocal()
         try:
@@ -1119,7 +1119,7 @@ def setup_calendar_routes(upload_handler=None) -> APIRouter:
 
 
     @router.get("/calendars")
-    async def list_calendars(request: Request):
+    def list_calendars(request: Request):
         owner = _require_user(request)
         db = SessionLocal()
         try:
@@ -1142,7 +1142,7 @@ def setup_calendar_routes(upload_handler=None) -> APIRouter:
             db.close()
 
     @router.get("/events")
-    async def list_events(request: Request, start: str, end: str, calendar: str = ""):
+    def list_events(request: Request, start: str, end: str, calendar: str = ""):
         owner = _require_user(request)
         try:
             start_dt = _parse_dt(start)
@@ -1364,7 +1364,7 @@ def setup_calendar_routes(upload_handler=None) -> APIRouter:
             db.close()
 
     @router.post("/calendars")
-    async def create_calendar(request: Request, name: str = "Imported", color: str = "#5b8abf"):
+    def create_calendar(request: Request, name: str = "Imported", color: str = "#5b8abf"):
         owner = _require_user(request)
         _reserve_calendar_uploads(request, color)
         db = SessionLocal()
@@ -1387,7 +1387,7 @@ def setup_calendar_routes(upload_handler=None) -> APIRouter:
             db.close()
 
     @router.put("/calendars/{cal_id}")
-    async def update_calendar(request: Request, cal_id: str, name: str = None, color: str = None):
+    def update_calendar(request: Request, cal_id: str, name: str = None, color: str = None):
         owner = _require_user(request)
         _reserve_calendar_uploads(request, color)
         db = SessionLocal()
@@ -1565,7 +1565,7 @@ def setup_calendar_routes(upload_handler=None) -> APIRouter:
             db.close()
 
     @router.get("/export/{cal_id}")
-    async def export_ics(request: Request, cal_id: str):
+    def export_ics(request: Request, cal_id: str):
         """Export a calendar as .ics file."""
         from fastapi.responses import Response
 

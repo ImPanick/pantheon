@@ -446,7 +446,7 @@ async def test_the_failure_edge_is_created_validated_and_served(task_db, monkeyp
             trigger_type="webhook", then_task_id="happy", else_task_id="sad"))
     new_id = created["task"]["id"] if "task" in created else created["id"]
 
-    listed = await _endpoint("GET", "/api/tasks")(req)
+    listed = _endpoint("GET", "/api/tasks")(req)  # `B1223`: a plain `def` now
     row = next(t for t in listed["tasks"] if t["id"] == new_id)
     assert row["else_task_id"] == "sad"
     assert {(e["when"], e["to"]) for e in row["edges"]} == {

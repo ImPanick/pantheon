@@ -80,7 +80,7 @@ def setup_editor_draft_routes() -> APIRouter:
     router = APIRouter(tags=["editor-drafts"])
 
     @router.get("/api/editor-drafts")
-    async def list_drafts(request: Request) -> Dict[str, List[Dict[str, Any]]]:
+    def list_drafts(request: Request) -> Dict[str, List[Dict[str, Any]]]:
         user = get_current_user(request)
         db = SessionLocal()
         try:
@@ -93,7 +93,7 @@ def setup_editor_draft_routes() -> APIRouter:
             db.close()
 
     @router.get("/api/editor-drafts/{draft_id}")
-    async def get_draft(request: Request, draft_id: str) -> Dict[str, Any]:
+    def get_draft(request: Request, draft_id: str) -> Dict[str, Any]:
         user = get_current_user(request)
         db = SessionLocal()
         try:
@@ -110,7 +110,7 @@ def setup_editor_draft_routes() -> APIRouter:
             db.close()
 
     @router.post("/api/editor-drafts")
-    async def create_draft(request: Request, body: DraftCreate) -> Dict[str, Any]:
+    def create_draft(request: Request, body: DraftCreate) -> Dict[str, Any]:
         user = get_current_user(request)
         db = SessionLocal()
         try:
@@ -136,7 +136,7 @@ def setup_editor_draft_routes() -> APIRouter:
             db.close()
 
     @router.put("/api/editor-drafts/{draft_id}")
-    async def update_draft(request: Request, draft_id: str, body: DraftUpdate) -> Dict[str, Any]:
+    def update_draft(request: Request, draft_id: str, body: DraftUpdate) -> Dict[str, Any]:
         user = get_current_user(request)
         db = SessionLocal()
         try:
@@ -168,7 +168,7 @@ def setup_editor_draft_routes() -> APIRouter:
             db.close()
 
     @router.delete("/api/editor-drafts/{draft_id}")
-    async def delete_draft(request: Request, draft_id: str) -> Dict[str, str]:
+    def delete_draft(request: Request, draft_id: str) -> Dict[str, str]:
         user = get_current_user(request)
         db = SessionLocal()
         try:

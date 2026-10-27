@@ -532,7 +532,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                     (username or "").strip().lower())}
 
     @router.put("/users/{username}/rename")
-    async def rename_user(username: str, body: RenameUserRequest, request: Request):
+    def rename_user(username: str, body: RenameUserRequest, request: Request):
         require_admin(request)
         user = get_current_user(request)
         old_username = (username or "").strip().lower()

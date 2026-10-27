@@ -86,7 +86,7 @@ async def test_update_task_rejects_cross_owner_chain_target():
     update_task = _endpoint("PUT", "/api/tasks/{task_id}")
 
     with pytest.raises(HTTPException) as exc:
-        await update_task(
+        update_task(
             _req("alice"),
             "alice-source-update",
             task_routes.TaskUpdate(then_task_id="bob-target-update"),
@@ -107,7 +107,7 @@ async def test_update_task_allows_same_owner_chain_target():
     _seed_task("alice-target-allow", "alice")
     update_task = _endpoint("PUT", "/api/tasks/{task_id}")
 
-    out = await update_task(
+    out = update_task(
         _req("alice"),
         "alice-source-allow",
         task_routes.TaskUpdate(then_task_id="alice-target-allow"),

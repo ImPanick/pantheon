@@ -43,7 +43,7 @@ async def test_create_account_rejects_non_numeric_port():
     import routes.email_routes as email_routes
     router = email_routes.setup_email_routes()
     create = _route_endpoint(router, "/api/email/accounts", "POST")
-    result = await create(
+    result = create(
         {
             "name": "Test",
             "imap_host": "mail.example.com",

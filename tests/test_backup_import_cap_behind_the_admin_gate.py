@@ -373,6 +373,6 @@ async def test_an_admin_gets_past_the_export_gate(monkeypatch):
     monkeypatch.setattr(br, "load_features", lambda: {})
     monkeypatch.setattr("routes.prefs_routes._load_for_user", lambda user: {})
     endpoint = _route("/api/export", "GET")
-    response = await endpoint(_StreamedRequest([], user="root", admins=("root",)))
+    response = endpoint(_StreamedRequest([], user="root", admins=("root",)))  # `B1223`: a plain `def` now (Starlette's thread pool)
     assert response.status_code == 200
     assert b'"exported_by": "root"' in response.body

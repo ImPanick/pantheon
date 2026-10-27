@@ -289,7 +289,7 @@ def test_list_events_filters_by_calendar_owner_before_output(monkeypatch):
     monkeypatch.setattr(calendar_routes, "_expand_rrule", fake_expand)
     list_events = _route_endpoint(calendar_routes, "/events", "GET")
 
-    out = asyncio.run(list_events(
+    out = (list_events(
         _request(),
         start="2026-06-01T00:00:00",
         end="2026-06-03T00:00:00",
@@ -308,7 +308,7 @@ def test_export_ics_rejects_null_owner_calendar_at_route_boundary(monkeypatch):
     export_ics = _route_endpoint(calendar_routes, "/export/{cal_id}", "GET")
 
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(export_ics(_request(), cal_id="cal-target"))
+        (export_ics(_request(), cal_id="cal-target"))
 
     assert exc.value.status_code == 404
     assert not session.event_query.all_called
@@ -322,7 +322,7 @@ def test_export_ics_rejects_cross_owner_calendar_at_route_boundary(monkeypatch):
     export_ics = _route_endpoint(calendar_routes, "/export/{cal_id}", "GET")
 
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(export_ics(_request(), cal_id="cal-target"))
+        (export_ics(_request(), cal_id="cal-target"))
 
     assert exc.value.status_code == 404
     assert not session.event_query.all_called
@@ -337,7 +337,7 @@ def test_export_ics_sanitizes_calendar_name_for_download_header(monkeypatch):
     monkeypatch.setattr(calendar_routes, "SessionLocal", lambda: session)
     export_ics = _route_endpoint(calendar_routes, "/export/{cal_id}", "GET")
 
-    response = asyncio.run(export_ics(_request(), cal_id="cal-target"))
+    response = (export_ics(_request(), cal_id="cal-target"))
 
     assert (
         response.headers["content-disposition"]

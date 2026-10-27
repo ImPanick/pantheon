@@ -476,7 +476,7 @@ def _office_route(tmp_path, monkeypatch, name: str, body: bytes):
     endpoint = next(r.endpoint for r in router.routes
                     if getattr(r, "path", None) == "/api/documents/import-office")
     upload = UploadFile(filename=name, file=io.BytesIO(body))
-    return asyncio.run(endpoint(_Request(), file=upload, session_id=None))
+    return endpoint(_Request(), file=upload, session_id=None)  # `B1223`: a plain `def` now
 
 
 def test_a_real_word_97_document_becomes_a_document_with_its_prose(

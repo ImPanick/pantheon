@@ -360,7 +360,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         return out
 
     @router.get("/api/history/{session_id}")
-    async def get_session_history(
+    def get_session_history(
         request: Request,
         session_id: str,
         limit: Optional[int] = None,
@@ -671,7 +671,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             raise HTTPException(500, str(e))
 
     @router.post("/api/session/{session_id}/mark-stopped")
-    async def mark_stopped(request: Request, session_id: str):
+    def mark_stopped(request: Request, session_id: str):
         """Mark the reply the person stopped as stopped (`_stoppable_reply`)."""
         _verify_session_owner(request, session_id)
         try:

@@ -102,7 +102,7 @@ def test_single_day_all_day_event_with_same_date_end_appears_in_list():
     ))
     assert res["imported"] == 1
 
-    out = asyncio.run(eps["list"](
+    out = (eps["list"](
         _request(), start="2026-06-20T00:00:00", end="2026-06-23T00:00:00",
     ))
     assert [e["summary"] for e in out["events"]] == ["Public Holiday"]
@@ -116,7 +116,7 @@ def test_normal_multi_day_all_day_event_still_appears():
     ))
     assert res["imported"] == 1
 
-    out = asyncio.run(eps["list"](
+    out = (eps["list"](
         _request(), start="2026-07-10T00:00:00", end="2026-07-12T00:00:00",
     ))
     assert [e["summary"] for e in out["events"]] == ["Public Holiday"]
@@ -145,7 +145,7 @@ def test_reimport_repairs_legacy_zero_duration_row():
         db.close()
 
     # Confirm the seeded row is invisible (proves the bug it repairs).
-    before = asyncio.run(eps["list"](
+    before = (eps["list"](
         _request(), start="2026-08-01T00:00:00", end="2026-08-04T00:00:00",
     ))
     assert before["events"] == []
@@ -158,7 +158,7 @@ def test_reimport_repairs_legacy_zero_duration_row():
     assert res["skipped"] == 1
     assert res["repaired"] == 1
 
-    after = asyncio.run(eps["list"](
+    after = (eps["list"](
         _request(), start="2026-08-01T00:00:00", end="2026-08-04T00:00:00",
     ))
     assert [e["summary"] for e in after["events"]] == ["Public Holiday"]
