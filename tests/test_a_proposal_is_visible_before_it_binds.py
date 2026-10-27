@@ -51,7 +51,7 @@ from pathlib import Path
 import pytest
 
 from tests.helpers.motion_stub import motion_stub
-from tests.helpers.esc_stub import ui_default_stub
+from tests.helpers.esc_stub import empty_state_source, ui_default_stub
 from test_tool_effect_surfaces_js import _DOM, _copy_unstubbed_imports  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -208,9 +208,13 @@ export function hint() { return document.getElementById('auto-approve-memories-h
 
 # `B1430`. The shipped `esc` (`ui_default_stub`), not one that returns its
 # input — `test_one_esc_stub_js.py` refuses the hand-written kind (`B874`).
+# `B730`: with the shipped `renderEmptyState`, which the Brain's list draws its
+# empty states through.
 _UI = ui_default_stub(
     "showToast: (m) => { globalThis.__said.toasts.push(String(m)); },\n"
-    "  showError: (m) => { globalThis.__said.errors.push(String(m)); },")
+    "  showError: (m) => { globalThis.__said.errors.push(String(m)); },\n"
+    "  emptyStateIcon, renderEmptyState,",
+    before=empty_state_source())
 
 _STUBS = {
     "ui.js": _UI,

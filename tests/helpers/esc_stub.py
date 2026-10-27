@@ -83,3 +83,26 @@ def ui_default_stub(members: str = "", *, before: str = "",
         body += "\n  " + members.strip("\n").strip()
     lines.append("export default {\n%s\n};" % body)
     return "\n" + "\n".join(lines) + "\n"
+
+
+#: `B730`. `ui.js`, where the one empty state lives (`P9-07`).
+UI_JS = ROOT / "static" / "js" / "ui.js"
+
+
+def empty_state_source() -> str:
+    """`renderEmptyState` and what it reads, as shipped, as JavaScript text —
+    for a sandbox whose module draws its empty states through the one shared
+    shape. Read from `ui.js` rather than restated, as `esc_source` is: a stub
+    that drew an empty state of its own would let a test pass on a shape the
+    product does not ship. Its members for a default export are
+    `emptyStateIcon, renderEmptyState,`."""
+    src = UI_JS.read_text(encoding="utf-8")
+    parts = [
+        "function emptyStateIcon(kind) " + js_function(src, "export function emptyStateIcon("),
+        js_binding(src, "EMPTY_STATE_KINDS").replace("export const", "const", 1) + ";",
+        js_binding(src, "_EMPTY_STATE_ICON") + ";",
+        js_binding(src, "_EMPTY_STATE_FALLBACK_TITLE") + ";",
+        "function _coerceEmptyStateKind(value) " + js_function(src, "function _coerceEmptyStateKind("),
+        "function renderEmptyState(host, spec = {}) " + js_function(src, "export function renderEmptyState("),
+    ]
+    return "\n".join(parts) + "\n"

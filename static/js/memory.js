@@ -271,6 +271,19 @@ function buildStatusChips() {
   }
 }
 
+/** `B730`. The filtered-to-nothing state's way out: the search box emptied and
+ *  both chip rows back on showing everything. */
+function clearMemoryFilters() {
+  const search = document.getElementById('memory-search');
+  if (search) search.value = '';
+  activeCategory = 'all';
+  activeStatus = 'any';
+  buildCategoryChips();
+  buildStatusChips();
+  renderMemoryList();
+  updateMemoryCount();
+}
+
 // `PERF-M-8` (P23-02). The Brain's seven switches are read from ONE
 // `GET /api/prefs`, once per page, and set in one pass. They were seven serial
 // single-key reads (`/api/prefs/<key>`, each awaited before the next) on every
@@ -1400,13 +1413,21 @@ export function renderMemoryList() {
       memoryList.replaceChildren(row);
       return;
     }
+    // `B730`. The three ways this list is empty, each in the one shared shape
+    // (`ui.renderEmptyState`) and each with its way out: the store could not
+    // be read (its words, and *Try again*), nothing survives the filters
+    // (*Clear filters*), and there is nothing at all (*Add one*). The class
+    // `memory-empty` rides along so the CSS written for it still applies.
     if (memoriesError) {
-      // `B1070`. A failed load is not an empty store either.
-      const row = document.createElement('div');
-      row.className = 'memory-empty';
-      row.textContent = memoriesRefused
-        || `Could not load memories — ${memoriesError}. Reopen the Brain to try again.`;
-      memoryList.replaceChildren(row);
+      // `B1070`. A failed load is not an empty store either. A refusal is the
+      // server's own sentence, and asking again would only be refused again.
+      uiModule.renderEmptyState(memoryList, {
+        kind: 'error',
+        className: 'memory-empty',
+        title: memoriesRefused ? 'Not allowed' : 'Could not load memories',
+        reason: memoriesRefused || `Could not load memories — ${memoriesError}.`,
+        onRetry: memoriesRefused ? undefined : () => { loadMemories(); },
+      });
       return;
     }
     const searchTerm = document.getElementById('memory-search')?.value?.trim() || '';
@@ -1415,16 +1436,20 @@ export function renderMemoryList() {
     // store, which is the false empty state `B1070` is about wearing a
     // different hat.
     if (searchTerm || activeCategory !== 'all' || activeStatus !== 'any') {
-      memoryList.innerHTML = `<div class="memory-empty">No matches.</div>`;
+      uiModule.renderEmptyState(memoryList, {
+        kind: 'filtered',
+        className: 'memory-empty',
+        title: 'No matches.',
+        message: 'Nothing here fits the search and filters above.',
+        action: { label: 'Clear filters', onClick: () => clearMemoryFilters() },
+      });
     } else {
       // Doc 2 § 5, rule 8: one line, and the action beside it.
-      memoryList.innerHTML = `<div class="memory-empty" style="display:flex;align-items:center;justify-content:center;gap:8px;">
-        <span>No memories yet.</span>
-        <button type="button" class="memory-toolbar-btn" data-mem-goto-add>Add one</button>
-      </div>`;
-      memoryList.querySelector('[data-mem-goto-add]')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        showBrainTab('add', { focus: true });
+      uiModule.renderEmptyState(memoryList, {
+        kind: 'empty',
+        className: 'memory-empty',
+        title: 'No memories yet.',
+        action: { label: 'Add one', onClick: () => showBrainTab('add', { focus: true }) },
       });
     }
     return;

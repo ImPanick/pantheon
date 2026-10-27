@@ -22,6 +22,10 @@ import { toolPollMayAsk } from './ui_visibility.js';   // `B1542`
 const API_BASE = window.location.origin;
 let _open = false;
 let _notes = [];
+// `B730`. Why the last read of the list failed, or ''. A failed read set
+// `_notes` to [] and the pane said "No notes yet." over it — an empty state
+// that was really a broken one.
+let _notesError = '';
 let _editingId = null;
 let _selectedIds = new Set();
 let _activeLabel = null;
@@ -503,13 +507,19 @@ async function _fetchNotes() {
     const archived = _showingArchived;
     // (`getNotes` marks a request that never arrived as `unreached` itself.)
     const data = await getNotes({ archived });
-    if (!data || data.detail) { _notes = []; return; }
+    if (!data || data.detail) {
+      _notes = [];
+      _notesError = data && data.detail ? String(data.detail) : 'the server sent no list';
+      return;
+    }
     _notes = data.notes || data || [];
+    _notesError = '';
     if (!archived) _activeNotesRead = true;
   } catch (e) {
     // `B1256`: offline is the page's news, said once (`presets.js`).
     if (!quietIfUnreached(e, 'Notes')) console.error('Failed to fetch notes:', e);
     _notes = [];
+    _notesError = 'the server did not answer';
   } finally {
     _loading = false;
   }
@@ -1330,6 +1340,13 @@ export function openPanel() {
   const btn = document.getElementById('tool-notes-btn');
   if (btn) btn.classList.add('active');
 
+  // A pane still animating shut (`closePanel` removes it at its animation's
+  // end, or 220 ms later) goes now. Found driving `B730`: reopened inside that
+  // window, the new pane was built beside the old one with the same ids, and
+  // every `getElementById` below — the search box among them — wired the
+  // pane that was leaving, so the one on screen searched nothing.
+  document.querySelectorAll('#notes-pane.notes-pane-leaving').forEach((old) => old.remove());
+
   // Create panel
   const pane = document.createElement('div');
   pane.id = 'notes-pane';
@@ -1894,6 +1911,60 @@ function _animateReflow(prevPositions) {
   });
 }
 
+/** `B730`. The notes list with nothing to show, in the one shared shape
+ *  (`ui.renderEmptyState`), saying which of three things happened and offering
+ *  the way out of it: the list could not be read (its words, *Try again*), a
+ *  search or chip hides every note (*Show all notes*), or there is nothing —
+ *  in the archive (*Back to notes*) or at all (*Take a note*, the quick-add
+ *  box above). Appended under the labels and the quick-add, as the line was;
+ *  `notes-empty-msg` rides along for the CSS written for it. */
+function _drawNotesEmpty(body) {
+  const host = document.createElement('div');
+  body.appendChild(host);
+  if (_notesError) {
+    uiModule.renderEmptyState(host, {
+      kind: 'error',
+      className: 'notes-empty-msg',
+      title: 'Could not load notes',
+      reason: `Could not load notes — ${_notesError}.`,
+      onRetry: async () => { await _fetchNotes(); _renderNotes(); },
+    });
+    return;
+  }
+  if (_notes.length && (_searchQuery || _activeLabel || _activeFilter)) {
+    uiModule.renderEmptyState(host, {
+      kind: 'filtered',
+      className: 'notes-empty-msg',
+      title: 'No notes match.',
+      message: 'Nothing here fits the search and the chips above.',
+      action: { label: 'Show all notes', onClick: () => {
+        _searchQuery = '';
+        const search = document.getElementById('notes-search');
+        if (search) search.value = '';
+        _activeLabel = null;
+        _activeFilter = null;
+        _renderNotes();
+      } },
+    });
+    return;
+  }
+  if (_showingArchived) {
+    uiModule.renderEmptyState(host, {
+      kind: 'empty',
+      className: 'notes-empty-msg',
+      title: 'Nothing archived.',
+      action: { label: 'Back to notes', onClick: () => document.getElementById('notes-archive-toggle')?.click() },
+    });
+    return;
+  }
+  uiModule.renderEmptyState(host, {
+    kind: 'empty',
+    className: 'notes-empty-msg',
+    title: 'No notes yet.',
+    action: { label: 'Take a note', onClick: () => body.querySelector('.notes-quick-input')?.focus() },
+  });
+}
+
 function _renderNotes() {
   _updateRailBadge();
   const body = document.querySelector('#notes-pane .notes-pane-body');
@@ -2154,7 +2225,7 @@ function _renderNotes() {
     const next = [...body.children].filter(c => c !== existingForm);
     next.forEach(c => c.remove());
     if (sorted.length === 0) {
-      body.insertAdjacentHTML('beforeend', '<div class="notes-empty-msg">No notes <span style="vertical-align:-3px;margin-left:4px;">' + uiModule.emptyStateIcon('smiley') + '</span></div>');
+      _drawNotesEmpty(body);
     } else {
       existingForm.insertAdjacentHTML('afterend', html);
     }
@@ -2164,8 +2235,8 @@ function _renderNotes() {
     _renderQuickAdd(body);
     if (sorted.length === 0) {
       // `P23-05` (DOCS-U-19): the archive's empty state is not the notes' own,
-      // and an empty state is one plain line.
-      body.insertAdjacentHTML('beforeend', `<div class="notes-empty-msg">${_showingArchived ? 'Nothing archived.' : 'No notes yet.'}</div>`);
+      // and an empty state is one plain line. `B730`: and three states.
+      _drawNotesEmpty(body);
     } else {
       body.insertAdjacentHTML('beforeend', html);
     }

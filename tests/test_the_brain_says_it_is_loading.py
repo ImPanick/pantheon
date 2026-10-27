@@ -29,17 +29,20 @@ import pytest
 from test_the_command_palette_in_a_browser import NODE, _SKIP, app_url  # noqa: F401,E402
 from test_the_workshop_surfaces_js import _SHIM, _STUBS, _index_ids, MEMORY_JS  # noqa: E402
 from test_tool_effect_surfaces_js import _make_sandbox, _run  # noqa: E402
-from tests.helpers.esc_stub import ui_default_stub  # B874
+from tests.helpers.esc_stub import empty_state_source, ui_default_stub  # B874, B730
 
 _needs_node = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
 _LOADING_STUBS = dict(_STUBS)
 # The empty state draws `ui.js`'s empty-state icon, which the workshop's stub
-# does not carry; this one does, with the shipped `esc`.
+# does not carry; this one does, with the shipped `esc`. `B730`: and the
+# shipped `renderEmptyState`, which the Brain's list draws all three of its
+# empty states through now.
 _LOADING_STUBS["ui.js"] = ui_default_stub(
     "showToast: () => {}, showError: () => {}, styledConfirm: async () => true,"
     " copyToClipboard: () => {}, el: (id) => document.getElementById(id),"
-    " debounce: (f) => f, emptyStateIcon: () => '',")
+    " debounce: (f) => f, emptyStateIcon, renderEmptyState,",
+    before=empty_state_source())
 # The workshop's spinner stub has no loading row; the real one draws a row
 # with its text, which is what a person reads.
 _LOADING_STUBS["spinner.js"] = """

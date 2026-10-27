@@ -84,7 +84,9 @@ def test_the_notes_loader(tmp_path):
     # `B1228`: the list is read through `appConfig.getNotes` (the real module,
     # which has no imports), and a read is remembered in `_activeNotesRead`.
     out = _node(tmp_path, """
-        let _loading = false, _notes = null, _showingArchived = false, _activeNotesRead = false;
+        // `B730`: `_notesError`, the reason a read failed, which the empty
+        // list now says instead of "No notes yet."
+        let _loading = false, _notes = null, _showingArchived = false, _activeNotesRead = false, _notesError = '';
         const { getNotes } = await import(%s);
         const API_BASE = 'http://x';
         async function _fetchNotes() %s
