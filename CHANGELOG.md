@@ -108,6 +108,11 @@ the next one is cut.
 
 ### Added
 
+- **A judge model can read an agent's delivery** against its file's promises, when an admin turns
+  on Settings → Agents → *A model reads each delivery too* (off as shipped); it runs on the
+  person's own endpoint and its verdict sits in the run report beside the code's checks (`P24-09`).
+- **The Hugging Face token has one editor,** in Settings → Forge and the Forge's Settings tab, and
+  its own route, `PUT /api/cookbook/hf-token` (`B1258`).
 - **Chat search finds a chat by what it meant,** not only by its words, when an embedding model is
   set up; each result says whether it matched by word, by meaning or both, and with no model the
   search says it searched by word only (`P9-15c`).
@@ -229,6 +234,17 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **Service connections belong to whoever added them.** Each entry in Settings → Integrations has
+  an owner and a *Shared* box; someone else's private connection is not listed or usable, and a
+  shared one is read-only to everyone but its owner. On upgrade, existing entries go to the
+  install's first admin, shared, so nothing in use stops working (`P27-02`).
+- **The page no longer switches a chat to Agent, or the shell back on, because a message used a
+  word like *update* or *build*.** The mode and shell switch you set are what is sent; the server
+  decides any promotion and says so, and never overrules a shell you switched off (`P7-01`).
+- **Attachments scale with the model's proven context window** — half its input budget — instead
+  of 24,000 characters for every model; an unproven window keeps 24,000 (`P2-08`).
+- **Local Whisper asks the model-download switch** before fetching its model, as FastEmbed does
+  (`B1565`).
 - **Running the instance is its own privilege, `can_run_instance`.** Model endpoints, the Forge,
   embeddings and the other operator routes now answer anyone holding it — an admin always does,
   and the new *Run this instance* switch in Settings → Users grants it to someone else — while
@@ -390,6 +406,12 @@ the next one is cut.
 
 ### Fixed
 
+- **A save waits for a busy database without stalling everyone else** — 89 route handlers do their
+  database work off the event loop (`B1223`); a window closed by its fallback timer no longer
+  shuts itself the next time it opens (`B1567`); an operator is shown the operator's Settings
+  (`B1563`); a fallback model that cannot hear is given the recording in words, and the card
+  says so (`B1566`); off chips read on every palette (`B1557`); Enter breaks the line on an idle
+  phone composer (`B1558`); an agent-made checklist keeps its draft (`B1560`).
 - **A checklist item is ticked from the keyboard,** the note form's text box no longer traps Tab,
   and a list the agent made works in the form (`B1551`); Shift+Enter breaks the line on a phone
   (`B1086`); a model behind a private CA answers the non-streamed call too (`B1556`).
