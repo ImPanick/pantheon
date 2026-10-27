@@ -742,6 +742,21 @@ function _nextGoalStep(note) {
   return null;
 }
 
+// `B1551`. A checklist item's done control — the card's and the Today view's
+// `.note-check-dot`, the form's `.note-cl-dot` — was a bare `<span>`: no tab
+// stop, no role, no key, so a keyboard could not tick a note (`P10-01`'s
+// `Verify:` names *a note's checkbox* as a Tab stop). Each is a
+// `role="checkbox"` tab stop now, named for its item, and Space/Enter reach
+// the click it already had through `a11y.js`'s one delegated activation
+// (`data-a11y-activatable`) rather than a second key listener here.
+function _doneControlAttrs(done, name) {
+  return `role="checkbox" tabindex="0" data-a11y-activatable="1" aria-checked="${done ? 'true' : 'false'}" aria-label="${_attrEscRaw(name || 'Item')}"`;
+}
+
+function _markDoneControl(dot, done) {
+  if (dot) dot.setAttribute('aria-checked', done ? 'true' : 'false');
+}
+
 // ---- Reminder presets ----
 
 function _laterTodayDate() {
@@ -1956,7 +1971,7 @@ function _renderNotes() {
         if (!next) continue;
         const progress = _goalProgress(note).trim();
         todayHtml += `<div class="notes-today-row" data-note-id="${note.id}">
-          <span class="note-check-dot" data-note-id="${note.id}" data-idx="${next.idx}" title="Mark step done"></span>
+          <span class="note-check-dot" data-note-id="${note.id}" data-idx="${next.idx}" title="Mark step done" ${_doneControlAttrs(false, next.item.text)}></span>
           <div class="notes-today-text">
             <div class="notes-today-title" data-action="edit" data-note-id="${note.id}">${_esc(note.title || '(untitled goal)')}</div>
             <div class="notes-today-step">${_linkify(next.item.text || '')}</div>
@@ -2034,7 +2049,7 @@ function _renderNotes() {
         const agentMenuTitle = item.agent_session_title || `Agent: ${(item.text || '').slice(0, 40)}`;
         const indent = Math.min(item.indent || 0, 3);
         contentHtml += `<div class="note-checkbox${doneClass}" data-note-id="${note.id}" data-idx="${i}" style="padding-left:${indent * 16}px">
-          <span class="note-check-dot" title="Mark done"></span>
+          <span class="note-check-dot" title="Mark done" ${_doneControlAttrs(item.done, item.text)}></span>
           <span class="note-check-text">${_linkify(item.text)}</span>
           <button class="note-checkbox-agent${agentDoneClass}" data-note-id="${_attrEscRaw(note.id)}" data-idx="${i}"${agentSessionAttr} data-agent-title="${_attrEscRaw(agentMenuTitle)}" title="${_attrEscRaw(agentTitle)}"${agentStyleAttr}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg>${agentBadge}
@@ -2244,11 +2259,22 @@ function _wireTodayView(body) {
       note.items[idx].done = !note.items[idx].done;
       const row = dot.closest('.notes-today-row');
       if (row) row.classList.add('done');
+      _markDoneControl(dot, note.items[idx].done);
+      // `B1551`: the re-render below replaces this dot, and a keyboard tick
+      // would leave the caret on <body>. It goes to the goal's next step, or
+      // to the row that took this one's place.
+      const wasFocused = document.activeElement === dot;
+      const place = [...body.querySelectorAll('.notes-today-row .note-check-dot')].indexOf(dot);
       try {
         await _patchNote(id, { items: note.items });
         // Re-render so the next pending step bubbles up (or the row drops
         // out entirely if the goal is fully done now).
         _renderNotes();
+        if (wasFocused) {
+          const dots = [...body.querySelectorAll('.notes-today-row .note-check-dot')];
+          const next = dots.find(d => d.dataset.noteId === id) || dots[Math.min(place, dots.length - 1)];
+          next?.focus();
+        }
         // Confetti when ALL items just turned done.
         if (note.items.every(it => it.done)) {
           const r = (row || dot).getBoundingClientRect();
@@ -2256,6 +2282,8 @@ function _wireTodayView(body) {
         }
       } catch {
         note.items[idx].done = !note.items[idx].done;
+        if (row) row.classList.remove('done');
+        _markDoneControl(dot, note.items[idx].done);
       }
     });
   });
@@ -2838,6 +2866,7 @@ function _bindCardEvents(body) {
       const wasAllDone = note.items.length > 0 && note.items.every(it => it.done);
       note.items[idx].done = !note.items[idx].done;
       el.classList.toggle('done', note.items[idx].done);
+      _markDoneControl(el.querySelector('.note-check-dot'), note.items[idx].done);   // `B1551`
       const isAllDone = note.items.length > 0 && note.items.every(it => it.done);
       if (!wasAllDone && isAllDone) {
         const card = el.closest('.note-card');
@@ -2849,6 +2878,7 @@ function _bindCardEvents(body) {
       _patchNote(noteId, { items: note.items }).catch(() => {
         note.items[idx].done = !note.items[idx].done;
         el.classList.toggle('done', note.items[idx].done);
+        _markDoneControl(el.querySelector('.note-check-dot'), note.items[idx].done);
       });
     });
   });
@@ -3329,7 +3359,11 @@ function _buildForm(note = null) {
     });
   });
 
-  if (currentType === 'todo') _wireChecklist(form.querySelector('.note-form-body'));
+  // `B1551`: `checklist` is the type the agent's note tool writes
+  // (`src/tool_schemas.py`), and the form draws it with the same
+  // `_buildChecklistHtml` as a todo — but only `todo` was wired, so on an
+  // agent-made list the done dot, the ×, Enter and Tab did nothing at all.
+  if (currentType === 'todo' || currentType === 'checklist') _wireChecklist(form.querySelector('.note-form-body'));
   if (currentType === 'goal') _wireGoalForm(form, form.querySelector('.note-form-body'));
   if (currentType === 'draw') {
     _wireCanvas(form.querySelector('.note-form-body'), _safeImgSrc(note?.image_url) || null);
@@ -4022,11 +4056,27 @@ function _buildChecklistHtml(items) {
 
 function _wireRow(row, container) {
   row.querySelector('.note-cl-rm')?.addEventListener('click', () => row.remove());
-  row.querySelector('.note-cl-dot')?.addEventListener('click', () => {
+  // `B1551`: every row the form makes passes through here — built from a
+  // note, added with "+ Add", added in fullscreen — so the done control is
+  // made a keyboard checkbox here once rather than in three templates. Its
+  // name is the item's text, kept current as the text is typed.
+  const txt = row.querySelector('.note-cl-text');
+  const dotEl = row.querySelector('.note-cl-dot');
+  if (dotEl) {
+    dotEl.setAttribute('role', 'checkbox');
+    dotEl.setAttribute('tabindex', '0');
+    dotEl.setAttribute('data-a11y-activatable', '1');
+    _markDoneControl(dotEl, row.classList.contains('done'));
+    const name = () => dotEl.setAttribute('aria-label', (txt?.value || '').trim() || 'Item');
+    name();
+    txt?.addEventListener('input', name);
+  }
+  dotEl?.addEventListener('click', () => {
     const wasDone = row.classList.contains('done');
     row.classList.toggle('done');
     const becameDone = !wasDone;  // we just flipped it
     const dot = row.querySelector('.note-cl-dot');
+    _markDoneControl(dot, becameDone);
     const dRect = (dot || row).getBoundingClientRect();
     // Small confetti burst on each fresh check so the user gets a
     // "well done" beat per item, not just the grand-finale on all-done.
@@ -4040,13 +4090,16 @@ function _wireRow(row, container) {
       spawnConfetti(dRect.left + dRect.width / 2, dRect.top + dRect.height / 2, 60);
     }
   });
-  const txt = row.querySelector('.note-cl-text');
   txt?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); container.querySelector('.note-cl-add')?.click(); }
     else if (e.key === 'Tab') {
-      e.preventDefault();
       const cur = parseInt(row.dataset.indent || '0');
       const next = e.shiftKey ? Math.max(0, cur - 1) : Math.min(3, cur + 1);
+      // `B1551`: Tab indents while there is somewhere to indent to. At the
+      // edge it was still swallowed, so a text box was a keyboard trap and no
+      // later item's done control could be reached; there it moves focus.
+      if (next === cur) return;
+      e.preventDefault();
       row.dataset.indent = String(next);
       row.style.paddingLeft = (next * 16) + 'px';
     } else if (e.key === 'Backspace' && txt.value === '') {

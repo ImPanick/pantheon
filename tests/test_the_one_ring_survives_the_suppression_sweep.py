@@ -22,10 +22,11 @@ one; the editor's was one of the two `!important` ones) —
     `--focus-ring-offset`, in `--focus-ring`, which is the palette's own red;
   * a mouse press on a control that is not a text field draws none.
 
-`P10-01`'s fifth surface, *a note's checkbox*, is not here because it is not a
-control: a checklist item is a `<div>` with a `<span>` dot (`notes.js`), no
-`tabindex` and no role, so Tab never lands on it and there is no ring to
-compare. That is a keyboard defect of its own, filed from this pass.
+`P10-01`'s fifth surface, *a note's checkbox*, is not here because it was not a
+control: a checklist item was a `<div>` with a `<span>` dot (`notes.js`), no
+`tabindex` and no role, so Tab never landed on it. Filed from this pass as
+`B1551`, which made it one; its ring, on the card, in Today and in the form, is
+measured in `tests/test_a_notes_checklist_is_ticked_from_the_keyboard.py`.
 """
 
 from __future__ import annotations
