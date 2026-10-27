@@ -448,6 +448,8 @@ function _chatGroups(results) {
       role: r && r.role,
       snippet: (r && r.content_snippet) || '',
       timestamp: r && r.timestamp,
+      // `P9-15c`: how it was found — `keyword`, `meaning` or `both`.
+      match: (r && r.match) || 'keyword',
       run: () => (sessionModule && sessionModule.selectSession
         ? sessionModule.selectSession(sid) : undefined),
     });
@@ -459,10 +461,10 @@ function _chatGroups(results) {
  * The chat lane: what `/api/search` answers for `query`, exactly as this
  * overlay has always asked it (same URL, same `limit=20`, same 300 ms debounce).
  *
- * `P9-15c` — keyword and meaning in one box — is a change to what this asks,
- * not to how the answer is drawn: it returns the same rows, so it replaces the
- * fetch below and nothing else. A row it tags (`match: 'meaning'`, say) reaches
- * `_optionNode` intact.
+ * `P9-15c` — keyword and meaning in one box — is a change to what the server
+ * answers, not to what this asks: the same rows come back, each tagged with how
+ * it was found (`match`), and `meaning` says whether the search looked by
+ * meaning — the status line repeats its sentence when it could not.
  */
 function _searchChats(query) {
   const seq = _chatSeq;
@@ -477,8 +479,9 @@ function _searchChats(query) {
         const data = await res.json();
         // A plain list is what a server from before `B1249` answers.
         next = Array.isArray(data)
-          ? { state: 'done', results: data, chats: [], error: '' }
-          : { state: 'done', results: (data && data.results) || [], chats: (data && data.chats) || [], error: '' };
+          ? { state: 'done', results: data, chats: [], error: '', meaning: null }
+          : { state: 'done', results: (data && data.results) || [], chats: (data && data.chats) || [],
+              error: '', meaning: (data && data.meaning) || null };
       }
     } catch (err) {
       next = { state: 'error', results: [], chats: [], error: (err && err.message) || 'no answer' };
@@ -562,6 +565,14 @@ function _optionNode(entry, query) {
     const who = document.createElement('div');
     who.className = 'search-result-role';
     who.textContent = entry.role === 'user' ? 'You' : 'AI';
+    // `P9-15c`. A message found by meaning holds none of the words typed, so
+    // nothing in its snippet is marked; the row says why it is here.
+    if (entry.match === 'meaning') {
+      const how = document.createElement('span');
+      how.className = 'search-result-match';
+      how.textContent = ' · by meaning';
+      who.appendChild(how);
+    }
     const snippet = document.createElement('div');
     snippet.className = 'search-result-snippet';
     _highlight(snippet, entry.snippet, query);
@@ -682,11 +693,14 @@ function _statusText(query) {
   if (_chat.query === query && _chat.state === 'error') {
     return `Couldn't search your chats (${_chat.error}).${found ? ' ' + found : ''}`;
   }
-  if (found) return found;
+  // `P9-15c`: a search that could not look by meaning says so, and why.
+  const keywordOnly = _chat.query === query && _chat.state === 'done' && _chat.meaning
+    && _chat.meaning.meaning === false && _chat.meaning.sentence ? ' ' + _chat.meaning.sentence : '';
+  if (found) return found + (keywordOnly ? '.' + keywordOnly : '');
   // Nothing yet, and the chats have not answered: say nothing rather than
   // "nothing matches" a moment before they do.
   if (_chat.query !== query || _chat.state !== 'done') return '';
-  return `Nothing matches “${query}”.`;
+  return `Nothing matches “${query}”.${keywordOnly}`;
 }
 
 // ── choosing ────────────────────────────────────────────────────────────────

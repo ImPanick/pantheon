@@ -8960,6 +8960,8 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       flex-shrink: 0;
       min-width: 24px;
     }
+    /* `P9-15c`: a row found by meaning says so beside who said it. */
+    .search-result-match { font-weight: 400; color: var(--color-muted-alt); }
     .search-result-snippet {
       flex: 1;
       font-size: 12px;

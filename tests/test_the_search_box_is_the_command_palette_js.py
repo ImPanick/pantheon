@@ -245,7 +245,10 @@ globalThis.fetch = async (url) => {
     const spec = answers.get(decodeURIComponent(m[1])) || { status: 200, body: [] };
     if (spec.gate) await spec.gate;
     if (spec.throws) throw new Error(spec.throws);
-    const body = m[3] && spec.status < 400 ? { chats: spec.chats || [], results: spec.body } : spec.body;
+    // `P9-15c`: and says whether it looked by meaning (`meaning`), when told.
+    const body = m[3] && spec.status < 400
+      ? { chats: spec.chats || [], results: spec.body, ...(spec.meaning ? { meaning: spec.meaning } : {}) }
+      : spec.body;
     return { ok: spec.status < 400, status: spec.status, statusText: spec.statusText || '',
              json: async () => body };
   }
@@ -304,6 +307,7 @@ export function read() {
         detail: o.querySelector('.search-palette-detail') ? o.querySelector('.search-palette-detail').textContent : null,
         snippet: o.querySelector('.search-result-snippet') ? o.querySelector('.search-result-snippet').textContent : null,
         marks: o.querySelectorAll('mark').map((m) => m.textContent),
+        how: o.querySelector('.search-result-match') ? o.querySelector('.search-result-match').textContent : null,
       })),
     };
   });

@@ -23,9 +23,15 @@ async def do_search_chats(query: str, limit: int = 20, owner: str | None = None)
     try:
         from src.session_search import search_session_messages
 
-        results = search_session_messages(query, limit=limit, owner=owner)
+        meaning: dict = {}
+        results = search_session_messages(query, limit=limit, owner=owner, report=meaning)
+        # `P9-15c`: a search that could not look by meaning says so, so the
+        # assistant does not tell its person a chat does not exist when only
+        # its words did not match.
+        unsaid = "" if meaning.get("meaning") else (meaning.get("sentence") or "")
         if not results:
-            return {"results": f"No chats found matching \"{query}\"."}
+            return {"results": f"No chats found matching \"{query}\"."
+                               + (f" {unsaid}" if unsaid else "")}
 
         # Group by session to avoid duplicate links
         seen_sessions = {}
@@ -37,7 +43,8 @@ async def do_search_chats(query: str, limit: int = 20, owner: str | None = None)
         for sid, result in seen_sessions.items():
             lines.append(f"- [**{result.session_name}**](#session-{sid})")
             lines.append(f"  Open: [Open chat](#session-{sid})")
-            lines.append(f"  Match ({result.role}): {result.content_snippet}")
+            how = " by meaning" if result.match == "meaning" else ""
+            lines.append(f"  Match{how} ({result.role}): {result.content_snippet}")
             if result.context_before:
                 before = result.context_before[-1]
                 lines.append(f"  Before ({before['role']}): {before['content'][:180]}")
@@ -45,6 +52,8 @@ async def do_search_chats(query: str, limit: int = 20, owner: str | None = None)
                 after = result.context_after[0]
                 lines.append(f"  After ({after['role']}): {after['content'][:180]}")
             lines.append("")
+        if unsaid:
+            lines.append(unsaid)
 
         return {"results": "\n".join(lines)}
     except Exception as e:
