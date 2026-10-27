@@ -79,7 +79,10 @@ export function mountHfToken(host, { inputId = 'hf-token-input' } = {}) {
   const row = _node('div', { className: 'settings-row' });
   const label = _node('label', { className: 'settings-label', for: inputId }, 'Hugging Face token');
   const input = _node('input', {
-    type: 'password', id: inputId, className: 'settings-input', autocomplete: 'off',
+    // The one desktop control width (`B1255`), so on a phone the row stacks
+    // under its label and the two buttons wrap instead of running off the
+    // card (measured 32px at 390×844 before).
+    type: 'password', id: inputId, className: 'settings-input settings-control-wide', autocomplete: 'off',
     spellcheck: 'false', placeholder: 'hf_…',
   });
   const save = _node('button', { type: 'button', className: 'admin-btn-sm' }, 'Save');

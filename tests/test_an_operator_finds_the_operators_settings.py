@@ -289,7 +289,9 @@ def test_an_operators_settings_search_finds_no_card_they_are_not_shown(walked):
     search = walked["operator"]["search"]
     member = walked["member"]["search"]
     assert "system" not in search["export"]["found"], search
-    assert search["export"]["found"] == member["export"]["found"] == ["appearance"], (search, member)
+    # `P27-10` put *Take them out* (export your own logins) in Settings → Vault,
+    # which is everyone's own panel, so a member and an operator both find it.
+    assert search["export"]["found"] == member["export"]["found"] == ["appearance", "vault"], (search, member)
     assert search["danger"] == {"found": [], "said": "No settings found"}, search
     assert search["webhook"]["found"] == ["system"], search
     assert member["webhook"]["found"] == [], member

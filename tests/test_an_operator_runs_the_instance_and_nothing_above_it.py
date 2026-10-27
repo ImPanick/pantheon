@@ -330,7 +330,9 @@ def test_every_route_of_both_tiers_was_found_in_the_app_and_asked(answered):
     assert answered["premise"]["auth_enabled"] is True
     assert answered["unmatched"] == {"operator": [], "superuser": []}, answered["unmatched"]
     assert len(_of(answered, "operator")) >= 67, len(_of(answered, "operator"))
-    assert len(_of(answered, "superuser")) >= 69, len(_of(answered, "superuser"))
+    # `B1573` took the five integration routes out of the superuser tier (a
+    # member owns their own connection now): 69 -> 64 sites in the map.
+    assert len(_of(answered, "superuser")) >= 64, len(_of(answered, "superuser"))
 
 
 def test_the_operator_role_reaches_every_site_the_map_tiers_operator(answered):

@@ -186,7 +186,11 @@ const lastReply = (page) => page.evaluate(() => {
 async function send(page, text, until = /Sent (no|\d+) picture|^ERROR /, ms = 30000) {
   const before = await page.evaluate(() => document.querySelectorAll('.msg-ai').length);
   await page.fill('#message', text);
-  await page.press('#message', 'Enter');
+  // `B1558`: at phone width an idle composer's Enter breaks the line, as a
+  // phone keyboard's does; the message is sent with the send button there.
+  const phone = await page.evaluate(() => window.matchMedia('(max-width: 768px)').matches);
+  if (phone) await page.click('.send-btn');
+  else await page.press('#message', 'Enter');
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
     await page.waitForTimeout(400);

@@ -90,7 +90,10 @@ def test_the_panel_is_in_the_admin_init_list():
     reference markup that no longer exists, and both were dropped from `inits`
     rather than removed — so the code is still there and has not run in a long
     time. A new panel is one edit away from the same fate."""
-    inits = re.search(r"const inits = \[(.*?)\];", ADMIN, re.S)
+    # `B1563` split the one list by who may use the panels; the cleanup panel
+    # is everyone's own chats, so it is in the operator's list, which every
+    # Settings opener runs.
+    inits = re.search(r"const operatorInits = \[(.*?)\];", ADMIN, re.S)
     assert inits, "the init list has moved"
     assert "initCleanup" in inits.group(1)
     assert re.search(r"function initCleanup\(", ADMIN)
