@@ -123,7 +123,10 @@ async def _local_model_slot(target_url: str, model: str, workload: Optional[str]
     chat hit that pipe together creates the user-visible "streams crossed" and
     "prompt waited behind a task" failure mode. Cloud providers are left alone.
     """
-    if not _local_model_gate_enabled() or not is_local_endpoint(target_url):
+    # `B1588`. Whether the endpoint is local is a read of the endpoint table,
+    # and every model call enters this gate on the event loop — so it is asked
+    # on a worker thread.
+    if not _local_model_gate_enabled() or not await asyncio.to_thread(is_local_endpoint, target_url):
         yield
         return
 
@@ -1064,6 +1067,17 @@ def _apply_local_cache_affinity(payload: Dict, url: str, session_id: Optional[st
         return
     payload.setdefault("session_id", str(session_id))
     payload.setdefault("cache_prompt", True)
+
+
+def _apply_local_profiles(payload: Dict, url: str, target_url: str, model: str,
+                          session_id: Optional[str], explicit_params=frozenset()) -> None:
+    """`B1588`. The OpenAI-shaped payload's two local rewrites, in the order
+    both doors apply them: the slot-affinity hints, then the local-MiniMax
+    profile. Each asks whether the endpoint is local, which reads the endpoint
+    table, so an async door hands this whole call to a worker thread rather
+    than reading the table on the event loop."""
+    _apply_local_cache_affinity(payload, url, session_id)
+    _apply_local_generation_stability(payload, target_url, model, explicit_params)
 
 
 def _is_local_minimax_mlx_request(url: str, model: str) -> bool:
@@ -2540,10 +2554,13 @@ async def llm_call_async(
     # record the number sent. `B1106`: fitted from the length the payload will
     # carry, the local profile's included, which also gives a profile-filled
     # length its `_length_key` below, so a refusal of it is sent again.
-    max_tokens = _carried_max_tokens(url, model, max_tokens)
+    #
+    # `B1588`: both read the endpoint table (is it local?) and the receipt is a
+    # commit, so they are made on a worker thread, awaited — not on the loop.
+    max_tokens = await asyncio.to_thread(_carried_max_tokens, url, model, max_tokens)
     max_tokens = fitted_max_tokens(url, model, messages, None, max_tokens, max_tokens_floor)
-    _capture_run_config(temperature, max_tokens, session_id, url=url, model=model,
-                        explicit_params=explicit_params)
+    await _capture_run_config_async(temperature, max_tokens, session_id, url=url, model=model,
+                                    explicit_params=explicit_params)
 
     provider = _detect_provider(url)
     messages_copy = _sanitize_llm_messages(messages)
@@ -2645,9 +2662,12 @@ async def llm_call_async(
         h = {"Content-Type": "application/json"}
         if headers:
             h.update(headers)
+        # `B1588`: the window is the endpoint table's, or the server's, asked
+        # on a worker thread.
+        num_ctx = await asyncio.to_thread(get_context_length, url, model)
         payload = _build_ollama_payload(
             model, messages_copy, temperature, max_tokens,
-            stream=False, num_ctx=get_context_length(url, model),
+            stream=False, num_ctx=num_ctx,
         )
     else:
         target_url = _normalize_openai_chat_url(url)
@@ -2671,8 +2691,8 @@ async def llm_call_async(
             payload["think"] = False
         if provider == "mistral" and _supports_thinking(model):
             payload["reasoning_effort"] = _MISTRAL_REASONING_EFFORT
-        _apply_local_cache_affinity(payload, url, session_id)
-        _apply_local_generation_stability(payload, target_url, model, explicit_params)
+        await asyncio.to_thread(_apply_local_profiles, payload, url, target_url, model,
+                                session_id, explicit_params)   # `B1588`
 
     if _is_host_dead(target_url):
         raise HTTPException(503, f"Upstream {_host_key(target_url)} marked unreachable (cooldown active)")
@@ -2703,8 +2723,9 @@ async def llm_call_async(
                                 _host_key(target_url), payload.get(_length_key), _servable)
                     _resent = True
                     payload[_length_key] = _servable
-                    _capture_run_config(temperature, _servable, session_id, url=url, model=model,
-                                        explicit_params=explicit_params, resent=True)
+                    await _capture_run_config_async(temperature, _servable, session_id, url=url,
+                                                    model=model, explicit_params=explicit_params,
+                                                    resent=True)
                     attempt -= 1
                     continue
                 friendly = _format_upstream_error(r.status_code, r.text, target_url)
@@ -3024,28 +3045,63 @@ def _capture_run_config(temperature, max_tokens, session_id, *, tools=None,
     receipt's sampling is what the turn's first answered request carried.
     """
     try:
-        from src.events import record_run_config, current_run_id
-        if not current_run_id():
+        if not _run_config_due(tools, resent):
             return
-        if resent:
-            if _run_config_resent.get():
-                return
-            _run_config_resent.set(True)
-        elif _run_config_recorded.get():
-            # Already captured. The one thing worth a second row is a tool list
-            # the first capture did not have; anything else is a duplicate.
-            if not tools or _run_config_had_tools.get():
-                return
-        _run_config_recorded.set(True)
-        if tools:
-            _run_config_had_tools.set(True)
-        record_run_config(
-            sampling=_sent_sampling(url, model, temperature, max_tokens, explicit_params),
-            tools=tools,
-            session_id=session_id,
-        )
+        _write_run_config(temperature, max_tokens, session_id, tools, url, model, explicit_params)
     except Exception:
         pass   # a receipt is never worth a failed reply
+
+
+async def _capture_run_config_async(temperature, max_tokens, session_id, *, tools=None,
+                                    url=None, model=None, explicit_params=frozenset(),
+                                    resent: bool = False) -> None:
+    """`_capture_run_config` for the async doors (`llm_call_async`,
+    `stream_llm`), which run on the event loop. `B1588`: the row is a commit
+    (`record_event`) and its sampling asks whether the endpoint is local (a
+    read of the endpoint table), so the write is made on a worker thread and
+    awaited. The latch is decided here, on the loop, because it is three
+    `ContextVar`s and a worker thread's changes to a copied context are not
+    seen by the turn that copied it — decided there, every round of a turn
+    would write a row."""
+    try:
+        if not _run_config_due(tools, resent):
+            return
+        await asyncio.to_thread(_write_run_config, temperature, max_tokens, session_id, tools,
+                                url, model, explicit_params)
+    except Exception:
+        pass   # a receipt is never worth a failed reply
+
+
+def _run_config_due(tools, resent: bool) -> bool:
+    """The once-per-turn latch both capture doors share (`P4-25`, `P17-08`,
+    `B1029`): whether this capture writes a row, marking it written if so."""
+    from src.events import current_run_id
+    if not current_run_id():
+        return False
+    if resent:
+        if _run_config_resent.get():
+            return False
+        _run_config_resent.set(True)
+    elif _run_config_recorded.get():
+        # Already captured. The one thing worth a second row is a tool list
+        # the first capture did not have; anything else is a duplicate.
+        if not tools or _run_config_had_tools.get():
+            return False
+    _run_config_recorded.set(True)
+    if tools:
+        _run_config_had_tools.set(True)
+    return True
+
+
+def _write_run_config(temperature, max_tokens, session_id, tools, url, model,
+                      explicit_params) -> None:
+    """The row itself, with the sampling the payload carries (`B933`)."""
+    from src.events import record_run_config
+    record_run_config(
+        sampling=_sent_sampling(url, model, temperature, max_tokens, explicit_params),
+        tools=tools,
+        session_id=session_id,
+    )
 
 
 # ── `B1029` · a server that says what it can serve is sent that ────────────
@@ -3226,11 +3282,12 @@ async def stream_llm(url: str, model: str, messages: List[Dict], temperature: fl
     target_url = _stream_target_url(url)
     # `B1106`. The length the payload will carry, the local profile's included,
     # so the fit below and the resend inside judge the number that is sent.
-    max_tokens = _carried_max_tokens(url, model, max_tokens)
+    # `B1588`: on a worker thread, as `llm_call_async`'s.
+    max_tokens = await asyncio.to_thread(_carried_max_tokens, url, model, max_tokens)
     # Before the receipt, so it records the number sent (`B933`).
     max_tokens = fitted_max_tokens(url, model, messages, tools, max_tokens, max_tokens_floor)
-    _capture_run_config(temperature, max_tokens, session_id, tools=tools, url=url,
-                        model=model, explicit_params=explicit_params)
+    await _capture_run_config_async(temperature, max_tokens, session_id, tools=tools, url=url,
+                                    model=model, explicit_params=explicit_params)
 
     async with _local_model_slot(target_url, model, workload):
         async for chunk in _stream_llm_inner(
@@ -3291,9 +3348,10 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
         h = {"Content-Type": "application/json"}
         if headers:
             h.update(headers)
+        num_ctx = await asyncio.to_thread(get_context_length, url, model)   # `B1588`
         payload = _build_ollama_payload(
             model, messages_copy, temperature, max_tokens,
-            stream=True, tools=tools, num_ctx=get_context_length(url, model),
+            stream=True, tools=tools, num_ctx=num_ctx,
         )
     elif provider == "chatgpt-subscription":
         target_url = _normalize_chatgpt_subscription_url(url)
@@ -3329,8 +3387,8 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
         # <think> blocks. Ollama /v1 accepts "think": false as a top-level param.
         if _is_ollama_openai_compat_url(url) and _supports_thinking(model):
             payload["think"] = False
-        _apply_local_cache_affinity(payload, url, session_id)
-        _apply_local_generation_stability(payload, target_url, model, explicit_params)
+        await asyncio.to_thread(_apply_local_profiles, payload, url, target_url, model,
+                                session_id, explicit_params)   # `B1588`
         _scrub_openai_chat_tool_reasoning(payload, target_url, model)
         h = _provider_headers(provider, headers)
         if provider == "copilot":
@@ -3781,8 +3839,9 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                 if _servable is not None:
                     logger.info("[llm] %s refused max_tokens=%s; it can serve %s — sending again",
                                 _host_key(target_url), max_tokens, _servable)
-                    _capture_run_config(temperature, _servable, session_id, url=url, model=model,
-                                        explicit_params=explicit_params, resent=True)
+                    await _capture_run_config_async(temperature, _servable, session_id, url=url,
+                                                    model=model, explicit_params=explicit_params,
+                                                    resent=True)
                     async for _chunk in _stream_llm_inner(
                         url, model, messages, temperature=temperature, max_tokens=_servable,
                         headers=headers, timeout=timeout, prompt_type=prompt_type, tools=tools,

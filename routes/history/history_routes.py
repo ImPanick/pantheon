@@ -975,7 +975,10 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             # `P23-04` (PERF-M-14): one lookup gives the window and whether it
             # was proven; the agent's budget below reads the same answer
             # rather than asking the endpoint again.
-            ctx_len, window_known = get_context_length_known(session.endpoint_url, session.model)
+            # `B1588`: on a worker thread — it reads the endpoint table, and
+            # may ask the server.
+            ctx_len, window_known = await asyncio.to_thread(
+                get_context_length_known, session.endpoint_url, session.model)
             ctx_len = int(ctx_len or 0)
             # `P23-04` (CHAT-M-4). The window the next request is held to. In
             # Agent mode that is the loop's input budget — 6,000 tokens when
@@ -1098,7 +1101,8 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             from src.llm_core import llm_call_async
             from src.endpoint_resolver import resolve_endpoint
 
-            ctx_len = get_context_length(session.endpoint_url, session.model)
+            ctx_len = await asyncio.to_thread(   # `B1588`: off the event loop
+                get_context_length, session.endpoint_url, session.model)
             used_before = estimate_tokens(session.get_context_messages())
             pct_before = round((used_before / ctx_len) * 100, 1) if ctx_len else 0
             msg_count_before = len(history)

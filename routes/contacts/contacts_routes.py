@@ -840,14 +840,21 @@ def _delete_contact(uid: str) -> bool:
 def setup_contacts_routes():
     router = APIRouter(prefix="/api/contacts", tags=["contacts"])
 
+    # `B1588`. Every handler here is a plain `def`: none awaits anything, and
+    # each does its work synchronously — a CardDAV request, the outbound check
+    # that reads the person's networks from the database, the contacts file —
+    # which as `async def` ran on the event loop, so one slow address book held
+    # every other request the server had. Starlette runs a `def` in its thread
+    # pool.
+
     @router.get("/list")
-    async def list_contacts(_admin: str = Depends(require_admin)):
+    def list_contacts(_admin: str = Depends(require_admin)):
         """List all contacts."""
         contacts = _fetch_contacts()
         return {"contacts": contacts, "count": len(contacts)}
 
     @router.get("/search")
-    async def search_contacts(q: str = Query(""), _admin: str = Depends(require_admin)):
+    def search_contacts(q: str = Query(""), _admin: str = Depends(require_admin)):
         """Search contacts by name or email. Returns up to 10 matches."""
         contacts = _fetch_contacts()
         if not q:
@@ -865,7 +872,7 @@ def setup_contacts_routes():
         return {"results": results[:10]}
 
     @router.post("/add")
-    async def add_contact(data: dict, _admin: str = Depends(require_admin)):
+    def add_contact(data: dict, _admin: str = Depends(require_admin)):
         """Add a new contact."""
         name = (data.get("name") or "").strip()
         email = (data.get("email") or "").strip()
@@ -914,7 +921,7 @@ def setup_contacts_routes():
         return {"success": ok}
 
     @router.post("/import")
-    async def import_vcf(data: dict, _admin: str = Depends(require_admin)):
+    def import_vcf(data: dict, _admin: str = Depends(require_admin)):
         """Import contacts from .vcf or CSV. Body: {"vcf": "..."} or {"csv": "..."}."""
         # Coerce defensively: a non-string vcf/text/csv (e.g. a number or list
         # in the JSON body) would otherwise reach .strip() and 500 with an
@@ -933,7 +940,7 @@ def setup_contacts_routes():
         return result
 
     @router.get("/export")
-    async def export_contacts(
+    def export_contacts(
         format: str = Query("vcf", pattern="^(vcf|csv)$"),
         _admin: str = Depends(require_admin),
     ):
@@ -954,7 +961,7 @@ def setup_contacts_routes():
         )
 
     @router.get("/config")
-    async def get_config(_admin: str = Depends(require_admin)):
+    def get_config(_admin: str = Depends(require_admin)):
         cfg = _get_carddav_config()
         # Mask password
         if cfg["password"]:
@@ -967,7 +974,7 @@ def setup_contacts_routes():
         return cfg
 
     @router.put("/config")
-    async def update_config(data: dict, _admin: str = Depends(require_admin)):
+    def update_config(data: dict, _admin: str = Depends(require_admin)):
         settings = _load_settings()
         for key in ("carddav_url", "carddav_username", "carddav_password"):
             if key in data:
@@ -988,7 +995,7 @@ def setup_contacts_routes():
         return {"success": True}
 
     @router.delete("/clear")
-    async def clear_contacts(_admin: str = Depends(require_admin)):
+    def clear_contacts(_admin: str = Depends(require_admin)):
         """Clear all local contacts. If CardDAV is configured, only clears the local fallback cache."""
         _save_local_contacts([])
         return {"success": True}
@@ -997,7 +1004,7 @@ def setup_contacts_routes():
     # (/list, /search, /add, /config) win — otherwise PUT /config would
     # match PUT /{uid} with uid="config".
     @router.put("/{uid}")
-    async def edit_contact(uid: str, data: dict, _admin: str = Depends(require_admin)):
+    def edit_contact(uid: str, data: dict, _admin: str = Depends(require_admin)):
         """Edit an existing contact — name / emails / phones / address."""
         name = (data.get("name") or "").strip()
         emails = data.get("emails")
@@ -1015,7 +1022,7 @@ def setup_contacts_routes():
         return {"success": ok}
 
     @router.delete("/{uid}")
-    async def delete_contact(uid: str, _admin: str = Depends(require_admin)):
+    def delete_contact(uid: str, _admin: str = Depends(require_admin)):
         """Delete a contact by UID."""
         if not uid:
             return {"success": False, "error": "UID required"}

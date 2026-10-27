@@ -4,9 +4,9 @@
 `text = data.get("vcf") or ... or ""` left a non-string value (e.g. a number)
 in place, so the next `text.strip()` raised AttributeError -> HTTP 500. The
 handler now coerces with str() and degrades to a structured "no data" response.
-"""
-import asyncio
 
+`B1588` made the handler a plain `def`, so it is called directly.
+"""
 from routes.contacts_routes import setup_contacts_routes
 
 
@@ -20,7 +20,7 @@ def _import_handler():
 
 def _call(data):
     handler = _import_handler()
-    return asyncio.run(handler(data=data, _admin="admin"))
+    return handler(data=data, _admin="admin")
 
 
 def test_non_string_vcf_degrades_cleanly():

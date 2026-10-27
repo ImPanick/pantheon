@@ -559,8 +559,9 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
         }
         messages = [system_msg] + sess.get_context_messages()
 
-        t_url, t_model, t_headers = resolve_task_endpoint(
-            sess.endpoint_url, sess.model, sess.headers, owner=_owner(request)
+        # `B1588`: it reads the endpoint table; on a worker thread.
+        t_url, t_model, t_headers = await asyncio.to_thread(
+            resolve_task_endpoint, sess.endpoint_url, sess.model, sess.headers, owner=_owner(request)
         )
 
         try:
@@ -718,11 +719,12 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
                 logger.warning("Session %s not found or inaccessible, falling back to utility endpoint", session)
                 endpoint_url, model, headers = await asyncio.to_thread(resolve_endpoint, "utility", owner=user)
             else:
-                endpoint_url, model, headers = resolve_task_endpoint(
-                    sess.endpoint_url, sess.model, sess.headers, owner=user
+                # `B1588`: the endpoint table, on a worker thread as above.
+                endpoint_url, model, headers = await asyncio.to_thread(
+                    resolve_task_endpoint, sess.endpoint_url, sess.model, sess.headers, owner=user
                 )
         else:
-            endpoint_url, model, headers = resolve_task_endpoint(owner=user)
+            endpoint_url, model, headers = await asyncio.to_thread(resolve_task_endpoint, owner=user)
     
         if not endpoint_url or not model:
             raise HTTPException(400, "No model yet. Add one in Settings → Add Models.")
@@ -737,7 +739,10 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
             "Memory import")
         filename = file.filename or "upload"
         _, ext = os.path.splitext(filename.lower())
-        text = _read_import_text(content, filename, ext, user)
+        # `B1588`. Reading the file is parsing it — a PDF's pages, and a picture
+        # in it described by the vision model, a synchronous model call — so
+        # it is done on a worker thread, not the event loop.
+        text = await asyncio.to_thread(_read_import_text, content, filename, ext, user)
 
         # `BRAIN-M-14` (P23-02). `reason` says which empty answer this is:
         # `empty` — nothing readable in the file; `model_unparsed` — the

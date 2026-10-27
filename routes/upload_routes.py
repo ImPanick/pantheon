@@ -1049,7 +1049,10 @@ def setup_upload_routes(upload_handler):
                                          file_owner or current_user, cache_path)
         from src.document_processor import analyze_image_with_vl
         try:
-            text = analyze_image_with_vl(path, owner=current_user) or ""
+            # `B1588`. A synchronous model call — the endpoint table read, then
+            # the request to the vision model — and it ran on the event loop,
+            # so every other request waited for the picture to be described.
+            text = await asyncio.to_thread(analyze_image_with_vl, path, owner=current_user) or ""
         except Exception as e:
             logger.error(f"Vision analysis failed for {file_id}: {e}")
             raise HTTPException(500, f"Vision analysis failed: {e}")

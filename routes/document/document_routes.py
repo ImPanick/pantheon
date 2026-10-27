@@ -1278,7 +1278,9 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         from src.document_actions import is_mail_draft, write_tidy_verdict
 
         user = get_current_user(request)
-        url, model, headers = resolve_task_endpoint(owner=user or None)
+        # `B1588`: it reads the endpoint table — on a worker thread, as the
+        # fallback below already was.
+        url, model, headers = await asyncio.to_thread(resolve_task_endpoint, owner=user or None)
         if not url or not model:
             # Fall back to default endpoint
             url, model, headers = await asyncio.to_thread(resolve_endpoint, "default", owner=user or None)
@@ -1611,7 +1613,8 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         settings = _load_vl_settings()
         vl_model = settings.get("vision_model", "")
         try:
-            url, model_id, headers = _resolve_vl_model(vl_model, owner=user)
+            url, model_id, headers = await asyncio.to_thread(   # `B1588`: off the loop
+                _resolve_vl_model, vl_model, owner=user)
         except Exception as e:
             raise HTTPException(503, f"No vision model available: {e}")
 

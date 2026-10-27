@@ -21,7 +21,9 @@ def _function_source(path: str, name: str) -> str:
 
 def test_document_ai_tidy_resolves_with_owner_scope():
     body = _function_source("routes/document/document_routes.py", "ai_tidy_documents")
-    assert "resolve_task_endpoint(owner=user or None)" in body
+    # `B1588` moved the read to a worker thread; the owner it is scoped to is
+    # the same.
+    assert "asyncio.to_thread(resolve_task_endpoint, owner=user or None)" in body
     assert 'asyncio.to_thread(resolve_endpoint, "default", owner=user or None)' in body
 
 

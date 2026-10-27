@@ -370,7 +370,9 @@ def setup_webhook_routes(
             if getattr(ep, "provider_auth_id", None):
                 try:
                     from src.endpoint_resolver import resolve_endpoint_runtime
-                    base_url, api_key = resolve_endpoint_runtime(ep, owner=token_owner)
+                    # `B1588`: the credentials read is a database read; off the loop.
+                    base_url, api_key = await asyncio.to_thread(
+                        resolve_endpoint_runtime, ep, owner=token_owner)
                     endpoint_url = build_chat_url(base_url)
                 except Exception:
                     raise HTTPException(500, "Could not resolve endpoint credentials")

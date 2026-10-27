@@ -1943,7 +1943,9 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
             raise HTTPException(400, f"That is {len(text):,} characters. Describe it in under "
                                      f"{SKILL_DRAFT_MAX_CHARS:,}.")
         try:
-            url, model, headers, _teacher = _resolve_audit_models(user)
+            # `B1588`: the endpoint table, read in the thread pool.
+            from starlette.concurrency import run_in_threadpool
+            url, model, headers, _teacher = await run_in_threadpool(_resolve_audit_models, user)
         except Exception:
             raise HTTPException(503, "No model is set up to draft a skill. Write it by hand below, "
                                      "or set a Default or Utility model in Settings.")
@@ -2171,7 +2173,10 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
             # sleeps between GitHub calls — and it ran on the event loop, so for
             # the whole import every other request the server had (the page's
             # polls, a chat's stream) waited behind it. Off the loop.
-            if si.is_package_link(url):
+            # `B1588`: telling a package link from a skill link resolves the
+            # address and checks it against the person's networks (a database
+            # read) — in the thread pool too.
+            if await run_in_threadpool(si.is_package_link, url):
                 pkg = await run_in_threadpool(si.fetch_skill_package, url)
             else:
                 files, src, notes = await run_in_threadpool(si.fetch_skill_bundle_report, url)

@@ -5,9 +5,10 @@ The handler did `data.get("name", "").strip()`. dict.get returns the default
 only when the key is ABSENT; a body like {"name": null, "email": "x@y.com"}
 gives name=None, so None.strip() raised AttributeError -> 500. Now guarded with
 `(data.get("name") or "")`.
-"""
-import asyncio
 
+`B1588` made the handler a plain `def` (its work is synchronous and ran on the
+event loop), so it is called, not run under `asyncio.run`.
+"""
 import pytest
 
 import routes.contacts_routes as cr
@@ -35,7 +36,7 @@ def _stub_store(monkeypatch):
 
 def test_null_name_does_not_crash(_stub_store):
     handler = _add_handler()
-    result = asyncio.run(handler({"name": None, "email": "x@y.com"}, _admin="admin"))
+    result = handler({"name": None, "email": "x@y.com"}, _admin="admin")
     assert result["success"] is True
     # name fell back to the email local-part instead of crashing.
     assert _stub_store == [("x", "x@y.com", "", [])]
@@ -43,13 +44,13 @@ def test_null_name_does_not_crash(_stub_store):
 
 def test_null_email_does_not_crash(_stub_store):
     handler = _add_handler()
-    result = asyncio.run(handler({"name": "Bob", "email": None}, _admin="admin"))
+    result = handler({"name": "Bob", "email": None}, _admin="admin")
     assert result["success"] is True
     assert _stub_store == [("Bob", "", "", [])]
 
 
 def test_phone_only_contact_is_allowed(_stub_store):
     handler = _add_handler()
-    result = asyncio.run(handler({"name": "Bob", "email": None, "phone": "0805412 7841"}, _admin="admin"))
+    result = handler({"name": "Bob", "email": None, "phone": "0805412 7841"}, _admin="admin")
     assert result["success"] is True
     assert _stub_store == [("Bob", "", "", ["0805412 7841"])]

@@ -241,14 +241,21 @@ def test_every_llm_entry_point_records_a_config():
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) \
                 and node.name in entry_points:
+            # `B1588`: the async doors capture through `_capture_run_config_async`,
+            # the same latch with the write made on a worker thread.
             found[node.name] = any(
-                isinstance(c, ast.Call) and getattr(c.func, "id", "") == "_capture_run_config"
+                isinstance(c, ast.Call) and getattr(c.func, "id", "") in _CAPTURES
                 for c in ast.walk(node))
 
     missing = sorted(n for n in entry_points if not found.get(n))
     assert not missing, (
         f"these reach a model without recording a run config: {missing}. "
         f"A receipt with config: null is indistinguishable from a quiet turn.")
+
+
+#: `B1588`: the sync door's capture and the async doors' (`_capture_run_config_async`
+#: shares its latch, `_run_config_due`, and its write, `_write_run_config`).
+_CAPTURES = ("_capture_run_config", "_capture_run_config_async")
 
 
 def test_the_capture_is_one_implementation_not_three():
@@ -270,7 +277,7 @@ def test_the_non_stream_path_records_before_the_cache_check():
     fn = next(n for n in ast.walk(tree)
               if isinstance(n, ast.AsyncFunctionDef) and n.name == "llm_call_async")
     capture = next(c.lineno for c in ast.walk(fn) if isinstance(c, ast.Call)
-                   and getattr(c.func, "id", "") == "_capture_run_config")
+                   and getattr(c.func, "id", "") in _CAPTURES)
     cached = next(c.lineno for c in ast.walk(fn) if isinstance(c, ast.Call)
                   and getattr(c.func, "id", "") == "_get_cached_response")
     assert capture < cached, "the cache short-circuits the receipt"
@@ -325,6 +332,7 @@ def test_injected_skills_are_captured_after_selection():
 @pytest.mark.parametrize("module,func", [
     ("src/agent_loop.py", "record_run_config"),
     ("src/llm_core.py", "_capture_run_config"),
+    ("src/llm_core.py", "_capture_run_config_async"),   # `B1588`
 ])
 def test_every_capture_site_references_only_names_in_scope(module, func):
     """`B32`, twice, and the second time proved the first fix was too narrow.

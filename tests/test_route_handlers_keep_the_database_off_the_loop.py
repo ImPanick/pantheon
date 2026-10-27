@@ -49,6 +49,24 @@ which only happens inside a chat turn; asks whether an endpoint is local
 (`model_context._enabled_endpoint_rows`); and an outbound address is checked
 against the person's own networks (`url_safety.check_outbound_url` →
 `person_networks.for_run`) — the contacts, gallery and skill-import routes.
+
+**`B1588` — the remainder, re-measured (`Law 3`).** The three chains were not
+most of the 51: with the model call's own database work taken off the loop,
+the list fell by four, because nearly every handler that calls a model also
+resolves its endpoint (`resolve_task_endpoint`, `_resolve_vl_model`,
+`resolve_utility_fallback_candidates`, `_resolve_audit_models`) on the loop
+first. What `B1588` took off: the model call itself — `llm_call_async` and
+`stream_llm` hand the endpoint-kind reads (`_carried_max_tokens`,
+`_apply_local_profiles`, `get_context_length`, the local-model gate) and the
+run-config write (`_capture_run_config_async`, whose latch stays on the loop)
+to worker threads, and `reaches_a_session` holds both doors at no session;
+the endpoint resolvers in the handlers that call a model; the context-length
+reads (`context_info`, the context wheel, compaction); the vision calls in
+the upload, Library and gallery routes; the memory import's file reader; the
+skill import's link check; and the contacts router, whose ten handlers were
+`async def` awaiting nothing and are plain `def` now. **51 → 25.** The rest
+are async helpers (CalDAV, the agent workshop, replay, evals, the skill
+tests, the workflow assist) whose own database steps need the same split.
 """
 from __future__ import annotations
 
@@ -56,6 +74,8 @@ import ast
 import asyncio
 import pathlib
 import threading
+
+from test_the_qwen3_cap_guards_every_door import wire  # noqa: F401,E402  (`B1588`'s drive)
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -87,8 +107,9 @@ def _calls_the_database_itself(fn) -> bool:
     return False
 
 
-#: `B1580`. The ceiling through helpers: 51 after `B1580`, from 107.
-MAX_THROUGH_A_HELPER = 51
+#: `B1580`. The ceiling through helpers: 51 after `B1580`, from 107; 25 after
+#: `B1588`.
+MAX_THROUGH_A_HELPER = 25
 
 #: Where a helper a handler calls can live.
 _SCOPE = ("routes", "src", "core", "services", "companion", "integrations")
@@ -127,18 +148,18 @@ def _imports(tree, module: str):
     return names, modules
 
 
-def through_a_helper(trees=None):
-    """`[(file, line, handler, helper)]` — every async route handler that
-    reaches a database session through a function it calls (`B1580`).
+def _every_tree():
+    trees = {}
+    for top in _SCOPE:
+        for path in sorted((ROOT / top).glob("**/*.py")):
+            trees[_module_name(path)] = (path, ast.parse(path.read_text(encoding="utf-8")))
+    trees["app"] = (ROOT / "app.py", ast.parse((ROOT / "app.py").read_text(encoding="utf-8")))
+    return trees
 
-    `trees` is `{module: (path, tree)}`; by default every module in `_SCOPE`
-    and `app.py`. A handler counted by `on_the_loop()` is counted here too."""
-    if trees is None:
-        trees = {}
-        for top in _SCOPE:
-            for path in sorted((ROOT / top).glob("**/*.py")):
-                trees[_module_name(path)] = (path, ast.parse(path.read_text(encoding="utf-8")))
-        trees["app"] = (ROOT / "app.py", ast.parse((ROOT / "app.py").read_text(encoding="utf-8")))
+
+def _call_graph(trees):
+    """`(defs, resolve, reaches)` over `trees` — the question `B1580` asks of
+    a handler, askable of any module-level function (`B1588`)."""
     defs = {(m, n.name): n for m, (_p, t) in trees.items() for n in t.body
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
     scope = {m: _imports(t, m) for m, (_p, t) in trees.items()}
@@ -167,6 +188,26 @@ def through_a_helper(trees=None):
             for target in (resolve(c, key[0]) for c in _own_calls(fn)) if target)
         memo[key] = hit
         return hit
+
+    return defs, resolve, reaches
+
+
+def reaches_a_session(module: str, function: str, trees=None) -> bool:
+    """`B1588`. Does `module.function`, called on the loop, open a database
+    session — itself, or through anything it calls by name?"""
+    defs, _resolve, reaches = _call_graph(trees if trees is not None else _every_tree())
+    return reaches((module, function))
+
+
+def through_a_helper(trees=None):
+    """`[(file, line, handler, helper)]` — every async route handler that
+    reaches a database session through a function it calls (`B1580`).
+
+    `trees` is `{module: (path, tree)}`; by default every module in `_SCOPE`
+    and `app.py`. A handler counted by `on_the_loop()` is counted here too."""
+    if trees is None:
+        trees = _every_tree()
+    defs, resolve, reaches = _call_graph(trees)
 
     out = []
     for module, (path, tree) in trees.items():
@@ -249,6 +290,20 @@ def test_the_helper_scan_follows_a_chain_and_stops_at_a_thread():
                               "routes.x": (ROOT / "routes" / "x.py", routes)})
     assert [(name, helper) for _f, _l, name, helper in found] == [
         ("login", "src.events.record_auth_event"), ("logout", "src.events.record_event")]
+
+
+def test_a_model_call_opens_no_session_on_the_loop():
+    """`B1588`. The two async doors to a model reach no database session on
+    the event loop — their endpoint reads and their run-config row are made
+    on worker threads — so a handler that calls a model is not on the list
+    for the call. The sync door (`llm_call`) runs in a thread already."""
+    trees = _every_tree()
+    for door in ("llm_call_async", "stream_llm", "llm_call_async_with_fallback",
+                 "llm_call_async_with_route_fallback", "_local_model_slot"):
+        assert not reaches_a_session("src.llm_core", door, trees), (
+            f"src.llm_core.{door} opens a database session on the event loop")
+    # And the scan is not blind there: the sync door does reach one.
+    assert reaches_a_session("src.llm_core", "llm_call", trees)
 
 
 def test_no_audit_write_is_on_the_loop():
@@ -420,3 +475,63 @@ def test_an_event_a_plain_route_fires_is_handled_on_the_apps_loop(monkeypatch):
         assert client.post("/save").status_code == 200
         assert handled.wait(5), "the event was never handled"
     assert seen == {"loop": app_loop, "event": "document_updated"}
+
+
+def test_a_model_call_reads_and_writes_the_database_off_the_loop(tmp_path, monkeypatch, wire):
+    """`B1588`, driven: `llm_call_async` and `stream_llm` against a local
+    MiniMax endpoint the endpoint table names as local, inside a run, with only
+    the socket faked (`wire`). Every session either opens — the endpoint-kind
+    reads, the context window, the run-config row — is opened on a worker
+    thread; the row is in the table when the call returns (awaited, not fired
+    and forgotten); and the payload still carries the local profile, so the
+    reads that moved still decided what was sent."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    import src.llm_core as llm_core
+    from core.database import Base, Event, ModelEndpoint
+    from src import events as ev
+
+    engine = create_engine(f"sqlite:///{tmp_path}/model.db",
+                           connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=engine, tables=[Event.__table__, ModelEndpoint.__table__])
+    maker = sessionmaker(bind=engine)
+    db = maker()
+    db.add(ModelEndpoint(id="ep1", name="Box", base_url="http://models.lan:8091/v1",
+                         endpoint_kind="local", is_enabled=True))
+    db.commit()
+    db.close()
+    opened = _sessions_by_thread(monkeypatch, maker)
+    monkeypatch.setattr(ev, "_last_prune", 0.0)
+    url = "http://models.lan:8091/v1/chat/completions"
+    model = "example-org/MiniMax-M2.7-BF16-mlx-4Bit"
+
+    async def drive():
+        loop_thread = threading.get_ident()
+        for door in ("call", "stream"):
+            ev._turn_started.set(None)
+            ev._run_id.set(None)
+            llm_core._run_config_recorded.set(False)
+            llm_core._run_config_had_tools.set(False)
+            ev.mark_turn_start()
+            if door == "call":
+                await llm_core.llm_call_async(url, model, [{"role": "user", "content": "hi"}],
+                                              session_id="s1")
+            else:
+                async for _chunk in llm_core.stream_llm(url, model, [{"role": "user", "content": "hi"}],
+                                                        session_id="s1"):
+                    pass
+        return loop_thread
+
+    loop_thread = asyncio.run(drive())
+    assert opened, "nothing read the endpoint table — the drive is not measuring the row"
+    assert loop_thread not in opened, "a session was opened on the event loop"
+    db = maker()
+    try:
+        rows = db.query(Event).filter(Event.kind == "run_config").count()
+    finally:
+        db.close()
+        engine.dispose()
+    assert rows == 2, f"one run-config row per door, written before the call returned; got {rows}"
+    assert [payload.get("temperature") for _url, payload in wire.sent] == [0.2, 0.2], (
+        "the local profile was not applied — the endpoint read that moved decided nothing")

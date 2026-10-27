@@ -1596,7 +1596,9 @@ def setup_session_routes(
             return {"context_length": None}
         try:
             from src.model_context import get_context_length
-            ctx = get_context_length(session.endpoint_url, session.model)
+            # `B1588`: the window is read from the endpoint table, or asked of
+            # the server — on a worker thread, not the event loop.
+            ctx = await asyncio.to_thread(get_context_length, session.endpoint_url, session.model)
             return {"context_length": ctx, "model": session.model}
         except Exception:
             return {"context_length": None}

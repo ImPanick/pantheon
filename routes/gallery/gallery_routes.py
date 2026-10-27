@@ -2276,7 +2276,9 @@ def setup_gallery_routes() -> APIRouter:
                 return {"error": "Vision is disabled — enable it in Settings → Vision"}
             configured = vl_settings.get("vision_model", "")
             try:
-                chat_url, model_name, headers = _resolve_vl_model(configured, owner=user)
+                # `B1588`: the resolver reads the endpoint table; off the loop.
+                chat_url, model_name, headers = await asyncio.to_thread(
+                    _resolve_vl_model, configured, owner=user)
             except ValueError:
                 return {"error": "No vision model configured — set one in Settings → Vision"}
             if not chat_url:
