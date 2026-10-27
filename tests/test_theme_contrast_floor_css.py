@@ -828,7 +828,16 @@ def test_nothing_paints_in_the_muted_pivot():
     for path in sorted(static.rglob("*.js")) + sorted(static.glob("*.html")):
         if "lib" in path.relative_to(static).parts:
             continue
-        if re.search(r"var\(--color-muted[,)]", path.read_text(encoding="utf-8", errors="replace")):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        found = [m.start() for m in re.finditer(r"var\(--color-muted[,)]", text)]
+        # `B1575`. The sign-in page links no stylesheet and declares
+        # `--fg-muted` itself, as the sheet does: its one reader of the pivot
+        # is that declaration, the same rule as the sheet's.
+        if path.name == "login.html" and len(found) == 1:
+            decl = text.index("--fg-muted:", text.index(":root {"))
+            if decl < found[0] < text.index(";", decl):
+                continue
+        if found:
             elsewhere.append(path.relative_to(ROOT).as_posix())
     assert elsewhere == [], f"these paint in the muted pivot directly: {elsewhere}"
 

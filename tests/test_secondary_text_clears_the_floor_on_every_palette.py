@@ -151,4 +151,6 @@ def test_no_inline_style_mixes_text_toward_transparent(cc):
     Compare and the email library, moved onto the ladder; the two pages that
     do not load `style.css` are named, not skipped silently."""
     assert cc._inline_transparent_text() == []
-    assert cc._INLINE_SCAN_EXEMPT == {"static/login.html", "static/whirlpool-variants.html"}
+    # `B1575` took the sign-in page off: it declares the muted pivot itself
+    # (`LADDER_PAGES`) and its text is on the ladder.
+    assert cc._INLINE_SCAN_EXEMPT == {"static/whirlpool-variants.html"}

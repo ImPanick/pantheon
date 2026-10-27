@@ -482,10 +482,46 @@ def ladder_rung(palette: dict, pct: float) -> str:
     return _from_oklab(tuple(x * t + y * (1 - t) for x, y in zip(a, b)))
 
 
+#: `B1575`. Pages that link no stylesheet and declare the muted pivot
+#: themselves, so their rungs are measured with the sheet's and their copy of
+#: the declarations is held equal to the sheet's (`_mirror_drift`).
+LADDER_PAGES = ("static/login.html",)
+
+#: The `:root` declarations such a page copies: `fg_muted()` and
+#: `ladder_rung()` model `style.css`'s, so a copy that drifted would be
+#: measured as something it is not.
+MIRRORED_TOKENS = ("--color-muted", "--fg-muted", "--color-error")
+
+
+def _root_declarations(text: str) -> dict:
+    """`{token: value}` from the first `:root { … }` block in `text`."""
+    match = re.search(r":root\s*\{(.*?)\}", text, re.S)
+    out = {}
+    if match:
+        for decl in re.finditer(r"(--[a-z0-9-]+)\s*:\s*([^;]+);", match.group(1)):
+            out[decl.group(1)] = " ".join(decl.group(2).split())
+    return out
+
+
+def _mirror_drift() -> list:
+    """`B1575`. Each `LADDER_PAGES` copy of a `MIRRORED_TOKENS` declaration
+    that is missing or differs from `static/style.css`'s `:root`."""
+    sheet = _root_declarations(_blank(ROOT / "static" / "style.css"))
+    out = []
+    for rel in LADDER_PAGES:
+        page = _root_declarations(_blank(ROOT / rel))
+        for token in MIRRORED_TOKENS:
+            if page.get(token) != sheet.get(token):
+                out.append(f"{rel}: {token} is {page.get(token)!r}, style.css has {sheet.get(token)!r}")
+    return out
+
+
 def _ladder_failures() -> tuple:
-    """`(rungs, failures)`: every N the sheet writes in `LADDER_IDIOM`, and
-    each palette on which that rung misses 4.5:1 against `--panel` or `--bg`."""
+    """`(rungs, failures)`: every N the sheet — and each `LADDER_PAGES` page
+    (`B1575`) — writes in `LADDER_IDIOM`, and each palette on which that rung
+    misses 4.5:1 against `--panel` or `--bg`."""
     css = _blank(ROOT / "static" / "style.css")
+    css += "\n".join(_blank(ROOT / rel) for rel in LADDER_PAGES)
     rungs = sorted({float(m.group(1)) for m in LADDER_IDIOM.finditer(css)})
     failures = []
     for name, palette in sorted(themes().items()):
@@ -509,10 +545,10 @@ def _transparent_worst(pct: float) -> tuple:
 
 
 #: `B1408`. Pages that do not load `style.css` and so have no `--fg-muted`
-#: to build the ladder from: the sign-in page mirrors the palette by hand,
-#: and the whirlpool sandbox is a developer page. Their transparent mixes are
-#: a named row's (`B1408`'s report), not this scan's.
-_INLINE_SCAN_EXEMPT = {"static/login.html", "static/whirlpool-variants.html"}
+#: to build the ladder from: the whirlpool sandbox is a developer page.
+#: `B1575` took the sign-in page off this list: it declares the pivot itself
+#: (`LADDER_PAGES`), its text is on the ladder, and it is scanned like any page.
+_INLINE_SCAN_EXEMPT = {"static/whirlpool-variants.html"}
 
 
 def _inline_transparent_text() -> list:
@@ -755,6 +791,11 @@ def main() -> int:
             f"{TRANSPARENT_TEXT_FLOOR_PCT:g}%: "
             f"{', '.join(sorted({f for f, _ in inline})[:6])}. Use "
             f"`color-mix(in oklab, var(--fg) N%, var(--fg-muted))`.")
+    drift = _mirror_drift()
+    if drift:
+        problems.append(
+            f"a page's copy of the muted foreground differs from static/style.css's "
+            f"`:root` (`B1575`): {'; '.join(drift[:4])}. Copy the sheet's value.")
     rungs, ladder_fails = _ladder_failures()
     print(f"the de-emphasis ladder (`B1408`): {len(rungs)} rung(s) in use, "
           f"{'all clear 4.5:1 on every palette' if not ladder_fails else f'{len(ladder_fails)} miss'}")

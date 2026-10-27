@@ -176,6 +176,21 @@
     --bg: #282c34; --fg: #9cdef2; --panel: #111; --border: #355a66;
     --red: #e06c75; --green: #50fa7b;
     --bg-effect-intensity: 1;
+    /* `B1575`. The muted foreground and its pivot, as `static/style.css`'s
+       `:root` declares them (`P1-03`, `B1486`) — this page links no
+       stylesheet, so without them it had no `--fg-muted`, and its secondary
+       text mixed `--fg` toward `transparent` instead: the labels at 65%
+       measured 2.53:1 on `retrowave`, the setup note at 60% 2.33:1, the
+       sign-up line at 50% 1.96:1. Copied, not shared, for the reason the
+       palette above is (`P10-05`): the first paint owes nothing to the app's
+       sheet. `.pantheon/check-contrast.py` holds the two copies equal and
+       measures the rungs below on every palette.
+       `color-scheme` is `style.css`'s default too: `light-dark()` reads it,
+       and the head script sets it from the saved palette's background. */
+    color-scheme: dark;
+    --color-muted: light-dark(#747474, #949494);
+    --fg-muted: color-mix(in srgb, var(--fg) 30%, var(--color-muted));
+    --color-error: light-dark(#d60000, #ff6363);
   }
   /* Background patterns — mirrors static/style.css "Background Patterns"
      block so the theme's chosen bgPattern renders on login too. The
@@ -230,8 +245,11 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
-  .setup-note { color: color-mix(in srgb, var(--fg) 60%, transparent); font-size: 0.8rem; margin-bottom: 1rem; text-align: center; }
-  label { display: block; font-size: 0.85rem; margin-bottom: 0.3rem; color: color-mix(in srgb, var(--fg) 65%, transparent); }
+  /* `B1575`. The de-emphasis ladder `B1408` built in `style.css`: every rung
+     lies between `--fg-muted` and `--fg`, both over 4.5:1 on `--panel` and
+     `--bg`, so a lower N is still the quieter line and none is under the floor. */
+  .setup-note { color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted)); font-size: 0.8rem; margin-bottom: 1rem; text-align: center; }
+  label { display: block; font-size: 0.85rem; margin-bottom: 0.3rem; color: color-mix(in oklab, var(--fg) 65%, var(--fg-muted)); }
   input:not(.remember-check) {
     width: 100%; padding: 0.6rem 0.8rem; margin-bottom: 1rem;
     background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
@@ -264,8 +282,11 @@
   }
   button:hover { background: color-mix(in srgb, var(--red) 66%, black); }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
-  .error { color: #e55; font-size: 0.85rem; margin-bottom: 0.75rem; display: none; }
-  .toggle { text-align: center; margin-top: calc(1rem + 4px); font-size: 0.85rem; color: color-mix(in srgb, var(--fg) 50%, transparent); }
+  /* `B1575`. `#e55` measured 3.22:1 on `light`'s panel and under 4.5:1 on
+     eleven palettes; `--color-error` is the app's error text, pinned over the
+     floor on every palette (`tests/test_theme_contrast_floor_css.py`). */
+  .error { color: var(--color-error); font-size: 0.85rem; margin-bottom: 0.75rem; display: none; }
+  .toggle { text-align: center; margin-top: calc(1rem + 4px); font-size: 0.85rem; color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted)); }
   .toggle a { color: var(--red); cursor: pointer; text-decoration: none; }
   .toggle a:hover { text-decoration: underline; }
   .pw-wrapper { position: relative; margin-bottom: 1rem; }
@@ -276,7 +297,7 @@
        lines up visually with the input text baseline. */
     transform: translateY(calc(-50% + 1px));
     background: none; border: none; padding: 4px; cursor: pointer;
-    color: color-mix(in srgb, var(--fg) 40%, transparent); width: auto;
+    color: color-mix(in oklab, var(--fg) 40%, var(--fg-muted)); width: auto;
     display: flex; align-items: center; justify-content: center;
   }
   .pw-toggle:hover { color: var(--fg); background: none; }
@@ -302,22 +323,27 @@
   .remember-toggle .remember-dot {
     display: block; width: 10px; height: 10px; min-width: 10px; min-height: 10px;
     border-radius: 50%;
-    border: 2px solid color-mix(in srgb, var(--fg) 25%, transparent);
+    /* `B1575`. The remember-me switch's only outline: at 25% toward
+       transparent it measured under 2:1, under the 3:1 a control's boundary
+       needs (WCAG 1.4.11). Its checked fill is the same colour; hover is `--fg`. */
+    border: 2px solid var(--fg-muted);
     background: transparent;
     transition: all 0.15s;
   }
   .remember-toggle .remember-check:checked + .remember-dot {
     border-color: transparent;
-    background: color-mix(in srgb, var(--fg) 40%, transparent);
+    background: var(--fg-muted);
   }
   .remember-toggle:hover .remember-dot {
-    border-color: color-mix(in srgb, var(--fg) 40%, transparent);
+    border-color: var(--fg);
   }
   /* P0-13: Pantheon's mark (docs/brand/pantheon-mark.svg), not upstream's boat. */
   .logo-mark { width: 1.6rem; height: 1.6rem; margin-right: 0.4rem; vertical-align: -0.15em; color: var(--red); }
   .version-label {
     position: fixed; bottom: 12px; right: 16px;
-    font-size: 0.7rem; opacity: 0.25;
+    /* `B1575`. Text at `opacity: 0.25` let three quarters of the page
+       through; it is the quietest step there is that a person can still read. */
+    font-size: 0.7rem; color: var(--fg-muted);
     font-family: 'Fira Code', monospace;
     pointer-events: none; user-select: none;
   }
@@ -663,7 +689,7 @@
         form._totpMode = true;
         const totpWrap = document.createElement('div');
         totpWrap.style.cssText = 'margin-top:12px;';
-        totpWrap.innerHTML = '<label for="totp-input" style="font-size:0.85em;opacity:0.7;display:block;margin-bottom:4px;">2FA Code</label><input type="text" id="totp-input" placeholder="Enter 6-digit code" aria-label="Two-factor authentication code" autocomplete="one-time-code" inputmode="numeric" maxlength="8" style="width:100%;padding:10px 12px;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;text-align:center;letter-spacing:4px;">';
+        totpWrap.innerHTML = '<label for="totp-input" style="font-size:0.85em;display:block;margin-bottom:4px;">2FA Code</label><input type="text" id="totp-input" placeholder="Enter 6-digit code" aria-label="Two-factor authentication code" autocomplete="one-time-code" inputmode="numeric" maxlength="8" style="width:100%;padding:10px 12px;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;text-align:center;letter-spacing:4px;">';
         const formEl = submitBtn.parentElement;
         formEl.insertBefore(totpWrap, submitBtn);
         const totpInput = document.getElementById('totp-input');
