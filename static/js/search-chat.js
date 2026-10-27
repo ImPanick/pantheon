@@ -347,10 +347,14 @@ function _settingsEntries(q) {
   const modal = el('settings-modal');
   let panels = [];
   try {
-    panels = searchSettingsPanels(q, {
+    const viewer = {
       isAdmin: viewerIsAdmin(),   // `P23-03`; `B1523`/`B1271`: a viewer the status called a non-admin is one
       runsInstance: viewerRunsInstance(),   // `B1563`: an operator finds what their nav shows
-      controlText: modal ? controlTextFor(modal) : {},
+    };
+    panels = searchSettingsPanels(q, {
+      ...viewer,
+      // `B1570`: only the words of the cards this viewer is shown.
+      controlText: modal ? controlTextFor(modal, viewer) : {},
     });
   } catch (_) { panels = []; }
   return panels.map((panel) => ({

@@ -19,17 +19,25 @@ const _controlText = new WeakMap();
 // Exported for `P9-01`: the command palette searches the same panels with the
 // same harvested words, and shares this cache rather than walking the modal a
 // second way.
-export function controlTextFor(modalEl) {
+//
+// `B1570`: per viewer. The harvest keeps only the words of the cards `viewer`
+// is shown, so one modal holds one cache per audience — a status that arrives
+// after the first search (an operator first read as nobody) is a new key, not
+// an operator searching a guest's words or a guest an admin's.
+export function controlTextFor(modalEl, viewer = {}) {
   if (!modalEl) return {};
-  const cached = _controlText.get(modalEl);
+  const key = `${viewer.isAdmin === true ? 'a' : ''}${viewer.runsInstance === true ? 'o' : ''}`;
+  let byViewer = _controlText.get(modalEl);
+  if (!byViewer) { byViewer = new Map(); _controlText.set(modalEl, byViewer); }
+  const cached = byViewer.get(key);
   // Re-harvest when a panel that had no text now has some: panel bodies are
   // filled in on first open, and a cache taken before that is a cache of
   // nothing.
-  const fresh = harvestSettingsControlText(modalEl);
+  const fresh = harvestSettingsControlText(modalEl, viewer);
   const gained = !cached || Object.keys(fresh).some(
     id => (fresh[id] || '').length > (cached[id] || '').length);
   if (gained) {
-    _controlText.set(modalEl, fresh);
+    byViewer.set(key, fresh);
     return fresh;
   }
   return cached;
@@ -122,10 +130,10 @@ export function bindSettingsSearch(modalEl, options = {}) {
       return;
     }
 
+    const viewer = { isAdmin: isAdmin(), runsInstance: runsInstance() };
     const matches = searchSettingsPanels(query, {
-      isAdmin: isAdmin(),
-      runsInstance: runsInstance(),
-      controlText: controlTextFor(modalEl),
+      ...viewer,
+      controlText: controlTextFor(modalEl, viewer),   // `B1570`: this viewer's cards' words
     });
 
     if (!matches.length) {

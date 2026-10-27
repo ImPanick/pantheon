@@ -13,9 +13,10 @@ offered on no screen, and `admin.js` asked for none of them.
 Now the registry knows three audiences (`panelAudience`): Add Models, Added
 Models, Forge, Embeddings and System are the operator's too, and inside them
 the cards whose writes are still an admin's — the model-hubs switch, the
-deploy switches, the shared knowledge index, the data export, the danger zone,
-usage and the eval builder — are `admin-only`. `admin.js` binds and loads the
-operator's panels for an operator and nothing else.
+deploy switches, the data export, the danger zone, usage and the eval builder —
+are `admin-only` (the shared knowledge index was too, until `B1568`).
+`admin.js` binds and loads the operator's panels for an operator and nothing
+else.
 
 Driven in Chromium against the real app (`Law 20`), the row's `Verify:`: an
 admin defines an `operator` role granting `can_run_instance` and gives it to a
@@ -94,6 +95,18 @@ const BASE = process.argv[2];
       .map((n) => (n.dataset.settingsTab || n.textContent || '').trim()), sel);
     seen.nav = await shown('#settings-modal .settings-nav-item');
     seen.headings = await shown('#settings-modal .settings-sidebar-label');
+    // `B1570`. The Settings finder, typed into as a person types: what each
+    // word offers this viewer, and the line it says when it offers nothing.
+    seen.search = {};
+    for (const q of ['export', 'danger', 'webhook']) {
+      await page.fill('#settings-nav-search', q);
+      seen.search[q] = await page.evaluate(() => {
+        const box = document.getElementById('settings-nav-search-results');
+        return { found: [...box.querySelectorAll('[data-settings-search-result]')].map((b) => b.dataset.settingsSearchResult),
+                 said: ((box.querySelector('.settings-search-empty') || {}).textContent || '') };
+      });
+    }
+    await page.fill('#settings-nav-search', '');
     // Each panel, and the answer that says its loader ran.
     const loads = { services: 'GET /api/model-endpoints', 'added-models': 'GET /api/model-endpoints',
                     forge: 'GET /api/auth/settings', embeddings: 'GET /api/embeddings/endpoint',
@@ -119,6 +132,27 @@ const BASE = process.argv[2];
             .map((b) => b.dataset.forgeDoor),
         };
       }, tab);
+    }
+    // `B1568`. The Knowledge index card, used as an operator uses it:
+    // Reload, Add Directory, and Remove on a directory the list draws.
+    if (seen.cards.system && seen.cards.system.cards.includes('Knowledge index')) {
+      const reloadKey = 'POST /api/personal/reload';
+      await page.click('#adm-ragReloadBtn');
+      await until(reloadKey);
+      await page.fill('#adm-ragDirInput', 'notes');
+      await page.click('#adm-ragAddDirBtn');
+      await until('POST /api/personal/add_directory');
+      seen.rag = await page.evaluate(() => ({
+        dirs: [...document.querySelectorAll('#adm-ragDirList [data-adm-rag-dir]')].map((b) => b.dataset.admRagDir),
+        files: [...document.querySelectorAll('#adm-ragFileList [data-adm-rag-file]')].map((b) => b.dataset.admRagFile),
+        status: (document.getElementById('adm-ragStatus') || {}).textContent || '',
+      }));
+      const removable = page.locator('#adm-ragDirList [data-adm-rag-dir]').first();
+      if (await removable.count()) {
+        await removable.click();
+        await page.click('#styled-confirm-ok');
+        await until('DELETE /api/personal/remove_directory');
+      }
     }
     // Diagnostics' own panels, opened as a person opens them.
     if (seen.cards.system) {
@@ -195,8 +229,11 @@ def test_inside_the_operators_panels_only_the_admins_cards_are_hidden(walked):
     assert forge["hidden"] == ["Hugging Face and Ollama"], forge
     assert "forge:Serve" in forge["doors"] and "settings:tools" not in forge["doors"], forge
     system = cards["system"]
-    assert {"Webhooks", "Terminal Logs", "Storage cleanup", "Uploaded files"} <= set(system["cards"]), system
-    assert {"Switches a deploy can also set", "Knowledge index", "Data Backup",
+    # `B1568`: the Knowledge index is the operator's — its list asked
+    # `require_admin` while every write on it asked `require_operator`.
+    assert {"Webhooks", "Terminal Logs", "Storage cleanup", "Uploaded files",
+            "Knowledge index"} <= set(system["cards"]), system
+    assert {"Switches a deploy can also set", "Data Backup",
             "Danger Zone", "How long records are kept"} <= set(system["hidden"]), system
     assert "Usage over time" not in system["details"] and "Add a case" not in system["details"], system
     assert "Evals — did that change help?" in system["details"], system
@@ -210,12 +247,49 @@ def test_an_operator_is_refused_nothing_and_answered_what_they_were_given(walked
     assert op["refused"] == [], op["refused"]
     for asked in ("GET /api/model-endpoints", "GET /api/embeddings/endpoint",
                   "GET /api/diagnostics/logs", "GET /api/webhooks", "GET /api/upload/stats",
-                  "GET /api/diagnostics/evals"):
+                  "GET /api/diagnostics/evals", "GET /api/personal"):
         assert op["answered"].get(asked) == 200, (asked, op["answered"])
+    # `B1568` moved `GET /api/personal` from this list to the one above.
     for never in ("GET /api/auth/users", "GET /api/tokens", "GET /api/mcp/servers",
-                  "GET /api/vault/config", "GET /api/personal", "GET /api/diagnostics/runs"):
+                  "GET /api/vault/config", "GET /api/diagnostics/runs"):
         assert never not in op["answered"], never
+
+
+def test_an_operator_lists_the_knowledge_index_and_works_it(walked):
+    """`B1568`'s `Verify:` — an operator opens System, sees the indexed files
+    listed, and Reload and Add Directory answer them rather than refuse.
+    Remove is asked when the list draws a directory; whatever the index can do
+    on this machine (no embedder in a test install), the gate is not the
+    answer."""
+    op = walked["operator"]
+    assert op["answered"].get("GET /api/personal") == 200, op["answered"]
+    assert op["answered"].get("POST /api/personal/reload") == 200, op["answered"]
+    added = op["answered"].get("POST /api/personal/add_directory")
+    assert added is not None and added not in (401, 403), op["answered"]
+    removed = op["answered"].get("DELETE /api/personal/remove_directory")
+    assert removed not in (401, 403), op["answered"]
+    assert "rag" in op and op["rag"]["status"], op.get("rag")
 
 
 def test_a_member_still_asks_for_nothing_only_an_admin_or_an_operator_may_have(walked):
     assert walked["member"]["refused"] == [], walked["member"]["refused"]
+
+
+def test_an_operators_settings_search_finds_no_card_they_are_not_shown(walked):
+    """`B1570`'s `Verify:` — the harvest read every control in a panel, the
+    admin's cards inside an operator's panel included, so *export* (Data
+    Backup) and *danger* (the Danger Zone) sent an operator to System, where
+    both cards are hidden. Webhooks, a card of theirs on the same panel, still
+    finds it.
+
+    The row said *finds nothing*; measured, *export* is also the hint under
+    Appearance's *Chat header* toggle (*Model name & export above chat*), a
+    control everyone is shown, so the operator is offered exactly what a
+    member is offered for it — Appearance, and not System."""
+    search = walked["operator"]["search"]
+    member = walked["member"]["search"]
+    assert "system" not in search["export"]["found"], search
+    assert search["export"]["found"] == member["export"]["found"] == ["appearance"], (search, member)
+    assert search["danger"] == {"found": [], "said": "No settings found"}, search
+    assert search["webhook"]["found"] == ["system"], search
+    assert member["webhook"]["found"] == [], member

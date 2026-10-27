@@ -12,7 +12,7 @@ from src.request_models import DirectoryRequest
 from core.constants import BASE_DIR, PERSONAL_DIR, PERSONAL_UPLOADS_DIR
 from src.rag_singleton import get_rag_manager, rag_unavailable_reason
 from src.auth_helpers import require_privilege, require_user
-from core.middleware import require_admin, require_operator
+from core.middleware import require_operator
 from src.upload_handler import secure_filename
 from src.file_names import create_unique, display_name, split_extension, stored_name
 from src.upload_limits import resolve_byte_limit
@@ -252,8 +252,21 @@ def setup_personal_routes(personal_docs_manager, rag_manager, rag_available):
         return resolved
     
     @router.get("")
-    def api_personal_list(owner: str = Depends(require_user), _admin: None = Depends(require_admin)):
-        """Enhanced version that includes directories"""
+    def api_personal_list(owner: str = Depends(require_user), _operator: None = Depends(require_operator)):
+        """Enhanced version that includes directories.
+
+        `B1568`. On the operator's gate, as the four writes below it are. It
+        was `require_admin` while reload, add, remove directory and delete file
+        asked `require_operator`, so the Knowledge index card an operator could
+        act through was hidden from them, and a file could be dropped from the
+        index only by somebody who already knew its path. What it lists — each
+        indexed file's name, size and path, and the directories the indexer is
+        pointed at — is the corpus those writes already reach: an operator who
+        can point the indexer at a host directory and drop any file from it
+        learns nothing here they could not make true. The index has no owner
+        column (`.pantheon/P11-AUTH-MAP.md`), which is a data-model question
+        the operator tier does not change.
+        """
         files = [{"name": f["name"], "size": f["size"], "path": f.get("path", "")} for f in personal_docs_manager.index]
         directories = personal_docs_manager.get_indexed_directories() if hasattr(personal_docs_manager, "get_indexed_directories") else []
         # `BRAIN-M-5` (P23-02): whether the index behind the list is up, and

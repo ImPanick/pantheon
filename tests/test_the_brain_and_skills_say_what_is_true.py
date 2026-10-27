@@ -286,7 +286,8 @@ def test_rag_says_the_embedding_model_is_not_downloaded(monkeypatch):
     app = FastAPI()
     app.include_router(personal_routes.setup_personal_routes(docs, None, True))
     app.dependency_overrides[personal_routes.require_user] = lambda: "rowan"
-    app.dependency_overrides[personal_routes.require_admin] = lambda: None
+    # `B1568`: the list asks `require_operator`, as its writes do.
+    app.dependency_overrides[personal_routes.require_operator] = lambda: None
     listed = TestClient(app).get("/api/personal").json()
     assert listed["healthy"] is False and listed["reason"] == sentence
     assert listed["files"] == [{"name": "a.txt", "size": 3, "path": "/x/a.txt"}]

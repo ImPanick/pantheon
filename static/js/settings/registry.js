@@ -303,9 +303,9 @@ export const SETTINGS_PANELS = Object.freeze([
     controller: 'admin',
     adminOnly: true,
     // `B1563`: diagnostics, logs, webhooks and uploaded files are the
-    // operator's; the cards that save instance settings, list the shared
-    // index, export every user's data or wipe it are `admin-only` in the
-    // markup.
+    // operator's, and the knowledge index (`B1568`); the cards that save
+    // instance settings, export every user's data or wipe it are
+    // `admin-only` in the markup.
     operator: true,
     // `B95`. The three switches an operator could previously only reach by
     // hand-writing `data/settings.json` live in this panel now, so the words
@@ -385,6 +385,11 @@ export function groupAudience(group) {
   return SETTINGS_AUDIENCES[Math.min(...audiences.map(a => SETTINGS_AUDIENCES.indexOf(a)))];
 }
 
+/** `B1563`. The class `syncAdminVisibility()` hides a row by, per audience:
+ *  `admin-only` from everyone but an admin, `operator-only` from everyone
+ *  but an admin or a person who runs the instance. */
+export const AUDIENCE_CLASS = Object.freeze({ everyone: '', operator: 'operator-only', admin: 'admin-only' });
+
 /** Whether a viewer sees something for `audience`. */
 export function rankShown(audience, { isAdmin = false, runsInstance = false } = {}) {
   if (audience === 'everyone' || isAdmin === true) return true;
@@ -441,7 +446,7 @@ export function getSettingsPanelSearchText(panelOrId, controlText = '') {
  * is the source of truth; `data-settings-panel="<id>"` already links a panel to
  * its subtree.
  */
-export function harvestSettingsControlText(modalEl) {
+export function harvestSettingsControlText(modalEl, viewer = {}) {
   if (!modalEl || typeof modalEl.querySelectorAll !== 'function') return {};
   const out = {};
   for (const container of modalEl.querySelectorAll('[data-settings-panel]')) {
@@ -454,6 +459,13 @@ export function harvestSettingsControlText(modalEl) {
     for (const el of container.querySelectorAll(
       'label, h2, h3, h4, legend, option, .settings-row-title, .settings-row-desc, ' +
       '[data-search-text], [placeholder], [title]')) {
+      // `B1570`. Only the words of a card this viewer is shown. A panel can be
+      // an operator's while cards inside it are an admin's (`B1563`), and the
+      // harvest read every one, so an operator searching *export* or *danger*
+      // was sent to System with Data Backup and the Danger Zone hidden there.
+      // No viewer is the least one: a caller that forgets to say who is
+      // asking finds less, never more.
+      if (!rankShown(controlAudience(el, container), viewer)) continue;
       const text = (el.textContent || '').trim();
       if (text && text.length < 200) parts.push(text);
       // `B944`. An array. This was `('placeholder', 'title', 'data-search-text')`
@@ -469,6 +481,21 @@ export function harvestSettingsControlText(modalEl) {
     out[id] = parts.join(' ').toLowerCase();
   }
   return out;
+}
+
+/** `B1570`. Who is shown a control inside a panel: the narrowest audience
+ *  any wrapper between it and its panel is hidden by (`AUDIENCE_CLASS`, the
+ *  classes `syncAdminVisibility()` hides by), or `'everyone'`. */
+export function controlAudience(el, container) {
+  let rank = 0;
+  for (let node = el; node && node !== container; node = node.parentElement) {
+    const list = node.classList;
+    if (!list || typeof list.contains !== 'function') continue;
+    SETTINGS_AUDIENCES.forEach((audience, i) => {
+      if (i > rank && AUDIENCE_CLASS[audience] && list.contains(AUDIENCE_CLASS[audience])) rank = i;
+    });
+  }
+  return SETTINGS_AUDIENCES[rank];
 }
 
 function normalizeSettingsSearch(value) {

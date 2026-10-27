@@ -3541,8 +3541,11 @@ function initAll(mayAdminister = true) {
   // uploaded files, and the own-chats cleanup anyone may run. The rest bind
   // panels and cards only an admin is shown (`admin-only` / the registry), and
   // an operator would be asking routes that refuse them.
+  //
+  // `B1568`: the knowledge index is the operator's — its list asks
+  // `require_operator` now, as its add, remove, reload and delete always did.
   const operatorInits = [
-    initEndpointForm, initCleanup, initLogsView, initWebhookForm, initUploads,
+    initEndpointForm, initCleanup, initLogsView, initWebhookForm, initUploads, initRag,
   ];
   _runInits(operatorInits);
   initialized = true;
@@ -3550,7 +3553,7 @@ function initAll(mayAdminister = true) {
 }
 
 const _adminInits = [
-  initSignupToggle, initAddUser, initCalDAV, initBackup, initDangerZone, initRag,
+  initSignupToggle, initAddUser, initCalDAV, initBackup, initDangerZone,
   () => settingsModule.initIntegrations()
 ];
 let _adminInitialized = false;
@@ -3566,6 +3569,7 @@ function refreshAll(mayAdminister = true) {
   loadWebhooks();
   loadUploads();
   loadLogs(false);
+  loadRag();   // `B1568`: the operator's, like the four writes it lists for
   // `B1563`: what only an admin is shown, asked for only where the status did
   // not call the viewer a non-admin (`viewerMayAdminister`'s answer).
   if (!mayAdminister) return;
@@ -3575,7 +3579,6 @@ function refreshAll(mayAdminister = true) {
   }
   loadUsers();
   loadBuiltinTools();
-  loadRag();
   loadFeatures();
 }
 

@@ -78,7 +78,7 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 76 · Depends 15 · total 91
+derived: direct 76 · Depends 14 · total 90
 
 ### tier summary
 
@@ -87,7 +87,7 @@ derived: direct 76 · Depends 15 · total 91
 | `superuser` | 69 |
 | `operator` | 0 |
 | `power-user` | 0 |
-| `only-because-nothing-finer-existed` | 22 |
+| `only-because-nothing-finer-existed` | 21 |
 
 ### `superuser` — **69 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
 
@@ -167,7 +167,7 @@ derived: direct 76 · Depends 15 · total 91
 
 ### `power-user` — **0 power-user sites.** Reads a capable user needs in order to work, gated as if they were instance control. **Retired by `B683`.** `GET /api/model-endpoints` and `GET /api/model-endpoints/{ep_id}/models` answer anyone signed in now: whoever runs the instance (`runs_instance` asks `require_operator`) sees every endpoint and field as before, and anyone else sees their own and the shared endpoints, each with only the models `allowed_models` lets them use — the rule `/api/models` and a chat send already apply. `…/dependents`, the third, was the delete confirmation's read and is in § G.
 
-### `only-because-nothing-finer-existed` — **22 only-because-nothing-finer-existed sites.** The gate is on the shape of the store, not on the act. Contacts, presets and the personal index are one shared file with no owner column, and the receipts are per-run data with no owner scope — so "admin" is standing in for an ownership check nobody has written. These are the rows `P11-02` should retire, and retiring them is a data-model change, not an auth change.
+### `only-because-nothing-finer-existed` — **21 only-because-nothing-finer-existed sites.** The gate is on the shape of the store, not on the act. Contacts and presets are one shared file with no owner column, and the receipts are per-run data with no owner scope — so "admin" is standing in for an ownership check nobody has written. These are the rows `P11-02` should retire, and retiring them is a data-model change, not an auth change.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -188,7 +188,6 @@ derived: direct 76 · Depends 15 · total 91
 | `routes/diagnostics_routes.py` | `list_recent_runs` | `GET /api/diagnostics/runs` | the newest runs with a receipt — when, which chat, which model — to make eval cases from. Every user's runs, with no owner scope: the receipts' ownership question again. `B490` |
 | `routes/diagnostics_routes.py` | `get_usage` | `GET /api/diagnostics/usage` | token and cost usage. Per-run data with no owner scope, so a second user can neither see their own nor be kept from everyone else's |
 | `routes/diagnostics_routes.py` | `do_rerun` | `POST /api/diagnostics/rerun/{run_id}` | re-runs it. Ownership again, and this one acts |
-| `routes/personal_routes.py` | `api_personal_list` | `GET /api/personal` | lists the indexed personal documents. One shared index with no owner column, so admin is standing in for ownership |
 | `routes/preset_routes.py` | `delete_user_template` | `DELETE /api/presets/templates/{template_id}` | same file, same reason |
 | `routes/preset_routes.py` | `update_custom_preset` | `POST /api/presets/custom` | saves a persona into the single shared presets file. A second user cannot have one of their own, so admin is the only available answer |
 | `routes/preset_routes.py` | `save_group_presets` | `POST /api/presets/groups` | same file, same reason |
@@ -213,7 +212,7 @@ through `from … import require_operator as X`, excluding `core/middleware.py` 
 same question asked to decide what a route *shows*, never whether it answers — is not a
 site: the endpoint list and its models (the retired `power-user` tier) ask it.
 
-derived-operator: direct 63 · Depends 6 · total 69
+derived-operator: direct 63 · Depends 7 · total 70
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -262,6 +261,7 @@ derived-operator: direct 63 · Depends 6 · total 69
 | `routes/model_routes.py` | `toggle_model_endpoint` | `PATCH /api/model-endpoints/{ep_id}` | enables or disables an endpoint for everyone |
 | `routes/model_routes.py` | `update_hidden_models` | `PATCH /api/model-endpoints/{ep_id}/models` | changes what every user sees in the picker |
 | `routes/model_routes.py` | `update_tools` | `POST /api/tools` | the instance-wide tool enablement map |
+| `routes/personal_routes.py` | `api_personal_list` | `GET /api/personal` | lists the indexed personal documents — each file's name, size and path, and the directories the indexer is pointed at. The corpus the four writes below already reach. Tiered `only-because-nothing-finer-existed` on `require_admin` until `B1568`: an operator was given every write on the Knowledge index card and not the list, so the card was hidden from them. The index still has no owner column; that is the data-model question, and the operator tier does not change it |
 | `routes/personal_routes.py` | `add_directory_to_rag` | `POST /api/personal/add_directory` | points the indexer at a host directory — filesystem reach, not document management |
 | `routes/personal_routes.py` | `api_personal_reload` | `POST /api/personal/reload` | re-indexes the whole corpus |
 | `routes/personal_routes.py` | `delete_file_from_rag` | `DELETE /api/personal/file` | drops one file from the index |
@@ -552,8 +552,9 @@ The paragraph above is about the 107 that predate roles; the counts below are li
 - **0 power-user sites: they were one privilege key.** `allowed_models` already existed
   in `DEFAULT_PRIVILEGES` and the endpoint list did not consult it; since `B683` it does,
   for everyone signed in.
-- **22 only-because-nothing-finer-existed sites are not an auth job at all.** Contacts,
-  presets and the personal index need an owner column; the diagnostics receipts need an
+- **21 only-because-nothing-finer-existed sites are not an auth job at all.** Contacts
+  and presets need an owner column (and the personal index, whose list moved to § G
+  with its writes in `B1568` — the operator tier, not an ownership answer); the diagnostics receipts need an
   owner scope. Changing the gate before the store has an owner would swap one wrong
   answer for another.
 

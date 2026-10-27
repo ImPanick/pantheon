@@ -5,6 +5,7 @@
 // panels continue to own their data loading and side effects.
 
 import {
+  AUDIENCE_CLASS,
   DEFAULT_SETTINGS_PANEL_ID,
   SETTINGS_AUDIENCES,
   SETTINGS_GROUPS,
@@ -14,10 +15,9 @@ import {
   panelAudience,
 } from './registry.js';
 
-/** `B1563`. The class `syncAdminVisibility()` hides a row by, per audience:
- *  `admin-only` from everyone but an admin, `operator-only` from everyone
- *  but an admin or a person who runs the instance. */
-export const AUDIENCE_CLASS = Object.freeze({ everyone: '', operator: 'operator-only', admin: 'admin-only' });
+// `B1563`'s class per audience lives in `registry.js` since `B1570`, where the
+// search's harvest reads it too; re-exported so this module's callers keep it.
+export { AUDIENCE_CLASS };
 
 const _boundModals = new WeakSet();
 

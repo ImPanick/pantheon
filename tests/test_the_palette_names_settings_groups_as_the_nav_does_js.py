@@ -48,8 +48,11 @@ _SCRIPT = """
 const R = await import('./settings/registry.js');
 const N = await import('./settings/navigation.js');
 N.renderSettingsNav($('settings-modal'));
+// `B1563` gave the Admin heading a third audience: an operator's panels sit
+// under it, so it is `operator-only` (hidden from a member as `admin-only` is).
 const drawn = (admin) => $('settings-modal').querySelectorAll('.settings-sidebar-label')
-  .filter((h) => admin || !h.classList.contains('admin-only')).map((h) => h.textContent);
+  .filter((h) => admin || !(h.classList.contains('admin-only') || h.classList.contains('operator-only')))
+  .map((h) => h.textContent);
 const hints = (admin) => {
   // `viewerIsAdmin`: an admin is a page that said `_isAdmin`; a member's said nothing.
   if (admin) globalThis._isAdmin = true; else delete globalThis._isAdmin;
