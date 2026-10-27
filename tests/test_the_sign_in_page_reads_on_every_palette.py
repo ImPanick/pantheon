@@ -119,6 +119,9 @@ const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/cs
         label: measure(q('label[for="username"]'), 'color', panelOver),
         setupNote: measure(q('#setupNote'), 'color', panelOver),
         toggle: measure(q('#toggleText'), 'color', panelOver),
+        // `B1590`: the sign-up link in that line, which was `--red`.
+        toggleLink: measure(q('#toggleLink'), 'color', panelOver),
+        toggleLinkUnderlined: cs(q('#toggleLink')).textDecorationLine.includes('underline'),
         error: measure(q('#error'), 'color', panelOver),
         version: measure(q('#version-label'), 'color', pageOpaque),
         eye: measure(q('#pwToggle'), 'color', fieldOver),
@@ -148,7 +151,7 @@ def measured(tmp_path_factory):
     return json.loads([ln for ln in proc.stdout.splitlines() if ln.strip()][-1])
 
 
-TEXT = ("label", "setupNote", "toggle", "error", "version")
+TEXT = ("label", "setupNote", "toggle", "toggleLink", "error", "version")
 
 
 def test_the_sign_in_pages_text_clears_4_5_to_1_on_every_palette(measured):
@@ -157,6 +160,12 @@ def test_the_sign_in_pages_text_clears_4_5_to_1_on_every_palette(measured):
     misses = [f"{name}: {what} {row[what]}:1" for name, row in sorted(measured["palettes"].items())
               for what in TEXT if row[what] < 4.5]
     assert not misses, misses
+
+
+def test_the_sign_up_link_reads_as_a_link_without_its_colour(measured):
+    """`B1590`. The link is the line's `--fg` against the line's quieter rung,
+    so its colour alone does not set it apart (WCAG 1.4.1); the underline does."""
+    assert all(row["toggleLinkUnderlined"] for row in measured["palettes"].values())
 
 
 def test_its_controls_clear_3_to_1_on_every_palette(measured):

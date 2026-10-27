@@ -287,8 +287,14 @@
      floor on every palette (`tests/test_theme_contrast_floor_css.py`). */
   .error { color: var(--color-error); font-size: 0.85rem; margin-bottom: 0.75rem; display: none; }
   .toggle { text-align: center; margin-top: calc(1rem + 4px); font-size: 0.85rem; color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted)); }
-  .toggle a { color: var(--red); cursor: pointer; text-decoration: none; }
-  .toggle a:hover { text-decoration: underline; }
+  /* `B1590`. The sign-up link was `--red`, which is a brand colour and not a
+     text colour: 3.26:1 on `claude`, 2.56 on `cute`, 3.63 on `lavender`, 3.03
+     on `light`, 3.72 on `organs`, 2.24 on `paper`. It is the ladder's top rung
+     now — `--fg`, over 4.5:1 on `--panel` on every palette (`B1408`) — and
+     underlined, so it reads as a link without leaning on a colour difference
+     from the quieter line it sits in (WCAG 1.4.1). */
+  .toggle a { color: var(--fg); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  .toggle a:hover { text-decoration-thickness: 2px; }
   .pw-wrapper { position: relative; margin-bottom: 1rem; }
   .pw-wrapper input:not(.remember-check) { padding-right: 2.5rem; margin-bottom: 0; }
   .pw-toggle {
