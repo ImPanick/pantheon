@@ -2158,6 +2158,20 @@ class TaskScheduler:
                     # was recorded already finished (`clip_step_text`).
                     step["output"] = clip_step_text(output, self._MAX_STEP_DETAIL)
                 return
+        for step in reversed(state["steps"] if state else []):
+            if step.get("kind") == "tool" and step.get("tool") == tool and step.get("round") == round_:
+                if step.get("status") == "blocked":
+                    # `P24-00`. A refused call has no `tool_start`: its
+                    # `tool_blocked` is its step, with the arguments and the
+                    # reason, and the loop still sends the refusal on as a
+                    # `tool_output`. That output is the same call. Recorded
+                    # again it was a second step — an `error` with no arguments
+                    # — and a hire's report counted it by the tool's whole
+                    # reach: a member's Morning Brief, refused the calendar,
+                    # mail and tasks, reported *Wrote with: manage_calendar,
+                    # manage_tasks* and *Read with: list_emails*.
+                    return
+                break
         if state and state["steps"] and state["steps"][-1].get("kind") == STEP_KIND_CAPPED:
             # `B612`. The log is full, and the step this output would close was
             # counted as not recorded when its `tool_start` was: one tool call
