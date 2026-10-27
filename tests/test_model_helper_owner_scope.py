@@ -14,17 +14,22 @@ def _function_source(path: str, name: str) -> str:
     raise AssertionError(f"{name} not found in {path}")
 
 
+# `B1580` moved each `resolve_endpoint(...)` an async handler makes into a
+# worker thread, `await asyncio.to_thread(resolve_endpoint, "...", owner=...)`:
+# the same call with the same owner, off the event loop.
+
+
 def test_document_ai_tidy_resolves_with_owner_scope():
     body = _function_source("routes/document/document_routes.py", "ai_tidy_documents")
     assert "resolve_task_endpoint(owner=user or None)" in body
-    assert 'resolve_endpoint("default", owner=user or None)' in body
+    assert 'asyncio.to_thread(resolve_endpoint, "default", owner=user or None)' in body
 
 
 def test_calendar_quick_parse_resolves_with_owner_scope():
     body = _function_source("routes/calendar_routes.py", "quick_parse")
     assert "owner = _require_user(request)" in body
-    assert 'resolve_endpoint("utility", owner=owner or None)' in body
-    assert 'resolve_endpoint("default", owner=owner or None)' in body
+    assert 'asyncio.to_thread(resolve_endpoint, "utility", owner=owner or None)' in body
+    assert 'asyncio.to_thread(resolve_endpoint, "default", owner=owner or None)' in body
 
 
 def test_task_parse_resolves_with_owner_scope(monkeypatch):
@@ -70,7 +75,7 @@ def test_history_compact_resolves_with_owner_scope():
     # `tests/test_history_compact_tool_calls.py::test_registered_manual_compact_route_uses_session_owner`.
     body = _function_source("routes/history/history_routes.py", "compact_session")
     assert 'owner = getattr(session, "owner", None) or effective_user(request)' in body
-    assert 'resolve_endpoint("utility", owner=owner or None)' in body
+    assert 'asyncio.to_thread(resolve_endpoint, "utility", owner=owner or None)' in body
 
 
 def test_note_reminder_synthesis_resolves_with_owner_scope():
