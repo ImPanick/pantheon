@@ -592,6 +592,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     try {
       window.__pantheonChatBusy = !!active;
       window.__pantheonChatBusyUntil = active ? Date.now() + 120000 : Date.now() + 1200;
+      // `B1558`. The run's window on its own, for the readers asking whether
+      // a reply is running (`app.js` `_isForegroundChatBusy`, `chatStream.js`
+      // `_steerChatBusy`); the one above is also opened by typing, to hold
+      // background work back, and must not make an idle composer look busy.
+      window.__pantheonChatRunUntil = window.__pantheonChatBusyUntil;
       const detail = { active: !!active };
       if (typeof steerable === 'boolean') detail.steerable = steerable;
       window.dispatchEvent(new CustomEvent('pantheon:chat-busy-change', { detail }));
@@ -1187,7 +1192,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         if (submitBtn.dataset.mode !== 'streaming') return;
         // `P23-04` (CHAT-U-8): Stop while anything streams; Enter queues a draft.
         submitBtn.innerHTML = _stopSvg;
-        submitBtn.dataset.phase = 'processing';
+        // `B1559`. The phase was set to `processing` when the stream began
+        // (below); a first token inside these 300 ms has already moved it to
+        // `receiving`, and the icon swap must not move it back.
+        if (submitBtn.dataset.phase !== 'receiving') submitBtn.dataset.phase = 'processing';
         submitBtn.title = 'Stop generation';
         submitBtn.classList.remove('anim-launch');
         void submitBtn.offsetWidth;

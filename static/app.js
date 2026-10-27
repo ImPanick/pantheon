@@ -102,10 +102,21 @@ function _submitChatFormDirect(form) {
   else form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 }
 
+// `B1558`. "A reply is running in this chat" — so Enter queues, the phone
+// keyboard says *send*, and a line break submits. It read
+// `__pantheonChatBusyUntil`, which is two facts in one global: the run's own
+// window (`chat.js` `_setForegroundChatBusy`) and the chat-priority window
+// `startPantheonApp` opens to hold background work back — ten seconds at
+// boot, and fifteen again on every focus, press or keystroke in `#message`.
+// So at ≤768 px the composer was never idle while someone typed in it: Enter
+// submitted instead of breaking the line, with nothing running. The run's
+// window is `__pantheonChatRunUntil` now (its ~1.2 s tail after a reply ends
+// kept, which `_steerChatBusy` relies on); `__pantheonChatBusyUntil` keeps
+// both, for the readers that hold background work.
 function _isForegroundChatBusy() {
   const sendBtn = document.querySelector('.send-btn');
   return !!window.__pantheonChatBusy
-    || Date.now() < (window.__pantheonChatBusyUntil || 0)
+    || Date.now() < (window.__pantheonChatRunUntil || 0)
     || !!document.querySelector('.send-btn[data-mode="streaming"], .send-btn.send-pending')
     || (sendBtn && (sendBtn.title || '').toLowerCase().includes('stop'));
 }
@@ -3963,10 +3974,16 @@ function startPantheonApp() {
   // `P23-04` (CHAT-U-8). While a reply streams the button is Stop, whatever
   // is in the box: typing used to turn it into "Queue", so there was no Stop
   // while you had a draft. Enter queues the draft (the composer's keydown).
+  // `B1559`. Called on every keystroke while streaming, so it may draw Stop but
+  // not move the phase: `receiving` (the first token arrived, `chat.js`) is as
+  // much Stop as `processing`, and resetting it to `processing` here put the
+  // button back in its waiting look for as long as someone typed during a
+  // reply. A phase is set only where there is none.
   function _updateStreamingSubmitButton() {
     if (!sendBtn || sendBtn.dataset.mode !== 'streaming') return false;
-    if (sendBtn.dataset.phase === 'processing' && sendBtn.title === 'Stop generation') return true;
-    sendBtn.dataset.phase = 'processing';
+    const phase = sendBtn.dataset.phase;
+    if ((phase === 'processing' || phase === 'receiving') && sendBtn.title === 'Stop generation') return true;
+    sendBtn.dataset.phase = phase === 'receiving' ? 'receiving' : 'processing';
     sendBtn.classList.remove('mic-mode', 'newchat-mode', 'newchat-expanded', 'anim-spin', 'anim-launch', 'anim-land');
     sendBtn.innerHTML = _stopIcon;
     sendBtn.title = 'Stop generation';

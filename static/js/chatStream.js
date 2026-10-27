@@ -118,12 +118,14 @@ const STEER_KEY_LABEL = _steerIsMac ? '⌘⏎' : 'Ctrl+⏎';
  *  (`_isForegroundChatBusy`). Reused verbatim rather than re-derived so the two
  *  can never disagree about whether Enter queues. Note its deliberate ~1.2s
  *  tail after a stream ends: a steer sent inside that tail is refused by the
- *  server (no active run) and falls back to the queue, which is correct. */
+ *  server (no active run) and falls back to the queue, which is correct.
+ *  `B1558`: the run's window (`__pantheonChatRunUntil`), not the chat-priority
+ *  one, which typing in the composer holds open for 15 s with nothing running. */
 function _steerChatBusy() {
   try {
     const sendBtn = document.querySelector('.send-btn');
     return !!window.__pantheonChatBusy
-      || Date.now() < (window.__pantheonChatBusyUntil || 0)
+      || Date.now() < (window.__pantheonChatRunUntil || 0)
       || !!document.querySelector('.send-btn[data-mode="streaming"], .send-btn.send-pending')
       || !!(sendBtn && (sendBtn.title || '').toLowerCase().includes('stop'));
   } catch (_) { return false; }
@@ -527,8 +529,8 @@ export function initSteerControl() {
     // before it knows it is one (`handleChatSubmit`) and drops it before the
     // probe answers. This went on to draw the bar over an idle chat, where it
     // stayed until the next turn took it down. The run's own flag, read after
-    // the wait — not `_steerChatBusy()`, which typing in the composer holds
-    // true for 15 s (`__pantheonChatBusyUntil`).
+    // the wait — not `_steerChatBusy()`, whose ~1.2 s tail outlives the run
+    // (and which typing in the composer held true for 15 s until `B1558`).
     if (!window.__pantheonChatBusy) return;
     if (_steerSupported !== true) return;
     // The stream can beat the probe on the first run of a page, so its verdict
