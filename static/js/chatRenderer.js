@@ -905,6 +905,17 @@ export function modelColor(name) {
 // palette had before.
 export const MODEL_NAME_LIGHT_Y = 0.12;
 
+// `B1084`. The dark arm was `hsl(hue, 55%, 65%)` for every hue, and at that
+// lightness a blue-violet is far darker than a cyan: over 410 names on the
+// seeded demo the worst, `model-320` (`rgb(125, 117, 215)`), read 3.40:1 on
+// `claude`'s bubble, 4.09 on `retrowave`, 4.18 on `forest`, 4.45 on
+// `midnight`. The same shape as the light arm, the other way up: a hue whose
+// 65% colour has relative luminance under `MODEL_NAME_DARK_Y` is lifted to the
+// lightness where it reaches it — at least 0.32, so ≥ 4.5:1 on any bubble of
+// luminance ≤ 0.032 (`claude`'s, the brightest dark bubble, is 0.029) — and
+// every other hue keeps the 65% it had, to the character.
+export const MODEL_NAME_DARK_Y = 0.32;
+
 /** WCAG relative luminance of `hsl(h, s, l)` (s and l in 0–1). The formula
  *  `calendar/utils.js:_relativeLuminance` and `theme.js:_isLightBackground` use. */
 function _hslLuminance(h, s, l) {
@@ -924,7 +935,18 @@ export function modelColorForHue(hue) {
     if (_hslLuminance(hue, 0.55, mid) <= MODEL_NAME_LIGHT_Y) lo = mid; else hi = mid;
   }
   const light = `hsl(${hue}, 55%, ${(Math.floor(lo * 1000) / 10).toFixed(1)}%)`;
-  return `light-dark(${light}, hsl(${hue}, 55%, 65%))`;
+  // `B1084`: the smallest lightness at or over the floor, rounded UP to the
+  // tenth so the colour a browser draws is still over it.
+  let dark = `hsl(${hue}, 55%, 65%)`;
+  if (_hslLuminance(hue, 0.55, 0.65) < MODEL_NAME_DARK_Y) {
+    let dlo = 0.65, dhi = 1;
+    for (let i = 0; i < 20; i++) {
+      const mid = (dlo + dhi) / 2;
+      if (_hslLuminance(hue, 0.55, mid) >= MODEL_NAME_DARK_Y) dhi = mid; else dlo = mid;
+    }
+    dark = `hsl(${hue}, 55%, ${(Math.ceil(dhi * 1000) / 10).toFixed(1)}%)`;
+  }
+  return `light-dark(${light}, ${dark})`;
 }
 
 /** Look up model info (pricing + context) by substring match */

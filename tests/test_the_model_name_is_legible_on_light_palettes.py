@@ -9,9 +9,16 @@ Measured on the seeded demo before this row: `scripted-demo` `rgb(117, 212,
 worst was a yellow at **1.41:1** on `light`, and no light palette did better
 than 1.73:1. The sixteen palettes must stay legible (`D-2026-09-14-03`).
 
-Now a `light-dark()` pair: the dark arm is the old colour exactly (every dark
-palette unchanged), the light arm the same hue and saturation at the lightness
-whose relative luminance is `MODEL_NAME_LIGHT_Y`.
+Now a `light-dark()` pair: the light arm the same hue and saturation at the
+lightness whose relative luminance is `MODEL_NAME_LIGHT_Y`.
+
+`B1084` did the dark arm the same way, the other way up. It was the old colour
+exactly, and at 65% a blue-violet is far darker than a cyan: the worst of 410
+seeded names (`model-320`, `rgb(125, 117, 215)`) read **3.40:1** on `claude`'s
+bubble, 4.09 on `retrowave`, 4.18 on `forest`, 4.45 on `midnight`. A hue whose
+65% colour is under `MODEL_NAME_DARK_Y` in luminance is lifted to it; every
+other hue keeps its 65% to the character, so most names on most dark palettes
+paint exactly what they did.
 
 Two halves:
 
@@ -99,6 +106,7 @@ def shipped():
         pytest.skip("node binary not on PATH")
     source = "\n".join([
         _decl(RENDERER, "export const MODEL_NAME_LIGHT_Y"),
+        _decl(RENDERER, "export const MODEL_NAME_DARK_Y"),
         _decl(RENDERER, "function _hslLuminance("),
         _decl(RENDERER, "export function modelColorForHue("),
         _decl(RENDERER, "export function modelColor("),
@@ -145,10 +153,46 @@ def test_the_light_arm_keeps_the_names_hue(shipped):
         assert light.startswith(f"hsl({hue}, 55%, "), value
 
 
-def test_every_dark_palette_keeps_the_colour_it_had(shipped):
-    # The dark arm is the old `hsl(hue, 55%, 65%)` to the character.
+def _dark_palettes(themes):
+    return {n: t for n, t in themes.items() if _luminance(_hex(t["bg"])) <= 0.5}
+
+
+def test_every_hue_reads_at_least_4_5_to_1_on_every_dark_palettes_bubble(shipped):
+    """`B1084`'s `Verify`, for every hue rather than the names somebody tried.
+    The bubble is the panel, or the palette's own `aiBubbleBg` where it names
+    one (`gpt`)."""
+    worst = None
+    for name, theme in _dark_palettes(shipped["themes"]).items():
+        bubble = _hex(theme.get("advanced", {}).get("aiBubbleBg", theme["panel"]))
+        for hue, value in enumerate(shipped["hues"]):
+            r = _ratio(_hsl(_arms(value)[1]), bubble)
+            if worst is None or r < worst[0]:
+                worst = (r, name, hue, value)
+    assert worst[0] >= 4.5, f"{worst[1]}: hue {worst[2]} reads {worst[0]:.2f}:1 ({worst[3]})"
+
+
+def test_the_dark_arm_lifts_only_the_hues_under_the_floor(shipped):
+    """Every hue keeps `hsl(hue, 55%, 65%)` unless that colour was too dark, and
+    a lifted hue keeps its hue and saturation and only gets lighter."""
+    def continuous(hue, light):
+        # Unrounded, as the module computes it: 8-bit rounding moves a colour
+        # on the boundary across it, and the module's choice is made before.
+        r, g, b = colorsys.hls_to_rgb(hue / 360, light, 0.55)
+        lin = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in (r, g, b)]
+        return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+    lifted = 0
     for hue, value in enumerate(shipped["hues"]):
-        assert _arms(value)[1] == f"hsl({hue}, 55%, 65%)"
+        dark = _arms(value)[1]
+        old = f"hsl({hue}, 55%, 65%)"
+        if continuous(hue, 0.65) >= 0.32:
+            assert dark == old, (hue, dark)
+            continue
+        lifted += 1
+        m = re.fullmatch(rf"hsl\({hue}, 55%, ([\d.]+)%\)", dark)
+        assert m and 65 < float(m.group(1)) <= 80, (hue, dark)
+    # Measured: the blues and violets, and nothing else.
+    assert lifted == 152, lifted
 
 
 def test_a_name_gets_its_hues_pair_and_no_name_gets_none(shipped):
@@ -238,12 +282,28 @@ def test_in_a_browser_every_light_palette_reads_at_least_4_5_to_1(painted):
         assert ratio >= 4.5, f"{name}: {worst['n']} {worst['fg']} on {p['bubble']} is {ratio:.2f}:1"
 
 
-def test_in_a_browser_every_dark_palette_paints_what_it_did(painted):
+def test_in_a_browser_every_dark_palette_reads_at_least_4_5_to_1(painted):
+    """`B1084`: what the browser resolved, against what the bubble paints."""
     dark = {n: p for n, p in painted["palettes"].items() if p["scheme"] == "dark"}
     assert len(dark) == 15
     for name, p in dark.items():
+        worst = min(p["rows"], key=lambda r: _ratio(r["fg"][:3], p["bubble"]))
+        ratio = _ratio(worst["fg"][:3], p["bubble"])
+        assert ratio >= 4.5, f"{name}: {worst['n']} {worst['fg']} on {p['bubble']} is {ratio:.2f}:1"
+
+
+def test_in_a_browser_a_dark_name_that_was_legible_paints_what_it_did(painted):
+    dark = {n: p for n, p in painted["palettes"].items() if p["scheme"] == "dark"}
+    kept = changed = 0
+    for name, p in dark.items():
         for row in p["rows"]:
-            assert row["fg"] == row["old"], f"{name}: {row['n']} {row['fg']} was {row['old']}"
+            if row["fg"] == row["old"]:
+                kept += 1
+            else:
+                # Lifted, never darkened, and the same name on every dark palette.
+                assert _luminance(row["fg"][:3]) > _luminance(row["old"][:3]), (name, row)
+                changed += 1
+    assert kept > changed > 0, (kept, changed)
 
 
 def test_in_a_browser_nothing_threw(painted):
