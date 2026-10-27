@@ -34,9 +34,18 @@ const SERVER_PGID = Number(process.argv[3]);
 const wait = async (page, fn, ms) => {
   try { await page.waitForFunction(fn, null, { timeout: ms }); return true; } catch (_) { return false; }
 };
+// `B1567`, `B1521`'s way: every wait is for the condition the next step needs,
+// named, with room for a machine running the whole suite beside this drive.
+// In such a run `serverStopped` came back false: the server took longer than
+// the 20 s this loop allowed to stop answering after SIGTERM. The condition is
+// a refused connection, for up to a minute; a request that merely times out is
+// a busy server, not a stopped one, so it is asked again rather than counted.
+// (Not the process group's exit: the server is the pytest process's child, and
+// a child nobody has reaped yet still answers signal 0.)
 const down = async () => {
-  for (let i = 0; i < 100; i++) {
-    try { await fetch(BASE + '/login'); } catch (_) { return true; }
+  for (let i = 0; i < 300; i++) {
+    try { await fetch(BASE + '/login', { signal: AbortSignal.timeout(5000) }); }
+    catch (e) { if (!e || (e.name !== 'TimeoutError' && e.name !== 'AbortError')) return true; }
     await new Promise(r => setTimeout(r, 200));
   }
   return false;
@@ -49,6 +58,8 @@ const down = async () => {
     try { localStorage.setItem('pantheon-ui-visibility', JSON.stringify({ 'first-run-tours': false })); } catch (_) {}
   });
   const page = await context.newPage();
+  page.setDefaultNavigationTimeout(180000);
+  page.setDefaultTimeout(180000);
   page.on('pageerror', (e) => out.errors.push(String((e && e.message) || e)));
   const creds = { username: 'helper', password: 'helper-pass-1' };
   await page.request.post(BASE + '/api/auth/setup', { data: creds });
@@ -63,8 +74,8 @@ const down = async () => {
   });
 
   await page.goto(BASE + '/', { waitUntil: 'load' });
-  await wait(page, () => window.__pantheonAppStarted === true, 90000);
-  out.controlled = await wait(page, () => !!navigator.serviceWorker.controller, 60000);
+  await wait(page, () => window.__pantheonAppStarted === true, 180000);
+  out.controlled = await wait(page, () => !!navigator.serviceWorker.controller, 240000);
   out.scopes = await page.evaluate(async () =>
     (await navigator.serviceWorker.getRegistrations()).map(r => new URL(r.scope).pathname).sort());
   out.header = (await page.request.get(BASE + '/static/sw.js')).headers()['service-worker-allowed'] || null;
@@ -73,7 +84,7 @@ const down = async () => {
   const seen = [];
   page.on('response', (r) => seen.push({ url: r.url().replace(BASE, ''), sw: r.fromServiceWorker() }));
   await page.reload({ waitUntil: 'load' });
-  await wait(page, () => window.__pantheonAppStarted === true, 90000);
+  await wait(page, () => window.__pantheonAppStarted === true, 180000);
   await page.waitForTimeout(1500);
   out.reload = {
     total: seen.length,
@@ -91,8 +102,10 @@ const down = async () => {
   out.signedOut = new URL(page.url()).pathname;
   await page.request.post(BASE + '/api/auth/login', { data: { ...creds, remember: true } });
   await page.goto(BASE + '/', { waitUntil: 'load' });
-  await wait(page, () => window.__pantheonAppStarted === true, 90000);
+  await wait(page, () => window.__pantheonAppStarted === true, 180000);
   out.errors.length = out.onlineErrors.length;
+  // The kept copy the offline half depends on, asked for rather than assumed.
+  out.kept = await wait(page, async () => !!(await caches.match('/')), 120000);
 
   // Offline: the app draws from the cache, on `/` and on a window's URL.
   // `B1423`: the server is really stopped. `context.setOffline(true)` (and
@@ -108,13 +121,13 @@ const down = async () => {
   out.offline = {};
   for (const path of ['/', '/tasks']) {
     try {
-      const res = await page.goto(BASE + path, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      const res = await page.goto(BASE + path, { waitUntil: 'domcontentloaded', timeout: 90000 });
       out.offline[path] = {
         fromWorker: !!(res && res.fromServiceWorker()),
         keptCopyNotice: await page.evaluate(() => !!document.getElementById('kept-copy-notice')),
-        drawn: await wait(page, () => !!document.getElementById('tool-workbench-btn'), 20000),
+        drawn: await wait(page, () => !!document.getElementById('tool-workbench-btn'), 90000),
         // `B1508`: the page's JavaScript ran, not just its static HTML.
-        started: await wait(page, () => window.__pantheonAppStarted === true, 20000),
+        started: await wait(page, () => window.__pantheonAppStarted === true, 90000),
       };
     } catch (e) {
       out.offline[path] = String(e && e.message || e).slice(0, 80);
@@ -136,7 +149,7 @@ def drive(app_url, tmp_path_factory):  # noqa: F811
     script.write_text(_SCRIPT, encoding="utf-8")
     # `B1423`: the drive stops this file's own server mid-way, by its group.
     proc = subprocess.run([NODE, str(script), app_url, str(SERVED[app_url].pgid)],
-                          capture_output=True, text=True, timeout=300, cwd=str(script.parent))
+                          capture_output=True, text=True, timeout=900, cwd=str(script.parent))
     assert proc.returncode == 0, proc.stderr[-4000:]
     lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
     return json.loads(lines[-1])
@@ -171,8 +184,11 @@ def test_no_api_answer_comes_from_the_worker(drive):
 
 def test_an_offline_reload_draws_the_app(drive):
     """`B1423`: with the server really down, so the worker's navigation
-    fallback is what answers — the kept-copy notice is only ever its doing."""
-    assert drive["serverStopped"] is True
+    fallback is what answers — the kept-copy notice is only ever its doing.
+    `B1567`: what that rests on, each said, so a failure names it."""
+    assert drive["controlled"] is True, "the worker never took the page"
+    assert drive["kept"] is True, "the worker holds no copy of the shell"
+    assert drive["serverStopped"] is True, "the server still answered after SIGTERM"
     for path in ("/", "/tasks"):
         got = drive["offline"][path]
         assert isinstance(got, dict), (path, got)

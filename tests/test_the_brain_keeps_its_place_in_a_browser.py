@@ -49,6 +49,9 @@ const KEYS = JSON.parse(process.argv[3]);
     } catch (_) {}
   });
   const page = await context.newPage();
+  // `B1567`. Room for a machine running the whole suite beside this drive.
+  page.setDefaultTimeout(90000);
+  page.setDefaultNavigationTimeout(180000);
   page.on('pageerror', (e) => out.errors.push(String((e && e.message) || e)));
   const creds = { username: 'brainwalk', password: 'brain-walk-pass-1' };
   await page.request.post(BASE + '/api/auth/setup', { data: creds });
@@ -59,8 +62,7 @@ const KEYS = JSON.parse(process.argv[3]);
   const prefGets = [];
   page.on('request', (r) => { if (r.method() === 'GET' && /\/api\/prefs(\/|$)/.test(r.url())) prefGets.push(r.url().replace(BASE, '')); });
   await page.goto(BASE + '/', { waitUntil: 'load' });
-  await page.waitForFunction(() => window.__pantheonAppStarted === true, null, { timeout: 90000 });
-  await page.waitForTimeout(1500);
+  await page.waitForFunction(() => window.__pantheonAppStarted === true, null, { timeout: 180000 });
 
   const cdp = await context.newCDPSession(page);
   const docListeners = async () => {
@@ -69,53 +71,88 @@ const KEYS = JSON.parse(process.argv[3]);
     return listeners.filter((l) => l.type === 'click').length;
   };
   const tab = () => page.evaluate(() => { const t = document.querySelector('#memory-modal .memory-tab.active'); return t && t.dataset.memoryTab; });
-  const shown = (sel) => page.evaluate((s) => { const e = document.querySelector(s); if (!e) return false;
+  const isShown = (s) => { const e = document.querySelector(s); if (!e) return false;
     const cs = getComputedStyle(e); const r = e.getBoundingClientRect();
-    return !e.classList.contains('hidden') && cs.display !== 'none' && r.width > 0 && r.height > 0; }, sel);
+    return !e.classList.contains('hidden') && cs.display !== 'none' && r.width > 0 && r.height > 0; };
+  const shown = (sel) => page.evaluate(isShown, sel);
   const rect = (sel) => page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect();
     return [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)]; }, sel);
+  // `B1567`, `B1521`'s way: every step waits for the condition the next one
+  // needs, by name, instead of sleeping. Under a full suite the Brain had not
+  // finished opening 500 ms after its button (`#close-memory-modal` "is not
+  // visible"), and a sleep that is long enough there is wasted everywhere else.
+  const until = async (what, sel, want = true) => {
+    try {
+      await page.waitForFunction(([s, w]) => {
+        const e = document.querySelector(s);
+        let on = false;
+        if (e) {
+          const cs = getComputedStyle(e); const r = e.getBoundingClientRect();
+          on = !e.classList.contains('hidden') && cs.display !== 'none' && r.width > 0 && r.height > 0;
+        }
+        return on === w;
+      }, [sel, want], { timeout: 90000 });
+    } catch (e) {
+      throw new Error(`waited 90 s for ${what} (${sel} ${want ? 'shown' : 'gone'}): ${String(e.message).split('\n')[0]}`);
+    }
+  };
+  const openBrain = async () => {
+    await page.evaluate(() => document.getElementById('tool-memory-btn').click());
+    await until('the Brain to open', '#close-memory-modal');
+  };
+  const closeBrain = async () => {
+    await page.click('#close-memory-modal');
+    await until('the Brain to close', '#memory-modal', false);
+  };
+  const toTab = async (t) => {
+    await page.click('#memory-tab-' + t);
+    await page.waitForSelector(`#memory-tab-${t}.active`, { timeout: 90000 });
+    await until(`the ${t} panel`, '#memory-panel-' + t);
+  };
 
   // PERF-M-3: six opens.
-  await page.evaluate(() => document.getElementById('tool-memory-btn').click());
-  await page.waitForSelector('#memory-list .memory-item', { timeout: 20000 });
-  await page.click('#close-memory-modal'); await page.waitForTimeout(400);
+  await openBrain();
+  await page.waitForSelector('#memory-list .memory-item', { timeout: 90000 });
+  await closeBrain();
   const before = await docListeners();
   for (let i = 0; i < 6; i++) {
-    await page.evaluate(() => document.getElementById('tool-memory-btn').click());
-    await page.waitForTimeout(500);
-    await page.click('#close-memory-modal'); await page.waitForTimeout(400);
+    await openBrain();
+    await closeBrain();
   }
   out.listeners = { before, after: await docListeners() };
   out.prefGets = prefGets.slice();
 
   // One height; RAG reachable; real tabs.
-  await page.evaluate(() => document.getElementById('tool-memory-btn').click());
-  await page.waitForTimeout(600);
+  await openBrain();
   out.heights = {};
   for (const t of ['browse', 'rag', 'add', 'settings']) {
-    await page.click('#memory-tab-' + t); await page.waitForTimeout(250);
+    await toTab(t);
     out.heights[t] = await rect('#memory-modal .memory-modal-content');
   }
-  await page.click('#memory-tab-rag'); await page.waitForTimeout(250);
+  await toTab('rag');
+  await until('the RAG drop zone', '#rag-upload-zone');
   out.ragHit = await page.evaluate(() => { const z = document.getElementById('rag-upload-zone').getBoundingClientRect();
     const hit = document.elementFromPoint(z.x + z.width / 2, z.y + z.height / 2); return hit && hit.id; });
   out.roles = await page.evaluate(() => [...document.querySelectorAll('#memory-modal [role="tab"]')].map((t) => t.dataset.memoryTab));
-  await page.focus('#memory-tab-rag'); await page.keyboard.press('ArrowRight'); await page.waitForTimeout(150);
+  await page.focus('#memory-tab-rag'); await page.keyboard.press('ArrowRight');
+  await page.waitForSelector('#memory-tab-add.active', { timeout: 90000 }).catch(() => {});
   out.arrow = { tab: await tab(), focus: await page.evaluate(() => document.activeElement.id) };
 
   // The owner's walk.
-  await page.click('#memory-tab-rag'); await page.waitForTimeout(200);
-  await page.click('#memory-skills-door'); await page.waitForTimeout(900);
+  await toTab('rag');
+  await page.click('#memory-skills-door');
+  await until('the Skills window to open', '#close-skills-modal');
   out.door = { skills: await shown('#skills-modal'), brain: await shown('#memory-modal'), tab: await tab(),
                z: await page.evaluate(() => [getComputedStyle(document.getElementById('memory-modal')).zIndex,
                                              getComputedStyle(document.getElementById('skills-modal')).zIndex]) };
-  await page.click('#close-skills-modal'); await page.waitForTimeout(700);
+  await page.click('#close-skills-modal');
+  await until('the Skills window to close', '#skills-modal', false);
   out.closed = { skills: await shown('#skills-modal'), brain: await shown('#memory-modal'), tab: await tab(),
                  rag: await shown('#memory-panel-rag'),
                  onTop: await page.evaluate(() => { const r = document.querySelector('#memory-modal .modal-header').getBoundingClientRect();
                    const hit = document.elementFromPoint(r.x + 40, r.y + r.height / 2); return !!(hit && hit.closest('#memory-modal')); }) };
-  await page.click('#close-memory-modal'); await page.waitForTimeout(500);
-  await page.evaluate(() => document.getElementById('tool-memory-btn').click()); await page.waitForTimeout(600);
+  await closeBrain();
+  await openBrain();
   out.reopen = await tab();
 
   await context.close();
@@ -130,7 +167,7 @@ def walked(app_url, tmp_path_factory):  # noqa: F811
     script = tmp_path_factory.mktemp("brain-walk") / "walk.cjs"
     script.write_text(_SCRIPT, encoding="utf-8")
     proc = subprocess.run([NODE, str(script), app_url, json.dumps(_BRAIN_KEYS)], capture_output=True,
-                          text=True, timeout=400, cwd=str(script.parent))
+                          text=True, timeout=900, cwd=str(script.parent))
     assert proc.returncode == 0, proc.stderr[-4000:]
     return json.loads([ln for ln in proc.stdout.splitlines() if ln.strip()][-1])
 

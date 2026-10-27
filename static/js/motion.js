@@ -32,3 +32,32 @@ export function scrollBehavior() {
   return prefersReducedMotion() ? 'auto' : 'smooth';
 }
 
+
+/** `B1567`. Run `finish` once, when `content`'s own closing animation ends or
+ *  after `ms`, whichever comes first — and take the other one back.
+ *
+ *  Every window that animates shut did this as two independent callbacks: an
+ *  `animationend` listener (`{ once: true }`) and a 250 ms fallback timer. When
+ *  the timer won — a starved frame, a busy machine — it hid the window and the
+ *  listener stayed attached, because display:none cut the animation it was
+ *  waiting for. The next time the window opened, its OPENING animation's end
+ *  fired that stale listener and the window shut itself about 300 ms after it
+ *  appeared (measured on the Brain, its third open in a row). One answer, run
+ *  once, with the listener removed whichever path finishes: the shape
+ *  `cookbook.js` `_doClose` reached with a generation counter. A descendant's
+ *  animation ending is not the window's, so it is ignored. */
+export function whenShut(content, finish, ms = 250) {
+  let done = false;
+  let timer = null;
+  const onEnd = (e) => { if (!e || e.target === content) run(); };
+  function run() {
+    if (done) return;
+    done = true;
+    content.removeEventListener('animationend', onEnd);
+    clearTimeout(timer);
+    finish();
+  }
+  content.addEventListener('animationend', onEnd);
+  timer = setTimeout(run, ms);
+  return run;
+}

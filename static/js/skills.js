@@ -39,7 +39,7 @@ import { SKILL_GATE_NOTE } from './skillGateNote.js';
 // `B1256`. An offline load is the page's news, said once (`presets.js`).
 import { markUnreached, quietIfUnreached } from './presets.js';
 
-import { scrollBehavior } from './motion.js';
+import { scrollBehavior, whenShut } from './motion.js';
 // `P13-08`. The Growth view: what the system learned, dated.
 import { fetchGrowth, renderGrowth } from './skillGrowth.js';
 import { viewerMayAdminister } from './ui_visibility.js';
@@ -4223,8 +4223,9 @@ export function closeSkillsWindow() {
   };
   if (!content) { done(); return; }
   content.classList.add('modal-closing');
-  content.addEventListener('animationend', done, { once: true });
-  setTimeout(() => { if (!modal.classList.contains('hidden')) done(); }, 250);
+  // `B1567`: once, by whichever of the animation's end and the fallback comes
+  // first — a stale listener shut the window on its next open (`whenShut`).
+  whenShut(content, done);
 }
 
 /** Every control one mount holds, wired to that mount. Was this file's

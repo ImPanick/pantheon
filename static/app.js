@@ -5,6 +5,7 @@
 // ============================================
 import Storage from './js/storage.js';
 import uiModule from './js/ui.js';
+import { whenShut } from './js/motion.js';
 import workspaceModule from './js/workspace.js';
 import summonModule from './js/summon.js';
 import composerMenuModule from './js/composerMenu.js';
@@ -912,21 +913,18 @@ function initializeEventListeners() {
       content.style.transform = '';
       content.style.transition = '';
       content.classList.add('modal-closing');
-      content.addEventListener('animationend', () => {
+      // `B1567`. The animation's end or a 250 ms fallback, whichever is
+      // first, and once: a fallback that won used to leave the `animationend`
+      // listener behind, and the window's next OPENING animation fired it and
+      // shut the window again (`whenShut`).
+      whenShut(content, () => {
         if (_dynamicModalIds.includes(modal.id)) {
-          modal.remove();
+          if (modal.parentElement) modal.remove();
         } else {
           modal.classList.add('hidden');
           content.classList.remove('modal-closing');
         }
-      }, { once: true });
-      // Fallback in case animationend doesn't fire
-      setTimeout(() => {
-        if (modal.parentElement && !modal.classList.contains('hidden')) {
-          if (_dynamicModalIds.includes(modal.id)) modal.remove();
-          else { modal.classList.add('hidden'); content.classList.remove('modal-closing'); }
-        }
-      }, 250);
+      });
     } else {
       if (content) content.classList.remove('sheet-ready');
       if (_dynamicModalIds.includes(modal.id)) modal.remove();
