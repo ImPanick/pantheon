@@ -185,7 +185,9 @@ function _steerComposer() {
 
 /** Theme tokens only — `--accent` is never defined at `:root` (D-2026-08-26-03),
  *  so every accent use carries the `var(--red)` fallback the rest of the app
- *  uses. Injected from JS because this module does not own `static/style.css`. */
+ *  uses. Injected from JS because this module does not own `static/style.css`.
+ *  The hint and the sent list are `--fg-muted`, the theme-aware muted ink —
+ *  they painted `--color-muted`, the grey pivot under it, until `B391`. */
 function _injectSteerStyle() {
   if (_steerStyleInjected) return;
   _steerStyleInjected = true;
@@ -202,7 +204,7 @@ function _injectSteerStyle() {
   background:var(--accent, var(--red));animation:steer-pulse 1.4s ease-in-out infinite;}
 @keyframes steer-pulse{0%,100%{opacity:.35}50%{opacity:1}}
 @media (prefers-reduced-motion: reduce){.steer-bar-dot{animation:none;opacity:.8}}
-.steer-bar-hint{color:var(--color-muted);flex:1;min-width:180px;}
+.steer-bar-hint{color:var(--fg-muted);flex:1;min-width:180px;}
 .steer-bar-hint kbd{font:inherit;font-weight:600;color:var(--fg);
   border:1px solid var(--border);border-radius:4px;padding:0 4px;}
 .steer-bar-btn{cursor:pointer;font:inherit;font-weight:600;white-space:nowrap;
@@ -212,7 +214,7 @@ function _injectSteerStyle() {
 .steer-bar-btn:disabled{cursor:default;opacity:.45;}
 .steer-sent{list-style:none;margin:0;padding:0;flex-basis:100%;
   display:flex;flex-direction:column;gap:3px;}
-.steer-sent li{color:var(--color-muted);overflow:hidden;text-overflow:ellipsis;
+.steer-sent li{color:var(--fg-muted);overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap;}
 .steer-sent li strong{color:var(--fg);font-weight:500;}
 `;

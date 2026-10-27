@@ -53,7 +53,9 @@ export async function loadPersonalDocs() {
       const said = document.createElement('div');
       said.className = 'rag-refused';
       said.textContent = sentence;
-      said.style.cssText = 'color:var(--color-muted);font-size:12px;padding:4px 0;';
+      // `B391`: the theme-aware muted ink, not the `--color-muted` pivot (#888,
+      // under AA on six palettes) — and the same below.
+      said.style.cssText = 'color:var(--fg-muted);font-size:12px;padding:4px 0;';
       box.appendChild(said);
       return;
     }
@@ -70,7 +72,7 @@ export async function loadPersonalDocs() {
     if (files.length === 0) {
       const placeholder = document.createElement('div');
       placeholder.textContent = 'No files yet.';
-      placeholder.style.cssText = 'color:var(--color-muted);font-size:12px;padding:4px 0;';
+      placeholder.style.cssText = 'color:var(--fg-muted);font-size:12px;padding:4px 0;';
       box.appendChild(placeholder);
       return;
     }
@@ -88,7 +90,7 @@ export async function loadPersonalDocs() {
       row.appendChild(name);
 
       const size = document.createElement('span');
-      size.style.cssText = 'color:var(--color-muted);font-size:11px;flex-shrink:0;';
+      size.style.cssText = 'color:var(--fg-muted);font-size:11px;flex-shrink:0;';
       size.textContent = _humanSize(f.size);
       row.appendChild(size);
 

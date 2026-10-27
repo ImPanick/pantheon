@@ -406,11 +406,16 @@ def test_the_three_populations_hold_at_their_counts():
     # 141 -> 144, 133 -> 136: the Brain's `B821` fade line (`.memory-item-fades`),
     # `B820`'s *Still learning* line (`.memory-style-progress`) and `B822`'s
     # import summary (`.memory-import-summary`). All text.
-    assert len(uses) == 144, f"expected 144 uses of --fg-muted, found {len(uses)}"
+    # 144 -> 165, 136 -> 157 bare: `B391`. The seventeen `color:` sites that
+    # painted the grey pivot `--color-muted` directly (under AA on six
+    # palettes) paint `--fg-muted` now, and so do the context wheel's three
+    # resting `--ctx-stroke`s and `.ctx-usage-seg`'s fallback — the pivot is
+    # painted by nothing (`tests/test_theme_contrast_floor_css.py`).
+    assert len(uses) == 165, f"expected 165 uses of --fg-muted, found {len(uses)}"
 
     bare = [expr for _, expr in uses if not _fallback(expr)]
-    assert len(bare) == 136, (
-        f"expected 136 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
+    assert len(bare) == 157, (
+        f"expected 157 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
         "was legitimately added or removed, move this number and say which in "
         "the commit — do not widen the assertion."
     )
@@ -464,7 +469,11 @@ def test_the_bare_uses_split_across_properties_as_measured():
     # 116 -> 117: `P24-18`'s *Not measured* badge.
     # 117 -> 119: `P24-26`'s summon picker. 119 -> 127: `P25-01`/`P25-02` (above).
     # 127 -> 130: `B820`, `B821` and `B822`'s three Brain lines (above), all text.
-    assert tally == {"color": 130, "border-color": 4, "background": 2}, tally
+    # `B391` (above): `color` 130 -> 147, the seventeen sites off the pivot;
+    # `background` 2 -> 3, `.ctx-usage-seg`'s fallback; and a fourth property,
+    # `--ctx-stroke` ×3 — the wheel's resting stroke is a graphic, held to 3:1
+    # and cleared by the token's 4.5.
+    assert tally == {"color": 147, "border-color": 4, "background": 3, "--ctx-stroke": 3}, tally
 
 
 def test_the_javascript_uses_are_recorded_but_not_this_rows_work():
@@ -491,9 +500,12 @@ def test_the_javascript_uses_are_recorded_but_not_this_rows_work():
     # `B1524` deleted the admin API-token form, and with it `admin.js`'s one
     # use — a read-scope pill's `var(--fg-muted,#888)`: twelve now, two of them
     # with a fallback (`settings.js`, `emailLibrary.js`).
-    assert len(found) == 12, f"expected 12 --fg-muted uses outside the sheet, found {len(found)}"
+    # 12 -> 18, 10 -> 16 bare: `B391` — the six inline uses of the grey pivot
+    # (`chatStream.js`'s steer hint and sent list, `rag.js`'s three lines,
+    # `presets.js`'s lock notice) paint this token now.
+    assert len(found) == 18, f"expected 18 --fg-muted uses outside the sheet, found {len(found)}"
     bare = [e for e in found if e == "var(--fg-muted)"]
-    assert len(bare) == 10, f"expected 10 of them bare, found {len(bare)}"
+    assert len(bare) == 16, f"expected 16 of them bare, found {len(bare)}"
     # Nothing under `static/js/theme.js` may declare it — that is the mirror
     # `B21` is about, and the reason this row put the token in `:root`.
     assert "--fg-muted" not in THEME_JS.read_text(encoding="utf-8"), (
@@ -512,7 +524,10 @@ def test_the_javascript_uses_are_recorded_but_not_this_rows_work():
 # toward `--bg` instead would have put them at 2.36 and 2.59, and `light` — a
 # shipped palette with no B15 problem at all — at 2.96.
 
-_UNDER_FLOOR = {"cute", "retrowave"}
+# `B1486` emptied it: the pivot is scoped and the share is 30% (`:root`), and
+# all twenty-three clear 4.5:1 against both surfaces — worst `light` against
+# `--bg`, 4.55. Kept, empty, so a palette joining it is a named change.
+_UNDER_FLOOR: set = set()
 
 
 def test_muted_text_clears_the_floor_on_fourteen_palettes():
@@ -537,7 +552,7 @@ def test_muted_text_clears_the_floor_on_fourteen_palettes():
         + "\nA palette joining this set means secondary text got less legible "
         "somewhere; a palette leaving it means the B15 ceiling moved."
     )
-    assert len(against_panel) - len(under) == 21
+    assert len(against_panel) - len(under) == 23
 
     # The hard floor holds everywhere, including on the two above.
     for name, ratio in sorted(against_panel.items()):
@@ -553,14 +568,16 @@ def test_muted_text_clears_the_floor_on_fourteen_palettes():
 
 def test_the_two_palettes_under_the_floor_are_the_tokens_now_not_the_palettes():
     """`B390` (`D-2026-10-26-01` §13) moved the ceiling: `cute` and `retrowave`
-    put full-strength `--fg` over 4.5:1 against `--panel` now, so `--fg-muted`'s
-    shortfall on them is the token's mix, not the palette's limit — `B1486`
-    carries it to the redesign. Until then the two stay named and pinned above,
-    and their own body text is held over the floor here."""
-    for name in sorted(_UNDER_FLOOR):
+    put full-strength `--fg` over 4.5:1 against `--panel`, so `--fg-muted`'s
+    shortfall on them was the token's mix, not the palette's limit. `B1486`
+    fixed the mix (4.29 → 4.89 on `cute`, 4.32 → 4.95 on `retrowave`, against
+    `--panel`), and the two are pinned here so neither slips back under."""
+    for name, want in (("cute", 4.89), ("retrowave", 4.95)):
         theme = _themes()[name]
         own = _contrast(_rgb(theme["fg"]), _rgb(theme["panel"]))
         assert own >= FLOOR, f"{name}'s own --fg fell under {FLOOR}:1 again ({own:.2f})"
+        muted = _contrast(_muted(theme), _rgb(theme["panel"]))
+        assert round(muted, 2) == want, (name, muted)
 
 
 def test_the_population_compounding_with_opacity_cannot_grow():
@@ -582,12 +599,17 @@ def test_the_population_compounding_with_opacity_cannot_grow():
         opacity = [v for p, v, _ in _decls(body) if p == "opacity"]
         if opacity:
             compounding.append((_line_of(body_start), prelude, opacity[-1]))
-    assert len(compounding) == 33, (
-        f"expected 33 rules that both name --fg-muted and set an opacity, "
+    # 33 -> 38 and 13 -> 15 faint: `B391` moved five rules that already muted
+    # by opacity on top of `#888` onto this token — `.ctx-ring` (0.6),
+    # `.preset-temp-hints` (0.7), `.ge-tool-sep` (0.6), and two hover-revealed
+    # controls at 0, `.user-template-delete` and `.memory-menu-btn`. Not new
+    # instances of the defect: the same five, now counted where they belong.
+    assert len(compounding) == 38, (
+        f"expected 38 rules that both name --fg-muted and set an opacity, "
         f"found {len(compounding)}: {sorted(c[1] for c in compounding)}"
     )
     faint = [c for c in compounding if float(c[2]) <= 0.45]
-    assert len(faint) == 13, f"expected 13 at 0.45 or below, found {len(faint)}"
+    assert len(faint) == 15, f"expected 15 at 0.45 or below, found {len(faint)}"
 
 
 # ── P1-03: what the value had to avoid ─────────────────────────────────────
@@ -632,7 +654,10 @@ def test_the_muted_token_is_not_any_palettes_accent():
 # this file: it would need a success colour that knows what the foreground is,
 # which is the same shape of problem as `P1-08`'s `--on-accent`. Pinned so the
 # palette set cannot grow and so a *new* site pairing the two is visible.
-_SUCCESS_COLLISION = {"terminal"}
+# `B1486` ended it: at 30% through a lighter dark-page pivot, `--fg-muted` on
+# `terminal` sits 72.3 units from `--color-success`. Kept, empty, so a new
+# collision is a named change.
+_SUCCESS_COLLISION: set = set()
 
 
 def test_the_muted_token_meets_the_semantic_colours_on_one_palette_only():

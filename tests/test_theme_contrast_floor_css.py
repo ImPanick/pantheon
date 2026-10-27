@@ -262,23 +262,22 @@ def test_body_text_clears_aa_on_every_palette(palettes):
 
 def test_the_muted_foreground_floor_and_the_palette_B15_never_counted(palettes):
     """`B15`'s re-measure found a third palette under AA on `--fg-muted`/`--bg`
-    and the row never counted it. It is `light`, and it is counted here.
+    and the row never counted it: `light`, at 4.16. With `cute` and `retrowave`
+    that made three.
 
-    `--color-muted` is `--fg-muted`'s pivot and `B22` deliberately leaves it
-    unscoped; this is the number that decision costs, stated rather than
-    implied. `cute` and `retrowave` are under for the reason `P1-03` already
-    wrote down — their own `--fg` is under, and no mix of it can climb above it.
+    `B1486` emptied the set. `--color-muted` was `--fg-muted`'s unscoped `#888`
+    pivot, and one grey cannot mute text on both kinds of page; scoped (darker
+    on a light page, lighter on a dark one) at a 30% share, every palette
+    clears 4.5:1 against both of its surfaces. `light` against `--bg` is still
+    the worst, and it is pinned so it cannot slide back.
     """
     measured = {n: (_contrast(_resolve("var(--fg-muted)", t), _resolve("var(--panel)", t)),
                     _contrast(_resolve("var(--fg-muted)", t), _resolve("var(--bg)", t)))
                 for n, t in palettes.items()}
     under = {n for n, (p, b) in measured.items() if min(p, b) < BODY_FLOOR}
-    assert under == {"cute", "retrowave", "light"}, sorted(under)
-    assert round(measured["light"][1], 2) == 4.16, measured["light"]
-    # All three still clear the 3:1 graphic floor, which is what `P1-03` chose
-    # the value to guarantee and is why this is a note rather than a row.
-    for name in under:
-        assert min(measured[name]) >= GRAPHIC_FLOOR, (name, measured[name])
+    assert under == set(), sorted(under)
+    worst = min(measured, key=lambda n: min(measured[n]))
+    assert worst == "light" and round(measured["light"][1], 2) == 4.55, measured["light"]
 
 
 # ── `B16` ───────────────────────────────────────────────────────────────────
@@ -313,7 +312,6 @@ _SEMANTIC_FLOORS = {
     "color-error": BODY_FLOOR, "color-error-light": GRAPHIC_FLOOR,
     "color-success": BODY_FLOOR, "color-warning": BODY_FLOOR,
     "color-danger": BODY_FLOOR, "color-recording": BODY_FLOOR,
-    "color-muted": BODY_FLOOR,
     "color-muted-alt": BODY_FLOOR, "color-accent": BODY_FLOOR,
     "color-agent-active": GRAPHIC_FLOOR, "color-brand-blue": GRAPHIC_FLOOR,
     "color-blind-orange": BODY_FLOOR, "color-save-green": BODY_FLOOR,
@@ -324,7 +322,11 @@ _SEMANTIC_FLOORS = {
 # Named exceptions, each with the reason and the row that owns it. A token
 # joining this dict without a row is the thing this structure exists to stop.
 _SEMANTIC_EXCEPTIONS = {
-    "color-muted": "P1-06 — `--fg-muted`'s pivot; scoping it re-opens `P1-03`",
+    # `B391` retired `color-muted` from here AND from the floors above: it is
+    # `--fg-muted`'s pivot and nothing paints in it any more, so it has no
+    # surface to be measured against — `test_nothing_paints_in_the_muted_pivot`
+    # holds that. (It was "P1-06 — scoping it re-opens P1-03"; `B1486` scoped
+    # it without re-opening anything, measured in the fg-muted file.)
     # `B393` retired two entries here: `--color-danger` is text only now (its
     # surface job is `--color-danger-surface`), and `--color-recording-hover`
     # was never text — it is measured below as the surface it is.
@@ -463,6 +465,10 @@ def test_scoping_a_token_did_not_move_it_on_the_surface_it_was_tuned_for(palette
     # light surface (white on it, or it on white), so its light arm IS the
     # literal and only the dark palettes see a new value.
     light_kept = {"color-danger": "#c0392b"}
+    # `B1486`: the muted pivot, grey in both arms and moved on both sides from
+    # `#888` — darker on a light page, lighter on a dark one. Nothing paints
+    # in it (`B391`); it exists to be mixed into `--fg-muted`.
+    pivot = {"color-muted": "#888888"}
 
     root = _root_expressions()
     scoped = {t for t, v in root.items() if v.startswith("light-dark(")}
@@ -471,7 +477,7 @@ def test_scoping_a_token_did_not_move_it_on_the_surface_it_was_tuned_for(palette
     # scope. They are named here rather than filtered by shape, so a token that
     # arrives in neither family still fails this line.
     elevation = {f"shadow-ink-{n}" for n in range(1, 5)}
-    assert scoped == set(dark_tuned) | set(light_tuned) | set(light_kept) | elevation, sorted(scoped)
+    assert scoped == set(dark_tuned) | set(light_tuned) | set(light_kept) | set(pivot) | elevation, sorted(scoped)
     scoped -= elevation
 
     light = set(_light(palettes))
@@ -508,9 +514,16 @@ def test_scoping_a_token_did_not_move_it_on_the_surface_it_was_tuned_for(palette
             travelled[f"{token}/{scheme}"] = round(
                 _distance(_resolve(f"var(--{token})", palettes[name]), _rgb(literal)), 1
             )
+    for token, literal in pivot.items():
+        for scheme, group in (("light", light), ("dark", set(palettes) - light)):
+            name = sorted(group)[0]
+            travelled[f"{token}/{scheme}"] = round(
+                _distance(_resolve(f"var(--{token})", palettes[name]), _rgb(literal)), 1
+            )
     assert travelled == {
         "color-muted-alt/light": 13.9, "color-muted-alt/dark": 65.3,
         "color-subheader/light": 46.6, "color-subheader/dark": 33.3,
+        "color-muted/light": 34.6, "color-muted/dark": 20.8,
     }, travelled
 
 
@@ -761,3 +774,31 @@ def test_light_dark_has_a_scheme_to_key_off_on_every_path(palettes):
     # And the default matches the literals beside it, which is the only thing
     # that makes it correct rather than merely present.
     assert _relative_luminance(_rgb(_root_expressions()["bg"])) <= 0.5
+
+
+
+# ── `B391`: the muted pivot is mixed, never painted ─────────────────────────
+
+
+def test_nothing_paints_in_the_muted_pivot():
+    """`B391`'s `Verify`. `--color-muted` is the grey `--fg-muted` mixes toward;
+    seventeen rules painted text in it directly (`#888`: 3.29:1 on `light`'s
+    panel, under AA on six palettes) and three more stroked the context wheel
+    in it. All of them paint `--fg-muted` now, the theme-aware muted ink, so the
+    pivot's ONLY reader is `--fg-muted`'s own declaration — in the sheet and in
+    every inline style the client writes."""
+    css = _css()
+    readers = [m.start() for m in re.finditer(r"var\(--color-muted[,)]", css)]
+    root = _root_expressions()
+    assert root["fg-muted"].count("var(--color-muted)") == 1, root["fg-muted"]
+    decl = css.index("--fg-muted:", css.index(":root {"))
+    assert len(readers) == 1 and decl < readers[0] < css.index(";", decl), (
+        f"{len(readers)} readers of --color-muted in the sheet; only --fg-muted may mix it")
+    static = ROOT / "static"
+    elsewhere = []
+    for path in sorted(static.rglob("*.js")) + sorted(static.glob("*.html")):
+        if "lib" in path.relative_to(static).parts:
+            continue
+        if re.search(r"var\(--color-muted[,)]", path.read_text(encoding="utf-8", errors="replace")):
+            elsewhere.append(path.relative_to(ROOT).as_posix())
+    assert elsewhere == [], f"these paint in the muted pivot directly: {elsewhere}"

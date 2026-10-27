@@ -120,13 +120,21 @@
      also has the right sign on light palettes, where mixing toward `--bg`
      lightens secondary text into the page and puts `light` at 2.96:1.
 
-     45% is the largest muting at which fourteen of the sixteen still clear
-     4.5:1 against `--panel`; 43% is the true edge and the two points keep
-     `light` off a 4.50 knife-edge. `cute` (3.54) and `retrowave` (3.97) miss
-     it because their own `--fg` misses it — 3.44 and 4.15 — which is B15 and
-     not reachable from this file. Both still clear 3:1, which mixing toward
-     `--bg` could not manage at any ratio. */
-  --fg-muted: color-mix(in srgb, var(--fg) 45%, var(--color-muted));
+     It was 45% `--fg` through a fixed `#888`, the largest muting at which
+     fourteen of the sixteen cleared 4.5:1 against `--panel`; `cute` and
+     `retrowave` missed it because their own `--fg` did (`B15`). `B390`
+     lifted their `--fg` over the floor and the shortfall became the mix's
+     own (`B1486`: 4.29 and 4.32 against `--panel`, and `light` 4.16 against
+     `--bg`). One grey cannot serve both kinds of page — on a light page the
+     pivot must sit darker than the text it mutes, on a dark page lighter —
+     so the pivot is scoped (`--color-muted`, below, `B22`'s mechanism) and
+     the share is 30%: measured over all twenty-three palettes, the mix that
+     clears 4.5:1 against BOTH `--panel` and `--bg` everywhere (worst
+     `light` against `--bg`, 4.55) while staying 40+ sRGB units from `--fg`,
+     `--border`, the accent and every status colour `P1-03` and `B391`
+     protect (worst 43.0, `light` from its own `--fg`). The tab strips that
+     row repaired still show which tab is active. */
+  --fg-muted: color-mix(in srgb, var(--fg) 30%, var(--color-muted));
 
   /* Syntax highlighting */
   --hl-bg: #1e2228;
@@ -177,15 +185,16 @@
 
      Four tokens are deliberately NOT scoped, and each is a measurement:
 
-       * `--color-muted` is `--fg-muted`'s pivot (`P1-03`). Scoping it moves
-         `--fg-muted` on every palette and re-opens what that row proved:
-         measured, a scoped `--color-muted` puts `--fg-muted` within 35.9 sRGB
-         units of `--fg` on `forest` and 25.4 on `light` — under the 40-unit
-         floor `tests/test_fg_muted_and_backdrop_cascade_css.py` holds — so the
-         three tab strips P1-03 repaired would stop showing which tab is
-         active, and on `retrowave` it collides with `--color-danger` at 38.7.
-         Its own 17 direct `color:` uses stay under AA on the light palettes;
-         that is loose colour and belongs to `P1-06`.
+       * `--color-muted` is `--fg-muted`'s pivot (`P1-03`) and, since `B391`,
+         nothing else: its 17 direct `color:` uses (under AA on six palettes —
+         `#888` is 3.29:1 on `light`'s panel) and the context wheel's resting
+         stroke all paint `--fg-muted`, the theme-aware muted foreground, and
+         no rule paints in the pivot. That is what let `B1486` scope it: the
+         old objection — a scoped pivot put `--fg-muted` 35.9 units from `--fg`
+         on `forest`, 25.4 on `light` — was about one particular pair of
+         values at 45%; the pair below at 30% keeps every distance `P1-03`
+         holds over 40 and clears AA on both surfaces of every palette. Grey
+         in both arms, darker on a light page and lighter on a dark one.
 
        * `--color-danger` WAS one token doing two jobs, and `B393` split it.
          `.confirm-btn-danger` painted `#fff` on an undiluted `--color-danger`
@@ -219,7 +228,7 @@
   --color-danger-surface: #c0392b;
   --color-recording: light-dark(#d50b00, #ff3b30);
   --color-recording-hover: #d63031;
-  --color-muted: #888;
+  --color-muted: light-dark(#747474, #949494);
   --color-muted-alt: light-dark(#646a77, #9298a4);
   --color-accent: light-dark(#0070a8, #00aaff);
   --color-agent-active: light-dark(#009c00, #00ff00);
@@ -736,7 +745,7 @@ body.bg-pattern-sparkles {
       border-radius: 6px;
       color: var(--fg);
       font-weight: inherit;
-      --ctx-stroke: var(--color-muted, #888);
+      --ctx-stroke: var(--fg-muted);
     }
     #export-compact-btn:hover {
       --ctx-stroke: var(--ctx-color);
@@ -4445,7 +4454,7 @@ body.bg-pattern-sparkles {
       line-height: 1;
       cursor: pointer;
       white-space: nowrap;
-      --ctx-stroke: var(--color-muted, #888);
+      --ctx-stroke: var(--fg-muted);
       transition: color 0.15s, opacity 0.15s;
     }
     .chat-context-pill[hidden] {
@@ -4617,7 +4626,7 @@ body.bg-pattern-sparkles {
       display: block;
       height: 100%;
       min-width: 2px;
-      background: var(--ctx-stroke, var(--color-muted));
+      background: var(--ctx-stroke, var(--fg-muted));
     }
     .ctx-usage-seg + .ctx-usage-seg { box-shadow: -1px 0 0 var(--panel); }
     .ctx-usage-seg[data-key="system"], .ctx-usage-swatch[data-key="system"] { background: var(--ctx-seg-system); }
@@ -5344,10 +5353,10 @@ body.bg-pattern-sparkles {
       opacity: 0.6;
       cursor: default;
       transition: opacity 0.15s;
-      --ctx-stroke: var(--color-muted, #888);
+      --ctx-stroke: var(--fg-muted);
     }
     .ctx-ring .ctx-ring-pct {
-      color: var(--color-muted, #888);
+      color: var(--fg-muted);
       transition: color 0.1s ease;
     }
     .ctx-ring svg circle {
@@ -13060,7 +13069,7 @@ details a:hover {
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
-  color: var(--color-muted);
+  color: var(--fg-muted);
   font-family: inherit;
   font-size: 13px;
   font-weight: 500;
@@ -13093,7 +13102,7 @@ details a:hover {
 
 .preset-templates-hint {
   font-size: 11px;
-  color: var(--color-muted);
+  color: var(--fg-muted);
   margin: 0 0 8px;
 }
 
@@ -13133,7 +13142,7 @@ details a:hover {
 
 .prompt-template-preview {
   font-size: 11px;
-  color: var(--color-muted);
+  color: var(--fg-muted);
   line-height: 1.4;
   white-space: nowrap;
   overflow: hidden;
@@ -13214,7 +13223,7 @@ details a:hover {
 .preset-temp-hints {
   display: flex;
   font-size: 10px;
-  color: var(--color-muted);
+  color: var(--fg-muted);
   margin-top: -4px;
   margin-bottom: 10px;
   padding: 0 2px;
@@ -13234,7 +13243,7 @@ details a:hover {
   padding: 7px 14px;
   background: none;
   border: 1px solid var(--border);
-  color: var(--color-muted);
+  color: var(--fg-muted);
   border-radius: 6px;
   cursor: pointer;
   font-size: 12px;
@@ -13257,7 +13266,7 @@ details a:hover {
   border: 1px solid var(--border);
   font-size: 10px;
   font-weight: 600;
-  color: var(--color-muted);
+  color: var(--fg-muted);
   cursor: help;
   vertical-align: middle;
   margin-left: 4px;
@@ -13271,7 +13280,7 @@ details a:hover {
 .preset-section-header {
   font-size: 11px;
   font-weight: 600;
-  color: var(--color-muted);
+  color: var(--fg-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 6px;
@@ -13284,7 +13293,7 @@ details a:hover {
 .user-template-delete {
   background: none;
   border: none;
-  color: var(--color-muted);
+  color: var(--fg-muted);
   font-size: 13px;
   cursor: pointer;
   padding: 0 2px;
@@ -13328,7 +13337,7 @@ details a:hover {
   background: var(--panel);
   border: 1px solid var(--border-control, var(--border));
   border-radius: 4px;
-  color: var(--color-muted);
+  color: var(--fg-muted);
   font-size: 11px;
   padding: 2px 8px;
   cursor: pointer;
@@ -13445,7 +13454,7 @@ details a:hover {
   background: none;
   border: 1px solid var(--border-control, var(--border));
   border-radius: 6px;
-  color: var(--color-muted);
+  color: var(--fg-muted);
   font-size: 11px;
   padding: 4px 8px;
   cursor: pointer;
@@ -13484,7 +13493,7 @@ details a:hover {
   margin-top: 6px;
   padding: 8px 10px;
   font-size: 12px;
-  color: var(--color-muted);
+  color: var(--fg-muted);
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -14424,7 +14433,7 @@ textarea.memory-add-input {
 
 .memory-count {
   font-size: 11px;
-  color: var(--color-muted);
+  color: var(--fg-muted);
 }
 
 .memory-search-input {
@@ -14697,7 +14706,7 @@ textarea.memory-add-input {
 .memory-menu-btn {
   background: none;
   border: 1px solid transparent;
-  color: var(--color-muted);
+  color: var(--fg-muted);
   font-size: 18px;
   width: 24px;
   height: 24px;
@@ -14779,7 +14788,7 @@ textarea.memory-add-input {
 .memory-item-btn {
   background: none;
   border: 1px solid transparent;
-  color: var(--color-muted);
+  color: var(--fg-muted);
   font-size: 11px;
   height: 22px;
   padding: 0 6px;
@@ -30486,7 +30495,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   font-size: 8px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--color-muted);
+  color: var(--fg-muted);
   text-align: center;
   padding: 8px 0 4px;
   border-top: 1px solid var(--border);
@@ -46181,7 +46190,7 @@ body.theme-frosted .modal {
   color: var(--red, #e06c75);
 }
 .log-line-debug {
-  color: var(--color-muted, #888);
+  color: var(--fg-muted);
 }
 .log-line-default {
   color: var(--fg, #9cdef2);
