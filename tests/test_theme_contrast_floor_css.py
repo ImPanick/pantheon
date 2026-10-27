@@ -313,7 +313,7 @@ _SEMANTIC_FLOORS = {
     "color-error": BODY_FLOOR, "color-error-light": GRAPHIC_FLOOR,
     "color-success": BODY_FLOOR, "color-warning": BODY_FLOOR,
     "color-danger": BODY_FLOOR, "color-recording": BODY_FLOOR,
-    "color-recording-hover": GRAPHIC_FLOOR, "color-muted": BODY_FLOOR,
+    "color-muted": BODY_FLOOR,
     "color-muted-alt": BODY_FLOOR, "color-accent": BODY_FLOOR,
     "color-agent-active": GRAPHIC_FLOOR, "color-brand-blue": GRAPHIC_FLOOR,
     "color-blind-orange": BODY_FLOOR, "color-save-green": BODY_FLOOR,
@@ -325,11 +325,72 @@ _SEMANTIC_FLOORS = {
 # joining this dict without a row is the thing this structure exists to stop.
 _SEMANTIC_EXCEPTIONS = {
     "color-muted": "P1-06 — `--fg-muted`'s pivot; scoping it re-opens `P1-03`",
-    "color-danger": "B393 — one token, two jobs; no single value satisfies both",
-    "color-recording-hover": "B393 — same, a background with a white label",
+    # `B393` retired two entries here: `--color-danger` is text only now (its
+    # surface job is `--color-danger-surface`), and `--color-recording-hover`
+    # was never text — it is measured below as the surface it is.
     "color-error": "P1-08 — dark arm held; `#fff` sits on it at two rules",
     "color-recording": "P1-08 — dark arm held; `white` sits on it at two rules",
 }
+
+
+# Surfaces: tokens the sheet paints only as a BLOCK behind a light label. Their
+# floor is the label's contrast on them, which no page surface enters into
+# (`B393`). The label is the literal the rules that fill them paint in.
+_SURFACE_FLOORS = {
+    "color-danger-surface": ("#ffffff", BODY_FLOOR),     # `.confirm-btn-danger`
+    "color-recording-hover": ("#ffffff", BODY_FLOOR),    # `#stop-recording:hover` and its twin
+}
+
+
+def test_every_surface_token_carries_its_label_on_every_palette(palettes):
+    """`B393`'s other half. A token that is a filled block under `#fff` is held
+    to the white on it, on every palette — and the two it covers are the
+    literals the rows ship, so the white button reads the same everywhere."""
+    for token, (label, floor) in _SURFACE_FLOORS.items():
+        for name, theme in palettes.items():
+            got = _contrast(_rgb(label), _resolve(f"var(--{token})", theme))
+            assert got >= floor, f"{label} on --{token} is {got:.2f}:1 on `{name}`"
+    assert round(_contrast(_rgb("#ffffff"), _rgb("#c0392b")), 2) == 5.44
+    assert round(_contrast(_rgb("#ffffff"), _rgb("#d63031")), 2) == 4.85
+
+
+def test_the_duplicate_shortcut_mark_reads_on_its_badge_on_every_palette(palettes):
+    """`.shortcut-warn` was the census's third find: a white "!" on `--warn`,
+    1.95:1 on every dark palette. Resolved from the rule, both arms."""
+    body = re.search(r"\.shortcut-warn\s*\{([^{}]*)\}", _css()).group(1)
+    ink = re.search(r"(?:^|;)\s*color\s*:\s*([^;]+?)\s*;", body).group(1)
+    ground = re.search(r"(?:^|;)\s*background\s*:\s*([^;]+?)\s*;", body).group(1)
+    worst = min((_contrast(_resolve(ink, t), _resolve(ground, t)), n) for n, t in palettes.items())
+    assert worst[0] >= BODY_FLOOR, worst
+
+
+def _two_job_tokens() -> set:
+    """Tokens some rule fills undiluted behind a light literal label AND some
+    rule paints text in — the shape `B393` is named after, found by shape."""
+    css = _css()
+    surfaces, texts = set(), set()
+    for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
+        body = m.group(2)
+        bg = re.search(r"(?:^|;)\s*background(?:-color)?\s*:\s*var\(--([\w-]+)(?:,[^;]*)?\)\s*(?:!important)?\s*(?:;|$)", body)
+        label = re.search(r"(?:^|;)\s*color\s*:\s*(#fff(?:fff)?|white)\b", body, re.I)
+        if bg and label:
+            surfaces.add(bg.group(1))
+        for t in re.finditer(r"(?:^|;)\s*color\s*:\s*var\(--([\w-]+)", body):
+            texts.add(t.group(1))
+    return surfaces & texts
+
+
+def test_no_token_is_both_a_block_under_white_and_a_text_colour():
+    """`B393`'s `Verify`, as a census rather than a list. `--color-danger` was
+    both and is now two tokens; the two that remain are `P1-08`'s, named in
+    `_SEMANTIC_EXCEPTIONS` with the reason their dark arms are held."""
+    both = _two_job_tokens()
+    # `--warn` was the third, found by this census: `.shortcut-warn` (below).
+    assert "color-danger" not in both and "color-recording-hover" not in both, both
+    assert both <= {"color-error", "color-recording"}, (
+        f"a token is a block under white AND a text colour: {sorted(both)}")
+    for token in both:
+        assert token in _SEMANTIC_EXCEPTIONS and "P1-08" in _SEMANTIC_EXCEPTIONS[token], token
 
 
 def test_every_semantic_token_clears_its_floor_or_is_a_named_exception(palettes):
@@ -361,11 +422,15 @@ def test_every_semantic_token_clears_its_floor_or_is_a_named_exception(palettes)
         f"exception and close the row: {stale}"
     )
     # Two numbers the row is named after, kept honest: `--color-danger` on
-    # `claude` is the worst of the twelve dark palettes it fails on, and
-    # `--green` on `paper`'s panel was the row's headline before it was scoped.
+    # `claude` was the worst of the twelve dark palettes it failed on — 2.43
+    # until `B393` gave it a text arm; it is the worst still, now over the
+    # floor — and `--green` on `paper`'s panel was the row's headline before
+    # it was scoped.
+    assert round(
+        _contrast(_rgb("#c0392b"), _resolve("var(--panel)", palettes["claude"])), 2) == 2.43
     assert round(
         _contrast(_resolve("var(--color-danger)", palettes["claude"]),
-                  _resolve("var(--panel)", palettes["claude"])), 2) == 2.43
+                  _resolve("var(--panel)", palettes["claude"])), 2) == 4.57
     assert round(
         _contrast(_rgb("#50fa7b"), _resolve("var(--panel)", palettes["paper"])), 2) == 1.37
 
@@ -394,6 +459,10 @@ def test_scoping_a_token_did_not_move_it_on_the_surface_it_was_tuned_for(palette
         "color-link-hover": "#66c7ff", "accent-warm": "#d19a66",
     }
     light_tuned = {"color-muted-alt": "#6b7280", "color-subheader": "#6b8a94"}
+    # `B393`: the mirror of `dark_tuned`. `#c0392b` was always a value for a
+    # light surface (white on it, or it on white), so its light arm IS the
+    # literal and only the dark palettes see a new value.
+    light_kept = {"color-danger": "#c0392b"}
 
     root = _root_expressions()
     scoped = {t for t, v in root.items() if v.startswith("light-dark(")}
@@ -402,7 +471,7 @@ def test_scoping_a_token_did_not_move_it_on_the_surface_it_was_tuned_for(palette
     # scope. They are named here rather than filtered by shape, so a token that
     # arrives in neither family still fails this line.
     elevation = {f"shadow-ink-{n}" for n in range(1, 5)}
-    assert scoped == set(dark_tuned) | set(light_tuned) | elevation, sorted(scoped)
+    assert scoped == set(dark_tuned) | set(light_tuned) | set(light_kept) | elevation, sorted(scoped)
     scoped -= elevation
 
     light = set(_light(palettes))
@@ -421,6 +490,15 @@ def test_scoping_a_token_did_not_move_it_on_the_surface_it_was_tuned_for(palette
                     f"--{token} changed on `{name}`, a dark palette. `B22` is "
                     "scoping, not recolouring: the dark arm is the literal."
                 )
+    for token, literal in light_kept.items():
+        for name, theme in palettes.items():
+            got = _resolve(f"var(--{token})", theme)
+            if name in light:
+                assert got == _rgb(literal), (
+                    f"--{token} changed on `{name}`, a light palette, where the "
+                    "literal was already right")
+            else:
+                assert got != _rgb(literal), f"--{token} still paints the literal on `{name}`"
     # The two that had to move on both sides, and how far. A jump here means
     # somebody re-picked a colour rather than re-tuned one.
     travelled = {}

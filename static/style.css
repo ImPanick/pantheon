@@ -187,13 +187,21 @@
          Its own 17 direct `color:` uses stay under AA on the light palettes;
          that is loose colour and belongs to `P1-06`.
 
-       * `--color-danger` and `--color-recording-hover` are each ONE token
-         doing TWO jobs: `.confirm-btn-danger` paints `#fff` on an undiluted
-         `--color-danger` background while nine other rules use it as text.
-         The two jobs pull opposite ways and the arithmetic is not close —
-         clearing 4.5:1 as text on `claude`'s panel needs luminance ≥ 0.31,
-         clearing it under white needs ≤ 0.18. No single value exists. Splitting
-         the token is the fix and it is `B393`, not a value chosen here.
+       * `--color-danger` WAS one token doing two jobs, and `B393` split it.
+         `.confirm-btn-danger` painted `#fff` on an undiluted `--color-danger`
+         while the rest of the sheet used it as text, and the two jobs pull
+         opposite ways — clearing 4.5:1 as text on `claude`'s panel needs
+         luminance ≥ 0.31, clearing it under white needs ≤ 0.18, so no single
+         value exists (it measured 2.43:1 as text on `claude`, under on 12 of
+         16 palettes). Now `--color-danger-surface` is the block behind white,
+         the literal unchanged (white on it 5.44:1), and `--color-danger` is
+         the text, scoped like the rest of this block: its light arm IS the
+         literal — it was a light-surface value all along — and its dark arm
+         is the same hue and saturation walked up to 66% lightness (`claude`,
+         the worst, 4.57:1). `--color-recording-hover` was never text — two
+         rules, both a background under `white` — so it was mis-measured
+         rather than mis-valued: a surface is held to the label on it (4.85:1),
+         which `tests/test_theme_contrast_floor_css.py` now does.
 
        * `--color-error` and `--color-recording` keep their DARK arms for the
          same reason in a milder form — both are painted under `#fff`/`white`
@@ -207,7 +215,8 @@
   --color-error-light: light-dark(#a30000, #ff6666);
   --color-success: light-dark(#347837, #4caf50);
   --color-warning: light-dark(#965d0d, #f0ad4e);
-  --color-danger: #c0392b;
+  --color-danger: light-dark(#c0392b, #df7c71);
+  --color-danger-surface: #c0392b;
   --color-recording: light-dark(#d50b00, #ff3b30);
   --color-recording-hover: #d63031;
   --color-muted: #888;
@@ -7817,7 +7826,7 @@ body.bg-pattern-sparkles {
     .confirm-btn-secondary:hover { background:var(--border); }
     .confirm-btn-primary { background:var(--accent-primary, var(--red, #4a9eff)); color: var(--on-accent, #fff); border-color:transparent; }
     .confirm-btn-primary:hover { filter:brightness(1.15); }
-    .confirm-btn-danger { background:var(--color-danger); color:#fff; border-color:transparent; }
+    .confirm-btn-danger { background:var(--color-danger-surface); color:#fff; border-color:transparent; }   /* `B393` */
     .confirm-btn-danger:hover { background:var(--color-error); }
     #cookbook-gguf-delete-overlay {
       background:rgba(0,0,0,0.5);
@@ -27310,7 +27319,13 @@ body.gallery-selecting .gallery-dl-btn,
 .shortcut-icon { display: inline-flex; opacity: 0.5; flex-shrink: 0; }
 .shortcut-warn {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 14px; height: 14px; border-radius: 50%; background: var(--warn); color: #fff;
+  width: 14px; height: 14px; border-radius: 50%; background: var(--warn);
+  /* `B393`'s shape, found by its census: a white "!" on `--warn`, which is the
+     dark amber `#965d0d` on a light palette (5.43:1) and the light amber
+     `#f0ad4e` on a dark one — 1.95:1, on fifteen palettes. The badge keeps its
+     amber; the mark takes the ink that reads on it in each scheme (black on the
+     light amber, 10.79:1). */
+  color: light-dark(#fff, #000);
   font-size: 9px; font-weight: 700; margin-left: 4px;
 }
 .shortcut-controls { display: flex; align-items: center; gap: 4px; }
