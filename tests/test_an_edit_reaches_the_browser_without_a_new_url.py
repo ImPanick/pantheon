@@ -71,7 +71,7 @@ unchanged = c.get("/static/js/mod.js", headers={"If-None-Match": first.headers["
 # validator moves whatever the clock's resolution).
 mod.write_text("export const release = 2; // edited\n", encoding="utf-8")
 edited = c.get("/static/js/mod.js", headers={"If-None-Match": first.headers["etag"]})
-queried = {q: c.get("/static/js/mod.js" + q).text for q in ("", "?v=20260708match1", "?v=anything")}
+queried = {q: c.get("/static/js/mod.js" + q).text for q in ("", "?v=one", "?v=anything")}
 print("RESULT=" + json.dumps({"first": row(first), "unchanged": row(unchanged),
                               "edited": row(edited), "queried": queried}))
 '''
@@ -124,11 +124,26 @@ def _digest(body: str) -> str:
     return hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
 
 
+def _served_specifier(module: str) -> str:
+    """The one `?v=` the static tree imports `module` under — read, never
+    written down (`test_no_test_writes_down_a_cache_buster.py`):
+    `check-specifiers.py` holds every importer on one string, so the first one
+    found is the one the product serves."""
+    import re
+    pattern = re.compile(re.escape(module) + r"\?v=([A-Za-z0-9._-]+)")
+    for path in sorted((ROOT / "static").rglob("*")):
+        if path.suffix in (".js", ".html") and path.is_file():
+            hit = pattern.search(path.read_text(encoding="utf-8", errors="replace"))
+            if hit:
+                return f"/static/js/{module}?v={hit.group(1)}"
+    raise AssertionError(f"nothing in static/ imports {module} under a ?v= — re-aim this test")
+
+
 # One module of each kind the rule covers, read from the real tree's install.
 _MODULES = {
     "bare": "/static/js/skills.js",
-    "pinned": "/static/js/gallery.js?v=20260708match1",
-    "wave": "/static/js/modalManager.js?v=20261009census",
+    "pinned": _served_specifier("gallery.js"),
+    "wave": _served_specifier("modalManager.js"),
 }
 
 

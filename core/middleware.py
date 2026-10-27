@@ -204,7 +204,7 @@ def require_operator(request: Request):
     tier above it. Until this gate those sites asked `is_admin`, so the only
     way to hand somebody the operator's job was to hand them the owner's.
 
-    It answers **yes** to exactly three callers: Pantheon itself (the
+    It answers **yes** to these callers and no others: Pantheon itself (the
     loopback naming nobody, as `require_admin`); an admin, asked through
     `require_admin` unchanged, so an admin's way in never depends on the
     privilege store (`B531`); and a person whose privileges resolve

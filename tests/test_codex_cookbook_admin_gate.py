@@ -25,6 +25,11 @@ def _cookie_request(*, current_user="bob", is_admin=False):
     auth_mgr = SimpleNamespace(
         is_configured=True,
         is_admin=lambda user: is_admin and user == "bob",
+        # `B683`: the cookbook routes are operator-tier (`require_operator`),
+        # which asks a non-admin's privileges; a store that cannot answer is a
+        # 503, so the member here has a readable store holding no
+        # `can_run_instance`.
+        get_privileges=lambda user: {},
     )
     return SimpleNamespace(
         state=SimpleNamespace(
