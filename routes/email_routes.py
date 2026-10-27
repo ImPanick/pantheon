@@ -337,6 +337,20 @@ def _safe_attachment_zip_name(name: str, fallback: str) -> str:
     return base[:180] or fallback
 
 
+def _account_refused(sentence: str, status: int = 400) -> JSONResponse:
+    """`B1593`. An account write the server will not make, answered as a
+    refusal — a 4xx — in the shape the Settings form already reads
+    (`d.error`). It answered HTTP 200 with `ok: false`, so anything that
+    trusts the status (a script, `fetch().ok`, the log) read a refusal as a
+    save."""
+    return JSONResponse({"ok": False, "error": sentence}, status_code=status)
+
+
+#: `B1593`: the sentence for an account created with no name, saying what to
+#: give it rather than only that something is missing (`Law 15`).
+ACCOUNT_NEEDS_A_NAME = "Give the account a name — its address, or a word you will know it by."
+
+
 def _coerce_port(value, default):
     """Coerce a user-supplied port to int.
 
@@ -5587,7 +5601,9 @@ def setup_email_routes():
                 _add(*await asyncio.to_thread(resolve_endpoint, "default", owner=owner))
             except Exception:
                 pass
-            for cand in resolve_utility_fallback_candidates(owner=owner) or []:
+            # `B1588`: the endpoint table, read on a worker thread like the
+            # default above.
+            for cand in await asyncio.to_thread(resolve_utility_fallback_candidates, owner=owner) or []:
                 _add(*cand)
             if not candidates:
                 return {"success": False, "error": "No LLM endpoint configured"}
@@ -5779,7 +5795,9 @@ def setup_email_routes():
             # by exact id, then basename; fall back to the first served model.
             try:
                 from src.llm_core import list_model_ids
-                _avail = list_model_ids(url, headers=headers)
+                # `B1588`: the endpoint's cached list, or a request to it — on
+                # a worker thread.
+                _avail = await asyncio.to_thread(list_model_ids, url, headers=headers)
                 if _avail and model not in _avail:
                     import os as _os
                     _base = _os.path.basename((model or "").rstrip("/"))
@@ -5878,7 +5896,8 @@ def setup_email_routes():
             except Exception:
                 pass
             # Active Utility fallbacks last.
-            for cand in resolve_utility_fallback_candidates(owner=owner) or []:
+            for cand in await asyncio.to_thread(   # `B1588`: off the loop
+                    resolve_utility_fallback_candidates, owner=owner) or []:
                 _add(*cand)
             _messages = [
                 {"role": "system", "content": system_prompt},
@@ -6185,13 +6204,13 @@ def setup_email_routes():
         # is a mistake rather than a step.
         pending_link = str(data.get("oauth_pending") or "").strip().lower()
         if not name and pending_link not in _LINKABLE_PROVIDERS:
-            return {"ok": False, "error": "name required"}
+            return _account_refused(ACCOUNT_NEEDS_A_NAME)
         imap_port, port_err = _coerce_port(data.get("imap_port"), 993)
         if port_err:
-            return {"ok": False, "error": port_err}
+            return _account_refused(port_err)
         smtp_port, port_err = _coerce_port(data.get("smtp_port"), 465)
         if port_err:
-            return {"ok": False, "error": port_err}
+            return _account_refused(port_err)
         db = SessionLocal()
         try:
             _lock_email_account_owner_mutation(db, owner)
@@ -6243,7 +6262,7 @@ def setup_email_routes():
         try:
             row = db.get(EmailAccount, account_id)
             if not row:
-                return {"ok": False, "error": "Account not found"}
+                return _account_refused("That email account is not here any more.", 404)
             # Simple fields
             for key in ("name", "imap_host", "imap_user", "smtp_host", "smtp_user", "from_address", "display_name"):
                 if key in data:
@@ -6252,7 +6271,7 @@ def setup_email_routes():
                 if data.get(key) not in (None, ""):
                     port, port_err = _coerce_port(data.get(key), None)
                     if port_err:
-                        return {"ok": False, "error": port_err}
+                        return _account_refused(port_err)
                     setattr(row, key, port)
             if "smtp_security" in data:
                 row.smtp_security = _smtp_security_mode({"smtp_security": data.get("smtp_security"), "smtp_port": data.get("smtp_port") or row.smtp_port})

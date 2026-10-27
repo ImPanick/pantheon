@@ -219,14 +219,18 @@ def test_a_nameless_account_is_named_after_its_own_id():
 
 
 def test_every_other_caller_still_needs_a_name():
-    """The guard is relaxed for one case, not removed."""
-    import asyncio
+    """The guard is relaxed for one case, not removed. `B1593` made the
+    refusal a 400 with a sentence, and this calls the handler rather than
+    reading its source (`Law 20`)."""
     import routes.email_routes as er
 
-    source = EMAIL_ROUTES.read_text(encoding="utf-8")
-    guard = source[source.index("def create_email_account"):]
-    guard = guard[: guard.index("imap_port, port_err")]
-    assert 'return {"ok": False, "error": "name required"}' in guard
+    router = er.setup_email_routes()
+    create = next(r.endpoint for r in router.routes
+                  if r.path == "/api/email/accounts" and "POST" in r.methods)
+    for body in ({}, {"name": "   "}, {"oauth_pending": "yes"}):
+        answer = create(body, owner="alice")
+        assert answer.status_code == 400, body
+        assert json.loads(answer.body) == {"ok": False, "error": er.ACCOUNT_NEEDS_A_NAME}
 
 
 def test_an_arbitrary_pending_value_does_not_bypass_the_name_guard():

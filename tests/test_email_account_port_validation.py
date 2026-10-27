@@ -4,7 +4,7 @@
 A non-numeric port (for example ``"imap"`` or ``"993x"``) previously reached an
 unguarded ``int(...)`` in create / update / test-config and raised ``ValueError``,
 which surfaces as an HTTP 500. The endpoints should reject it with their standard
-``{"ok": False, "error": ...}`` response instead.
+``{"ok": False, "error": ...}`` response instead — answered HTTP 400 since `B1593`.
 """
 
 import pytest
@@ -53,5 +53,9 @@ async def test_create_account_rejects_non_numeric_port():
         },
         owner="alice",
     )
-    assert result["ok"] is False
-    assert "port" in result["error"].lower()
+    # `B1593`: the refusal is a 400 now, in the same `{"ok", "error"}` shape.
+    import json
+    assert result.status_code == 400
+    body = json.loads(result.body)
+    assert body["ok"] is False
+    assert "port" in body["error"].lower()
