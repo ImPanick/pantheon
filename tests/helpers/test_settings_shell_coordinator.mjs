@@ -967,6 +967,22 @@ async function loadModule(filename) {
         return dynamic;
       }
 
+      // `B1258`: Settings → Forge mounts the servers' one editor, which lives
+      // with the Forge (`cookbook-hwfit.js`) and is loaded when the panel is
+      // initialised. The smoke drives Settings, not the Forge: an editor that
+      // draws nothing stands in for it.
+      if (target === path.join(JS, 'cookbook-hwfit.js')) {
+        const dynamic = syntheticModule(target, {
+          mountServersEditor() { return { refresh: async () => null }; },
+          default: {},
+        });
+
+        await dynamic.link(() => {});
+        await dynamic.evaluate();
+
+        return dynamic;
+      }
+
       throw new Error(
         `Unexpected dynamic import from Settings smoke: ${specifier}`,
       );

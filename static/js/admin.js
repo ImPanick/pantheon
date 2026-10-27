@@ -3641,7 +3641,7 @@ export function _initData() {
   // `/api/auth/status` has answered `isAdmin` is `null` — so Settings opened
   // in that window ran every loader, `/api/personal` (`B1192`'s tenth) among
   // them, for a guest too. Now it asks `viewerMayAdminister`, which waits for
-  // the status the page has asked for (at most its four seconds) and answers
+  // the status the page has asked for (at most twenty seconds, `B1525`) and answers
   // no only for a viewer the server called a non-admin. Asked again while it
   // waits, it is the same wait, not a second set of loaders.
   //

@@ -322,6 +322,9 @@ function moduleSource(relativePath) {
   // but each module still needs its own lexical scope so private const/let
   // bindings do not collide across modules.
   source = source.replace(/^\s*import[\s\S]*?;\s*$/gm, '');
+  // A re-export list (`export { AUDIENCE_CLASS };`, `B1570`) names bindings
+  // another module already put on globalThis here; drop the statement.
+  source = source.replace(/^\s*export\s*\{[^}]*\}\s*;?\s*$/gm, '');
 
   // Preserve exported API on globalThis while keeping all non-exported
   // bindings private inside the module block below.

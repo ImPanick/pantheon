@@ -6,7 +6,8 @@
 # status probe a chat switch makes answers 200 (`P23-04`); an unreadable
 # privilege store refuses a delegated owner's research (`B531`), and that
 # check reads through the one privilege rule (`B530`); a library row says why
-# its run stopped (`B1188`).
+# its run stopped (`B1188`); its handlers do their database work off the
+# event loop (`B1223`).
 #
 # Upstream licence text (Tongyi DeepResearch): licenses/DeepResearch-Apache-2.0.txt
 # Attribution: CREDITS.md

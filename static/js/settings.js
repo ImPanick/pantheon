@@ -3241,7 +3241,7 @@ function initAll() {
   // `B1525`. The check read the table's state as it stood, and before
   // `/api/auth/status` has answered that is unknown — so Settings opened in
   // that window ran all of them for a guest too. `viewerMayAdminister` waits
-  // for the status the page has asked for (at most four seconds) and answers
+  // for the status the page has asked for (at most twenty seconds, `B1525`) and answers
   // no only for a viewer the server called a non-admin, as `admin.js`
   // `_initData` asks it.
   viewerMayAdminister().then((may) => {
