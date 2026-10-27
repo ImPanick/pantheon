@@ -24,6 +24,11 @@ drives `chevronPoints()` in node for every direction and holds this one equal to
 it. The base orientation stays DOWN, as `icons.js` explains: fourteen stylesheet
 rules and six handlers rotate a chevron whose base points down.
 
+`B1561` brings the shell's other two: the play triangle (five sites) and the
+workflow glyph (four), which the markup now asks for as `{{glyph:<name>}}`.
+Those are read as the string literals `icons.js` exports — no arithmetic, so
+nothing here mirrors code.
+
 A table that cannot be read leaves the page as written and says so in the log:
 an invisible caret is a defect, a shell that answers 500 is an outage.
 """
@@ -44,6 +49,21 @@ _PLACEHOLDER = re.compile(r"\{\{chevron:([a-z]+)\}\}")
 _BASE = re.compile(r"export\s+const\s+CHEVRON_POINTS\s*=\s*'([^']+)'")
 _TURNS_BLOCK = re.compile(r"const\s+_CHEVRON_TURNS\s*=\s*\{(.*?)\n\};", re.S)
 _TURN = re.compile(r"(\w+)\s*:\s*\{\s*angle\s*:\s*(-?\d+)\s*,\s*reverse\s*:\s*(true|false)\s*\}")
+
+#: `B1561`. The shell's other glyphs, by the name its markup asks for
+#: (`{{glyph:<name>}}`), each read out of the `icons.js` export that owns it —
+#: the play triangle's points (a `<polygon points="…">` value; the shell wrote
+#: `5 3 19 12 5 21` five times, pinned by no test) and `WORKFLOW_GLYPH`, the
+#: bare SVG children the Workbench's four doors drew from a copy a test held
+#: equal. Each export is a string literal, or literals joined by `+`, and is
+#: read as exactly that; one written any other way is refused and logged, as
+#: an unreadable chevron table is.
+_GLYPH_PLACEHOLDER = re.compile(r"\{\{glyph:([a-z-]+)\}\}")
+_GLYPH_EXPORTS = {
+    "play-points": "PLAY_POINTS",
+    "workflow": "WORKFLOW_GLYPH",
+}
+_LITERALS = r"((?:'[^'\n]*'\s*\+?\s*)+);"
 
 _cache: dict = {}
 
@@ -82,6 +102,31 @@ def _table() -> Optional[dict]:
     return table
 
 
+def _glyphs() -> Optional[dict]:
+    """`{name: markup}` for every `_GLYPH_EXPORTS` entry `icons.js` declares
+    as a string literal (`B1561`). A name it does not is missing from the
+    result, and `render` leaves that placeholder as written."""
+    key = version()
+    if _cache.get("glyphs_key") == key and "glyphs" in _cache:
+        return _cache["glyphs"]
+    try:
+        with open(ICONS_JS, "r", encoding="utf-8") as f:
+            src = f.read()
+    except OSError:
+        logger.exception("B1561: cannot read %s; the shell's glyphs are not drawn", ICONS_JS)
+        return None
+    glyphs = {}
+    for name, export in _GLYPH_EXPORTS.items():
+        m = re.search(r"export\s+const\s+" + export + r"\s*=\s*" + _LITERALS, src)
+        if not m:
+            logger.error("B1561: %s no longer declares %s as string literals; the shell's "
+                         "'%s' glyph is not drawn", ICONS_JS, export, name)
+            continue
+        glyphs[name] = "".join(re.findall(r"'([^'\n]*)'", m.group(1)))
+    _cache.update(glyphs_key=key, glyphs=glyphs)
+    return glyphs
+
+
 def _rotate(nums: list, angle: int, reverse: bool) -> str:
     """`icons.js` `chevronPoints`, for a quarter turn about the 24-box's centre."""
     cos = {0: 1, 90: 0, 180: -1, 270: 0}[angle % 360]
@@ -100,22 +145,39 @@ def chevron_points(direction: str = "down") -> Optional[str]:
     return table.get(direction) if table else None
 
 
+def glyph(name: str) -> Optional[str]:
+    """One `{{glyph:<name>}}` as the server draws it (`B1561`)."""
+    glyphs = _glyphs()
+    return glyphs.get(name) if glyphs else None
+
+
 def render(html: str) -> str:
-    """The page with every `{{chevron:<direction>}}` drawn. A direction the
-    table does not name is left as written and logged, like an unreadable
-    table — the same answer `chevronPoints` gives it, which is to refuse."""
-    if "{{chevron:" not in html:
-        return html
-    table = _table()
-    if not table:
-        return html
+    """The page with every `{{chevron:<direction>}}` and `{{glyph:<name>}}`
+    drawn. A direction or a name the table does not answer for is left as
+    written and logged, like an unreadable table — the same answer
+    `chevronPoints` gives it, which is to refuse."""
+    if "{{chevron:" in html:
+        table = _table()
+        if table:
+            def draw(m):
+                got = table.get(m.group(1))
+                if got is None:
+                    logger.error("B398: the shell asks for a chevron '%s' that icons.js does not draw",
+                                 m.group(1))
+                    return m.group(0)
+                return got
 
-    def draw(m):
-        got = table.get(m.group(1))
-        if got is None:
-            logger.error("B398: the shell asks for a chevron '%s' that icons.js does not draw",
-                         m.group(1))
-            return m.group(0)
-        return got
+            html = _PLACEHOLDER.sub(draw, html)
+    if "{{glyph:" in html:
+        glyphs = _glyphs()
+        if glyphs is not None:
+            def draw_glyph(m):
+                got = glyphs.get(m.group(1))
+                if got is None:
+                    logger.error("B1561: the shell asks for a glyph '%s' that icons.js does not draw",
+                                 m.group(1))
+                    return m.group(0)
+                return got
 
-    return _PLACEHOLDER.sub(draw, html)
+            html = _GLYPH_PLACEHOLDER.sub(draw_glyph, html)
+    return html

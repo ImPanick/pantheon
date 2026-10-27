@@ -178,9 +178,14 @@ def test_the_sidebar_door_is_the_last_of_the_tools_and_customize_ui_can_hide_bot
 
 def test_every_door_and_the_window_title_draw_the_tables_glyph_exactly():
     """The rail button, the Tools row, the Customize UI switch and the window's
-    title: four spellings in markup, each equal to `WORKFLOW_GLYPH`."""
+    title: four doors, each drawing `WORKFLOW_GLYPH` exactly. `B1561`: they
+    were four spellings held equal here; the file asks for the glyph by name
+    now (`tests/test_the_shell_spells_no_glyph_the_table_exports.py`), so this
+    measures the page as the server draws it."""
+    from src.shell_glyphs import render
+
     table = _table_glyph()["g"]
-    html = INDEX.read_text(encoding="utf-8")
+    html = render(INDEX.read_text(encoding="utf-8"))
     sites = {
         "rail": re.search(r'<button class="icon-rail-btn" id="rail-workbench"[^>]*>(.*?)</button>', html, re.S),
         "tools": re.search(r'<button type="button" class="list-item" id="tool-workbench-btn">(.*?)</button>', html, re.S),

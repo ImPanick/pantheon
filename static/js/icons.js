@@ -86,7 +86,10 @@
  */
 
 /** The play triangle, as points. Exported because `planWindow.js` builds its
- *  polygon as DOM and sets the attribute rather than interpolating markup. */
+ *  polygon as DOM and sets the attribute rather than interpolating markup.
+ *  `B1561`: and because the shell asks for it by name
+ *  (`{{glyph:play-points}}`) and `src/shell_glyphs.py` reads it out of this
+ *  file — keep it one string literal. */
 export const PLAY_POINTS = '5 3 19 12 5 21';
 
 /** The play triangle as a bare SVG child, for the modules that own their own
@@ -369,9 +372,11 @@ export function chevronIcon(opts = {}) {
 // opens the Workbench now; the Workbench's rail button, its title bar and its
 // dock chip are the same door, so they are the same picture (`Law 15`). It
 // joins the table on the rule the table was built on: a glyph more than one
-// module draws. Stroked, like the menu glyphs it has always sat beside; the
-// rail button and the window title in `static/index.html` spell it literally
-// because markup cannot import a table (`B292`), and a test holds them equal.
+// module draws. Stroked, like the menu glyphs it has always sat beside. The
+// shell's four doors spelled it literally because markup cannot import a
+// table (`B292`); since `B1561` they ask for it (`{{glyph:workflow}}`) and
+// `src/shell_glyphs.py` draws it from here — so keep it string literals
+// joined by `+`, which is what that reader reads.
 
 /** The workflow glyph, as bare SVG children for a stroked 24-box. */
 export const WORKFLOW_GLYPH =
