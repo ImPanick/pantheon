@@ -898,8 +898,14 @@ def _shell_chevrons() -> list[tuple[int, str, dict]]:
     Found by `_chevron_polylines`, the same shape detector the module census
     uses, so the shell is measured by the rule rather than by a list of the
     spellings that happened to be there on the day.
+
+    `B398`: measured on the shell as the server draws it — the file holds
+    `{{chevron:<direction>}}` and `src/shell_glyphs.py` fills it from
+    `icons.js` — so these are the chevrons a browser receives.
     """
-    src = SHELL.read_text(encoding="utf-8")
+    from src.shell_glyphs import render
+
+    src = render(SHELL.read_text(encoding="utf-8"))
     out = []
     for line, points in _chevron_polylines(src):
         offset = sum(len(l) + 1 for l in src.split("\n")[:line - 1])
@@ -951,6 +957,8 @@ def test_the_shell_is_the_only_place_left_that_spells_one():
     literal again this fails in `test_the_tree_holds_exactly_one_chevron`; if
     the shell's count moves, it fails here — so "thirteen, in one file, and
     that file is markup" stays a fact (twelve since `P25-01`) rather than a note somebody wrote once.
+    Since `B398` the file asks for them by direction and the server draws
+    them; the twelve counted here are the drawn page's.
     It was nine until 2026-10-09 and the count is re-measured, not carried
     (`Law 6`): what moved it is recorded above `_shell_chevrons`.
     """
@@ -960,6 +968,62 @@ def test_the_shell_is_the_only_place_left_that_spells_one():
     assert _chevron_polylines(login.read_text(encoding="utf-8")) == [], (
         "the login page has grown a chevron; it is a third place to keep in step"
     )
+
+
+# ── `B398`: the shell's chevrons are drawn from the table, not spelled ──────
+
+
+def test_the_shell_file_spells_no_chevron_and_asks_the_table_for_twelve():
+    """`B398`'s `Verify`, first clause. `B292` closed on pinning the shell's
+    literals to `CHEVRON_POINTS`; this is the option that makes the count zero.
+    The file names a direction and the server draws it."""
+    raw = SHELL.read_text(encoding="utf-8")
+    assert _chevron_polylines(raw) == [], "the shell spells a chevron again"
+    asked = collections.Counter(re.findall(r'points="\{\{chevron:([a-z]+)\}\}"', raw))
+    assert asked == {"down": 4, "up": 3, "left": 1, "right": 4}, asked
+
+
+def test_the_server_draws_what_icons_js_draws_in_every_direction():
+    """The second clause: one definition shared by Python and `icons.js`. The
+    server reads `CHEVRON_POINTS` and `_CHEVRON_TURNS` out of the module and
+    mirrors the rotation, so the rotation is held to `chevronPoints()` itself,
+    run in node, for every direction the table names."""
+    from src import shell_glyphs
+
+    table = _h("chevrons", "[]")["points"]
+    assert set(table) == {"down", "up", "left", "right"}, table
+    for direction, points in table.items():
+        assert shell_glyphs.chevron_points(direction) == points, direction
+
+
+def test_a_change_to_the_table_reaches_the_shell(tmp_path, monkeypatch):
+    """Read, not copied: give the table another geometry and the shell is drawn
+    with it — every direction, rotated from the new base."""
+    from src import shell_glyphs
+
+    src = TABLE.read_text(encoding="utf-8")
+    assert src.count("export const CHEVRON_POINTS = '6 9 12 15 18 9';") == 1
+    moved = tmp_path / "icons.js"
+    moved.write_text(src.replace("export const CHEVRON_POINTS = '6 9 12 15 18 9';",
+                                 "export const CHEVRON_POINTS = '5 8 12 16 19 8';"), encoding="utf-8")
+    monkeypatch.setattr(shell_glyphs, "ICONS_JS", str(moved))
+    monkeypatch.setattr(shell_glyphs, "_cache", {})
+    drawn = shell_glyphs.render('<polyline points="{{chevron:down}}"/><polyline points="{{chevron:up}}"/>')
+    assert drawn == '<polyline points="5 8 12 16 19 8"/><polyline points="19 16 12 8 5 16"/>', drawn
+
+
+def test_the_page_the_route_serves_is_drawn_and_its_validators_describe_it():
+    """What `/` answers is the drawn page: no placeholder reaches a browser,
+    and the ETag and the CSP hashes are computed over the drawn bytes."""
+    import hashlib
+    from src.app_helpers import _read_page, inline_script_hashes
+
+    page = _read_page(str(SHELL))
+    body = page.body.decode("utf-8")
+    assert "{{chevron:" not in body.replace("{{chevron:<direction>}}", ""), "a placeholder reached the page"
+    assert len(_chevron_polylines(body)) == 12
+    assert page.etag == '"' + hashlib.sha256(page.body).hexdigest()[:32] + '"'
+    assert page.hashes == inline_script_hashes(body)
 
 
 def test_the_stroke_spread_is_cited_to_the_row_that_carries_it():

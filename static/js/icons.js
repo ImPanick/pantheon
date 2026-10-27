@@ -264,8 +264,11 @@ export function stopIcon(opts = {}) {
 //                 drift. The census and the proposed ladder are on `B394`.
 //
 // Not moved, and measured so the next pass starts from a number: `static/index.html`
-// spells the chevron SEVEN more times, and markup cannot import a table — that
-// is `B292`. And 104 chevron-SHAPED polylines in the client are not this icon:
+// spelled the chevron SEVEN more times, and markup cannot import a table — that
+// was `B292`, which pinned them to this one. `B398` made them this one: the
+// shell writes `{{chevron:<direction>}}` and the server draws it from
+// `CHEVRON_POINTS` and `_CHEVRON_TURNS` below (`src/shell_glyphs.py` reads them
+// out of this file, so keep their shape). And 104 chevron-SHAPED polylines in the client are not this icon:
 // they are arms of a composed glyph (a download arrow's head over its shaft, the
 // two halves of `< >`, a reply arrow) and they share their `<svg>` with a
 // sibling element, which is what tells them apart from an icon that is one

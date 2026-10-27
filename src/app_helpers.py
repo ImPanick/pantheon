@@ -194,10 +194,16 @@ def _read_page(file_path: str) -> _Page:
     # Left out, the cache would serve the pre-configuration page — and its
     # ETag — until a restart.
     offer_url = _source_offer_key()
+    # `B398`: the glyph table the shell's chevrons are drawn from is the other
+    # input that is not this file, so its version is in the key for the same
+    # reason the offer is.
+    from src import shell_glyphs
+
+    glyphs = shell_glyphs.version()
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             stat = os.fstat(f.fileno())
-            key = (stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_size, offer_url)
+            key = (stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_size, offer_url, glyphs)
             cached = _PAGE_CACHE.get(file_path)
             if cached is not None and cached.key == key:
                 return cached
@@ -205,6 +211,9 @@ def _read_page(file_path: str) -> _Page:
     except OSError:
         logger.exception("Failed to read page %s", file_path)
         raise HTTPException(500, "Internal server error")
+    # Drawn before anything is hashed, cached or validated, so the CSP hashes,
+    # the ETag and the bytes all describe the page the browser receives.
+    html = shell_glyphs.render(html)
     html = _with_source_offer(html, offer_url)
     body = html.encode("utf-8")
     page = _Page(
@@ -218,7 +227,9 @@ def _read_page(file_path: str) -> _Page:
         # also survives a redeploy that rewrites mtimes and two replicas whose
         # checkouts differ by a timestamp.
         etag='"' + hashlib.sha256(body).hexdigest()[:32] + '"',
-        last_modified=formatdate(stat.st_mtime, usegmt=True),
+        # The later of the file and the glyph table it was drawn with (`B398`).
+        last_modified=formatdate(max(stat.st_mtime, (glyphs[1] / 1e9) if glyphs else 0),
+                                 usegmt=True),
     )
     _PAGE_CACHE[file_path] = page
     return page
