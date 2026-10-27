@@ -19,6 +19,13 @@ import time
 from typing import Dict, List
 
 
+# Where the UDP-connect trick asks the route to: public resolvers, because the
+# default route is the one wanted. `connect()` on a datagram socket sends
+# nothing. Named so a test can point it at loopback (`B1546`): the suite's
+# network guard refuses any connect past the machine, a datagram one included.
+ROUTE_PROBES = (("8.8.8.8", socket.AF_INET), ("2001:4860:4860::8888", socket.AF_INET6))
+
+
 def _addresses() -> List[str]:
     """Every address this host answers on, best effort.
 
@@ -40,7 +47,7 @@ def _addresses() -> List[str]:
 
     # The default-route address. No packets are sent; connect() on a UDP socket
     # only picks a source address.
-    for probe, family in (("8.8.8.8", socket.AF_INET), ("2001:4860:4860::8888", socket.AF_INET6)):
+    for probe, family in ROUTE_PROBES:
         # `socket()` itself raises when the family is unavailable — an IPv6-less
         # container is `EAFNOSUPPORT` at construction, before any connect — so
         # the guard has to be around the whole block rather than the call that

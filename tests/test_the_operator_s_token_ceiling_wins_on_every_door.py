@@ -29,6 +29,7 @@ import src.llm_core as llm_core
 import src.runtime_limits as runtime_limits
 import src.settings as settings
 from src.request_models import ChatRequest
+from tests.helpers.no_endpoint import no_endpoint_answers  # B1520
 from test_foreground_model_routing import (  # noqa: E402
     _RouteRequest,
     _chat_endpoint,
@@ -36,6 +37,16 @@ from test_foreground_model_routing import (  # noqa: E402
 )
 from test_pr6020_rebase_regressions import _install_route_probe  # noqa: E402
 from test_the_qwen3_cap_guards_every_door import wire  # noqa: E402,F401  (a fixture)
+
+
+@pytest.fixture(autouse=True)
+def _no_endpoint_answers(monkeypatch):
+    """`B1546`. The cloud-endpoint cases ask a made-up endpoint for its context
+    window on the way into the agent loop — a request to the network that
+    passed because it failed. The lookup now fails the way it did, with no
+    socket opened."""
+    no_endpoint_answers(monkeypatch)
+
 
 LOCAL = "http://127.0.0.1:8080/v1"
 CLOUD = "https://selected.example/v1"
