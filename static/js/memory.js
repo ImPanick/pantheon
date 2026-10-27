@@ -1068,6 +1068,32 @@ export function describeMemoryTidy(data) {
 }
 
 /**
+ * `B1578`. What the tidy's decay sweep retired, as a sentence, or ''.
+ *
+ * `P13-04` runs the fade first in every audit — arithmetic over dates, before
+ * the model is asked and before `before` is counted — and the route has
+ * answered `archived` since; nothing here read it. So a tidy whose sweep
+ * retired memories said *Already clean*, or *0 removed*, or only why the model
+ * pass stopped, and the memories left the chats with no word about where they
+ * went. They are kept: the status row's *retired* filter lists them and *Bring
+ * back* in a memory's menu (`B710`) commits one again. The window is the
+ * server's (`archive_after_days`), so the page holds no copy of it.
+ *
+ * Starts with the count, so a caller can lead into it (`Separately, …`).
+ */
+export function describeTidyRetired(data) {
+  const d = data || {};
+  const n = Math.max(0, Math.floor(Number(d.archived) || 0));
+  if (!n) return '';
+  const days = Math.floor(Number(d.archive_after_days) || 0);
+  const one = n === 1;
+  return `${n} ${one ? 'memory' : 'memories'} nothing had used`
+    + `${days > 0 ? ` in ${days} days` : ' for months'} ${one ? 'was' : 'were'} retired:`
+    + ` the “retired” filter lists ${one ? 'it' : 'them'}, and Bring back in`
+    + ` ${one ? 'its' : 'a memory’s'} menu restores ${one ? 'it' : 'one'}.`;
+}
+
+/**
  * `P9-10`. The memory tidy asks before it runs, and says what it found after.
  *
  * The row's premise about this surface is right and understated: the animation
@@ -1154,17 +1180,25 @@ export async function tidyMemories() {
     }
 
     const data = await res.json();
+    // `B1578`. The decay sweep runs before the model on every path below,
+    // including the two early returns, so what it retired is said on each —
+    // and the list is drawn again, or the retired rows keep their old badge
+    // and the *retired* filter the sentence points at is not there.
+    const retired = describeTidyRetired(data);
     // `B1569`. A pass that stopped — the model's reply was not a usable list,
     // it would have removed most of the store, or the store could not be read
     // back — answers 200 with `ok: false` and `before === after`. That read as
     // `removed: 0` and said *Already clean* about a tidy that did nothing.
     if (data && data.ok === false) {
-      showError(String(data.reason || 'Tidy stopped and changed nothing. The server log says why.'));
+      const why = String(data.reason || 'Tidy stopped and changed nothing. The server log says why.');
+      if (retired) await loadMemories();
+      showError(retired ? `${why} Separately, ${retired}` : why);
       return;
     }
     // The server skipped the model: nothing changed since the last tidy.
     if (data && data.already_tidy === true && !(Number(data.removed) > 0)) {
-      showToast('Already clean');
+      if (retired) await loadMemories();
+      showToast(retired ? `Already clean. ${retired}` : 'Already clean', retired ? 9000 : undefined);
       return;
     }
 
@@ -1190,7 +1224,16 @@ export async function tidyMemories() {
     // nothing and rewrote one memory answered 0 and was called clean while
     // the rewritten text sat in the list unannounced.
     if (!removed.length && !edited.length && !(Number(data.removed) > 0)) {
-      showToast('Already clean');
+      if (retired) {
+        // `B1578`. Nothing merged or rewritten, but the sweep retired some:
+        // draw the list the server now holds, then say so.
+        memories = afterList;
+        buildCategoryChips();
+        buildStatusChips();
+        renderMemoryList();
+        updateMemoryCount();
+      }
+      showToast(retired ? `Already clean. ${retired}` : 'Already clean', retired ? 9000 : undefined);
       return;
     }
 
@@ -1206,7 +1249,8 @@ export async function tidyMemories() {
     renderMemoryList();
     updateMemoryCount();
 
-    showToast(describeMemoryTidy({ ...data, rewritten: edited.length }));
+    const said = describeMemoryTidy({ ...data, rewritten: edited.length });
+    showToast(retired ? `${said}. ${retired}` : said, retired ? 9000 : undefined);
   } catch (error) {
     console.error('Tidy failed:', error);
     showError('Tidy failed — check console');
@@ -2645,6 +2689,7 @@ const memoryModule = {
   commitMemory,
   tidyMemories,
   describeMemoryTidy,
+  describeTidyRetired,
   importMemories,
   exportMemories,
   revealMemory,

@@ -24,7 +24,7 @@ def _strip_list_prefix(text: str) -> str:
     return _LIST_PREFIX_RE.sub("", text, count=1).strip()
 
 from services.memory import MemoryManager, MemoryStoreUnreadable
-from src.memory import archive_forecast, new_provenance, project_index
+from src.memory import ARCHIVE_AFTER_DAYS, archive_forecast, new_provenance, project_index
 from core.session_manager import SessionManager
 from src.request_models import MemoryAddRequest
 from core.database import SessionLocal
@@ -663,6 +663,10 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
             # event from "merged into another entry", and both are recoverable
             # in a click while `removed` historically was not.
             "archived": result.get("archived", 0),
+            # `B1578`. The window that retired them, so the Brain's sentence
+            # can say *nothing had used them in 180 days* from the number the
+            # sweep used rather than a copy of it in the page (`Law 7`).
+            "archive_after_days": ARCHIVE_AFTER_DAYS,
             # True when the audit skipped the LLM because nothing changed
             # since the last tidy. Frontend already says "Already clean"
             # for removed==0, so this is here for future use / debugging.

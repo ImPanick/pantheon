@@ -48,6 +48,16 @@ def ensure_whisper_download_permitted(model_size: str) -> str:
         ) from None
 
 
+def _said(error: BaseException) -> str:
+    """`B1579`. An exception as a clause in a sentence: its first line,
+    trimmed, or its type when it has no words of its own."""
+    text = str(error).strip().splitlines()[0].strip() if str(error).strip() else ""
+    text = text.rstrip(".")
+    if len(text) > 160:
+        text = text[:157].rstrip() + "…"
+    return text or type(error).__name__
+
+
 class STTService:
     """Multi-provider STT service.
 
@@ -65,6 +75,12 @@ class STTService:
         # the download gate's refusal. Cleared on the next attempt, so turning
         # the switch on is enough; nothing is remembered as refused.
         self._whisper_refusal: Optional[str] = None
+        # `B1579`. Why the last attempt turned a recording into no words, past
+        # the download gate: Whisper not installed or would not load, or the
+        # last transcription raised (`_transcribe_local`, `_transcribe_api`).
+        # Each attempt rewrites it, so it is about the last recording asked.
+        self._whisper_failure: Optional[str] = None
+        self._transcribe_failure: Optional[str] = None
 
     # ── Settings ──
 
@@ -98,10 +114,14 @@ class STTService:
 
     def _get_whisper(self):
         if self._whisper_model is None:
+            self._whisper_failure = None
             try:
                 from faster_whisper import WhisperModel
             except ImportError:
                 logger.warning("faster-whisper not installed. Install with: pip install faster-whisper")
+                self._whisper_failure = (
+                    "Local speech-to-text is chosen in Settings, but faster-whisper is not "
+                    "installed on this server (pip install faster-whisper).")
                 return None
             settings = self._load_settings()
             model_size = settings.get("stt_model", "base")
@@ -132,6 +152,9 @@ class STTService:
                 logger.info(f"faster-whisper model '{model_size}' loaded on {device}")
             except Exception as e:
                 logger.error(f"Failed to load whisper model: {e}")
+                self._whisper_failure = (
+                    f"Local speech-to-text could not load the Whisper “{model_size}” model "
+                    f"({_said(e)}). The server log has the detail.")
                 return None
         return self._whisper_model
 
@@ -144,8 +167,10 @@ class STTService:
         """`B1571`. Why this server turned a recording into no text, when it
         can say more than that it has no speech-to-text: local Whisper is the
         provider, no model is loaded, and the download gate refused the one it
-        needs (`B1565`'s sentence). `None` otherwise — speech-to-text off, the
-        browser's own, an endpoint — so the caller says what it always said.
+        needs (`B1565`'s sentence). `B1579`: or Whisper is not installed or
+        would not load, or the transcription itself failed or gave no words —
+        on an endpoint provider too. `None` only when speech-to-text is off or
+        the browser's own, so the caller says what it always said.
 
         Read, not asked: the refusal is the one the last attempt to start
         Whisper recorded, and every path that writes the not-heard note has
@@ -153,13 +178,29 @@ class STTService:
         they are now, so a refusal left from before the provider changed is
         never said about a provider it is not about."""
         settings = self._load_settings()
-        if settings.get("stt_enabled") is False or settings.get("stt_provider") != "local":
+        provider = settings.get("stt_provider") or ""
+        if settings.get("stt_enabled") is False:
             return None
-        if self._whisper_model is not None:
-            return None
-        return self._whisper_refusal
+        # `B1579`. Past the gate, speech-to-text *is* set up, so *no
+        # speech-to-text set up* is never the sentence: Whisper not installed or
+        # not loadable, the transcription raised, or it ran and gave no words.
+        # The last is said without a cause because the cause is not known —
+        # several recordings in one turn are transcribed before any note is
+        # written, and only the last attempt's failure is kept.
+        if provider == "local":
+            if self._whisper_model is None:
+                return self._whisper_refusal or self._whisper_failure
+            return self._transcribe_failure or (
+                "Local speech-to-text (Whisper) gave no words for it. If it has speech "
+                "in it, the server log says why.")
+        if provider.startswith("endpoint:"):
+            return self._transcribe_failure or (
+                "The speech-to-text endpoint gave no words for it. If it has speech "
+                "in it, the server log says why.")
+        return None
 
     def _transcribe_local(self, audio_bytes: bytes, language: str = "") -> Optional[str]:
+        self._transcribe_failure = None
         model = self._get_whisper()
         if not model:
             return None
@@ -181,6 +222,8 @@ class STTService:
             return text
         except Exception as e:
             logger.error(f"Local STT transcription failed: {e}", exc_info=True)
+            self._transcribe_failure = (
+                f"Local speech-to-text (Whisper) failed on it: {_said(e)}.")
             return None
         finally:
             if tmp_path:
@@ -191,11 +234,16 @@ class STTService:
     def _transcribe_api(self, audio_bytes: bytes, endpoint_id: str, model: str, language: str = "") -> Optional[str]:
         from src.database import SessionLocal, ModelEndpoint
 
+        self._transcribe_failure = None
+
         db = SessionLocal()
         try:
             ep = db.query(ModelEndpoint).filter(ModelEndpoint.id == endpoint_id).first()
             if not ep:
                 logger.error(f"STT endpoint {endpoint_id} not found")
+                self._transcribe_failure = (
+                    "The speech-to-text endpoint chosen in Settings no longer exists. "
+                    "Choose another in Settings.")
                 return None
             base_url = ep.base_url.rstrip("/")
             api_key = ep.api_key
@@ -225,6 +273,13 @@ class STTService:
             return text
         except Exception as e:
             logger.error(f"API STT transcription failed: {e}")
+            # The address is not said: the note is read in a chat, and an
+            # endpoint's URL is the admin's to show.
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            self._transcribe_failure = (
+                "The speech-to-text endpoint failed on it "
+                f"({f'it answered {status}' if status else type(e).__name__}). "
+                "The server log has the detail.")
             return None
 
     # ── Public interface ──

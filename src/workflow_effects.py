@@ -568,21 +568,42 @@ def _reaches(owner, tool: str) -> bool:
     policy applies to (`blocked_tools_for_owner` is empty only for an admin or
     a single-user install). Asked of the tool policy, so the palette and the
     dispatcher cannot disagree — and not as a further "is this an admin"
-    (`.pantheon/check-auth-map.py` rule C)."""
+    (`.pantheon/check-auth-map.py` rule C).
+
+    `B1582`: and less what the dispatcher lifts for this person
+    (`tool_execution._lifted_for`, `workstation_tools.lifted_tools`) — for a
+    member whose tools run in their workstation `api_call` is lifted
+    (`B1573`), and the palette greyed HTTP while the dispatcher would run the
+    step. Asked of the same set the dispatcher asks, and a set that cannot be
+    read lifts nothing, as `ai_tool_choices` already treats it."""
     from src.tool_security import blocked_tools_for_owner, is_public_blocked_tool
-    return not (is_public_blocked_tool(tool) and blocked_tools_for_owner(owner))
+    if not (is_public_blocked_tool(tool) and blocked_tools_for_owner(owner)):
+        return True
+    try:
+        from src.agent_tools.workstation_tools import lifted_tools
+        return tool in lifted_tools(owner)
+    except Exception as exc:  # noqa: BLE001 — nothing lifted is the closed answer
+        logger.debug("lifted tools unavailable: %s", exc)
+        return False
 
 
 def _integrations(owner) -> list:
     """The registered Integrations, as a person may see them: id, name,
     preset, description and whether it is on — never the key, never the base
-    URL (`P22-13`: "never seeing the key"). Admins only, because only an
-    admin's agent can call one (`api_call` is in `NON_ADMIN_BLOCKED_TOOLS`)."""
+    URL (`P22-13`: "never seeing the key"). Only those this person's agent can
+    call: `api_call` is in `NON_ADMIN_BLOCKED_TOOLS`, so none for most members.
+
+    `B1582`: exactly the ones the dispatcher's `api_call` finds
+    (`integrations.agent_integrations_for`, which `tools.system.do_api_call`
+    looks the step's Integration up in) — an admin's own and the shared, and
+    for a member whose tools run in their workstation, their own and never a
+    shared one (`B1573`). It was `integrations_for`, which would offer that
+    member a shared connection the dispatcher then cannot find."""
     if not _reaches(owner, "api_call"):
         return []
-    from src.integrations import integrations_for
+    from src.integrations import agent_integrations_for
     out = []
-    for item in integrations_for(owner):   # `P27-02`: theirs and the shared
+    for item in agent_integrations_for(owner):
         if not isinstance(item, dict) or not item.get("id"):
             continue
         out.append({"id": str(item["id"]), "name": str(item.get("name") or item["id"]),
@@ -709,6 +730,11 @@ _ADMIN_ONLY_WHY = {
 # "Settings → MCP", which has never existed: MCP servers were cards in
 # Settings → Integrations (design § 0.6).
 NO_INTEGRATIONS_SENTENCE = f"No Integrations yet. An admin adds one in {INTEGRATIONS_PLACE}."
+# `B1582`. A member whose tools run in their workstation adds their own
+# (`B1573`); an admin's shared one is not theirs to call, so *an admin adds one*
+# would send them to somebody who cannot help.
+NO_OWN_INTEGRATIONS_SENTENCE = (f"No Integrations of your own yet. Add one in {INTEGRATIONS_PLACE};"
+                                " your steps call it from your workstation.")
 NO_MCP_TOOLS_SENTENCE = f"No MCP tools yet. An admin connects a server in {INTEGRATIONS_PLACE}."
 NO_SKILLS_SENTENCE = "No skills yet. Make one in Skills."
 
@@ -777,7 +803,9 @@ def build_palette(owner) -> dict:
         if kind in _ADMIN_ONLY_WHY and not reaches[kind]:
             return False, _ADMIN_ONLY_WHY[kind]
         if kind == "http" and not integrations:
-            return False, NO_INTEGRATIONS_SENTENCE
+            from src.integrations import server_calls_for
+            return False, (NO_INTEGRATIONS_SENTENCE if server_calls_for(owner)
+                           else NO_OWN_INTEGRATIONS_SENTENCE)
         if kind == "mcp" and not mcp_tools:
             return False, NO_MCP_TOOLS_SENTENCE
         if kind == "skill" and not skills:

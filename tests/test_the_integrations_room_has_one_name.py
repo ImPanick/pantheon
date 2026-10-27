@@ -73,6 +73,8 @@ def _sentences() -> dict:
             "weather", ["get_forecast"], "", relayed, "refused"),
         "the CLI README": mcp_scaffold.render_readme("weather", ["get_forecast"], "", local, "refused"),
         "the palette's no-Integrations line": workflow_effects.NO_INTEGRATIONS_SENTENCE,
+        # `B1582`: a workstation member's, who adds their own.
+        "the palette's no-own-Integrations line": workflow_effects.NO_OWN_INTEGRATIONS_SENTENCE,
         "the palette's no-MCP line": workflow_effects.NO_MCP_TOOLS_SENTENCE,
         "the Google mail hint": mail_auth.RECONNECT_HINT,
         "the assistant's refusal": refused["error"],
@@ -82,6 +84,7 @@ def _sentences() -> dict:
 @pytest.mark.parametrize("which", [
     "the scaffold's check hint", "the relay's registration", "the CLI's registration",
     "the workstation README", "the CLI README", "the palette's no-Integrations line",
+    "the palette's no-own-Integrations line",
     "the palette's no-MCP line", "the Google mail hint", "the assistant's refusal",
 ])
 def test_every_sentence_that_sends_a_person_to_the_room_names_it(which):
