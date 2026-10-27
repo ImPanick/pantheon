@@ -532,14 +532,18 @@ const BASE = process.argv[2];
   await page.focus('#message');
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => /Toggle Plan mode/.test(document.getElementById('chat-history').innerText),
-                             null, { timeout: 20000 }).catch(() => {});
+                             null, { timeout: 90000 }).catch(() => {});
   out.slash = await page.evaluate(() => document.getElementById('chat-history').innerText
     .split('\n').filter((l) => /Toggle Plan mode/.test(l)).map((l) => l.trim()));
-  // The Shortcuts panel draws it, in Tools.
+  // The Shortcuts panel draws it, in Tools. `B1521`: waited for, not slept
+  // on — this failed in full runs and passed alone. Measured with every
+  // `/api/` answer held 2.5 s, the 500 + 800 ms of sleep read the list before
+  // Settings had drawn it, and `panel` came back null.
   await page.click('#user-bar-settings');
-  await page.waitForTimeout(500);
+  await page.waitForSelector('[data-settings-tab="shortcuts"]', { state: 'visible', timeout: 90000 });
   await page.click('[data-settings-tab="shortcuts"]');
-  await page.waitForTimeout(800);
+  await page.waitForSelector('#shortcuts-list .shortcut-row[data-action="plan_mode"]', { timeout: 90000 })
+    .catch(() => {});
   out.panel = await page.evaluate(() => {
     const r = document.querySelector('#shortcuts-list .shortcut-row[data-action="plan_mode"]');
     if (!r) return null;
@@ -560,7 +564,7 @@ def run(app_url, tmp_path_factory):  # noqa: F811
     script = tmp_path_factory.mktemp("tab-pw") / "tab.cjs"
     script.write_text(_SCRIPT, encoding="utf-8")
     proc = subprocess.run([PW_NODE, str(script), app_url], capture_output=True, text=True,
-                          timeout=240, cwd=str(script.parent))
+                          timeout=600, cwd=str(script.parent))
     assert proc.returncode == 0, proc.stderr[-4000:]
     lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
     return json.loads(lines[-1])

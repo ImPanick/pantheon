@@ -40,8 +40,15 @@ const SERVER_PGID = Number(process.argv[3]);
 const wait = async (page, fn, ms) => {
   try { await page.waitForFunction(fn, null, { timeout: ms }); return true; } catch (_) { return false; }
 };
+// `B1521`. Every wait below is for the condition the next step needs, with room
+// for a machine running the whole suite beside this drive: there, the worker's
+// install (some 200 revalidations against a busy server) outlasted the old 60 s
+// wait for a controller, the wait returned false without saying so, and the
+// premise failed downstream — measured with this server held to a tenth of a
+// CPU, which is also how the sidebar's name was found being read before the
+// sign-in status had filled it in.
 const down = async () => {
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 300; i++) {
     try { await fetch(BASE + '/login'); } catch (_) { return true; }
     await new Promise(r => setTimeout(r, 200));
   }
@@ -54,6 +61,8 @@ const down = async () => {
     try { localStorage.setItem('pantheon-ui-visibility', JSON.stringify({ 'first-run-tours': false })); } catch (_) {}
   });
   const page = await context.newPage();
+  page.setDefaultNavigationTimeout(180000);
+  page.setDefaultTimeout(180000);
   const out = {};
   const creds = { username: 'helper', password: 'helper-pass-1' };
   await page.request.post(BASE + '/api/auth/setup', { data: creds });
@@ -61,19 +70,26 @@ const down = async () => {
 
   // Up: the worker takes the app and keeps its copies.
   await page.goto(BASE + '/', { waitUntil: 'load' });
-  await wait(page, () => window.__pantheonAppStarted === true, 90000);
-  await wait(page, () => !!navigator.serviceWorker.controller, 60000);
+  await wait(page, () => window.__pantheonAppStarted === true, 180000);
+  out.controlled = await wait(page, () => !!navigator.serviceWorker.controller, 240000);
   await page.reload({ waitUntil: 'load' });
-  await wait(page, () => window.__pantheonAppStarted === true, 90000);
+  await wait(page, () => window.__pantheonAppStarted === true, 180000);
+  // The kept copy the rest of this drive depends on, asked for rather than assumed.
+  out.kept = await wait(page, async () => !!(await caches.match('/')), 120000);
   out.noticeWhileUp = await page.evaluate(() => !!document.getElementById('kept-copy-notice'));
+  await wait(page, () => ((document.getElementById('user-bar-name') || {}).textContent || '') === 'helper', 60000);
   out.nameWhileUp = await page.evaluate(() => (document.getElementById('user-bar-name') || {}).textContent);
 
-  // The sign-in page, while the server is up, so the worker has it too.
+  // The sign-in page, open while the server is up; what is measured is its
+  // submit once the server is gone. `B1521`: this used to wait 60 s for a
+  // worker to control it, and none ever does — only the app shell registers
+  // `sw.js`, and nothing in this fresh context visited it — so every run spent
+  // a silent minute here, which a loaded machine could not afford.
   const anon = await browser.newContext({ serviceWorkers: 'allow' });
   const login = await anon.newPage();
+  login.setDefaultNavigationTimeout(180000);
+  login.setDefaultTimeout(180000);
   await login.goto(BASE + '/login', { waitUntil: 'load' });
-  await wait(login, () => !!navigator.serviceWorker.controller, 60000);
-  await login.reload({ waitUntil: 'load' });
 
   // Down.
   process.kill(-SERVER_PGID, 'SIGTERM');
@@ -90,7 +106,7 @@ const down = async () => {
   await login.fill('#username', 'helper');
   await login.fill('#password', 'helper-pass-1');
   await login.click('#submitBtn');
-  await wait(login, () => (document.getElementById('error') || {}).textContent, 20000);
+  await wait(login, () => (document.getElementById('error') || {}).textContent, 60000);
   out.loginError = await login.evaluate(() => document.getElementById('error').textContent);
 
   console.log(JSON.stringify(out));
@@ -128,7 +144,7 @@ def drive(tmp_path_factory):
         script = tmp_path_factory.mktemp("kept-copy-pw") / "kept.cjs"
         script.write_text(_SCRIPT, encoding="utf-8")
         run = subprocess.run([NODE, str(script), url, str(proc.pid)], capture_output=True,
-                             text=True, timeout=300, cwd=str(script.parent))
+                             text=True, timeout=900, cwd=str(script.parent))
         assert run.returncode == 0, run.stderr[-4000:]
         lines = [ln for ln in run.stdout.splitlines() if ln.strip()]
         yield json.loads(lines[-1])
@@ -141,6 +157,9 @@ def drive(tmp_path_factory):
 
 
 def test_the_premise_the_server_really_stopped_and_the_worker_answered(drive):
+    # `B1521`: what the premise rests on, each said, so a failure names it.
+    assert drive["controlled"] is True, "the worker never took the page"
+    assert drive["kept"] is True, "the worker holds no copy of the shell"
     assert drive["serverStopped"] is True
     assert drive["fromWorker"] is True
 
