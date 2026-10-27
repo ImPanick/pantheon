@@ -185,7 +185,7 @@ export async function showScoreboard() {
 
     if (sorted.length === 0) {
       const empty = document.createElement('p');
-      empty.style.cssText = 'color:color-mix(in srgb, var(--fg) 50%, transparent);text-align:center;padding:24px 0;';
+      empty.style.cssText = 'color:color-mix(in oklab, var(--fg) 50%, var(--fg-muted));text-align:center;padding:24px 0;';
       empty.textContent = 'No ' + activeMode + ' votes yet. Run a comparison and vote!';
       wrap.appendChild(empty);
     } else {
@@ -213,7 +213,7 @@ export async function showScoreboard() {
     }
 
     const total = document.createElement('div');
-    total.style.cssText = 'font-size:0.8em;color:color-mix(in srgb, var(--fg) 40%, transparent);margin-top:12px;text-align:center;';
+    total.style.cssText = 'font-size:0.8em;color:color-mix(in oklab, var(--fg) 40%, var(--fg-muted));margin-top:12px;text-align:center;';
     total.textContent = filtered.length + ' vote' + (filtered.length !== 1 ? 's' : '') + ' recorded';
     wrap.appendChild(total);
 
@@ -223,7 +223,7 @@ export async function showScoreboard() {
     // back to one browser's history without saying so is the same defect with
     // better plumbing.
     const provenance = document.createElement('div');
-    provenance.style.cssText = 'font-size:0.72em;color:color-mix(in srgb, var(--fg) 34%, transparent);margin-top:3px;text-align:center;line-height:1.4;';
+    provenance.style.cssText = 'font-size:0.72em;color:color-mix(in oklab, var(--fg) 34%, var(--fg-muted));margin-top:3px;text-align:center;line-height:1.4;';
     if (loaded.source === 'server') {
       provenance.textContent = loaded.undelivered
         ? `Synced to your account. ${loaded.undelivered} vote`

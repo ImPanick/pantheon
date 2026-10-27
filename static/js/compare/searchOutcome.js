@@ -28,9 +28,9 @@ export function searchOutcome(data) {
 }
 
 const STYLE = {
-  held: 'color:color-mix(in srgb, var(--fg) 70%, transparent);font-size:0.85em;',
+  held: 'color:color-mix(in oklab, var(--fg) 70%, var(--fg-muted));font-size:0.85em;',
   error: 'color:var(--color-error);font-size:0.85em;',
-  empty: 'color:color-mix(in srgb, var(--fg) 50%, transparent);font-size:0.85em;font-style:italic;',
+  empty: 'color:color-mix(in oklab, var(--fg) 50%, var(--fg-muted));font-size:0.85em;font-style:italic;',
 };
 
 /**

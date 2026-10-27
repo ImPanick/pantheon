@@ -349,11 +349,12 @@ def test_the_confidence_label_does_not_mix_itself_toward_transparent():
 
 
 def test_the_audit_ratchets_the_rest_of_the_population():
-    """191 more declarations do the same thing and cannot be swept without eyes
-    on 23 palettes — they are a 30-step de-emphasis ladder somebody built on
-    purpose. So the audit counts them and fails a **new** one, which is
-    `check-zindex`'s pattern and `P3-20`'s rule: the ratchet is the value, not
-    the number."""
+    """191 more declarations did the same thing — a 30-step de-emphasis ladder
+    somebody built on purpose. So the audit counts them and fails a **new**
+    one, which is `check-zindex`'s pattern and `P3-20`'s rule: the ratchet is
+    the value, not the number. (`B1408` moved 185 of them onto a ladder that
+    keeps their order and clears the floor; the six left are recorded
+    decoration — `tests/test_secondary_text_clears_the_floor_on_every_palette.py`.)"""
     import importlib.util
 
     spec = importlib.util.spec_from_file_location(

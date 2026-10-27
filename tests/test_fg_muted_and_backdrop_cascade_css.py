@@ -411,11 +411,16 @@ def test_the_three_populations_hold_at_their_counts():
     # palettes) paint `--fg-muted` now, and so do the context wheel's three
     # resting `--ctx-stroke`s and `.ctx-usage-seg`'s fallback — the pivot is
     # painted by nothing (`tests/test_theme_contrast_floor_css.py`).
-    assert len(uses) == 165, f"expected 165 uses of --fg-muted, found {len(uses)}"
+    # 165 -> 350, 157 -> 342 bare: `B1408`. 185 `color:` declarations that
+    # mixed `--fg` toward `transparent` (under 4.5:1 at every alpha under 82%)
+    # name this token now, as the pivot of the de-emphasis ladder
+    # `color-mix(in oklab, var(--fg) N%, var(--fg-muted))` — every rung of
+    # which `check-contrast.py` measures over 4.5:1 on every palette.
+    assert len(uses) == 350, f"expected 350 uses of --fg-muted, found {len(uses)}"
 
     bare = [expr for _, expr in uses if not _fallback(expr)]
-    assert len(bare) == 157, (
-        f"expected 157 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
+    assert len(bare) == 342, (
+        f"expected 342 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
         "was legitimately added or removed, move this number and say which in "
         "the commit — do not widen the assertion."
     )
@@ -473,7 +478,8 @@ def test_the_bare_uses_split_across_properties_as_measured():
     # `background` 2 -> 3, `.ctx-usage-seg`'s fallback; and a fourth property,
     # `--ctx-stroke` ×3 — the wheel's resting stroke is a graphic, held to 3:1
     # and cleared by the token's 4.5.
-    assert tally == {"color": 147, "border-color": 4, "background": 3, "--ctx-stroke": 3}, tally
+    # `B1408` (above): `color` 147 -> 332, the 185 ladder rungs, all text.
+    assert tally == {"color": 332, "border-color": 4, "background": 3, "--ctx-stroke": 3}, tally
 
 
 def test_the_javascript_uses_are_recorded_but_not_this_rows_work():
@@ -503,9 +509,12 @@ def test_the_javascript_uses_are_recorded_but_not_this_rows_work():
     # 12 -> 18, 10 -> 16 bare: `B391` — the six inline uses of the grey pivot
     # (`chatStream.js`'s steer hint and sent list, `rag.js`'s three lines,
     # `presets.js`'s lock notice) paint this token now.
-    assert len(found) == 18, f"expected 18 --fg-muted uses outside the sheet, found {len(found)}"
+    # 18 -> 54, 16 -> 52 bare: `B1408` moved 36 inline `style=` mixes toward
+    # `transparent` (Settings' status lines, Compare, the email library) onto
+    # the ladder `color-mix(in oklab, var(--fg) N%, var(--fg-muted))`.
+    assert len(found) == 54, f"expected 54 --fg-muted uses outside the sheet, found {len(found)}"
     bare = [e for e in found if e == "var(--fg-muted)"]
-    assert len(bare) == 16, f"expected 16 of them bare, found {len(bare)}"
+    assert len(bare) == 52, f"expected 52 of them bare, found {len(bare)}"
     # Nothing under `static/js/theme.js` may declare it — that is the mirror
     # `B21` is about, and the reason this row put the token in `:root`.
     assert "--fg-muted" not in THEME_JS.read_text(encoding="utf-8"), (
@@ -604,8 +613,13 @@ def test_the_population_compounding_with_opacity_cannot_grow():
     # `.preset-temp-hints` (0.7), `.ge-tool-sep` (0.6), and two hover-revealed
     # controls at 0, `.user-template-delete` and `.memory-menu-btn`. Not new
     # instances of the defect: the same five, now counted where they belong.
-    assert len(compounding) == 38, (
-        f"expected 38 rules that both name --fg-muted and set an opacity, "
+    # 38 -> 42: `B1408` moved seven rules that already compounded a mix toward
+    # `transparent` with an `opacity` onto the ladder — counted where they
+    # belong now, not new instances — and took the `opacity` off three that
+    # are only text (`.msg .timestamp`, `#welcome-screen .welcome-sub`,
+    # `.note-due-inline`). The four left are hover reveals and controls.
+    assert len(compounding) == 42, (
+        f"expected 42 rules that both name --fg-muted and set an opacity, "
         f"found {len(compounding)}: {sorted(c[1] for c in compounding)}"
     )
     faint = [c for c in compounding if float(c[2]) <= 0.45]

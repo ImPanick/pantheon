@@ -1520,7 +1520,7 @@ async function showShufflePoolEditor() {
   body.style.padding = '12px 16px';
 
   const desc = document.createElement('p');
-  desc.style.cssText = 'color:color-mix(in srgb, var(--fg) 55%, transparent);font-size:0.85em;margin:0 0 12px;';
+  desc.style.cssText = 'color:color-mix(in oklab, var(--fg) 55%, var(--fg-muted));font-size:0.85em;margin:0 0 12px;';
   desc.textContent = 'Uncheck models to exclude them from random shuffle. They can still be picked manually.';
   body.appendChild(desc);
 
@@ -1536,7 +1536,7 @@ async function showShufflePoolEditor() {
   Object.entries(groups).forEach(([type, items]) => {
     if (items.length === 0) return;
     const heading = document.createElement('div');
-    heading.style.cssText = 'font-size:0.78em;font-weight:600;color:color-mix(in srgb, var(--fg) 50%, transparent);text-transform:uppercase;letter-spacing:0.5px;padding:8px 4px 4px;';
+    heading.style.cssText = 'font-size:0.78em;font-weight:600;color:color-mix(in oklab, var(--fg) 50%, var(--fg-muted));text-transform:uppercase;letter-spacing:0.5px;padding:8px 4px 4px;';
     heading.textContent = type === 'chat' ? 'Chat Models' : 'Image Models';
     list.appendChild(heading);
 

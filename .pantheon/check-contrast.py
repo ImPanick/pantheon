@@ -333,15 +333,48 @@ def _css_control_border_readers() -> list:
 #: through: at 80% the worst palette (`light`) still only reaches 4.36:1.
 TRANSPARENT_TEXT_FLOOR_PCT = 82.0
 
-#: The population as it stood when the rule was written. A ratchet, not a
-#: remap (`P3-20`): 191 declarations cannot be swept without eyes on 23
-#: palettes, and the thing worth preventing is the 192nd.
+#: The population as it stands. A ratchet (`P3-20`): it was 191 when the rule
+#: was written, and **exactly** the count then, not one above it — a ratchet
+#: with slack in it is a ratchet that ratchets nothing.
 #:
-#: **Exactly** the current count, not one above it. The first draft said 192 —
-#: the number measured before this row fixed its own new rule — which would
-#: have let one new under-floor site in free. A ratchet with slack in it is a
-#: ratchet that ratchets nothing.
-BASELINE_TRANSPARENT_TEXT = 191
+#: 191 -> 6 (2026-10-27, `B1408`). 185 moved onto the ladder that keeps their
+#: order and clears the floor (`LADDER_IDIOM`); the six left are the
+#: decoration `DECORATION_TRANSPARENT_TEXT` records, and nothing else may be.
+BASELINE_TRANSPARENT_TEXT = 6
+
+#: `B1408`. What the 185 became: `color-mix(in oklab, var(--fg) N%,
+#: var(--fg-muted))`. Every rung of it lies between `--fg-muted` and `--fg`,
+#: both pinned over 4.5:1 against `--panel` and `--bg` on every palette
+#: (`P1-03`, `B1486`), and interpolated in OKLab — where lightness moves
+#: monotonically between the two — rather than in sRGB, where `retrowave`'s
+#: red `--fg` dipped the middle rungs to 4.44:1. The de-emphasis ladder keeps
+#: its order (a lower N is still the quieter line); what it loses is the
+#: rungs under the floor. `_ladder_failures()` measures every N the sheet
+#: uses, on every palette, each time this runs.
+LADDER_IDIOM = re.compile(
+    r"color-mix\(\s*in oklab,\s*var\(--fg\)\s*([0-9.]+)%\s*,\s*var\(--fg-muted\)\s*\)")
+
+#: `B1408`'s `Verify:` — each surviving transparent mix recorded as
+#: decoration, with why; its measurement is printed beside it every run
+#: (`_transparent_worst`), not copied here (`Law 6`).
+DECORATION_TRANSPARENT_TEXT = {
+    ".scenery-olympus": "the welcome screen's ASCII scenery, a picture behind the text",
+    ".scenery-temple": "the same scenery's second layer",
+    ".ghost-text-overlay .ghost-suggestion": "ghost text: an inline suggestion that must read as not yet typed",
+    ".model-picker-list .mp-fav-dot": "the favourite star at rest, a hover reveal (it rises to 68% on hover and focus)",
+    ".vis-icon": "an icon beside the label that names the row",
+    ".hwfit-fit-dot": "a fit dot whose meaning is the row's text beside it",
+}
+
+#: `B1408`'s other half: the same arithmetic wearing `opacity:` — the element
+#: and everything in it let the background through. Counted, not swept: an
+#: opacity dims icon buttons, hover reveals, disabled controls and pictures as
+#: well as text, and telling which is which needs eyes. Scope (`Law 5`):
+#: `opacity:` declarations with a value above 0 and under 0.82 in
+#: `static/style.css`, comments blanked. 0 is hidden, not dim; 0.82 is the
+#: alpha the transparent-mix rule found nothing under clears 4.5:1 with.
+#: It may fall; it may not rise.
+BASELINE_OPACITY_DIMMING = 965
 
 
 def _css_transparent_text() -> list:
@@ -376,6 +409,140 @@ def _css_transparent_text() -> list:
         if pct < TRANSPARENT_TEXT_FLOOR_PCT:
             out.append((token, pct))
     return out
+
+
+def _css_transparent_text_sites() -> list:
+    """`(selector, pct)` for every declaration `_css_transparent_text` counts —
+    the rule's selector, so the decoration register can name it."""
+    import re as _re
+
+    css = _blank(ROOT / "static" / "style.css")
+    out = []
+    pattern = _re.compile(
+        r"(?:^|[;{])\s*color\s*:\s*color-mix\(\s*in srgb,\s*var\(--([a-z0-9-]+)\)"
+        r"\s*([0-9.]+)%\s*,\s*transparent\s*\)", _re.M)
+    for match in pattern.finditer(css):
+        pct = float(match.group(2))
+        if pct >= TRANSPARENT_TEXT_FLOOR_PCT:
+            continue
+        brace = css.rfind("{", 0, match.start(1))
+        selector = " ".join(css[css.rfind("}", 0, brace) + 1:brace].split())
+        out.append((selector, pct))
+    return out
+
+
+def _mix_srgb(a: str, b: str, t: float) -> str:
+    ah, bh = a.lstrip("#"), b.lstrip("#")
+    ah = ah if len(ah) == 6 else "".join(c * 2 for c in ah)
+    bh = bh if len(bh) == 6 else "".join(c * 2 for c in bh)
+    return "#%02x%02x%02x" % tuple(
+        round(int(ah[i:i + 2], 16) * t + int(bh[i:i + 2], 16) * (1 - t)) for i in (0, 2, 4))
+
+
+def _oklab(hex_colour: str) -> tuple:
+    h = hex_colour.lstrip("#")
+    r, g, b = (_srgb_channel(int(h[i:i + 2], 16) / 255) for i in (0, 2, 4))
+    lms = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b,
+           0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b,
+           0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b)
+    l_, m_, s_ = (x ** (1 / 3) for x in lms)
+    return (0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
+            1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_,
+            0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_)
+
+
+def _from_oklab(lab: tuple) -> str:
+    L, a, b = lab
+    l_ = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3
+    m_ = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3
+    s_ = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3
+    rgb = (4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_,
+           -1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_,
+           -0.0041960863 * l_ - 0.7034186147 * m_ + 1.7076147010 * s_)
+
+    def enc(c):
+        c = max(0.0, min(1.0, c))
+        return 12.92 * c if c <= 0.0031308 else 1.055 * c ** (1 / 2.4) - 0.055
+    return "#%02x%02x%02x" % tuple(round(enc(c) * 255) for c in rgb)
+
+
+def fg_muted(palette: dict) -> str:
+    """`--fg-muted` as `:root` resolves it on `palette`: 30% `--fg` through the
+    scoped pivot `--color-muted` (`B1486`), whose arm is the page's
+    `color-scheme` (`theme.js` `_isLightBackground`, luminance over 0.5)."""
+    pivot = "#747474" if luminance(palette["bg"]) > 0.5 else "#949494"
+    return _mix_srgb(palette["fg"], pivot, 0.30)
+
+
+def ladder_rung(palette: dict, pct: float) -> str:
+    """`LADDER_IDIOM` at `pct` on `palette`, interpolated in OKLab as the
+    browser does."""
+    a, b = _oklab(palette["fg"]), _oklab(fg_muted(palette))
+    t = pct / 100.0
+    return _from_oklab(tuple(x * t + y * (1 - t) for x, y in zip(a, b)))
+
+
+def _ladder_failures() -> tuple:
+    """`(rungs, failures)`: every N the sheet writes in `LADDER_IDIOM`, and
+    each palette on which that rung misses 4.5:1 against `--panel` or `--bg`."""
+    css = _blank(ROOT / "static" / "style.css")
+    rungs = sorted({float(m.group(1)) for m in LADDER_IDIOM.finditer(css)})
+    failures = []
+    for name, palette in sorted(themes().items()):
+        for pct in rungs:
+            colour = ladder_rung(palette, pct)
+            worst = min(contrast(colour, palette["panel"]), contrast(colour, palette["bg"]))
+            if worst < BODY_FLOOR:
+                failures.append(f"{name}: the {pct:g}% rung is {colour}, {worst:.2f}:1")
+    return rungs, failures
+
+
+def _transparent_worst(pct: float) -> tuple:
+    """The worst a `pct`% mix toward transparent reads over `--panel` on any
+    palette — what a decoration entry is recorded with."""
+    worst = None
+    for name, palette in sorted(themes().items()):
+        ratio = contrast(_mix_srgb(palette["fg"], palette["panel"], pct / 100.0), palette["panel"])
+        if worst is None or ratio < worst[0]:
+            worst = (ratio, name)
+    return worst
+
+
+#: `B1408`. Pages that do not load `style.css` and so have no `--fg-muted`
+#: to build the ladder from: the sign-in page mirrors the palette by hand,
+#: and the whirlpool sandbox is a developer page. Their transparent mixes are
+#: a named row's (`B1408`'s report), not this scan's.
+_INLINE_SCAN_EXEMPT = {"static/login.html", "static/whirlpool-variants.html"}
+
+
+def _inline_transparent_text() -> list:
+    """`(file, pct)` for inline `color:` mixes toward transparent under the
+    floor in `static/**/*.js` (outside `static/lib/`) and `static/*.html` —
+    the same defect `_css_transparent_text` counts, written in a `style=`.
+    `B1408` moved the 36 it found onto the ladder; this keeps it at none."""
+    out = []
+    pattern = re.compile(r"color:\s*color-mix\(in srgb,\s*var\(--fg\)\s*([0-9.]+)%,\s*transparent\)")
+    paths = [p for p in (ROOT / "static").rglob("*.js") if "static/lib/" not in p.as_posix()]
+    paths += sorted((ROOT / "static").glob("*.html"))
+    for path in paths:
+        rel = path.relative_to(ROOT).as_posix()
+        if rel in _INLINE_SCAN_EXEMPT:
+            continue
+        for m in pattern.finditer(path.read_text(encoding="utf-8", errors="replace")):
+            if float(m.group(1)) < TRANSPARENT_TEXT_FLOOR_PCT:
+                out.append((rel, float(m.group(1))))
+    return out
+
+
+def _css_opacity_dimming() -> int:
+    """`opacity:` declarations above 0 and under 0.82 (`BASELINE_OPACITY_DIMMING`)."""
+    css = _blank(ROOT / "static" / "style.css")
+    count = 0
+    for m in re.finditer(r"(?:^|[;{])\s*opacity\s*:\s*([0-9]*\.?[0-9]+)\s*(?:!important)?\s*(?=[;}])",
+                         css, re.M):
+        if 0 < float(m.group(1)) < TRANSPARENT_TEXT_FLOOR_PCT / 100:
+            count += 1
+    return count
 
 
 def _css_border_read_census() -> tuple:
@@ -562,6 +729,45 @@ def main() -> int:
             f"under {TRANSPARENT_TEXT_FLOOR_PCT:g}%; use `var(--fg-muted)`, which "
             f"mixes toward an opaque colour and is pinned at the floor by "
             f"`P1-03`. Alphas present: {', '.join(f'{p:g}%' for p in fresh[:12])}")
+
+    # `B1408`. Every surviving transparent mix is a recorded decoration, with
+    # its measurement; anything else under the floor is a defect by name.
+    sites = _css_transparent_text_sites()
+    undeclared = sorted({sel for sel, _ in sites} - set(DECORATION_TRANSPARENT_TEXT))
+    for selector, pct in sites:
+        if selector in DECORATION_TRANSPARENT_TEXT:
+            ratio, name = _transparent_worst(pct)
+            print(f"  decoration  {selector} at {pct:g}% — {ratio:.2f}:1 on {name}: "
+                  f"{DECORATION_TRANSPARENT_TEXT[selector]}")
+    if undeclared:
+        problems.append(
+            f"{len(undeclared)} rule(s) paint text toward `transparent` under "
+            f"{TRANSPARENT_TEXT_FLOOR_PCT:g}% and are not recorded as decoration: "
+            f"{', '.join(undeclared[:8])}. Use `color-mix(in oklab, var(--fg) N%, "
+            f"var(--fg-muted))` (every rung clears 4.5:1), or record it in "
+            f"DECORATION_TRANSPARENT_TEXT with why.")
+    inline = _inline_transparent_text()
+    print(f"inline `style=` text mixed toward transparent under "
+          f"{TRANSPARENT_TEXT_FLOOR_PCT:g}%: {len(inline)} (none allowed)")
+    if inline:
+        problems.append(
+            f"{len(inline)} inline style(s) paint text toward `transparent` under "
+            f"{TRANSPARENT_TEXT_FLOOR_PCT:g}%: "
+            f"{', '.join(sorted({f for f, _ in inline})[:6])}. Use "
+            f"`color-mix(in oklab, var(--fg) N%, var(--fg-muted))`.")
+    rungs, ladder_fails = _ladder_failures()
+    print(f"the de-emphasis ladder (`B1408`): {len(rungs)} rung(s) in use, "
+          f"{'all clear 4.5:1 on every palette' if not ladder_fails else f'{len(ladder_fails)} miss'}")
+    problems.extend(ladder_fails)
+    dimming = _css_opacity_dimming()
+    print(f"opacity under {TRANSPARENT_TEXT_FLOOR_PCT / 100:g} (`B1408`'s other half): "
+          f"{dimming} declaration(s) (ratchet at {BASELINE_OPACITY_DIMMING})")
+    if dimming > BASELINE_OPACITY_DIMMING:
+        problems.append(
+            f"{dimming} `opacity:` declarations under {TRANSPARENT_TEXT_FLOOR_PCT / 100:g} "
+            f"and {BASELINE_OPACITY_DIMMING} is the recorded population — a new one dims "
+            f"whatever it is on by letting the background through; for text, use the "
+            f"ladder (`color-mix(in oklab, var(--fg) N%, var(--fg-muted))`) instead.")
 
     control_reads, decorative_reads = _css_border_read_census()
     print(f"  border reads in the stylesheet: {control_reads} on a control "

@@ -385,7 +385,7 @@ async function showModelSelector() {
 
     // Show loading state immediately with spinner
     const _loadingDiv = document.createElement('div');
-    _loadingDiv.style.cssText = 'color:color-mix(in srgb, var(--fg) 40%, transparent);font-size:0.85em;padding:12px 0;text-align:left;';
+    _loadingDiv.style.cssText = 'color:color-mix(in oklab, var(--fg) 40%, var(--fg-muted));font-size:0.85em;padding:12px 0;text-align:left;';
     if (spinnerModule) {
       const _loadSpinner = spinnerModule.create('Loading models', 'right');
       _loadingDiv.appendChild(_loadSpinner.createElement());
@@ -467,7 +467,7 @@ async function showModelSelector() {
         });
         if (matches.length === 0) {
           const empty = document.createElement('div');
-          empty.style.cssText = 'padding:8px 12px;color:color-mix(in srgb, var(--fg) 40%, transparent);font-size:0.82em;font-style:italic;';
+          empty.style.cssText = 'padding:8px 12px;color:color-mix(in oklab, var(--fg) 40%, var(--fg-muted));font-size:0.82em;font-style:italic;';
           empty.textContent = 'No matches';
           dropdown.appendChild(empty);
           return;
@@ -572,7 +572,7 @@ async function showModelSelector() {
       if (state._compareMode === 'search') {
         listContainer.innerHTML = '';
         if (!state._cachedProviders) {
-          listContainer.innerHTML = '<div style="color:color-mix(in srgb, var(--fg) 40%, transparent);font-size:0.85em;padding:12px 0;text-align:left;">Loading search providers\u2026</div>';
+          listContainer.innerHTML = '<div style="color:color-mix(in oklab, var(--fg) 40%, var(--fg-muted));font-size:0.85em;padding:12px 0;text-align:left;">Loading search providers\u2026</div>';
           fetch(`${state.API_BASE}/api/search/providers`).then(r => r.json()).then(providers => {
             state._cachedProviders = providers;
             renderModelRows();
@@ -583,7 +583,7 @@ async function showModelSelector() {
         }
         const available = state._cachedProviders.filter(p => p.available);
         if (available.length === 0) {
-          listContainer.innerHTML = '<div style="color:color-mix(in srgb, var(--fg) 40%, transparent);font-size:0.85em;padding:12px 0;text-align:center;font-style:italic;">No search providers configured</div>';
+          listContainer.innerHTML = '<div style="color:color-mix(in oklab, var(--fg) 40%, var(--fg-muted));font-size:0.85em;padding:12px 0;text-align:center;font-style:italic;">No search providers configured</div>';
           if (addBtn) addBtn.style.display = 'none';
           return;
         }
@@ -679,7 +679,7 @@ async function showModelSelector() {
       // Research mode needs search providers too — fetch if not cached
       const needsProviders = state._compareMode === 'research';
       if (needsProviders && !state._cachedProviders) {
-        listContainer.innerHTML = '<div style="color:color-mix(in srgb, var(--fg) 40%, transparent);font-size:0.85em;padding:12px 0;">Loading search providers\u2026</div>';
+        listContainer.innerHTML = '<div style="color:color-mix(in oklab, var(--fg) 40%, var(--fg-muted));font-size:0.85em;padding:12px 0;">Loading search providers\u2026</div>';
         fetch(`${state.API_BASE}/api/search/providers`).then(r => r.json()).then(providers => {
           state._cachedProviders = providers;
           renderModelRows();
@@ -692,7 +692,7 @@ async function showModelSelector() {
 
       if (filtered.length === 0) {
         const empty = document.createElement('div');
-        empty.style.cssText = 'color:color-mix(in srgb, var(--fg) 40%, transparent);font-size:0.85em;padding:12px 0;text-align:center;font-style:italic;';
+        empty.style.cssText = 'color:color-mix(in oklab, var(--fg) 40%, var(--fg-muted));font-size:0.85em;padding:12px 0;text-align:center;font-style:italic;';
         empty.textContent = 'No ' + state._compareMode + ' models available';
         listContainer.appendChild(empty);
         if (addBtn) addBtn.style.display = 'none';
@@ -825,7 +825,7 @@ async function showModelSelector() {
     const timeoutRow = document.createElement('div');
     timeoutRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;';
     const timeoutLabel = document.createElement('span');
-    timeoutLabel.style.cssText = 'color:color-mix(in srgb, var(--fg) 55%, transparent);font-size:0.82em;';
+    timeoutLabel.style.cssText = 'color:color-mix(in oklab, var(--fg) 55%, var(--fg-muted));font-size:0.82em;';
     timeoutLabel.textContent = 'Timeout:';
     const timeoutInput = document.createElement('input');
     timeoutInput.type = 'number';
@@ -834,7 +834,7 @@ async function showModelSelector() {
     timeoutInput.value = String(state._timeout);
     timeoutInput.style.cssText = 'width:60px;padding:4px 8px;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:4px;font-size:0.82em;text-align:center;-moz-appearance:textfield;';
     const timeoutSuffix = document.createElement('span');
-    timeoutSuffix.style.cssText = 'color:color-mix(in srgb, var(--fg) 55%, transparent);font-size:0.82em;';
+    timeoutSuffix.style.cssText = 'color:color-mix(in oklab, var(--fg) 55%, var(--fg-muted));font-size:0.82em;';
     timeoutSuffix.textContent = 'seconds';
     timeoutRow.appendChild(timeoutLabel);
     timeoutRow.appendChild(timeoutInput);

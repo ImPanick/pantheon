@@ -673,7 +673,7 @@ body.bg-pattern-ascii {
       line-height: 1;
       /* 70% mix keeps the chat title clearly above the WCAG AA 4.5:1
          contrast threshold (40% only reached ~2.8:1). */
-      color: color-mix(in srgb, var(--fg) 70%, transparent);
+      color: color-mix(in oklab, var(--fg) 70%, var(--fg-muted));
       white-space: nowrap;
       display: flex;
       align-items: center;
@@ -697,7 +697,7 @@ body.bg-pattern-ascii {
       margin-right: 5px;
     }
     .chat-meta-overlay:hover {
-      color: color-mix(in srgb, var(--fg) 75%, transparent);
+      color: color-mix(in oklab, var(--fg) 75%, var(--fg-muted));
     }
     /* Offline model rows */
     .models-row-offline {
@@ -1276,7 +1276,7 @@ body.bg-pattern-ascii {
        on the right; this button just needs a small gap before close. */
     .modal-minimize-btn {
       background: transparent;
-      color: color-mix(in srgb, var(--fg) 58%, transparent);
+      color: color-mix(in oklab, var(--fg) 58%, var(--fg-muted));
       border: 1px solid transparent;
       cursor: pointer;
       width: 24px;
@@ -2111,7 +2111,7 @@ body.bg-pattern-ascii {
       display: flex; align-items: center; gap: 6px;
       padding: 4px 8px; cursor: pointer;
       font-size: 0.85em; font-weight: 600;
-      color: color-mix(in srgb, var(--fg) 55%, transparent);
+      color: color-mix(in oklab, var(--fg) 55%, var(--fg-muted));
       border-radius: 4px; user-select: none;
       margin-top: 4px;
       transition: opacity 0.08s, background 0.08s, color 0.08s;
@@ -2122,7 +2122,7 @@ body.bg-pattern-ascii {
       display: flex; align-items: center; gap: 6px;
       padding: 4px 8px; cursor: pointer;
       font-size: 0.85em; font-weight: 600;
-      color: color-mix(in srgb, var(--fg) 55%, transparent);
+      color: color-mix(in oklab, var(--fg) 55%, var(--fg-muted));
       border-radius: 4px; user-select: none;
       transition: opacity 0.08s, background 0.08s;
     }
@@ -2139,7 +2139,7 @@ body.bg-pattern-ascii {
       display: flex; align-items: center; gap: 6px;
       padding: 4px 8px; cursor: pointer;
       font-size: 0.88em; font-weight: 600;
-      color: color-mix(in srgb, var(--fg) 55%, transparent);
+      color: color-mix(in oklab, var(--fg) 55%, var(--fg-muted));
       border-radius: 4px; user-select: none;
       transition: opacity 0.08s, background 0.08s;
     }
@@ -2423,7 +2423,7 @@ body.bg-pattern-ascii {
       transition: margin-left 160ms cubic-bezier(0.22, 0.61, 0.36, 1),
                   margin-right 160ms cubic-bezier(0.22, 0.61, 0.36, 1);
     }
-    .chat-meta { font-size:12px; color:color-mix(in srgb, var(--fg) 60%, transparent); margin-bottom:6px; }
+    .chat-meta { font-size:12px; color:color-mix(in oklab, var(--fg) 60%, var(--fg-muted)); margin-bottom:6px; }
     .chat-history {
       display:flex;
       flex-direction:column;
@@ -2679,8 +2679,9 @@ body.bg-pattern-ascii {
     }
     #welcome-screen .welcome-sub {
       font-size:0.85rem;
-      color:color-mix(in srgb, var(--fg) 60%, transparent);
-      opacity:0.6;
+      /* `B1408`: the ladder's colour alone; an `opacity` on top multiplied
+         it back under the floor. */
+      color:color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
       line-height:1.5;
       max-width:300px;
     }
@@ -2849,7 +2850,7 @@ body.bg-pattern-ascii {
     .role-provider-logo { display: inline-flex; align-items: center; flex-shrink: 0; }
     .role-provider-logo svg { width: 12px; height: 12px; }
     .msg-user .role {
-      color: color-mix(in srgb, var(--fg) 60%, transparent);
+      color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
     }
     .msg-user .role::before {
       background: color-mix(in srgb, var(--fg) 40%, transparent);
@@ -3000,12 +3001,12 @@ body.bg-pattern-ascii {
       border-left: 2px solid var(--red);
     }
     .rag-similarity {
-      color: color-mix(in srgb, var(--fg) 50%, transparent);
+      color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted));
       font-size: 10px;
       margin-left: 6px;
     }
     .rag-snippet {
-      color: color-mix(in srgb, var(--fg) 65%, transparent);
+      color: color-mix(in oklab, var(--fg) 65%, var(--fg-muted));
       font-size: 11px;
       margin-top: 4px;
       white-space: pre-wrap;
@@ -3016,14 +3017,14 @@ body.bg-pattern-ascii {
       background: none;
       border: 1px solid var(--border);
       border-radius: 4px;
-      color: color-mix(in srgb, var(--fg) 50%, transparent);
+      color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted));
       cursor: pointer;
       font-size: 10px;
       padding: 1px 5px;
     }
     .rag-file-delete:hover { color: var(--fg); border-color: var(--fg); }
     .rag-file-size {
-      color: color-mix(in srgb, var(--fg) 50%, transparent);
+      color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted));
       font-size: 10px;
       margin-left: 4px;
     }
@@ -3032,7 +3033,7 @@ body.bg-pattern-ascii {
       border-radius: 6px;
       padding: 12px;
       text-align: center;
-      color: color-mix(in srgb, var(--fg) 45%, transparent);
+      color: color-mix(in oklab, var(--fg) 45%, var(--fg-muted));
       font-size: 11px;
       cursor: pointer;
       transition: border-color 0.2s;
@@ -3043,13 +3044,14 @@ body.bg-pattern-ascii {
     }
     .msg .timestamp {
       font-size: 10px;
-      color: color-mix(in srgb, var(--fg) 45%, transparent);
+      /* `B1408`: no `opacity` on top of the ladder — it multiplied a
+         legible colour back under 4.5:1. */
+      color: color-mix(in oklab, var(--fg) 45%, var(--fg-muted));
       margin-top: 4px;
       text-align: right;
-      opacity: 0.7;
     }
     .msg-user .timestamp {
-      color: color-mix(in srgb, var(--fg) 72%, transparent);
+      color: color-mix(in oklab, var(--fg) 72%, var(--fg-muted));
     }
     pre {
       overflow: hidden;
@@ -3079,7 +3081,7 @@ body.bg-pattern-ascii {
     }
     .code-lang {
       font-size:0.8em;
-      color:color-mix(in srgb, var(--fg) 60%, transparent);
+      color:color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
       display:block;
       margin-bottom:2px;
       font-style:italic;
@@ -3216,7 +3218,7 @@ body.bg-pattern-ascii {
       transition: height 0.12s ease-out;
     }
     .chat-input-bar textarea#message::placeholder {
-      color: color-mix(in srgb, var(--fg) 35%, transparent);
+      color: color-mix(in oklab, var(--fg) 35%, var(--fg-muted));
     }
     .chat-input-bottom {
       display: flex;
@@ -3526,7 +3528,7 @@ body.bg-pattern-ascii {
       white-space: nowrap;
       flex-shrink: 0;
       border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent);
-      color: color-mix(in srgb, var(--fg) 72%, transparent);
+      color: color-mix(in oklab, var(--fg) 72%, var(--fg-muted));
     }
     .plan-window-status[data-plan-state="executing"] {
       border-color: color-mix(in srgb, var(--accent, var(--red)) 45%, transparent);
@@ -3621,7 +3623,7 @@ body.bg-pattern-ascii {
       padding: 0 5px;
       border-radius: 3px;
       border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
-      color: color-mix(in srgb, var(--fg) 70%, transparent);
+      color: color-mix(in oklab, var(--fg) 70%, var(--fg-muted));
       max-width: 100%;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -4384,7 +4386,7 @@ body.bg-pattern-ascii {
     .mode-toggle-btn {
       background: none;
       border: none;
-      color: color-mix(in srgb, var(--fg) 40%, transparent);
+      color: color-mix(in oklab, var(--fg) 40%, var(--fg-muted));
       cursor: pointer;
       padding: 0 10px;
       font-size: 11px;
@@ -4397,7 +4399,7 @@ body.bg-pattern-ascii {
       z-index: 1;
     }
     .mode-toggle-btn:not(.active):hover {
-      color: color-mix(in srgb, var(--fg) 60%, transparent);
+      color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
     }
     .mode-toggle-btn:hover {
       background: none !important;
@@ -4428,7 +4430,7 @@ body.bg-pattern-ascii {
     .chat-meta-count {
       font-size: inherit;
       font-weight: 400;
-      color: color-mix(in srgb, var(--fg) 35%, transparent);
+      color: color-mix(in oklab, var(--fg) 35%, var(--fg-muted));
       white-space: nowrap;
       user-select: none;
       margin-left: 6px;
@@ -4482,7 +4484,7 @@ body.bg-pattern-ascii {
     .session-cost-display {
       font-size: inherit;
       font-weight: 400;
-      color: color-mix(in srgb, var(--fg) 35%, transparent);
+      color: color-mix(in oklab, var(--fg) 35%, var(--fg-muted));
       white-space: nowrap;
       user-select: none;
       margin-left: 7px;
@@ -4498,7 +4500,7 @@ body.bg-pattern-ascii {
       border: 0;
       border-radius: 0;
       background: transparent;
-      color: color-mix(in srgb, var(--fg) 35%, transparent);
+      color: color-mix(in oklab, var(--fg) 35%, var(--fg-muted));
       font-family: inherit;
       font-size: 0.7rem;
       font-weight: 400;
@@ -4513,7 +4515,7 @@ body.bg-pattern-ascii {
     }
     .chat-context-pill:hover,
     .chat-context-pill.open {
-      color: color-mix(in srgb, var(--fg) 70%, transparent);
+      color: color-mix(in oklab, var(--fg) 70%, var(--fg-muted));
       --ctx-stroke: var(--ctx-color);
       border: 0;
       background: transparent;
@@ -4582,7 +4584,7 @@ body.bg-pattern-ascii {
       justify-content: space-between;
       gap: 10px;
       margin-top: 4px;
-      color: color-mix(in srgb, var(--fg) 70%, transparent);
+      color: color-mix(in oklab, var(--fg) 70%, var(--fg-muted));
     }
     .chat-context-popup-row span:last-child {
       color: var(--fg);
@@ -4655,7 +4657,7 @@ body.bg-pattern-ascii {
     .ctx-usage-title { font-weight: 650; }
     .ctx-usage-pct {
       font-variant-numeric: tabular-nums;
-      color: color-mix(in srgb, var(--fg) 75%, transparent);
+      color: color-mix(in oklab, var(--fg) 75%, var(--fg-muted));
     }
     .chat-context-popup.warn .ctx-usage-pct { color: var(--warn); }
     .chat-context-popup.danger .ctx-usage-pct { color: var(--red); }
@@ -4836,7 +4838,7 @@ body.bg-pattern-ascii {
       border-radius: 4px;
       /* 65% mix lifts the model label above the WCAG AA 4.5:1 threshold
          against the dark chat-bar (40% only reached ~2.9:1). */
-      color: color-mix(in srgb, var(--fg) 65%, transparent);
+      color: color-mix(in oklab, var(--fg) 65%, var(--fg-muted));
       cursor: pointer;
       white-space: nowrap;
       transition: background 0.15s, color 0.15s, border-color 0.15s;
@@ -4925,7 +4927,7 @@ body.bg-pattern-ascii {
       border-color: var(--red);
     }
     .model-picker-menu input[type="text"]::placeholder {
-      color: color-mix(in srgb, var(--fg) 30%, transparent);
+      color: color-mix(in oklab, var(--fg) 30%, var(--fg-muted));
     }
     .model-picker-refresh-btn {
       appearance: none;
@@ -4938,7 +4940,7 @@ body.bg-pattern-ascii {
       border: 0;
       border-radius: 4px;
       background: transparent;
-      color: color-mix(in srgb, var(--fg) 54%, transparent);
+      color: color-mix(in oklab, var(--fg) 54%, var(--fg-muted));
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -4968,7 +4970,7 @@ body.bg-pattern-ascii {
       border: 1px solid var(--border-control, var(--border));
       border-radius: 4px;
       background: color-mix(in srgb, var(--fg) 4%, transparent);
-      color: color-mix(in srgb, var(--fg) 66%, transparent);
+      color: color-mix(in oklab, var(--fg) 66%, var(--fg-muted));
       cursor: pointer;
       padding: 0;
       overflow: hidden;
@@ -5012,7 +5014,7 @@ body.bg-pattern-ascii {
       gap: 7px;
       min-height: 38px;
       padding: 8px 10px;
-      color: color-mix(in srgb, var(--fg) 58%, transparent);
+      color: color-mix(in oklab, var(--fg) 58%, var(--fg-muted));
       font-size: 0.82em;
     }
     .model-picker-list .model-picker-loading-row .ai-spinner-whirlpool {
@@ -5037,7 +5039,7 @@ body.bg-pattern-ascii {
       align-items: center;
       justify-content: center;
       padding: 5px 8px;
-      color: color-mix(in srgb, var(--fg) 50%, transparent);
+      color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted));
       font-size: 0.82em;
     }
     .model-picker-list .mp-section-label {
@@ -5092,11 +5094,11 @@ body.bg-pattern-ascii {
       -webkit-tap-highlight-color: transparent;
     }
     .model-picker-list .mp-fav-dot:hover {
-      color: color-mix(in srgb, var(--fg) 68%, transparent);
+      color: color-mix(in oklab, var(--fg) 68%, var(--fg-muted));
     }
     .model-picker-list .mp-fav-dot:focus-visible {
       outline: none;
-      color: color-mix(in srgb, var(--fg) 68%, transparent);
+      color: color-mix(in oklab, var(--fg) 68%, var(--fg-muted));
     }
     .model-picker-list .mp-fav-dot.active {
       color: var(--accent, var(--red));
@@ -5123,7 +5125,7 @@ body.bg-pattern-ascii {
     }
     .model-picker-list .mp-empty-hint .mp-empty-title {
       font-size: 1.05em;
-      color: color-mix(in srgb, var(--fg) 70%, transparent);
+      color: color-mix(in oklab, var(--fg) 70%, var(--fg-muted));
     }
     .model-picker-list .mp-empty-hint .mp-empty-sub {
       font-size: 0.92em;
@@ -5622,7 +5624,7 @@ body.bg-pattern-ascii {
       border-radius: 999px;
       border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent);
       background: color-mix(in srgb, var(--fg) 7%, transparent);
-      color: color-mix(in srgb, var(--fg) 60%, transparent);
+      color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
       font-size: 0.65rem;
       line-height: 15px;
       text-transform: lowercase;
@@ -5635,7 +5637,7 @@ body.bg-pattern-ascii {
        them you are reading. `--color-success`; no `--accent` reference. */
     .fallback-chain-row {
       font-variant-numeric: tabular-nums;
-      color: color-mix(in srgb, var(--fg) 70%, transparent);
+      color: color-mix(in oklab, var(--fg) 70%, var(--fg-muted));
     }
     .fallback-chain-row.answered {
       font-weight: 600;
@@ -5645,7 +5647,7 @@ body.bg-pattern-ascii {
       margin-top: 4px;
       padding-top: 4px;
       border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
-      color: color-mix(in srgb, var(--fg) 75%, transparent);
+      color: color-mix(in oklab, var(--fg) 75%, var(--fg-muted));
     }
     .skills-used-badge.taught {
       border-color: color-mix(in srgb, var(--color-success) 45%, transparent);
@@ -5859,7 +5861,7 @@ body.bg-pattern-ascii {
 /* What to do next is the part a person acts on (`Law 15`), so it stays at full
    `--fg`; only the note that the arguments were withheld steps back. */
 .agent-stop-withheld {
-  color: color-mix(in srgb, var(--fg) 72%, transparent);
+  color: color-mix(in oklab, var(--fg) 72%, var(--fg-muted));
 }
 
     /* Message edit UI */
@@ -5930,7 +5932,7 @@ body.bg-pattern-ascii {
       opacity:1;
     }
     .rounds-exhausted .rounds-exhausted-label {
-      color:color-mix(in srgb, var(--fg) 60%, transparent);
+      color:color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
       font-size:0.95em;
     }
     .rounds-exhausted .continue-btn {
@@ -6421,7 +6423,7 @@ body.bg-pattern-ascii {
       font-size:1em; line-height:1; padding:2px 5px;
       cursor:pointer;
     }
-    .small-note { font-size:12px; color:color-mix(in srgb, var(--fg) 60%, transparent); margin-top:4px; }
+    .small-note { font-size:12px; color:color-mix(in oklab, var(--fg) 60%, var(--fg-muted)); margin-top:4px; }
     .row-end { justify-content:flex-end; }
     .model-chat-btn {
       height:32px; padding:0 10px; margin-left:auto;
@@ -6488,7 +6490,7 @@ body.bg-pattern-ascii {
       border-color: var(--red);
     }
     .model-search-input::placeholder {
-      color: color-mix(in srgb, var(--fg) 30%, transparent);
+      color: color-mix(in oklab, var(--fg) 30%, var(--fg-muted));
     }
     .models-row button {
       font-size: 9px;
@@ -7645,7 +7647,7 @@ body.bg-pattern-ascii {
     .close-btn,
     .modal-close {
       background:transparent;
-      color:color-mix(in srgb, var(--fg) 58%, transparent);
+      color:color-mix(in oklab, var(--fg) 58%, var(--fg-muted));
       border:1px solid transparent;
       font-size:0;
       width:24px;
@@ -7689,7 +7691,7 @@ body.bg-pattern-ascii {
     /* Minimize button — sits beside the close button on every modal */
     .minimize-btn {
       background:transparent;
-      color:color-mix(in srgb, var(--fg) 58%, transparent);
+      color:color-mix(in oklab, var(--fg) 58%, var(--fg-muted));
       border:1px solid transparent;
       font-size:0;
       font-weight:700;
@@ -7824,7 +7826,7 @@ body.bg-pattern-ascii {
     }
     .styled-confirm-details-heading {
       font-size:0.76rem; font-weight:600; letter-spacing:0.02em;
-      color:color-mix(in srgb, var(--fg) 62%, transparent);
+      color:color-mix(in oklab, var(--fg) 62%, var(--fg-muted));
       margin-bottom:4px;
     }
     .styled-confirm-details-list {
@@ -7843,11 +7845,11 @@ body.bg-pattern-ascii {
     }
     .styled-confirm-detail-note {
       flex-shrink:0; font-size:0.72rem;
-      color:color-mix(in srgb, var(--fg) 48%, transparent);
+      color:color-mix(in oklab, var(--fg) 48%, var(--fg-muted));
     }
     .styled-confirm-details-foot {
       margin-top:5px; font-size:0.74rem; line-height:1.4;
-      color:color-mix(in srgb, var(--fg) 52%, transparent);
+      color:color-mix(in oklab, var(--fg) 52%, var(--fg-muted));
     }
     @media (max-width:768px) {
       .styled-confirm-box {
@@ -8311,7 +8313,7 @@ body.bg-pattern-ascii {
     /* Toolbar visibility tab */
     .toolbar-hint {
       font-size: 12px;
-      color: color-mix(in srgb, var(--fg) 55%, transparent);
+      color: color-mix(in oklab, var(--fg) 55%, var(--fg-muted));
       margin-bottom: 12px;
     }
     /* ── Appearance visibility toggles ── */
@@ -8439,7 +8441,7 @@ body.bg-pattern-ascii {
     }
     .vis-hint {
       font-size: 10px;
-      color: color-mix(in srgb, var(--fg) 30%, transparent);
+      color: color-mix(in oklab, var(--fg) 30%, var(--fg-muted));
       font-weight: 400;
       margin-left: 2px;
     }
@@ -8969,7 +8971,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       box-sizing: border-box;
     }
     .search-popup input#search-input::placeholder {
-      color: color-mix(in srgb, var(--fg) 30%, transparent);
+      color: color-mix(in oklab, var(--fg) 30%, var(--fg-muted));
     }
     .search-results {
       overflow-y: auto;
@@ -9019,7 +9021,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
     }
     .search-result-time {
       font-size: 10px;
-      color: color-mix(in srgb, var(--fg) 35%, transparent);
+      color: color-mix(in oklab, var(--fg) 35%, var(--fg-muted));
       flex-shrink: 0;
       white-space: nowrap;
     }
@@ -9079,14 +9081,14 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
     }
     .search-empty {
       text-align: center;
-      color: color-mix(in srgb, var(--fg) 35%, transparent);
+      color: color-mix(in oklab, var(--fg) 35%, var(--fg-muted));
       padding: 24px;
       font-size: 13px;
     }
 
     /* ---------- Theme popup (uses .modal > .modal-content frame) ---------- */
     #theme-modal { z-index: 260; }
-    #theme-popup .theme-popup-sub { color: color-mix(in srgb, var(--fg) 50%, transparent); font-size: 11px; margin-bottom: 10px; }
+    #theme-popup .theme-popup-sub { color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted)); font-size: 11px; margin-bottom: 10px; }
     /* `max-height` instead of a fixed height so the popup shrinks to fit its
        content (avoids the leftover whitespace after the time-based switching
        card was removed). The inner .theme-tab-panel keeps overflow:auto, so
@@ -9116,7 +9118,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       border: 1.5px solid color-mix(in srgb, var(--fg) 12%, transparent);
     }
     .theme-swatch-colors span:first-child { margin-left: 0; }
-    .theme-custom-label { font-size: 11px; font-weight: 600; color: color-mix(in srgb, var(--fg) 50%, transparent); text-transform: uppercase; letter-spacing: 0.06em; margin: 10px 0 6px; }
+    .theme-custom-label { font-size: 11px; font-weight: 600; color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted)); text-transform: uppercase; letter-spacing: 0.06em; margin: 10px 0 6px; }
     .theme-custom { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
     .color-row { display: flex; align-items: center; gap: 4px; }
     .color-row label { font-size: 13px; font-weight: 500; color: var(--fg); opacity: 0.7; flex: 1; }
@@ -9195,7 +9197,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       background: var(--bg); color: var(--fg); font-size: 12px; font-family: inherit;
     }
     .theme-save-row input:focus { border-color: var(--red); }
-    .theme-save-row input::placeholder { color: color-mix(in srgb, var(--fg) 35%, transparent); }
+    .theme-save-row input::placeholder { color: color-mix(in oklab, var(--fg) 35%, var(--fg-muted)); }
     .theme-save-row button {
       padding: 6px 12px; border: 1px solid var(--red); border-radius: 6px;
       background: transparent; color: var(--red); cursor: pointer;
@@ -10090,7 +10092,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       border-radius: 6px; font-size: 0.78em;
       background: color-mix(in srgb, var(--red) 8%, transparent);
       border: 1px solid color-mix(in srgb, var(--red) 20%, transparent);
-      color: color-mix(in srgb, var(--fg) 70%, transparent);
+      color: color-mix(in oklab, var(--fg) 70%, var(--fg-muted));
       cursor: default;
     }
     .compare-sources-box .sources-label { font-weight: 600; }
@@ -10568,7 +10570,7 @@ button.hamburger {
 
 /* Strikethrough */
 .msg del {
-  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  color: color-mix(in oklab, var(--fg) 45%, var(--fg-muted));
   text-decoration: line-through;
 }
 
@@ -10586,7 +10588,7 @@ button.hamburger {
   border-left: 3px solid var(--hl-function, #5b8def);
   padding: 4px 12px;
   margin: 0.5em 0;
-  color: color-mix(in srgb, var(--fg) 75%, transparent);
+  color: color-mix(in oklab, var(--fg) 75%, var(--fg-muted));
   background: color-mix(in srgb, var(--fg) 3%, transparent);
   border-radius: 0 6px 6px 0;
 }
@@ -11958,7 +11960,7 @@ body.fullwidth-chat .chat-history {
   gap: 8px;
   cursor: pointer;
   font-size: 0.85em;
-  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  color: color-mix(in oklab, var(--fg) 70%, var(--fg-muted));
   user-select: none;
   padding: 2px 0;
 }
@@ -11985,7 +11987,7 @@ body.fullwidth-chat .chat-history {
   margin: 6px 0 2px;
   font-size: 10.5px;
   line-height: 1.35;
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
 }
 /* `P23-04` (CHAT-U-18). "Stopped · Continue" is one control in the stopped
    line's own size and colour; `.continue-btn` is sized for the bare ▸ it
@@ -12037,7 +12039,7 @@ body.fullwidth-chat .chat-history {
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
   background: color-mix(in srgb, var(--fg) 6%, transparent);
-  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  color: color-mix(in oklab, var(--fg) 55%, var(--fg-muted));
   font-size: 0.72em;
   font-weight: 600;
   line-height: 15px;
@@ -12059,7 +12061,7 @@ body.fullwidth-chat .chat-history {
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--fg) 22%, transparent);
   background: color-mix(in srgb, var(--fg) 7%, transparent);
-  color: color-mix(in srgb, var(--fg) 72%, transparent);
+  color: color-mix(in oklab, var(--fg) 72%, var(--fg-muted));
   font-size: 0.7em;
   font-weight: 600;
   line-height: 15px;
@@ -12172,7 +12174,7 @@ body.fullwidth-chat .chat-history {
   margin: 6px 0 2px;
   font-size: 0.78em;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  color: color-mix(in oklab, var(--fg) 55%, var(--fg-muted));
 }
 .ask-user-expiry.expired {
   font-weight: 600;
@@ -12194,7 +12196,7 @@ body.fullwidth-chat .chat-history {
   margin: 4px 0 2px;
   font-size: 0.78em;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
 }
 
 /* `P4-20`. Why a call was refused. Inside the card's fold, beside where the
@@ -12244,7 +12246,7 @@ body.fullwidth-chat .chat-history {
   border: 1px solid transparent;
   border-radius: 6px;
   background: color-mix(in srgb, var(--bg) 80%, transparent);
-  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  color: color-mix(in oklab, var(--fg) 55%, var(--fg-muted));
   cursor: pointer;
   opacity: 0.75;
   transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
@@ -12278,7 +12280,7 @@ body.fullwidth-chat .chat-history {
   cursor: pointer;
   padding: 2px 0;
   font-size: 0.78em;
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
   user-select: none;
 }
 .agent-thread-cmd-full > summary:hover {
@@ -12324,7 +12326,7 @@ body.fullwidth-chat .chat-history {
   gap: 6px;
   padding: 1px 4px 5px;
   font-size: 11px;
-  color: color-mix(in srgb, var(--fg) 72%, transparent);
+  color: color-mix(in oklab, var(--fg) 72%, var(--fg-muted));
 }
 .plan-window-icon,
 .todo-card-icon {
@@ -12357,7 +12359,7 @@ body.fullwidth-chat .chat-history {
   margin: 0;
   font-size: 10px;
   line-height: 1.35;
-  color: color-mix(in srgb, var(--fg) 58%, transparent);
+  color: color-mix(in oklab, var(--fg) 58%, var(--fg-muted));
 }
 .plan-window-blurb {
   padding: 0 10px 6px 12px;
@@ -12407,7 +12409,7 @@ body.fullwidth-chat .chat-history {
   gap: 10px;
   font-size: 11px;
   line-height: 1.2;
-  color: color-mix(in srgb, var(--fg) 72%, transparent);
+  color: color-mix(in oklab, var(--fg) 72%, var(--fg-muted));
 }
 .agent-image-progress-label {
   min-width: 0;
@@ -14026,7 +14028,7 @@ details a:hover {
   font-size: 11px;
   line-height: 1.5;
   /* 65% keeps this description text above WCAG AA 4.5:1 (50% was ~3.9:1). */
-  color: color-mix(in srgb, var(--fg) 65%, transparent);
+  color: color-mix(in oklab, var(--fg) 65%, var(--fg-muted));
 }
 /* `B926`. The skill import's own status line: what it is doing while it runs,
    and how it ended, beside the box it was started from. Words carry the state;
@@ -14084,7 +14086,7 @@ textarea.memory-add-input {
   line-height: 1.4;
 }
 .memory-add-input::placeholder {
-  color: color-mix(in srgb, var(--fg) 40%, transparent);
+  color: color-mix(in oklab, var(--fg) 40%, var(--fg-muted));
 }
 
 .memory-add-input:focus {
@@ -14132,7 +14134,7 @@ textarea.memory-add-input {
 .memory-toolbar-btn {
   background: none;
   border: 1px solid var(--border-control, var(--border));
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
   font-size: 11px;
   height: 24px;
   padding: 0 8px;
@@ -14179,7 +14181,7 @@ textarea.memory-add-input {
   gap: 5px;
   font-size: 11px;
   height: 24px;
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
   cursor: pointer;
   padding: 0 4px;
   user-select: none;
@@ -14323,7 +14325,7 @@ textarea.memory-add-input {
   line-height: 1.5;
   font-weight: normal;
   letter-spacing: 0.02em;
-  color: color-mix(in srgb, var(--fg) 65%, transparent);
+  color: color-mix(in oklab, var(--fg) 65%, var(--fg-muted));
 }
 .admin-card > div:has(.admin-switch input) .admin-toggle-state::before {
   content: "Disabled";
@@ -14460,7 +14462,7 @@ textarea.memory-add-input {
   align-items: center;
   gap: 5px;
   cursor: pointer;
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
   font-size: 10px;
   padding: 4px 8px;
   border-radius: 4px;
@@ -14473,7 +14475,7 @@ textarea.memory-add-input {
 }
 
 #memory-selected-count {
-  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted));
   font-size: 10px;
   flex: 1;
 }
@@ -14990,7 +14992,7 @@ textarea.memory-add-input {
 .memory-cat-chip {
   background: none;
   border: 1px solid var(--border-control, var(--border));
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
   font-size: 10px;
   height: 22px;
   padding: 0 8px;
@@ -15244,7 +15246,7 @@ textarea.memory-add-input {
   padding: 2px 6px;
   border-radius: 4px;
   background: color-mix(in srgb, var(--fg) 8%, transparent);
-  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  color: color-mix(in oklab, var(--fg) 55%, var(--fg-muted));
   text-transform: lowercase;
 }
 
@@ -15358,11 +15360,11 @@ textarea.memory-add-input {
 .memory-item-time,
 .memory-item-uses {
   font-size: 9px;
-  color: color-mix(in srgb, var(--fg) 35%, transparent);
+  color: color-mix(in oklab, var(--fg) 35%, var(--fg-muted));
 }
 .memory-item-uses {
   font-family: monospace;
-  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  color: color-mix(in oklab, var(--fg) 55%, var(--fg-muted));
 }
 
 /* `P13-15`. Sits beside `.memory-item-uses` and deliberately does not look like
@@ -15373,7 +15375,7 @@ textarea.memory-add-input {
 .memory-item-mentions {
   font-size: 9px;
   white-space: nowrap;
-  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  color: color-mix(in oklab, var(--fg) 45%, var(--fg-muted));
 }
 
 /* `P13-01`. Monospace like `.memory-item-uses`, because it is a number and not
@@ -15753,7 +15755,7 @@ textarea.memory-add-input {
 /* Empty state */
 .memory-empty {
   padding: 24px 16px;
-  color: color-mix(in srgb, var(--fg) 35%, transparent);
+  color: color-mix(in oklab, var(--fg) 35%, var(--fg-muted));
   text-align: center;
   font-size: 11px;
   font-style: italic;
@@ -15785,7 +15787,7 @@ textarea.memory-add-input {
   justify-content: space-between;
   align-items: center;
   font-size: 11px;
-  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  color: color-mix(in oklab, var(--fg) 70%, var(--fg-muted));
   padding-bottom: 4px;
   border-bottom: 1px solid var(--border);
   /* Pin the title + save all/back controls to the top of the scrolling
@@ -15983,7 +15985,7 @@ textarea.memory-add-input {
      glyph via colour instead (the base .doc-action-icon-btn fades the whole
      element to 0.3, which also hides the divider). */
   opacity: 1 !important;
-  color: color-mix(in srgb, var(--fg) 55%, transparent) !important;
+  color: color-mix(in oklab, var(--fg) 55%, var(--fg-muted)) !important;
   background: none !important;
   transition: color 0.12s, background 0.12s;
 }
@@ -18356,7 +18358,7 @@ body:has(.doc-version-panel:not(.hidden)) .hamburger-btn {
 .admin-toggle-sub {
   /* 65% mix keeps this helper text above WCAG AA 4.5:1 on the dark panel
      (50% only reached ~3.9:1). */
-  color: color-mix(in srgb, var(--fg) 65%, transparent);
+  color: color-mix(in oklab, var(--fg) 65%, var(--fg-muted));
   font-size: 11px;
   margin-top: 2px;
 }
@@ -18959,7 +18961,7 @@ span[id$="-logo"] svg:not([width]) {
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
   cursor: default;
 }
 
@@ -19024,7 +19026,7 @@ span[id$="-logo"] svg:not([width]) {
 .admin-ep-info { flex: 1; overflow: hidden; }
 .admin-ep-name { color: var(--fg); font-weight: 500; }
 .admin-ep-detail {
-  color: color-mix(in srgb, var(--fg) 40%, transparent);
+  color: color-mix(in oklab, var(--fg) 40%, var(--fg-muted));
   font-size: 10px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -19093,7 +19095,7 @@ span[id$="-logo"] svg:not([width]) {
 .admin-error { color: var(--color-error); font-size: 11px; margin-top: 4px; }
 .admin-success { color: var(--color-success); font-size: 11px; margin-top: 4px; }
 .admin-empty {
-  color: color-mix(in srgb, var(--fg) 40%, transparent);
+  color: color-mix(in oklab, var(--fg) 40%, var(--fg-muted));
   font-size: 12px;
   padding: 10px 0;
   text-align: center;
@@ -19124,7 +19126,7 @@ span[id$="-logo"] svg:not([width]) {
   background: color-mix(in srgb, var(--red) 7%, transparent);
 }
 .admin-rag-upload-zone p {
-  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted));
   font-size: 11px;
   margin-top: 4px;
 }
@@ -19161,7 +19163,7 @@ span[id$="-logo"] svg:not([width]) {
 }
 .admin-rag-section-label {
   font-size: 10px;
-  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted));
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin: 8px 0 4px;
@@ -19184,7 +19186,7 @@ span[id$="-logo"] svg:not([width]) {
   color: var(--fg);
 }
 .admin-rag-item-meta {
-  color: color-mix(in srgb, var(--fg) 40%, transparent);
+  color: color-mix(in oklab, var(--fg) 40%, var(--fg-muted));
   font-size: 10px;
   margin: 0 6px;
   flex-shrink: 0;
@@ -19192,7 +19194,7 @@ span[id$="-logo"] svg:not([width]) {
 .admin-rag-item .admin-btn-delete { font-size: 10px; padding: 2px 6px; }
 .admin-rag-status {
   font-size: 11px;
-  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted));
   margin-top: 6px;
 }
 
@@ -20517,7 +20519,7 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
 }
 .doclib-card-ver-muted {
   background: color-mix(in srgb, var(--fg) 6%, transparent);
-  color: color-mix(in srgb, var(--fg) 35%, transparent);
+  color: color-mix(in oklab, var(--fg) 35%, var(--fg-muted));
 }
 .doclib-card-lang {
   padding: 1px 6px;
@@ -21200,7 +21202,7 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
   font-size: 9px;
   font-family: monospace;
   white-space: nowrap;
-  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  color: color-mix(in oklab, var(--fg) 45%, var(--fg-muted));
 }
 .skill-conf { font-weight: 700; }
 .skill-verified,
@@ -21467,7 +21469,7 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
   pointer-events: none;
   font-size: 12px;
   line-height: 1.2;
-  color: color-mix(in srgb, var(--fg) 40%, transparent);
+  color: color-mix(in oklab, var(--fg) 40%, var(--fg-muted));
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 /* Textarea: align the hint to the first line instead of vertical-centering. */
@@ -21627,7 +21629,7 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
 }
 .doclib-empty {
   text-align: center;
-  color: color-mix(in srgb, var(--fg) 35%, transparent);
+  color: color-mix(in oklab, var(--fg) 35%, var(--fg-muted));
   padding: 32px 16px;
   font-size: 12px;
   font-style: italic;
@@ -21641,7 +21643,7 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
   gap: 8px;
   padding: 28px 16px;
   font-size: 12px;
-  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  color: color-mix(in oklab, var(--fg) 45%, var(--fg-muted));
 }
 .doclib-load-more {
   display: block;
@@ -21734,11 +21736,11 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
   align-items: center;
   gap: 3px;
   cursor: pointer;
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
   font-size: 10px;
 }
 #doclib-selected-count {
-  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted));
   font-size: 10px;
 }
 #doclib-bulk-bar .memory-toolbar-btn {
@@ -21855,7 +21857,7 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
 }
 .gallery-stats {
   font-size: 10px;
-  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted));
   margin-bottom: 4px;
 }
 .gallery-toolbar {
@@ -22431,7 +22433,7 @@ body.gallery-selecting .gallery-dl-btn,
 }
 .gallery-empty {
   text-align: center;
-  color: color-mix(in srgb, var(--fg) 35%, transparent);
+  color: color-mix(in oklab, var(--fg) 35%, var(--fg-muted));
   padding: 32px 16px;
   font-size: 12px;
   font-style: italic;
@@ -22900,7 +22902,7 @@ body.gallery-selecting .gallery-dl-btn,
   border-bottom: 1px solid var(--border);
   font-weight: 600;
   font-size: 0.85em;
-  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  color: color-mix(in oklab, var(--fg) 55%, var(--fg-muted));
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -22954,13 +22956,13 @@ body.gallery-selecting .gallery-dl-btn,
   text-decoration: underline;
 }
 .search-result-snippet {
-  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  color: color-mix(in oklab, var(--fg) 70%, var(--fg-muted));
   font-size: 0.82em;
   line-height: 1.4;
   margin-top: 2px;
 }
 .search-result-url {
-  color: color-mix(in srgb, var(--fg) 35%, transparent);
+  color: color-mix(in oklab, var(--fg) 35%, var(--fg-muted));
   font-size: 0.75em;
   margin-top: 3px;
   overflow: hidden;
@@ -23097,7 +23099,7 @@ body.gallery-selecting .gallery-dl-btn,
 .cookbook-card-title { font-size: 13px; font-weight: 600; }
 .cookbook-card-desc {
   font-size: 11px;
-  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted));
 }
 
 /* Fields grid */
@@ -23111,7 +23113,7 @@ body.gallery-selecting .gallery-dl-btn,
   display: flex;
   flex-direction: column;
   font-size: 11px;
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
   gap: 3px;
 }
 
@@ -23410,7 +23412,7 @@ body.gallery-selecting .gallery-dl-btn,
   height: 22px !important;
   border-radius: 6px !important;
   border: 1px solid var(--border) !important;
-  color: color-mix(in srgb, var(--fg) 40%, transparent) !important;
+  color: color-mix(in oklab, var(--fg) 40%, var(--fg-muted)) !important;
   opacity: 1 !important;
   background: none !important;
 }
@@ -23840,7 +23842,7 @@ body.gallery-selecting .gallery-dl-btn,
   height: 22px !important;
   border-radius: 6px !important;
   border: 1px solid var(--border) !important;
-  color: color-mix(in srgb, var(--fg) 40%, transparent) !important;
+  color: color-mix(in oklab, var(--fg) 40%, var(--fg-muted)) !important;
   opacity: 1 !important;
   background: none !important;
 }
@@ -24110,7 +24112,7 @@ body.gallery-selecting .gallery-dl-btn,
 }
 .cookbook-dep-section-note {
   font-size: 10px;
-  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted));
 }
 .cookbook-dep-subgroup {
   margin: 6px 0 8px 12px;
@@ -24129,13 +24131,13 @@ body.gallery-selecting .gallery-dl-btn,
   margin: 0 1px 1px;
   font-size: 10.5px;
   font-weight: 700;
-  color: color-mix(in srgb, var(--fg) 78%, transparent);
+  color: color-mix(in oklab, var(--fg) 78%, var(--fg-muted));
 }
 .cookbook-dep-subgroup-title em {
   font-size: 9.5px;
   font-style: normal;
   font-weight: 500;
-  color: color-mix(in srgb, var(--fg) 48%, transparent);
+  color: color-mix(in oklab, var(--fg) 48%, var(--fg-muted));
 }
 .cookbook-dep-tag {
   font-size: 9px;
@@ -24156,16 +24158,16 @@ body.gallery-selecting .gallery-dl-btn,
 }
 .cookbook-dep-target {
   border: 1px solid var(--border);
-  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted));
 }
 .cookbook-dep-cat {
   background: color-mix(in srgb, var(--fg) 10%, transparent);
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
 }
 /* Rebuild tag — same look as the LLM category tag, sits to its left. */
 .cookbook-dep-rebuild {
   background: color-mix(in srgb, var(--fg) 10%, transparent);
-  color: color-mix(in srgb, var(--fg) 75%, transparent);
+  color: color-mix(in oklab, var(--fg) 75%, var(--fg-muted));
   border: 1px solid color-mix(in srgb, var(--fg) 20%, transparent);
   cursor: pointer;
   font-family: inherit;
@@ -24195,7 +24197,7 @@ body.gallery-selecting .gallery-dl-btn,
 }
 .cookbook-dep-na {
   background: color-mix(in srgb, var(--fg) 8%, transparent);
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
   border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent);
   cursor: help;
   /* Match other dep tag widths so N/A rows line up with Install / Installed. */
@@ -25683,7 +25685,7 @@ body.gallery-selecting .gallery-dl-btn,
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
   cursor: pointer;
   user-select: none;
 }
@@ -25728,7 +25730,7 @@ body.gallery-selecting .gallery-dl-btn,
 }
 .cookbook-gpu-label {
   font-size: 11px;
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
   margin-right: 4px;
   white-space: nowrap;
 }
@@ -25742,7 +25744,7 @@ body.gallery-selecting .gallery-dl-btn,
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
-  color: color-mix(in srgb, var(--fg) 40%, transparent);
+  color: color-mix(in oklab, var(--fg) 40%, var(--fg-muted));
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -25762,7 +25764,7 @@ body.gallery-selecting .gallery-dl-btn,
 .cookbook-save-btn {
   background: transparent;
   border: 1px dashed color-mix(in srgb, var(--accent) 50%, transparent);
-  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  color: color-mix(in oklab, var(--fg) 70%, var(--fg-muted));
   font-size: 11px;
 }
 .cookbook-add-instance-btn:hover,
@@ -25773,7 +25775,7 @@ body.gallery-selecting .gallery-dl-btn,
 .cookbook-remove-instance-btn {
   background: transparent;
   border: none;
-  color: color-mix(in srgb, var(--fg) 40%, transparent);
+  color: color-mix(in oklab, var(--fg) 40%, var(--fg-muted));
   font-size: 12px;
   cursor: pointer;
   padding: 0 4px;
@@ -25785,10 +25787,10 @@ body.gallery-selecting .gallery-dl-btn,
 /* Saved card styling */
 .cookbook-saved-card .cookbook-card-desc {
   font-size: 11px;
-  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted));
 }
 .cookbook-delete-preset-btn {
-  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted));
   font-size: 12px;
 }
 .cookbook-delete-preset-btn:hover {
@@ -26740,7 +26742,7 @@ body.gallery-selecting .gallery-dl-btn,
   justify-content: center;
   border-radius: 50%;
   border: 1px solid color-mix(in srgb, var(--fg) 22%, transparent);
-  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  color: color-mix(in oklab, var(--fg) 55%, var(--fg-muted));
   font-size: 9px;
   font-weight: 700;
   line-height: 1;
@@ -27312,7 +27314,7 @@ body.gallery-selecting .gallery-dl-btn,
   padding: 8px 10px;
   border: none;
   background: none;
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
   font-family: inherit;
   font-size: 12px;
   font-weight: 500;
@@ -27410,7 +27412,7 @@ body.gallery-selecting .gallery-dl-btn,
   padding: 2px 8px;
   border: 1px dashed var(--border);
   border-radius: 4px;
-  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  color: color-mix(in oklab, var(--fg) 45%, var(--fg-muted));
 }
 .shortcut-key-unset:hover .shortcut-unset { border-color: var(--accent, var(--red)); color: var(--fg); }
 .shortcut-key kbd {
@@ -27879,7 +27881,7 @@ body:not(.welcome-ready) #welcome-screen {
   font-size: 10px;
   font-weight: 500;
   line-height: 1;
-  color: color-mix(in srgb, var(--fg) 62%, transparent);
+  color: color-mix(in oklab, var(--fg) 62%, var(--fg-muted));
   border-radius: 999px;
   padding: 1px 0;
   white-space: nowrap;
@@ -28149,7 +28151,7 @@ body:not(.welcome-ready) #welcome-screen {
   background: none;
   border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
   border-radius: 5px;
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
   font-family: inherit;
   font-size: 10px;
   padding: 1px 6px;
@@ -28757,7 +28759,7 @@ select.task-form-input { text-overflow: ellipsis; }
   border-radius: 999px;
   border: 1px solid var(--border);
   background: transparent;
-  color: color-mix(in srgb, var(--fg) 62%, transparent);
+  color: color-mix(in oklab, var(--fg) 62%, var(--fg-muted));
   cursor: pointer;
   white-space: nowrap;
 }
@@ -28807,7 +28809,7 @@ select.task-form-input { text-overflow: ellipsis; }
   background: color-mix(in srgb, var(--fg) 4%, transparent);
 }
 .task-lastrun-info .task-lastrun-mark {
-  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  color: color-mix(in oklab, var(--fg) 45%, var(--fg-muted));
 }
 
 /* ── Settings Form Utilities ── */
@@ -28850,7 +28852,7 @@ input.settings-select::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
-input.settings-select::placeholder { color: color-mix(in srgb, var(--fg) 35%, transparent); }
+input.settings-select::placeholder { color: color-mix(in oklab, var(--fg) 35%, var(--fg-muted)); }
 .settings-select:focus {
   border-color: var(--red);
 }
@@ -29133,7 +29135,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   border: 1px solid var(--border);
   border-radius: 6px;
   background: transparent;
-  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  color: color-mix(in oklab, var(--fg) 55%, var(--fg-muted));
   cursor: pointer;
   transition: border-color 0.12s, color 0.12s, background 0.12s;
 }
@@ -29150,7 +29152,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   border: 1px dashed var(--border-control, var(--border));
   border-radius: 6px;
   background: transparent;
-  color: color-mix(in srgb, var(--fg) 65%, transparent);
+  color: color-mix(in oklab, var(--fg) 65%, var(--fg-muted));
   cursor: pointer;
   transition: border-color 0.12s, color 0.12s;
 }
@@ -34505,7 +34507,7 @@ button .spinner-whirlpool {
 }
 .email-reader-load-error-msg {
   max-width: min(460px, 92%);
-  color: color-mix(in srgb, var(--fg) 62%, transparent);
+  color: color-mix(in oklab, var(--fg) 62%, var(--fg-muted));
   font-size: 11px;
   line-height: 1.35;
   overflow-wrap: anywhere;
@@ -35672,7 +35674,7 @@ button .spinner-whirlpool {
   padding: 6px 0 0;
   border-top: 0;
   font-size: 11px; line-height: 1.45;
-  color: color-mix(in srgb, var(--fg) 75%, transparent);
+  color: color-mix(in oklab, var(--fg) 75%, var(--fg-muted));
   white-space: pre-wrap;
 }
 
@@ -36115,7 +36117,7 @@ body.doc-find-active mark.doc-find-mark.current {
   vertical-align: 1px;
 }
 .email-folder-chip {
-  color: color-mix(in srgb, var(--fg) 75%, transparent);
+  color: color-mix(in oklab, var(--fg) 75%, var(--fg-muted));
   background: rgba(127, 127, 127, 0.13);
   border-color: rgba(127, 127, 127, 0.24);
 }
@@ -36688,7 +36690,7 @@ body.doc-find-active mark.doc-find-mark.current {
   margin-top: 14px;
   padding: 10px 0 10px 12px;
   border-left: 3px solid var(--border);
-  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  color: color-mix(in oklab, var(--fg) 70%, var(--fg-muted));
   font-size: 0.92em;
   line-height: 1.45;
   white-space: pre-wrap;
@@ -36733,7 +36735,7 @@ body.doc-find-active mark.doc-find-mark.current {
 .email-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .email-draft-btn {
   background: none; border: 1px solid var(--border);
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
   border-radius: 6px;
   padding: 0 12px; height: 28px; font-size: 11px; cursor: pointer;
   font-family: inherit; transition: all 0.15s; white-space: nowrap;
@@ -36745,7 +36747,7 @@ body.doc-find-active mark.doc-find-mark.current {
   /* Dim the label text via color-mix instead of `opacity:0.6` on the whole
      button — opacity multiplies through to the SVG and washes out the accent
      X glyph. Per-element color dimming keeps the X at full accent strength. */
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
   border: 1px solid var(--border); border-radius: 6px;
   padding: 6px 14px; font-size: 12px; cursor: pointer; font-family: inherit;
 }
@@ -36756,7 +36758,7 @@ body.doc-find-active mark.doc-find-mark.current {
 /* Compose email "more" menu button — icon only, matches draft btn height */
 #doc-email-more-btn {
   background: none; border: 1px solid var(--border);
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
   border-radius: 6px;
   width: 28px; height: 28px; padding: 0;
   cursor: pointer; font-family: inherit; transition: all 0.15s;
@@ -36999,7 +37001,7 @@ body.doc-find-active mark.doc-find-mark.current {
   border: 1px solid var(--border);
   border-radius: 5px;
   background: color-mix(in srgb, var(--fg) 3%, transparent);
-  color: color-mix(in srgb, var(--fg) 48%, transparent);
+  color: color-mix(in oklab, var(--fg) 48%, var(--fg-muted));
 }
 .email-pantheon-attach-search-wrap:focus-within {
   border-color: color-mix(in srgb, var(--accent-primary, var(--red)) 45%, var(--border-control, var(--border)));
@@ -37016,7 +37018,7 @@ body.doc-find-active mark.doc-find-mark.current {
   font-size: 11px;
 }
 .email-pantheon-attach-search::placeholder {
-  color: color-mix(in srgb, var(--fg) 38%, transparent);
+  color: color-mix(in oklab, var(--fg) 38%, var(--fg-muted));
 }
 .email-pantheon-attach-list {
   max-height: 320px;
@@ -37215,7 +37217,7 @@ body.doc-find-active mark.doc-find-mark.current {
 .contact-suggestion .contact-email { opacity: 0.6; font-size: 11px; }
 .email-ai-reply-btn {
   background: none;
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0 12px; height: 28px; font-size: 11px; cursor: pointer;
@@ -37287,7 +37289,7 @@ body.doc-find-active mark.doc-find-mark.current {
 }
 .email-settings-header-back {
   background: transparent;
-  color: color-mix(in srgb, var(--fg) 58%, transparent);
+  color: color-mix(in oklab, var(--fg) 58%, var(--fg-muted));
   border: 1px solid transparent;
   width: 24px;
   height: 24px;
@@ -37329,7 +37331,7 @@ body.doc-find-active mark.doc-find-mark.current {
   border: 1px solid var(--border);
   border-radius: 6px;
   background: transparent;
-  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  color: color-mix(in oklab, var(--fg) 70%, var(--fg-muted));
   cursor: pointer;
   font-size: 14px;
   line-height: 1;
@@ -37347,7 +37349,7 @@ body.doc-find-active mark.doc-find-mark.current {
 .email-settings-loading,
 .email-settings-error {
   font-size: 12px;
-  color: color-mix(in srgb, var(--fg) 65%, transparent);
+  color: color-mix(in oklab, var(--fg) 65%, var(--fg-muted));
   padding: 8px 2px;
 }
 .email-settings-loading {
@@ -37401,7 +37403,7 @@ body.doc-find-active mark.doc-find-mark.current {
   margin-top: 10px;
   font-size: 10.5px;
   line-height: 1.25;
-  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  color: color-mix(in oklab, var(--fg) 55%, var(--fg-muted));
 }
 .email-settings-toggle,
 .email-settings-check {
@@ -37423,7 +37425,7 @@ body.doc-find-active mark.doc-find-mark.current {
 .email-settings-enabled-state {
   font-size: 10px;
   font-weight: 700;
-  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted));
 }
 .email-settings-section.is-enabled .email-settings-enabled-state {
   color: var(--accent, var(--red));
@@ -37456,7 +37458,7 @@ body.doc-find-active mark.doc-find-mark.current {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0;
-  color: color-mix(in srgb, var(--fg) 56%, transparent);
+  color: color-mix(in oklab, var(--fg) 56%, var(--fg-muted));
 }
 .email-settings-page input[type="date"],
 .email-settings-page input[type="datetime-local"],
@@ -37491,7 +37493,7 @@ body.doc-find-active mark.doc-find-mark.current {
   border: 1px solid var(--border);
   border-radius: 6px;
   background: color-mix(in srgb, var(--panel, var(--bg)) 74%, transparent);
-  color: color-mix(in srgb, var(--fg) 72%, transparent);
+  color: color-mix(in oklab, var(--fg) 72%, var(--fg-muted));
   font-size: 12px;
 }
 .email-settings-actions {
@@ -37505,7 +37507,7 @@ body.doc-find-active mark.doc-find-mark.current {
 .email-style-settings-status {
   margin-right: auto;
   font-size: 11px;
-  color: color-mix(in srgb, var(--fg) 62%, transparent);
+  color: color-mix(in oklab, var(--fg) 62%, var(--fg-muted));
 }
 .email-settings-save,
 .email-style-settings-save {
@@ -37529,7 +37531,7 @@ body.doc-find-active mark.doc-find-mark.current {
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent);
   background: color-mix(in srgb, var(--fg) 5%, transparent);
-  color: color-mix(in srgb, var(--fg) 68%, transparent);
+  color: color-mix(in oklab, var(--fg) 68%, var(--fg-muted));
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -38317,7 +38319,7 @@ body.notes-drag-mode .note-card-pin svg {
 .notes-new-btn {
   background: none;
   border: 1px dashed color-mix(in srgb, var(--accent) 40%, transparent);
-  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted));
   border-radius: 6px;
   padding: 6px 0;
   flex: 1;
@@ -38877,7 +38879,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
   cursor: default;
   background: color-mix(in srgb, var(--fg) 8%, transparent);
   border-color: color-mix(in srgb, var(--fg) 18%, transparent);
-  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  color: color-mix(in oklab, var(--fg) 70%, var(--fg-muted));
 }
 .note-card-ai-solving svg { animation: spin 0.9s linear infinite; filter: none; }
 .note-card-ai-done { background: color-mix(in srgb, var(--accent, var(--red)) 8%, transparent); }
@@ -39119,7 +39121,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
   padding: 6px 0;
 }
 .notes-quick-input::placeholder {
-  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  color: color-mix(in oklab, var(--fg) 45%, var(--fg-muted));
 }
 /* Blinking text caret hint before the placeholder so empty + unfocused
    reads as a live input. Sits on the wrapper because <input> elements
@@ -39195,7 +39197,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
 .notes-quick-type-pill {
   background: none;
   border: none;
-  color: color-mix(in srgb, var(--fg) 40%, transparent);
+  color: color-mix(in oklab, var(--fg) 40%, var(--fg-muted));
   cursor: pointer;
   padding: 0 11px;
   font-family: inherit;
@@ -39212,7 +39214,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
   height: 16px;
 }
 .notes-quick-type-pill:not(.active):hover {
-  color: color-mix(in srgb, var(--fg) 65%, transparent);
+  color: color-mix(in oklab, var(--fg) 65%, var(--fg-muted));
 }
 .notes-quick-type-pill.active,
 .notes-quick-type-pill.active:hover,
@@ -39607,7 +39609,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
 .note-form-type-pill {
   background: none;
   border: none;
-  color: color-mix(in srgb, var(--fg) 40%, transparent);
+  color: color-mix(in oklab, var(--fg) 40%, var(--fg-muted));
   cursor: pointer;
   padding: 0 12px;
   font-size: 13px;
@@ -39622,7 +39624,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
   position: relative;
   z-index: 1;
 }
-.note-form-type-pill:not(.active):hover { color: color-mix(in srgb, var(--fg) 60%, transparent); }
+.note-form-type-pill:not(.active):hover { color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted)); }
 .note-form-type-pill.active,
 .note-form-type-pill.active:hover,
 .note-form-type-pill.active:focus {
@@ -39837,7 +39839,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
 .notes-label-chip {
   background: transparent;
   border: 1px solid var(--border);
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
   font-size: 10px;
   padding: 3px 10px;
   border-radius: 10px;
@@ -40256,8 +40258,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
   padding: 1px 6px;
   border-radius: 3px;
   background: color-mix(in srgb, var(--fg) 8%, transparent);
-  color: color-mix(in srgb, var(--fg) 60%, transparent);
-  opacity: 0.7;
+  color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted));   /* `B1408`: no opacity on top */
   white-space: nowrap;
   flex-shrink: 0;
   align-self: center;
@@ -40991,7 +40992,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
 .note-form-draw-be-btn {
   background: none;
   border: none;
-  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted));
   cursor: pointer;
   padding: 0 8px;
   width: 34px;
@@ -41286,7 +41287,7 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
   line-height: 1.2;
   white-space: nowrap;
   pointer-events: none;
-  color: color-mix(in srgb, var(--fg) 42%, transparent);
+  color: color-mix(in oklab, var(--fg) 42%, var(--fg-muted));
 }
 .cal-hero-title:placeholder-shown ~ .cal-title-hint { display: inline-flex; }
 .cal-title-hint .cal-title-enter-ico { color: var(--accent, var(--red)); flex-shrink: 0; }
@@ -41924,7 +41925,7 @@ button.cal-add-btn.cal-add-btn-text.cal-add-btn-sm:hover .cal-add-label {
   align-items: center;
   gap: 7px;
   padding: 8px 9px 4px;
-  color: color-mix(in srgb, var(--fg) 58%, transparent);
+  color: color-mix(in oklab, var(--fg) 58%, var(--fg-muted));
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0;
@@ -41944,7 +41945,7 @@ button.cal-add-btn.cal-add-btn-text.cal-add-btn-sm:hover .cal-add-label {
   cursor: pointer;
 }
 #session-list .date-section-header.collapsed {
-  color: color-mix(in srgb, var(--fg) 36%, transparent);
+  color: color-mix(in oklab, var(--fg) 36%, var(--fg-muted));
 }
 #session-list .date-section-header.collapsed::after {
   opacity: 0.45;
@@ -42339,7 +42340,7 @@ button.cal-view-btn {
 }
 .cal-wk-rail-cell {
   font-size: 11px;
-  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  color: color-mix(in oklab, var(--fg) 55%, var(--fg-muted));
   padding: 4px 8px 0;
   border-bottom: 1px solid color-mix(in srgb, var(--fg) 5%, transparent);
   flex-shrink: 0;
@@ -42385,7 +42386,7 @@ button.cal-view-btn {
 .cal-wk-col.cal-wk-sun .cal-wk-grid { background: color-mix(in srgb, var(--fg) 2.5%, var(--bg)); }
 .cal-wk-col.cal-wk-sun .cal-wk-allday { background: color-mix(in srgb, var(--fg) 3%, var(--bg)); }
 .cal-wk-col.cal-wk-sun .cal-wk-dn,
-.cal-wk-col.cal-wk-sun .cal-wk-dt { color: color-mix(in srgb, var(--fg) 60%, transparent); }
+.cal-wk-col.cal-wk-sun .cal-wk-dt { color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted)); }
 /* Today on a Sunday still wins the accent treatment. */
 .cal-wk-col.cal-wk-today.cal-wk-sun .cal-wk-col-head { background: color-mix(in srgb, var(--accent, var(--fg)) 12%, var(--bg)); }
 .cal-wk-col.cal-wk-today.cal-wk-sun .cal-wk-dn,
@@ -42621,7 +42622,7 @@ button.cal-view-btn {
 .sidebar-assistant-entry .sidebar-action-icon { position: relative; left: -2px; }
 #sidebar-assistant-gear:hover { opacity: 0.8 !important; }
 .assistant-settings-form { display: flex; flex-direction: column; gap: 12px; padding: 4px 2px 2px; }
-.assistant-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: color-mix(in srgb, var(--fg) 70%, transparent); }
+.assistant-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: color-mix(in oklab, var(--fg) 70%, var(--fg-muted)); }
 .assistant-field > span { font-size: 11px; opacity: 0.6; }
 .assistant-field input[type="text"],
 .assistant-field input[type="time"],
@@ -43347,7 +43348,7 @@ body.research-panel-view #research-divider { display:none; }
   width:100%; text-align:left;
   height:26px; padding:0 8px; margin-top:23px;
   background:none; border:1px solid var(--border); border-radius:4px;
-  color:color-mix(in srgb, var(--fg) 60%, transparent);
+  color:color-mix(in oklab, var(--fg) 60%, var(--fg-muted));
   font-size:11px; font-family:inherit; cursor:pointer;
   transition:all 0.15s;
 }
@@ -44389,7 +44390,7 @@ body.theme-frosted .modal {
 .research-section-clear {
   font-size: 10px; padding: 0 8px; height: 22px;
   border-radius: 6px; border: 1px solid var(--border);
-  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  color: color-mix(in oklab, var(--fg) 45%, var(--fg-muted));
   background: none; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
   font-family: inherit; white-space: nowrap; transition: all 0.15s;
   position: relative; top: -2px;
@@ -44637,7 +44638,7 @@ body.theme-frosted .modal {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  color: color-mix(in oklab, var(--fg) 70%, var(--fg-muted));
 }
 .adm-copilot-coderow {
   display: flex;
@@ -44648,7 +44649,7 @@ body.theme-frosted .modal {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  color: color-mix(in oklab, var(--fg) 45%, var(--fg-muted));
 }
 .adm-copilot-code {
   font-family: var(--mono, ui-monospace, monospace);
@@ -44672,7 +44673,7 @@ body.theme-frosted .modal {
 .adm-copilot-hint {
   font-size: 11px;
   line-height: 1.4;
-  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  color: color-mix(in oklab, var(--fg) 45%, var(--fg-muted));
 }
 /* Cookbook serve panel: Launch + ^ split button pair */
 .hwfit-serve-launch-group {
@@ -46757,7 +46758,7 @@ body.settings-sidebar-resize-active {
   margin-top: 6px;
   font-size: 12px;
   line-height: 1.5;
-  color: color-mix(in srgb, var(--fg) 75%, transparent);
+  color: color-mix(in oklab, var(--fg) 75%, var(--fg-muted));
   overflow-wrap: anywhere;
 }
 .ws-actions { margin-top: 10px; flex-wrap: wrap; }
@@ -46859,14 +46860,14 @@ body.settings-sidebar-resize-active {
   padding: 24px;
   font-size: 13px;
   text-align: center;
-  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  color: color-mix(in oklab, var(--fg) 70%, var(--fg-muted));
 }
 .wsv-empty[hidden] { display: none; }
 .wsv-hint {
   margin: 0;
   font-size: 12px;
   line-height: 1.45;
-  color: color-mix(in srgb, var(--fg) 75%, transparent);
+  color: color-mix(in oklab, var(--fg) 75%, var(--fg-muted));
 }
 .wsv-hint[hidden] { display: none; }
 /* The door on a workstation tool card: the *workstation* label's shape, as a
@@ -46879,7 +46880,7 @@ body.settings-sidebar-resize-active {
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--fg) 30%, transparent);
   background: transparent;
-  color: color-mix(in srgb, var(--fg) 80%, transparent);
+  color: color-mix(in oklab, var(--fg) 80%, var(--fg-muted));
   font-family: inherit;
   font-size: 0.7em;
   font-weight: 600;
@@ -46993,13 +46994,13 @@ body.settings-sidebar-resize-active {
 .empty-state-title {
   font-size: 13px;
   font-weight: 600;
-  color: color-mix(in srgb, var(--fg) 75%, transparent);
+  color: color-mix(in oklab, var(--fg) 75%, var(--fg-muted));
 }
 .empty-state-message {
   font-size: 11.5px;
   line-height: 1.5;
   max-width: 44ch;
-  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  color: color-mix(in oklab, var(--fg) 50%, var(--fg-muted));
 }
 /* The server's own words. Monospaced and selectable because the next thing a
    person does with them is paste them into an issue. */
@@ -47014,7 +47015,7 @@ body.settings-sidebar-resize-active {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   user-select: text;
-  color: color-mix(in srgb, var(--fg) 62%, transparent);
+  color: color-mix(in oklab, var(--fg) 62%, var(--fg-muted));
   background: color-mix(in srgb, var(--color-danger) 8%, transparent);
 }
 .empty-state-actions {
@@ -47043,7 +47044,7 @@ body.settings-sidebar-resize-active {
    the only one that is news. */
 .empty-state-empty,
 .empty-state-filtered {
-  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  color: color-mix(in oklab, var(--fg) 55%, var(--fg-muted));
 }
 .empty-state-error {
   color: var(--color-danger);
@@ -49173,7 +49174,7 @@ body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .moda
   cursor: pointer;
 }
 #settings-modal .forge-settings-sub { margin: -4px 0 4px; line-height: 1.4; }
-#settings-modal .forge-settings-msg { font-size: 11px; min-height: 14px; color: color-mix(in srgb, var(--fg) 60%, transparent); }
+#settings-modal .forge-settings-msg { font-size: 11px; min-height: 14px; color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted)); }
 #settings-modal .forge-settings-doors { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 #settings-modal .forge-settings-doors > li {
   display: flex;
@@ -49199,7 +49200,7 @@ body:has(:is(.modal, .research-overlay):not(.hidden):not(.modal-minimized) .moda
   gap: 8px;
   padding: 5px 8px;
   font-size: 0.82em;
-  color: color-mix(in srgb, var(--fg) 65%, transparent);
+  color: color-mix(in oklab, var(--fg) 65%, var(--fg-muted));
   border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
 }
 .model-picker-list .model-switch-down-text {
@@ -49772,7 +49773,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   min-height: 44px;
   border: none;
   background: none;
-  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  color: color-mix(in oklab, var(--fg) 55%, var(--fg-muted));
   font-size: 14px;
   cursor: pointer;
 }

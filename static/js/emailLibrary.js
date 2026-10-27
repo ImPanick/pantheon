@@ -1549,7 +1549,7 @@ function _showUnsubscribeCleanupPrompt(modal, candidates) {
       <div style="display:flex;gap:8px;align-items:center;min-width:0;">
         <div style="min-width:0;flex:1;">
           <div style="font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(c.subject || '(no subject)')}</div>
-          <div style="font-size:11px;color:color-mix(in srgb,var(--fg) 62%,transparent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(c.from_name || c.from_address || '')} · ${_esc(c.from_address || '')}</div>
+          <div style="font-size:11px;color:color-mix(in oklab, var(--fg) 62%, var(--fg-muted));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(c.from_name || c.from_address || '')} · ${_esc(c.from_address || '')}</div>
         </div>
         ${uids.length > 1 ? `<span class="email-tag">x${uids.length}</span>` : ''}
       </div>`;
@@ -1609,7 +1609,7 @@ async function _openUnsubscribeReviewModal(anchor) {
           </div>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:10px;max-height:min(56vh,520px);overflow:auto;">
-          <div class="email-unsub-status" style="font-size:12px;color:color-mix(in srgb,var(--fg) 68%,transparent);">Scanning recent ${_esc(state._libFolder || 'INBOX')} headers…</div>
+          <div class="email-unsub-status" style="font-size:12px;color:color-mix(in oklab, var(--fg) 68%, var(--fg-muted));">Scanning recent ${_esc(state._libFolder || 'INBOX')} headers…</div>
           <div class="email-unsub-actions" style="display:none;gap:7px;justify-content:flex-end;flex-wrap:wrap;">
             <button type="button" class="memory-toolbar-btn email-unsub-auto-safe-btn">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
@@ -1631,7 +1631,7 @@ async function _openUnsubscribeReviewModal(anchor) {
           </h4>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:10px;max-height:min(72vh,620px);overflow:auto;">
-        <div class="email-unsub-status" style="font-size:12px;color:color-mix(in srgb,var(--fg) 68%,transparent);">Scanning recent ${_esc(state._libFolder || 'INBOX')} headers…</div>
+        <div class="email-unsub-status" style="font-size:12px;color:color-mix(in oklab, var(--fg) 68%, var(--fg-muted));">Scanning recent ${_esc(state._libFolder || 'INBOX')} headers…</div>
         <div class="email-unsub-actions" style="display:none;gap:7px;justify-content:flex-end;flex-wrap:wrap;">
           <button type="button" class="memory-toolbar-btn email-unsub-auto-safe-btn">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
@@ -1678,7 +1678,7 @@ async function _openUnsubscribeReviewModal(anchor) {
           <div class="email-unsub-card-top" style="display:flex;gap:8px;align-items:flex-start;">
             <div style="min-width:0;flex:1;">
               <div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(c.subject || '(no subject)')}</div>
-              <div style="font-size:11px;color:color-mix(in srgb,var(--fg) 62%,transparent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(c.from_name || c.from_address || '')} · ${_esc(c.from_address || '')}</div>
+              <div style="font-size:11px;color:color-mix(in oklab, var(--fg) 62%, var(--fg-muted));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(c.from_name || c.from_address || '')} · ${_esc(c.from_address || '')}</div>
             </div>
             <span class="email-tag email-tag-spam">score ${_esc(c.score || 0)}</span>
             ${duplicateBadge}

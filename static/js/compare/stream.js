@@ -647,14 +647,14 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
                 aiBody.appendChild(img);
                 if (json.image_prompt) {
                   const caption = document.createElement('div');
-                  caption.style.cssText = 'font-size:0.82em;color:color-mix(in srgb, var(--fg) 55%, transparent);margin-top:6px;line-height:1.4;';
+                  caption.style.cssText = 'font-size:0.82em;color:color-mix(in oklab, var(--fg) 55%, var(--fg-muted));margin-top:6px;line-height:1.4;';
                   caption.textContent = json.image_prompt;
                   aiBody.appendChild(caption);
                 }
                 // Show model name below image (hidden in blind mode until vote)
                 if (json.image_model && !state._blindMode) {
                   const modelLabel = document.createElement('div');
-                  modelLabel.style.cssText = 'font-size:0.75em;color:color-mix(in srgb, var(--fg) 40%, transparent);margin-top:4px;';
+                  modelLabel.style.cssText = 'font-size:0.75em;color:color-mix(in oklab, var(--fg) 40%, var(--fg-muted));margin-top:4px;';
                   modelLabel.textContent = json.image_model;
                   aiBody.appendChild(modelLabel);
                 }
