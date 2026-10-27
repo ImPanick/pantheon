@@ -3432,8 +3432,24 @@ function initializeEventListeners() {
     window.addEventListener('pantheon:chat-busy-change', () => _syncMobileEnterKeyHint(textarea));
     uiModule.autoResize(textarea);
     let previousTextareaValue = textarea.value || '';
+    // `B1086`. A line break asked for with Shift+Enter is a line break, at any
+    // width. The two listeners below turn a line-break INPUT into "queue it"
+    // when the chat counts as busy at ≤768 px, because a phone keyboard's
+    // Enter arrives as `insertLineBreak` with no Enter keydown worth reading.
+    // A hardware keyboard's Shift+Enter arrives as the same input, after a
+    // keydown that says Shift — and the input alone could not tell them
+    // apart, so at 390 px it was submitted instead (and the submit took the
+    // caret; measured in Chromium, `document.activeElement` was <body>). The
+    // keydown path below already exempts Shift; this carries the same answer
+    // to the input that follows it.
+    let shiftEnter = false;
+    textarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') shiftEnter = !!e.shiftKey;
+    }, true);
+    textarea.addEventListener('keyup', (e) => { if (e.key === 'Enter') shiftEnter = false; });
+    textarea.addEventListener('blur', () => { shiftEnter = false; });
     textarea.addEventListener('beforeinput', (e) => {
-      if (_isLineBreakInputEvent(e) && _shouldQueueFromMobileLineBreak(textarea)) {
+      if (_isLineBreakInputEvent(e) && !shiftEnter && _shouldQueueFromMobileLineBreak(textarea)) {
         e.preventDefault();
         e.stopPropagation();
         _submitMobileQueuedInput(textarea);
@@ -3443,7 +3459,7 @@ function initializeEventListeners() {
       const currentValue = textarea.value || '';
       const insertedLineBreak = _isLineBreakInputEvent(e)
         || _countLineBreaks(currentValue) > _countLineBreaks(previousTextareaValue);
-      if (insertedLineBreak && _shouldQueueFromMobileLineBreak(textarea)) {
+      if (insertedLineBreak && !shiftEnter && _shouldQueueFromMobileLineBreak(textarea)) {
         textarea.value = currentValue.replace(/\n+$/g, '');
         previousTextareaValue = textarea.value || '';
         _submitMobileQueuedInput(textarea);
