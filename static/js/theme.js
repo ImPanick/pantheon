@@ -258,28 +258,45 @@ export function contrastRatio(a, b) {
 //: appearance that shipped yesterday, not an illegible one. `--on-accent`
 //: needed its mirrors because its fallback was white on a yellow button.
 export function controlBorderFor(borderHex, panelHex, fgHex, floor = 3) {
-  const rgb = (hex) => {
-    const h = String(hex || '').replace('#', '');
-    const d = h.length === 3 ? h[0] + h[0] + h[1] + h[1] + h[2] + h[2] : h;
-    return d.length === 6 ? hexToRgb('#' + d) : null;
-  };
-  const b = rgb(borderHex);
-  const f = rgb(fgHex);
-  if (!b || !f || !panelHex) return borderHex;
-  const at = (pct) => {
-    const t = pct / 100;
-    const ch = (x, y) => Math.round(y * t + x * (1 - t));
-    return '#' + [ch(b.r, f.r), ch(b.g, f.g), ch(b.b, f.b)]
-      .map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
-  };
-  // One percent at a time from *nothing added*, so the answer is the least
-  // change that clears the floor rather than a fixed ratio that overshoots 21
-  // of the 23. A hundred cheap comparisons, once per theme switch.
+  if (!panelHex) return borderHex;
+  return towardFloor(borderHex, [panelHex], fgHex, floor);
+}
+
+// `#rgb` or `#rrggbb` as `{r, g, b}`; null for anything else.
+function _rgb6(hex) {
+  const h = String(hex || '').replace('#', '');
+  const d = h.length === 3 ? h[0] + h[0] + h[1] + h[1] + h[2] + h[2] : h;
+  return d.length === 6 ? hexToRgb('#' + d) : null;
+}
+
+//: `pct` percent of `towardHex` mixed into `hex`, in sRGB — what
+//: `color-mix(in srgb, <toward> pct%, <hex>)` paints — as `#rrggbb`.
+export function mixHex(hex, towardHex, pct) {
+  const a = _rgb6(hex);
+  const b = _rgb6(towardHex);
+  if (!a || !b) return hex;
+  const t = pct / 100;
+  const ch = (x, y) => Math.round(y * t + x * (1 - t));
+  return '#' + [ch(a.r, b.r), ch(a.g, b.g), ch(a.b, b.b)]
+    .map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
+}
+
+//: `B1552`, `B1554` — `controlBorderFor`'s loop, lifted out so it is the one
+//: way this module moves a colour to a floor (`Law 14`). `hex` mixed toward
+//: `towardHex` one percent at a time from *nothing added*, until it clears
+//: `floor` against EVERY colour in `grounds`: a palette whose colour already
+//: clears keeps it exactly, and one that does not moves the least that clears
+//: — the character of the palette is what is left alone. `towardHex` when
+//: even all the way there is not enough; `hex` when it cannot be read.
+export function towardFloor(hex, grounds, towardHex, floor) {
+  if (!_rgb6(hex) || !_rgb6(towardHex)) return hex;
+  const under = (grounds || []).filter(Boolean);
+  // A hundred cheap comparisons per colour, once per theme switch.
   for (let pct = 0; pct <= 100; pct += 1) {
-    const candidate = at(pct);
-    if (contrastRatio(candidate, panelHex) >= floor) return candidate;
+    const candidate = mixHex(hex, towardHex, pct);
+    if (under.every((g) => contrastRatio(candidate, g) >= floor)) return candidate;
   }
-  return fgHex;
+  return towardHex;
 }
 
 //: Whichever of black or white is legible on `accentHex`. The endpoints of the
@@ -491,6 +508,27 @@ export function applyColors(colors) {
   for (const { key, css } of ADV_KEYS) {
     s.setProperty(css, adv[key] || defaults[key]);
   }
+
+  // `B1552`. **The label of an on chip, legible on its own tint.** The
+  // composer strip's on-state paints the theme's red on a 12% red tint, and
+  // measured over all 23 palettes on the surfaces it sits on — the composer
+  // (`--input-bg`), the composer in plan mode (8% accent over it), and the page
+  // (`--bg`, `--panel`, under the Auto-approve badge, which wears the same
+  // on-state) — that label missed 4.5:1 on twelve of them: `paper` 1.95,
+  // `cute` 2.14, `light` 2.47, `claude` 2.66 … `cyberpunk` 4.49. So it moves,
+  // per palette, the least that clears: toward whichever of black or white is
+  // legible on the composer (`onAccentFor`), which keeps its hue. The rest
+  // clear already and keep their red exactly; the tint stays the red. The
+  // 0.02 is rounding: these grounds are rounded to a hex here, and the browser
+  // composites the tint itself. No first-paint mirror, as for
+  // `--border-control`: no chip is on before this module boots, and the
+  // fallback is today's red.
+  const _red = colors.red || '#e06c75';
+  const _inputBg = adv.inputBg || defaults.inputBg;
+  const _planBar = mixHex(_inputBg, _accent || _red, 8);
+  const _onTint = [_inputBg, _planBar, colors.bg, colors.panel]
+    .filter(Boolean).map((under) => mixHex(under, _red, 12));
+  s.setProperty('--chip-on-fg', towardFloor(_red, _onTint, onAccentFor(_inputBg), 4.5 + 0.02));
 
   // Update favicon to match theme accent color. `_accent`, not `colors.red`:
   // the comment said accent and the argument said red, and until P1-01 made

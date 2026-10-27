@@ -489,11 +489,20 @@ def test_the_shipped_markup_holds_both_surfaces():
 def test_the_badge_has_a_style_that_survives_every_palette():
     """Themes are protected (`D-2026-09-14-03`): every colour term is a theme
     token or a mix with one, and `--accent` is not reached for — the chip's
-    on-state is `var(--red)` and the badge has to match it."""
+    on-state is `var(--red)` and the badge has to match it.
+
+    `B1552` moved the on-state's label to `--chip-on-fg` (the red, lifted per
+    palette to 4.5:1 on its tint, `theme.js`), falling back to `var(--red)`;
+    the badge's label is the same declaration as the chip's, which is the
+    "has to match" this case is for, asserted rather than implied."""
     css = STYLE.read_text(encoding="utf-8")
     start = css.index(".chat-auto-approve-badge {")
     block = css[start: css.index("}", start)]
     colours = re.findall(r"var\(--[a-z-]+\)", block)
     assert colours, "the block defines no colour at all"
     assert set(colours) <= {"var(--red)"}, colours
+    label = re.search(r"(?:^|[;{\s])color\s*:\s*([^;]+);", block).group(1).strip()
+    chip_at = css.index(".tool-chip.active {")
+    chip = re.search(r"(?:^|[;{\s])color\s*:\s*([^;]+);", css[chip_at: css.index("}", chip_at)]).group(1).strip()
+    assert label == chip == "var(--chip-on-fg, var(--red))", (label, chip)
     assert "[hidden] { display: none; }" in css[start: start + 900]

@@ -4066,11 +4066,19 @@ body.bg-pattern-sparkles {
     .input-icon-btn.expanded { transition: none; }
     /* Accent color for Research, Compare toolbar indicators — and Plan, the
        one chip in the strip that is not a `.tool-indicator` but is pressed
-       on and off like one (`B781`: one on-state, not two). */
+       on and off like one (`B781`: one on-state, not two).
+       `B1552`: and every other `.tool-chip` — Web and Shell had kept
+       `.input-icon-btn.active`'s neutral tint, a second on-state in one
+       strip. The label is `--chip-on-fg`, the theme's red moved per palette
+       only as far as 4.5:1 on this tint needs (`theme.js` `applyColors`);
+       before that module boots, the red itself. The tint is still the red.
+       `#workspace-indicator-btn.active` below is not an on-state: a
+       workspace is a place shown by name, not a switch. */
     #research-toggle-btn.active,
     .tool-indicator.active,
-    .plan-mode-btn.active {
-      color: var(--red);
+    .plan-mode-btn.active,
+    .tool-chip.active {
+      color: var(--chip-on-fg, var(--red));
       background: color-mix(in srgb, var(--red) 12%, transparent);
     }
     #workspace-indicator-btn.active {
@@ -4141,10 +4149,13 @@ body.bg-pattern-sparkles {
       color: var(--accent, var(--accent-primary, var(--red))) !important;
       opacity: 1 !important;
     }
+    /* `B1552`: the strip's one on-state, not a third of its own — this was
+       the accent on a 9% `--fg` tint (2.66:1 on `light`), and `!important`
+       kept it out of reach of the shared rule. */
     #doc-indicator-btn.active {
-      color: var(--accent, var(--accent-primary, var(--red))) !important;
+      color: var(--chip-on-fg, var(--red)) !important;
       opacity: 1 !important;
-      background: color-mix(in srgb, var(--fg) 9%, transparent) !important;
+      background: color-mix(in srgb, var(--red) 12%, transparent) !important;
     }
     #overflow-doc-btn.has-docs,
     #overflow-doc-btn.active {
@@ -4402,10 +4413,13 @@ body.bg-pattern-sparkles {
        on-state from `.tool-indicator.active`, which is `var(--red)`, and the
        badge has to be the same colour as the chip or the chat is saying one
        thing in two colours. It also keeps the `--accent` census where
-       `tests/test_accent_fallback_semantics_css.py` pins it. Legible in all
-       sixteen palettes because every term is a theme token or a mix with one
-       (`D-2026-09-14-03`); no border-radius guesswork — the pill shape is the
-       `.chat-meta-count` ramp plus padding. */
+       `tests/test_accent_fallback_semantics_css.py` pins it. No border-radius
+       guesswork — the pill shape is the `.chat-meta-count` ramp plus padding.
+       `B1552`: "legible in all sixteen palettes because every term is a
+       theme token" was not a measurement — red on its own 12% tint is under
+       4.5:1 on eleven of 23. The label is the chip's `--chip-on-fg`, which
+       `applyColors` clears against this badge's 12% and hover 20% tints on
+       `--bg` and `--panel` as well as the composer's. */
     .chat-auto-approve-badge {
       font-size: 11px;
       font-weight: 600;
@@ -4415,13 +4429,15 @@ body.bg-pattern-sparkles {
       border: 1px solid color-mix(in srgb, var(--red) 40%, transparent);
       border-radius: 999px;
       background: color-mix(in srgb, var(--red) 12%, transparent);
-      color: var(--red);
+      color: var(--chip-on-fg, var(--red));
       white-space: nowrap;
       cursor: pointer;
       vertical-align: 1px;
     }
+    /* `B1552`: the hover strengthens the edge, not the tint — a 20% tint
+       under the label was a second ground for it to clear. */
     .chat-auto-approve-badge:hover {
-      background: color-mix(in srgb, var(--red) 20%, transparent);
+      border-color: color-mix(in srgb, var(--red) 75%, transparent);
     }
     .chat-auto-approve-badge[hidden] { display: none; }
     /* The composer chip is a toggle while it is off and a clearable indicator
@@ -34090,9 +34106,11 @@ button .spinner-whirlpool {
 .msg-group .role {
   font-weight: 600;
 }
+/* `B1552`: the strip's on-state label, which this id rule out-ranked with the
+   bare red. The overflow item sits on `--panel`, which the label clears too. */
 #group-toggle-btn.active,
 .overflow-menu-item#overflow-group-btn.active {
-  color: var(--red);
+  color: var(--chip-on-fg, var(--red));
   background: color-mix(in srgb, var(--red) 12%, transparent);
 }
 /* Group model picker — match app theme */

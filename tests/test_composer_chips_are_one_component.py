@@ -40,8 +40,11 @@ population `tests/test_accent_fallback_semantics_css.py` pins. `B781` then did
 it on purpose, in the direction that shrinks that population (814 / 553 / 562
 / 181 → 812 / 551 / 560 / 180): the plan chip's on-state is one selector in
 `.tool-indicator.active`'s rule. Web and Shell were never in either rule — they
-take `.input-icon-btn.active`'s neutral tint — and that third on-state is
-measured below rather than assumed away.
+took `.input-icon-btn.active`'s neutral tint — and `B1552` joined them too:
+the one rule now names `.tool-chip.active`, the component's own on-state, and
+its label is `--chip-on-fg`, the red cleared to 4.5:1 on its tint per palette
+(measured in Chromium in
+`tests/test_every_chip_in_the_strip_has_one_on_state_that_reads.py`).
 """
 import re
 from pathlib import Path
@@ -247,22 +250,28 @@ def test_the_plan_chip_and_the_indicators_share_one_on_state():
               if ".plan-mode-btn.active" in [p.strip() for p in sel.split(",")]]
     assert len(shared) == 1, "the plan chip and the indicators are not in one on-state rule"
     body = shared[0][1]
-    assert re.search(r"(?:^|;)\s*color\s*:\s*var\(--red\)", body), body
+    # `B1552`: the label is the red cleared to AA on the tint, red before boot.
+    assert re.search(r"(?:^|;)\s*color\s*:\s*var\(--chip-on-fg,\s*var\(--red\)\)", body), body
     assert "--accent" not in body, "the shared on-state reaches for the accent again"
     own = [b for _, b in _on_state_rules(".plan-mode-btn.active")
            if re.search(r"(?:^|;)\s*(?:color|background)\s*:", b)]
     assert len(own) == 1, f"the plan chip has an on-state of its own again: {own}"
 
 
-def test_web_and_shell_keep_the_neutral_on_state_they_always_had():
-    """Measured, not a goal: Web and Shell are `.input-icon-btn` toggles whose
-    `.active` is the neutral `--fg` tint, and `B781` did not move them. Pinned so
-    the strip's two on-states are a known fact (filed with their contrast
-    figures) rather than a third one appearing unnoticed."""
+def test_web_and_shell_take_the_strips_one_on_state():
+    """`B1552`. Web and Shell were `.input-icon-btn` toggles whose `.active` was
+    the neutral `--fg` tint, a second on-state in one strip (and 3.85:1 on
+    `retrowave`). The shared rule names the component's own on-state,
+    `.tool-chip.active`, and both wear the component — so neither can drift
+    into a third. The neutral rule stays for the `.input-icon-btn`s that are not
+    chips."""
     ids = {i for i, b in _chips()}
     assert {"web-toggle-btn", "bash-toggle-btn"} <= ids
     for i, block in _chips():
         if i in ("web-toggle-btn", "bash-toggle-btn"):
-            assert "tool-indicator" not in block and "plan-mode-btn" not in block, i
+            assert CHIP in _own_classes(block), i
+    shared = [(sel, body) for sel, body in _on_state_rules(".tool-indicator.active")
+              if f".{CHIP}.active" in [p.strip() for p in sel.split(",")]]
+    assert len(shared) == 1, "the component's on-state is not the strip's one rule"
     neutral = _on_state_rules(".input-icon-btn.active")
     assert neutral and re.search(r"(?:^|;)\s*color\s*:\s*var\(--fg\)", neutral[0][1]), neutral

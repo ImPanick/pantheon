@@ -386,6 +386,9 @@ It was 552 until 2026-09-18, and the one that arrived is named rather than
     # colour moved.
     # 551 -> 550, 560 -> 559, 812 -> 811: `H21` deleted the `.search-fb-*`
     # chips nothing drew, whose `.search-fb-add` border was one of them.
+    # 559 -> 558, 811 -> 810: `B1552` gave `#doc-indicator-btn.active` the
+    # composer strip's one on-state; its label was the accent, spelled
+    # `var(--accent, var(--accent-primary, var(--red)))`, so not an exact one.
     assert len(exact) == 550, (
         f"expected 550 sites spelling the fallback `var(--red)` exactly, found "
         f"{len(exact)}. If a site was legitimately added or removed, move this "
@@ -405,12 +408,12 @@ It was 552 until 2026-09-18, and the one that arrived is named rather than
             continue  # a gaining site, counted by the population above
         if painted == red:
             resolving.append(expr)
-    assert len(resolving) == 559, (
-        f"expected 559 sites whose fallback resolves to the theme's red, found "
+    assert len(resolving) == 558, (
+        f"expected 558 sites whose fallback resolves to the theme's red, found "
         f"{len(resolving)}"
     )
-    assert len(_var_uses("accent")) == 811, (
-        f"expected 811 uses of --accent in total, found {len(_var_uses('accent'))}"
+    assert len(_var_uses("accent")) == 810, (
+        f"expected 810 uses of --accent in total, found {len(_var_uses('accent'))}"
     )
 
 
@@ -503,8 +506,10 @@ def test_the_population_under_the_contrast_exception_cannot_grow():
     decls = _full_strength_accent_colour_decls()
     # 181 -> 180: `B781`, the plan chip's on-state, now `.tool-indicator.active`'s
     # `var(--red)` (see the population test above). One fewer, on purpose.
-    assert len(decls) == 180, (
-        f"expected 180 full-strength accent `color:` declarations, found "
+    # 180 -> 179: `B1552`, the Documents chip's on-state, now the strip's one
+    # (`--chip-on-fg`, the red cleared to 4.5:1 on its tint). One fewer again.
+    assert len(decls) == 179, (
+        f"expected 179 full-strength accent `color:` declarations, found "
         f"{len(decls)}. Adding one adds a site that fails the contrast floor on "
         "seven of the sixteen palettes."
     )
