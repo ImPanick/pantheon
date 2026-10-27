@@ -201,11 +201,13 @@ def test_the_readers_menu_is_buttons(walked):
 #:     container that only routes or stops a click, a pointer surface, or a
 #:     control the keyboard reaches another way.
 #:
-#: What is left is real controls still a mouse's alone: one, Compare's model
-#: picker (`compare/selector.js`), whose options drop under a text input with no
-#: arrow-key way into them — it needs the model picker's
-#: `_handlePickerKeydown`, not a tab stop per option. It may fall; it may not rise.
-CEILING = 1
+#: What was left was one real control still a mouse's alone: Compare's model
+#: picker (`compare/selector.js`), whose options dropped under a text input with
+#: no arrow-key way into them. `B1589` made it a combobox (arrows, Enter,
+#: `aria-activedescendant`; `tests/test_compares_model_picker_is_worked_from_a_keyboard.py`),
+#: so it is in `NOT_COUNTED` with the other two pickers and the ceiling is 0.
+#: It may not rise.
+CEILING = 0
 
 _DECL = re.compile(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*document\.createElement\("
                    r"\s*['\"](?:div|span|li|td|tr)['\"]\s*\)")
@@ -255,6 +257,9 @@ NOT_COUNTED = {
         "a command-palette option: the arrow keys reach it from the search box (aria-activedescendant)",
     ("static/js/modelPicker.js", "row"):
         "a model in the picker: the arrow keys and Enter reach it from the picker's search box",
+    ("static/js/compare/selector.js", "item"):
+        "a model in Compare's picker: the arrow keys and Enter reach it from the picker's "
+        "search box (`B1589`, aria-activedescendant)",
     ("static/js/sessions.js", "div"):
         "a chat in the sidebar list: a listbox option the arrow keys move between; "
         "one row is the list's tab stop (`B1576`, roving tabindex)",
@@ -276,19 +281,6 @@ NOT_COUNTED = {
 }
 
 
-def _block_end(text: str, pos: int) -> int:
-    """Where the block the declaration at `pos` sits in closes."""
-    depth = 0
-    for i in range(pos, len(text)):
-        if text[i] == "{":
-            depth += 1
-        elif text[i] == "}":
-            if depth == 0:
-                return i
-            depth -= 1
-    return len(text)
-
-
 def _reached_in_place(body: str, name: str) -> bool:
     n = re.escape(name)
     if re.search(n + r"\s*\.\s*dataset\.a11yActivatable\s*=|"
@@ -302,15 +294,19 @@ def _reached_in_place(body: str, name: str) -> bool:
 
 def sites() -> list[tuple[str, str, bool]]:
     """`(module, name, reached in place)` for every site in the scope."""
+    from tests.helpers.js_source import js_block_end, js_spans
     from tests.helpers.source_text import blank
     found = []
     for path in sorted((ROOT / "static").rglob("*.js")):
         if "static/lib/" in path.as_posix():
             continue
         text = blank(path)
+        spans = js_spans(text)
         for m in _DECL.finditer(text):
             name = m.group(1)
-            end = _block_end(text, m.end())
+            # Where the block the declaration sits in closes — the shared
+            # walk, which steps over strings and templates (`B876`).
+            end = js_block_end(text, m.end(), spans)
             click = re.compile(r"\b" + re.escape(name)
                                + r"\s*\.\s*(?:addEventListener\(\s*['\"]click['\"]|onclick\s*=)")
             if click.search(text, m.end(), end):

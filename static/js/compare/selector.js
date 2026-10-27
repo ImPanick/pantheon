@@ -20,6 +20,10 @@ const _CMP_PLAY_ICON = playIcon({ size: 14 });
 const _CMP_START_LABEL = _CMP_PLAY_ICON + ' Start';
 
 /** Slot label: letters (A, B) in parallel, numbers (1, 2) in sequential */
+//: `B1589`. Each searchable picker's listbox gets its own id, so its search
+//: box can name the option the arrow keys are on (`aria-activedescendant`).
+let _pickerSeq = 0;
+
 function _slotChar(i) { return state._parallel ? String.fromCharCode(65 + i) : String(i + 1); }
 
 /** Sync the Compare toolbar indicator button state. */
@@ -458,8 +462,71 @@ async function showModelSelector() {
       dropdown.style.cssText = 'display:none;position:fixed;max-height:200px;overflow-y:auto;background:var(--panel);border:1px solid var(--border);border-radius:6px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.2);';
       document.body.appendChild(dropdown);
 
+      // `B1589`. The options were a mouse's alone: clickable divs under a text
+      // box, with Enter taking whichever came first. The picker is a combobox
+      // now, the shape the command palette and the chat's model picker have:
+      // the focus stays in the search box, the arrow keys move through the
+      // options (`aria-activedescendant` names the one they are on, for a
+      // screen reader), Enter picks it and Escape closes the list. Not a tab
+      // stop per option — a list of forty models is forty Tabs to get past.
+      const listId = `cmp-picker-list-${++_pickerSeq}`;
+      dropdown.id = listId;
+      dropdown.setAttribute('role', 'listbox');
+      input.setAttribute('role', 'combobox');
+      input.setAttribute('aria-autocomplete', 'list');
+      input.setAttribute('aria-controls', listId);
+      input.setAttribute('aria-expanded', 'false');
+      if (!input.getAttribute('aria-label')) input.setAttribute('aria-label', `Model ${_slotChar(slotIdx)}`);
+      const _HOVER_BG = 'color-mix(in srgb, var(--fg) 10%, transparent)';
+      const _CHOSEN_BG = 'color-mix(in srgb, var(--fg) 8%, transparent)';
+      let _active = -1;
+      let _picks = [];          // one per drawn option, in order: picks it from the keyboard
+      const _options = () => [...dropdown.querySelectorAll('[role="option"]')];
+      function _setActive(i) {
+        const opts = _options();
+        _active = (i >= 0 && i < opts.length) ? i : -1;
+        opts.forEach((o, j) => {
+          const on = j === _active;
+          o.setAttribute('aria-selected', on ? 'true' : 'false');
+          o.style.background = on ? _HOVER_BG : (o.dataset.chosen === '1' ? _CHOSEN_BG : '');
+        });
+        if (_active >= 0) {
+          input.setAttribute('aria-activedescendant', opts[_active].id);
+          opts[_active].scrollIntoView({ block: 'nearest' });
+        } else {
+          input.removeAttribute('aria-activedescendant');
+        }
+      }
+      function _openList() {
+        dropdown.style.display = '';
+        input.setAttribute('aria-expanded', 'true');
+        _placeDropdown();
+      }
+      function _closeList() {
+        dropdown.style.display = 'none';
+        input.setAttribute('aria-expanded', 'false');
+        _setActive(-1);
+        if (currentSel) {
+          const m = modelList.find(m => m.id === currentSel.model && m.url === currentSel.endpoint);
+          if (m) input.value = buildOption(m).label;
+        }
+      }
+      function _choose(m, opt, { keepFocus = false } = {}) {
+        const chosen = { model: m.id, endpoint: m.url, endpointId: m.endpointId, name: m.name, endpointName: m.endpointName || '' };
+        input.value = opt.label;
+        currentSel = chosen;
+        onSelect(chosen);
+        _closeList();
+        // A tap blurs, so a phone's keyboard goes away; a key press keeps the
+        // focus where the person is.
+        if (!keepFocus) input.blur();
+      }
+
       function renderItems(query) {
         dropdown.innerHTML = '';
+        _active = -1;
+        _picks = [];
+        input.removeAttribute('aria-activedescendant');
         const q = (query || '').toLowerCase();
         const matches = modelList.filter(m => {
           const label = buildOption(m).label.toLowerCase();
@@ -472,23 +539,22 @@ async function showModelSelector() {
           dropdown.appendChild(empty);
           return;
         }
-        matches.forEach(m => {
+        matches.forEach((m, idx) => {
           const opt = buildOption(m);
           const item = document.createElement('div');
+          item.id = `${listId}-${idx}`;
+          item.setAttribute('role', 'option');
+          item.setAttribute('aria-selected', 'false');
           item.style.cssText = 'padding:6px 12px;cursor:pointer;font-size:0.85em;transition:background 0.08s;';
           item.textContent = opt.label;
           const isSelected = currentSel && currentSel.model === m.id && (currentSel.endpoint === m.url || !modelList.some(o => o.id === m.id && o !== m));
-          if (isSelected) item.style.background = 'color-mix(in srgb, var(--fg) 8%, transparent)';
-          item.addEventListener('mouseenter', () => { item.style.background = 'color-mix(in srgb, var(--fg) 10%, transparent)'; });
-          item.addEventListener('mouseleave', () => { item.style.background = isSelected ? 'color-mix(in srgb, var(--fg) 8%, transparent)' : ''; });
-          item.addEventListener('click', () => {
-            const chosen = { model: m.id, endpoint: m.url, endpointId: m.endpointId, name: m.name, endpointName: m.endpointName || '' };
-            input.value = opt.label;
-            currentSel = chosen;
-            onSelect(chosen);
-            dropdown.style.display = 'none';
-            input.blur();
-          });
+          if (isSelected) { item.dataset.chosen = '1'; item.style.background = _CHOSEN_BG; }
+          item.addEventListener('mouseenter', () => { item.style.background = _HOVER_BG; });
+          item.addEventListener('mouseleave', () => { item.style.background = _active === idx ? _HOVER_BG : (isSelected ? _CHOSEN_BG : ''); });
+          // Picked with the mouse (a click), or from the search box's Enter
+          // (`B1589`), which keeps the focus where the person is.
+          item.addEventListener('click', () => _choose(m, opt));
+          _picks.push(() => _choose(m, opt, { keepFocus: true }));
           dropdown.appendChild(item);
         });
       }
@@ -526,19 +592,32 @@ async function showModelSelector() {
       input.addEventListener('focus', () => {
         input.value = '';
         renderItems('');
-        dropdown.style.display = '';
-        _placeDropdown();
+        _openList();
       });
       input.addEventListener('input', () => {
         renderItems(input.value);
-        dropdown.style.display = '';
-        _placeDropdown();
+        _openList();
       });
       input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
+        const open = dropdown.style.display !== 'none';
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
           e.preventDefault();
-          const first = dropdown.querySelector('div[style*="cursor:pointer"]');
-          if (first) first.click();
+          if (!open) { input.value = ''; renderItems(''); _openList(); }
+          const n = _options().length;
+          if (!n) return;
+          if (e.key === 'ArrowDown') _setActive(_active < n - 1 ? _active + 1 : 0);
+          else _setActive(_active > 0 ? _active - 1 : n - 1);
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          const pick = _active >= 0 ? _picks[_active] : (open ? _picks[0] : null);
+          if (pick) pick();
+        } else if (e.key === 'Escape' && open) {
+          // The list closes, not the Compare window around it.
+          e.preventDefault();
+          e.stopPropagation();
+          _closeList();
+        } else if (e.key === 'Tab' && open) {
+          _closeList();
         }
       });
       // Close on outside click. The dropdown lives in document.body, so check
@@ -546,11 +625,7 @@ async function showModelSelector() {
       // is removed from the DOM (rebuild) so it doesn't orphan in the body.
       function _closeHandler(e) {
         if (!wrap.contains(e.target) && !dropdown.contains(e.target)) {
-          dropdown.style.display = 'none';
-          if (currentSel) {
-            const m = modelList.find(m => m.id === currentSel.model && m.url === currentSel.endpoint);
-            if (m) input.value = buildOption(m).label;
-          }
+          _closeList();
           if (!wrap.isConnected) {
             dropdown.remove();
             document.removeEventListener('click', _closeHandler, true);

@@ -418,6 +418,35 @@ def js_binding(source: str, name: str) -> str:
     raise AssertionError(f"no binding named {name!r} in code")
 
 
+def js_block_end(source: str, pos: int, spans=None) -> int:
+    """The offset of the `}` that closes the block `pos` sits in, or
+    `len(source)` when `pos` is at the top level.
+
+    Lifted out of `tests/test_the_email_library_is_reached_from_a_keyboard.py`,
+    whose census grew its own brace counter for it (`B1576`) — over text with
+    only its comments blanked, so a brace in a string or a template counted
+    (`B876`'s failure, and `test_one_js_function_extractor.py` named it). Here
+    a comment, string, template chunk or regex literal is stepped over.
+    """
+    if spans is None:
+        spans = js_spans(source)
+    i, n, depth = pos, len(source), 0
+    while i < n:
+        j = js_skip(source, i, n, spans)
+        if j != i:
+            i = j
+            continue
+        c = source[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            if depth == 0:
+                return i
+            depth -= 1
+        i += 1
+    return n
+
+
 def _skip_to(source: str, i: int, n: int, spans, ch: str) -> int:
     """The first `ch` at or after `i` that is code."""
     while i < n:
