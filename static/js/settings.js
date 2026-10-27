@@ -2131,7 +2131,8 @@ async function initRetentionWindows() {
 const _ENVFLAG_LABELS = {
   allow_model_download: {
     title: 'Download models from the internet',
-    sub: 'Lets Pantheon fetch the local embedding model from HuggingFace on first use. Off ships off — with no local embedding server and no permission, memory stays unavailable rather than reaching out.',
+    // `B1565`: the same switch governs local speech-to-text's Whisper model.
+    sub: 'Lets Pantheon fetch a local model from Hugging Face on first use — the embedding model, and Whisper for local speech-to-text. Off ships off — with no local embedding server and no permission, memory stays unavailable rather than reaching out, and local speech-to-text says the model is missing.',
   },
   searxng_widen_engines: {
     title: 'Let a failed search retry with this instance’s default engines',

@@ -29,9 +29,12 @@ def setup_stt_routes(stt_service):
         from src.auth_helpers import get_current_user
         try:
             if not stt_service.available:
+                # `B1565`. When the download gate is why, say so: the voice
+                # recorder shows `detail.message` as it is.
+                reason = getattr(stt_service, "unavailable_reason", lambda: None)()
                 raise HTTPException(
                     status_code=503,
-                    detail={"message": "STT service not available or set to browser mode"}
+                    detail={"message": reason or "STT service not available or set to browser mode"}
                 )
 
             # `B932`. The cap is the caller's: `P12-01`'s chain asks the role
