@@ -238,7 +238,8 @@ def test_the_skill_settings_are_a_view_of_the_skills_window_and_the_room_mirrors
               label: $('wb-skill-confidence-label').textContent, wbSlider: $('wb-skill-confidence-slider').value,
               inBrain: !!$('memory-modal') });
     """)
-    assert o["tabs"] == ["browse", "add", "settings"]
+    # `P13-08` added a fourth view, Growth, after the three this pinned.
+    assert o["tabs"] == ["browse", "add", "settings", "growth"]
     assert o["shown"] is True
     assert o["writes"] == [True] and o["followed"] is True
     assert o["label"] == "≥ 90%" and o["wbSlider"] == "90"

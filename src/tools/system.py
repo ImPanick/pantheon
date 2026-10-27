@@ -255,7 +255,8 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
             return {"error": f"Skill {name!r} not found", "exit_code": 1}
         if not sk_new.owner:
             sk_new.owner = match.get("owner") or owner
-        ok = sm.update_skill(name, _skill_dump(sk_new), owner=owner)
+        ok = sm.update_skill(name, _skill_dump(sk_new), owner=owner,
+                             why="the assistant edited it")   # `P13-08`
         return {"results": f"Edited skill `{sk_new.name}`."} if ok else {"error": "Update failed", "exit_code": 1}
 
     if action == "patch":
@@ -279,7 +280,8 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
         except Exception as e:
             return {"error": f"Patched content is not valid SKILL.md: {e}", "exit_code": 1}
         sk_new.name = slugify(sk_new.name or name)
-        ok = sm.update_skill(name, _skill_dump(sk_new), owner=owner)
+        ok = sm.update_skill(name, _skill_dump(sk_new), owner=owner,
+                             why="the assistant edited it")   # `P13-08`
         return {"results": f"Patched skill `{sk_new.name}`."} if ok else {"error": "Patch update failed", "exit_code": 1}
 
     if action == "publish":
@@ -292,13 +294,13 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
         updates = {"status": "published"}
         if args.get("confidence") is not None:
             updates["confidence"] = max(0.0, min(1.0, float(args["confidence"])))
-        sm.update_skill(name, updates, owner=owner)
+        sm.update_skill(name, updates, owner=owner, why="the assistant published it")   # `P13-08`
         return {"results": f"✅ Published `{name}`. It now appears in the skills index for future turns."}
 
     if action == "delete":
         if not name:
             return {"error": "name is required for delete", "exit_code": 1}
-        ok = sm.delete_skill(name, owner=owner)
+        ok = sm.delete_skill(name, owner=owner, why="the assistant deleted it")   # `P13-08`
         return {"results": f"Deleted skill `{name}`."} if ok else {"error": f"Skill {name!r} not found", "exit_code": 1}
 
     if action == "search":

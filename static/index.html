@@ -627,6 +627,8 @@
             <button type="button" class="memory-tab active" data-skills-view="browse" role="tab" aria-selected="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Skills</button>
             <button type="button" class="memory-tab" data-skills-view="add" role="tab" aria-selected="false"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>Add</button>
             <button type="button" class="memory-tab" data-skills-view="settings" role="tab" aria-selected="false"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.2 4.2l2.8 2.8M17 17l2.8 2.8M1 12h4M19 12h4M4.2 19.8 7 17M17 7l2.8-2.8"/></svg>Settings</button>
+            <!-- `P13-08`. What the system learned, dated: `static/js/skillGrowth.js`. -->
+            <button type="button" class="memory-tab" data-skills-view="growth" role="tab" aria-selected="false"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></svg>Growth</button>
           </div>
           <div class="memory-tab-panel skills-view" data-skills-view-panel="browse">
               <div class="admin-card" style="display:flex;flex-direction:column;overflow:hidden;flex:1;min-height:0;">
@@ -825,6 +827,23 @@
                 </div>
                 <span class="admin-toggle-sub" style="display:block;margin-top:6px;opacity:0.5">0 turns it off.</span>
                 <span class="admin-toggle-sub skill-gate-note" style="display:block;margin-top:8px;opacity:0.6">Skills are untrusted text, so a reply that uses one asks before it writes, runs, sends or deletes.</span>
+              </div>
+          </div>
+          <!-- `P13-08`. A table to read, sort and act on — not a chart. -->
+          <div class="memory-tab-panel skills-view hidden" data-skills-view-panel="growth">
+              <div class="admin-card skills-growth-card">
+                <div style="display:flex;align-items:center;gap:8px;min-height:32px">
+                  <h2 style="margin:0;padding:0;line-height:1;">Growth</h2>
+                  <span style="flex:1"></span>
+                  <select id="skills-growth-days" class="memory-sort-select" aria-label="How far back">
+                    <option value="7" selected>This week</option>
+                    <option value="30">Last 30 days</option>
+                    <option value="90">Last 90 days</option>
+                  </select>
+                </div>
+                <p class="memory-desc doclib-desc" style="margin-top:6px;">What Pantheon learned and whether it held up: each skill that formed, got stronger or weaker, was tested, used, or fell away, and why. Press a column to sort it; press a skill to open it.</p>
+                <p id="skills-growth-sentence" class="skills-growth-sentence" role="status" aria-live="polite"></p>
+                <div id="skills-growth" class="skills-growth"></div>
               </div>
           </div>
         </div>

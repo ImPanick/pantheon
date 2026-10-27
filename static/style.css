@@ -13754,6 +13754,19 @@ details a:hover {
   line-height: 1.45;
 }
 .skill-off-pill { background: color-mix(in srgb, var(--fg) 12%, transparent); }
+/* `P13-08`. The Growth view: a dated table to read, sort and act on. Text in
+   the page's own colour (`--fg`), never dimmed by opacity — a reading task. */
+.skills-growth-card { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.skills-growth-sentence { margin: 4px 0 8px; font-size: 12px; color: var(--fg); }
+.skills-growth { overflow: auto; min-height: 0; }
+.skills-growth-table { width: 100%; border-collapse: collapse; font-size: 12px; color: var(--fg); }
+.skills-growth-table th { text-align: left; position: sticky; top: 0; background: var(--bg); border-bottom: 1px solid var(--border); padding: 0; }
+.skills-growth-table td { padding: 5px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.skills-growth-table td:first-child { white-space: nowrap; color: var(--color-muted-alt); }
+.skills-growth-sort { all: unset; cursor: pointer; display: block; padding: 5px 6px; font-weight: 600; color: var(--fg); }
+.skills-growth-sort:focus-visible, .skills-growth-open:focus-visible { outline: 2px solid var(--accent, var(--red)); outline-offset: 1px; }
+.skills-growth-open { all: unset; display: inline; font: inherit; line-height: inherit; cursor: pointer; text-decoration: underline; color: var(--fg); }
+.skills-growth-empty { font-size: 12px; color: var(--color-muted-alt); }
 .skill-group-menu-check { width: 14px; display: inline-flex; justify-content: center; flex-shrink: 0; }
 @media (max-width: 768px) {
   .skills-modal-body { flex-direction: column; gap: 6px; }

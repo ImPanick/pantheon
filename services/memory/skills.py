@@ -67,6 +67,121 @@ _SUBSTANTIVE_FIELDS = (
 )
 
 
+# ---------------------------------------------------------------------------
+# Growth — `P13-08`
+# ---------------------------------------------------------------------------
+#
+# A skill's life, one dated row per change, in the events table everything
+# else that happens is written to (`src/events.record_event`, `P14-02`): the
+# rows are kept as long as the rest (`events_retention_days`) and read back by
+# `GET /api/skills/growth`. Written here because every write of a skill lands
+# in `_write_skill` and every use in `record_use` — one place each, so no
+# writer can change a skill without the row (`Law 14`).
+#
+# `outcome` is the change, from this list and nothing else (`Law 10`):
+#   formed       — a skill that did not exist was written
+#   strengthened — its confidence rose      weakened — it fell
+#   published    — it is offered to the model now    drafted — it is not
+#   edited       — what it says changed (`_SUBSTANTIVE_FIELDS`)
+#   tested       — an audit or test judged it (`set_audit`)
+#   used         — it was shown to the model (`record_use`)
+#   removed      — it was deleted
+SKILL_EVENT_KIND = "skill"
+SKILL_CHANGES = ("formed", "strengthened", "weakened", "published", "drafted",
+                 "edited", "tested", "used", "removed")
+
+
+def _skill_event(name: str, change: str, *, owner: Optional[str],
+                 session_id: Optional[str] = None, **detail) -> None:
+    """One dated row of a skill's life. Never raises: a skill saved and its
+    row lost is a gap in a history; a skill not saved is a lost skill."""
+    try:
+        from src.events import record_event
+        record_event(SKILL_EVENT_KIND, name=name, owner=owner or None,
+                     session_id=session_id, outcome=change,
+                     detail={k: v for k, v in detail.items() if v not in (None, "")} or None)
+    except Exception as exc:  # noqa: BLE001 — the history is not the skill
+        logger.debug("skill growth row not written: %s", exc)
+
+
+#: `P13-08`. Where a new skill came from, as the growth view says it.
+_SOURCE_SAID = {
+    "learned": "learned from a chat",
+    "user": "you wrote it",
+    "teacher-escalation": "the teacher model wrote it",
+}
+
+#: `P13-08`. A test's verdict, as the growth view says it.
+_VERDICT_SAID = {
+    "pass": "passed", "fail": "failed", "needs_work": "needs work",
+    "inconclusive": "couldn't tell", "unknown": "couldn't tell", "skipped": "skipped",
+}
+
+
+def _pct(value) -> str:
+    try:
+        return f"{round(float(value) * 100)}%"
+    except (TypeError, ValueError):
+        return "?"
+
+
+def _growth_said(change: str, d: Dict) -> str:
+    """What one row says happened — a phrase a person reads, from the row."""
+    if change == "formed":
+        return f"Formed at {_pct(d.get('confidence'))}"
+    if change in ("strengthened", "weakened"):
+        word = "Stronger" if change == "strengthened" else "Weaker"
+        return f"{word}: {_pct(d.get('previous'))} → {_pct(d.get('confidence'))}"
+    if change == "published":
+        return "Published — the model is offered it"
+    if change == "drafted":
+        return "Back to draft — the model is not offered it"
+    if change == "edited":
+        return (f"Renamed from {d['renamed_from']}" if d.get("renamed_from")
+                else f"Changed (version {d.get('version') or '?'})")
+    if change == "tested":
+        if d.get("needs_approval"):
+            return "Tested: stopped for your yes"
+        return f"Tested: {_VERDICT_SAID.get(str(d.get('verdict') or ''), 'no verdict')}"
+    if change == "removed":
+        return "Removed"
+    return change
+
+
+def _growth_why(change: str, d: Dict) -> str:
+    """Why, when the writer said — or, for a new skill, where it came from."""
+    why = str(d.get("why") or "").strip()
+    if change == "formed":
+        source = _SOURCE_SAID.get(str(d.get("source") or ""), "imported")
+        return f"{source}; {why}" if why else source
+    if change == "tested" and d.get("by_teacher"):
+        return why or "after the teacher model rewrote it"
+    return why
+
+
+def _growth_sentence(summary: Dict, days: int, error: Optional[str]) -> str:
+    """The week in one line, or why there is no line."""
+    if error:
+        return error
+    span = "this week" if days == 7 else f"in the last {days} day{'' if days == 1 else 's'}"
+    parts = []
+    for change, one, many in (("formed", "formed", "formed"),
+                              ("strengthened", "got stronger", "got stronger"),
+                              ("weakened", "got weaker", "got weaker"),
+                              ("published", "was published", "were published"),
+                              ("drafted", "went back to draft", "went back to draft"),
+                              ("removed", "was removed", "were removed")):
+        n = summary.get(change) or 0
+        if n:
+            parts.append(f"{n} {one if n == 1 else many}")
+    used, uses = summary.get("used") or 0, summary.get("uses") or 0
+    if used:
+        parts.append(f"{used} {'was' if used == 1 else 'were'} used {uses} time{'' if uses == 1 else 's'}")
+    if not parts:
+        return f"Nothing happened to your skills {span}."
+    return f"Your skills {span}: " + ", ".join(parts) + "."
+
+
 def _content_fingerprint(sk: Skill) -> tuple:
     """What has to differ before a write counts as an edit worth keeping."""
     out = []
@@ -518,6 +633,10 @@ class SkillsManager:
             e["audit_teacher_model"] = teacher_model
         e["audited_at"] = _t.time()
         self._save_usage(usage)
+        # `P13-08`: whether what it learned was right, dated.
+        _skill_event(name, "tested", owner=owner, verdict=verdict,
+                     by_teacher=bool(by_teacher) or None,
+                     needs_approval=bool(needs_approval) or None)
 
     def set_necessity(self, name: str, necessary: bool,
                       redundant_with=None, reason: str = "",
@@ -806,7 +925,8 @@ class SkillsManager:
         # of the procedure somebody actually wants; `_files_under` skips it.
         return self._files_under(os.path.dirname(path))
 
-    def _write_skill(self, sk: Skill, *, bump: bool = True) -> str:
+    def _write_skill(self, sk: Skill, *, bump: bool = True, why: str = "",
+                     session_id: Optional[str] = None) -> str:
         """Persist a skill, keeping whatever it replaced.
 
         `P8-10`. Every write in this module lands here, which is why one place
@@ -826,6 +946,7 @@ class SkillsManager:
         except OSError:
             old_text = None
         text = sk.to_markdown()
+        old_sk = None
         if old_text is not None and old_text != text:
             try:
                 old_sk = Skill.from_markdown(old_text)
@@ -838,7 +959,32 @@ class SkillsManager:
                     text = sk.to_markdown()
         atomic_write_text(path, text)
         sk.path = path
+        self._record_growth(sk, old_sk, formed=old_text is None, why=why, session_id=session_id)
         return path
+
+    @staticmethod
+    def _record_growth(sk: Skill, old: Optional[Skill], *, formed: bool, why: str,
+                       session_id: Optional[str]) -> None:
+        """`P13-08`. The rows one write of `sk` makes: what changed, from what
+        to what, and why when the writer said."""
+        owner = sk.owner or None
+        conf = round(float(sk.confidence or 0.0), 3)
+        if formed:
+            _skill_event(sk.name, "formed", owner=owner, session_id=session_id,
+                         source=sk.source, confidence=conf, status=sk.status, why=why)
+            return
+        if old is None:
+            return
+        before = round(float(old.confidence or 0.0), 3)
+        if abs(conf - before) >= 0.005:
+            _skill_event(sk.name, "strengthened" if conf > before else "weakened", owner=owner,
+                         confidence=conf, previous=before, why=why)
+        if normalize_status(old.status) != normalize_status(sk.status):
+            _skill_event(sk.name, "published" if normalize_status(sk.status) == "published"
+                         else "drafted", owner=owner, why=why)
+        if _content_fingerprint(old) != _content_fingerprint(sk):
+            _skill_event(sk.name, "edited", owner=owner, version=sk.version, why=why,
+                         renamed_from=old.name if old.name != sk.name else None)
 
     def backfill_owner(self, primary_owner: str, valid_owners: Optional[set[str]] = None) -> int:
         """Assign legacy/unclaimed skill files to the primary owner.
@@ -1048,6 +1194,62 @@ class SkillsManager:
             logger.warning("skill switches unreadable; every skill treated as on", exc_info=True)
             off = set()
         return [s for s in entries if s.get("name") not in off] if off else entries
+
+    # ----------------------------------------------------------------------
+    # Growth — `P13-08`
+    # ----------------------------------------------------------------------
+
+    def growth(self, owner: Optional[str], days: int = 7) -> Dict:
+        """What happened to `owner`'s skills in the last `days` days, as a
+        dated list a person reads: one row per change — formed, stronger,
+        weaker, published, back to draft, changed, tested, removed — and one
+        per skill for its uses. Each row says what happened (`said`), why
+        when anything said why (`why`), and whether the skill is still there
+        to open (`exists`). `summary` counts the skills behind each change and
+        `sentence` says the week in one line. Newest first.
+
+        `P13-08`'s `Verify:` is *a cold reader can say which skills got better
+        this week, and why, from the page alone* — so the reason travels with
+        the row it explains, from the writer that knew it (`update_skill`'s
+        `why`, the audit's verdict), and is never reconstructed here."""
+        from src.events import owner_events
+
+        days = max(1, min(int(days or 7), 90))
+        read = owner_events(SKILL_EVENT_KIND, owner, days=days)
+        shown = {s.get("name"): s for s in self.load_visible(owner=owner, include_vendored=False)
+                 if s.get("name")}
+        rows: List[Dict] = []
+        uses: Dict[str, Dict] = {}
+        for e in read["events"]:
+            change, name, d = e["outcome"], e["name"], e["detail"]
+            if change not in SKILL_CHANGES or not name:
+                continue
+            if change == "used":
+                u = uses.setdefault(name, {"count": 0, "last": e["ts"]})
+                u["count"] += 1
+                u["last"] = e["ts"]
+                continue
+            rows.append({"at": e["ts"], "skill": name, "change": change,
+                         "said": _growth_said(change, d), "why": _growth_why(change, d),
+                         "confidence": d.get("confidence"), "previous": d.get("previous"),
+                         "verdict": d.get("verdict")})
+        for name, u in uses.items():
+            n = u["count"]
+            rows.append({"at": u["last"], "skill": name, "change": "used", "uses": n,
+                         "said": f"Used {n} time{'' if n == 1 else 's'}",
+                         "why": "shown to the model in a chat"})
+        for row in rows:
+            now = shown.get(row["skill"])
+            row["exists"] = now is not None
+            row["confidence_now"] = now.get("confidence") if now else None
+            row["status_now"] = now.get("status") if now else None
+        rows.sort(key=lambda r: r["at"] or "", reverse=True)
+        summary = {change: len({r["skill"] for r in rows if r["change"] == change})
+                   for change in SKILL_CHANGES}
+        summary["uses"] = sum(u["count"] for u in uses.values())
+        return {"days": days, "rows": rows, "summary": summary,
+                "sentence": _growth_sentence(summary, days, read.get("error")),
+                "error": read.get("error")}
 
     def _library_path(self, name: str) -> Optional[str]:
         for path in self._iter_library_files():
@@ -1412,7 +1614,7 @@ class SkillsManager:
             verification=list(verification or []),
             body_extra=(solution if solution and not procedure else ""),
         )
-        self._write_skill(sk)
+        self._write_skill(sk, session_id=session_id)
 
         # `P8-15`. What the new skill sits on top of, on the scale the lint uses.
         # Advisory and never a refusal: this is the branch a person asked for.
@@ -1497,7 +1699,8 @@ class SkillsManager:
             out["_renamed_from"] = base
         return out
 
-    def update_skill(self, skill_id: str, updates: Dict, owner: Optional[str] = None) -> bool:
+    def update_skill(self, skill_id: str, updates: Dict, owner: Optional[str] = None,
+                     *, why: str = "") -> bool:
         """`skill_id` is the slug name. Allows updating any field plus
         renames if `name` changes (file is moved on disk).
 
@@ -1511,6 +1714,9 @@ class SkillsManager:
         the same slug across category directories. The `owner` key in
         `updates` is also ignored — ownership is not an editable field
         via this path; rename or admin tooling is required for that.
+
+        `why` (`P13-08`) is the reason the growth view shows beside the change
+        — the audit's verdict, a person's edit — and nothing else reads it.
         """
         for path in self._iter_skill_files():
             sk = self._read_skill(path)
@@ -1568,7 +1774,7 @@ class SkillsManager:
                 if old_usage_key in usage:
                     usage[self._usage_key(sk.name, sk.owner)] = usage.pop(old_usage_key)
                     self._save_usage(usage)
-            self._write_skill(sk)
+            self._write_skill(sk, why=why)
             if sk.name != skill_id:
                 # `P8-50`. Groups and packages hold names, so a rename is
                 # carried to them — a reference that could dangle is a copy.
@@ -1579,7 +1785,7 @@ class SkillsManager:
             return True
         return False
 
-    def delete_skill(self, skill_id: str, owner: Optional[str] = None) -> bool:
+    def delete_skill(self, skill_id: str, owner: Optional[str] = None, *, why: str = "") -> bool:
         for path in self._iter_skill_files():
             sk = self._read_skill(path)
             if not sk or sk.name != skill_id:
@@ -1607,6 +1813,8 @@ class SkillsManager:
                 self.collections.forget_skill(owner, skill_id)
             except Exception:
                 logger.warning("deleted skill not removed from its groups", exc_info=True)
+            _skill_event(skill_id, "removed", owner=sk.owner or None,
+                         confidence=round(float(sk.confidence or 0.0), 3), why=why)
             return True
         return False
 
@@ -1631,6 +1839,7 @@ class SkillsManager:
         entry["uses"] = int(entry.get("uses", 0)) + 1
         entry["last_used"] = int(time.time())
         self._save_usage(usage)
+        _skill_event(skill_id, "used", owner=owner)   # `P13-08`
 
     def record_open(self, skill_id: str, owner: Optional[str] = None) -> None:
         """One open. `opens` counts what the model **fetched**. `P8-21`.

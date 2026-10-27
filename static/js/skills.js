@@ -31,6 +31,8 @@ import { SKILL_GATE_NOTE } from './skillGateNote.js';
 import { markUnreached, quietIfUnreached } from './presets.js';
 
 import { scrollBehavior } from './motion.js';
+// `P13-08`. The Growth view: what the system learned, dated.
+import { fetchGrowth, renderGrowth } from './skillGrowth.js';
 import { viewerMayAdminister } from './ui_visibility.js';
 const API = window.location.origin;
 let skills = [];
@@ -97,6 +99,8 @@ function _makeMount(host, { prefix = '', scopeKey = _SCOPE_KEY } = {}) {
     selected: new Set(),
     cascadeNext: false,     // play the domino-in entrance on this mount's next render
     pendingFocus: null,     // a skill to open once the list has loaded
+    growth: null,           // `P13-08`: the Growth view's last answer
+    growthSort: { key: 'at', dir: 'desc' },
   };
 }
 
@@ -4104,7 +4108,7 @@ async function _downloadSkill(name) {
 
 let _windowWired = false;
 
-const _SKILLS_VIEWS = ['browse', 'add', 'settings'];
+const _SKILLS_VIEWS = ['browse', 'add', 'settings', 'growth'];
 
 function _showSkillsView(m, view) {
   if (!m || !m.host || m.host === document.body) return;
@@ -4120,6 +4124,36 @@ function _showSkillsView(m, view) {
     panel.classList.toggle('hidden', panel.getAttribute('data-skills-view-panel') !== want);
   });
   if (want === 'add') setTimeout(() => m.el('skill-import-url')?.focus(), 60);
+  if (want === 'growth') _loadGrowth(m);
+}
+
+// ── Growth — `P13-08` ───────────────────────────────────────────────────────
+// Asked each time the view is shown or its period changes: a dated list is
+// only worth reading when it is today's.
+
+async function _loadGrowth(m) {
+  const host = m.el('skills-growth');
+  if (!host) return;
+  const days = Number(m.el('skills-growth-days')?.value || 7) || 7;
+  const sentence = m.el('skills-growth-sentence');
+  if (sentence) sentence.textContent = 'Loading…';
+  m.growth = await fetchGrowth(days);
+  if (sentence) sentence.textContent = (m.growth && m.growth.sentence) || '';
+  _drawGrowth(m);
+}
+
+function _drawGrowth(m) {
+  renderGrowth(m.el('skills-growth'), m.growth || {}, {
+    state: m.growthSort,
+    onSort: (key) => {
+      const was = m.growthSort;
+      m.growthSort = { key, dir: was.key === key && was.dir === 'desc' ? 'asc' : 'desc' };
+      _drawGrowth(m);
+    },
+    // Acting on a row is acting on its skill: open its card, where it is
+    // published, tested, fixed or deleted.
+    onOpen: (name) => openSkill(name, {}, m),
+  });
 }
 
 function _wireSkillsWindow() {
@@ -4275,6 +4309,7 @@ function _wireMount(m) {
         try { next.focus(); } catch (_) {}
       });
     });
+    m.el('skills-growth-days')?.addEventListener('change', () => _loadGrowth(m));   // `P13-08`
     m.host.addEventListener('focusin', () => { _lastMount = m; });
     m.host.addEventListener('pointerdown', () => { _lastMount = m; });
   }

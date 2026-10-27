@@ -414,6 +414,43 @@ def auth_events(limit: int = 100, *, outcome: str = "all",
     return out
 
 
+def owner_events(kind: str, owner: Optional[str], *, days: int,
+                 limit: int = 5000) -> Dict[str, Any]:
+    """`P13-08`. One person's rows of one `kind` from the last `days` days,
+    oldest first: `{"events": [{ts, name, outcome, session_id, detail}],
+    "error"}`. Never raises — an unreadable table is said in `error`, not as an
+    empty list that reads as "nothing happened". Rows with no owner are not a
+    person's and are not returned."""
+    out: Dict[str, Any] = {"events": [], "error": None}
+    if not owner:
+        return out
+    try:
+        from core.database import SessionLocal, Event, utcnow_naive
+
+        cutoff = utcnow_naive() - timedelta(days=max(1, int(days)))
+        db = SessionLocal()
+        try:
+            rows = (db.query(Event)
+                    .filter(Event.kind == kind, Event.owner == owner, Event.ts >= cutoff)
+                    .order_by(Event.ts.asc(), Event.id.asc())
+                    .limit(max(1, int(limit))).all())
+        finally:
+            db.close()
+    except Exception as e:
+        out["error"] = f"The history could not be read: {type(e).__name__}: {e}"
+        return out
+    for e in rows:
+        try:
+            detail = json.loads(e.detail) if e.detail else {}
+        except (TypeError, ValueError):
+            detail = {}
+        out["events"].append({
+            "ts": e.ts.isoformat() + "Z" if e.ts else None, "name": e.name or "",
+            "outcome": e.outcome or "", "session_id": e.session_id,
+            "detail": detail if isinstance(detail, dict) else {}})
+    return out
+
+
 def record_llm_round(session_id: str, metrics: Dict[str, Any], *,
                      outcome: str = "ok") -> bool:
     """One row for one model round. Returns True if it landed; never raises.

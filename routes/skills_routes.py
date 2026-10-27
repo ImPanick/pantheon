@@ -814,7 +814,9 @@ async def _run_skill_test_job(
         conf = {"pass": 0.95, "needs_work": 0.6, "fail": 0.4}.get(v)
         if conf is not None:
             try:
-                skills_manager.update_skill(name, {"confidence": conf}, owner=owner)
+                # `P13-08`: the growth view says why the number moved.
+                skills_manager.update_skill(name, {"confidence": conf}, owner=owner,
+                                            why=_TEST_WHY.get(v, ""))
             except Exception:
                 pass
     job["status"] = "done"
@@ -1077,6 +1079,14 @@ def _skill_duplicate_blocker(skills_manager, name: str, owner) -> Optional[str]:
     return found["keeper"] if found else None
 
 
+#: `P13-08`. Why a test moved a skill's confidence, as the growth view says it.
+_TEST_WHY = {
+    "pass": "it passed a test",
+    "needs_work": "a test found it needs work",
+    "fail": "it failed a test",
+}
+
+
 def _audit_finalize_status(skills_manager, name: str, owner, verdict: str,
                            confidence: Optional[float], necessity: Optional[dict] = None,
                            verdict_data: Optional[dict] = None) -> str:
@@ -1105,8 +1115,19 @@ def _audit_finalize_status(skills_manager, name: str, owner, verdict: str,
         necessary = False
     c = float(confidence or 0.0)
     status = "published" if (auto_publish and necessary and verdict == "pass" and c >= min_conf) else "draft"
+    # `P13-08`: the reason the growth view gives for a publish or a draft.
+    if status == "published":
+        why = "the audit passed it"
+    elif verdict != "pass":
+        why = "the audit could not confirm it works" if verdict == "inconclusive" else "it failed the audit"
+    elif not necessary:
+        why = generic_reason or (f"it repeats {duplicate_of}" if duplicate_of else "the audit judged it unnecessary")
+    elif not auto_publish:
+        why = "the audit passed it; publishing is left to you"
+    else:
+        why = f"it passed below the {round(min_conf * 100)}% you publish at"
     try:
-        skills_manager.update_skill(name, {"status": status}, owner=owner)
+        skills_manager.update_skill(name, {"status": status}, owner=owner, why=why)
     except Exception:
         pass
     return status
@@ -1337,9 +1358,9 @@ async def _audit_one_skill(skills_manager, skill, url, model, headers,
     # Reflect the audit outcome in the skill's confidence so the main list
     # updates: a clean pass earns high confidence; a pass that needed fixing
     # earns a bit less; a skill that still fails is marked low.
-    def _set_conf(c):
+    def _set_conf(c, why=""):
         try:
-            skills_manager.update_skill(name, {"confidence": c}, owner=owner)
+            skills_manager.update_skill(name, {"confidence": c}, owner=owner, why=why)
         except Exception:
             pass
 
@@ -1396,7 +1417,8 @@ async def _audit_one_skill(skills_manager, skill, url, model, headers,
     if generic_reason or duplicate_of or (isinstance(nec, dict) and nec.get("necessary") is False):
         reason = generic_reason or (dup["reason"] if dup else str((nec or {}).get("reason") or "Unnecessary skill"))
         try:
-            skills_manager.update_skill(name, {"status": "draft", "confidence": 0.35}, owner=owner)
+            skills_manager.update_skill(name, {"status": "draft", "confidence": 0.35}, owner=owner,
+                                        why=reason)
             skills_manager.set_audit(name, "skipped", by_teacher=False, worker_model=model, owner=owner)
             if duplicate_of:
                 skills_manager.set_necessity(name, False, [duplicate_of], reason, owner=owner)
@@ -1474,7 +1496,7 @@ async def _audit_one_skill(skills_manager, skill, url, model, headers,
             fixed = await _improve_skill_md(md, verdict, transcript, url, model, headers)
             if fixed and fixed.strip() != md.strip():
                 _apply_skill_md(skills_manager, name, fixed, owner, keep=keep)
-        _set_conf(0.95)
+        _set_conf(0.95, "it passed the audit's test")
         skills_manager.set_audit(name, "pass", by_teacher=False, worker_model=model, owner=owner)
         refreshed = next((s for s in skills_manager.load(owner=owner) if s.get("name") == name), None)
         status = _audit_finalize_status(skills_manager, name, owner, "pass", 0.95, (refreshed or {}).get("necessity"), verdict)
@@ -1495,7 +1517,7 @@ async def _audit_one_skill(skills_manager, skill, url, model, headers,
         v = verdict.get("verdict")
         log(f"{name}: retry (self) = {v}")
         if v == "pass":
-            _set_conf(0.85)
+            _set_conf(0.85, "it passed the audit's test after fixing itself")
             skills_manager.set_audit(name, "pass", by_teacher=False, worker_model=model, owner=owner)
             refreshed = next((s for s in skills_manager.load(owner=owner) if s.get("name") == name), None)
             status = _audit_finalize_status(skills_manager, name, owner, "pass", 0.85, (refreshed or {}).get("necessity"), verdict)
@@ -1519,7 +1541,7 @@ async def _audit_one_skill(skills_manager, skill, url, model, headers,
         v = verdict.get("verdict")
         log(f"{name}: retry on student after teacher rewrite = {v}")
         if v == "pass":
-            _set_conf(0.8)
+            _set_conf(0.8, "it passed the audit's test after the teacher rewrote it")
             skills_manager.set_audit(
                 name, "pass", by_teacher=True, worker_model=model, teacher_model=t_model, owner=owner
             )
@@ -1530,7 +1552,8 @@ async def _audit_one_skill(skills_manager, skill, url, model, headers,
 
     # Still failing → demote to draft + low confidence + flag (do NOT delete).
     try:
-        skills_manager.update_skill(name, {"status": "draft", "confidence": 0.35}, owner=owner)
+        skills_manager.update_skill(name, {"status": "draft", "confidence": 0.35}, owner=owner,
+                                    why="it still failed the audit's test")
     except Exception:
         pass
     skills_manager.set_audit(
@@ -2221,6 +2244,18 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
                    "skills": list(g.get("skills") or [])} for g in col.groups(user)]
         return {"packages": [_package_view(p, user) for p in col.packages(user)],
                 "groups": groups, "off": col.switched_off(user)}
+
+    @router.get("/growth")
+    async def skill_growth(request: Request, days: int = 7):
+        """`P13-08`. What the system learned in the last `days` days (7 by
+        default, at most 90), as a dated list: which of the caller's skills
+        formed, got stronger or weaker, were published or sent back to draft,
+        were tested and how it went, were used, or were removed — each with
+        why, when something said why. The caller's own rows only; the Skills
+        window's *Growth* view draws it (`static/js/skillGrowth.js`)."""
+        from src.auth_helpers import require_user
+        user = require_user(request)
+        return skills_manager.growth(user, days=days)
 
     @router.post("/packages/{package_id}/update")
     async def update_package(request: Request, package_id: str):
@@ -3069,7 +3104,7 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
             "pitfalls": sk.pitfalls,
             "verification": sk.verification,
             "body_extra": sk.body_extra,
-        }, owner=user)
+        }, owner=user, why="you edited it")   # `P13-08`
         if not ok:
             raise HTTPException(500, "Update failed")
         # Manual markdown edits can create or substantially rewrite a draft
@@ -3091,7 +3126,8 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         updates = body.dict(exclude_none=True)
         if not updates:
             return {"ok": True}
-        ok = skills_manager.update_skill(match.get("name"), updates, owner=user)
+        ok = skills_manager.update_skill(match.get("name"), updates, owner=user,
+                                         why="you changed it")   # `P13-08`
         if not ok:
             raise HTTPException(404, "Skill not found")
         if not match.get("audit_verdict"):
@@ -3106,7 +3142,8 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         if not match:
             raise HTTPException(404, "Skill not found")
         _verify_owner(match, user)
-        ok = skills_manager.delete_skill(match.get("name"), owner=user)
+        ok = skills_manager.delete_skill(match.get("name"), owner=user,
+                                         why="you deleted it")   # `P13-08`
         if not ok:
             raise HTTPException(404, "Skill not found")
         return {"ok": True}
