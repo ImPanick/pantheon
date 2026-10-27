@@ -345,6 +345,23 @@ class ChatHandler:
              if not (hears and a in recordings and recording_format(recordings[a]["path"]))],
             files_by_id)
 
+        # `P2-08`. The turn's model's proven window, so the attachments'
+        # shared total scales to it (`context_budget.resolve_attachment_total`).
+        # The turn's endpoint and model are the session's — the same pair the
+        # vision and hearing questions above already read — and `fallback=0`
+        # keeps an unproven window at the configured ceiling
+        # (`D-2026-08-26-06`). Off the event loop: proving a window can ask
+        # the endpoint. Only when something is attached.
+        window_tokens = 0
+        if effective_att_ids:
+            try:
+                from src.model_context import budget_context_for_model
+                window_tokens = int(await asyncio.to_thread(
+                    budget_context_for_model, getattr(sess, "endpoint_url", "") or "",
+                    sess.model or "", fallback=0) or 0)
+            except Exception:
+                logger.debug("No proven window for the attachment budget", exc_info=True)
+
         reach: Dict[str, Dict[str, str]] = {}
         user_content = build_user_content(
             enhanced_message, effective_att_ids, UPLOAD_DIR, self.upload_handler,
@@ -355,6 +372,7 @@ class ChatHandler:
             reach=reach,
             transcripts=transcripts,
             hears=hears,
+            window_tokens=window_tokens,
         )
         if reach:
             for _m in attachment_meta:

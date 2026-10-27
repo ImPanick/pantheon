@@ -229,6 +229,30 @@ def _run_reference_safe_cleanup(upload_handler) -> int:
         referenced_upload_hashes=referenced_hashes,
     )
 
+def _session_window(session_id: Optional[str], owner: Optional[str]) -> int:
+    """`P2-08`. The proven context window of the model a chat is on, for the
+    composer's meter — `0` when there is no such chat of this person's or the
+    window is not proven, exactly as the turn itself reads it
+    (`ChatHandler.preprocess_message`), so the meter and the message state one
+    allowance. Blocking (a database read, and proving a window can ask the
+    endpoint): call it off the event loop."""
+    if not session_id or not isinstance(session_id, str):
+        return 0
+    db = SessionLocal()
+    try:
+        row = db.query(DbSession.endpoint_url, DbSession.model, DbSession.owner).filter(
+            DbSession.id == session_id).first()
+    finally:
+        db.close()
+    if row is None or (row.owner and row.owner != owner):
+        return 0
+    try:
+        from src.model_context import budget_context_for_model
+        return int(budget_context_for_model(row.endpoint_url or "", row.model or "", fallback=0) or 0)
+    except Exception:
+        return 0
+
+
 def setup_upload_routes(upload_handler):
     """Setup upload routes with the provided handler"""
     # B53. This `APIRouter` used to be a module global, decorated by this
@@ -549,9 +573,11 @@ def setup_upload_routes(upload_handler):
             from src.document_processor import build_user_content
 
             turn = {}
+            # `P2-08`: measured against the window of the chat it was sent to.
+            window = await asyncio.to_thread(_session_window, session_id, owner)
             build_user_content(
                 "", [f["id"] for f in out], _upload_root(), upload_handler,
-                owner=owner, budget_report=turn,
+                owner=owner, budget_report=turn, window_tokens=window,
             )
             response["context_budget"] = context_window_report(owner, turn=turn)
         except Exception as exc:
@@ -744,8 +770,11 @@ def setup_upload_routes(upload_handler):
     # attachments in this message" and "nobody counted" are different things to
     # draw (`Law 10`).
     @router.get("/context-budget")
-    async def upload_context_budget(request: Request, ids: str = ""):
-        """The composer's context breakdown for a set of uploaded attachments."""
+    async def upload_context_budget(request: Request, ids: str = "", session: str = ""):
+        """The composer's context breakdown for a set of uploaded attachments.
+
+        `P2-08`: `session` is the chat the composer is in, so the allowance is
+        the one that chat's model's window gives (`_session_window`)."""
         from src.context_budget import context_window_report
         from src.document_processor import build_user_content
 
@@ -756,9 +785,10 @@ def setup_upload_routes(upload_handler):
         # somebody else's id measures as nothing rather than as a leak.
         valid = [fid for fid in wanted if upload_handler.validate_upload_id(fid)]
         turn: dict = {}
+        window = await asyncio.to_thread(_session_window, session or None, owner)
         build_user_content(
             "", valid, _upload_root(), upload_handler,
-            owner=owner, budget_report=turn,
+            owner=owner, budget_report=turn, window_tokens=window,
         )
         return context_window_report(owner, turn=turn)
 

@@ -1584,6 +1584,7 @@ def build_user_content(
     reach: dict | None = None,
     transcripts: dict | None = None,
     hears: bool = False,
+    window_tokens: int = 0,
 ) -> str | List[Dict[str, Any]]:
     """Build user content with attachments (text, images, audio, documents).
 
@@ -1605,6 +1606,12 @@ def build_user_content(
     then goes as an `input_audio` part and the card says the model was given
     the recording itself. Anything else — the default — keeps the transcript
     or the sentence that it was not heard.
+
+    `P2-08`. `window_tokens` is the turn's model's *proven* context window
+    (`model_context.budget_context_for_model(url, model, fallback=0)`; `0` when
+    unknown). The shared attachment total scales to it
+    (`context_budget.resolve_attachment_total`); `0` keeps the ceiling as
+    `P12-04` resolves it.
     """
     content = [{"type": "text", "text": text}]
     if reach is not None:
@@ -1614,7 +1621,10 @@ def build_user_content(
     # change landing between the first attachment and the last would otherwise
     # apply two different budgets to one message. This is the same rule
     # `routes/personal_routes.py` already states for its byte cap.
-    inline_attachment_total = _budget("context_attachment_total_chars", owner)
+    from src.context_budget import resolve_attachment_total
+    _total = resolve_attachment_total(
+        owner, window_tokens=window_tokens, ceiling_default=MAX_INLINE_ATTACHMENT_CHARS)
+    inline_attachment_total = _total.value
     inline_attachment_remaining = inline_attachment_total
     # `P12-09`. The spend was computed and thrown away on every turn — the
     # shape `P4` closed thirteen rows of. `budget_report` is an out-parameter so
@@ -1626,6 +1636,11 @@ def build_user_content(
         budget_report.clear()
         budget_report.update({
             "total_chars": inline_attachment_total,
+            # `P2-08`: who decided the total — `window` when the model's proven
+            # window did — so the composer draws the number the turn used.
+            "total_source": _total.source,
+            "total_clamped": bool(_total.clamped),
+            "window_tokens": int(window_tokens or 0),
             "used_chars": 0,
             "remaining_chars": inline_attachment_total,
             "attachments": _spend,

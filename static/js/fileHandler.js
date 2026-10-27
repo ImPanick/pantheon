@@ -418,6 +418,9 @@ const _CEILING_SOURCE = {
   env: 'The environment sets this ceiling',
   turn: 'Set for this message',
   default: 'Pantheon\'s shipped default',
+  // `P2-08`: half of what this chat's model's proven window lets a message
+  // carry (`context_budget.resolve_attachment_total`).
+  window: 'Half of what this chat\'s model reads at once',
 };
 
 function _chars(n) {
@@ -442,9 +445,13 @@ export async function refreshContextMeter(ids) {
   const wanted = (Array.isArray(ids) ? ids : []).filter(Boolean).map(String);
   _contextFetching = true;
   try {
-    const query = wanted.length
-      ? `?ids=${encodeURIComponent(wanted.join(','))}`
-      : '';
+    // `P2-08`: the chat this composer is in, so the allowance drawn is the one
+    // its model's window gives — the number the message itself will be held to.
+    const params = [];
+    if (wanted.length) params.push(`ids=${encodeURIComponent(wanted.join(','))}`);
+    const chat = _sessionKey();
+    if (chat) params.push(`session=${encodeURIComponent(chat)}`);
+    const query = params.length ? `?${params.join('&')}` : '';
     // The path is a literal with NOTHING appended inside the template, and the
     // query is concatenated after it. `.pantheon/check-unreachable.py`
     // normalises every template hole to `*`, so a single
@@ -758,7 +765,15 @@ function _drawContextMeter() {
   // `clamped` means the number shown is not the number somebody asked for — it
   // was reduced to fit the ceiling. Showing the smaller figure and saying
   // nothing is how an operator concludes their setting did not save.
-  const clamped = budgets.filter((b) => b && b.clamped);
+  // `P2-08`: the ceiling itself held below a number somebody set, by the
+  // model's window, is said in its own words — it is not a per-file budget.
+  if (ceiling && ceiling.clamped && ceiling.source === 'window') {
+    const held = document.createElement('span');
+    held.className = 'context-meter-clamped';
+    held.textContent = 'Less than the ceiling set for you: this chat\'s model reads less at once.';
+    foot.appendChild(held);
+  }
+  const clamped = budgets.filter((b) => b && b.clamped && !(b.is_ceiling && b.source === 'window'));
   if (clamped.length) {
     const note = document.createElement('span');
     note.className = 'context-meter-clamped';
