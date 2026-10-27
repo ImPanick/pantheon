@@ -1580,11 +1580,30 @@ def recording_in_words(display_name: str, said: str = "", *, ext: str = "",
     # format — said, so nobody looks for a missing setting.
     why = (f"the model takes recordings as WAV or MP3 and this one is {ext or 'neither'}"
            if hears else "the model can't be given a recording")
+    # `B1571`. *No speech-to-text set up* sent a person who had set local
+    # Whisper up looking for a setting they had already made, when the
+    # download gate (`B1565`) had refused its model: the server's own sentence
+    # says which switch, and is the note when there is one.
+    refusal = _speech_to_text_refusal()
+    note = (f"Not heard: {why}. {refusal}" if refusal
+            else f"Not heard: {why}, and this server has no speech-to-text set up.")
     return (f"\n\n[Recording attached: {display_name} — not heard. This server "
             f"turns no speech into text, so nothing from the recording is in "
             f"this message.]",
-            {"state": "not_heard",
-             "note": f"Not heard: {why}, and this server has no speech-to-text set up."})
+            {"state": "not_heard", "note": note})
+
+
+def _speech_to_text_refusal() -> str:
+    """`B1571`. The speech-to-text service's sentence for why it transcribed
+    nothing (`STTService.unheard_reason`), or `""` when it has none to give."""
+    try:
+        from services.stt import get_stt_service
+        ask = getattr(get_stt_service(), "unheard_reason", None)
+        said = ask() if callable(ask) else None
+    except Exception:
+        logger.debug("No speech-to-text reason to give", exc_info=True)
+        return ""
+    return str(said).strip() if said else ""
 
 
 def unheard_turn(messages: list, recordings: list, transcripts: dict | None = None,

@@ -140,6 +140,25 @@ class STTService:
         the download gate is the reason; `None` otherwise."""
         return self._whisper_refusal
 
+    def unheard_reason(self) -> Optional[str]:
+        """`B1571`. Why this server turned a recording into no text, when it
+        can say more than that it has no speech-to-text: local Whisper is the
+        provider, no model is loaded, and the download gate refused the one it
+        needs (`B1565`'s sentence). `None` otherwise — speech-to-text off, the
+        browser's own, an endpoint — so the caller says what it always said.
+
+        Read, not asked: the refusal is the one the last attempt to start
+        Whisper recorded, and every path that writes the not-heard note has
+        just asked this service to transcribe. Asked against the settings as
+        they are now, so a refusal left from before the provider changed is
+        never said about a provider it is not about."""
+        settings = self._load_settings()
+        if settings.get("stt_enabled") is False or settings.get("stt_provider") != "local":
+            return None
+        if self._whisper_model is not None:
+            return None
+        return self._whisper_refusal
+
     def _transcribe_local(self, audio_bytes: bytes, language: str = "") -> Optional[str]:
         model = self._get_whisper()
         if not model:
