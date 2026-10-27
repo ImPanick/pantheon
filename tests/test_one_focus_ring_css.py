@@ -207,8 +207,14 @@ def test_the_suppression_population_is_a_hundred_not_ninety_nine():
     """
     nones = len(re.findall(r"(?:^|[{;])\s*outline\s*:\s*none\s*(?:!important)?\s*(?=[;}])", CSS, re.M))
     zeros = len(re.findall(r"(?:^|[{;])\s*outline\s*:\s*0\s*(?:!important)?\s*(?=[;}])", CSS, re.M))
-    assert (nones, zeros) == (98, 2), (
-        f"expected 98 `outline: none` and 2 `outline: 0`, found {nones} and {zeros}"
+    # 98 + 2 -> 53 + 0: `B662` (a) deleted the 47 suppressions scoped to no
+    # focus state — 45 `none` and both `0`s (`.doc-editor-textarea`'s and
+    # `.email-quote-fold`'s, the two `!important` ones). Each was dead in the
+    # cascade (`test_the_ring_out_ranks_every_suppression_in_the_sheet`), and
+    # none was cancelling an outline another rule sets outside focus: no rule
+    # in the sheet gives any of their selectors' classes a visible outline.
+    assert (nones, zeros) == (53, 0), (
+        f"expected 53 `outline: none` and 0 `outline: 0`, found {nones} and {zeros}"
     )
 
 
@@ -230,8 +236,11 @@ def test_the_suppressions_split_three_ways():
             focus += 1
         else:
             bare += 1
-    assert (bare, focus, focus_visible) == (47, 45, 8), (
-        f"expected 47 / 45 / 8, found {bare} / {focus} / {focus_visible}. "
+    # 47 / 45 / 8 -> 0 / 45 / 8: `B662` (a). A suppression with no focus state
+    # in its selector paints nothing in any state once the guard is in, so a
+    # new one is drift — this keeps the population at nothing.
+    assert (bare, focus, focus_visible) == (0, 45, 8), (
+        f"expected 0 / 45 / 8, found {bare} / {focus} / {focus_visible}. "
         "Counted by RULE, not by selector: 100 rules carry a suppression and "
         "118 selectors are listed across them, and those are answers to "
         "different questions (`Law 5`)."
