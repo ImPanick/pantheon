@@ -342,6 +342,32 @@ def images_sent(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
+def sounds_sent(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Every recording a request carried as sound — each OpenAI `input_audio`
+    part, decoded: `{message, format, bytes, sha256}` (`B1290`). The audio
+    twin of `images_sent`, so a test compares the bytes attached with the
+    bytes the model got."""
+    import base64
+    import hashlib
+
+    out: List[Dict[str, Any]] = []
+    for n, m in enumerate(messages or []):
+        content = m.get("content") if isinstance(m, dict) else None
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if not isinstance(part, dict) or part.get("type") != "input_audio":
+                continue
+            audio = part.get("input_audio") or {}
+            try:
+                raw = base64.b64decode(str(audio.get("data") or ""), validate=True)
+            except ValueError:
+                raw = b""
+            out.append({"message": n, "format": audio.get("format"), "bytes": len(raw),
+                        "sha256": hashlib.sha256(raw).hexdigest() if raw else ""})
+    return out
+
+
 def _find_turn(messages: List[Dict[str, Any]], conversations: Optional[List[Dict[str, Any]]] = None):
     """The scripted turn this request belongs to, whether it is the turn's first
     request, and what it carries.
@@ -412,6 +438,8 @@ class _Handler(BaseHTTPRequestHandler):
     max_model_len = None  # served the way vLLM serves a model (`_vllm_refusal`), when set
     refuse_images = None  # (status, message): a server that takes no pictures (fx5-vision)
     transcript = None     # what `/audio/transcriptions` answers, when set (fx5-vision)
+    modalities = None     # llama-server's `/props` `modalities`, when set (`B1290`)
+    refuse_audio = None   # (status, message): a server that takes no audio part (`B1290`)
     model_id = MODEL_ID   # the name it lists and answers under
 
     def log_message(self, *args):  # quiet
@@ -426,6 +454,10 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if self.modalities is not None and self.path.rstrip("/") == "/props":
+            # `B1290`: served the way llama-server answers `/props`, naming the
+            # model and what it takes — the endpoint's own answer to "can it hear".
+            return self._json(200, {"model_alias": self.model_id, "modalities": self.modalities})
         if self.path.rstrip("/").endswith("/models"):
             entry = {"id": self.model_id, "object": "model", "owned_by": "pantheon-showcase"}
             if self.max_model_len:
@@ -456,13 +488,14 @@ class _Handler(BaseHTTPRequestHandler):
         # fx5-vision: the pictures this request carried, for the log and for a
         # scripted `say` that answers with what it was actually sent.
         ctx["images"] = images_sent(messages)
+        sounds = sounds_sent(messages)
         if self.log is not None:
             # The whole request as it arrived, beside the summary: a model that
             # records what it is sent is how `B1069` was measured and is held.
             self.log.append({"stream": bool(body.get("stream")), "tools": len(body.get("tools") or []),
                              "roles": [m.get("role") for m in messages],
                              "conv": (conv or {}).get("key"), "first": first,
-                             "messages": messages, "images": ctx["images"],
+                             "messages": messages, "images": ctx["images"], "sounds": sounds,
                              "max_tokens": body.get("max_completion_tokens") or body.get("max_tokens"),
                              "temperature": body.get("temperature")})
         if self.refuse_images and ctx["images"]:
@@ -470,6 +503,14 @@ class _Handler(BaseHTTPRequestHandler):
             # error before a token, as llama-server without a projector and LM
             # Studio do; the status and words are the test's to choose.
             status, words = self.refuse_images
+            if self.log is not None:
+                self.log[-1]["refused"] = words
+            return self._json(status, {"error": {"message": words, "type": "invalid_request_error",
+                                                 "code": status}})
+        if self.refuse_audio and sounds:
+            # `B1290`: most local servers refuse an audio part outright, before
+            # a token — the failure a recording sent to the wrong model causes.
+            status, words = self.refuse_audio
             if self.log is not None:
                 self.log[-1]["refused"] = words
             return self._json(status, {"error": {"message": words, "type": "invalid_request_error",
@@ -614,7 +655,9 @@ class DemoModel:
     def __init__(self, port: int = 0, pace: float = 0.0, log: Optional[list] = None,
                  conversations: Optional[List[Dict[str, Any]]] = None,
                  max_model_len: Optional[int] = None, model_id: str = MODEL_ID,
-                 refuse_images: Optional[tuple] = None, transcript: Optional[str] = None):
+                 refuse_images: Optional[tuple] = None, transcript: Optional[str] = None,
+                 modalities: Optional[Dict[str, Any]] = None,
+                 refuse_audio: Optional[tuple] = None):
         """`conversations` replaces the showcase's script (a test plays its own
         through the same model); `log` receives every request it is sent;
         `max_model_len` serves it the way vLLM serves a model with that window
@@ -625,12 +668,18 @@ class DemoModel:
         `refuse_images` — `(status, message)` — answers any request carrying a
         picture with that error, the way a server with no vision does
         (fx5-vision); `transcript` is what it answers as an OpenAI-compatible
-        speech-to-text server (`/audio/transcriptions`)."""
+        speech-to-text server (`/audio/transcriptions`). `modalities` serves
+        `GET /props` as llama-server does (`{"vision": …, "audio": …}`), and
+        `refuse_audio` — `(status, message)` — answers any request carrying an
+        `input_audio` part with that error, the way most local servers do
+        (`B1290`)."""
         handler = type("Handler", (_Handler,), {"pace": pace, "log": log, "progress": _Progress(),
                                                 "conversations": conversations,
                                                 "max_model_len": max_model_len,
                                                 "refuse_images": refuse_images,
                                                 "transcript": transcript,
+                                                "modalities": modalities,
+                                                "refuse_audio": refuse_audio,
                                                 "model_id": model_id})
         self.httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
         self.httpd.daemon_threads = True

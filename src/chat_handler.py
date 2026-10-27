@@ -14,8 +14,12 @@ from src.constants import (
     UPLOAD_DIR,
 )
 from core.models import ChatMessage
-from src.chat_helpers import extract_urls, vision_answer
-from src.document_processor import build_user_content, analyze_image_with_vl_result
+from src.chat_helpers import audio_answer, extract_urls, vision_answer
+from src.document_processor import (
+    analyze_image_with_vl_result,
+    build_user_content,
+    recording_format,
+)
 from src.file_names import upload_display_name  # `P21-03`
 from src.upload_handler import upload_kind  # `B404`
 from src.youtube_handler import (
@@ -321,10 +325,25 @@ class ChatHandler:
                         _m["reach"] = "not_sent"
                         _m["reach_note"] = "Not sent: pictures are switched off (Settings → Vision)."
 
+        # `B1290`. A recording goes to the model as sound only when its
+        # endpoint says the model hears (`audio_answer` — None, never a guess,
+        # when nothing says). Asked off the event loop and only when there is a
+        # recording, as the vision question is only asked for a picture.
+        hears = False
+        recordings = self._recordings(effective_att_ids, files_by_id)
+        if recordings:
+            hears = await asyncio.to_thread(
+                audio_answer, sess.model or "", getattr(sess, "endpoint_url", "") or "",
+            ) is True
+
         # fx5-vision (`B1284`): a recording reaches a model as its transcript,
         # asked for here, off the event loop, from the STT service the voice
         # recorder uses — and only when that service transcribes on this server.
-        transcripts = await self._transcribe_recordings(effective_att_ids, files_by_id)
+        # `B1290`: not one the model is given as sound — it hears it itself.
+        transcripts = await self._transcribe_recordings(
+            [a for a in effective_att_ids
+             if not (hears and a in recordings and recording_format(recordings[a]["path"]))],
+            files_by_id)
 
         reach: Dict[str, Dict[str, str]] = {}
         user_content = build_user_content(
@@ -335,6 +354,7 @@ class ChatHandler:
             resolved_uploads=files_by_id,
             reach=reach,
             transcripts=transcripts,
+            hears=hears,
         )
         if reach:
             for _m in attachment_meta:
@@ -344,18 +364,16 @@ class ChatHandler:
                     _m["reach_note"] = _said["note"]
 
         # Strip image_url entries for text-only models (VL description is already in the text)
-        if not vision_enabled and isinstance(user_content, list):
+        if (not vision_enabled or not main_is_vision) and isinstance(user_content, list):
             text_parts = [
                 item.get("text", "") for item in user_content
                 if isinstance(item, dict) and item.get("type") == "text"
             ]
-            user_content = "\n".join(text_parts).strip() if text_parts else enhanced_message
-        elif not main_is_vision and isinstance(user_content, list):
-            text_parts = [
-                item.get("text", "") for item in user_content
-                if isinstance(item, dict) and item.get("type") == "text"
-            ]
-            user_content = "\n".join(text_parts).strip() if text_parts else enhanced_message
+            joined = "\n".join(text_parts).strip() if text_parts else enhanced_message
+            # `B1290`: a recording given as sound is not a picture — it stays.
+            sounds = [item for item in user_content
+                      if isinstance(item, dict) and item.get("type") == "input_audio"]
+            user_content = [{"type": "text", "text": joined}, *sounds] if sounds else joined
 
         # Extract text portion for naming / context
         if isinstance(user_content, list):
@@ -368,12 +386,11 @@ class ChatHandler:
 
         return enhanced_message, user_content, text_for_context, youtube_transcripts, attachment_meta
 
-    async def _transcribe_recordings(self, att_ids, files_by_id) -> Dict[str, str]:
-        """`{attachment id: transcript}` for every recording the server's
-        speech-to-text answered. Empty when it transcribes nothing here (no
-        provider, or the browser's own) — the attachment then says so."""
-        out: Dict[str, str] = {}
-        recordings = []
+    def _recordings(self, att_ids, files_by_id) -> Dict[str, Dict]:
+        """`{attachment id: upload}` for every attachment that is a recording —
+        the one rule `build_user_content` applies: audio, and not a picture or
+        a video (a `.webm` is as often a video as a voice note)."""
+        out: Dict[str, Dict] = {}
         for att_id in att_ids or []:
             fi = files_by_id.get(att_id)
             if not fi:
@@ -382,7 +399,15 @@ class ChatHandler:
             if mime.startswith("video/") or self.upload_handler.is_image_file(fi.get("name", ""), mime):
                 continue
             if self.upload_handler.is_audio_file(fi.get("name", ""), mime):
-                recordings.append((att_id, fi))
+                out[att_id] = fi
+        return out
+
+    async def _transcribe_recordings(self, att_ids, files_by_id) -> Dict[str, str]:
+        """`{attachment id: transcript}` for every recording the server's
+        speech-to-text answered. Empty when it transcribes nothing here (no
+        provider, or the browser's own) — the attachment then says so."""
+        out: Dict[str, str] = {}
+        recordings = list(self._recordings(att_ids, files_by_id).items())
         if not recordings:
             return out
         try:

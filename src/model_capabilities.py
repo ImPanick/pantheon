@@ -846,6 +846,23 @@ def vision_verdict(capability: ModelCapability) -> bool | None:
     return False
 
 
+def audio_verdict(capability: ModelCapability) -> bool | None:
+    """`capability` as the answer to "can this model be sent a recording".
+
+    `B1290`, `vision_verdict`'s twin and read the same way: True when it names
+    audio input or takes audio in; False when a provider described the model
+    and named neither; None when it said nothing this can read. A None never
+    sends a recording — `chat_helpers.audio_answer` has no name list to fall
+    back to (`D-2026-10-07-02` §1), because most local servers refuse an audio
+    part outright and fail the whole turn.
+    """
+    if CAP_AUDIO_INPUT in capability.capabilities or MODALITY_AUDIO in capability.modalities.input:
+        return True
+    if capability.family == FAMILY_UNKNOWN or capability.confidence == CONFIDENCE_UNKNOWN:
+        return None
+    return False
+
+
 def display_surfaces_for(capability: ModelCapability) -> tuple[str, ...]:
     return tuple(query.surface for query in DISPLAY_QUERIES if query.matches(capability))
 

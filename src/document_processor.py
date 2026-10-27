@@ -1536,6 +1536,27 @@ def _text_reach(extracted: str, display_name: str, sent: int, total: int) -> dic
     return None
 
 
+def recording_format(path: str) -> str | None:
+    """`B1290`. `"wav"` or `"mp3"` when the bytes are one — the two formats
+    OpenAI's `input_audio` part names, and so the two a model that hears can be
+    sent — else None. Read from the file's first bytes, not its name: a voice
+    note is as often `.webm`, `.ogg` or `.m4a`, which no `input_audio` takes.
+    An MP3 starts with an ID3 tag or a Layer III frame sync (`0xFFE…`, layer
+    bits `01`) — an AAC ADTS frame has the sync too, with layer bits `00`."""
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(12)
+    except OSError:
+        return None
+    if len(head) >= 12 and head[:4] == b"RIFF" and head[8:12] == b"WAVE":
+        return "wav"
+    if head[:3] == b"ID3":
+        return "mp3"
+    if len(head) >= 2 and head[0] == 0xFF and (head[1] & 0xE0) == 0xE0 and (head[1] & 0x06) == 0x02:
+        return "mp3"
+    return None
+
+
 def unread_reason(path: str, ext: str = "") -> str:
     """Why nothing was read from a file no extractor covers and whose bytes do
     not read as text — one phrase, two doors.
@@ -1562,6 +1583,7 @@ def build_user_content(
     budget_report: dict | None = None,
     reach: dict | None = None,
     transcripts: dict | None = None,
+    hears: bool = False,
 ) -> str | List[Dict[str, Any]]:
     """Build user content with attachments (text, images, audio, documents).
 
@@ -1577,6 +1599,12 @@ def build_user_content(
     beside the bracket the model is given. `transcripts` maps an audio
     attachment's id to its speech-to-text transcript (`ChatHandler` asks the
     STT service before this runs, off the event loop).
+
+    `B1290`. `hears` is True only when the model's endpoint said it takes a
+    recording as sound (`chat_helpers.audio_answer`); a WAV or MP3 recording
+    then goes as an `input_audio` part and the card says the model was given
+    the recording itself. Anything else — the default — keeps the transcript
+    or the sentence that it was not heard.
     """
     content = [{"type": "text", "text": text}]
     if reach is not None:
@@ -1691,8 +1719,21 @@ def build_user_content(
             # the recording model as that part and no text. A recording reaches
             # a model as words: its transcript, when the server's speech-to-text
             # gave one; otherwise the model and the person are told it was not.
+            # `B1290`. A model whose endpoint says it hears is given the
+            # recording itself, when it is a format `input_audio` takes.
+            sound = recording_format(path) if hears else None
             said = ((transcripts or {}).get(fid) or "").strip()
-            if said:
+            if sound:
+                with open(path, "rb") as audio_file:
+                    encoded_audio = base64.b64encode(audio_file.read()).decode("ascii")
+                content.append({"type": "input_audio",
+                                "input_audio": {"data": encoded_audio, "format": sound}})
+                content[0]["text"] += (
+                    f"\n\n[Recording attached: {display_name} — given to the model as sound]")
+                if reach is not None:
+                    reach[fid] = {"state": "heard",
+                                  "note": "The model was given the recording itself."}
+            elif said:
                 # `P12-04`: a transcript is text, and spends the same budget.
                 said, inline_attachment_remaining = _fit_inline_attachment_text(
                     f"\n\n[Recording attached: {display_name} — transcript]:\n{said}",
@@ -1707,9 +1748,13 @@ def build_user_content(
                     f"turns no speech into text, so nothing from the recording is in "
                     f"this message.]")
                 if reach is not None:
+                    # `B1290`: a model that hears was not given this one because
+                    # of its format — said, so nobody looks for a missing setting.
+                    _why = (f"the model takes recordings as WAV or MP3 and this one is "
+                            f"{ext or 'neither'}" if hears
+                            else "the model can't be given a recording")
                     reach[fid] = {"state": "not_heard", "note": (
-                        "Not heard: the model can't be given a recording, and this server "
-                        "has no speech-to-text set up.")}
+                        f"Not heard: {_why}, and this server has no speech-to-text set up.")}
 
         elif is_doc or decoded_as_text or archive_text is not None:
             if archive_text is not None:
@@ -1946,7 +1991,9 @@ def build_user_content(
                              "so the model was not given what is in it.")
                 reach[fid] = {"state": "not_read", "note": _note}
 
-    has_media = any(item.get("type") == "image_url" for item in content if isinstance(item, dict))
+    # `B1290`: a recording given as sound keeps the list shape, as a picture does.
+    has_media = any(item.get("type") in ("image_url", "input_audio")
+                    for item in content if isinstance(item, dict))
     if not has_media and content:
         combined_text = ""
         for item in content:

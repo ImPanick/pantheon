@@ -635,6 +635,15 @@ def _chat_candidate_request_factory(
         if not context_length:
             context_length = fallback_context_length
         request_messages = trim_for_context(candidate_messages, context_length)
+        # `B1290`. Only the selected model was asked whether it hears; a
+        # fallback that says nothing, or no, is sent the turn's words alone —
+        # an audio part it does not take would fail the turn it is rescuing.
+        from src.attachment_refs import has_sounds, without_sounds
+        if has_sounds(request_messages):
+            from src.chat_helpers import audio_answer
+            if await asyncio.to_thread(audio_answer, candidate_model or "",
+                                       candidate_url or "") is not True:
+                request_messages = without_sounds(request_messages)
         state["requests"][index] = request_messages
         state["context_lengths"][index] = context_length
         state["compactions"][index] = compaction_state

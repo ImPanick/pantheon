@@ -230,7 +230,7 @@ def lmstudio_supports_vision(url: str, model: str) -> Optional[bool]:
 _OPENROUTER_CATALOGUE_TTL = 3600.0
 # (host, port, model) -> (answer, expiry)
 _ollama_show_cache: dict = {}
-# catalogue url -> ({model id: answer} | None, expiry)
+# catalogue url -> ({model id: {"vision": answer, "audio": answer}} | None, expiry)
 _openrouter_catalogue_cache: dict = {}
 
 
@@ -283,7 +283,10 @@ def ollama_supports_vision(url: str, model: str) -> Optional[bool]:
 
 
 def _openrouter_answers(url: str) -> Optional[dict]:
-    """`{model id (lower case): answer}` from OpenRouter's catalogue, or None."""
+    """`{model id (lower case): {"vision": answer, "audio": answer}}` from
+    OpenRouter's catalogue, or None. Both answers come from one read of each
+    record (`B1290` added the second), so the catalogue is fetched once for
+    pictures and recordings alike."""
     parsed = urlparse(url)
     catalogue = f"{parsed.scheme or 'https'}://{_authority(parsed)}/api/v1/models"
     now = time.time()
@@ -298,10 +301,11 @@ def _openrouter_answers(url: str) -> Optional[dict]:
     except Exception:
         payload = None
     if isinstance(payload, dict):
-        from src.model_capabilities import vision_verdict
+        from src.model_capabilities import audio_verdict, vision_verdict
         from src.model_capability_readers import openrouter as openrouter_reader
         answers = {
-            rec.model_id.lower(): vision_verdict(rec.capability)
+            rec.model_id.lower(): {"vision": vision_verdict(rec.capability),
+                                   "audio": audio_verdict(rec.capability)}
             for rec in openrouter_reader.records_from_payload(payload)
         }
     ttl = _OPENROUTER_CATALOGUE_TTL if answers is not None else _PROVIDER_FINGERPRINT_TTL
@@ -315,6 +319,17 @@ def openrouter_supports_vision(url: str, model: str) -> Optional[bool]:
     OpenRouter or the catalogue does not name the model. A variant id
     (`…:free`, `…:online`) is answered by its base model's entry when the
     catalogue has no entry of its own."""
+    return _openrouter_answer(url, model, "vision")
+
+
+def openrouter_hears(url: str, model: str) -> Optional[bool]:
+    """`B1290`. Whether OpenRouter's catalogue lists audio input for `model`,
+    or None when the endpoint is not OpenRouter or the catalogue does not name
+    it — `openrouter_supports_vision`'s twin, from the same read."""
+    return _openrouter_answer(url, model, "audio")
+
+
+def _openrouter_answer(url: str, model: str, kind: str) -> Optional[bool]:
     from src.model_capability_readers import VENDOR_OPENROUTER
     if not model or _vendor_of(url) != VENDOR_OPENROUTER:
         return None
@@ -322,9 +337,8 @@ def openrouter_supports_vision(url: str, model: str) -> Optional[bool]:
     if not answers:
         return None
     want = model.strip().lower()
-    if want in answers:
-        return answers[want]
-    return answers.get(want.split(":", 1)[0])
+    entry = answers.get(want) or answers.get(want.split(":", 1)[0])
+    return entry.get(kind) if entry else None
 
 
 # ── `B991`: llama.cpp's own answer, from `/props` ─────────────────────────────
@@ -376,6 +390,24 @@ def llamacpp_supports_vision(url: str, model: str) -> Optional[bool]:
     """What llama-server's `/props` says about `model`'s pictures, read by the
     llama.cpp capability reader — or None when the endpoint is not a local
     llama-server, describes another model, or does not report `modalities`."""
+    answers = _llamacpp_answers(url, model)
+    return answers.get("vision") if answers else None
+
+
+def llamacpp_hears(url: str, model: str) -> Optional[bool]:
+    """`B1290`. What llama-server's `/props` says about `model`'s recordings
+    (`modalities.audio`, set when it was started with an audio projector) —
+    or None on every condition `llamacpp_supports_vision` answers None on, and
+    when the field is absent or not a boolean."""
+    answers = _llamacpp_answers(url, model)
+    return answers.get("audio") if answers else None
+
+
+def _llamacpp_answers(url: str, model: str) -> Optional[dict]:
+    """`{"vision": answer, "audio": answer}` from one `/props` read, each None
+    unless `modalities` names it as a boolean; None when not asked or not
+    answered. `B1290` split this out of `llamacpp_supports_vision` so the two
+    questions share the probe and its cache."""
     from src.model_capability_readers import VENDOR_GENERIC_OPENAI, VENDOR_LLAMACPP
     if not model:
         return None
@@ -401,14 +433,17 @@ def llamacpp_supports_vision(url: str, model: str) -> Optional[bool]:
         payload = r.json() if r.is_success else None
     except Exception:
         payload = None
-    answer = None
+    answer = {"vision": None, "audio": None}
     if isinstance(payload, dict) and want.lower() in _llamacpp_names(payload):
         modalities = payload.get("modalities")
-        if isinstance(modalities, dict) and isinstance(modalities.get("vision"), bool):
-            from src.model_capabilities import vision_verdict
+        if isinstance(modalities, dict):
+            from src.model_capabilities import audio_verdict, vision_verdict
             from src.model_capability_readers import llamacpp as llamacpp_reader
             record = llamacpp_reader.record_from_props_payload(payload)
-            answer = vision_verdict(record.capability) if record else None
+            if record and isinstance(modalities.get("vision"), bool):
+                answer["vision"] = vision_verdict(record.capability)
+            if record and isinstance(modalities.get("audio"), bool):
+                answer["audio"] = audio_verdict(record.capability)
     _llamacpp_props_cache[key] = (answer, now + _PROVIDER_FINGERPRINT_TTL)
     return answer
 
@@ -445,6 +480,37 @@ def vision_answer(model_name: str, endpoint_url: str = "") -> Optional[bool]:
         if advertised is not None:
             return advertised
     return True if is_vision_model(model_name) else None
+
+
+def endpoint_hears(endpoint_url: str, model_name: str) -> Optional[bool]:
+    """`B1290`. The endpoint's own answer to "can this model be sent a
+    recording", or None when it gives none: OpenRouter's catalogue, then
+    llama-server's `/props`. LM Studio and Ollama report vision and not audio,
+    so they are not asked — and say nothing."""
+    for ask in (openrouter_hears, llamacpp_hears):
+        try:
+            answer = ask(endpoint_url, model_name or "")
+        except Exception:
+            answer = None
+        if answer is not None:
+            return answer
+    return None
+
+
+def audio_answer(model_name: str, endpoint_url: str = "") -> Optional[bool]:
+    """Whether a model takes a recording as sound (OpenAI's `input_audio`
+    part), as far as its endpoint has said — and None, never a guess,
+    otherwise.
+
+    `B1290`. Unlike `vision_answer` there is no name list to fall back on and
+    an unknown is not a yes: most local servers refuse an audio part outright
+    and fail the whole turn, so a recording goes to a model as sound only when
+    its endpoint says that model hears (`endpoint_hears`). Everything else
+    keeps `B1284`'s path — the transcript, or the sentence that it was not
+    heard."""
+    if not endpoint_url:
+        return None
+    return endpoint_hears(endpoint_url, model_name or "")
 
 
 def model_supports_vision(model_name: str, endpoint_url: str = "") -> bool:
