@@ -3805,6 +3805,31 @@
             <div class="admin-toggle-sub">Encrypted with a key of your own. The agent signs in with an item by its name — the browser fills the form itself, and only on the item's own addresses — and never sees the password. Prefer an account made for the agent, with only the role it needs.</div>
             <div id="vault-settings-result" class="admin-toggle-sub" role="status" hidden></div>
           </div>
+          <!-- `P27-10`. Bring logins in from Bitwarden or Vaultwarden (or a
+               Pantheon export), take your own out sealed with a passphrase. -->
+          <div class="admin-card">
+            <h2><svg width="14" height="14" style="vertical-align:-2px;margin-right:5px;opacity:0.6" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>Bring logins in, take them out</h2>
+            <div class="git-settings-row">
+              <label class="git-settings-field"><span>A Bitwarden or Vaultwarden export (.json or .csv), or a Pantheon export</span>
+                <input id="vault-import-file" type="file" accept=".json,.csv,application/json,text/csv"></label>
+              <label class="git-settings-field"><span>Its passphrase <em>(a Pantheon export only)</em></span>
+                <input id="vault-import-passphrase" type="password" autocomplete="off" spellcheck="false"></label>
+              <button type="button" id="vault-import" class="memory-toolbar-btn">Bring in</button>
+              <button type="button" id="vault-import-server" class="memory-toolbar-btn" hidden>From the server's Bitwarden</button>
+            </div>
+            <div class="admin-toggle-sub">Everything comes into your own vault, set to ask you each time an agent signs in with it. Cards and identities are left out and named. Delete the export file afterwards: it is not encrypted.</div>
+            <div class="git-settings-row">
+              <label class="git-settings-field"><span>A passphrase for the file <em>(12 characters or more)</em></span>
+                <input id="vault-export-passphrase" type="password" autocomplete="new-password" spellcheck="false"></label>
+              <label class="git-settings-field"><span>The passphrase again</span>
+                <input id="vault-export-passphrase-again" type="password" autocomplete="new-password" spellcheck="false"></label>
+              <label class="git-settings-field"><span>Your Pantheon password</span>
+                <input id="vault-export-password" type="password" autocomplete="current-password"></label>
+              <button type="button" id="vault-export" class="memory-toolbar-btn">Export my vault</button>
+            </div>
+            <div class="admin-toggle-sub">The file is sealed with the passphrase — names and addresses too. Pantheon does not keep the passphrase, so nobody can open the file without it, you included.</div>
+            <div id="vault-transfer-result" class="admin-toggle-sub" role="status" hidden></div>
+          </div>
         </div>
 
         <!-- ═══ AGENTS TAB (`P24-15`) ═══
