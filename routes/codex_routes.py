@@ -16,7 +16,7 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from core.middleware import require_admin
+from core.middleware import require_operator
 from src.auth_helpers import require_authenticated_request, require_user
 from src.tool_implementations import do_manage_notes
 from src.constants import COOKBOOK_STATE_FILE
@@ -132,13 +132,14 @@ def _require_cookbook_scope(request: Request, allowed: set[str]) -> str:
     """Authorize a Codex cookbook route.
 
     For API-token callers, enforce the given scope set.
-    For cookie-session callers, additionally require admin privileges
-    because cookbook surfaces expose host topology, task logs, tmux
-    commands, and model-serving controls.
+    For cookie-session callers, additionally require the operator gate
+    (`require_operator`, `B683`: an admin, or a person an admin let run the
+    instance) because cookbook surfaces expose host topology, task logs,
+    tmux commands, and model-serving controls.
     """
     owner = _scope_owner(request, allowed)
     if not getattr(request.state, "api_token", False):
-        require_admin(request)
+        require_operator(request)
     return owner
 
 

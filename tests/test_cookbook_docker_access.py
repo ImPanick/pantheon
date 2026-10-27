@@ -142,6 +142,7 @@ async def test_local_container_serve_returns_host_docker_opt_in_hint(
         return False
 
     monkeypatch.setattr(cookbook_routes, "require_admin", lambda request: None)
+    monkeypatch.setattr(cookbook_routes, "require_operator", lambda request: None)  # `B683`
     monkeypatch.setattr(cookbook_routes, "_binary_available", binary_available)
     monkeypatch.setattr(cookbook_routes, "running_in_container", lambda: True)
     monkeypatch.setattr(
@@ -202,6 +203,7 @@ async def test_local_container_serve_allows_generated_docker_exec_when_enabled(
         return _Process()
 
     monkeypatch.setattr(cookbook_routes, "require_admin", lambda request: None)
+    monkeypatch.setattr(cookbook_routes, "require_operator", lambda request: None)  # `B683`
     monkeypatch.setattr(cookbook_routes, "_binary_available", binary_available)
     monkeypatch.setattr(cookbook_routes, "running_in_container", lambda: True)
     monkeypatch.setattr(

@@ -14,8 +14,10 @@ diag = pytest.importorskip("routes.diagnostics_routes")
 
 
 def _client_with_admin_gate(monkeypatch, gate, tmp_path=None):
-    """Mount the diagnostics router with a mock require_admin and DATA_DIR."""
+    """Mount the diagnostics router with a mock gate and DATA_DIR. The logs
+    route asks the operator gate since `B683`; both are replaced."""
     monkeypatch.setattr(diag, "require_admin", gate)
+    monkeypatch.setattr(diag, "require_operator", gate)
     if tmp_path:
         monkeypatch.setattr(diag, "DATA_DIR", str(tmp_path))
 

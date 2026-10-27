@@ -63,6 +63,11 @@ class _AuthManager:
     def is_admin(self, user):
         return user in self._admins
 
+    def get_privileges(self, user):
+        # `B683`: the built-in skill routes ask the operator gate, which asks a
+        # non-admin's privileges; nobody here was granted `can_run_instance`.
+        return {}
+
 
 def _request(user, *, admins=(), method="GET", body=None):
     app = SimpleNamespace(state=SimpleNamespace(auth_manager=_AuthManager(admins)))

@@ -38,7 +38,7 @@ from services.memory.skill_lint import (
 from services.memory.skill_improve import pinned_of as _pinned_of
 from src.auth_helpers import get_current_user
 from src.prompt_security import untrusted_context_message
-from core.middleware import require_admin
+from core.middleware import require_admin, require_operator
 
 logger = logging.getLogger(__name__)
 
@@ -1976,13 +1976,13 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         section alongside the user's learned SKILL.md skills. Sourced from
         agent_loop.TOOL_SECTIONS (the same descriptions the model is given).
 
-        Admin-only (`P2-21` / `P11-10`). The PUT and DELETE beside this route
-        have always called `require_admin`; the two reads made no auth call at
+        The operator tier (`P2-21` / `P11-10`; `require_operator` since
+        `B683`). The PUT and DELETE beside this route are gated the same; the two reads made no auth call at
         all, so any signed-in non-admin could read every built-in instruction
         block — the same text the model is given, including whatever an
         operator has overridden it with. Read and write are the same secret
         here, which is why the read is gated at the same height as the write."""
-        require_admin(request)
+        require_operator(request)
         import re
 
         def _clean(raw: str) -> str:
@@ -2018,10 +2018,10 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         """Full text of a built-in tool's instruction block — the override
         if one is set, plus the shipped default (for the revert button).
 
-        Admin-only, for the reason on the list route above: this is the whole
+        The operator tier, for the reason on the list route above: this is the whole
         block rather than its first 240 characters, so it is the stronger half
         of the same read."""
-        require_admin(request)
+        require_operator(request)
         try:
             from src.agent_loop import TOOL_SECTIONS, get_builtin_overrides
         except Exception as e:
@@ -2047,7 +2047,7 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         """Save a user override for a built-in tool's instruction block.
         WARNING surfaced in the UI — this changes how the assistant is
         told to use a native tool."""
-        require_admin(request)
+        require_operator(request)
         from src.agent_loop import TOOL_SECTIONS
         valid = set()
         for key in TOOL_SECTIONS:
@@ -2071,7 +2071,7 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
     @router.delete("/builtin/{name}")
     async def reset_builtin_override(name: str, request: Request):
         """Revert a built-in tool to its shipped instruction block."""
-        require_admin(request)
+        require_operator(request)
         from src.settings import load_settings, save_settings
         settings = load_settings()
         ov = settings.get("builtin_tool_overrides")

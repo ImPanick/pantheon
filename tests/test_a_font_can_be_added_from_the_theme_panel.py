@@ -67,6 +67,12 @@ class _Auth:
     def is_admin(user):
         return user == "admin"
 
+    @staticmethod
+    def get_privileges(user):
+        # `B683`: fonts are the operator tier's, whose gate asks a non-admin's
+        # privileges; nobody here was granted `can_run_instance`.
+        return {}
+
 
 @pytest.fixture
 def env(tmp_path, monkeypatch):

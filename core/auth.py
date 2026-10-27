@@ -59,6 +59,16 @@ DEFAULT_PRIVILEGES = {
     "can_use_tasks": True,
     "can_use_theme": True,
     "can_use_workbench": True,
+    # `B683`. *May run this instance* — the `operator` tier of
+    # `.pantheon/P11-AUTH-MAP.md`: models and endpoints, the Forge's serving,
+    # diagnostics and logs, webhooks, the embeddings and the personal index,
+    # the workstation's machines. `core.middleware.require_operator` is the
+    # one gate that reads it (`OPERATOR_PRIVILEGE` below). It never reaches
+    # the `superuser` tier — credentials, accounts, roles, the shell, MCP
+    # servers, backups — which stays `is_admin`'s alone (`P11-02`). Off for
+    # everyone but admins until an admin grants it, per person in Settings →
+    # Users or to everyone holding a role.
+    "can_run_instance": False,
     "max_messages_per_day": 0,
     "allowed_models": [],
     "allowed_models_restricted": False,
@@ -90,6 +100,10 @@ ADMIN_GRANTS = {
 }
 
 _GRANT_PREFIX = "can_"
+
+#: `B683`. The key the operator gate reads, named once beside the registry
+#: that declares it so the gate and the registry cannot drift apart.
+OPERATOR_PRIVILEGE = "can_run_instance"
 
 
 def _admin_privileges(registry: Dict[str, Any], grants: Dict[str, Any]) -> Dict[str, Any]:

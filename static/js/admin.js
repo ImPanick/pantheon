@@ -90,6 +90,10 @@ const PRIV_LABELS = {
   can_use_tasks: 'Tasks',
   can_use_theme: 'Theme',
   can_use_workbench: 'Workbench',
+  // `B683`. The operator tier: the work of keeping the instance up, without
+  // the owner's credentials, accounts or shell. Last, so the switches above
+  // keep their order; off for everyone until granted here or by a role.
+  can_run_instance: 'Run this instance',
 };
 
 // `B1195`, the owner's call (`D-2026-10-26-01` §6). What a switch takes that
@@ -102,6 +106,8 @@ const PRIV_TAKES = {
   can_use_notes: 'Off also holds their note reminders.',
   can_use_tasks: 'Off also holds their scheduled tasks; each says why, and runs again once it is back on.',
   can_use_workbench: 'Off also holds their workflows.',
+  // `B683`: what it hands out and what it never does, in one line.
+  can_run_instance: 'On lets them add and switch models and endpoints, serve from the Forge, read diagnostics and logs, and manage webhooks and embeddings. Never credentials, accounts, roles or the shell.',
 };
 
 // `B966`, the owner's call (`D-2026-10-01-01`). A privilege this panel no

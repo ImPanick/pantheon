@@ -50,7 +50,7 @@ def _async_client(app):
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t")
 
 import routes.personal_routes as personal_routes
-from core.middleware import require_admin
+from core.middleware import require_admin, require_operator
 from src.auth_helpers import require_user
 
 
@@ -97,6 +97,8 @@ def _build_app(tmp_path, monkeypatch, record):
     )
     app.dependency_overrides[require_user] = lambda: "tester"
     app.dependency_overrides[require_admin] = lambda: None
+    # `B683`: adding, removing and reloading are the operator tier's now.
+    app.dependency_overrides[require_operator] = lambda: None
 
     @app.get("/loop-thread")
     async def loop_thread_probe():

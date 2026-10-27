@@ -16,7 +16,7 @@ from collections import namedtuple
 from pathlib import Path
 from typing import Dict, Any
 from core.platform_compat import IS_APPLE_SILICON, which_tool
-from core.middleware import require_admin
+from core.middleware import require_admin, require_operator
 from src.tmux_attach import attach_command, list_command
 from src.host_docker_access import (
     HOST_DOCKER_ACCESS_HINT,
@@ -1008,17 +1008,18 @@ def setup_shell_routes() -> APIRouter:
         session that lives on another machine. `P4-15` reads the same endpoint
         for the agent's shell.
 
-        Gated by `core.middleware.require_admin`, the one gate `Law 14` points
-        at — the one the Forge's state and status routes already use, and,
-        since `B543` folded this file's own copy into it, the one the routes
-        here that *execute* use too.
+        Gated by `core.middleware.require_operator` (`B683`) — the gate the
+        Forge's state and status routes use, `require_admin` with one more door
+        for a person an admin let run the instance. The routes here that
+        *execute* stay on `require_admin`, since `B543` folded this file's own
+        copy into it.
 
         `B913`: ``action=list`` answers how to list the sessions instead — the
         same placement, `tmux ls` in place of `tmux attach` — for the Forge's
         kill-failure notice, which told a Docker user to run `tmux ls` on a
         host where it names nothing. ``session`` is then optional: named, the
         answer says what to look for. An enum, not a flag (`Law 10`)."""
-        require_admin(request)
+        require_operator(request)
         if action not in ("attach", "list"):
             raise HTTPException(400, "action must be attach or list")
         try:
@@ -1268,7 +1269,7 @@ def setup_shell_routes() -> APIRouter:
         server over SSH, inside its venv — otherwise installing on a remote box
         never reflected because the check only ever looked at the local host.
         """
-        require_admin(request)
+        require_operator(request)
         _reject_cross_site(request)
         import importlib.metadata as importlib_metadata
         import shlex

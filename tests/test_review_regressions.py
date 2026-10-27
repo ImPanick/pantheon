@@ -139,6 +139,9 @@ def _install_model_route_import_stubs(monkeypatch):
     db_mod.GalleryImage = MagicMock()
     middleware_mod = types.ModuleType("core.middleware")
     middleware_mod.require_admin = lambda request: None
+    # `B683`: `routes.model_routes` imports the operator gate and its view question.
+    middleware_mod.require_operator = lambda request: None
+    middleware_mod.runs_instance = lambda request: True
     multipart_mod = types.ModuleType("python_multipart")
     multipart_mod.__version__ = "0.0.13"
     models_mod = types.ModuleType("core.models")

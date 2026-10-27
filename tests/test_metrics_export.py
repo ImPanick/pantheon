@@ -424,7 +424,8 @@ def test_the_route_is_authenticated_two_ways_and_scope_gated():
     code = _metrics_handler_code()
     assert "render_metrics" in code, "wrong function — the test would be vacuous"
     assert "metrics:read" in code, "no scope gate in the handler body"
-    assert "require_admin(request)" in code, "no browser-session path"
+    # `B683`: the browser-session path is the operator tier's gate.
+    assert "require_operator(request)" in code, "no browser-session path"
     assert "403" in code, "a token without the scope is not refused"
 
 

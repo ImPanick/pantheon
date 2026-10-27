@@ -12,7 +12,7 @@ from src.request_models import DirectoryRequest
 from core.constants import BASE_DIR, PERSONAL_DIR, PERSONAL_UPLOADS_DIR
 from src.rag_singleton import get_rag_manager, rag_unavailable_reason
 from src.auth_helpers import require_privilege, require_user
-from core.middleware import require_admin
+from core.middleware import require_admin, require_operator
 from src.upload_handler import secure_filename
 from src.file_names import create_unique, display_name, split_extension, stored_name
 from src.upload_limits import resolve_byte_limit
@@ -263,7 +263,7 @@ def setup_personal_routes(personal_docs_manager, rag_manager, rag_available):
                 "healthy": not reason, "reason": reason}
     
     @router.post("/reload")
-    async def api_personal_reload(owner: str = Depends(require_user), _admin: None = Depends(require_admin)):
+    async def api_personal_reload(owner: str = Depends(require_user), _operator: None = Depends(require_operator)):
         # refresh_index() re-extracts text across every tracked directory —
         # blocking work. Take the shared job lock (so it cannot race an add /
         # remove) and run it off the event loop.
@@ -281,7 +281,7 @@ def setup_personal_routes(personal_docs_manager, rag_manager, rag_available):
     async def add_directory_to_rag(
         request: Request,
         directory_request: DirectoryRequest,
-        owner: str = Depends(require_user), _admin: None = Depends(require_admin),
+        owner: str = Depends(require_user), _operator: None = Depends(require_operator),
     ):
         """
         Add a directory and all its subdirectories/files to the RAG index.
@@ -378,7 +378,7 @@ def setup_personal_routes(personal_docs_manager, rag_manager, rag_available):
             raise HTTPException(500, f"Failed to add directory: {str(e)}")
     
     @router.delete("/remove_directory")
-    async def remove_directory_from_rag(directory: str = Query(...), owner: str = Depends(require_user), _admin: None = Depends(require_admin)):
+    async def remove_directory_from_rag(directory: str = Query(...), owner: str = Depends(require_user), _operator: None = Depends(require_operator)):
         """
         Remove a directory from the RAG index.
 
@@ -542,7 +542,7 @@ def setup_personal_routes(personal_docs_manager, rag_manager, rag_available):
         }
 
     @router.delete("/file")
-    async def delete_file_from_rag(filepath: str = Query(...), owner: str = Depends(require_user), _admin: None = Depends(require_admin)):
+    async def delete_file_from_rag(filepath: str = Query(...), owner: str = Depends(require_user), _operator: None = Depends(require_operator)):
         """Delete a specific file from RAG index and optionally from disk."""
         try:
             def _delete_file():

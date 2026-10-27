@@ -34,6 +34,7 @@ def _admin_request() -> Request:
 @pytest.mark.asyncio
 async def test_remote_windows_diffusers_is_rejected_before_runner_launch(monkeypatch):
     monkeypatch.setattr(cookbook_routes, "require_admin", lambda request: None)
+    monkeypatch.setattr(cookbook_routes, "require_operator", lambda request: None)  # `B683`
     calls = []
 
     async def fail_if_shell_runs(*args, **kwargs):

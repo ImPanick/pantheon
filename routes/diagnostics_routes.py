@@ -8,7 +8,7 @@ from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, Request
 
 from core.constants import DATA_DIR
-from core.middleware import require_admin
+from core.middleware import require_admin, require_operator
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ def setup_diagnostics_routes(
     async def get_service_health(request: Request) -> Dict[str, Any]:
         """Consolidated degraded-state report for ChromaDB, SearXNG, email,
         ntfy, and provider endpoints. Non-intrusive probes — safe to poll."""
-        require_admin(request)
+        require_operator(request)
         from src.service_health import collect_service_health
         return await collect_service_health(_rag_now(start=False), memory_vector)
 
@@ -76,7 +76,7 @@ def setup_diagnostics_routes(
 
         Local only, cheap, safe to poll.
         """
-        require_admin(request)
+        require_operator(request)
         from src.self_checks import run_self_checks
         return run_self_checks()
 
@@ -121,7 +121,7 @@ def setup_diagnostics_routes(
             if "metrics:read" not in scopes:
                 raise HTTPException(403, "API token missing required scope: metrics:read")
         else:
-            require_admin(request)
+            require_operator(request)
 
         from src.metrics_export import render_metrics
         return PlainTextResponse(
@@ -209,7 +209,7 @@ def setup_diagnostics_routes(
         calls — an unknown check would otherwise never run, and the suite would
         pass for the wrong reason.
         """
-        require_admin(request)
+        require_operator(request)
         from src.evals import load_suites, validate_suite
         return {"suites": [
             {"name": s.get("name"), "cases": len(s.get("cases") or []),
@@ -235,7 +235,7 @@ def setup_diagnostics_routes(
         `model` runs the whole suite against a different one, which is the
         question the harness exists for: *did that change help.*
         """
-        require_admin(request)
+        require_operator(request)
         from src.evals import run_suite
         return await run_suite(name, model=model or None)
 
@@ -245,10 +245,12 @@ def setup_diagnostics_routes(
         """The auth audit log, for an admin to read without a database (`B684`).
 
         `outcome` is `all` (failures first), `failures` or `ok`; `party` matches
-        the account that acted or the one it was done to. Admin-only: it names
-        every account and every refused sign-in on the instance.
+        the account that acted or the one it was done to. The operator tier
+        (`require_operator`, `B683`), as the map tiers it: it names every account
+        and every refused sign-in on the instance, which is what the person
+        keeping the instance up reads after something has gone wrong.
         """
-        require_admin(request)
+        require_operator(request)
         from src.events import auth_events
         return auth_events(limit, outcome=outcome, party=party or None)
 
@@ -306,7 +308,7 @@ def setup_diagnostics_routes(
         it without thinking, and a redactor that trusts one field is a redactor
         with a hole in it.
         """
-        require_admin(request)
+        require_operator(request)
         from src.diagnostic_bundle import build_bundle, render_markdown
         bundle = build_bundle(note=note, log_limit=log_limit, run_id=run_id)
         return {
@@ -318,7 +320,7 @@ def setup_diagnostics_routes(
 
     @router.get("/api/diagnostics/logs")
     async def get_diagnostics_logs(request: Request, limit: int = 200) -> Dict[str, Any]:
-        require_admin(request)
+        require_operator(request)
         limit = max(1, min(limit, 1000))
         try:
             log_file = os.path.join(DATA_DIR, "logs", "app.log")
@@ -342,7 +344,7 @@ def setup_diagnostics_routes(
 
     @router.get("/api/db/stats")
     async def get_database_stats(request: Request) -> Dict[str, Any]:
-        require_admin(request)
+        require_operator(request)
         try:
             from core.database import get_detailed_stats
             return get_detailed_stats()
@@ -352,7 +354,7 @@ def setup_diagnostics_routes(
 
     @router.get("/api/rag/stats")
     async def get_rag_stats(request: Request) -> Dict[str, Any]:
-        require_admin(request)
+        require_operator(request)
         rag = _rag_now(start=True)   # `B1532`
         if rag:
             return rag.get_stats()

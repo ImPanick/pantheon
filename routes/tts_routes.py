@@ -9,7 +9,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 import logging
 
-from core.middleware import require_admin
+from core.middleware import require_operator
 
 logger = logging.getLogger(__name__)
 
@@ -92,9 +92,10 @@ def setup_tts_routes(tts_service):
         # speed has made the old clips unreachable — `saveAndClearCache` in
         # `static/js/settings.js`, which first writes `POST /api/auth/settings`,
         # an admin write. So whoever may change the voice may throw away the
-        # clips made with the old one, and nobody else. A no-login install
-        # keeps it: `require_admin` returns when auth is off.
-        require_admin(request)
+        # clips made with the old one, and nobody else. `B683`: the operator
+        # tier's gate, `require_operator` — an admin, or a person an admin let
+        # run the instance.
+        require_operator(request)
         try:
             tts_service.clear_cache()
             return {"success": True, "message": "Cache cleared"}

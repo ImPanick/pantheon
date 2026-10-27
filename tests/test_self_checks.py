@@ -168,7 +168,8 @@ def test_the_route_exists_and_is_admin_gated():
     # mutation that removed the gate survived.
     nxt = src.find("@router.", i + 1)
     body = src[i:nxt if nxt != -1 else len(src)]
-    assert "require_admin" in body, "the self-check route is not admin-gated"
+    # `B683`: the operator tier's gate — an admin, or a person an admin let run it.
+    assert "require_operator" in body, "the self-check route is not gated"
     assert "run_self_checks" in body
 
 

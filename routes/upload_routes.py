@@ -13,7 +13,7 @@ from pathlib import Path
 from fastapi import APIRouter, Request, File, UploadFile, HTTPException, Form
 from typing import List, Optional
 import logging
-from core.middleware import require_admin
+from core.middleware import require_operator
 from core.database import (
     SessionLocal,
     ChatMessage as DbChatMessage,
@@ -561,7 +561,7 @@ def setup_upload_routes(upload_handler):
     @router.post("/cleanup")
     async def manual_cleanup(request: Request):
         """Manually trigger cleanup of old uploads."""
-        require_admin(request)
+        require_operator(request)
         try:
             cleaned_count = await asyncio.to_thread(
                 _run_reference_safe_cleanup,
@@ -584,7 +584,7 @@ def setup_upload_routes(upload_handler):
     @router.get("/stats")
     async def upload_stats(request: Request):
         """Get statistics about uploaded files."""
-        require_admin(request)
+        require_operator(request)
         try:
             return upload_handler.get_upload_stats()
         except Exception as e:

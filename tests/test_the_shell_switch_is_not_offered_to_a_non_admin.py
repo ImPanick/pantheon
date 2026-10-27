@@ -282,4 +282,6 @@ def test_users_offers_no_shell_switch_and_says_where_the_shell_is(auth, tmp_path
             # `B1191` (`D-2026-10-26-01` §5): one per Tools entry that had no
             # switch for a person, after the ones already pinned.
             "can_use_assistant", "can_use_calendar", "can_use_compare", "can_use_email",
-            "can_use_notes", "can_use_tasks", "can_use_theme", "can_use_workbench"]
+            "can_use_notes", "can_use_tasks", "can_use_theme", "can_use_workbench",
+            # `B683`: the operator tier's grant, last so nothing above moves.
+            "can_run_instance"]

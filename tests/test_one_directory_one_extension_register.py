@@ -283,7 +283,7 @@ def personal_api(tmp_path, monkeypatch):
     from fastapi import FastAPI
     import routes.personal_routes as pr
     from src.auth_helpers import require_user
-    from core.middleware import require_admin
+    from core.middleware import require_admin, require_operator
 
     vault_dir = tmp_path / "personal"
     vault_dir.mkdir()
@@ -326,6 +326,7 @@ def personal_api(tmp_path, monkeypatch):
     app.include_router(pr.setup_personal_routes(manager, rag, True))
     app.dependency_overrides[require_user] = lambda: "alice"
     app.dependency_overrides[require_admin] = lambda: None
+    app.dependency_overrides[require_operator] = lambda: None  # `B683`
     transport = httpx.ASGITransport(app=app, client=_PEER)
     client = httpx.AsyncClient(transport=transport, base_url="http://docs.test")
     return client, vault_dir, manager

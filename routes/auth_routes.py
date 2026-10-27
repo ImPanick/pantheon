@@ -16,7 +16,7 @@ from core.atomic_io import atomic_write_json, atomic_write_text
 from core.auth import (
     AuthManager, DEFAULT_PRIVILEGES, RESERVED_USERNAMES, SetAdminResult, TOKEN_TTL,
 )
-from core.middleware import require_admin
+from core.middleware import require_admin, require_operator
 from src.events import record_auth_event
 # Imported under its own name, never aliased. An aliased auth call is
 # invisible to `.pantheon/check-auth-map.py`'s call-graph closure — which
@@ -900,8 +900,8 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
 
     @router.post("/features")
     async def set_features(request: Request):
-        """Admin only: update feature toggles."""
-        require_admin(request)
+        """Whoever runs the instance (`require_operator`, `B683`): update feature toggles."""
+        require_operator(request)
         body = await request.json()
         current = _load_features()
         for key in current:
@@ -929,7 +929,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
 
     @router.post("/networks/check")
     async def check_networks(request: Request):
-        """Admin only: validate a proposed `networks` value and say what it claims.
+        """Whoever runs the instance (`require_operator`, `B683`): validate a proposed `networks` value and say what it claims.
 
         `P17-09`. One endpoint answering both questions the panel has, because
         both are answered by the same Python and a JavaScript copy of CIDR
@@ -937,7 +937,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         saved here — the panel asks about what is on screen, before the operator
         commits to it.
         """
-        require_admin(request)
+        require_operator(request)
         body = await request.json()
         value = body.get("networks", [])
         probe = str(body.get("probe") or "").strip()
@@ -950,14 +950,14 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
 
     @router.get("/networks/agent")
     async def network_agent_health(request: Request):
-        """Admin only: is the network agent there, and is it the agent?
+        """Whoever runs the instance (`require_operator`, `B683`): is the network agent there, and is it the agent?
 
         `P17-01`. A 200 from the configured address is not enough — the most
         likely other listener on a LAN port is a router's admin page, and
         reporting that as a healthy agent sends the operator hunting the wrong
         fault. `netagent_client.health()` checks the name.
         """
-        require_admin(request)
+        require_operator(request)
         from src import netagent_client
         if not netagent_client.configured():
             return {"configured": False, "reachable": False,
@@ -968,7 +968,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
 
     @router.get("/networks/guard")
     async def host_guard_rules(request: Request):
-        """Admin only: the agent's permanent list, read-only.
+        """Whoever runs the instance (`require_operator`, `B683`): the agent's permanent list, read-only.
 
         `P17-11`. A boundary nobody can read is a boundary nobody can check, and
         showing it beside the editable list is the clearest way to say that only
@@ -977,7 +977,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         falling back to this build's copy when it is not, rather than showing
         nothing and letting the page imply there is no boundary.
         """
-        require_admin(request)
+        require_operator(request)
         from src import netagent_client
         if netagent_client.configured():
             answer = await netagent_client.call("guard")
@@ -991,14 +991,14 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
 
     @router.get("/networks/devices")
     async def network_devices(request: Request):
-        """Admin only: the device inventory, refreshed from the agent if it is up.
+        """Whoever runs the instance (`require_operator`, `B683`): the device inventory, refreshed from the agent if it is up.
 
         `P17-04`. The agent observes and this remembers, so a refresh is a merge
         rather than a replacement — a device that has gone quiet keeps its record
         and its name, because *"where is the printer"* has an answer even on a
         day the printer has not spoken.
         """
-        require_admin(request)
+        require_operator(request)
         from src import device_inventory, netagent_client
 
         refreshed = None
@@ -1018,12 +1018,12 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
 
     @router.post("/networks/devices/name")
     async def name_network_device(request: Request):
-        """Admin only: give a device a name that survives a DHCP reshuffle.
+        """Whoever runs the instance (`require_operator`, `B683`): give a device a name that survives a DHCP reshuffle.
 
         It is hung on the MAC, which is the identity, so it survives by
         construction rather than by anybody remembering to move it.
         """
-        require_admin(request)
+        require_operator(request)
         body = await request.json()
         from src import device_inventory
         mac = str(body.get("mac") or "")
@@ -1033,7 +1033,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
 
     @router.get("/settings/flag-sources")
     async def settings_flag_sources(request: Request):
-        """Admin only: which layer answers each tri-state env-backed flag.
+        """Whoever runs the instance (`require_operator`, `B683`): which layer answers each tri-state env-backed flag.
 
         `B95`. `metrics_enabled`, `searxng_widen_engines` and
         `allow_model_download` ship `None` so a stored `False` can mean *no*
@@ -1045,25 +1045,25 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         forwarding `${PANTHEON_ALLOW_MODEL_DOWNLOAD:-0}` makes "unset" a
         different sentence from "unset with nothing underneath".
 
-        Admin-only for the same reason the full settings read is: it reports
+        The operator tier (`B683`) for the same reason the full settings read is: it reports
         what the process environment says, which is deployment configuration.
         """
-        require_admin(request)
+        require_operator(request)
         from src.settings import env_backed_flag_report
         return {"flags": env_backed_flag_report()}
 
     @router.get("/settings/ranges")
     async def settings_ranges(request: Request):
-        """Admin only: the range each whole-number setting is held to.
+        """Whoever runs the instance (`require_operator`, `B683`): the range each whole-number setting is held to.
 
         `B1539`. The bounds travel to the panel rather than being typed into
         it a second time, so a field can say its floor and ceiling before a
         save is clamped (`Law 15`) and cannot disagree with the route that
         clamps (`Law 7`) — `GET /roles`' `limit_ranges` (`P12-02`) for the
         instance settings. `unset_by_null` names the ones a blank leaves
-        unset. Admin-only, as writing these settings is.
+        unset. The operator tier (`B683`); writing these settings stays the admin's.
         """
-        require_admin(request)
+        require_operator(request)
         from src.settings import INT_SETTINGS_UNSET_BY_NULL
         return {"ranges": {k: list(v) for k, v in sorted(int_setting_ranges().items())},
                 "unset_by_null": sorted(INT_SETTINGS_UNSET_BY_NULL)}

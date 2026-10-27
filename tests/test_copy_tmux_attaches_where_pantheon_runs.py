@@ -275,7 +275,10 @@ def _client(monkeypatch, *, in_container=True, auth=None):
     app = FastAPI()
     default = "ada" if auth is None else None
     admins = {"ada"} if auth is None else auth
-    app.state.auth_manager = SimpleNamespace(is_configured=True, is_admin=lambda u: u in admins)
+    # `B683`: the attach line is the operator tier's; its gate asks a
+    # non-admin's privileges, and nobody here was granted `can_run_instance`.
+    app.state.auth_manager = SimpleNamespace(is_configured=True, is_admin=lambda u: u in admins,
+                                             get_privileges=lambda u: {})
 
     @app.middleware("http")
     async def _who(request, call_next):

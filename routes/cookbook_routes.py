@@ -21,7 +21,7 @@ from src.auth_helpers import require_user
 from src.constants import COOKBOOK_STATE_FILE
 from pydantic import BaseModel
 
-from core.middleware import require_admin
+from core.middleware import require_admin, require_operator
 from routes._validators import validate_remote_host, validate_ssh_port
 from core.platform_compat import (
     IS_WINDOWS,
@@ -1072,7 +1072,7 @@ def setup_cookbook_routes() -> APIRouter:
         """Download a HuggingFace model in a tmux session.
         Uses `hf download` CLI directly — runs in tmux via `script -qc`
         for real TTY progress, streams ANSI-stripped output via log file."""
-        require_admin(request)
+        require_operator(request)
         from src import model_hubs
         if not model_hubs.allowed():
             # `B1229`. A download a person starts by hand is their own act, but
@@ -1419,7 +1419,7 @@ def setup_cookbook_routes() -> APIRouter:
     @router.get("/api/model/cached")
     async def model_cached(request: Request, host: str | None = None, model_dir: str | None = None, ssh_port: str | None = None, platform: str | None = None):
         """List cached models. Scans HF cache + optional model directory."""
-        require_admin(request)
+        require_operator(request)
         # Validate shell-bound inputs, matching the sibling list_gpus endpoint —
         # `host`/`ssh_port` are interpolated into an ssh command below, so an
         # unvalidated value (e.g. "x'; rm -rf ~ #") would be command injection.
@@ -1993,7 +1993,7 @@ def setup_cookbook_routes() -> APIRouter:
         keep strict validation, but serving local cached models must not require
         a fake org/name wrapper.
         """
-        require_admin(request)
+        require_operator(request)
         # Defence-in-depth: reject values that could break out of shell contexts.
         validate_remote_host(req.remote_host)
         req.ssh_port = validate_ssh_port(req.ssh_port)
@@ -3196,7 +3196,7 @@ def setup_cookbook_routes() -> APIRouter:
             ]}
         `busy` is True when free_mb/total_mb < 0.5.
         """
-        require_admin(request)
+        require_operator(request)
         host = validate_remote_host(host)
         ssh_port = validate_ssh_port(ssh_port)
         gpu_query = "nvidia-smi --query-gpu=index,name,memory.free,memory.total,memory.used,utilization.gpu,uuid --format=csv,noheader,nounits"
@@ -3406,7 +3406,7 @@ def setup_cookbook_routes() -> APIRouter:
     @router.get("/api/cookbook/state")
     async def get_cookbook_state(request: Request):
         """Load saved cookbook state (tasks, servers, presets, settings)."""
-        require_admin(request)
+        require_operator(request)
         now = time.monotonic()
         try:
             mtime = _cookbook_state_path.stat().st_mtime if _cookbook_state_path.exists() else 0.0
@@ -3446,7 +3446,7 @@ def setup_cookbook_routes() -> APIRouter:
         omits but was added in the last RACE_WINDOW seconds — that's a
         race, not an intentional delete.
         """
-        require_admin(request)
+        require_operator(request)
         RACE_WINDOW_MS = 60_000
         try:
             from core.atomic_io import atomic_write_json
@@ -4103,7 +4103,7 @@ def setup_cookbook_routes() -> APIRouter:
         call that — when this was a plain async def — froze the entire server
         event loop. Now the whole body runs in a worker thread via
         asyncio.to_thread so other requests stay responsive."""
-        require_admin(request)
+        require_operator(request)
         now = time.monotonic()
         cached = _tasks_status_cache.get("value")
         if cached is not None and now - float(_tasks_status_cache.get("ts") or 0) < 2.0:

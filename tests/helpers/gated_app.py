@@ -88,14 +88,19 @@ _EPILOGUE = '\nprint("RESULT=" + json.dumps(RESULT, sort_keys=True))\n'
 
 
 def gated_app_probe(tmp_path, body: str, env_overrides: dict | None = None, *,
-                    accounts: bool = True) -> dict:
+                    accounts: bool = True, prelude: str = "") -> dict:
     """Boot the real app, run ``body`` with three callers, return ``RESULT``.
 
     ``env_overrides`` is applied last — `tests/test_there_is_always_authentication.py`
     boots the same app with each old no-sign-in variable set, to show it is
     ignored; ``RESULT["premise"]`` says what the booted app answered, so a case
     reads it. ``accounts=False`` boots a first run: no account exists, and
-    ``client(who)`` is only ``client(None)``."""
+    ``client(who)`` is only ``client(None)``.
+
+    ``prelude`` runs before the app is imported — for a probe that must wrap
+    something every route module binds at import (`B683` wraps the two admin
+    gates, so a route that passes its gate stops there instead of doing its
+    work)."""
     env = os.environ.copy()
     env.update({
         # Not incidental, though ignored since `D-2026-10-07-02` §2: a tree
@@ -113,7 +118,8 @@ def gated_app_probe(tmp_path, body: str, env_overrides: dict | None = None, *,
         "PYTHON_DOTENV_DISABLED": "1",
     })
     env.update(env_overrides or {})
-    source = f"ACCOUNTS = {bool(accounts)!r}\n" + _PREAMBLE + textwrap.dedent(body) + _EPILOGUE
+    source = (f"ACCOUNTS = {bool(accounts)!r}\n" + textwrap.dedent(prelude) + "\n"
+              + _PREAMBLE + textwrap.dedent(body) + _EPILOGUE)
     result = subprocess.run([sys.executable, "-c", source], cwd=str(_REPO), env=env,
                             capture_output=True, text=True, timeout=600, check=False)
     assert result.returncode == 0, result.stderr[-4000:]
