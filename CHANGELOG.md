@@ -245,6 +245,12 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **Quiet text is a shade between the muted and full foreground, not a faded one** — 558 more
+  rules lost their `opacity` (`B1577`), and the sign-in page follows the same ladder (`B1575`).
+- **Static CSS is served compressed once per version,** with its comments emptied; the ETag and
+  revalidation are unchanged (`B1227`).
+- **The deploy check reads `.dockerignore` as Docker does,** so it now covers the skill library's
+  Markdown the image carries (`B447`).
 - **The whole-state `POST /api/cookbook/state` no longer writes the servers list;** use
   `PUT /api/cookbook/servers`, which refuses a save made from an older list (`B1258`).
 - **Secondary text is drawn between the muted and full foreground** rather than mixed toward
@@ -421,6 +427,12 @@ the next one is cut.
 
 ### Fixed
 
+- **A run's report no longer lists a tool the agent was refused as one it used** (`P24-00`); the
+  + menu and its Git page fit a phone, and choosing Browser closes the menu (`P25-00`); every
+  chat menu, folder header and Library card works from a keyboard (`B1576`); a memory tidy says
+  what it retired and how to bring it back (`B1578`); a failed transcription says it failed
+  (`B1579`); a guest no longer asks for the Knowledge index at start (`B1583`); the first request
+  after a restart is no slower than the second (`B1581`).
 - **No route handler holds the event loop while it waits for the database** (`B1223`); an operator
   sees the Knowledge index (`B1568`); a list says whether it is empty, filtered or failed to load
   (`B730`); the email library is reached from a keyboard (`B661`); a page owned by a route is not

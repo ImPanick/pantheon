@@ -271,6 +271,10 @@ Re-measured 2026-10-27, after the eleventh wave: **81 filed, 293 closed**, open 
 
 **Direction as of 2026-10-27, after the eleventh wave: the open count is falling.**
 
+Re-measured 2026-10-27, after the twelfth wave: **76 filed, 252 closed**, open **229 → 53** — falling, by three in one wave. Fourteen rows closed; eleven filed, one closed in it (`B1594`). Two of the eleven are the first rows filed by an acceptance walk rather than a sweep, and one of them (`B1585`, a push that does not ask) is not a gate: the push goes out under the person's own identity to a remote they attached, on the trust rung they chose, and the menu's words are what is wrong until the owner rules. The window moved on, so its start reads 229. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1556`–`B1595`) block.
+
+**Direction as of 2026-10-27, after the twelfth wave: the open count is falling.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus

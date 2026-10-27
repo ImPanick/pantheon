@@ -443,12 +443,12 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="tests",
         area="Verification apparatus",
-        headline="Test files 792 -> 1885, and a suite of 20,309 passing with nothing red.",
+        headline="Test files 792 -> 1897, and a suite of 20,309 passing with nothing red.",
         stock="792 test files.",
-        pantheon=("1885 test files, and 20,309 tests passing, 0 failing, 113 skipped, "
+        pantheon=("1897 test files, and 20,309 tests passing, 0 failing, 113 skipped, "
                   "0 xfailed when the suite was last run whole — 2026-10-18, at `c66fe54`."),
         before="792 test files",
-        after="1885 test files · 20,309",
+        after="1897 test files · 20,309",
         provenance="diffed",
         repro=f"git ls-tree -r --name-only {FORK_POINT} | grep -c '^tests/test_.*\\.py$' && python3 -m pytest -q",
         evidence=("tests",),
