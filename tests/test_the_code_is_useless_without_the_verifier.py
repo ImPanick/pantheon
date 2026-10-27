@@ -258,7 +258,9 @@ def test_the_exchange_sends_the_verifier(configured, provider_id, monkeypatch):
     token_resp = mock.MagicMock()
     token_resp.raise_for_status = mock.MagicMock()
     token_resp.json.return_value = {}
-    with mock.patch("httpx.post", return_value=token_resp) as posted:
+    # `B1022`: the callback exchanges the code through `paced_http.post_sync`
+    # (routed by a `NO_PROXY` range, paced), not `httpx.post`.
+    with mock.patch("src.paced_http.post_sync", return_value=token_resp) as posted:
         asyncio.run(_endpoint("callback")(
             provider_id=provider_id, code="4/code", state=state,
             error=None, request=None))
@@ -278,7 +280,9 @@ def test_a_state_without_a_verifier_sends_no_empty_parameter(configured):
     token_resp = mock.MagicMock()
     token_resp.raise_for_status = mock.MagicMock()
     token_resp.json.return_value = {}
-    with mock.patch("httpx.post", return_value=token_resp) as posted:
+    # `B1022`: the callback exchanges the code through `paced_http.post_sync`
+    # (routed by a `NO_PROXY` range, paced), not `httpx.post`.
+    with mock.patch("src.paced_http.post_sync", return_value=token_resp) as posted:
         asyncio.run(_endpoint("callback")(
             provider_id="google", code="4/code", state=state,
             error=None, request=None))
@@ -310,7 +314,9 @@ def test_the_client_secret_is_still_sent(configured):
     token_resp = mock.MagicMock()
     token_resp.raise_for_status = mock.MagicMock()
     token_resp.json.return_value = {}
-    with mock.patch("httpx.post", return_value=token_resp) as posted:
+    # `B1022`: the callback exchanges the code through `paced_http.post_sync`
+    # (routed by a `NO_PROXY` range, paced), not `httpx.post`.
+    with mock.patch("src.paced_http.post_sync", return_value=token_resp) as posted:
         asyncio.run(_endpoint("callback")(
             provider_id="google", code="4/code", state=state,
             error=None, request=None))
