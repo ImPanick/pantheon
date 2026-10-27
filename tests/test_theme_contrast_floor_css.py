@@ -333,8 +333,10 @@ _SEMANTIC_EXCEPTIONS = {
     # `B393` retired two entries here: `--color-danger` is text only now (its
     # surface job is `--color-danger-surface`), and `--color-recording-hover`
     # was never text — it is measured below as the surface it is.
-    "color-error": "P1-08 — dark arm held; `#fff` sits on it at two rules",
-    "color-recording": "P1-08 — dark arm held; `white` sits on it at two rules",
+    # `B1553` retired the last two, `color-error` and `color-recording`
+    # ("P1-08 — dark arm held; white sits on it"): each is text only now, its
+    # dark arm walked up past the floor, and the white-label job is
+    # `--color-error-surface` / `--color-recording-surface`, measured below.
 }
 
 
@@ -344,6 +346,10 @@ _SEMANTIC_EXCEPTIONS = {
 _SURFACE_FLOORS = {
     "color-danger-surface": ("#ffffff", BODY_FLOOR),     # `.confirm-btn-danger`
     "color-recording-hover": ("#ffffff", BODY_FLOOR),    # `#stop-recording:hover` and its twin
+    # `B1553`: `.admin-btn-delete:hover`, `.confirm-btn-danger:hover`;
+    # `#stop-recording`, `.stop-recording-btn`.
+    "color-error-surface": ("#ffffff", BODY_FLOOR),
+    "color-recording-surface": ("#ffffff", BODY_FLOOR),
 }
 
 
@@ -357,6 +363,11 @@ def test_every_surface_token_carries_its_label_on_every_palette(palettes):
             assert got >= floor, f"{label} on --{token} is {got:.2f}:1 on `{name}`"
     assert round(_contrast(_rgb("#ffffff"), _rgb("#c0392b")), 2) == 5.44
     assert round(_contrast(_rgb("#ffffff"), _rgb("#d63031")), 2) == 4.85
+    # `B1553`: the two surfaces, against the 3.41 and 3.55 white had on the
+    # dark arms (`#ff4444`, `#ff3b30`) they used to share with text.
+    assert round(_contrast(_rgb("#ffffff"), _rgb("#d60000")), 2) == 5.44
+    assert round(_contrast(_rgb("#ffffff"), _rgb("#d50b00")), 2) == 5.42
+    assert [round(_contrast(_rgb("#ffffff"), _rgb(c)), 2) for c in ("#ff4444", "#ff3b30")] == [3.41, 3.55]
 
 
 def test_the_duplicate_shortcut_mark_reads_on_its_badge_on_every_palette(palettes):
@@ -387,15 +398,13 @@ def _two_job_tokens() -> set:
 
 def test_no_token_is_both_a_block_under_white_and_a_text_colour():
     """`B393`'s `Verify`, as a census rather than a list. `--color-danger` was
-    both and is now two tokens; the two that remain are `P1-08`'s, named in
-    `_SEMANTIC_EXCEPTIONS` with the reason their dark arms are held."""
+    both and is now two tokens; `B1553` split the two that remained,
+    `--color-error` and `--color-recording`, the same way — so the census is
+    empty and nothing is excused from it."""
     both = _two_job_tokens()
     # `--warn` was the third, found by this census: `.shortcut-warn` (below).
-    assert "color-danger" not in both and "color-recording-hover" not in both, both
-    assert both <= {"color-error", "color-recording"}, (
-        f"a token is a block under white AND a text colour: {sorted(both)}")
-    for token in both:
-        assert token in _SEMANTIC_EXCEPTIONS and "P1-08" in _SEMANTIC_EXCEPTIONS[token], token
+    assert both == set(), f"a token is a block under white AND a text colour: {sorted(both)}"
+    assert not _SEMANTIC_EXCEPTIONS, _SEMANTIC_EXCEPTIONS
 
 
 def test_every_semantic_token_clears_its_floor_or_is_a_named_exception(palettes):
@@ -457,9 +466,8 @@ def test_scoping_a_token_did_not_move_it_on_the_surface_it_was_tuned_for(palette
     """
     dark_tuned = {
         "green": "#50fa7b", "warn": "#f0ad4e",
-        "color-error": "#ff4444", "color-error-light": "#ff6666",
         "color-success": "#4caf50", "color-warning": "#f0ad4e",
-        "color-recording": "#ff3b30", "color-accent": "#00aaff",
+        "color-accent": "#00aaff",
         "color-agent-active": "#00ff00", "color-blind-orange": "#ff9800",
         "color-link-hover": "#66c7ff", "accent-warm": "#d19a66",
     }
@@ -472,6 +480,13 @@ def test_scoping_a_token_did_not_move_it_on_the_surface_it_was_tuned_for(palette
     # `#888` — darker on a light page, lighter on a dark one. Nothing paints
     # in it (`B391`); it exists to be mixed into `--fg-muted`.
     pivot = {"color-muted": "#888888"}
+    # `B1553`: three that were dark-tuned (`B22` moved their light arms and
+    # held the dark), whose dark arms then had to move too — `--color-error`
+    # and `--color-recording` up past 4.5:1 once their white-label job went to
+    # a surface token, and `--color-error-light`, the hover above
+    # `--color-error`, up with it. Measured from the dark literal, both arms.
+    walked = {"color-error": "#ff4444", "color-error-light": "#ff6666",
+              "color-recording": "#ff3b30"}
 
     root = _root_expressions()
     scoped = {t for t, v in root.items() if v.startswith("light-dark(")}
@@ -480,7 +495,8 @@ def test_scoping_a_token_did_not_move_it_on_the_surface_it_was_tuned_for(palette
     # scope. They are named here rather than filtered by shape, so a token that
     # arrives in neither family still fails this line.
     elevation = {f"shadow-ink-{n}" for n in range(1, 5)}
-    assert scoped == set(dark_tuned) | set(light_tuned) | set(light_kept) | set(pivot) | elevation, sorted(scoped)
+    assert scoped == (set(dark_tuned) | set(light_tuned) | set(light_kept) | set(pivot)
+                      | set(walked) | elevation), sorted(scoped)
     scoped -= elevation
 
     light = set(_light(palettes))
@@ -517,7 +533,7 @@ def test_scoping_a_token_did_not_move_it_on_the_surface_it_was_tuned_for(palette
             travelled[f"{token}/{scheme}"] = round(
                 _distance(_resolve(f"var(--{token})", palettes[name]), _rgb(literal)), 1
             )
-    for token, literal in pivot.items():
+    for token, literal in list(pivot.items()) + list(walked.items()):
         for scheme, group in (("light", light), ("dark", set(palettes) - light)):
             name = sorted(group)[0]
             travelled[f"{token}/{scheme}"] = round(
@@ -527,6 +543,9 @@ def test_scoping_a_token_did_not_move_it_on_the_surface_it_was_tuned_for(palette
         "color-muted-alt/light": 13.9, "color-muted-alt/dark": 65.3,
         "color-subheader/light": 46.6, "color-subheader/dark": 33.3,
         "color-muted/light": 34.6, "color-muted/dark": 20.8,
+        "color-error/light": 104.5, "color-error/dark": 43.8,
+        "color-error-light/light": 171.1, "color-error-light/dark": 36.8,
+        "color-recording/light": 79.8, "color-recording/dark": 59.4,
     }, travelled
 
 

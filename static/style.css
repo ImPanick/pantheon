@@ -212,21 +212,33 @@
          rather than mis-valued: a surface is held to the label on it (4.85:1),
          which `tests/test_theme_contrast_floor_css.py` now does.
 
-       * `--color-error` and `--color-recording` keep their DARK arms for the
-         same reason in a milder form — both are painted under `#fff`/`white`
-         at five rules between them, so lightening the dark arm to clear
-         `claude` (3.88 and 3.73) would make white-on-red worse, which is
-         `P1-08`. Their light arms move; their dark arms are held and named.
+       * `--color-error` and `--color-recording` were the same shape in a
+         milder form, and `B1553` split them as `B393` split `--color-danger`.
+         Both were painted under `#fff`/`white` (`#stop-recording`,
+         `.stop-recording-btn`, `.admin-btn-delete:hover`,
+         `.confirm-btn-danger:hover`) — 3.41 and 3.55 there on every dark
+         palette — and as text, where the dark arms missed 4.5:1 on six dark
+         palettes (`claude` 3.88 and 3.73 … `grove` 4.44 and 4.26). Now the
+         block behind white is `--color-error-surface` and
+         `--color-recording-surface`, each its token's light-arm literal (5.44
+         and 5.42 under white, on every palette; the mic and record buttons'
+         recording fill takes it too), and the tokens are text only: light arms
+         unchanged, dark arms the same hue and saturation walked up just past
+         the floor (`claude`, the worst, 4.54 and 4.55). `--color-error-light`
+         is the close button's hover over `--color-error`, so its dark arm went
+         up with it to stay a visible step brighter (`B22`'s pair rule).
 
        * `--color-brand-blue` has zero `var()` uses in this sheet and clears
          3:1 on all sixteen. Nothing to scope (`Law 1`). */
-  --color-error: light-dark(#d60000, #ff4444);
-  --color-error-light: light-dark(#a30000, #ff6666);
+  --color-error: light-dark(#d60000, #ff6363);
+  --color-error-light: light-dark(#a30000, #ff8080);
+  --color-error-surface: #d60000;
   --color-success: light-dark(#347837, #4caf50);
   --color-warning: light-dark(#965d0d, #f0ad4e);
   --color-danger: light-dark(#c0392b, #df7c71);
   --color-danger-surface: #c0392b;
-  --color-recording: light-dark(#d50b00, #ff3b30);
+  --color-recording: light-dark(#d50b00, #ff645b);
+  --color-recording-surface: #d50b00;
   --color-recording-hover: #d63031;
   --color-muted: light-dark(#747474, #949494);
   --color-muted-alt: light-dark(#646a77, #9298a4);
@@ -7856,7 +7868,7 @@ body.bg-pattern-sparkles {
     .confirm-btn-primary { background:var(--accent-primary, var(--red, #4a9eff)); color: var(--on-accent, #fff); border-color:transparent; }
     .confirm-btn-primary:hover { filter:brightness(1.15); }
     .confirm-btn-danger { background:var(--color-danger-surface); color:#fff; border-color:transparent; }   /* `B393` */
-    .confirm-btn-danger:hover { background:var(--color-error); }
+    .confirm-btn-danger:hover { background:var(--color-error-surface); }   /* `B1553` */
     #cookbook-gguf-delete-overlay {
       background:rgba(0,0,0,0.5);
       backdrop-filter:blur(4px);
@@ -8803,9 +8815,9 @@ body.bg-pattern-sparkles {
       border-color: var(--fg);
     }
     
-    #mic-btn.recording {
-      background: var(--color-recording);
-      border-color: var(--color-recording);
+    #mic-btn.recording {   /* `B1553`: a fill, so the surface */
+      background: var(--color-recording-surface);
+      border-color: var(--color-recording-surface);
       animation: pulse 1.5s infinite;
     }
     
@@ -8856,7 +8868,7 @@ body.bg-pattern-sparkles {
     }
     
     #stop-recording {
-      background: var(--color-recording);
+      background: var(--color-recording-surface);   /* `B1553` */
       color: white;
       border: none;
       border-radius: 6px;
@@ -10991,9 +11003,9 @@ button.hamburger {
   cursor: not-allowed;
 }
 
-.action-button.recording {
-  background: var(--color-recording);
-  border-color: var(--color-recording);
+.action-button.recording {   /* `B1553`: a fill, so the surface */
+  background: var(--color-recording-surface);
+  border-color: var(--color-recording-surface);
   animation: pulse 1.5s infinite;
 }
 
@@ -11325,7 +11337,7 @@ button.hamburger {
 }
 
 .stop-recording-btn {
-  background: var(--color-recording);
+  background: var(--color-recording-surface);   /* `B1553` */
   color: white;
   border: none;
   border-radius: 6px;
@@ -18839,9 +18851,9 @@ span[id$="-logo"] svg:not([width]) {
   font-family: inherit;
   transition: all 0.15s;
 }
-.admin-btn-delete:hover {
-  background: var(--color-error);
-  border-color: var(--color-error);
+.admin-btn-delete:hover {   /* `B1553`: white on the surface, not on the text red */
+  background: var(--color-error-surface);
+  border-color: var(--color-error-surface);
   color: #fff;
 }
 .admin-btn-add {
