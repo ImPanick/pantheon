@@ -50319,6 +50319,10 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   font-size: 12px;
   color: var(--fg-muted);
   white-space: nowrap;
+  /* `P25-00`: a hint shortens rather than push its row past a phone's edge. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .overflow-chevron {
   margin-left: auto;
