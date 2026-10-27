@@ -27,6 +27,7 @@ import subprocess
 
 import pytest
 
+from tests.helpers.source_text import blank_text
 from test_the_command_palette_in_a_browser import NODE, _SKIP, ROOT  # noqa: E402
 
 pytestmark = pytest.mark.skipif(NODE is None, reason=_SKIP or "")
@@ -37,7 +38,9 @@ STYLE = ROOT / "static" / "style.css"
 
 def _brain_markup() -> str:
     """`#memory-modal` as `index.html` ships it, shown."""
-    html = re.sub(r"<!--.*?-->", "", INDEX.read_text(encoding="utf-8"), flags=re.S)
+    # Comments blanked by the one blanker (`B290`), so a `<div` in a note is
+    # not counted; offsets do not move.
+    html = blank_text(INDEX.read_text(encoding="utf-8"), "html")
     start = html.index('<div id="memory-modal"')
     depth, at = 0, start
     for tag in re.finditer(r"<(/?)div\b", html[start:]):
