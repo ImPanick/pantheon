@@ -47,7 +47,7 @@ import settingsModule from './settings.js?v=20261009census';
 import { doorShown, isMinimized, listWindows, showWindow } from './modalManager.js?v=20261009census';
 import { openSkillsWindow } from './skills.js';
 import { slashCatalog, insertSlashToken, loadSkillEntries, mergeSkillEntries } from './slashAutocomplete.js';
-import { toolKeyFor, toolShown, toolGuide, viewerIsAdmin } from './ui_visibility.js';
+import { toolKeyFor, toolShown, toolGuide, viewerIsAdmin, viewerRunsInstance } from './ui_visibility.js';
 import { searchSettingsPanels, settingsGroupHeading } from './settings/registry.js';
 import { controlTextFor } from './settings/search.js';
 import { topPortalZ } from './toolWindowZOrder.js';
@@ -349,6 +349,7 @@ function _settingsEntries(q) {
   try {
     panels = searchSettingsPanels(q, {
       isAdmin: viewerIsAdmin(),   // `P23-03`; `B1523`/`B1271`: a viewer the status called a non-admin is one
+      runsInstance: viewerRunsInstance(),   // `B1563`: an operator finds what their nav shows
       controlText: modal ? controlTextFor(modal) : {},
     });
   } catch (_) { panels = []; }
@@ -358,7 +359,7 @@ function _settingsEntries(q) {
     // `B1206`: and a group is named by the heading the nav draws, or not at
     // all — *Models & AI* and its three siblings were hints here that the
     // Settings window never shows.
-    detail: settingsGroupHeading(panel, { isAdmin: viewerIsAdmin() }),
+    detail: settingsGroupHeading(panel, { isAdmin: viewerIsAdmin(), runsInstance: viewerRunsInstance() }),
     run: () => settingsModule.open(panel.id),
   }));
 }

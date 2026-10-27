@@ -10,10 +10,11 @@ import {
   getSettingsRegistryIssues,
   isAdminManagedSettingsTab,
   isAdminOnlySettingsTab,
+  settingsPanelShownTo,
 } from './settings/registry.js';
 // `P23-03`: the one table — who may see the admin's panels, and why a tool's
 // switch in Appearance cannot bring it back. Same specifier as `app.js`.
-import { TOOL_VISIBILITY, hidesLine, onToolVisibilityApplied, toolOff, toolRefusal, viewerIsAdmin, viewerMayAdminister } from './ui_visibility.js';
+import { TOOL_VISIBILITY, hidesLine, onToolVisibilityApplied, toolOff, toolRefusal, viewerIsAdmin, viewerMayAdminister, viewerRunsInstance } from './ui_visibility.js';
 import {
   collectMcpStdioFields,
   createMcpFieldEditor,
@@ -3153,6 +3154,7 @@ function initAll() {
 
   bindSettingsSearch(modalEl, {
     isAdmin: () => viewerIsAdmin(),
+    runsInstance: () => viewerRunsInstance(),   // `B1563`
     openPanel(tab) {
       const button = modalEl.querySelector(`[data-settings-tab="${tab}"]`);
       if (button) button.click();
@@ -7190,6 +7192,13 @@ function syncAdminVisibility() {
   modalEl.querySelectorAll('.admin-only').forEach(el => {
     el.style.display = isAdmin ? '' : 'none';
   });
+  // `B1563`. What an operator — a person an admin let run the instance —
+  // may use: their panels (`operator: true` in the registry) and, inside
+  // them, every card not marked `admin-only` above.
+  const runsInstance = viewerRunsInstance();
+  modalEl.querySelectorAll('.operator-only').forEach(el => {
+    el.style.display = runsInstance ? '' : 'none';
+  });
 }
 
 /* ═══════════════════════════════════════════
@@ -7215,9 +7224,13 @@ export function open(tab) {
   // answered "Admin only" — and every admin-only panel is out of their nav
   // now; one they are sent to (a stale active tab, `/settings ai`) lands on
   // Account instead.
-  if (!viewerIsAdmin()) {
+  //
+  // `B1563`: by the registry's one answer (`settingsPanelShownTo`), so an
+  // operator lands on the panels their nav shows them.
+  {
     const asked = tab || getActiveSettingsTab(modalEl);
-    if (isAdminOnlySettingsTab(asked)) tab = NON_ADMIN_SETTINGS_PANEL_ID;
+    const viewer = { isAdmin: viewerIsAdmin(), runsInstance: viewerRunsInstance() };
+    if (isAdminOnlySettingsTab(asked) && !settingsPanelShownTo(asked, viewer)) tab = NON_ADMIN_SETTINGS_PANEL_ID;
   }
 
   syncAppearanceCheckboxes();

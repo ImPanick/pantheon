@@ -21,6 +21,7 @@
 // the operator's own, and none of it is markup.
 
 import { getSettings, invalidateSettings } from './appConfig.js';
+import { viewerMayAdminister } from './ui_visibility.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -244,5 +245,9 @@ export async function open() {
     _wired = true;
     $('evals-add-case')?.addEventListener('click', () => { addCase(); });
   }
-  await Promise.all([loadSuites(), loadRuns()]);
+  // `B1563`. Running a suite is the operator's (`require_operator`); listing
+  // every user's runs and saving a suite into the instance settings are an
+  // admin's, and *Add a case* is `admin-only` in the markup — so an operator's
+  // open does not ask for the runs it would be refused.
+  await Promise.all([loadSuites(), viewerMayAdminister().then((may) => (may ? loadRuns() : []))]);
 }

@@ -14,6 +14,10 @@ function definePanel(definition) {
   return Object.freeze({
     controller: 'settings',
     adminOnly: false,
+    // `B1563`. An `adminOnly` panel an operator may also see — a person an
+    // admin let run the instance (`can_run_instance`, `B683`), whose routes
+    // ask `core.middleware.require_operator`. `panelAudience` reads the pair.
+    operator: false,
     icon: '',
     ...definition,
     keywords: Object.freeze([...(definition.keywords || [])]),
@@ -66,6 +70,7 @@ export const SETTINGS_PANELS = Object.freeze([
     group: 'models',
     controller: 'admin',
     adminOnly: true,
+    operator: true,   // `B1563`: `POST /api/model-endpoints`, `/test`, `/api/discover`
     keywords: ['models', 'provider', 'endpoint'],
   }),
   definePanel({
@@ -75,6 +80,7 @@ export const SETTINGS_PANELS = Object.freeze([
     group: 'models',
     controller: 'admin',
     adminOnly: true,
+    operator: true,   // `B1563`: the endpoint list, its switches, models and deletes
     keywords: ['models', 'configured', 'provider', 'endpoint'],
   }),
   definePanel({
@@ -87,6 +93,10 @@ export const SETTINGS_PANELS = Object.freeze([
     label: 'Forge',
     group: 'models',
     adminOnly: true,
+    // `B1563`: its doors to the Forge's serving are the operator's; the
+    // model-hubs switch saves to `POST /api/auth/settings` and is admin-only
+    // in the markup.
+    operator: true,
     keywords: ['forge', 'hugging face', 'huggingface', 'ollama', 'model hub',
                'download', 'serve', 'serving', 'launch', 'servers', 'ssh',
                'gpu', 'internet', 'offline'],
@@ -222,6 +232,7 @@ export const SETTINGS_PANELS = Object.freeze([
     group: 'administration',
     controller: 'admin',
     adminOnly: true,
+    operator: true,   // `B1563`: every `/api/embeddings` route is on `require_operator`
     // `H04`. Searchable by what a person would actually type when their
     // memory or documents stop being found, which is the symptom that
     // brings anyone here.
@@ -291,6 +302,11 @@ export const SETTINGS_PANELS = Object.freeze([
     group: 'administration',
     controller: 'admin',
     adminOnly: true,
+    // `B1563`: diagnostics, logs, webhooks and uploaded files are the
+    // operator's; the cards that save instance settings, list the shared
+    // index, export every user's data or wipe it are `admin-only` in the
+    // markup.
+    operator: true,
     // `B95`. The three switches an operator could previously only reach by
     // hand-writing `data/settings.json` live in this panel now, so the words
     // someone types when they want them are here too. `download` and
@@ -325,15 +341,62 @@ export function getSettingsPanel(id) {
  * a viewer's nav hides is named to nobody who cannot see it (`SET-U-13`).
  * The labels stay: they are the groups' names in this registry, not text.
  */
-export function settingsGroupHeading(panel, { isAdmin = true } = {}) {
+export function settingsGroupHeading(panel, { isAdmin = true, runsInstance = false } = {}) {
   const group = SETTINGS_GROUPS.find(candidate => candidate.id === (panel && panel.group));
   if (!group || !group.heading) return '';
-  if (group.adminOnly && !isAdmin) return '';
-  return group.heading;
+  if (rankShown(groupAudience(group), { isAdmin, runsInstance })) return group.heading;
+  return '';
 }
 
 export function getSettingsPanelsForGroup(groupId) {
   return SETTINGS_PANELS.filter(panel => panel.group === groupId);
+}
+
+// ── Who a panel is for (`B1563`) ────────────────────────────────────────────
+//
+// `B683` gave the instance an operator: a person an admin let run it
+// (`can_run_instance`), let through by `core.middleware.require_operator` on
+// the endpoints, the Forge's serving, the embeddings, diagnostics, logs,
+// webhooks and uploads. Settings knew two viewers, admin and not, so those
+// routes were offered on no screen to the one person they were opened for.
+// Three audiences now, in order, each seeing everything the one before sees.
+
+/** The audiences, least to most. A viewer of one sees every panel for it and
+ *  for those before it. */
+export const SETTINGS_AUDIENCES = Object.freeze(['everyone', 'operator', 'admin']);
+
+/** `'everyone'`, `'operator'` (an admin, or a person who runs the instance) or
+ *  `'admin'` — read from `adminOnly` and `operator`, the one place the pair is
+ *  turned into an answer. */
+export function panelAudience(panel) {
+  if (!panel || panel.adminOnly !== true) return 'everyone';
+  return panel.operator === true ? 'operator' : 'admin';
+}
+
+/** A group's heading and rule are for whoever can see one of its panels under
+ *  them: a group the registry marks `adminOnly` (Administration, whose
+ *  Workstation panel a person reaches under Account) opens at the least
+ *  audience of its admin-only panels; any other at its least panel's. */
+export function groupAudience(group) {
+  const panels = SETTINGS_PANELS.filter(panel => panel.group === (group && group.id));
+  const audiences = panels.map(panelAudience)
+    .filter(a => !(group && group.adminOnly) || a !== 'everyone');
+  if (!audiences.length) return group && group.adminOnly ? 'admin' : 'everyone';
+  return SETTINGS_AUDIENCES[Math.min(...audiences.map(a => SETTINGS_AUDIENCES.indexOf(a)))];
+}
+
+/** Whether a viewer sees something for `audience`. */
+export function rankShown(audience, { isAdmin = false, runsInstance = false } = {}) {
+  if (audience === 'everyone' || isAdmin === true) return true;
+  return audience === 'operator' && runsInstance === true;
+}
+
+/** Whether `panelOrId` is offered to this viewer — nav, search, palette and
+ *  `open()` all ask this, so they cannot disagree. */
+export function settingsPanelShownTo(panelOrId, viewer = {}) {
+  const panel = typeof panelOrId === 'string' ? getSettingsPanel(panelOrId) : panelOrId;
+  if (!panel) return false;
+  return rankShown(panelAudience(panel), viewer);
 }
 
 export function isAdminManagedSettingsTab(id) {
@@ -420,10 +483,10 @@ export function searchSettingsPanels(query, options = {}) {
   if (!normalized) return [];
 
   const terms = normalized.split(' ');
-  const isAdmin = options.isAdmin === true;
+  const viewer = { isAdmin: options.isAdmin === true, runsInstance: options.runsInstance === true };
 
   return SETTINGS_PANELS.filter(panel => {
-    if (panel.adminOnly && !isAdmin) return false;
+    if (!settingsPanelShownTo(panel, viewer)) return false;
 
     const haystack = getSettingsPanelSearchText(
       panel, (options.controlText || {})[panel.id] || '');

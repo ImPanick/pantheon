@@ -39,8 +39,8 @@ export function controlTextFor(modalEl) {
  *  Administration" — a group whose heading their nav hides. The group is named
  *  only to someone who can see it. `B1206`: and by the heading the nav draws
  *  (*Admin*), never by a label it does not. */
-function groupLabelFor(panel, isAdmin = true) {
-  return settingsGroupHeading(panel, { isAdmin });
+function groupLabelFor(panel, isAdmin = true, runsInstance = false) {
+  return settingsGroupHeading(panel, { isAdmin, runsInstance });
 }
 
 function clearResults(resultsEl) {
@@ -87,6 +87,10 @@ export function bindSettingsSearch(modalEl, options = {}) {
   const isAdmin = typeof options.isAdmin === 'function'
     ? options.isAdmin
     : () => false;
+  // `B1563`. An operator finds the panels the nav shows them.
+  const runsInstance = typeof options.runsInstance === 'function'
+    ? options.runsInstance
+    : () => false;
 
   const openPanel = typeof options.openPanel === 'function'
     ? options.openPanel
@@ -120,6 +124,7 @@ export function bindSettingsSearch(modalEl, options = {}) {
 
     const matches = searchSettingsPanels(query, {
       isAdmin: isAdmin(),
+      runsInstance: runsInstance(),
       controlText: controlTextFor(modalEl),
     });
 
@@ -146,7 +151,7 @@ export function bindSettingsSearch(modalEl, options = {}) {
 
       const group = document.createElement('span');
       group.className = 'settings-search-result-group';
-      group.textContent = groupLabelFor(panel, isAdmin());
+      group.textContent = groupLabelFor(panel, isAdmin(), runsInstance());
 
       button.append(label, group);
       button.addEventListener('click', () => activateResult(button));

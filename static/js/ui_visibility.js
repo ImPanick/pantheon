@@ -513,6 +513,27 @@ export async function viewerMayAdminister(ms = 20000) {
   return _state.isAdmin !== false;
 }
 
+/** `B1563`. Whether the person signed in runs this instance: an admin, or a
+ *  person an admin let run it (`B683`) — the status's `privileges` resolve
+ *  `can_run_instance` to `true`. That map is `AuthManager.get_privileges`,
+ *  which resolves user → role → registry by `resolve_privilege`, the rule
+ *  `core.middleware.require_operator` reads, so the page offers the operator's
+ *  Settings to exactly the people that gate lets through. Unknown is no, as
+ *  `viewerIsAdmin` answers it. */
+export function viewerRunsInstance() {
+  if (viewerIsAdmin()) return true;
+  const p = _state.privileges;
+  return !!(p && p.can_run_instance === true);
+}
+
+/** `B1563`. `viewerMayAdminister`'s question for the operator's loaders: wait
+ *  for the status the page has asked for, then answer `false` only for a
+ *  viewer the server called a non-admin who does not run the instance. */
+export async function viewerMayRunInstance(ms = 20000) {
+  if (await viewerMayAdminister(ms)) return true;
+  return viewerRunsInstance();
+}
+
 // `B1542`. The columns the server enforces too: the switch for everyone
 // (`require_feature`), Forge's admin rule, and the person's switch
 // (`tool_privilege`). The browser's Appearance switch hides doors and refuses

@@ -3304,7 +3304,7 @@
              (`Law 7`), so each row is a door to where the setting lives.
              `initForgeSettings` in `settings.js` wires both. -->
         <div data-settings-panel="forge" class="hidden">
-          <div class="admin-card">
+          <div class="admin-card admin-only">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Hugging Face and Ollama</h2>
             <div class="settings-col">
               <div class="settings-row">
@@ -3323,7 +3323,7 @@
               <li><span>Engine, port and launch command</span><button type="button" class="admin-btn-sm" data-forge-door="forge:Serve">Forge › Launch</button></li>
               <li><span>Scheduled launches</span><button type="button" class="admin-btn-sm" data-forge-door="tasks">Tasks</button></li>
               <li><span>Models Pantheon chats with</span><button type="button" class="admin-btn-sm" data-forge-door="settings:added-models">Added Models</button></li>
-              <li><span>Local reply ceiling</span><button type="button" class="admin-btn-sm" data-forge-door="settings:tools">Agent Tools</button></li>
+              <li class="admin-only"><span>Local reply ceiling</span><button type="button" class="admin-btn-sm" data-forge-door="settings:tools">Agent Tools</button></li>
             </ul>
           </div>
         </div>
@@ -3973,7 +3973,7 @@
                every operator who opens this panel exactly the stored *no*
                nobody chose that `B90` was filed to remove. "Use the environment
                or the default" is a real, selectable value here. -->
-          <div class="admin-card">
+          <div class="admin-card admin-only">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>Switches a deploy can also set</h2>
             <div class="admin-toggle-sub" style="margin-bottom:10px">
               Yes or No here wins over the environment variable; &ldquo;Use the environment or the default&rdquo; hands it back.
@@ -4048,7 +4048,7 @@
                add a directory, remove one, reload the index &mdash; are
                `require_admin` routes, and `POST /api/personal/reload` had no
                caller anywhere in the product. -->
-          <div class="admin-card">
+          <div class="admin-card admin-only">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Knowledge index</h2>
             <div class="admin-toggle-sub" style="margin-bottom:8px">
               What the assistant can search. Drop files, or add a directory. Removing an entry leaves the file on disk.
@@ -4133,7 +4133,7 @@
               <!-- Usage over time (P14-05). Collapsed: it answers a question
                    someone comes looking for, rather than one they need
                    answered every time Settings opens. -->
-              <details id="usage-panel" class="usage-panel">
+              <details id="usage-panel" class="usage-panel admin-only">
                 <summary class="usage-summary-toggle">Usage over time</summary>
                 <div class="usage-controls">
                   <label for="usage-range">Range</label>
@@ -4159,7 +4159,7 @@
                   <input id="evals-model" type="text" placeholder="the model each run used" autocomplete="off" spellcheck="false">
                 </div>
                 <div id="evals-result" class="usage-body" role="status" aria-live="polite"></div>
-                <details class="usage-panel">
+                <details class="usage-panel admin-only">
                   <summary class="usage-summary-toggle">Add a case</summary>
                   <div class="usage-controls">
                     <label for="evals-suite-name">Suite</label>
@@ -4239,7 +4239,7 @@
               </div>
             </div>
           </div>
-          <div class="admin-card">
+          <div class="admin-card admin-only">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Data Backup</h2>
             <div class="admin-toggle-sub" style="margin-bottom:8px">Memories, presets, settings and skills as JSON. API keys are included unencrypted — keep it private. The workstation's pairing key is left out; it pairs again on its own.</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -4283,7 +4283,7 @@
             </div>
             <div id="adm-uploadsMsg" style="margin-top:6px;font-size:12px;" role="status" aria-live="polite"></div>
           </div>
-          <div class="admin-card admin-danger-card">
+          <div class="admin-card admin-danger-card admin-only">
             <h2 style="color:#e55;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.75"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Danger Zone</h2>
             <div class="admin-toggle-sub" style="margin-bottom:8px">Cannot be undone.</div>
 

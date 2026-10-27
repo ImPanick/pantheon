@@ -742,8 +742,9 @@ def test_a_non_admin_opens_on_account_and_is_never_sent_to_an_admin_panel(tmp_pa
     body = js_function(src, "export function open")
     out = _node(tmp_path, f"""
         const R = await import({json.dumps(REGISTRY_JS.as_uri())});
-        const {{ isAdminOnlySettingsTab, NON_ADMIN_SETTINGS_PANEL_ID }} = R;
+        const {{ isAdminOnlySettingsTab, NON_ADMIN_SETTINGS_PANEL_ID, settingsPanelShownTo }} = R;
         const viewerIsAdmin = V.viewerIsAdmin;
+        const viewerRunsInstance = V.viewerRunsInstance;   // `B1563`
         let active = 'services', initialized = true, activated = [];
         const modalEl = {{ classList: {{ contains: () => true }}, style: {{}} }};
         const initAll = () => {{}}, syncAppearanceCheckboxes = () => {{}}, showSettingsModal = () => {{}};
@@ -758,10 +759,17 @@ def test_a_non_admin_opens_on_account_and_is_never_sent_to_an_admin_panel(tmp_pa
         activated = []; active = 'services';
         V.applyToolVisibility({{ isAdmin: true }}, null);
         open(); open('ai');
-        console.log(JSON.stringify({{ guest, admin: activated }}));
+        const admin = activated.slice();
+        // `B1563`: a person an admin let run the instance opens the
+        // operator's panels and is sent from the admin's to Account.
+        activated = []; active = 'users';
+        V.applyToolVisibility({{ isAdmin: false, privileges: {{ can_run_instance: true }}, auth: true }}, null);
+        open(); open('added-models'); open('system'); open('ai');
+        console.log(JSON.stringify({{ guest, admin, operator: activated }}));
     """)
     assert out["guest"] == ["account", "account", "appearance"]
     assert out["admin"] == ["ai"]
+    assert out["operator"] == ["account", "added-models", "system", "account"]
 
 
 def test_a_result_names_a_group_only_to_someone_who_can_see_it(tmp_path):
@@ -770,14 +778,16 @@ def test_a_result_names_a_group_only_to_someone_who_can_see_it(tmp_path):
     body = js_function(src, "function groupLabelFor")
     out = _node(tmp_path, f"""
         const {{ SETTINGS_GROUPS, getSettingsPanel, settingsGroupHeading }} = await import({json.dumps(REGISTRY_JS.as_uri())});
-        function groupLabelFor(panel, isAdmin = true) {body}
+        function groupLabelFor(panel, isAdmin = true, runsInstance = false) {body}
         const ws = getSettingsPanel('workstation');
         console.log(JSON.stringify({{ guest: groupLabelFor(ws, false), admin: groupLabelFor(ws, true),
+          operator: groupLabelFor(ws, false, true),
           email: groupLabelFor(getSettingsPanel('email'), false) }}));
     """)
     # `B1206` changed the words, not the rule: a group is named by the heading
     # the nav draws (*Admin*), and *Communications* has none, so it is unnamed.
-    assert out == {"guest": "", "admin": "Admin", "email": ""}
+    # `B1563`: an operator's nav draws the heading over Embeddings and System.
+    assert out == {"guest": "", "admin": "Admin", "operator": "Admin", "email": ""}
 
 
 def test_a_browser_switch_an_admin_overrode_says_why_instead_of_flipping(tmp_path):

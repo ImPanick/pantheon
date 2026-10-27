@@ -97,10 +97,12 @@ export function readNav(list) {
   return list.childNodes.map((node) => {
     const classes = String(node.className || '').split(/\s+/).filter(Boolean);
     if (classes.includes('settings-sidebar-divider')) {
-      return { rule: true, adminOnly: classes.includes('admin-only') };
+      return { rule: true, adminOnly: classes.includes('admin-only'),
+               operatorOnly: classes.includes('operator-only') };
     }
     if (classes.includes('settings-sidebar-label')) {
-      return { heading: node.textContent, adminOnly: classes.includes('admin-only') };
+      return { heading: node.textContent, adminOnly: classes.includes('admin-only'),
+               operatorOnly: classes.includes('operator-only') };
     }
     return {
       tag: node.tagName,
@@ -254,9 +256,14 @@ def test_the_admin_tabs_still_carry_the_class_that_hides_them(sandbox):
     out = _nav(sandbox, """
         const { root, list } = modal(%s);
         renderSettingsNav(root);
-        console.log(JSON.stringify({ nav: readNav(list), panels: SETTINGS_PANELS.map(p => ({ id: p.id, adminOnly: p.adminOnly })) }));
+        console.log(JSON.stringify({ nav: readNav(list), panels: SETTINGS_PANELS.map(p => ({ id: p.id, adminOnly: p.adminOnly, operator: p.operator })) }));
     """ % json.dumps(_index_panel_ids()))
     admin_only = {p["id"] for p in out["panels"] if p["adminOnly"]}
+    # `B1563`: of those, the panels an operator — a person an admin let run
+    # the instance — is shown too. They carry `operator-only` instead, which
+    # `syncAdminVisibility()` hides from everyone else.
+    for_operator = {p["id"] for p in out["panels"] if p["adminOnly"] and p["operator"]}
+    assert for_operator == {"services", "added-models", "forge", "embeddings", "system"}
     # `P23-03` (SET-M-8, SET-U-2): the five panels whose every control saves
     # to an admin-only route joined them.
     # `B1229`: Forge, whose one control saves to an admin-only route.
@@ -265,15 +272,18 @@ def test_the_admin_tabs_still_carry_the_class_that_hides_them(sandbox):
                           "forge", "agents"}  # `P24-15`: its two controls are admin settings
     for row in out["nav"]:
         if row.get("tab"):
-            assert ("admin-only" in row["classes"]) == (row["tab"] in admin_only), row
+            assert ("admin-only" in row["classes"]) == (row["tab"] in admin_only - for_operator), row
+            assert ("operator-only" in row["classes"]) == (row["tab"] in for_operator), row
     # The divider and the heading above the admin block are hidden with it, or
-    # a non-admin sees a rule and the word "Admin" over nothing.
+    # a non-admin sees a rule and the word "Admin" over nothing. `B1563`: from
+    # everyone but an admin or an operator, who sees Embeddings and System
+    # under it.
     heading = [row for row in out["nav"] if row.get("heading")]
     assert [h["heading"] for h in heading] == ["Admin"]
-    assert heading[0]["adminOnly"] is True
+    assert heading[0]["operatorOnly"] is True and heading[0]["adminOnly"] is False
     rules = [row for row in out["nav"] if row.get("rule")]
     assert len(rules) == 4, "the four group rules the markup drew by hand"
-    assert rules[-1]["adminOnly"] is True
+    assert rules[-1]["operatorOnly"] is True
 
 
 def test_a_non_admin_sees_no_rule_with_nothing_above_it(sandbox):
@@ -286,12 +296,23 @@ def test_a_non_admin_sees_no_rule_with_nothing_above_it(sandbox):
         renderSettingsNav(root);
         console.log(JSON.stringify({ nav: readNav(list) }));
     """ % json.dumps(_index_panel_ids()))
-    seen = [row for row in out["nav"]
-            if not (row.get("adminOnly") or "admin-only" in (row.get("classes") or []))]
-    assert seen and not seen[0].get("rule"), seen[:2]
-    assert seen[0].get("tab"), seen[0]
-    for a, b in zip(seen, seen[1:]):
-        assert not (a.get("rule") and b.get("rule")), seen
+    # `B1563`: three viewers now. A member sees no row marked for an operator
+    # or an admin; an operator sees every row but the admin's.
+    for viewer, hides in (("member", ("admin-only", "operator-only")), ("operator", ("admin-only",))):
+        seen = [row for row in out["nav"]
+                if not ((row.get("adminOnly") and "admin-only" in hides)
+                        or (row.get("operatorOnly") and "operator-only" in hides)
+                        or any(c in (row.get("classes") or []) for c in hides))]
+        assert seen and not seen[0].get("rule"), (viewer, seen[:2])
+        assert seen[0].get("tab"), (viewer, seen[0])
+        for a, b in zip(seen, seen[1:]):
+            assert not (a.get("rule") and b.get("rule")), (viewer, seen)
+    # The operator's nav opens on the models they keep up.
+    operator = [row.get("tab") or ("rule" if row.get("rule") else row.get("heading"))
+                for row in out["nav"]
+                if not (row.get("adminOnly") or "admin-only" in (row.get("classes") or []))]
+    assert operator[:3] == ["services", "added-models", "forge"], operator
+    assert {"embeddings", "system"} <= set(operator) and "users" not in operator, operator
 
 
 def test_no_rule_is_drawn_above_the_first_group(sandbox):

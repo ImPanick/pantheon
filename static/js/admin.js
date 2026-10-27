@@ -15,7 +15,7 @@ import { bindMenuDismiss } from './escMenuStack.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 // `P23-03`: the one table — each switch below names the Tools entry it hides.
 // Same specifier as `app.js` (no query): one instance of the table's state.
-import { hidesLine, viewerMayAdminister } from './ui_visibility.js';
+import { hidesLine, viewerMayAdminister, viewerMayRunInstance } from './ui_visibility.js';
 
 import { scrollBehavior } from './motion.js';
 let initialized = false;
@@ -3527,35 +3527,56 @@ function initLogsView() {
 /* ═══════════════════════════════════════════
    INIT & REFRESH
    ═══════════════════════════════════════════ */
-function initAll() {
+function initAll(mayAdminister = true) {
   modalEl = el('settings-modal');
   // `P2-19` / `P2-20` added `initWebhookForm` and `initRag`. Both were written
   // with the panels they serve and left out of this array, so neither had run
   // since the fork — the markup being absent was the second half of that, not
   // the cause. Anything added here needs a line in `refreshAll` too, or the
   // panel binds its controls and then renders nothing to use them on.
-  const inits = [
-    initSignupToggle, initAddUser, initEndpointForm,
-    initCalDAV, initBackup, initCleanup, initDangerZone, initLogsView,
-    initWebhookForm, initRag, initUploads,
-    () => settingsModule.initIntegrations()
+  //
+  // `B1563`. Split by who may use them. The operator's — a person an admin
+  // let run the instance (`B683`) — bind the panels whose every route asks
+  // `require_operator`: the endpoint forms, diagnostics and logs, webhooks,
+  // uploaded files, and the own-chats cleanup anyone may run. The rest bind
+  // panels and cards only an admin is shown (`admin-only` / the registry), and
+  // an operator would be asking routes that refuse them.
+  const operatorInits = [
+    initEndpointForm, initCleanup, initLogsView, initWebhookForm, initUploads,
   ];
+  _runInits(operatorInits);
+  initialized = true;
+  refreshAll(mayAdminister);
+}
+
+const _adminInits = [
+  initSignupToggle, initAddUser, initCalDAV, initBackup, initDangerZone, initRag,
+  () => settingsModule.initIntegrations()
+];
+let _adminInitialized = false;
+
+function _runInits(inits) {
   for (const fn of inits) {
     try { fn(); } catch (e) { console.error('Admin init error in', fn.name || 'anonymous', e); }
   }
-  initialized = true;
-  refreshAll();
 }
 
-function refreshAll() {
-  loadUsers();
+function refreshAll(mayAdminister = true) {
   loadEndpoints();
-  loadBuiltinTools();
   loadWebhooks();
-  loadRag();
   loadUploads();
-  loadFeatures();
   loadLogs(false);
+  // `B1563`: what only an admin is shown, asked for only where the status did
+  // not call the viewer a non-admin (`viewerMayAdminister`'s answer).
+  if (!mayAdminister) return;
+  if (!_adminInitialized) {
+    _adminInitialized = true;
+    _runInits(_adminInits);
+  }
+  loadUsers();
+  loadBuiltinTools();
+  loadRag();
+  loadFeatures();
 }
 
 /* ═══════════════════════════════════════════
@@ -3575,11 +3596,14 @@ export function _initData() {
   // the status the page has asked for (at most its four seconds) and answers
   // no only for a viewer the server called a non-admin. Asked again while it
   // waits, it is the same wait, not a second set of loaders.
+  //
+  // `B1563`. And an operator — a person an admin let run the instance — is
+  // given the loaders for the panels they are shown, and only those.
   if (_initAsking) return _initAsking;
-  _initAsking = viewerMayAdminister().then((may) => {
-    if (!may) return;
-    if (!initialized) initAll();
-    else refreshAll();
+  _initAsking = Promise.all([viewerMayAdminister(), viewerMayRunInstance()]).then(([admin, runs]) => {
+    if (!admin && !runs) return;
+    if (!initialized) initAll(admin);
+    else refreshAll(admin);
   }).finally(() => { _initAsking = null; });
   return _initAsking;
 }

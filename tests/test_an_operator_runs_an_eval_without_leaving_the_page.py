@@ -148,7 +148,9 @@ def _drive(tmp_path, stored, then=""):
     from test_tool_effect_surfaces_js import _DOM
 
     (tmp_path / "dom.js").write_text(_DOM)
-    for name in ("evalsPanel.js", "appConfig.js"):
+    # `B1563`: `ui_visibility.js` too — the panel asks it whether the viewer
+    # may list every user's runs before it does. A leaf module, copied as is.
+    for name in ("evalsPanel.js", "appConfig.js", "ui_visibility.js"):
         shutil.copy(ROOT / "static" / "js" / name, tmp_path / name)
     (tmp_path / "case.mjs").write_text(_CASE % {"stored": json.dumps(stored), "then": then})
     out = subprocess.run(["node", str(tmp_path / "case.mjs")], capture_output=True, text=True, timeout=30)

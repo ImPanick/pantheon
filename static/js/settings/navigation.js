@@ -6,10 +6,18 @@
 
 import {
   DEFAULT_SETTINGS_PANEL_ID,
+  SETTINGS_AUDIENCES,
   SETTINGS_GROUPS,
   SETTINGS_PANELS,
+  groupAudience,
   isAdminManagedSettingsTab,
+  panelAudience,
 } from './registry.js';
+
+/** `B1563`. The class `syncAdminVisibility()` hides a row by, per audience:
+ *  `admin-only` from everyone but an admin, `operator-only` from everyone
+ *  but an admin or a person who runs the instance. */
+export const AUDIENCE_CLASS = Object.freeze({ everyone: '', operator: 'operator-only', admin: 'admin-only' });
 
 const _boundModals = new WeakSet();
 
@@ -121,24 +129,33 @@ export function renderSettingsNav(modalEl, options = {}) {
 
   list.innerHTML = '';
   let drawn = 0;
-  // Panels a non-admin sees, drawn so far. `P23-03` (SET-M-8) made the whole
-  // *Models & AI* group admin-only, so a non-admin's first rule would have had
-  // nothing above it — a rule is theirs only between two things they can see.
-  let shownToAll = 0;
+  // `B1563`. Three viewers — everyone, an operator, an admin — each seeing
+  // everything the one before sees; a row is drawn with the class that hides
+  // it from the viewers below its audience (`AUDIENCE_CLASS`).
+  const rank = (audience) => SETTINGS_AUDIENCES.indexOf(audience);
+  const hiddenBelow = (r) => {
+    const cls = AUDIENCE_CLASS[SETTINGS_AUDIENCES[Math.min(r, SETTINGS_AUDIENCES.length - 1)]];
+    return cls ? ' ' + cls : '';
+  };
+  // The least audience that has seen a panel drawn so far. `P23-03` (SET-M-8)
+  // made the whole *Models & AI* group admin-only, so a non-admin's first rule
+  // would have had nothing above it — a rule is a viewer's only between two
+  // things they can see, so it is for the larger of its group's audience and
+  // the least audience that has something above it.
+  let seenFrom = SETTINGS_AUDIENCES.length;
   for (const group of SETTINGS_GROUPS) {
     const panels = SETTINGS_PANELS.filter(panel => panel.group === group.id);
     if (!panels.length) continue;
-    const groupForAdmins = group.adminOnly || panels.every(panel => panel.adminOnly);
+    const opens = rank(groupAudience(group));
 
     // A rule between groups, never above the first one — the same shape the
     // markup drew, and the reason the divider is derived rather than listed.
     if (drawn) {
-      list.appendChild(make('div', 'settings-sidebar-divider'
-        + (groupForAdmins || !shownToAll ? ' admin-only' : '')));
+      list.appendChild(make('div', 'settings-sidebar-divider' + hiddenBelow(Math.max(opens, seenFrom))));
     }
-    shownToAll += panels.filter(panel => !panel.adminOnly).length;
+    seenFrom = Math.min(seenFrom, ...panels.map(panel => rank(panelAudience(panel))));
     if (group.heading) {
-      const heading = make('div', 'settings-sidebar-label' + (group.adminOnly ? ' admin-only' : ''));
+      const heading = make('div', 'settings-sidebar-label' + hiddenBelow(opens));
       heading.textContent = group.heading;
       list.appendChild(heading);
     }
@@ -148,7 +165,7 @@ export function renderSettingsNav(modalEl, options = {}) {
         'button',
         'settings-nav-item'
           + (panel.id === active ? ' active' : '')
-          + (panel.adminOnly ? ' admin-only' : ''),
+          + hiddenBelow(rank(panelAudience(panel))),
       );
       // `P10-02`'s reason, one row over: without an explicit type a <button>
       // inside a form submits it, and "none of these is in a form" is the kind
