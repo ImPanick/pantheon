@@ -81,8 +81,27 @@ def _load(path: Path) -> dict:
         missing = set(probe.get("expect") or ()) - known
         if missing:
             raise SystemExit(f"{path}: probe {probe['query']!r} expects unknown ids {sorted(missing)}")
+        # `B713`. A probe may assert that NOTHING should come back — the
+        # question the Brain has nothing to say about — and it has to say so
+        # unmistakably (`Law 10`): `"expect": []` and a forgotten field look
+        # identical to a reader of the JSON, so absence is the literal
+        # `"absent": true`, with a `why`, and with no `expect` beside it.
+        if "absent" in probe:
+            if probe["absent"] is not True:
+                raise SystemExit(f"{path}: probe {probe['query']!r} has `absent` "
+                                 f"{probe['absent']!r} — it is `true` or it is left out")
+            if probe.get("expect"):
+                raise SystemExit(f"{path}: probe {probe['query']!r} is `absent` and "
+                                 f"expects {probe['expect']} — it cannot be both")
+            if not str(probe.get("why") or "").strip():
+                raise SystemExit(f"{path}: probe {probe['query']!r} is `absent` and does "
+                                 f"not say why nothing should come back")
+            continue
         if not probe.get("expect"):
-            raise SystemExit(f"{path}: probe {probe['query']!r} expects nothing")
+            raise SystemExit(f"{path}: probe {probe['query']!r} expects nothing — a probe "
+                             f"that means it says `\"absent\": true` with a `why` (`B713`)")
+    if not any(not p.get("absent") for p in data["probes"]):
+        raise SystemExit(f"{path}: every probe is `absent` — there is nothing to recall")
     data.setdefault("kind", "memory")
     data.setdefault("provenance", "unknown")
     return data
@@ -391,6 +410,20 @@ def _report_selection(name: str, result: dict, verbose: bool) -> None:
 def score(corpus: dict, ranked: dict, k: int) -> dict:
     """recall@k, MRR, and what it cost to get them. `P13-13`, `P13-16`.
 
+    `B713`: and what the engine does when it should say nothing. The probes
+    marked `"absent": true` are scored apart from the rest — they have no right
+    answer to recall — in the two columns the tool corpus already had the
+    shape of (`score_selection`'s *refusal*: *"a scorer that only measures
+    recall rewards offering everything"*):
+
+      refusal   the share of absent probes that returned nothing at all;
+      noise     the mean number of memories returned per absent probe — the
+                off-topic injection `P13-16` measured outside the harness
+                (0.12 → 1.50 per query when stage one was widened).
+
+    `n`, recall, MRR, `returned` and `precision` are over the other probes
+    only, so adding absent probes moves none of them.
+
     **`returned` and `precision` are `P13-16`'s columns and they are not
     precision@k.** Every probe in a memory corpus names one right answer, so
     precision@k is `recall@k / k` by construction — on this fixture the
@@ -408,7 +441,9 @@ def score(corpus: dict, ranked: dict, k: int) -> dict:
     """
     hits, reciprocal, misses = 0, 0.0, []
     returned = wanted = 0
-    for probe in corpus["probes"]:
+    present = [p for p in corpus["probes"] if not p.get("absent")]
+    absent = [p for p in corpus["probes"] if p.get("absent")]
+    for probe in present:
         expect = set(probe["expect"])
         order = ranked.get(probe["query"], [])
         shown = order[:k]
@@ -425,22 +460,50 @@ def score(corpus: dict, ranked: dict, k: int) -> dict:
             deeper = next((i + 1 for i, mid in enumerate(order) if mid in expect), None)
             misses.append({"query": probe["query"], "expect": sorted(expect),
                            "got": order[:3], "found_at": deeper, "why": probe.get("why", "")})
-    n = len(corpus["probes"])
+    quiet, noise, spills = 0, 0, []
+    for probe in absent:
+        shown = ranked.get(probe["query"], [])[:k]
+        noise += len(shown)
+        if shown:
+            spills.append({"query": probe["query"], "got": shown, "why": probe.get("why", "")})
+        else:
+            quiet += 1
+    n = len(present)
     return {"n": n, f"recall@{k}": hits / n, "mrr": reciprocal / n,
             "returned": returned / n,
             # Zero returned is reported as zero precision rather than as a
             # division error or a 1.0. An engine that answers nothing is not a
             # precise engine.
             "precision": (wanted / returned) if returned else 0.0,
-            "hits": hits, "misses": misses}
+            "hits": hits, "misses": misses,
+            # `B713`. `None` when the corpus asks no absent question: a column
+            # with nothing under it is not a perfect score.
+            "absent_n": len(absent),
+            "refusal": (quiet / len(absent)) if absent else None,
+            "noise": (noise / len(absent)) if absent else None,
+            "quiet": quiet, "spills": spills}
 
 
 def _report(name: str, result: dict, k: int, verbose: bool) -> None:
+    # `B713`: the refusal column, beside recall, whenever the corpus asks an
+    # absent question; a dash when it asks none.
+    if result.get("refusal") is None:
+        refusal = "   refusal —"
+    else:
+        refusal = (f"   refusal {result['refusal']:.2f}"
+                   f"   noise {result['noise']:.2f}/query"
+                   f" ({result['quiet']}/{result['absent_n']})")
     print(f"  {name:<10} recall@{k} {result[f'recall@{k}']:.2f}"
           f"   MRR {result['mrr']:.3f}"
           f"   returned {result['returned']:.2f}/query"
           f"   precision {result['precision']:.2f}"
-          f"   ({result['hits']}/{result['n']})")
+          f"   ({result['hits']}/{result['n']})"
+          + refusal)
+    if verbose:
+        for spill in result.get("spills") or ():
+            print(f"      NOISE {spill['query']!r} -> {spill['got']}")
+            if spill["why"]:
+                print(f"            {spill['why']}")
     if verbose and result["misses"]:
         for miss in result["misses"]:
             where = f"rank {miss['found_at']}" if miss["found_at"] else "not returned"
@@ -582,7 +645,7 @@ def main() -> int:
 
     if args.json:
         json.dump({"provenance": corpus["provenance"], "skipped": skipped,
-                   "results": {n: {k: v for k, v in r.items() if k != "misses"}
+                   "results": {n: {k: v for k, v in r.items() if k not in ("misses", "spills")}
                                for n, r in results.items()}},
                   sys.stdout, indent=2)
         print()
@@ -590,8 +653,10 @@ def main() -> int:
 
     # "no ChromaDB service" and not "no vector service": `semantic` below runs
     # the embedding model in this process, which is the whole point of `P13-21`.
+    absent_n = sum(1 for p in corpus["probes"] if p.get("absent"))
     print(f"retrieval eval · {args.corpus.name} · {len(corpus['memories'])} memories, "
-          f"{len(corpus['probes'])} probes · no ChromaDB service")
+          f"{len(corpus['probes']) - absent_n} probes + {absent_n} that should find nothing"
+          f" · no ChromaDB service")
     print(f"provenance: {corpus['provenance']} — "
           f"{PROVENANCE_NOTE.get(corpus['provenance'], 'unrecognised, treat with suspicion')}")
     print()

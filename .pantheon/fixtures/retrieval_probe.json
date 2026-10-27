@@ -53,6 +53,14 @@
     {"query": "tell me about my commute", "expect": ["m16"], "why": "The memory is about Welsh; the commute is incidental to it. Tests that an incidental token still retrieves."},
     {"query": "what motorbike am I working on", "expect": ["m09"], "why": "`Moto Guzzi` is a motorbike and the memory never says the word."},
     {"query": "is there anything before ten in the morning I should avoid", "expect": ["m11"], "why": "A long query where almost every token is noise."},
-    {"query": "what should I know about food", "expect": ["m07"], "why": "Vague, and the correct answer is the one with consequences."}
+    {"query": "what should I know about food", "expect": ["m07"], "why": "Vague, and the correct answer is the one with consequences."},
+    {"query": "convert 40 fahrenheit to celsius", "absent": true, "why": "B713. Arithmetic with nothing personal in it. P13-16 quoted it: it scores 0.144 against the loft-conversion memory on the word `convert`, above the right answer to a real food question."},
+    {"query": "who won the 1998 world cup", "absent": true, "why": "B713. Trivia. P13-16 quoted it scoring 0.0583 against the video-call memory, which a relative floor keeps as the best piece of rubbish."},
+    {"query": "what is the capital of Australia", "absent": true, "why": "B713. General knowledge; the Brain holds a Leeds office address and must not offer it as geography."},
+    {"query": "explain how a hash map handles collisions", "absent": true, "why": "B713. A programming question from a user whose Brain is full of build-machine and deploy facts — the shape most likely to drag one in."},
+    {"query": "write a haiku about autumn leaves", "absent": true, "why": "B713. A creative request; `winter` in the loft memory is the nearest thing and it is not near."},
+    {"query": "how many ounces are in a pound", "absent": true, "why": "B713. A unit question, the same shape as the Fahrenheit one, with no shared word."},
+    {"query": "summarise the plot of Hamlet", "absent": true, "why": "B713. Literature. Nothing in this Brain is about a play; a daughter starting school is the nearest family memory and must stay out."},
+    {"query": "what time zone is Tokyo in", "absent": true, "why": "B713. A time question with no person in it; the morning video-call memory shares the idea of time and nothing else."}
   ]
 }
