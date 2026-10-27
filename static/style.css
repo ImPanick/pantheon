@@ -555,7 +555,7 @@ html {
 /* Canvas-based effects — single source of truth for intensity */
 #synapse-canvas, #rain-canvas, #constellations-canvas,
 #perlin-flow-canvas, #petals-canvas, #sparkles-canvas,
-#embers-canvas {
+#embers-canvas, #ascii-canvas {
   opacity: var(--bg-effect-intensity, 1);
 }
 
@@ -571,7 +571,8 @@ body.bg-pattern-synapse {
 }
 body.bg-pattern-perlin-flow,
 body.bg-pattern-petals,
-body.bg-pattern-sparkles {
+body.bg-pattern-sparkles,
+body.bg-pattern-ascii {
   /* canvas-only backgrounds */
 }
 

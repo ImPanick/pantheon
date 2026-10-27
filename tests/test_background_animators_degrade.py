@@ -42,7 +42,8 @@ pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary no
 
 # Every canvas pattern in `_CANVAS_PATTERNS`, and the canvas id each one makes.
 PATTERNS = ["synapse", "rain", "constellations", "perlin-flow",
-            "petals", "sparkles", "embers"]
+            "petals", "sparkles", "embers",
+            "ascii"]   # `P9-16`, the eighth canvas
 
 _SHIM = """
 import { installDom, Node } from './dom.js';

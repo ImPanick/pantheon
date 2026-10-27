@@ -221,8 +221,12 @@ def test_theme_js_asks_before_starting_a_canvas_animator():
     # assertion failed on working code. What the guard does is proved by
     # execution in `test_background_animators_degrade.py`, which runs the real
     # `applyBgPattern` with the preference on and finds no canvas.
-    assert "_CANVAS_PATTERNS[p] && !reduced" in body, (
-        "the seven canvas animators are the whole JS half of this row"
+    # `P9-16` widened the condition by one case: a pattern that keeps a still
+    # frame (`_STILL_FRAME_PATTERNS`, ASCII art) is started under reduced
+    # motion to draw it once. What it does is proved by execution below and
+    # in `tests/test_ascii_art_backgrounds_js.py`.
+    assert "_CANVAS_PATTERNS[p] && (!reduced || still)" in body, (
+        "the canvas animators are the whole JS half of this row"
     )
     assert "classList.add('bg-pattern-' + p)" in body, (
         "the theme class must still be applied — reduced motion stops the "
@@ -262,6 +266,8 @@ def test_applybgpattern_starts_nothing_under_reduced_motion():
     const _BG_CLASSES = ['bg-pattern-rain', 'bg-pattern-dots'];
     const _CANVAS_PATTERNS = { rain: () => started.push('rain') };
     const _STATIC_PATTERNS = new Set(['none', 'dots']);
+    const _STILL_FRAME_PATTERNS = new Set();   // `P9-16`: rain keeps no still frame
+    let _bgStillRedraw = null;
     const added = [];
     const els = {};
     const mkEl = () => ({ style: {}, hidden: false });
@@ -519,9 +525,12 @@ def test_the_login_page_carries_the_same_guard_and_not_a_different_one():
 
 
 def test_the_canvas_registry_is_still_the_seven_the_row_counted():
+    # `P9-16` added the eighth, ASCII art, which `D-2026-08-26-03` allows
+    # ("new patterns may be added"); it keeps a still frame under reduced
+    # motion (`tests/test_ascii_art_backgrounds_js.py`).
     registry = THEME.split("const _CANVAS_PATTERNS", 1)[1].split("};", 1)[0]
     names = re.findall(r"'?([\w-]+)'?\s*:\s*_init", registry)
-    assert len(names) == 7, f"expected seven canvas animators, found {names}"
+    assert len(names) == 8, f"expected eight canvas animators, found {names}"
 
 
 def test_the_scroll_lerp_asks_before_it_animates():

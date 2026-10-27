@@ -843,13 +843,31 @@ export function applyUiScale(scale) {
 const _BG_CLASSES = ['bg-pattern-dots',
   'bg-pattern-synapse', 'bg-pattern-rain', 'bg-pattern-constellations',
   'bg-pattern-perlin-flow',
-  'bg-pattern-petals', 'bg-pattern-sparkles', 'bg-pattern-embers'];
+  'bg-pattern-petals', 'bg-pattern-sparkles', 'bg-pattern-embers',
+  'bg-pattern-ascii'];   // `P9-16`, the ninth
 const _CANVAS_PATTERNS = { synapse: _initSynapse, rain: _initRain, constellations: _initConstellations,
   'perlin-flow': _initPerlinFlow,
-  petals: _initPetals, sparkles: _initSparkles, embers: _initEmbers };
+  petals: _initPetals, sparkles: _initSparkles, embers: _initEmbers,
+  ascii: _initAscii };
+
+// `P9-16`. The canvas patterns that are art and not only motion: under reduced
+// motion they draw one still frame instead of starting nothing, because
+// stopping the animation must not hide the art. The seven before it are motion
+// through and through — a still frame of rain is an empty screen with streaks.
+const _STILL_FRAME_PATTERNS = new Set(['ascii']);
+
+// The still frame's redraw, while one is up: a still canvas does not repaint
+// itself, so a colour or size change from the editor asks it to.
+let _bgStillRedraw = null;
+
+// `P9-16`. Which theme is showing, for the art that depends on it. Set where a
+// theme is chosen (a swatch, the saved theme at start, an import).
+let _bgThemeName = '';
+function _noteBgTheme(name) { _bgThemeName = String(name || ''); }
 
 export function applyBgEffectColor(color) {
   document.documentElement.style.setProperty('--bg-effect-color', color || '');
+  if (_bgStillRedraw) _bgStillRedraw();
 }
 
 export function applyBgEffectIntensity(v) {
@@ -862,6 +880,7 @@ export function applyBgEffectSize(v) {
   // v is a multiplier 0.3..2.5. Default 1 when missing.
   const n = (v === undefined || v === null || isNaN(v)) ? 1 : Math.max(0.2, Math.min(3, Number(v)));
   document.documentElement.style.setProperty('--bg-effect-size', String(n));
+  if (_bgStillRedraw) _bgStillRedraw();
 }
 
 /** Toggle the global "frosted glass" look — applies a translucent + blurred
@@ -884,7 +903,8 @@ export function applyBgPattern(pattern) {
   const p = pattern || 'none';
   document.body.classList.remove(..._BG_CLASSES);
   // Clean up any canvas backgrounds
-  document.querySelectorAll('#synapse-canvas, #rain-canvas, #constellations-canvas, #perlin-flow-canvas, #petals-canvas, #sparkles-canvas, #embers-canvas').forEach(c => c.remove());
+  _bgStillRedraw = null;
+  document.querySelectorAll('#synapse-canvas, #rain-canvas, #constellations-canvas, #perlin-flow-canvas, #petals-canvas, #sparkles-canvas, #embers-canvas, #ascii-canvas').forEach(c => c.remove());
   if (p !== 'none') document.body.classList.add('bg-pattern-' + p);
   // P1-12. Seven full-screen canvas animators hang off this one line, and a
   // `requestAnimationFrame` loop is invisible to the stylesheet guard — it is
@@ -893,9 +913,11 @@ export function applyBgPattern(pattern) {
   // D-2026-08-26-03 keeps the animated backgrounds; nobody asked for them to
   // keep running for a person whose operating system says otherwise.
   const reduced = prefersReducedMotion();
-  if (_CANVAS_PATTERNS[p] && !reduced) {
+  // `P9-16`: art that keeps a still frame is drawn still, not hidden.
+  const still = reduced && _STILL_FRAME_PATTERNS.has(p);
+  if (_CANVAS_PATTERNS[p] && (!reduced || still)) {
     try {
-      _CANVAS_PATTERNS[p]();
+      _CANVAS_PATTERNS[p]({ still });
     } catch (err) {
       // `P3-19`. The animator is decoration; the theme is not. Whatever it hit,
       // the `bg-pattern-*` class is already on the body, so the pattern falls
@@ -912,7 +934,7 @@ export function applyBgPattern(pattern) {
   // motion, on a canvas pattern that is not running to be adjusted. The note
   // says which of the two it is, because a control that vanishes with no
   // explanation reads as a bug.
-  const hide = _STATIC_PATTERNS.has(p) || (reduced && !!_CANVAS_PATTERNS[p]);
+  const hide = _STATIC_PATTERNS.has(p) || (reduced && !!_CANVAS_PATTERNS[p] && !still);
   const ig = document.getElementById('theme-bg-intensity-group');
   const sg = document.getElementById('theme-bg-size-group');
   if (ig) ig.style.display = hide ? 'none' : '';
@@ -931,6 +953,7 @@ export function getSaved() {
 }
 
 export function save(name, colors, opts) {
+  _noteBgTheme(name);   // `P9-16`: the theme now showing, for the art that follows it
   const obj = { name, colors };
   if (opts) {
     if (opts.font && opts.font !== DEFAULT_FONT) obj.font = opts.font;
@@ -1173,6 +1196,7 @@ export function initThemeUI() {
         const name = sw.dataset.theme;
         const colors = sw.dataset.custom ? customThemes[name] : THEMES[name];
         if (!colors) return;
+        _noteBgTheme(name);   // `P9-16`: before the pattern, which may draw for it
         applyColors(colors);
         clearAllActive();
         sw.classList.add('active');
@@ -1577,6 +1601,7 @@ export function initThemeUI() {
   applyBgEffectIntensity(_initEffectIntensity);
   applyBgEffectSize(_initEffectSize);
   applyFrostedGlass(_initFrosted);
+  _noteBgTheme(saved && saved.name);   // `P9-16`
   applyBgPattern(_initPattern);
 
   const fontSelect = document.getElementById('theme-font-select');
@@ -1822,6 +1847,7 @@ export function initThemeUI() {
       // and size off the custom properties when they start, so setting them
       // after `applyBgPattern` would leave the first frames on the old values.
       applyFrostedGlass(!!opts.frosted);
+      _noteBgTheme(slug);   // `P9-16`
       applyBgPattern(opts.bgPattern || 'none');
       importAreaEl.classList.add('hidden');
       importActionsEl.classList.add('hidden');
@@ -2587,6 +2613,117 @@ function _initEmbers() {
       }
     }
     ctx.globalCompositeOperation = 'source-over';
+  }
+  draw();
+}
+
+// ── ASCII — per-theme ASCII art, drifting slowly (`P9-16`) ──
+//
+// The owner, unprompted, twice: *"possibly even ASCII art subtle in the
+// background for the entire platform depending on the theme selected."*
+// (`D-2026-08-26-03`). The ninth pattern, on the machinery the eight use: a
+// `bg-pattern-ascii` class, a `_bgCanvas`, `--bg-effect-color` for the ink,
+// `--bg-effect-size` for the type, and `--bg-effect-intensity` as the canvas's
+// opacity (`style.css`). The art depends on the theme showing — `terminal`
+// is a shell, `ume` is blossom — and a theme with no art of its own (a custom
+// one, `dark`) gets a scatter of plain marks.
+//
+// Subtle by construction: sparse (about one cell in three holds a piece), low
+// alpha, and the only motion is a slow upward drift and a breathing alpha.
+// Under reduced motion it draws one frame and stops (`_STILL_FRAME_PATTERNS`),
+// so the art stays and nothing moves.
+const _ASCII_ART = {
+  marks:   ['.', '+', '*', "'", 'o', '. .', '+ .'],
+  shell:   ['$ _', '>_', '[ ok ]', '0x1f', '~/', '&&', '#!', '01 10', '|>', 'cd ..'],
+  circuit: ['<//>', '[::]', '0xFF', '|=|', '>>', '{ }', '-+-'],
+  blossom: [' @ ', '{@}', '(*)', ' .@. ', ',@,', "'*'", ['  _  ', ' (@) ', '  |  ']],
+  pines:   ['/\\', ['  /\\  ', ' /  \\ ', '  ||  '], '^', ['/\\/\\'], ' | '],
+  tide:    ['~', '~ ~', '><>', '<><', '~~~', ['  ><>', '~ ~ ~']],
+  stars:   ['.', '*', '+', "'", '.  *', '  .  '],
+  grid:    ['_|_', '/\\', '___', '=', '-|-', '[ ]'],
+  page:    ['--', '__', '...', ';', '" "', '- -'],
+};
+const _ASCII_THEME_ART = {
+  terminal: 'shell', codehost: 'shell', gpt: 'shell', claude: 'shell',
+  cyberpunk: 'circuit', retrowave: 'grid', guild: 'grid', video: 'grid',
+  ume: 'blossom', cute: 'blossom', lavender: 'blossom', channel: 'blossom',
+  forest: 'pines', grove: 'pines', mintchat: 'pines',
+  ocean: 'tide',
+  midnight: 'stars', organs: 'stars',
+  paper: 'page', notebook: 'page', light: 'page', copper: 'page',
+};
+
+/** `P9-16`. The pieces of art for `themeName`, each an array of lines. */
+export function asciiArtFor(themeName) {
+  const family = _ASCII_THEME_ART[String(themeName || '')] || 'marks';
+  return _ASCII_ART[family].map(piece => (Array.isArray(piece) ? piece : [piece]));
+}
+
+function _initAscii({ still = false } = {}) {
+  const surface = _bgCanvas('ascii-canvas');
+  if (!surface) return;
+  const { canvas, ctx } = surface;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const art = asciiArtFor(_bgThemeName);
+  let W, H, cell, pieces = [], drift = 0;
+
+  function layout() {
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cell = Math.max(48, 110 * _getEffectSize());
+    pieces = [];
+    // One extra row, so the drift scrolls new art in rather than a gap.
+    for (let y = 0; y < H + cell; y += cell) {
+      for (let x = 0; x < W; x += cell) {
+        if (Math.random() > 0.34) continue;
+        pieces.push({
+          lines: art[Math.floor(Math.random() * art.length)],
+          x: x + Math.random() * cell * 0.6,
+          y: y + Math.random() * cell * 0.6,
+          alpha: 0.10 + Math.random() * 0.10,
+          phase: Math.random() * Math.PI * 2,
+        });
+      }
+    }
+  }
+  function getColor() { const s = getComputedStyle(document.documentElement); return s.getPropertyValue('--bg-effect-color').trim() || s.getPropertyValue('--fg').trim() || '#9cdef2'; }
+  function frame() {
+    ctx.clearRect(0, 0, W, H);
+    const size = Math.round(12 * _getEffectSize());
+    ctx.font = `${size}px ui-monospace, 'Fira Code', monospace`;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = getColor();
+    const span = H + cell;
+    for (const piece of pieces) {
+      const y = ((piece.y - drift) % span + span) % span - cell;
+      const breathe = still ? 1 : 0.75 + 0.25 * Math.sin(piece.phase);
+      ctx.globalAlpha = piece.alpha * breathe;
+      piece.lines.forEach((line, i) => ctx.fillText(line, piece.x, y + i * size * 1.2));
+    }
+    ctx.globalAlpha = 1;
+  }
+  const gone = () => !document.body.classList.contains('bg-pattern-ascii');
+  const _onResize = () => {
+    if (gone()) { window.removeEventListener('resize', _onResize); canvas.remove(); return; }
+    layout(); frame();
+  };
+  layout();
+  window.addEventListener('resize', _onResize);
+
+  if (still) {
+    // Reduced motion: the art, once, and nothing after it but a repaint when
+    // the editor changes its colour or size.
+    frame();
+    _bgStillRedraw = () => { if (gone()) { _bgStillRedraw = null; return; } layout(); frame(); };
+    return;
+  }
+  function draw() {
+    if (gone()) { window.removeEventListener('resize', _onResize); canvas.remove(); return; }
+    requestAnimationFrame(draw);
+    drift += 0.12;
+    for (const piece of pieces) piece.phase += 0.01;
+    frame();
   }
   draw();
 }
