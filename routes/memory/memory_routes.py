@@ -577,6 +577,20 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
             fallback = memory_manager.extract_memory_from_chat(sess.history, session)
             return {"suggestions": [item["text"] for item in fallback]}
 
+    def _audit_stopped_reason(code) -> str:
+        """`B1569`. What a person reads when a tidy stopped and saved nothing,
+        by the code `audit_memories` stopped with."""
+        return {
+            "bad_json": ("Tidy changed nothing: your model's answer was not a list "
+                         "of memories it could use. Try again, or choose another "
+                         "Utility model in Settings."),
+            "unsafe_removal": ("Tidy changed nothing: your model's answer would have "
+                               "removed more than half of your memories, so it was "
+                               "refused and every memory was kept."),
+            "store_unreadable": ("Tidy changed nothing: the memory store could not be "
+                                 "read back to save into, so nothing was written."),
+        }.get(code, "Tidy stopped and changed nothing. The server log says why.")
+
     @router.post("/audit")
     async def api_audit_memories(request: Request, session: str = Form(None)):
         """Deduplicate and consolidate memories via LLM.
@@ -619,6 +633,9 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
 
         return {
             "ok": "error" not in result,
+            # `B1569`. When `ok` is false, the sentence saying why nothing
+            # changed: the Brain said *Already clean* over every one of these.
+            "reason": _audit_stopped_reason(result.get("error")) if "error" in result else "",
             "before": result.get("before", 0),
             "after": result.get("after", 0),
             "removed": result.get("before", 0) - result.get("after", 0),

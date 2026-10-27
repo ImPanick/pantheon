@@ -1037,10 +1037,14 @@ export function describeMemoryTidy(data) {
   const d = data || {};
   const superseded = Number(d.superseded) || 0;
   const conflicts = Number(d.contradictions) || 0;
+  // `B1569`. How many survivors' text the model rewrote — not on the wire;
+  // `tidyMemories` counts it from the list before and after and adds it as
+  // `rewritten`. `removed` is `before - after` and cannot see a rewrite.
+  const edits = Number(d.rewritten) || 0;
   // `P9-09`. The route names the model that rewrote the memories, and only
   // when one was asked; provenance on what a model produced.
   const model = typeof d.model === 'string' ? d.model.trim() : '';
-  let msg = `Tidied${model ? ` by ${model}` : ''}: ${Number(d.removed) || 0} removed (${Number(d.before) || 0} \u2192 ${Number(d.after) || 0})`;
+  let msg = `Tidied${model ? ` by ${model}` : ''}: ${edits ? `${edits} rewritten, ` : ''}${Number(d.removed) || 0} removed (${Number(d.before) || 0} \u2192 ${Number(d.after) || 0})`;
   if (superseded) msg += ` \u2014 ${superseded} superseded, still on the record`;
   if (conflicts) msg += `, ${conflicts} conflict${conflicts === 1 ? '' : 's'} left for you`;
   return msg;
@@ -1133,9 +1137,16 @@ export async function tidyMemories() {
     }
 
     const data = await res.json();
-    if ((data.removed || 0) === 0) {
-      if (tidySpinner) tidySpinner.destroy();
-      if (tidyBtn) { tidyBtn.disabled = false; tidyBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-1px;margin-right:2px;color:var(--accent, var(--red));"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg> Tidy'; }
+    // `B1569`. A pass that stopped — the model's reply was not a usable list,
+    // it would have removed most of the store, or the store could not be read
+    // back — answers 200 with `ok: false` and `before === after`. That read as
+    // `removed: 0` and said *Already clean* about a tidy that did nothing.
+    if (data && data.ok === false) {
+      showError(String(data.reason || 'Tidy stopped and changed nothing. The server log says why.'));
+      return;
+    }
+    // The server skipped the model: nothing changed since the last tidy.
+    if (data && data.already_tidy === true && !(Number(data.removed) > 0)) {
       showToast('Already clean');
       return;
     }
@@ -1157,6 +1168,15 @@ export async function tidyMemories() {
       }
     }
 
+    // `B1569`. *Already clean* is decided here, after the diff, and not on
+    // `removed` alone: `removed` is `before - after`, so a tidy that merged
+    // nothing and rewrote one memory answered 0 and was called clean while
+    // the rewritten text sat in the list unannounced.
+    if (!removed.length && !edited.length && !(Number(data.removed) > 0)) {
+      showToast('Already clean');
+      return;
+    }
+
     if (tidySpinner) tidySpinner.updateMessage('Tidying memories');
 
     // Animate the diff on the currently rendered list
@@ -1169,13 +1189,14 @@ export async function tidyMemories() {
     renderMemoryList();
     updateMemoryCount();
 
-    showToast(describeMemoryTidy(data));
+    showToast(describeMemoryTidy({ ...data, rewritten: edited.length }));
   } catch (error) {
     console.error('Tidy failed:', error);
     showError('Tidy failed — check console');
   } finally {
     // The chip goes when the job goes, on every exit — including the early
-    // `return` above for "Already clean", which leaves through here too.
+    // `return`s above for "Already clean" and a stopped pass, which leave
+    // through here too (and so does the button's reset they each did by hand).
     setBackgroundWork('memory-modal', { key: 'memory-tidy' });
     if (tidySpinner) tidySpinner.destroy();
     if (tidyBtn) {
