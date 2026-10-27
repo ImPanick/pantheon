@@ -1,13 +1,20 @@
 venv/
 .venv/
-node_modules/
-services/node_modules/
-__pycache__/
-*.pyc
-*.pyo
-*.egg-info/
-dist/
-build/
+# `B1587`. A pattern with no `/` before its wildcard matches at the top level
+# only — Docker's `*` does not cross a `/` (`B447`'s harness measured it:
+# 382 untracked `__pycache__/*.pyc` files from a checkout went into the build
+# context under the old `__pycache__/` line). These are caches and outputs at
+# any depth, so they say so with `**/`.
+**/node_modules/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.egg-info/
+# ...but these two stay top-level on purpose: they are the Python packaging
+# outputs, and `**/build/` would drop `static/js/editor/build/`, six tracked
+# modules the editor imports.
+/dist/
+/build/
 .env
 .env.bak.*
 # Secrets: keep plaintext and every transient secrets.env variant out of
@@ -37,9 +44,9 @@ docs/
 !CREDITS.md
 !NOTICE
 !LICENSE
-*.db
-*.sqlite
-*.sqlite3
+**/*.db
+**/*.sqlite
+**/*.sqlite3
 /reports/
 /research_data/
 tasks/
@@ -49,8 +56,7 @@ search_analytics.json
 **/search_analytics.json
 tests/
 api/
-*.log
-*.error.log
+**/*.log
 chart.png
 timetree*.png
 *_signin_page.png
