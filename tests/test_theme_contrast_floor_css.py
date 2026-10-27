@@ -710,11 +710,15 @@ def test_the_link_hue_is_the_one_that_cleared_aa_and_the_others_did_not(palettes
     the worst is `cute` at 4.61 — on a palette whose own body text is 3.44,
     which is the property that makes a derived hue worth having.
 
-    Against `--bg` it does not quite, on three light palettes: `light` 4.19,
-    `lavender` 4.36, `cute` 4.38. That is named rather than rounded away, and
-    it is filed as `B395`. It is also the best available by a wide margin —
-    every alternative idiom measures 2.1 to 2.8 on the same surfaces — so it is
-    the residual of a fix, not a reason not to make it.
+    Against `--bg` it did not quite, on three light palettes: `light` 4.19,
+    `lavender` 4.36, `cute` 4.38 (and `notebook` 4.47, which arrived later).
+    That was named rather than rounded away, and filed as `B395`, whose fix is
+    upstream of the link: `deriveSyntaxColors` computes `--hl-function` at a
+    fixed lightness on a light page, and 45 was a step too light for the
+    lightest backgrounds. At 42 every palette clears both surfaces — `light`
+    against `--bg` is the worst, at 4.69 — and the hover moved with it
+    (`test_a_link_hover_never_loses_contrast`). It was the best available by a
+    wide margin before, too: every alternative idiom measures 2.1 to 2.8.
 
     The alternatives are measured at the values they had BEFORE `B22` scoped
     them, because that is the tree `B23` chose against; scoring them at their
@@ -728,10 +732,13 @@ def test_the_link_hue_is_the_one_that_cleared_aa_and_the_others_did_not(palettes
         "the link hue has stopped clearing AA against --panel: "
         + json.dumps({n: round(r, 2) for n, r in panel.items() if r < BODY_FLOOR})
     )
-    assert round(min(panel.values()), 2) == 4.61
-    assert min(panel, key=panel.get) == "cute"
-    assert {n for n, r in bg.items() if r < BODY_FLOOR} == {"light", "lavender", "cute", "notebook"}
-    assert [round(bg[n], 2) for n in ("light", "lavender", "cute")] == [4.19, 4.36, 4.38]
+    # `B395`: the panel minimum was `cute` at 4.61 and is `light` at 5.17; the
+    # four light palettes under against `--bg` are over it, `light` lowest.
+    assert round(min(panel.values()), 2) == 5.17
+    assert min(panel, key=panel.get) == "light"
+    assert {n for n, r in bg.items() if r < BODY_FLOOR} == set()
+    assert [round(bg[n], 2) for n in ("light", "lavender", "cute", "notebook")] == [4.69, 4.89, 4.92, 5.01]
+    assert min(bg, key=bg.get) == "light"
 
     # The six it beat, at their pre-`B22` literals.
     was = {"--accent / --accent, var(--red)": "var(--accent)",
@@ -802,3 +809,30 @@ def test_nothing_paints_in_the_muted_pivot():
         if re.search(r"var\(--color-muted[,)]", path.read_text(encoding="utf-8", errors="replace")):
             elsewhere.append(path.relative_to(ROOT).as_posix())
     assert elsewhere == [], f"these paint in the muted pivot directly: {elsewhere}"
+
+
+# ── `B395`: the syntax palette, re-measured on the surface it is painted on ──
+
+# What `B395`'s pass found when it measured every `--hl-*` against the code
+# block (`--hl-bg`, the derived surface `pre` sits on): the function hue
+# clears everywhere, and five of the others do not. Recorded as measured, per
+# token, so the population cannot grow unnoticed; raising them is a syntax
+# palette change across every code block in the product, filed from this pass
+# rather than made inside a link row.
+_SYNTAX_UNDER_ON_CODE = {
+    "hl-keyword": 3, "hl-string": 7, "hl-comment": 16, "hl-number": 8, "hl-builtin": 5,
+}
+
+
+def test_the_link_hue_clears_the_code_block_too_and_the_rest_is_counted(palettes):
+    tokens = ("hl-fg", "hl-keyword", "hl-string", "hl-comment", "hl-function",
+              "hl-number", "hl-builtin", "hl-variable", "hl-params")
+    under = {}
+    for name, theme in palettes.items():
+        ground = _resolve("var(--hl-bg)", theme)
+        for token in tokens:
+            if _contrast(_resolve(f"var(--{token})", theme), ground) < BODY_FLOOR:
+                under.setdefault(token, set()).add(name)
+    assert "hl-function" not in under, f"--hl-function under AA on the code block: {under['hl-function']}"
+    counts = {t: len(n) for t, n in under.items()}
+    assert counts == _SYNTAX_UNDER_ON_CODE, counts

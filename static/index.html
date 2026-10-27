@@ -45,7 +45,7 @@
         s.setProperty('--panel', c.panel);
         s.setProperty('--border', c.border);
         if (c.red) s.setProperty('--red', c.red);
-        // P1-01, mirrored from applyColors() in static/js/theme.js. The 553
+        // P1-01, mirrored from applyColors() in static/js/theme.js. The 551
         // `var(--accent, var(--red))` sites in style.css ride the `--red` set
         // on the line above, but the 200 bare `var(--accent)` ones stay voided
         // until the module boots — a visible flash on every cold load without
@@ -118,7 +118,7 @@
         s.setProperty('--hl-keyword', hsl2h((rH[0]+280)%360,Math.min(rH[1]+10,80),dk?70:45));
         s.setProperty('--hl-string', hsl2h(40,Math.min(fH[1]+20,70),dk?72:42));
         s.setProperty('--hl-comment', hsl2h(fH[0],Math.max(fH[1]-20,5),(fH[2]*0.5+bH[2]*0.5)));
-        s.setProperty('--hl-function', hsl2h(210,Math.min(fH[1]+20,75),dk?70:45));
+        s.setProperty('--hl-function', hsl2h(210,Math.min(fH[1]+20,75),dk?70:42));   // `B395`: theme.js's number
         s.setProperty('--hl-number', hsl2h(20,Math.min(fH[1]+15,65),dk?68:48));
         s.setProperty('--hl-builtin', hsl2h(180,Math.min(fH[1]+15,60),dk?65:40));
         s.setProperty('--hl-variable', hsl2h((fH[0]+30)%360,Math.min(fH[1]+5,60),fH[2]));

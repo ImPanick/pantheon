@@ -235,7 +235,10 @@
   --color-brand-blue: #3b82f6;
   --color-blind-orange: light-dark(#9a5c00, #ff9800);
   --color-save-green: var(--color-success);
-  --color-link-hover: light-dark(#006fae, #66c7ff);
+  /* `B395` darkened the light arm #006fae → #0067a3 (hue and saturation kept):
+     the link it hovers got darker on light pages, and a hover may never be the
+     lower-contrast of the two (`B23`). */
+  --color-link-hover: light-dark(#0067a3, #66c7ff);
   --color-subheader: light-dark(#556e76, #829ca4);
 
   /* The link hue, named once (`B23`).
@@ -259,9 +262,10 @@
      the only idiom that clears 4.5:1 against `--panel` on all sixteen palettes
      (worst: `cute` 4.61); every other one fails on four to eight of them —
      `details a` was 2.24 on `paper`, 2.56 on `cute`, 3.03 on `light`. Against
-     `--bg` it lands 4.19/4.36/4.38 on `light`/`lavender`/`cute`, just under,
-     where the alternatives are 2.1–2.8; that residual is `B395`. It is the
-     only one
+     `--bg` it landed 4.19/4.36/4.38 on `light`/`lavender`/`cute`, just under,
+     where the alternatives are 2.1–2.8; that residual was `B395`, which moved
+     `deriveSyntaxColors`' light lightness 45 → 42 and cleared it (worst now
+     `light` against `--bg`, 4.69). It is the only one
      derived per theme rather than fixed. It is already the hue on the two
      highest-traffic link surfaces in the product, every chat message and every
      email body. And at :31393 it was already `!important`-ed over the accent,

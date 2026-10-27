@@ -190,7 +190,13 @@ function deriveSyntaxColors(colors) {
     keyword: hslToHex((redH + 280) % 360, Math.min(redS + 10, 80), isDark ? 70 : 45),
     string: hslToHex(40, Math.min(fgS + 20, 70), isDark ? 72 : 42),
     comment: hslToHex(fgH, Math.max(fgS - 20, 5), isDark ? (fgL * 0.5 + bgL * 0.5) : (fgL * 0.5 + bgL * 0.5)),
-    function: hslToHex(210, Math.min(fgS + 20, 75), isDark ? 70 : 45),
+    // `B395`: 42, not 45, on a light page. `--hl-function` is also `--link-fg`
+    // (`B23`), and at 45 the three lightest backgrounds held it just under AA —
+    // `light` 4.19, `lavender` 4.36, `cute` 4.38 against `--bg`, `notebook`
+    // 4.47. 42 is the lightest step that clears every light palette's panel,
+    // page and code block (worst `light` against `--bg`, 4.69); the dark arm is
+    // unchanged. `static/index.html`'s first-paint copy says the same number.
+    function: hslToHex(210, Math.min(fgS + 20, 75), isDark ? 70 : 42),
     // Extra token colors for richer highlighting
     number: hslToHex(20, Math.min(fgS + 15, 65), isDark ? 68 : 48),
     builtin: hslToHex(180, Math.min(fgS + 15, 60), isDark ? 65 : 40),
@@ -402,10 +408,10 @@ export function applyColors(colors) {
   if (colors.red) s.setProperty('--red', colors.red);
   // P1-01. Never in `:root`. The fallback in `var(--accent, var(--red))` fires
   // only while `--accent` is undefined, so a `:root` definition retires it at
-  // all 553 of those sites in `style.css` at once and hands all sixteen themes
+  // all 551 of those sites in `style.css` at once and hands all sixteen themes
   // the same accent. Per theme instead, beside `--red` and guarded the same
   // way: `THEMES` carries no `accent` key and `generateHarmonyColors()` returns
-  // none, so every accent is its own theme's red today. Those 553 keep the
+  // none, so every accent is its own theme's red today. Those 551 keep the
   // colour they already had; the 200 bare `var(--accent)` sites, voided at
   // computed-value time for as long as nothing defined the token, resolve for
   // the first time. An `accent:` key parts a theme from its red.
