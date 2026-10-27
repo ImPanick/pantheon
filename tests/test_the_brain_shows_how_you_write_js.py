@@ -167,3 +167,41 @@ def test_an_answer_without_the_style_block_hides_the_panel(brain):
         console.log(JSON.stringify({ hidden: !!panel().hidden }));
     """)
     assert out["hidden"] is True
+
+
+def test_the_panel_says_what_the_jokes_mean_and_what_a_conversation_is_compared_for(brain):
+    """`P13-18` … `P13-20`, folded into this row: the server's two sentences
+    (`humour.sentence`, `reading`) are printed under the lines, as text, and
+    *Forget* says it takes the jokes' meaning too
+    (`tests/test_the_brain_says_what_it_does_with_how_you_write.py`)."""
+    out = _brain(brain, """
+        style = { profile: { id: 'sty', text: FORMED_TEXT, sentences: [],
+                             humour: { means: null, observations: { relaxed: 2 },
+                                       sentence: 'What your jokes mean is not learned yet — 2 of 6 seen.' },
+                             reading: 'In a conversation, your last 6 messages are compared with this — <b>x</b>.' },
+                  observed: 24, needed: 20 };
+        rows = [RECORD, ...ROWS];
+        ready(); await tick();
+        await openBrain();
+        const find = (cls) => panel().querySelectorAll('.' + cls).map((n) => n.textContent);
+        const forget = panel().querySelectorAll('button').find((b) => /Forget/.test(b.textContent));
+        fire(forget, 'click');
+        await tick();
+        console.log(JSON.stringify({ humour: find('memory-style-humour'), reading: find('memory-style-reading'),
+                                     bold: panel().querySelectorAll('b').length,
+                                     confirm: globalThis.__said.confirms[0] }));
+    """)
+    assert out["humour"] == ["What your jokes mean is not learned yet — 2 of 6 seen."]
+    assert out["reading"] == ["In a conversation, your last 6 messages are compared with this — <b>x</b>."]
+    assert out["bold"] == 0, "server text went in as markup"
+    assert "what your jokes were learned to mean" in out["confirm"]
+
+
+def test_before_a_profile_forms_it_says_it_changes_nothing_yet(brain):
+    """`P13-18`: a person with no history is read as nothing — said."""
+    out = _brain(brain, """
+        ready(); await tick();
+        await openBrain();
+        console.log(JSON.stringify({ text: panel().readable }));
+    """)
+    assert "until then it changes nothing about how the assistant answers you" in out["text"]

@@ -98,6 +98,11 @@ def test_no_trait_bucket_or_sentence_this_module_can_emit_is_about_mood():
     reading = {"signals": list(ms.SIGNALS), "confidence": 0.9, "baseline": True}
     for humour in ms.HUMOUR_MEANINGS:
         emitted.append(ms.register_text(ms.register(reading, humour=humour, joking=True)))
+    # `B820`'s panel, closing `P13-18` … `P13-20`: the account the Brain prints.
+    emitted += [ms.reading_account({}), ms.reading_account({ms.TRAIT_PROFANITY: "punctuation"})]
+    for counts in ({}, {"relaxed": 2}, {"relaxed": 3, "defuse": 3},
+                   *({m: ms.HUMOUR_MIN_EVIDENCE} for m in ms.HUMOUR_MEANINGS)):
+        emitted.append(ms.humour_account(counts))
     haystack = " ".join(emitted).lower()
     for word in ms.FORBIDDEN_WORDS:
         assert word not in haystack, f"{word!r} reached something the person reads"

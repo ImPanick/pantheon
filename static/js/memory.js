@@ -738,8 +738,8 @@ export function styleLines(profile) {
 
 /** What deleting the profile does, said where the person decides it. */
 export const STYLE_FORGET_CONFIRM = 'Forget how you write? This deletes the profile and the'
-  + ' counts it was built from — the assistant starts learning again from your next'
-  + ' message, from nothing.';
+  + ' counts it was built from, what your jokes were learned to mean among them — the'
+  + ' assistant starts learning again from your next message, from nothing.';
 
 async function _saveStyleLines(id, lines) {
   const text = lines.map((s) => s.trim()).filter(Boolean).join('\n');
@@ -817,8 +817,11 @@ export function renderStylePanel() {
     const needed = Math.max(0, Number(style.needed) || 0);
     const note = document.createElement('div');
     note.className = 'memory-style-progress';
+    // `P13-18`: a person with no history is read as nothing, not as neutral —
+    // said, so nobody wonders what a half-learned profile is doing to replies.
     note.textContent = `Still learning — ${seen} of ${needed} messages seen. `
-      + 'What it notices about how you write appears here once there are enough.';
+      + 'What it notices about how you write appears here once there are enough;'
+      + ' until then it changes nothing about how the assistant answers you.';
     kids.push(note);
     host.replaceChildren(...kids);
     return;
@@ -848,11 +851,25 @@ export function renderStylePanel() {
   });
   kids.push(list);
 
+  // `P13-18` … `P13-20`. The rest of what the feature does with this, in the
+  // server's sentences (`memory_style.humour_account` / `reading_account`):
+  // what the jokes have been learned to mean — stored, so it is part of what
+  // *Forget* takes — and what a conversation is compared with this for, which
+  // is never stored and so has nothing here to correct, only to read.
+  for (const [cls, said] of [['memory-style-humour', profile.humour && profile.humour.sentence],
+                             ['memory-style-reading', profile.reading]]) {
+    if (typeof said !== 'string' || !said.trim()) continue;
+    const line = document.createElement('div');
+    line.className = `memory-style-sub ${cls}`;
+    line.textContent = said;
+    kids.push(line);
+  }
+
   const forget = document.createElement('button');
   forget.type = 'button';
   forget.className = 'memory-toolbar-btn danger memory-style-forget';
   forget.textContent = 'Forget how I write';
-  forget.title = 'Deletes the profile and the counts behind it. Learning starts again from nothing.';
+  forget.title = 'Deletes the profile, the counts behind it and what your jokes were learned to mean. Learning starts again from nothing.';
   forget.addEventListener('click', () => _forgetStyle(profile.id));
   kids.push(forget);
   host.replaceChildren(...kids);

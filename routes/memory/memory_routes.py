@@ -118,7 +118,15 @@ def _style_block(memory_manager, owner: str = None) -> Dict[str, Any]:
             "means": memory_style.humour_means(
                 (profile.get("humour") or {}).get("observations")),
             "observations": (profile.get("humour") or {}).get("observations") or {},
+            # `P13-20`'s account (`B820`'s panel prints it): what the jokes
+            # mean, or how far from known that is.
+            "sentence": memory_style.humour_account(
+                (profile.get("humour") or {}).get("observations")),
         },
+        # `P13-18` / `P13-19`'s account: what a conversation is compared with
+        # this for, and what that may change. Never the reading itself, which
+        # is never stored.
+        "reading": memory_style.reading_account(trait_values),
     }
     return block
 

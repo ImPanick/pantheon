@@ -633,6 +633,68 @@ def humour_means(counts: Optional[Dict]) -> Optional[str]:
     return leader
 
 
+# ── the Brain's account of the reading, the register and humour ────────────────
+#
+# `B820` drew the profile in the Brain and stopped there, so `P13-18`, `P13-19`
+# and `P13-20` were done on the server and said nowhere a person reads: the
+# panel never said that a conversation is compared with the profile, what that
+# comparison may change, or what has been learned about this person's jokes —
+# and the humour association is stored, so it is part of the profile
+# `D-2026-09-09-01` says must be seen to be corrected. These are the sentences
+# the panel prints (`routes/memory/memory_routes.py` `_style_block`), written
+# here beside the rules they describe so the two cannot drift apart, and walked
+# by the same `FORBIDDEN_WORDS` test as everything else this module emits.
+
+
+def _listed(words: Sequence[str]) -> str:
+    words = list(words)
+    if len(words) < 2:
+        return "".join(words)
+    return ", ".join(words[:-1]) + " or " + words[-1]
+
+
+def reading_account(trait_values: Optional[Dict[str, str]]) -> str:
+    """`P13-18` and `P13-19`, in a sentence: what a conversation is compared
+    against, which observables count for **this** person, and what they may
+    change. The signal names are observables already (`SIGNALS`), so they are
+    said as they are; swearing is left out for the person whose trait is
+    `punctuation`, because for them it is not a signal (`read`)."""
+    counted = [name for name in SIGNALS
+               if not (name == SIGNAL_SWEARING
+                       and (trait_values or {}).get(TRAIT_PROFANITY) == "punctuation")]
+    return (f"In a conversation, your last {READING_WINDOW} messages are compared with this — "
+            f"{_listed([name.replace('_', ' ') for name in counted])}. When they show it, "
+            "replies get shorter, skip the caveats and make the obvious call instead of "
+            "asking. It never changes what is true, the comparison is not saved, and a "
+            "persona you choose always wins.")
+
+
+def humour_account(counts: Optional[Dict]) -> str:
+    """`P13-20`, in a sentence: what this person's jokes have been learned to
+    mean, or how far from learned it is — and, while it is not, that a joke
+    changes nothing (`register`'s `None` branch, said)."""
+    counts = counts or {}
+    try:
+        seen = sum(int(counts.get(name, 0) or 0) for name in HUMOUR_MEANINGS)
+    except (TypeError, ValueError):
+        seen = 0
+    means = humour_means(counts)
+    if means == HUMOUR_RELAXED:
+        return ("When you joke you are usually writing as you always do, so a light "
+                "touch is welcome in the reply.")
+    if means == HUMOUR_DEFUSE:
+        return ("When you joke you are usually writing differently from usual, so a joke "
+                "is not taken as an invitation: replies play it straight and get shorter.")
+    if means == HUMOUR_WRAPPER:
+        return ("When you joke it is usually beside a complaint, so the complaint is taken "
+                "as the message: replies play it straight and lead with the fix.")
+    if seen < HUMOUR_MIN_EVIDENCE:
+        return (f"What your jokes mean is not learned yet — {seen} of {HUMOUR_MIN_EVIDENCE} "
+                "seen. Until it is, a joke changes nothing about the reply.")
+    return (f"What your jokes mean is not learned yet — {seen} seen, and they do not point "
+            "one way. Until they do, a joke changes nothing about the reply.")
+
+
 # ── register: what the assistant does about it ────────────────────────────────
 
 # Four dials, and the constraint on the whole set is one sentence from the
