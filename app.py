@@ -96,6 +96,7 @@ from src.app_helpers import (
 from src.env_flags import env_flag
 from src.generated_images import GENERATED_IMAGE_HEADERS, resolve_generated_image_path
 from src.owner_identity import warn_ignored_auth_switches
+from src.static_representations import prepared_response
 from starlette.responses import RedirectResponse
 
 # ========= LOGGING =========
@@ -189,6 +190,11 @@ app.add_middleware(
 # model-probe — all served with media_type="text/event-stream") are never
 # compressed or buffered; only complete bodies over minimum_size are. The
 # security-header middleware composes cleanly on top.
+# `B1227`: the `/static` mount's text files no longer reach this compressed
+# per request — they arrive compressed once per version of the file
+# (`src/static_representations.py`, which mirrors the floor and level here)
+# and carry `Content-Encoding`, so this passes them through. It still
+# compresses the API's bodies.
 app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
 
@@ -811,6 +817,13 @@ class _RevalidatingStatic(StaticFiles):
                 url=with_asgi_root_path(scope, owner), status_code=302,
             )
         resp = await super().get_response(path, scope)
+        # `B1227`: a text file's answer is prepared once per version of the
+        # file and kept — compressed once, a stylesheet's comments emptied
+        # where that cannot change what the browser does — instead of
+        # `GZipMiddleware` compressing the same bytes on every miss
+        # (`src/static_representations.py`). A `304`, a redirect and anything
+        # not text pass through as they were.
+        resp = await prepared_response(resp, scope)
         if path.endswith((".js", ".css", ".html")):
             resp.headers["Cache-Control"] = "no-cache"
         if path.replace(os.sep, "/") == "sw.js":
