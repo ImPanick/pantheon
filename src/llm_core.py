@@ -956,11 +956,19 @@ def _post_routed(url: str, headers: Optional[Dict] = None, **kwargs):
     itself, and a configured provider's completions get everything its
     subscription allows (`Law 16` clause 2) — the limiter is for the calls
     around it (the model list, the probes), which go through `paced_http`.
-    `httpx.post`'s other defaults are kept: no redirect followed, the default
-    trust store. (`headers` is named so `check-outbound.py` counts this call
-    among the unpaced ones, which it is, on purpose.)"""
+    `httpx.post`'s other default is kept: no redirect followed. (`headers` is
+    named so `check-outbound.py` counts this call among the unpaced ones,
+    which it is, on purpose.)
+
+    `B1556`: trust is the streamed twin's, `llm_verify()` — the default store
+    plus the operator's `LLM_CA_BUNDLE`. `httpx.post` took the default store
+    alone, so a private-CA provider answered a chat and refused every
+    `llm_call` (background jobs, the fallback) with `CERTIFICATE_VERIFY_FAILED`.
+    A `mounts` entry of `None` uses this client's own transport, so a direct
+    route carries the same trust."""
     from src.paced_http import direct_mounts
-    with httpx.Client(mounts=direct_mounts(url)) as client:
+    from src.tls_overrides import llm_verify
+    with httpx.Client(mounts=direct_mounts(url), verify=llm_verify()) as client:
         return client.post(url, headers=headers, **kwargs)
 
 

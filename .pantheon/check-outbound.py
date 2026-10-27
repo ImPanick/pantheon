@@ -179,6 +179,11 @@ def _outbound_label(call, aliases=None):
     HTTP-shaped keyword to count, or every `self._sessions.get(id)` in the
     product reads as a network call. Both mistakes were made on the first run.
     `aliases` (`_library_aliases`) reads `_req.get` as the `httpx.get` it is.
+
+    `B1555`: a `**kwargs` splat counts as an HTTP keyword. It has no name for
+    the set above to match, so `client.post(url, **kw)` — every keyword the
+    request takes, forwarded — was invisible, while the same call spelling one
+    of them out was counted. A dict lookup is not spelled with a splat.
     """
     func = call.func
     if not isinstance(func, ast.Attribute):
@@ -196,9 +201,10 @@ def _outbound_label(call, aliases=None):
         return None
     low = chain.lower()
     kwargs = {k.arg for k in call.keywords if k.arg}
+    splat = any(k.arg is None for k in call.keywords)   # `B1555`: `**kw`
     explicit = any(k in low for k in _HTTP_LIBRARIES)
     clientish = "client" in low
-    if explicit or (clientish and (kwargs & _HTTP_KWARGS)):
+    if explicit or (clientish and (splat or (kwargs & _HTTP_KWARGS))):
         return f"{chain}.{func.attr}"
     return None
 

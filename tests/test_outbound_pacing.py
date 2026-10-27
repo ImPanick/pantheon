@@ -472,6 +472,25 @@ def test_a_dict_lookup_is_not_a_network_call(repo):
     assert r.returncode == 0, r.stdout
 
 
+def test_a_call_that_forwards_every_keyword_is_still_counted(repo):
+    """`B1555`. A `client`-ish call needed a NAMED HTTP keyword to count, so a
+    call whose keywords were all `**kw` was invisible — the row's fixture,
+    verbatim. Its twin with one keyword spelled out was always counted, and a
+    dict lookup (no splat, no keyword) still is not."""
+    (repo / "app.py").write_text(
+        "import httpx\n"
+        "from src import paced_http\n"
+        "def send(url, **kw):\n"
+        "    with httpx.Client(mounts=paced_http.direct_mounts(url)) as client:\n"
+        "        return client.post(url, **kw)\n",
+        encoding="utf-8",
+    )
+    out = run(["--max", "999"], repo).stdout
+    assert _count(repo) == 1, out
+    assert "send()  client.post" in out, out
+    assert run(["--max", "0"], repo).returncode == 1
+
+
 def test_a_bare_urlopen_counts(repo):
     (repo / "app.py").write_text(
         "import urllib.request\n"

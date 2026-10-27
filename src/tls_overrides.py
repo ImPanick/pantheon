@@ -28,7 +28,8 @@ Example (GigaChat):
 
 Scope:
     `llm_verify()` is intentionally consumed only by the
-    shared async client in `src/llm_core.py` and the endpoint probes in
+    shared async clients and the non-streamed call (`_post_routed`, `B1556`)
+    in `src/llm_core.py` and the endpoint probes in
     `routes/model_routes.py`. Both reach LLM provider URLs. The override
     is NOT threaded into web_fetch, search providers, gallery downloads,
     embeddings, webhook delivery, or anything else that hits arbitrary
