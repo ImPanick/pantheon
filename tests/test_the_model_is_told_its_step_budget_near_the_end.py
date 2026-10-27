@@ -30,7 +30,7 @@ def _no_endpoint_answers(monkeypatch):
     no_endpoint_answers(monkeypatch)
 
 
-URL ="https://models.example.com/v1"
+URL = "https://models.example.com/v1"
 
 
 def _drive(monkeypatch, *, max_rounds, script):
