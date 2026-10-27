@@ -13523,6 +13523,23 @@ details a:hover {
   padding: 0 4px;
   flex-shrink: 0;
 }
+/* `B1115`. In the Brain the strip sits straight in `.memory-modal-body`, which
+   has no padding to bleed into and clips sideways (`overflow-x: hidden`). The
+   bleed above made the strip 8px wider than the body, so the body had a 4px
+   sideways scroll range nobody could see and anything could use — a focus, a
+   `scrollIntoView`, a test driver's click while the window was still scaling
+   in — and when it was used the whole Brain slid 4px left with its left edge
+   cut off. Measured in Chromium on the showcase world: 3 of 8 opens of the
+   Brain scene captured it shifted, which is why a release-day capture
+   rewrote `brain-*.png` with nothing changed. Without the bleed the tabs sit
+   exactly where they sat (the body clipped the bleed anyway) and the body
+   has nothing to scroll. */
+#memory-modal .memory-modal-body > .memory-tabs {
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
 .memory-tab {
   background: none;
   border: none;
