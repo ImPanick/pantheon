@@ -527,6 +527,208 @@ export function installHtmlParsing() {
     return false;
   };
 }
+
+/**
+ * Added 2026-10-27 by `B924`. **Opt-in**, like `installHtmlParsing`: a sandbox
+ * that calls this gets a `MutationObserver` that delivers records; one that
+ * does not has none, as before, so no existing sandbox changes.
+ *
+ * Why it exists. `B923` was an observer on `document.body` whose callback
+ * wrote into its own subtree: assigning `textContent` replaces a node's text
+ * even when the words are the same, the write was a childList mutation, the
+ * mutation called the observer, and the loop ran in microtasks so the tab never
+ * got a turn back. No test could see it, because this shim had no observer.
+ *
+ * What is modelled, from the DOM standard, and only that: `childList` records
+ * for `appendChild`, `insertBefore`, `removeChild`, `replaceChildren`,
+ * `remove`, and for `textContent` / `innerHTML` assignments that replace
+ * anything (a same-text assignment is a record — that is `B923`); `attributes`
+ * records for `setAttribute`, `removeAttribute`, `className` and every
+ * `classList` change — including `add` of a token already there, because the
+ * standard's update steps set the attribute either way. Delivery is a microtask
+ * per batch, as a browser's is; `subtree`, `attributeFilter` and `disconnect`
+ * are honoured. **The runaway check is the point**: deliveries that follow one
+ * another with no macrotask between them are a burst, and a burst past
+ * `maxRounds` stops delivering and says so in `mutationRunaway()` — where a
+ * browser's tab would have frozen.
+ */
+export function installMutationObserver({ maxRounds = 200 } = {}) {
+  const state = { observers: new Set(), scheduled: false, burst: 0, resetting: false,
+                  runaway: null, delivered: 0 };
+  const isWithin = (ancestor, node) => {
+    for (let n = node; n; n = n.parentNode) if (n === ancestor) return true;
+    return false;
+  };
+  const queue = (type, target, extra = {}) => {
+    for (const obs of state.observers) {
+      for (const { node, options } of obs._targets) {
+        if (!(node === target || (options.subtree && isWithin(node, target)))) continue;
+        if (type === 'childList' && !options.childList) continue;
+        if (type === 'attributes') {
+          const wants = options.attributes || options.attributeFilter;
+          if (!wants) continue;
+          if (options.attributeFilter && !options.attributeFilter.includes(extra.attributeName)) continue;
+        }
+        obs._records.push({ type, target, addedNodes: extra.addedNodes || [],
+                            removedNodes: extra.removedNodes || [],
+                            attributeName: extra.attributeName || null,
+                            oldValue: extra.oldValue === undefined ? null : extra.oldValue });
+        break;
+      }
+    }
+    if (!state.scheduled && [...state.observers].some((o) => o._records.length)) {
+      state.scheduled = true;
+      queueMicrotask(deliver);
+    }
+  };
+  function deliver() {
+    state.scheduled = false;
+    if (state.runaway) { for (const o of state.observers) o._records = []; return; }
+    state.burst += 1;
+    if (!state.resetting) {
+      state.resetting = true;
+      setTimeout(() => { state.burst = 0; state.resetting = false; }, 0);
+    }
+    if (state.burst > maxRounds) {
+      state.runaway = { rounds: state.burst - 1 };
+      for (const o of state.observers) o._records = [];
+      return;
+    }
+    for (const o of [...state.observers]) {
+      const records = o._records;
+      if (!records.length) continue;
+      o._records = [];
+      state.delivered += records.length;
+      o._callback(records, o);
+    }
+  }
+  class MutationObserver {
+    constructor(callback) { this._callback = callback; this._targets = []; this._records = []; }
+    observe(node, options = {}) {
+      this._targets = this._targets.filter((t) => t.node !== node);
+      this._targets.push({ node, options: { ...options } });
+      state.observers.add(this);
+    }
+    disconnect() { this._targets = []; this._records = []; state.observers.delete(this); }
+    takeRecords() { const r = this._records; this._records = []; return r; }
+  }
+  globalThis.MutationObserver = MutationObserver;
+
+  const P = Node.prototype;
+  const childList = (method, recordOf) => {
+    const real = P[method];
+    P[method] = function (...args) {
+      const extra = recordOf.call(this, ...args);
+      const out = real.apply(this, args);
+      if (extra) queue('childList', extra.target || this, extra);
+      return out;
+    };
+  };
+  childList('appendChild', function (n) {
+    if (n && n.tagName === '#FRAGMENT') return { addedNodes: n.childNodes.slice() };
+    return { addedNodes: [n] };
+  });
+  childList('insertBefore', function (n) { return { addedNodes: [n] }; });
+  childList('removeChild', function (n) { return { removedNodes: [n] }; });
+  childList('replaceChildren', function (...kids) {
+    return { removedNodes: this.childNodes.slice(), addedNodes: kids };
+  });
+  const realRemove = P.remove;
+  P.remove = function () {
+    const parent = this.parentNode;
+    realRemove.call(this);
+    if (parent) queue('childList', parent, { removedNodes: [this] });
+  };
+  // The plain shim keeps a node's text as a string rather than a text node; a
+  // browser has a text node there, so the records say one was removed and one
+  // added — the shape `B923`'s observer saw.
+  const textNode = (text) => ({ nodeType: 3, tagName: '#TEXT', textContent: text, parentNode: null });
+  for (const prop of ['textContent', 'innerHTML']) {
+    let owner = P;
+    while (owner && !Object.getOwnPropertyDescriptor(owner, prop)) owner = Object.getPrototypeOf(owner);
+    const desc = Object.getOwnPropertyDescriptor(owner, prop);
+    Object.defineProperty(P, prop, {
+      configurable: true,
+      get: desc.get,
+      set(v) {
+        const had = this.childNodes.length > 0 || !!this._text || !!this._html;
+        const removed = this.childNodes.length ? this.childNodes.slice()
+          : (had ? [textNode(this._text || this._html)] : []);
+        desc.set.call(this, v);
+        const value = String(v == null ? '' : v);
+        if (had || value !== '') {
+          const added = this.childNodes.length ? this.childNodes.slice()
+            : (value ? [textNode(value)] : []);
+          queue('childList', this, { removedNodes: removed, addedNodes: added });
+        }
+      },
+    });
+  }
+  // `nodeType`, which the observers here test before they touch a node.
+  if (!('nodeType' in P)) {
+    Object.defineProperty(P, 'nodeType', {
+      configurable: true,
+      get() {
+        return { '#TEXT': 3, '#DOCUMENT': 9, '#FRAGMENT': 11 }[this.tagName] || 1;
+      },
+    });
+  }
+  const realSet = P.setAttribute;
+  P.setAttribute = function (k, v) {
+    const old = this.getAttribute(k);
+    realSet.call(this, k, v);
+    queue('attributes', this, { attributeName: String(k), oldValue: old });
+  };
+  const realRemoveAttr = P.removeAttribute;
+  P.removeAttribute = function (k) {
+    const old = this.getAttribute(k);
+    if (realRemoveAttr) realRemoveAttr.call(this, k); else delete this.attrs[k];
+    if (old !== null) queue('attributes', this, { attributeName: String(k), oldValue: old });
+  };
+  Object.defineProperty(P, 'className', {
+    configurable: true,
+    get() { return this._className === undefined ? '' : this._className; },
+    set(v) {
+      const old = this._className === undefined ? null : this._className;
+      this._className = String(v == null ? '' : v);
+      queue('attributes', this, { attributeName: 'class', oldValue: old });
+    },
+  });
+  // `classList` is built per node, in the constructor. `add` of a token that is
+  // already there assigns nothing in the plain shim, and the standard still
+  // sets the attribute — so it is a record here too.
+  Object.defineProperty(P, 'classList', {
+    configurable: true,
+    get() { return this._classList; },
+    set(list) {
+      const self = this;
+      const realAdd = list.add;
+      list.add = function (...cs) {
+        const before = self.className;
+        realAdd.apply(this, cs);
+        if (self.className === before) queue('attributes', self, { attributeName: 'class', oldValue: before });
+      };
+      this._classList = list;
+    },
+  });
+  // Nodes made before this was installed (the document and its body) carry
+  // `className` and `classList` as their own data properties, which would
+  // shadow the accessors above; move them behind the accessors.
+  const adopt = (n) => {
+    if (Object.prototype.hasOwnProperty.call(n, 'className')) {
+      const v = n.className; delete n.className; n._className = v;
+    }
+    if (Object.prototype.hasOwnProperty.call(n, 'classList')) {
+      const list = n.classList; delete n.classList; n.classList = list;
+    }
+    for (const c of n.childNodes || []) adopt(c);
+  };
+  if (globalThis.document) adopt(globalThis.document);
+  return {
+    runaway: () => state.runaway,
+    delivered: () => state.delivered,
+  };
+}
 """
 
 # ── Approval card sandbox ───────────────────────────────────────────────────
