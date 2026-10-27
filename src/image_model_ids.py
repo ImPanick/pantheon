@@ -4,6 +4,15 @@
 from __future__ import annotations
 
 
+# `B471`. Stable Diffusion WebUI Forge — a third-party image backend this
+# product detects by name — and the Forge, this product's own model-serving
+# subsystem (`D-2026-08-26-05`), share a word. The owner kept the subsystem's
+# noun; the backend is therefore always spelled out, from here, never as a bare
+# "Forge": the process detector's label (`src/tools/cookbook.py`) and the
+# gallery's img2img refusal both read this.
+SD_FORGE_LABEL = "SD WebUI Forge"
+
+
 _IMAGE_MODEL_PREFIXES = (
     "gpt-image",
     "dall-e",
