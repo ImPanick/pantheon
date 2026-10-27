@@ -2786,7 +2786,8 @@ export async function deleteCurrentSessionFromTopMenu() {
   return true;
 }
 
-// Session list keyboard navigation: arrows to move, Delete to delete
+// Session list keyboard navigation: arrows to move, Delete to delete (Enter
+// is the row's click, pressed by `a11y.js` — `B1592`)
 async function _onSessionListKeydown(e) {
   const item = e.target.closest('.list-item[data-session-id]');
   if (!item) return;
@@ -2833,12 +2834,11 @@ async function _onSessionListKeydown(e) {
     return;
   }
 
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    const sid = item.dataset.sessionId;
-    if (sid) selectSession(sid);
-    return;
-  }
+  // `B1592`. Enter is not answered here. The row is one of `a11y.js`'s
+  // activatable rows, and its delegated Enter presses the row — the row's own
+  // click handler, which is what opening a chat means (and, in select mode,
+  // what ticking it means). Answering Enter here as well selected the chat
+  // twice per press: two history fetches, two renders.
 }
 
 // Initialize drag sorting for sessions — uses the same dragSortModule as models
