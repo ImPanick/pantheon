@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """History routes — session history, truncation, fork, conversation topics."""
 
+import asyncio
 import json
 import uuid
 import logging
@@ -550,63 +551,66 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         _verify_session_owner(request, session_id)
         try:
             body = await request.json()
-            msg_ids = body.get("msg_ids", [])
-            indices = body.get("indices")  # legacy fallback
-            if not msg_ids and not indices:
-                # `B1331`. It answered `{"status": "ok", "deleted": 0}`, which
-                # reads as done to anything that does not count.
-                raise HTTPException(400, _NOTHING_NAMED_TO_DELETE)
+            # `B1223`: the database work, off the event loop.
+            def _off_the_loop():
+                msg_ids = body.get("msg_ids", [])
+                indices = body.get("indices")  # legacy fallback
+                if not msg_ids and not indices:
+                    # `B1331`. It answered `{"status": "ok", "deleted": 0}`, which
+                    # reads as done to anything that does not count.
+                    raise HTTPException(400, _NOTHING_NAMED_TO_DELETE)
 
-            session = session_manager.get_session(session_id)
-            db = SessionLocal()
-            try:
-                if msg_ids:
-                    # New ID-based delete
-                    deleted = 0
-                    for mid in msg_ids:
-                        db_msg = db.query(DbChatMessage).filter(
-                            DbChatMessage.id == mid,
-                            DbChatMessage.session_id == session_id,
-                        ).first()
-                        if db_msg:
-                            db.delete(db_msg)
-                            deleted += 1
-                    if not deleted:
-                        # `B1331`: none of the ids is a row of this chat, so
-                        # nothing was removed, and the person is told that.
-                        raise HTTPException(404, _NOTHING_TO_DELETE)
+                session = session_manager.get_session(session_id)
+                db = SessionLocal()
+                try:
+                    if msg_ids:
+                        # New ID-based delete
+                        deleted = 0
+                        for mid in msg_ids:
+                            db_msg = db.query(DbChatMessage).filter(
+                                DbChatMessage.id == mid,
+                                DbChatMessage.session_id == session_id,
+                            ).first()
+                            if db_msg:
+                                db.delete(db_msg)
+                                deleted += 1
+                        if not deleted:
+                            # `B1331`: none of the ids is a row of this chat, so
+                            # nothing was removed, and the person is told that.
+                            raise HTTPException(404, _NOTHING_TO_DELETE)
 
-                    # Remove from in-memory history by matching _db_id
-                    def _get_db_id(m):
-                        meta = m.metadata if isinstance(m, ChatMessage) else (m.get('metadata') if isinstance(m, dict) else None)
-                        return meta.get('_db_id') if isinstance(meta, dict) else None
-                    session.history = [m for m in session.history if _get_db_id(m) not in msg_ids]
-                elif indices:
-                    # Legacy index-based delete
-                    indices = sorted(indices, reverse=True)
-                    db_messages = db.query(DbChatMessage).filter(
-                        DbChatMessage.session_id == session_id
-                    ).order_by(DbChatMessage.timestamp).all()
+                        # Remove from in-memory history by matching _db_id
+                        def _get_db_id(m):
+                            meta = m.metadata if isinstance(m, ChatMessage) else (m.get('metadata') if isinstance(m, dict) else None)
+                            return meta.get('_db_id') if isinstance(meta, dict) else None
+                        session.history = [m for m in session.history if _get_db_id(m) not in msg_ids]
+                    elif indices:
+                        # Legacy index-based delete
+                        indices = sorted(indices, reverse=True)
+                        db_messages = db.query(DbChatMessage).filter(
+                            DbChatMessage.session_id == session_id
+                        ).order_by(DbChatMessage.timestamp).all()
 
-                    deleted = 0
-                    for idx in indices:
-                        if 0 <= idx < len(db_messages):
-                            db.delete(db_messages[idx])
-                            deleted += 1
-                        if 0 <= idx < len(session.history):
-                            session.history.pop(idx)
+                        deleted = 0
+                        for idx in indices:
+                            if 0 <= idx < len(db_messages):
+                                db.delete(db_messages[idx])
+                                deleted += 1
+                            if 0 <= idx < len(session.history):
+                                session.history.pop(idx)
 
-                session.message_count = len(session.history)
-                db_session = db.query(DbSession).filter(DbSession.id == session_id).first()
-                if db_session:
-                    db_session.message_count = len(session.history)
-                    from datetime import datetime, timezone
-                    db_session.updated_at = datetime.now(timezone.utc)
+                    session.message_count = len(session.history)
+                    db_session = db.query(DbSession).filter(DbSession.id == session_id).first()
+                    if db_session:
+                        db_session.message_count = len(session.history)
+                        from datetime import datetime, timezone
+                        db_session.updated_at = datetime.now(timezone.utc)
 
-                db.commit()
-                return {"status": "ok", "deleted": deleted}
-            finally:
-                db.close()
+                    db.commit()
+                    return {"status": "ok", "deleted": deleted}
+                finally:
+                    db.close()
+            return await asyncio.to_thread(_off_the_loop)
         except KeyError:
             raise HTTPException(404, CHAT_GONE)
         except HTTPException:
@@ -621,47 +625,50 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         _verify_session_owner(request, session_id)
         try:
             body = await request.json()
-            msg_id = body.get("msg_id")
-            content = body.get("content")
-            if not msg_id or content is None:
-                raise HTTPException(400, "msg_id and content are required")
+            # `B1223`: the database work, off the event loop.
+            def _off_the_loop():
+                msg_id = body.get("msg_id")
+                content = body.get("content")
+                if not msg_id or content is None:
+                    raise HTTPException(400, "msg_id and content are required")
 
-            _reserve_message_uploads(request, content)
+                _reserve_message_uploads(request, content)
 
-            session = session_manager.get_session(session_id)
-            db = SessionLocal()
-            try:
-                db_msg = db.query(DbChatMessage).filter(
-                    DbChatMessage.id == msg_id,
-                    DbChatMessage.session_id == session_id,
-                ).first()
-                if not db_msg:
-                    raise HTTPException(404, "Message not found")
+                session = session_manager.get_session(session_id)
+                db = SessionLocal()
+                try:
+                    db_msg = db.query(DbChatMessage).filter(
+                        DbChatMessage.id == msg_id,
+                        DbChatMessage.session_id == session_id,
+                    ).first()
+                    if not db_msg:
+                        raise HTTPException(404, "Message not found")
 
-                db_msg.content = content
-                meta = {}
-                if db_msg.meta_data:
-                    try: meta = json.loads(db_msg.meta_data)
-                    except (json.JSONDecodeError, ValueError): pass
-                meta['edited'] = True
-                db_msg.meta_data = json.dumps(meta)
+                    db_msg.content = content
+                    meta = {}
+                    if db_msg.meta_data:
+                        try: meta = json.loads(db_msg.meta_data)
+                        except (json.JSONDecodeError, ValueError): pass
+                    meta['edited'] = True
+                    db_msg.meta_data = json.dumps(meta)
 
-                # Update in-memory history by matching _db_id
-                for hmsg in session.history:
-                    hmeta = hmsg.metadata if isinstance(hmsg, ChatMessage) else hmsg.get('metadata')
-                    if isinstance(hmeta, dict) and hmeta.get('_db_id') == msg_id:
-                        if isinstance(hmsg, ChatMessage):
-                            hmsg.content = content
-                            hmsg.metadata['edited'] = True
-                        elif isinstance(hmsg, dict):
-                            hmsg['content'] = content
-                            hmsg['metadata']['edited'] = True
-                        break
+                    # Update in-memory history by matching _db_id
+                    for hmsg in session.history:
+                        hmeta = hmsg.metadata if isinstance(hmsg, ChatMessage) else hmsg.get('metadata')
+                        if isinstance(hmeta, dict) and hmeta.get('_db_id') == msg_id:
+                            if isinstance(hmsg, ChatMessage):
+                                hmsg.content = content
+                                hmsg.metadata['edited'] = True
+                            elif isinstance(hmsg, dict):
+                                hmsg['content'] = content
+                                hmsg['metadata']['edited'] = True
+                            break
 
-                db.commit()
-                return {"status": "ok"}
-            finally:
-                db.close()
+                    db.commit()
+                    return {"status": "ok"}
+                finally:
+                    db.close()
+            return await asyncio.to_thread(_off_the_loop)
         except KeyError:
             raise HTTPException(404, CHAT_GONE)
         except HTTPException:
@@ -729,45 +736,48 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         _verify_session_owner(request, session_id)
         try:
             body = await request.json()
-            meta_update = body.get("metadata", {})
-            session = session_manager.get_session(session_id)
+            # `B1223`: the database work, off the event loop.
+            def _off_the_loop():
+                meta_update = body.get("metadata", {})
+                session = session_manager.get_session(session_id)
 
-            # Update in-memory
-            for msg in reversed(session.history):
-                if (isinstance(msg, ChatMessage) and msg.role == 'assistant') or \
-                   (isinstance(msg, dict) and msg.get('role') == 'assistant'):
-                    if isinstance(msg, ChatMessage):
-                        if not msg.metadata:
-                            msg.metadata = {}
-                        msg.metadata.update(meta_update)
-                    else:
-                        if 'metadata' not in msg:
-                            msg['metadata'] = {}
-                        msg['metadata'].update(meta_update)
-                    break
+                # Update in-memory
+                for msg in reversed(session.history):
+                    if (isinstance(msg, ChatMessage) and msg.role == 'assistant') or \
+                       (isinstance(msg, dict) and msg.get('role') == 'assistant'):
+                        if isinstance(msg, ChatMessage):
+                            if not msg.metadata:
+                                msg.metadata = {}
+                            msg.metadata.update(meta_update)
+                        else:
+                            if 'metadata' not in msg:
+                                msg['metadata'] = {}
+                            msg['metadata'].update(meta_update)
+                        break
 
-            # Update in DB
-            db = SessionLocal()
-            try:
-                import json as _json
-                db_msg = (
-                    db.query(DbChatMessage)
-                    .filter(DbChatMessage.session_id == session_id, DbChatMessage.role == 'assistant')
-                    .order_by(DbChatMessage.timestamp.desc())
-                    .first()
-                )
-                if db_msg:
-                    meta = {}
-                    if db_msg.meta_data:
-                        try: meta = _json.loads(db_msg.meta_data)
-                        except (json.JSONDecodeError, ValueError): pass
-                    meta.update(meta_update)
-                    db_msg.meta_data = _json.dumps(meta)
-                    db.commit()
-            finally:
-                db.close()
-            session_manager.save_sessions()
-            return {"status": "ok"}
+                # Update in DB
+                db = SessionLocal()
+                try:
+                    import json as _json
+                    db_msg = (
+                        db.query(DbChatMessage)
+                        .filter(DbChatMessage.session_id == session_id, DbChatMessage.role == 'assistant')
+                        .order_by(DbChatMessage.timestamp.desc())
+                        .first()
+                    )
+                    if db_msg:
+                        meta = {}
+                        if db_msg.meta_data:
+                            try: meta = _json.loads(db_msg.meta_data)
+                            except (json.JSONDecodeError, ValueError): pass
+                        meta.update(meta_update)
+                        db_msg.meta_data = _json.dumps(meta)
+                        db.commit()
+                finally:
+                    db.close()
+                session_manager.save_sessions()
+                return {"status": "ok"}
+            return await asyncio.to_thread(_off_the_loop)
         except KeyError:
             raise HTTPException(404, CHAT_GONE)
         except Exception as e:
@@ -780,85 +790,88 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         _verify_session_owner(request, session_id)
         try:
             body = await request.json()
-            separator = body.get("separator", "\n\n")
-            session = session_manager.get_session(session_id)
+            # `B1223`: the database work, off the event loop.
+            def _off_the_loop():
+                separator = body.get("separator", "\n\n")
+                session = session_manager.get_session(session_id)
 
-            # Find last two assistant messages in-memory
-            ai_indices = []
-            for i, msg in enumerate(session.history):
-                role = msg.role if isinstance(msg, ChatMessage) else msg.get('role', '')
-                if role == 'assistant':
-                    ai_indices.append(i)
+                # Find last two assistant messages in-memory
+                ai_indices = []
+                for i, msg in enumerate(session.history):
+                    role = msg.role if isinstance(msg, ChatMessage) else msg.get('role', '')
+                    if role == 'assistant':
+                        ai_indices.append(i)
 
-            if len(ai_indices) < 2:
-                return {"status": "ok", "merged": False}
+                if len(ai_indices) < 2:
+                    return {"status": "ok", "merged": False}
 
-            idx1, idx2 = ai_indices[-2], ai_indices[-1]
-            msg1, msg2 = session.history[idx1], session.history[idx2]
+                idx1, idx2 = ai_indices[-2], ai_indices[-1]
+                msg1, msg2 = session.history[idx1], session.history[idx2]
 
-            content1 = msg1.content if isinstance(msg1, ChatMessage) else msg1.get('content', '')
-            content2 = msg2.content if isinstance(msg2, ChatMessage) else msg2.get('content', '')
-            merged_content = content1 + separator + content2
+                content1 = msg1.content if isinstance(msg1, ChatMessage) else msg1.get('content', '')
+                content2 = msg2.content if isinstance(msg2, ChatMessage) else msg2.get('content', '')
+                merged_content = content1 + separator + content2
 
-            # Merge metadata (`B941`: an agent run's rounds as one reply's)
-            meta1 = (msg1.metadata if isinstance(msg1, ChatMessage) else msg1.get('metadata')) or {}
-            meta2 = (msg2.metadata if isinstance(msg2, ChatMessage) else msg2.get('metadata')) or {}
-            merged_meta = _merged_reply_metadata(meta1, meta2)
+                # Merge metadata (`B941`: an agent run's rounds as one reply's)
+                meta1 = (msg1.metadata if isinstance(msg1, ChatMessage) else msg1.get('metadata')) or {}
+                meta2 = (msg2.metadata if isinstance(msg2, ChatMessage) else msg2.get('metadata')) or {}
+                merged_meta = _merged_reply_metadata(meta1, meta2)
 
-            # Update first message, remove second
-            if isinstance(msg1, ChatMessage):
-                msg1.content = merged_content
-                msg1.metadata = merged_meta
-            else:
-                msg1['content'] = merged_content
-                msg1['metadata'] = merged_meta
+                # Update first message, remove second
+                if isinstance(msg1, ChatMessage):
+                    msg1.content = merged_content
+                    msg1.metadata = merged_meta
+                else:
+                    msg1['content'] = merged_content
+                    msg1['metadata'] = merged_meta
 
-            # Also remove the hidden "continue" user message between them if present
-            # It's the message at idx2-1 if it's a user message with continue text
-            remove_indices = [idx2]
-            if idx2 - 1 > idx1:
-                between = session.history[idx2 - 1]
-                between_role = between.role if isinstance(between, ChatMessage) else between.get('role', '')
-                between_content = between.content if isinstance(between, ChatMessage) else between.get('content', '')
-                # `B941`: and the step limit's Continue prompt, which this
-                # left in place, drawn as a user bubble below the reply on
-                # every reload. One test for both paths (`is_continue_prompt`).
-                if between_role == 'user' and is_continue_prompt(between_content):
-                    remove_indices.insert(0, idx2 - 1)
+                # Also remove the hidden "continue" user message between them if present
+                # It's the message at idx2-1 if it's a user message with continue text
+                remove_indices = [idx2]
+                if idx2 - 1 > idx1:
+                    between = session.history[idx2 - 1]
+                    between_role = between.role if isinstance(between, ChatMessage) else between.get('role', '')
+                    between_content = between.content if isinstance(between, ChatMessage) else between.get('content', '')
+                    # `B941`: and the step limit's Continue prompt, which this
+                    # left in place, drawn as a user bubble below the reply on
+                    # every reload. One test for both paths (`is_continue_prompt`).
+                    if between_role == 'user' and is_continue_prompt(between_content):
+                        remove_indices.insert(0, idx2 - 1)
 
-            for ri in sorted(remove_indices, reverse=True):
-                session.history.pop(ri)
+                for ri in sorted(remove_indices, reverse=True):
+                    session.history.pop(ri)
 
-            # Update DB
-            db = SessionLocal()
-            try:
-                import json as _json
-                db_messages = (
-                    db.query(DbChatMessage)
-                    .filter(DbChatMessage.session_id == session_id)
-                    .order_by(DbChatMessage.timestamp)
-                    .all()
-                )
-                # Find last two assistant messages in DB
-                ai_db = [(i, m) for i, m in enumerate(db_messages) if m.role == 'assistant']
-                if len(ai_db) >= 2:
-                    (_, db1), (_, db2) = ai_db[-2], ai_db[-1]
-                    db1.content = merged_content
-                    db1.meta_data = _json.dumps(merged_meta)
+                # Update DB
+                db = SessionLocal()
+                try:
+                    import json as _json
+                    db_messages = (
+                        db.query(DbChatMessage)
+                        .filter(DbChatMessage.session_id == session_id)
+                        .order_by(DbChatMessage.timestamp)
+                        .all()
+                    )
+                    # Find last two assistant messages in DB
+                    ai_db = [(i, m) for i, m in enumerate(db_messages) if m.role == 'assistant']
+                    if len(ai_db) >= 2:
+                        (_, db1), (_, db2) = ai_db[-2], ai_db[-1]
+                        db1.content = merged_content
+                        db1.meta_data = _json.dumps(merged_meta)
 
-                    # Mirror the in-memory deletion: remove the second assistant
-                    # message and ONLY the "continue" user message between them
-                    # (not arbitrary tool/system/user rows). The old
-                    # range-delete destroyed every row between the two assistant
-                    # messages, desyncing the DB from the in-memory history.
-                    for _row in _merge_continue_rows_to_delete(db_messages, db1, db2):
-                        db.delete(_row)
+                        # Mirror the in-memory deletion: remove the second assistant
+                        # message and ONLY the "continue" user message between them
+                        # (not arbitrary tool/system/user rows). The old
+                        # range-delete destroyed every row between the two assistant
+                        # messages, desyncing the DB from the in-memory history.
+                        for _row in _merge_continue_rows_to_delete(db_messages, db1, db2):
+                            db.delete(_row)
 
-                    db.commit()
-            finally:
-                db.close()
-            session_manager.save_sessions()
-            return {"status": "ok", "merged": True}
+                        db.commit()
+                finally:
+                    db.close()
+                session_manager.save_sessions()
+                return {"status": "ok", "merged": True}
+            return await asyncio.to_thread(_off_the_loop)
         except KeyError:
             raise HTTPException(404, CHAT_GONE)
         except Exception as e:

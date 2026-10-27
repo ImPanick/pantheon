@@ -31,7 +31,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 #: The ceiling. Lower it when a handler moves; a rise is a handler that put
 #: its database work back on the loop.
-MAX_ON_THE_LOOP = 58
+MAX_ON_THE_LOOP = 54
 
 _METHODS = {"get", "post", "put", "delete", "patch", "api_route", "websocket", "head", "options"}
 _DB_CALLS = {"SessionLocal", "get_db_session"}
