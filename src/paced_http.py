@@ -262,8 +262,8 @@ async def request(method: str, url: str, *, authenticated: bool = False,
     """Paced async request. Raises `OutboundRateLimited` when the host is blocked.
 
     `verify` is the client's TLS setting, as `httpx.get(..., verify=)` took it
-    (`B1022`: the model probes pass `tls_overrides.llm_verify()`); a caller that
-    brings its own `client` brought its own."""
+    (`B1022`: the model probes pass the LLM path's extra CA bundle, from
+    `tls_overrides`); a caller that brings its own `client` brought its own."""
     import httpx
     from src.rate_limiter import outbound
 
