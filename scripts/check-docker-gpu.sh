@@ -260,13 +260,13 @@ _check_gpu_passthrough() {
         _GPU_PASSTHROUGH_OK=1
         _pass "GPU passthrough is working — the NVIDIA compose overlay should work."
         _info "Passthrough means Docker can see your GPU. It does NOT guarantee"
-        _info "llama.cpp will use CUDA. If Cookbook logs show:"
+        _info "llama.cpp will use CUDA. If Forge logs show:"
         _info "  'Unable to find cudart library'"
         _info "  'Could NOT find CUDAToolkit' / 'CUDA Toolkit not found'"
         _info "  tensors or layers assigned to CPU"
-        _info "that is a Cookbook/llama.cpp CUDA build or runtime issue, not a"
+        _info "that is a Forge/llama.cpp CUDA build or runtime issue, not a"
         _info "passthrough failure. Re-install the serve engine via"
-        _info "Cookbook -> Dependencies to get a CUDA-enabled build."
+        _info "Forge -> Dependencies to get a CUDA-enabled build."
         if [ "${OPT_ENABLE_OVERLAY}" -eq 0 ]; then
             _info "Enable the overlay in .env with:"
             _info "  scripts/check-docker-gpu.sh --enable-nvidia-overlay"
@@ -309,7 +309,7 @@ _check_gpu_passthrough() {
         echo
         echo "  Then re-run this script to confirm."
         echo
-        _warn "Without GPU passthrough, Cookbook will detect the iGPU, another card, or"
+        _warn "Without GPU passthrough, the Forge will detect the iGPU, another card, or"
         _warn "CPU instead of your NVIDIA GPU — model recommendations will use the wrong VRAM."
         _info "Run with --print-install-commands to see OS-specific commands."
         _info "Run with --install-nvidia-toolkit to install on Ubuntu/Debian."

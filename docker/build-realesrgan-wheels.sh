@@ -10,7 +10,7 @@
 #
 # Python 3.13+ implements PEP 667: locals() inside a function returns an
 # independent snapshot that exec() can no longer mutate, so the read raises
-# `KeyError: '__version__'` and the sdist build fails. That is why the Cookbook
+# `KeyError: '__version__'` and the sdist build fails. That is why the Forge
 # "install realesrgan" button dies on the python:3.14 image. The packages have
 # no fixed release, so we patch get_version() to exec into an explicit namespace
 # dict (works on every Python) and build wheels from the patched source.

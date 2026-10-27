@@ -124,7 +124,7 @@ for dir in /app/data /app/logs /app/.ssh /app/.local; do
     repair_bind_mount_ownership "$dir"
 done
 
-# Cookbook installs vllm/etc. via `pip install --user`, which pulls
+# The Forge installs vllm/etc. via `pip install --user`, which pulls
 # nvidia-cuda-* wheels into /app/.local but does not set CUDA_HOME or
 # symlink /usr/local/cuda. vllm 0.22+ then crashes during engine init
 # when FlashInfer tries to JIT a sampler kernel ("Could not find nvcc",
@@ -155,7 +155,7 @@ done
 # nvcc" even when the GPU itself is fully visible to the container.
 export VLLM_USE_FLASHINFER_SAMPLER="${VLLM_USE_FLASHINFER_SAMPLER:-0}"
 
-# Make Cookbook-installed Python CLIs visible after `pip install --user`.
+# Make Forge-installed Python CLIs visible after `pip install --user`.
 # vLLM and helper scripts land here because /app is the non-root user's HOME.
 export PATH="/app/.local/bin:$PATH"
 

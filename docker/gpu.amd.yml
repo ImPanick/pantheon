@@ -8,7 +8,7 @@
 # This overlay only passes the host GPU through to the container.
 # The slim Pantheon image does not bundle ROCm userspace or inference
 # engines — install ROCm-compatible builds of vLLM / llama-cpp-python
-# via Cookbook -> Dependencies (or pip) before serving GPU models.
+# via Forge -> Dependencies (or pip) before serving GPU models.
 services:
   pantheon:
     devices:

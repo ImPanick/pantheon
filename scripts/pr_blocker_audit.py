@@ -42,7 +42,7 @@ AREA_RULES = [
         ("agent", "tool", "function_call", "mcp", "shell"),
         ("agent", "tool", "function", "mcp"),
     ),
-    ("Cookbook / runners", ("cookbook", "runner", "preset"), ("cookbook", "runner", "preset")),
+    ("Forge / runners", ("cookbook", "runner", "preset"), ("cookbook", "runner", "preset")),
     ("Email / CalDAV", ("mail", "email", "imap", "caldav", "calendar"), ("email", "mail", "caldav", "calendar")),
     (
         "Documents / uploads",

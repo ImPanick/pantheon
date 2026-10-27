@@ -154,7 +154,7 @@ texts are in [`licenses/`](licenses/).
 | Project | Licence | Used for |
 |---|---|---|
 | [opencode](https://github.com/anomalyco/opencode) | MIT | Agent-loop and tool-execution patterns, UI concepts |
-| [llmfit](https://github.com/AlexsJones/llmfit) | MIT | Hardware-fit calculation behind the model Cookbook's download / serve / "What Fits?" feature |
+| [llmfit](https://github.com/AlexsJones/llmfit) | MIT | Hardware-fit calculation behind the Forge's model download / serve / "What Fits?" feature |
 | [Tongyi DeepResearch](https://github.com/Alibaba-NLP/DeepResearch) | Apache-2.0 | Deep-research pipeline |
 | [ECC](https://github.com/affaan-m/ECC) | MIT | The 286-skill library Pantheon ships with, in `library/ecc/` |
 | [OpenMoji](https://openmoji.org) | **CC BY-SA 4.0** | Every emoji rendered in the product, in `library/emoji/` |
@@ -214,7 +214,7 @@ texts are in [`licenses/`](licenses/).
   patterns and UI concepts. Full text in
   [`licenses/opencode-MIT-LICENSE.txt`](licenses/opencode-MIT-LICENSE.txt).
 - **[llmfit](https://github.com/AlexsJones/llmfit)** by **Alex Jones** — the
-  engine behind the Cookbook's model download / serve / "What Fits?" feature.
+  engine behind the Forge's model download / serve / "What Fits?" feature.
   Copyright © Alex Jones. **MIT License.** Adapted in `services/hwfit/`
   (hardware detection, quant-aware fit scoring, model catalog),
   `routes/cookbook_*.py`, `routes/hwfit_routes.py`, `static/js/cookbook*.js`,
@@ -765,7 +765,7 @@ logo does not have one.
 
 | Mark | Files | Project | Why it is here |
 |---|---|---|---|
-| Ollama | `static/icons/ollama-mark.png`, `static/icons/ollama-mark-crop.png` | [Ollama](https://github.com/ollama/ollama) (MIT) | Labels the Ollama backend in the Cookbook's model list, download and serve views |
+| Ollama | `static/icons/ollama-mark.png`, `static/icons/ollama-mark-crop.png` | [Ollama](https://github.com/ollama/ollama) (MIT) | Labels the Ollama backend in the Forge's model list, download and serve views |
 | SGLang | `static/icons/sglang-mark.png`, `static/icons/sglang-logo.png` | [SGLang](https://github.com/sgl-project/sglang) (Apache-2.0) | Labels the SGLang backend in the same views |
 
 **What Pantheon claims, and does not.** These marks are used **nominatively** —
@@ -901,7 +901,7 @@ shipped file governs.*
 **[Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) itself (BSD-3-Clause,
 © 2021 Xintao Wang) is not distributed with Pantheon.** It powers the image
 editor's Denoise and Upscale tools (`routes/gallery/gallery_routes.py`), and it
-is installed on demand from the Cookbook's dependency list
+is installed on demand from the Forge's dependency list
 (`routes/shell_routes.py`) — the three wheels above exist only so that
 `pip install realesrgan` resolves without rebuilding sdists that fail on Python
 3.14. Its model weights (`realesr-general-x4v3`, `RealESRGAN_x4plus`) are
@@ -991,10 +991,10 @@ they deserve credit:
 - [Radicale](https://github.com/Kozea/Radicale) — CardDAV/CalDAV server (GPL-3.0)
 - [Dovecot](https://www.dovecot.org/) — IMAP server
 - [isync / mbsync](https://isync.sourceforge.io/) — IMAP mailbox sync (GPL-2.0)
-- [tmux](https://github.com/tmux/tmux) — terminal multiplexer; the Cookbook shells
+- [tmux](https://github.com/tmux/tmux) — terminal multiplexer; the Forge shells
   out to it on Linux/macOS for background model downloads and serves (ISC)
 - [OpenSSH](https://www.openssh.com/) (`ssh`, `ssh-keygen`, `ssh-copy-id`) — the
-  Cookbook shells out to it to manage remote model servers and provision keys
+  Forge shells out to it to manage remote model servers and provision keys
   (BSD-style permissive)
 - Model/API providers: Anthropic, OpenAI, Google (Gemini), DuckDuckGo
 

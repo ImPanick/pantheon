@@ -141,11 +141,11 @@ Write-Step "Running first-time setup"
 & $venvPy setup.py
 if ($LASTEXITCODE -ne 0) { Fail "setup.py failed." }
 
-# 5. Friendly note about Git Bash (full Cookbook / agent-shell parity)
+# 5. Friendly note about Git Bash (full Forge / agent-shell parity)
 if (-not (Find-GitBash)) {
     Write-Host ""
     Write-Host "NOTE: Git Bash (bash.exe) was not found on PATH." -ForegroundColor Yellow
-    Write-Host "      The core app works without it. For full Cookbook background" -ForegroundColor Yellow
+    Write-Host "      The core app works without it. For full Forge background" -ForegroundColor Yellow
     Write-Host "      downloads and the agent shell tool, install Git for Windows:" -ForegroundColor Yellow
     Write-Host "      https://git-scm.com/download/win" -ForegroundColor Yellow
 }
