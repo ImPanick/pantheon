@@ -3,8 +3,9 @@
 // `P24-15`. Settings → Agents: the two instance-wide brakes on hired agents.
 //
 // *Pause all agents* is `agents_paused`; *Most agent runs at once* is
-// `agents_max_concurrent`. Both are read by `src/agents/runtime.py` before
-// every agent run and saved through `POST /api/auth/settings`, which checks
+// `agents_max_concurrent`; `P24-09`'s *A model reads each delivery too* is
+// `agents_judge`. All three are read by `src/agents/runtime.py` for every
+// agent run and saved through `POST /api/auth/settings`, which checks
 // the switch is a yes/no and clamps the number to its range — so the panel
 // draws the value the server kept, not the one typed (`Law 7`: the range lives
 // in `src/settings.py`, and this file reads it back rather than restating it).
@@ -35,6 +36,8 @@ function _draw(settings) {
   const toggle = $('agents-pausedToggle');
   const input = $('agents-maxInput');
   if (toggle) toggle.checked = settings.agents_paused === true;
+  const judge = $('agents-judgeToggle');
+  if (judge) judge.checked = settings.agents_judge === true;
   if (input && settings.agents_max_concurrent != null) input.value = String(settings.agents_max_concurrent);
   _drawSlotNote(settings);
 }
@@ -87,6 +90,10 @@ export async function save(body) {
   _draw(kept);
   if ('agents_paused' in body) {
     _say(kept.agents_paused ? 'Every agent is paused.' : 'Agents run again at their next time.');
+  } else if ('agents_judge' in body) {
+    _say(kept.agents_judge
+      ? 'From the next run, a model reads each delivery after its checks pass.'
+      : 'From the next run, deliveries are checked by code only.');
   } else {
     _say(`Saved: at most ${kept.agents_max_concurrent} at once.`);
   }
@@ -100,6 +107,9 @@ export async function open() {
   _wired = true;
   $('agents-pausedToggle')?.addEventListener('change', (e) => {
     save({ agents_paused: !!e.target.checked });
+  });
+  $('agents-judgeToggle')?.addEventListener('change', (e) => {
+    save({ agents_judge: !!e.target.checked });
   });
   $('agents-maxInput')?.addEventListener('change', (e) => {
     const n = parseInt(e.target.value, 10);

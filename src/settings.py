@@ -287,6 +287,14 @@ DEFAULT_SETTINGS = {
     # how many runs of any hire go at once — a run past it waits its turn.
     "agents_paused": False,
     "agents_max_concurrent": 2,
+    # `P24-09`. The contract check's optional second half: after the code's
+    # checks pass, the background-task model reads each delivery against what
+    # the agent's file promises (`src/agents/runtime.judge_delivery`). Off as
+    # shipped — opt-in, and only through models this install already has set
+    # up. Read as `is True`; refused to the agent like the two above, since an
+    # agent that could switch off the reading of its own work would be
+    # grading itself.
+    "agents_judge": False,
     # `P22-07`. How much of what one workflow step was handed and what it made
     # is kept on its record, in characters, each. Past it the record keeps a
     # preview and says it was cut (`src/workflow_runs.py`). Resolves with the

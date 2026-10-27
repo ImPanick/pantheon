@@ -764,6 +764,8 @@ _SELF_RESTRAINT_KEYS = frozenset({
     # many run at once, would be moving its own wall from inside.
     "agents_paused",
     "agents_max_concurrent",
+    # `P24-09`. Nor switch off the second reading of whether it delivered.
+    "agents_judge",
 })
 #
 # `trust_rung` is NOT here, and the first version of this set had it.
@@ -813,6 +815,8 @@ _SELF_RESTRAINT_WHY = {
         "is the switch a person uses to stop every hired agent at once",
     "agents_max_concurrent":
         "is how many hired agents a person lets run at once",
+    "agents_judge":
+        "is the second reading of whether a hired agent delivered what it promised",
     "agent_email_confirm":
         "decides whether a person has to approve an email before I send it",
     "agent_verifier_subagent":
@@ -870,6 +874,7 @@ _SELF_RESTRAINT_WHERE = {
     "agent_verifier_subagent": ("Agent Tools", "Verify effectful turns", "set-agentVerifier"),
     "agents_paused": ("Agents", "Pause all agents", "agents-pausedToggle"),
     "agents_max_concurrent": ("Agents", "Most agent runs at once", "agents-maxInput"),
+    "agents_judge": ("Agents", "A model reads each delivery too", "agents-judgeToggle"),
     "workstation_enabled": ("Workstation", "Workstation on", "ws-enabled"),
     "workstation_url": ("Workstation", "Address", "ws-url"),
     "workstation_tls_pin": ("Workstation", "Certificate", "ws-tls-pin"),

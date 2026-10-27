@@ -1051,8 +1051,13 @@ function _runRow(run) {
     if ((r.checks || []).length) {
       // `P24-09`. What it had to leave behind, checked by code.
       const ul = _el('ul', 'agents-checks');
-      r.checks.forEach((c) => ul.appendChild(_el('li', c.ok ? 'agents-check-ok' : 'agents-check-failed',
-        `${c.ok ? '✓' : '✗'} ${c.detail}`)));
+      // `P24-09`: the judge's reading sits beside them, by its verdict — an
+      // `unread` is neither a ✓ nor a ✗, and says that only the code counted.
+      r.checks.forEach((c) => {
+        const unread = c.verdict === 'unread';
+        const cls = unread ? 'agents-check-unread' : (c.ok ? 'agents-check-ok' : 'agents-check-failed');
+        ul.appendChild(_el('li', cls, `${unread ? '–' : (c.ok ? '✓' : '✗')} ${c.detail}`));
+      });
       row.appendChild(ul);
       if (r.repaired) row.appendChild(_el('p', 'agents-small', 'It took one more try to deliver.'));
     }

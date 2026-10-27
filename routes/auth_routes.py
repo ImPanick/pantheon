@@ -1259,7 +1259,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                         400,
                         f"{key} must be true, false, or null (null means "
                         f"'let {ENV_BACKED_FLAGS[key][0]} or the default decide')")
-            if key == "agents_paused" and not isinstance(val, bool):
+            if key in ("agents_paused", "agents_judge") and not isinstance(val, bool):
                 # `P24-10`. Read as `is True` (`src/agents/runtime.agents_paused`),
                 # so a string would store and pause nothing.
                 raise HTTPException(400, f"{key} must be true or false")

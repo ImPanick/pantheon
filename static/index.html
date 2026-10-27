@@ -3819,6 +3819,14 @@
               </div>
               <input type="number" id="agents-maxInput" class="settings-select" min="1" max="16" step="1" aria-labelledby="agents-maxLabel" aria-describedby="agents-maxSub">
             </div>
+            <!-- `P24-09`. The contract check's optional judge (`agents_judge`). -->
+            <div class="admin-toggle-row">
+              <div>
+                <div class="admin-toggle-label" id="agents-judgeLabel">A model reads each delivery too</div>
+                <div class="admin-toggle-sub" id="agents-judgeSub">Off: what an agent leaves is checked by code only — its answer's words, its document, its drafts, its file. On: once those checks pass, the model set for background tasks also reads the delivery against what the agent promises and puts its verdict and reasons in the run's report; a no gets the run's one more try. It uses the models already set up here, so nothing new is contacted.</div>
+              </div>
+              <label class="admin-switch"><input type="checkbox" id="agents-judgeToggle" aria-labelledby="agents-judgeLabel" aria-describedby="agents-judgeSub"><span class="admin-slider"></span></label>
+            </div>
             <div id="agents-settingsResult" class="admin-toggle-sub" role="status" hidden></div>
           </div>
         </div>
