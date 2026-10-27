@@ -1557,6 +1557,100 @@ def recording_format(path: str) -> str | None:
     return None
 
 
+#: `B1290`. The words a recording given to a model as sound leaves in the
+#: message, beside its `input_audio` part — read back by `unheard_turn`
+#: (`B1566`), so it is written once.
+HEARD_RECORDING = "\n\n[Recording attached: {name} — given to the model as sound]"
+HEARD_NOTE = {"state": "heard", "note": "The model was given the recording itself."}
+
+
+def recording_in_words(display_name: str, said: str = "", *, ext: str = "",
+                       hears: bool = False) -> tuple[str, dict]:
+    """A recording that does not reach the model as sound, in words: its
+    transcript, or the sentence that it was not heard — and what the card
+    under it says (`{"state", "note"}`). fx5-vision (`B1284`) wrote both
+    inside `build_user_content`; `B1566` needs them again for a fallback model
+    that does not hear, so they are here once. `hears` says the model hears
+    and this recording's format is what kept it out (`B1290`). The transcript
+    is not fitted to the inline budget here; the caller fits it."""
+    if said:
+        return (f"\n\n[Recording attached: {display_name} — transcript]:\n{said}",
+                {"state": "transcribed", "note": "The model was given a transcript of it."})
+    # `B1290`: a model that hears was not given this one because of its
+    # format — said, so nobody looks for a missing setting.
+    why = (f"the model takes recordings as WAV or MP3 and this one is {ext or 'neither'}"
+           if hears else "the model can't be given a recording")
+    return (f"\n\n[Recording attached: {display_name} — not heard. This server "
+            f"turns no speech into text, so nothing from the recording is in "
+            f"this message.]",
+            {"state": "not_heard",
+             "note": f"Not heard: {why}, and this server has no speech-to-text set up."})
+
+
+def unheard_turn(messages: list, recordings: list, transcripts: dict | None = None,
+                 *, owner: str | None = None) -> tuple[list, dict]:
+    """`B1566`. This turn as a model that does not hear is to be sent it.
+
+    `B1290` sends a recording as sound only to the model whose endpoint said it
+    hears, and a fallback that did not say so is sent `without_sounds` — the
+    turn's words alone. Those words still said *given to the model as sound*,
+    with no transcript beside them (none is asked for a recording the selected
+    model hears), and the card still said *The model was given the recording
+    itself* when that model answered. Here each such recording's bracket in
+    the newest user message becomes the words it reaches this model as — its
+    transcript (`transcripts`, by attachment id), fitted to the turn's inline
+    budget, or the not-heard sentence — and every sound part goes.
+
+    `recordings` are the turn's attachment records the card said were heard
+    (`{"id", "name"}`). Returns the messages (copies; the session's own are not
+    changed) and `{attachment id: {"state", "note"}}`, what the card says when
+    this model is the one that answers."""
+    from src.attachment_refs import without_sounds
+
+    out = without_sounds(messages)
+    if not recordings:
+        return out, {}
+    last = next((i for i in range(len(out) - 1, -1, -1)
+                 if isinstance(out[i], dict) and out[i].get("role") == "user"), None)
+    reach: dict = {}
+    if last is None:
+        return out, reach
+    message = dict(out[last])
+    content = message.get("content")
+    total = _budget("context_attachment_total_chars", owner)
+    remaining = total
+    for rec in recordings:
+        name = rec.get("name") or rec.get("id") or "recording"
+        bracket = HEARD_RECORDING.format(name=name)
+        said = ((transcripts or {}).get(rec.get("id")) or "").strip()
+        words, note = recording_in_words(name, said)
+        if said:
+            words, remaining = _fit_inline_attachment_text(words, remaining, name, total)
+        if isinstance(content, str):
+            if bracket not in content:
+                continue
+            content = content.replace(bracket, words, 1)
+        elif isinstance(content, list):
+            hit = False
+            parts = []
+            for part in content:
+                if (not hit and isinstance(part, dict) and part.get("type") == "text"
+                        and bracket in str(part.get("text") or "")):
+                    part = {**part, "text": str(part["text"]).replace(bracket, words, 1)}
+                    hit = True
+                parts.append(part)
+            if not hit:
+                continue
+            content = parts
+        else:
+            continue
+        reach[rec.get("id")] = note
+    message["content"] = content
+    out = list(out)
+    out[last] = message
+    return out, reach
+
+
 def unread_reason(path: str, ext: str = "") -> str:
     """Why nothing was read from a file no extractor covers and whose bytes do
     not read as text — one phrase, two doors.
@@ -1728,33 +1822,20 @@ def build_user_content(
                     encoded_audio = base64.b64encode(audio_file.read()).decode("ascii")
                 content.append({"type": "input_audio",
                                 "input_audio": {"data": encoded_audio, "format": sound}})
-                content[0]["text"] += (
-                    f"\n\n[Recording attached: {display_name} — given to the model as sound]")
+                content[0]["text"] += HEARD_RECORDING.format(name=display_name)
                 if reach is not None:
-                    reach[fid] = {"state": "heard",
-                                  "note": "The model was given the recording itself."}
-            elif said:
-                # `P12-04`: a transcript is text, and spends the same budget.
-                said, inline_attachment_remaining = _fit_inline_attachment_text(
-                    f"\n\n[Recording attached: {display_name} — transcript]:\n{said}",
-                    inline_attachment_remaining, display_name, inline_attachment_total)
-                content[0]["text"] += said
-                if reach is not None:
-                    reach[fid] = {"state": "transcribed",
-                                  "note": "The model was given a transcript of it."}
+                    reach[fid] = dict(HEARD_NOTE)
             else:
-                content[0]["text"] += (
-                    f"\n\n[Recording attached: {display_name} — not heard. This server "
-                    f"turns no speech into text, so nothing from the recording is in "
-                    f"this message.]")
+                # The words and the card's sentence are `recording_in_words`'s,
+                # which a fallback that does not hear is given too (`B1566`).
+                words, said_note = recording_in_words(display_name, said, ext=ext, hears=hears)
+                if said:
+                    # `P12-04`: a transcript is text, and spends the same budget.
+                    words, inline_attachment_remaining = _fit_inline_attachment_text(
+                        words, inline_attachment_remaining, display_name, inline_attachment_total)
+                content[0]["text"] += words
                 if reach is not None:
-                    # `B1290`: a model that hears was not given this one because
-                    # of its format — said, so nobody looks for a missing setting.
-                    _why = (f"the model takes recordings as WAV or MP3 and this one is "
-                            f"{ext or 'neither'}" if hears
-                            else "the model can't be given a recording")
-                    reach[fid] = {"state": "not_heard", "note": (
-                        f"Not heard: {_why}, and this server has no speech-to-text set up.")}
+                    reach[fid] = said_note
 
         elif is_doc or decoded_as_text or archive_text is not None:
             if archive_text is not None:

@@ -588,8 +588,18 @@ def _chat_candidate_request_factory(
     temperature=None,
     explicit_params=frozenset(),
     max_tokens=None,
+    heard=None,
+    transcribe=None,
 ):
     """Shape one route-neutral Chat prompt for each candidate window.
+
+    `B1566`. Given the turn's *heard* recordings (the attachment records whose
+    card said the selected model was given the recording itself) and a
+    *transcribe* coroutine (`{id: transcript}` for a list of ids), a candidate
+    that does not hear is sent each one as its transcript or the not-heard
+    sentence (`document_processor.unheard_turn`), asked for once and only when
+    such a candidate is tried; ``state["unheard"][index]`` is what that
+    candidate's card says, which the route shows if it is the one that answers.
 
     `B935`. Given the turn's *temperature*, each candidate also gets its own:
     ``pan_qwen_route_temperature`` holds a ``pantheon-qwen3`` candidate at the
@@ -638,12 +648,24 @@ def _chat_candidate_request_factory(
         # `B1290`. Only the selected model was asked whether it hears; a
         # fallback that says nothing, or no, is sent the turn's words alone —
         # an audio part it does not take would fail the turn it is rescuing.
-        from src.attachment_refs import has_sounds, without_sounds
+        from src.attachment_refs import has_sounds
         if has_sounds(request_messages):
             from src.chat_helpers import audio_answer
             if await asyncio.to_thread(audio_answer, candidate_model or "",
                                        candidate_url or "") is not True:
-                request_messages = without_sounds(request_messages)
+                # `B1566`: and each recording in words, not "given as sound".
+                from src.document_processor import unheard_turn
+                if heard and "transcripts" not in state:
+                    try:
+                        state["transcripts"] = (
+                            await transcribe([r.get("id") for r in heard]) if transcribe else {})
+                    except Exception:
+                        logger.warning("B1566: transcribing for a fallback failed", exc_info=True)
+                        state["transcripts"] = {}
+                request_messages, words = unheard_turn(
+                    request_messages, heard or [], state.get("transcripts"), owner=owner)
+                if words:
+                    state.setdefault("unheard", {})[index] = words
         state["requests"][index] = request_messages
         state["context_lengths"][index] = context_length
         state["compactions"][index] = compaction_state
@@ -667,6 +689,53 @@ def _chat_candidate_request_factory(
         return request
 
     return factory, state
+
+
+def _heard_recordings(ctx) -> list:
+    """`B1566`. The turn's attachment records whose card says the selected
+    model was given the recording itself (`reach: heard`, `B1290`)."""
+    meta = getattr(getattr(ctx, "preprocessed", None), "attachment_meta", None) or []
+    return [m for m in meta if isinstance(m, dict) and m.get("reach") == "heard"]
+
+
+def _fallback_transcriber(chat_handler, owner):
+    """`B1566`. `ChatHandler.transcribe_attachments`, for this person, as the
+    candidate factory's *transcribe*; ``None`` when the handler has none."""
+    fn = getattr(chat_handler, "transcribe_attachments", None)
+    if fn is None:
+        return None
+
+    async def transcribe(att_ids):
+        return await fn(att_ids, owner=owner)
+
+    return transcribe
+
+
+def _say_what_the_answering_model_got(ctx, session_id: str, words) -> Optional[list]:
+    """`B1566`. When the candidate that answered was sent a recording in words
+    rather than as sound, its card says so. ``words`` is that candidate's
+    ``state["unheard"]`` (`{id: {"state", "note"}}`); the turn's attachment
+    records — the dicts the saved user message holds — take it, and the saved
+    row is rewritten (`_persist_message_metadata`), so a reload says what the
+    live bubble says. Returns the records to announce again, or ``None`` when
+    nothing changed."""
+    if not words:
+        return None
+    meta = getattr(getattr(ctx, "preprocessed", None), "attachment_meta", None) or []
+    changed = False
+    for record in meta:
+        said = words.get(record.get("id")) if isinstance(record, dict) else None
+        if said:
+            record["reach"] = said["state"]
+            record["reach_note"] = said["note"]
+            changed = True
+    if not changed:
+        return None
+    row = getattr(ctx, "user_message", None)
+    metadata = getattr(row, "metadata", None)
+    if isinstance(metadata, dict) and metadata.get("_db_id"):
+        _persist_message_metadata(session_id, metadata["_db_id"], metadata)
+    return meta
 
 
 def _ctx_shaping(ctx, step: str) -> dict:
@@ -1625,6 +1694,8 @@ def setup_chat_routes(
                 temperature=ctx.preset.temperature,
                 explicit_params=explicit_params,
                 max_tokens=ctx.preset.max_tokens,
+                heard=_heard_recordings(ctx),   # `B1566`, as on the stream
+                transcribe=_fallback_transcriber(chat_handler, owner),
             )
         requested_model = sess.model
         reply, actual_candidate, actual_model = await llm_call_async_with_route_fallback(
@@ -1657,6 +1728,10 @@ def setup_chat_routes(
             sess,
             candidate_request_state.get("compactions", {}).get(actual_index),
         )
+        # `B1566`. A fallback that does not hear answered: the card says what
+        # it was given instead of the recording.
+        _say_what_the_answering_model_got(
+            ctx, session, candidate_request_state.get("unheard", {}).get(actual_index))
         requested_route = route_descriptors[0]
         actual_route = route_descriptors[actual_index]
         # `P4-13`. Through the same two functions the streaming path uses. This
@@ -2823,6 +2898,10 @@ def setup_chat_routes(
                     temperature=ctx.preset.temperature,
                     explicit_params=_explicit_params,
                     max_tokens=ctx.preset.max_tokens,
+                    # `B1566`: a fallback that does not hear is sent each
+                    # recording in words, and its card says which.
+                    heard=_heard_recordings(ctx),
+                    transcribe=_fallback_transcriber(chat_handler, _user),
                 )
 
             # Send model name early so the frontend can show it during streaming
@@ -3059,6 +3138,14 @@ def setup_chat_routes(
                                         )
                                     data["selected_model"] = data.get("selected_model") or _requested_model
                                     yield f'data: {json.dumps(data)}\n\n'
+                                    # `B1566`. A fallback that does not hear
+                                    # answered: the card says what it was
+                                    # given, live and on the saved message.
+                                    _said_again = _say_what_the_answering_model_got(
+                                        ctx, session,
+                                        _chat_request_state.get("unheard", {}).get(_actual_candidate_index))
+                                    if _said_again:
+                                        yield f"data: {json.dumps({'type': 'attachments', 'data': _said_again})}\n\n"
                                 elif data.get("type") == "model_actual":
                                     if _commit_chat_compaction(_actual_candidate_index):
                                         _compacted_length = _chat_request_state["context_lengths"].get(

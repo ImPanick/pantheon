@@ -402,6 +402,19 @@ class ChatHandler:
                 out[att_id] = fi
         return out
 
+    async def transcribe_attachments(self, att_ids, owner=None) -> Dict[str, str]:
+        """`B1566`. `{attachment id: transcript}` for these attachments, each
+        resolved as this person's upload — for a recording the selected model
+        was given as sound, when a fallback that does not hear answers instead
+        and needs it in words. Asked only then: a turn the hearing model
+        answers spends no speech-to-text."""
+        files_by_id: Dict[str, Dict] = {}
+        for att_id in att_ids or []:
+            fi = self.upload_handler.resolve_upload(att_id, owner=owner)
+            if fi:
+                files_by_id[att_id] = fi
+        return await self._transcribe_recordings(list(files_by_id), files_by_id)
+
     async def _transcribe_recordings(self, att_ids, files_by_id) -> Dict[str, str]:
         """`{attachment id: transcript}` for every recording the server's
         speech-to-text answered. Empty when it transcribes nothing here (no
