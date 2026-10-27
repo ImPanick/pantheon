@@ -3266,7 +3266,8 @@ body.bg-pattern-sparkles {
 	       `.tool-chip` for all ten. `--accent` gained its `var(--red)` fallback
 	       because P1-01 has not run yet: bare `var(--accent)` is undefined
 	       today, which made the whole declaration invalid and left the on-state
-	       visually indistinguishable from the off-state. */
+	       visually indistinguishable from the off-state. (That `.active` rule
+	       is now one selector in `.tool-indicator.active`'s list — `B781`.) */
 	    /* P5-12 — the one composer chip.
 	       This geometry and this type ramp were `.plan-mode-btn` and
 	       `.plan-mode-btn-label`, written for P6-12, and they were the only
@@ -3278,11 +3279,15 @@ body.bg-pattern-sparkles {
 	       all. `Law 14` says extend the first implementation rather than add a
 	       tenth, so the plan chip's own declarations moved up here and the
 	       plan button now wears the shared class like everything else.
-	       Deliberately NOT unified: the `.active` colour. `.tool-indicator`
-	       paints `var(--red)` and `.plan-mode-btn` `var(--accent, var(--red))`;
-	       either move changes the --accent population that
-	       tests/test_accent_fallback_semantics_css.py pins at 814/553/562/181.
-	       `B781` carries it.
+	       The `.active` colour was left forked here — `.tool-indicator` painted
+	       `var(--red)` and `.plan-mode-btn` `var(--accent, var(--red))` — and
+	       `B781` joined them: one on-state, written once beside
+	       `.tool-indicator.active`, in the direction that SHRINKS the
+	       full-strength accent `color:` population
+	       tests/test_accent_fallback_semantics_css.py pins (814/553/562/181 →
+	       812/551/560/180). On every shipped palette `--accent` is the
+	       palette's red, so the chip's colour does not move; its tint goes
+	       14% → 12%, the strip's own.
 	       `P5-15` builds #pinned-tools-bar out of these two classes — no id in
 	       the geometry, so a second strip needs no second rule. */
 	    .tool-chip {
@@ -3310,10 +3315,6 @@ body.bg-pattern-sparkles {
 	       how the strip ended up with three different label offsets. */
 	    .tool-chip > .tool-indicator-x {
 	      margin-left: 0;
-	    }
-	    .plan-mode-btn.active {
-	      color: var(--accent, var(--red));
-	      background: color-mix(in srgb, var(--accent, var(--red)) 14%, transparent);
 	    }
     /* GitHub-style task lists (- [ ] / - [x]) */
     li.task-item {
@@ -4041,9 +4042,12 @@ body.bg-pattern-sparkles {
        — don't run the opacity fade transition so we never flash from
        0.5 → hover-1.0 → drop-back. The state holds steady. */
     .input-icon-btn.expanded { transition: none; }
-    /* Accent color for Research, Compare toolbar indicators */
+    /* Accent color for Research, Compare toolbar indicators — and Plan, the
+       one chip in the strip that is not a `.tool-indicator` but is pressed
+       on and off like one (`B781`: one on-state, not two). */
     #research-toggle-btn.active,
-    .tool-indicator.active {
+    .tool-indicator.active,
+    .plan-mode-btn.active {
       color: var(--red);
       background: color-mix(in srgb, var(--red) 12%, transparent);
     }

@@ -33,13 +33,15 @@ scheduling one. So the assertions below are about the component being
 *reusable* — a class on a button and a class on its label, with no id in the
 geometry — not merely about the strip looking tidy today.
 
-**Not consolidated, deliberately, and said out loud so the next agent does not
-read it as an oversight:** the `.active` colour. `.tool-indicator.active`
-paints `var(--red)` and `.plan-mode-btn.active` paints
-`var(--accent, var(--red))`. Moving either onto the other changes the
-`--accent` population that `tests/test_accent_fallback_semantics_css.py` pins
-at 814 / 553 / 562 / 181, and that file's whole point is that the population
-does not move for convenience. `B781`.
+**Not consolidated by this row, deliberately:** the `.active` colour.
+`.tool-indicator.active` painted `var(--red)` and `.plan-mode-btn.active`
+`var(--accent, var(--red))`, and moving either changed the `--accent`
+population `tests/test_accent_fallback_semantics_css.py` pins. `B781` then did
+it on purpose, in the direction that shrinks that population (814 / 553 / 562
+/ 181 → 812 / 551 / 560 / 180): the plan chip's on-state is one selector in
+`.tool-indicator.active`'s rule. Web and Shell were never in either rule — they
+take `.input-icon-btn.active`'s neutral tint — and that third on-state is
+measured below rather than assumed away.
 """
 import re
 from pathlib import Path
@@ -226,3 +228,41 @@ def test_mobile_hides_every_chip_label_not_just_the_indicators():
     assert re.search(rf"\.{CHIP_LABEL}\s*\{{[^{{}}]*display:\s*none", css) or \
         re.search(rf"\.{CHIP}\s*>\s*\.{CHIP_LABEL}\s*\{{[^{{}}]*display:\s*none", css), \
         "no mobile rule hides the chip labels"
+
+
+def _on_state_rules(selector: str) -> list:
+    """Every rule body whose selector list names `selector` exactly."""
+    css = blank(STYLE)
+    out = []
+    for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
+        if selector in [p.strip() for p in m.group(1).split(",")]:
+            out.append((m.group(1), m.group(2)))
+    return out
+
+
+def test_the_plan_chip_and_the_indicators_share_one_on_state():
+    """`B781`. One declaration block paints both, so they cannot drift apart
+    again, and nothing else gives the plan chip an `.active` colour of its own."""
+    shared = [(sel, body) for sel, body in _on_state_rules(".tool-indicator.active")
+              if ".plan-mode-btn.active" in [p.strip() for p in sel.split(",")]]
+    assert len(shared) == 1, "the plan chip and the indicators are not in one on-state rule"
+    body = shared[0][1]
+    assert re.search(r"(?:^|;)\s*color\s*:\s*var\(--red\)", body), body
+    assert "--accent" not in body, "the shared on-state reaches for the accent again"
+    own = [b for _, b in _on_state_rules(".plan-mode-btn.active")
+           if re.search(r"(?:^|;)\s*(?:color|background)\s*:", b)]
+    assert len(own) == 1, f"the plan chip has an on-state of its own again: {own}"
+
+
+def test_web_and_shell_keep_the_neutral_on_state_they_always_had():
+    """Measured, not a goal: Web and Shell are `.input-icon-btn` toggles whose
+    `.active` is the neutral `--fg` tint, and `B781` did not move them. Pinned so
+    the strip's two on-states are a known fact (filed with their contrast
+    figures) rather than a third one appearing unnoticed."""
+    ids = {i for i, b in _chips()}
+    assert {"web-toggle-btn", "bash-toggle-btn"} <= ids
+    for i, block in _chips():
+        if i in ("web-toggle-btn", "bash-toggle-btn"):
+            assert "tool-indicator" not in block and "plan-mode-btn" not in block, i
+    neutral = _on_state_rules(".input-icon-btn.active")
+    assert neutral and re.search(r"(?:^|;)\s*color\s*:\s*var\(--fg\)", neutral[0][1]), neutral

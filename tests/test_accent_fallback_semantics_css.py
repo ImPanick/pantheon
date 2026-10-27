@@ -371,8 +371,14 @@ It was 552 until 2026-09-18, and the one that arrived is named rather than
     """
     exact = [expr for _, expr in _var_uses("accent")
              if _fallback(expr) == "var(--red)"]
-    assert len(exact) == 553, (
-        f"expected 553 sites spelling the fallback `var(--red)` exactly, found "
+    # 553 -> 551, 562 -> 560 and 814 -> 812: `B781` moved `.plan-mode-btn.active`
+    # (its `color` and its tint, two `var(--accent, var(--red))`) onto the
+    # composer strip's one on-state, `.tool-indicator.active`, which is
+    # `var(--red)`. Deliberately, in the direction that removes accent sites;
+    # on every shipped palette `--accent` IS the red, so no pixel of the chip's
+    # colour moved.
+    assert len(exact) == 551, (
+        f"expected 551 sites spelling the fallback `var(--red)` exactly, found "
         f"{len(exact)}. If a site was legitimately added or removed, move this "
         "number and say which site in the commit — do not widen the assertion."
     )
@@ -390,12 +396,12 @@ It was 552 until 2026-09-18, and the one that arrived is named rather than
             continue  # a gaining site, counted by the population above
         if painted == red:
             resolving.append(expr)
-    assert len(resolving) == 562, (
-        f"expected 562 sites whose fallback resolves to the theme's red, found "
+    assert len(resolving) == 560, (
+        f"expected 560 sites whose fallback resolves to the theme's red, found "
         f"{len(resolving)}"
     )
-    assert len(_var_uses("accent")) == 814, (
-        f"expected 814 uses of --accent in total, found {len(_var_uses('accent'))}"
+    assert len(_var_uses("accent")) == 812, (
+        f"expected 812 uses of --accent in total, found {len(_var_uses('accent'))}"
     )
 
 
@@ -486,8 +492,10 @@ def test_the_population_under_the_contrast_exception_cannot_grow():
     site converted into one is the regression this file exists to catch.
     """
     decls = _full_strength_accent_colour_decls()
-    assert len(decls) == 181, (
-        f"expected 181 full-strength accent `color:` declarations, found "
+    # 181 -> 180: `B781`, the plan chip's on-state, now `.tool-indicator.active`'s
+    # `var(--red)` (see the population test above). One fewer, on purpose.
+    assert len(decls) == 180, (
+        f"expected 180 full-strength accent `color:` declarations, found "
         f"{len(decls)}. Adding one adds a site that fails the contrast floor on "
         "seven of the sixteen palettes."
     )
