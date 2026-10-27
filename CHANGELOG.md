@@ -108,6 +108,17 @@ the next one is cut.
 
 ### Added
 
+- **Share a design by name** as viewer, commenter or editor, with notes that carry their author
+  and *Shared with me* for the invited person (`P26-09`); **Build it** puts a design on a
+  `design/<slug>` branch with a brief, previewed before anything is merged, and merges only on
+  your yes (`P26-08`).
+- **Settings → Vault → Bring logins in / take them out:** import a Bitwarden or Vaultwarden JSON or
+  CSV export into your own vault, and export yours sealed under a passphrase you type (`P27-10`).
+- **A member's own service connection,** called from their workstation, so the server never makes
+  requests with their key (`B1573`).
+- **ASCII art** as a ninth background pattern, drawn from the theme showing (`P9-16`).
+- **The Forge's servers have one editor** in Settings → Forge and the Forge, with
+  `GET/PUT /api/cookbook/servers` (`B1258`).
 - **A judge model can read an agent's delivery** against its file's promises, when an admin turns
   on Settings → Agents → *A model reads each delivery too* (off as shipped); it runs on the
   person's own endpoint and its verdict sits in the run report beside the code's checks (`P24-09`).
@@ -234,6 +245,10 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **The whole-state `POST /api/cookbook/state` no longer writes the servers list;** use
+  `PUT /api/cookbook/servers`, which refuses a save made from an older list (`B1258`).
+- **Secondary text is drawn between the muted and full foreground** rather than mixed toward
+  transparent, so it clears 4.5:1 on every palette (`B1408`).
 - **Service connections belong to whoever added them.** Each entry in Settings → Integrations has
   an owner and a *Shared* box; someone else's private connection is not listed or usable, and a
   shared one is read-only to everyone but its owner. On upgrade, existing entries go to the
@@ -406,6 +421,10 @@ the next one is cut.
 
 ### Fixed
 
+- **No route handler holds the event loop while it waits for the database** (`B1223`); an operator
+  sees the Knowledge index (`B1568`); a list says whether it is empty, filtered or failed to load
+  (`B730`); the email library is reached from a keyboard (`B661`); a page owned by a route is not
+  served under another spelling of its name (`B1142`); Settings → Forge fits a phone (`B1584`).
 - **A save waits for a busy database without stalling everyone else** — 89 route handlers do their
   database work off the event loop (`B1223`); a window closed by its fallback timer no longer
   shuts itself the next time it opens (`B1567`); an operator is shown the operator's Settings

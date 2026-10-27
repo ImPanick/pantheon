@@ -267,6 +267,10 @@ Re-measured 2026-10-27, after the tenth wave: **81 filed, 321 closed**, open **3
 
 **Direction as of 2026-10-27, after the tenth wave: the open count is falling.**
 
+Re-measured 2026-10-27, after the eleventh wave: **81 filed, 293 closed**, open **268 → 56** — falling, by ten in one wave. Twenty rows closed, three of them features (`P26-08`, `P26-09`, `P27-10`); ten filed, one closed in it (`B1584`). The window moved on, so its start reads 268. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1545`–`B1584`) block.
+
+**Direction as of 2026-10-27, after the eleventh wave: the open count is falling.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
