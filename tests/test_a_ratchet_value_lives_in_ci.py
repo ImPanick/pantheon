@@ -71,7 +71,9 @@ def test_the_rule_is_in_the_list_main_runs():
     rule here exists to catch."""
     proc = subprocess.run([sys.executable, str(CHECKER)], cwd=ROOT,
                           capture_output=True, text=True, timeout=300)
-    assert "9 rules" in proc.stdout, proc.stdout
+    # `B438` added rule 10 (the suite's interpreter), so the count is 10 —
+    # and this rule's own title is in the list either way.
+    assert "10 rules" in proc.stdout, proc.stdout
 
 
 def test_the_law_13_sentence_as_it_stood_fails(contract, monkeypatch, tmp_path):
