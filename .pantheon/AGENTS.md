@@ -390,7 +390,8 @@ A file-wide substring is acceptable for one thing only: proving a string is *abs
   ESM and does not re-check — a file of pure garbage passes as long as it
   contains an `import`. That is how CI checked nothing on `static/app.js`.
 □ You ran the app and looked at it (any visual change)
-□ The cache-buster is bumped if you touched a static asset
+□ No `?v=` changed on one site alone (`check-specifiers.py --max 0`); an edited
+  static asset needs nothing bumped to reach a browser (§ Operational facts)
 □ ROADMAP.md is updated and `python3 .pantheon/check-tracker.py` passes   ← Law 4
 ```
 
@@ -457,11 +458,35 @@ agent never meets the same fork in the road, and say in your report that you did
 
 - **`static/` has no bind mount.** Every CSS or JS change needs
   `docker compose up -d --build`. A restart serves the old files.
-- **Bump the cache-buster** on any changed static asset, or browsers keep the old one.
-  The service worker has its own: `CACHE_NAME` in `static/sw.js`.
-- **The approval-path modules share one version string** and must be bumped together,
-  or a browser pairs new code with a cached interceptor and the approval click lands
-  on the wrong branch. The list is in `FORBIDDEN.md`.
+- **A changed static `.js`/`.css` reaches every browser on its next load, and no `?v=`
+  has to move for that** (`B780`, absorbing `B693`, `B735`, `B762`, `B811`). Two
+  mechanisms carry it: `app.py`'s `_RevalidatingStatic` serves every `.js`/`.css`/`.html`
+  `Cache-Control: no-cache` with an ETag, so the HTTP cache asks on every load and an
+  edited file comes back as a 200 at the URL it always had — the server ignores the
+  query; and `static/sw.js` is network-first for `/static/*.js|.css` and rewrites its
+  offline copy when the ETag changes. Driven in
+  `tests/test_an_edit_reaches_the_browser_without_a_new_url.py`.
+- **So a `?v=` is part of a module's identity, not a way to refresh it.** The browser
+  keeps one module instance per resolved URL, query included. Give one site a
+  different `?v=` and the page runs two copies of that module, each with its own
+  module-level state: for a stateful module — `modalManager.js`'s dock, `skills.js`'s
+  loaded list — the state splits between them and each copy sees half; for a
+  stateless one it is a second download. That is the only thing a `?v=` can get wrong,
+  and the only thing it guarantees: one instance, as long as every site agrees.
+  **The rule, whichever module you changed: never add, remove or change a `?v=` on one
+  site.** A module is reached the way it is reached everywhere else — bare (208 of the
+  240 modules in `check-specifiers.py`'s scope, 2026-10-27) or under the one string
+  all its sites carry (32 modules, eleven strings, none moved since 2026-10-09).
+  `check-specifiers.py --max 0` fails the build on a module reached under two.
+  Moving a string means moving every site that names it, and buys no freshness.
+- **`CACHE_NAME` in `static/sw.js` is bumped by the coordinator, once per merge.** Its
+  `activate` deletes every other cache, which re-precaches the shell and drops stale
+  offline copies. It must move when the precache list or the worker's own logic
+  changes; it is not what makes an edit reach a browser that is online.
+- **The approval-path modules share one version string** — the six in
+  `APPROVAL_PATH_MODULES` (`tests/test_tool_approval_frontend_routing.py`, named by
+  `FORBIDDEN.md`). They import each other, so the string moves across all six together
+  or not at all: the identity rule above, held for them by name.
 - **No route in this app can set a CSP header.** `SecurityHeadersMiddleware` runs after
   the route and overwrites it — starlette replaces duplicate headers rather than
   appending. A task that tells you to set one at a handler is wrong; the branch goes in

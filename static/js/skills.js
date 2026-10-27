@@ -1,4 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+// `B693`, `B780`. Reached bare at every site, deliberately: the shell's script
+// tag, the worker's precache, and every module that imports it — most of them
+// dynamically, on first use. A dynamic import resolves against its importer
+// and does not inherit the importer's query, so a `?v=` on the script tag
+// alone would load this module twice —
+// two `skills` lists, two `_loadPromise`s, and the Workshop rendering from the
+// one that never loaded. An edit reaches browsers without one (`no-cache`
+// revalidation and the worker's network-first). `.pantheon/AGENTS.md` § Operational facts.
+//
 // skills.js — the Skills window (`#skills-modal`, `P9-06`) and the Workbench's
 // Skills room (`P22-21`).
 //

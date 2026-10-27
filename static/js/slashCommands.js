@@ -1,4 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+// `B780`. Reached under `?v=20261009approvalcensus` at every site. The string
+// is this module's identity, not its freshness — an edit reaches browsers
+// without it moving (`no-cache` revalidation and the worker's network-first) —
+// so it stays, or moves at every site at once. It is not the approval-path
+// string (`FORBIDDEN.md`), which is `chat.js`'s. `.pantheon/AGENTS.md` § Operational facts.
 // static/js/slashCommands.js
 // Slash command handlers and dispatcher, extracted from chat.js
 

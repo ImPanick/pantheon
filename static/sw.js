@@ -8,6 +8,10 @@
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
 //   - API / non-GET: never cached.
 // Bump CACHE_NAME whenever the precache list or SW logic changes.
+// `B780`: that is what it is for. An edited module needs neither it nor a new
+// `?v=` — the JS/CSS branch below asks the network first, and the server
+// answers `no-cache` with an ETag — so a `?v=` is a module's identity, never
+// moved on one site (`.pantheon/AGENTS.md` § Operational facts).
 const CACHE_NAME = 'pantheon-v481-eighth-wave';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them

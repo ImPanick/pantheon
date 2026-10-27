@@ -153,8 +153,9 @@ Put these in every prompt. Not a reference to a file — the actual text.
 3. **AGENTS.md rule 3** — verify the premise against the source. Stop if it's false.
 4. **Write the handoff note before finishing.** An agent that finishes without one has
    not finished.
-5. **The static-asset facts** — no bind mount, bump the cache-buster, nonce inline
-   scripts, add zero external requests.
+5. **The static-asset facts** — no bind mount, never move a `?v=` on one site (an edit
+   needs no bump to reach a browser; `AGENTS.md` § Operational facts, `B780`), nonce
+   inline scripts, add zero external requests.
 6. **No `git stash` in a worktree.** Every worktree of one repository shares one
    `refs/stash` stack, so a `pop` in one takes whatever another pushed last. Measured
    2026-10-26: two agents stashing in the same minute each popped the other's work —

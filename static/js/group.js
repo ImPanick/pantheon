@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+// `B780`. Reached bare at every site, on purpose. An edit to this file reaches
+// browsers without a new URL (`no-cache` revalidation and the worker's
+// network-first), and a `?v=` on one site would load a second instance of it
+// with its own state. `.pantheon/AGENTS.md` § Operational facts.
 // static/js/group.js
 // Group Chat — multi-model conversations (parallel or round-robin)
 

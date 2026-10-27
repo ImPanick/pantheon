@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+// `B780`. Reached under `?v=20260708match1` at every site. The string is this
+// module's identity, not its freshness — an edit reaches browsers without it
+// moving (`no-cache` revalidation and the worker's network-first) — so it stays,
+// or moves at every site at once. `.pantheon/AGENTS.md` § Operational facts.
 /**
  * Gallery Module — photo backup + AI-generated image library.
  */
