@@ -12,16 +12,22 @@ took before (the known table, or the default window).
 """
 import httpx
 
+from src import paced_http
+
 
 class _Unreachable:
-    """`httpx` as `src.model_context` uses it, with `get` failing as an
-    unreachable host does. Every other name is the real module's."""
+    """`paced_http` as `src.model_context` uses it, with `get_sync` failing as
+    an unreachable host does. Every other name is the real module's.
+
+    `B1022` moved the lookups from `httpx.get` onto `paced_http.get_sync`, so
+    this stands in at that seam now — still for `src.model_context` alone, so
+    a test's other paced calls keep the real module."""
 
     def __getattr__(self, name):
-        return getattr(httpx, name)
+        return getattr(paced_http, name)
 
     @staticmethod
-    def get(url, *args, **kwargs):
+    def get_sync(url, *args, **kwargs):
         raise httpx.ConnectError(f"{url}: no endpoint answers in this test (B1520)")
 
 
@@ -30,5 +36,5 @@ def no_endpoint_answers(monkeypatch) -> None:
     test from an empty cache of windows."""
     import src.model_context as model_context
 
-    monkeypatch.setattr(model_context, "httpx", _Unreachable())
+    monkeypatch.setattr(model_context, "paced_http", _Unreachable())
     monkeypatch.setattr(model_context, "_context_cache", {})

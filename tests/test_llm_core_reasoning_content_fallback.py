@@ -38,8 +38,10 @@ def _openai_msg(content, reasoning_content=None):
 # ---------------------------------------------------------------------------
 
 def test_llm_call_returns_reasoning_content_when_content_empty(monkeypatch):
+    # `B1022`: the non-streamed model call is `llm_core._post_routed` (routed
+    # by a `NO_PROXY` range) rather than `httpx.post`, so the fake stands there.
     monkeypatch.setattr(
-        llm_core.httpx, "post",
+        llm_core, "_post_routed",
         lambda *a, **kw: _sync_response(_openai_msg("", "I reasoned through it")),
     )
     result = llm_core.llm_call(
@@ -75,8 +77,10 @@ def test_llm_call_async_returns_reasoning_content_when_content_empty(monkeypatch
 # ---------------------------------------------------------------------------
 
 def test_llm_call_content_wins_over_reasoning_content(monkeypatch):
+    # `B1022`: the non-streamed model call is `llm_core._post_routed` (routed
+    # by a `NO_PROXY` range) rather than `httpx.post`, so the fake stands there.
     monkeypatch.setattr(
-        llm_core.httpx, "post",
+        llm_core, "_post_routed",
         lambda *a, **kw: _sync_response(
             _openai_msg("Normal answer", "some reasoning")
         ),

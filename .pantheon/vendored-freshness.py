@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Ask npm and OSV about every vendored library, and fail on what nobody owns.
+"""Ask npm and OSV about every vendored library, find our bytes in upstream's
+tarball, and fail on what nobody owns.
 
 The half of `B330` that needs the network, run by
 `.github/workflows/vendored-freshness.yml` weekly and on demand — never by the
 product, never by the offline gate (`Law 16`; `check-vendored-versions.py` is
 the offline half and is where the record lives).
 
-It sorts every answer into five sections. Two of them are, by construction,
+It sorts every answer into seven sections. Three of them are, by construction,
 *nobody has accounted for this*: a version behind upstream with no roadmap row
-that owns it (`behind_ok`), and an advisory against what we ship that the
-record does not explain (`osv_known`). **Either one non-empty fails the run**
+that owns it (`behind_ok`), an advisory against what we ship that the record
+does not explain (`osv_known`), and (`B426`) a shipped file whose bytes are in
+no file of the tarball its record's `source` names — a self-built or altered
+artifact answering `single`. **Any one non-empty fails the run**
 (`B437`): an advisory check that never fails is a check nobody reads, which is
 the argument `B322` settled for `pip-audit`. The escape hatches are the record's
 own fields, next to the version they excuse, so a bump orphans them.
@@ -39,12 +42,15 @@ UA = {"User-Agent": "pantheon-vendored-freshness"}
 SECTIONS = (
     ("behind", "Behind upstream, with no row that owns it"),
     ("vulnerable", "Advisories against what we ship"),
+    ("foreign", "Shipped bytes upstream's own artifact does not contain"),
     ("filed", "Behind upstream, filed"),
     ("excused", "Advisory hits explained in the record"),
+    ("upstream", "Shipped bytes found in upstream's artifact"),
     ("unknown", "Could not be asked"),
 )
-# The two sections nobody has accounted for. `B437`: these fail the run.
-UNACCOUNTED = ("behind", "vulnerable")
+# The sections nobody has accounted for. `B437`: these fail the run.
+# `B426`: and a shipped file that is not in the tarball its record names.
+UNACCOUNTED = ("behind", "vulnerable", "foreign")
 
 # What a question that could not be answered raises: `URLError` and a read
 # timeout are `OSError`s, a reply without `dist-tags` is a `KeyError`, and a
@@ -75,13 +81,43 @@ def osv_vulns(pkg: str, version: str) -> list:
     }).encode()).get("vulns", [])
 
 
+def tarball_digests(url: str) -> dict[str, str]:
+    """`{member path: sha256}` for every regular file in the `.tgz` at `url`.
+
+    `B426`. `check-licences.py`'s rule 8 accepts a vendored file's `single`
+    answer — *this is upstream's own artifact for one package* — on the absence
+    of evidence against it, and a bundler that strips both module paths and
+    legal comments produces exactly that absence (`qrcode.min.js` was such a
+    file). Asking the registry for the tarball the record's `source` names, and
+    finding the shipped bytes in it, makes `single` a fact; not finding them is
+    a self-built or altered file wearing upstream's name. Read in memory: the
+    largest tarball recorded is a few MB."""
+    import hashlib
+    import io
+    import tarfile
+
+    req = urllib.request.Request(url, headers=dict(UA))
+    with urllib.request.urlopen(req, timeout=120) as r:
+        blob = r.read()
+    out: dict[str, str] = {}
+    with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as tar:
+        for member in tar:
+            if member.isfile():
+                data = tar.extractfile(member).read()
+                out[member.name] = hashlib.sha256(data).hexdigest()
+    return out
+
+
 def ask(records: Iterable[dict],
         dist_tags: Callable[[str], dict] = npm_dist_tags,
-        advisories: Callable[[str, str], list] = osv_vulns) -> dict[str, list[str]]:
+        advisories: Callable[[str, str], list] = osv_vulns,
+        tarball: Callable[[str], dict] = tarball_digests) -> dict[str, list[str]]:
     """Every answer, sorted into `SECTIONS`."""
     found: dict[str, list[str]] = {key: [] for key, _ in SECTIONS}
     behind, vulnerable, unknown = found["behind"], found["vulnerable"], found["unknown"]
     filed, excused = found["filed"], found["excused"]
+    foreign, upstream = found["foreign"], found["upstream"]
+    tarballs: dict[str, dict] = {}
 
     def advisories_for(where: str, pkg: str, ver: str, known: dict) -> None:
         try:
@@ -158,6 +194,38 @@ def ask(records: Iterable[dict],
                 behind_line(f"{where}: the bundle carries {iver}, npm latest is {ilatest}",
                             inner["behind_ok"])
             advisories_for(where, ipkg, iver, inner["osv_known"])
+
+        # 4 — `B426`. Are the shipped bytes upstream's own? Only where the
+        # record names a tarball and did not build the file itself: a `build`
+        # entry's bytes are ours by declaration, and a source with no tarball
+        # (SheetJS's CDN directory) is said under *Could not be asked*.
+        shipped = rec.get("files") or {}
+        source = str(rec.get("source") or "")
+        if not shipped or rec.get("built"):
+            continue
+        if not source.endswith((".tgz", ".tar.gz")):
+            unknown.append(f"{rec['entry']}: {len(shipped)} shipped file(s) and no tarball "
+                           f"named to find them in ({source or 'no source'})")
+            continue
+        if source not in tarballs:
+            try:
+                tarballs[source] = tarball(source)
+            except Exception as exc:  # noqa: BLE001 — a bad archive is unanswered too
+                unknown.append(f"{rec['entry']}: {source} could not be read: {exc}")
+                tarballs[source] = None
+        digests = tarballs[source]
+        if digests is None:
+            continue
+        by_digest = {}
+        for name, digest in digests.items():
+            by_digest.setdefault(digest, name)
+        for path, digest in sorted(shipped.items()):
+            if digest in by_digest:
+                upstream.append(f"{rec['entry']}: {path} = {by_digest[digest]}")
+            else:
+                foreign.append(f"{rec['entry']}: {path} is in no file of {source} — "
+                               f"self-built or altered, so it answers `build`, not "
+                               f"`single` (check-licences.py rule 8)")
     return found
 
 
@@ -178,7 +246,9 @@ def render(found: dict[str, list[str]]) -> str:
             "in .pantheon/check-vendored-versions.py, and update the CREDITS.md row.\n"
             "If being behind is a decision, name the row that owns it in the record's "
             "`behind_ok`; if a hit is a false positive — `xlsx` always is, see "
-            "CREDITS.md — explain it in the record's `osv_known`, not in a comment here.")
+            "CREDITS.md — explain it in the record's `osv_known`, not in a comment here.\n"
+            "A shipped file upstream's tarball does not hold was built or altered here: "
+            "record how (`build=` and .pantheon/vendored-builds/), or ship upstream's bytes.")
     else:
         out.append("\nOK — nothing is behind upstream or under an advisory without a "
                    "record that says why.")
@@ -194,8 +264,9 @@ def recorded() -> list[dict]:
 
 def main(records: list[dict] | None = None,
          dist_tags: Callable[[str], dict] = npm_dist_tags,
-         advisories: Callable[[str, str], list] = osv_vulns) -> int:
-    found = ask(recorded() if records is None else records, dist_tags, advisories)
+         advisories: Callable[[str, str], list] = osv_vulns,
+         tarball: Callable[[str], dict] = tarball_digests) -> int:
+    found = ask(recorded() if records is None else records, dist_tags, advisories, tarball)
     print(render(found))
     return decide(found)
 

@@ -9,9 +9,9 @@
 # knowing anything about venvs, pip, or uvicorn. Safe to re-run; it skips work
 # that's already done.
 #
-# Why native (not Docker): Cookbook serves models on whatever machine Pantheon
+# Why native (not Docker): the Forge serves models on whatever machine Pantheon
 # runs on, and Docker on macOS is a Linux VM with no access to the Metal GPU.
-# Running natively lets Cookbook detect and use your Mac's GPU.
+# Running natively lets the Forge detect and use your Mac's GPU.
 set -e
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -71,7 +71,7 @@ fi
 #    On Apple Silicon we require an *arm64* interpreter (Homebrew's, under
 #    /opt/homebrew). A universal2 or x86 Python — e.g. the python.org installer
 #    at /usr/local — produces a venv whose compiled extensions get loaded as the
-#    wrong architecture when launched from the .app bundle (Cookbook then dies
+#    wrong architecture when launched from the .app bundle (the Forge then dies
 #    with "incompatible architecture"). So on arm64 we only look under
 #    /opt/homebrew and install Homebrew's python@3.11 if it's missing. On Intel
 #    (or non-mac) we just use whatever Python 3.11+ is on PATH.
@@ -90,18 +90,18 @@ done
 
 # System dependencies (each installed only if missing, so re-runs stay fast and
 # don't re-hit Homebrew over the network):
-#    - tmux      : Cookbook runs model downloads/serves in the background
-#    - llama.cpp : a prebuilt, Metal-enabled llama-server so Cookbook can serve
+#    - tmux      : the Forge runs model downloads/serves in the background
+#    - llama.cpp : a prebuilt, Metal-enabled llama-server so the Forge can serve
 #                  GGUF models on the GPU with no compile step
 #    - python@3.11 : installed only if no suitable (arm64) Python was found above
 #
-# tmux and llama.cpp are needed only by Cookbook (local model serving), not to
+# tmux and llama.cpp are needed only by the Forge (local model serving), not to
 # boot the core app. So if Homebrew can't install one right now we warn and keep
 # going instead of aborting the whole launch. Python is required to build the
 # venv, so that one stays fatal (handled by the PY check just below).
 
 # Install a Homebrew formula only if its command isn't already present. A failed
-# install warns but does not abort — Cookbook can be set up later.
+# install warns but does not abort — the Forge can be set up later.
 brew_ensure() {
     if command -v "$1" >/dev/null 2>&1; then
         echo "  ✓ $2 already installed"
@@ -109,7 +109,7 @@ brew_ensure() {
     fi
     echo "  installing $2…"
     if ! brew install "$2"; then
-        echo "  ⚠ Couldn't install $2 right now — Cookbook (local model serving) may be limited."
+        echo "  ⚠ Couldn't install $2 right now — the Forge (local model serving) may be limited."
         echo "    You can install it later with:  brew install $2"
     fi
 }

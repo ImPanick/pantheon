@@ -60,6 +60,10 @@ with preserve_import_state("core.database", "src.database", "core.session_manage
     )
 
 
+# `B1022`: the model probes and lookups go through `paced_http` now, so the
+# fakes stand in at that seam (`paced_http.get_sync` / `post_sync`) rather
+# than at `httpx.get` / `httpx.post`, which those calls no longer use.
+
 def _patch_resolve(monkeypatch):
     """Neutralize DNS/Tailscale resolution and base normalization."""
     monkeypatch.setattr(endpoint_resolver, "resolve_url", lambda url: url, raising=False)
@@ -110,7 +114,7 @@ class TestProbeEndpointParsing:
     def test_parses_openai_data_format(self, monkeypatch):
         _patch_resolve(monkeypatch)
         monkeypatch.setattr(
-            model_routes.httpx, "get",
+            model_routes.paced_http, "get_sync",
             lambda url, headers=None, timeout=None, verify=None, **kwargs: _resp(
                 200, json={"data": [{"id": "gpt-4o"}, {"id": "gpt-4o-mini"}]}),
         )
@@ -121,7 +125,7 @@ class TestProbeEndpointParsing:
         # No OpenAI-style "data"; fall back to the native {"models": [...]} shape,
         # honoring both the "name" and "model" keys.
         monkeypatch.setattr(
-            model_routes.httpx, "get",
+            model_routes.paced_http, "get_sync",
             lambda url, headers=None, timeout=None, verify=None, **kwargs: _resp(
                 200, json={"models": [{"name": "llama3:8b"}, {"model": "qwen3:4b"}]}),
         )
@@ -138,7 +142,7 @@ class TestProbeEndpointParsing:
             # This Ollama build has no OpenAI-compatible /v1/models surface.
             return _resp(404)
 
-        monkeypatch.setattr(model_routes.httpx, "get", fake_get)
+        monkeypatch.setattr(model_routes.paced_http, "get_sync", fake_get)
         assert _probe_endpoint("http://localhost:11434/v1") == ["llama3:8b"]
         assert "http://localhost:11434/v1/models" in seen
         assert "http://localhost:11434/api/tags" in seen
@@ -146,7 +150,7 @@ class TestProbeEndpointParsing:
     def test_empty_list_with_no_curation_returns_empty(self, monkeypatch):
         _patch_resolve(monkeypatch)
         monkeypatch.setattr(
-            model_routes.httpx, "get",
+            model_routes.paced_http, "get_sync",
             lambda url, headers=None, timeout=None, verify=None, **kwargs: _resp(200, json={"data": []}),
         )
         assert _probe_endpoint("https://api.example.com/v1") == []
@@ -159,7 +163,7 @@ class TestProbeEndpointParsing:
         # swallowed AttributeError logs "Failed to probe"; post-fix it does not.
         _patch_resolve(monkeypatch)
         monkeypatch.setattr(
-            model_routes.httpx, "get",
+            model_routes.paced_http, "get_sync",
             lambda url, headers=None, timeout=None, verify=None, **kwargs: _resp(200, json=body),
         )
         with caplog.at_level("WARNING", logger="routes.model_routes"):
@@ -172,7 +176,7 @@ class TestProbeEndpointParsing:
         # the valid string model.
         _patch_resolve(monkeypatch)
         monkeypatch.setattr(
-            model_routes.httpx, "get",
+            model_routes.paced_http, "get_sync",
             lambda url, headers=None, timeout=None, verify=None, **kwargs: _resp(
                 200, json={"data": [{"id": None}, {"id": 123}, {"id": "gpt-4o"}]}),
         )
@@ -182,7 +186,7 @@ class TestProbeEndpointParsing:
         # Every id is non-string -> empty result, no exception, no curated leak.
         _patch_resolve(monkeypatch)
         monkeypatch.setattr(
-            model_routes.httpx, "get",
+            model_routes.paced_http, "get_sync",
             lambda url, headers=None, timeout=None, verify=None, **kwargs: _resp(
                 200, json={"data": [{"id": 123}, {"id": None}]}),
         )
@@ -215,7 +219,7 @@ class TestPingEndpoint:
     def test_reachable_on_2xx(self, monkeypatch):
         _patch_resolve(monkeypatch)
         monkeypatch.setattr(
-            model_routes.httpx, "get",
+            model_routes.paced_http, "get_sync",
             lambda url, headers=None, timeout=None, verify=None, **kwargs: _resp(200),
         )
         assert _ping_endpoint("https://api.example.com/v1", "key") == {
@@ -226,7 +230,7 @@ class TestPingEndpoint:
         _patch_resolve(monkeypatch)
         # A 401 means the server answered — surface the status, not "offline".
         monkeypatch.setattr(
-            model_routes.httpx, "get",
+            model_routes.paced_http, "get_sync",
             lambda url, headers=None, timeout=None, verify=None, **kwargs: _resp(401),
         )
         assert _ping_endpoint("https://api.example.com/v1", "bad") == {
@@ -239,7 +243,7 @@ class TestPingEndpoint:
         def fake_get(url, headers=None, timeout=None, verify=None, **kwargs):
             return _resp(302, headers={"location": "/login?next=/"})
 
-        monkeypatch.setattr(model_routes.httpx, "get", fake_get)
+        monkeypatch.setattr(model_routes.paced_http, "get_sync", fake_get)
         result = _ping_endpoint("http://localhost:8080/v1")
         assert result["reachable"] is False
         assert result["status_code"] == 302
@@ -251,7 +255,7 @@ class TestPingEndpoint:
         def fake_get(url, headers=None, timeout=None, verify=None, **kwargs):
             return _resp(301, headers={"location": "https://elsewhere.example/"})
 
-        monkeypatch.setattr(model_routes.httpx, "get", fake_get)
+        monkeypatch.setattr(model_routes.paced_http, "get_sync", fake_get)
         assert _ping_endpoint("https://api.example.com/v1") == {
             "reachable": False, "status_code": 301, "error": "HTTP 301 redirect",
         }
@@ -262,7 +266,7 @@ class TestPingEndpoint:
         def fake_get(url, headers=None, timeout=None, verify=None, **kwargs):
             raise httpx.ConnectError("Connection refused")
 
-        monkeypatch.setattr(model_routes.httpx, "get", fake_get)
+        monkeypatch.setattr(model_routes.paced_http, "get_sync", fake_get)
         result = _ping_endpoint("https://api.example.com/v1")
         assert result["reachable"] is False
         assert result["status_code"] is None
@@ -277,7 +281,7 @@ class TestPingEndpoint:
             # The OpenAI-compatible /v1/models surface is down on this build.
             return _resp(500)
 
-        monkeypatch.setattr(model_routes.httpx, "get", fake_get)
+        monkeypatch.setattr(model_routes.paced_http, "get_sync", fake_get)
         assert _ping_endpoint("http://localhost:11434/v1") == {
             "reachable": True, "status_code": 200, "error": None,
         }
@@ -331,11 +335,11 @@ class TestProbeSingleModel:
         _patch_resolve(monkeypatch)
         captured = {}
 
-        def fake_post(url, headers=None, json=None, timeout=None, verify=None):
+        def fake_post(url, headers=None, json=None, timeout=None, verify=None, **_kw):
             captured["url"] = url
             return _resp(200, json={"choices": [{"message": {"content": "OK"}}]})
 
-        monkeypatch.setattr(model_routes.httpx, "post", fake_post)
+        monkeypatch.setattr(model_routes.paced_http, "post_sync", fake_post)
         result = _probe_single_model("https://api.example.com/v1", "key", "gpt-4o")
         assert result["status"] == "ok"
         assert "latency_ms" in result
@@ -352,11 +356,11 @@ class TestProbeSingleModel:
         captured = {}
         monkeypatch.setattr(model_routes, "llm_verify", lambda: marker)
 
-        def fake_post(url, headers=None, json=None, timeout=None, verify=None):
+        def fake_post(url, headers=None, json=None, timeout=None, verify=None, **_kw):
             captured["verify"] = verify
             return _resp(200, json={"choices": [{"message": {"content": "OK"}}]})
 
-        monkeypatch.setattr(model_routes.httpx, "post", fake_post)
+        monkeypatch.setattr(model_routes.paced_http, "post_sync", fake_post)
         result = _probe_single_model(base, api_key, model_id)
         assert result["status"] == "ok"
         assert captured["verify"] is marker
@@ -364,8 +368,8 @@ class TestProbeSingleModel:
     def test_extracts_dict_error_message(self, monkeypatch):
         _patch_resolve(monkeypatch)
         monkeypatch.setattr(
-            model_routes.httpx, "post",
-            lambda url, headers=None, json=None, timeout=None, verify=None: _resp(
+            model_routes.paced_http, "post_sync",
+            lambda url, headers=None, json=None, timeout=None, verify=None, **_kw: _resp(
                 400, json={"error": {"message": "model not found"}}),
         )
         result = _probe_single_model("https://api.example.com/v1", "key", "ghost")
@@ -375,8 +379,8 @@ class TestProbeSingleModel:
     def test_extracts_string_error(self, monkeypatch):
         _patch_resolve(monkeypatch)
         monkeypatch.setattr(
-            model_routes.httpx, "post",
-            lambda url, headers=None, json=None, timeout=None, verify=None: _resp(
+            model_routes.paced_http, "post_sync",
+            lambda url, headers=None, json=None, timeout=None, verify=None, **_kw: _resp(
                 403, json={"error": "forbidden"}),
         )
         result = _probe_single_model("https://api.example.com/v1", "key", "m")
@@ -386,10 +390,10 @@ class TestProbeSingleModel:
     def test_timeout(self, monkeypatch):
         _patch_resolve(monkeypatch)
 
-        def fake_post(url, headers=None, json=None, timeout=None, verify=None):
+        def fake_post(url, headers=None, json=None, timeout=None, verify=None, **_kw):
             raise httpx.TimeoutException("timed out")
 
-        monkeypatch.setattr(model_routes.httpx, "post", fake_post)
+        monkeypatch.setattr(model_routes.paced_http, "post_sync", fake_post)
         result = _probe_single_model("https://api.example.com/v1", "key", "m", timeout=7)
         assert result["status"] == "timeout"
         assert "7s" in result["error"]
@@ -397,10 +401,10 @@ class TestProbeSingleModel:
     def test_transport_error_is_fail(self, monkeypatch):
         _patch_resolve(monkeypatch)
 
-        def fake_post(url, headers=None, json=None, timeout=None, verify=None):
+        def fake_post(url, headers=None, json=None, timeout=None, verify=None, **_kw):
             raise httpx.ConnectError("refused")
 
-        monkeypatch.setattr(model_routes.httpx, "post", fake_post)
+        monkeypatch.setattr(model_routes.paced_http, "post_sync", fake_post)
         result = _probe_single_model("https://api.example.com/v1", "key", "m")
         assert result["status"] == "fail"
         assert "refused" in result["error"]
@@ -409,11 +413,11 @@ class TestProbeSingleModel:
         _patch_resolve(monkeypatch)
         captured = {}
 
-        def fake_post(url, headers=None, json=None, timeout=None, verify=None):
+        def fake_post(url, headers=None, json=None, timeout=None, verify=None, **_kw):
             captured.update(url=url, headers=headers, payload=json)
             return _resp(200, json={"content": [{"type": "text", "text": "OK"}]})
 
-        monkeypatch.setattr(model_routes.httpx, "post", fake_post)
+        monkeypatch.setattr(model_routes.paced_http, "post_sync", fake_post)
         result = _probe_single_model("https://api.anthropic.com/v1", "sk-ant", "claude-sonnet-4-5")
         assert result["status"] == "ok"
         assert captured["url"] == "https://api.anthropic.com/v1/messages"
@@ -424,11 +428,11 @@ class TestProbeSingleModel:
         _patch_resolve(monkeypatch)
         captured = {}
 
-        def fake_post(url, headers=None, json=None, timeout=None, verify=None):
+        def fake_post(url, headers=None, json=None, timeout=None, verify=None, **_kw):
             captured["payload"] = json
             return _resp(200, json={"content": []})
 
-        monkeypatch.setattr(model_routes.httpx, "post", fake_post)
+        monkeypatch.setattr(model_routes.paced_http, "post_sync", fake_post)
         _probe_single_model("https://api.anthropic.com/v1", "sk-ant", "claude-sonnet-4-5", with_tools=True)
         assert "input_schema" in captured["payload"]["tools"][0]
 
@@ -441,7 +445,7 @@ class TestProbeSingleModel:
         def boom(*args, **kwargs):
             raise AssertionError("must not send a completion probe for chatgpt-subscription")
 
-        monkeypatch.setattr(model_routes.httpx, "post", boom)
+        monkeypatch.setattr(model_routes.paced_http, "post_sync", boom)
         result = _probe_single_model("https://chatgpt.com/backend-api/codex", None, "gpt-5.1-codex")
         assert result["status"] == "ok"
         assert result.get("skipped") is True

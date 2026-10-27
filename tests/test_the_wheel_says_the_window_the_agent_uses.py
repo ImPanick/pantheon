@@ -41,6 +41,10 @@ ROOT = Path(__file__).resolve().parents[1]
 JS = ROOT / "static" / "js"
 
 
+# `B1022`: the model probes and lookups go through `paced_http` now, so the
+# fakes stand in at that seam (`paced_http.get_sync` / `post_sync`) rather
+# than at `httpx.get` / `httpx.post`, which those calls no longer use.
+
 def _settings(values=None):
     values = values or {}
     return lambda key, default=None: values.get(key, default)
@@ -152,7 +156,7 @@ def test_one_context_length_lookup_reads_the_endpoint_table_once(monkeypatch):
             pass
 
     monkeypatch.setattr(database, "SessionLocal", lambda: _Db())
-    monkeypatch.setattr(model_context.httpx, "get", lambda *a, **k: SimpleNamespace(is_success=False))
+    monkeypatch.setattr(model_context.paced_http, "get_sync", lambda *a, **k: SimpleNamespace(is_success=False))
     model_context._context_cache.clear()
     ctx, known = model_context.get_context_length_known("http://127.0.0.1:47111/v1", "scripted-demo")
     assert (ctx, known) == (model_context.DEFAULT_CONTEXT, False)

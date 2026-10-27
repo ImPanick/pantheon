@@ -825,6 +825,9 @@ def as_json() -> None:
          "built": bool(r.build), "behind_ok": r.behind_ok,
          "dist_tag": r.dist_tag,
          "osv_known": r.osv_known,
+         # `B426`. What we ship, by hash, so the freshness workflow can ask
+         # whether upstream's own tarball holds these bytes.
+         "files": _manifest_files(r, []) if r.manifest else dict(r.files),
          # `B336`. The packages inside the bundle, at the versions its bytes
          # carry. The freshness workflow asks OSV about these by name, which is
          # the difference between "a roadmap row says twenty-seven advisories"

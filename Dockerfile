@@ -1,7 +1,7 @@
 # ---- builder: patch + build wheels for Real-ESRGAN's broken-on-3.14 deps ----
 # basicsr/gfpgan/facexlib read their version via exec()+locals()['__version__'],
 # which raises KeyError on Python 3.13+ (PEP 667). Build patched wheels here so
-# the final image / Cookbook never has to compile the broken sdists. See
+# the final image / the Forge never has to compile the broken sdists. See
 # docker/build-realesrgan-wheels.sh for the full rationale.
 FROM python:3.14-slim AS realesrgan-wheels
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
@@ -19,10 +19,10 @@ FROM python:3.14-slim
 # a repository a reader can actually open, and that waits on P0-17.
 LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
 
-# System deps. tmux is required by Cookbook for background downloads/serves.
-# openssh-client is required for Cookbook remote server tests, setup, probes,
+# System deps. tmux is required by the Forge for background downloads/serves.
+# openssh-client is required for Forge remote server tests, setup, probes,
 # downloads, and serves from Docker installs.
-# git/cmake are required when Cookbook builds llama.cpp on first llama.cpp
+# git/cmake are required when the Forge builds llama.cpp on first llama.cpp
 # launch inside Docker.
 # nodejs/npm provide npx for the built-in Browser MCP server.
 # chromium provides the actual browser binary used by that MCP server.
@@ -47,7 +47,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # libgl1/libglib2.0-0t64/libxcb1 are runtime shared libs (libGL.so.1,
 # libglib-2.0/libgthread, libxcb.so.1) that opencv-python (cv2) loads. The
-# slim base omits them, so the Cookbook "install realesrgan" path imports cv2
+# slim base omits them, so the Forge's "install realesrgan" path imports cv2
 # and dies with `libxcb.so.1: cannot open shared object file` despite a clean
 # pip install. Using full opencv-python (not -headless) because basicsr/gfpgan/
 # facexlib/realesrgan all depend on the `opencv-python` distribution by name.
@@ -98,7 +98,7 @@ RUN pip install --no-cache-dir -r requirements-image.txt
 # Pre-install the patched basicsr/gfpgan/facexlib wheels built in the
 # realesrgan-wheels stage (--no-deps keeps the image lean — torch & friends are
 # pulled only when realesrgan is actually installed). With these dists already
-# satisfied, the Cookbook's plain `pip install realesrgan` resolves them from
+# satisfied, the Forge's plain `pip install realesrgan` resolves them from
 # wheels instead of rebuilding the sdists that fail on Python 3.14.
 COPY --from=realesrgan-wheels /wheels/ /tmp/pantheon-wheels/
 RUN pip install --no-cache-dir --no-deps /tmp/pantheon-wheels/*.whl \

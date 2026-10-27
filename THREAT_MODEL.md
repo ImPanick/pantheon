@@ -115,12 +115,12 @@ router's own WAN address, a relay the owner runs), and DNS — under *internet* 
 resolver the container was given.
 
 **The backend switch and the host's Docker (`B1478`).** Where the operator added `docker/host-docker.yml` — the
-Cookbook's opt-in, broad control of the host's Docker daemon — an admin's *Backend* choice also starts that backend's
+The Forge's opt-in, broad control of the host's Docker daemon — an admin's *Backend* choice also starts that backend's
 containers and stops the other's, and the panel starts, stops, restarts and reads the logs of each. The code that
 does it (`src/workstation_control.py`) acts only on containers labelled with Pantheon's own compose project and one of
 the workstation's service names, only with those four calls, and never creates, pulls, builds or removes anything;
 every route is `require_admin`. What it adds to the opt-in's existing risk is a second admin feature that uses the
-socket, not a wider use of it: an attacker who can act as an admin already had the Cookbook's control of the host's
+socket, not a wider use of it: an attacker who can act as an admin already had the Forge's control of the host's
 Docker. Without the opt-in the switch only chooses which daemon Pantheon talks to.
 
 **Each person's networks (`B1475`).** A person's own declared networks are read only in their own runs and grant no

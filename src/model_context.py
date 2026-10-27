@@ -14,7 +14,11 @@ from typing import Dict, List, Optional, Tuple
 
 from urllib.parse import urlparse
 
-import httpx
+# `B1022`: the context-window lookups go through `paced_http` — routed (a
+# `NO_PROXY` range is honoured, `B982`) and paced (a cloud catalog cooling down
+# is refused before the call; a local server costs nothing). `httpx.get` builds
+# a client inside and takes no `mounts=`, so `B1014`'s rule could not reach it.
+from src import paced_http
 
 logger = logging.getLogger(__name__)
 
@@ -505,7 +509,7 @@ def _proxy_catalog_context(endpoint_url: str, model: str) -> Optional[int]:
     if cat is None:
         from src.endpoint_resolver import build_models_url
         try:
-            r = httpx.get(build_models_url(endpoint_url), timeout=REQUEST_TIMEOUT, headers=_endpoint_auth_headers(endpoint_url) or None)
+            r = paced_http.get_sync(build_models_url(endpoint_url), timeout=REQUEST_TIMEOUT, headers=_endpoint_auth_headers(endpoint_url) or None, follow_redirects=False)
         except Exception as e:
             logger.debug(f"Failed to fetch proxy catalog for context length: {e}")
             return None
@@ -572,7 +576,7 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool, str
     if is_local_endpoint(endpoint_url):
         try:
             base = endpoint_url.split("/v1")[0] if "/v1" in endpoint_url else endpoint_url.rsplit("/", 1)[0]
-            r = httpx.get(f"{base}/slots", timeout=REQUEST_TIMEOUT, headers=_endpoint_auth_headers(endpoint_url) or None)
+            r = paced_http.get_sync(f"{base}/slots", timeout=REQUEST_TIMEOUT, headers=_endpoint_auth_headers(endpoint_url) or None, follow_redirects=False)
             if r.is_success:
                 slots = r.json()
                 if isinstance(slots, list) and slots:
@@ -598,7 +602,7 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool, str
 
     models_url = build_models_url(endpoint_url)
     try:
-        r = httpx.get(models_url, timeout=REQUEST_TIMEOUT, headers=_endpoint_auth_headers(endpoint_url) or None)
+        r = paced_http.get_sync(models_url, timeout=REQUEST_TIMEOUT, headers=_endpoint_auth_headers(endpoint_url) or None, follow_redirects=False)
         if r.is_success:
             data = r.json()
             models_list = data.get("data") or []

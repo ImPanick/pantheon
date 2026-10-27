@@ -23,6 +23,10 @@ import pytest
 from src import endpoint_resolver, llm_core
 
 
+# `B1022`: the model probes and lookups go through `paced_http` now, so the
+# fakes stand in at that seam (`paced_http.get_sync` / `post_sync`) rather
+# than at `httpx.get` / `httpx.post`, which those calls no longer use.
+
 def _neutralize_provider_detection(monkeypatch):
     """``_is_ollama_native_url`` matches any localhost host with an empty
     path, which would route ``http://localhost:1234`` (LM Studio) into the
@@ -114,7 +118,7 @@ def test_llm_core_list_model_ids_queries_v1_models_for_lmstudio(monkeypatch):
     monkeypatch.setattr(llm_core, "_configured_cached_model_ids", lambda url, **kwargs: [])
     seen = []
 
-    def fake_get(url, headers=None, timeout=None):
+    def fake_get(url, headers=None, timeout=None, **_kw):
         seen.append(url)
         request = httpx.Request("GET", url)
         return httpx.Response(
@@ -129,7 +133,7 @@ def test_llm_core_list_model_ids_queries_v1_models_for_lmstudio(monkeypatch):
             request=request,
         )
 
-    monkeypatch.setattr(llm_core.httpx, "get", fake_get)
+    monkeypatch.setattr("src.paced_http.get_sync", fake_get)
 
     assert llm_core.list_model_ids("http://localhost:1234/v1", timeout=1) == [
         "lmstudio-community/Meta-Llama-3-8B-Instruct-GGUF",
@@ -147,12 +151,12 @@ def test_llm_core_list_model_ids_queries_v1_models_for_bare_lmstudio(monkeypatch
     monkeypatch.setattr(llm_core, "_is_ollama_native_url", lambda url: False)
     seen = []
 
-    def fake_get(url, headers=None, timeout=None):
+    def fake_get(url, headers=None, timeout=None, **_kw):
         seen.append(url)
         request = httpx.Request("GET", url)
         return httpx.Response(200, json={"data": [{"id": "model-a"}]}, request=request)
 
-    monkeypatch.setattr(llm_core.httpx, "get", fake_get)
+    monkeypatch.setattr("src.paced_http.get_sync", fake_get)
 
     assert llm_core.list_model_ids("http://localhost:1234", timeout=1) == ["model-a"]
     assert seen == ["http://localhost:1234/v1/models"]
@@ -166,10 +170,10 @@ def test_llm_core_list_model_ids_handles_empty_lmstudio_list(monkeypatch):
     monkeypatch.setattr(endpoint_resolver, "resolve_url", lambda url: url)
     monkeypatch.setattr(llm_core, "_configured_cached_model_ids", lambda url, **kwargs: [])
 
-    def fake_get(url, headers=None, timeout=None):
+    def fake_get(url, headers=None, timeout=None, **_kw):
         request = httpx.Request("GET", url)
         return httpx.Response(200, json={"object": "list", "data": []}, request=request)
 
-    monkeypatch.setattr(llm_core.httpx, "get", fake_get)
+    monkeypatch.setattr("src.paced_http.get_sync", fake_get)
 
     assert llm_core.list_model_ids("http://localhost:1234/v1", timeout=1) == []

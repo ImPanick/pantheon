@@ -43,14 +43,18 @@ PROVIDER_INFO = {
 def _paced_request(method: str, url: str, label: str, **kwargs):
     """One paced request to a search provider. Raises `RateLimitError` for a
     429 and for a host the limiter is holding; anything else is the caller's."""
-    from src.rate_limiter import OutboundRateLimited
+    from src.rate_limiter import OutboundRateLimited, host_of, outbound
     send = paced_http.get_sync if method == "GET" else paced_http.post_sync
     try:
         response = send(url, **kwargs)
     except OutboundRateLimited as e:
-        raise RateLimitError(f"{label} is not being called: {e}") from e
+        # `B492`: with the host and the wait, so the feature can say when.
+        raise RateLimitError(f"{label} is not being called: {e}",
+                             host=e.host, retry_in=e.retry_after) from e
     if response.status_code == 429:
-        raise RateLimitError(f"{label} rate limit hit")
+        host = host_of(url)
+        raise RateLimitError(f"{label} rate limit hit", host=host,
+                             retry_in=outbound.blocked_for(host) or None)
     return response
 
 
@@ -585,10 +589,13 @@ def duckduckgo_search(query: str, count: Optional[int] = None, time_filter: Opti
         return results or _html_fallback()
     except OutboundRateLimited as e:
         # Held before anything was sent; the HTML fallback is the same service.
-        raise RateLimitError(f"DuckDuckGo is not being called: {e}") from e
+        raise RateLimitError(f"DuckDuckGo is not being called: {e}",
+                             host=e.host, retry_in=e.retry_after) from e
     except _LibraryRateLimited as e:
         # Counted once by `call_sync`; the chain moves on without the fallback.
-        raise RateLimitError(f"DuckDuckGo rate limit hit: {e}") from e
+        from src.rate_limiter import outbound
+        raise RateLimitError(f"DuckDuckGo rate limit hit: {e}", host=DDG_HOST,
+                             retry_in=outbound.blocked_for(DDG_HOST) or None) from e
     except Exception as e:
         logger.warning(f"DuckDuckGo search failed: {e}")
         return _html_fallback()

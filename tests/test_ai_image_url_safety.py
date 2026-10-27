@@ -51,7 +51,6 @@ def _patch_generation(monkeypatch, image_url):
 
 
 async def test_generate_image_validates_provider_url_before_download(monkeypatch):
-    import httpx
     import src.url_safety as url_safety
 
     provider_url = "https://images.example.com/generated.png?sig=abc"
@@ -62,24 +61,25 @@ async def test_generate_image_validates_provider_url_before_download(monkeypatch
         events.append(("check", url, block_private))
         return True, "ok"
 
-    def _get(url, *, timeout):
-        events.append(("get", url, timeout))
+    async def _get(url, *, timeout, follow_redirects):
+        events.append(("get", url, timeout, follow_redirects))
         return _DownloadResponse()
 
     monkeypatch.setattr(url_safety, "check_outbound_url", _check_outbound_url)
-    monkeypatch.setattr(httpx, "get", _get)
+    # `B1022`: the download is awaited through `paced_http` (routed by a
+    # `NO_PROXY` range, paced), not `httpx.get`, so the fake stands there.
+    monkeypatch.setattr(ai_interaction.paced_http, "get", _get)
 
     result = await ai_interaction.do_generate_image("draw a chair\ndall-e-3")
 
     assert result["image_url"] == provider_url
     assert events == [
         ("check", provider_url, False),
-        ("get", provider_url, 60),
+        ("get", provider_url, 60, False),
     ]
 
 
 async def test_generate_image_rejects_unsafe_provider_url_without_download(monkeypatch):
-    import httpx
     import src.url_safety as url_safety
 
     unsafe_url = "http://169.254.169.254/latest/meta-data"
@@ -90,11 +90,11 @@ async def test_generate_image_rejects_unsafe_provider_url_without_download(monke
         events.append(("check", url, block_private))
         return False, "link-local address blocked (SSRF metadata risk): 169.254.169.254"
 
-    def _get(url, *, timeout):
+    async def _get(url, **kwargs):
         raise AssertionError("unsafe provider image URL must not be downloaded")
 
     monkeypatch.setattr(url_safety, "check_outbound_url", _check_outbound_url)
-    monkeypatch.setattr(httpx, "get", _get)
+    monkeypatch.setattr(ai_interaction.paced_http, "get", _get)   # `B1022`
 
     result = await ai_interaction.do_generate_image("draw a chair\ndall-e-3")
 

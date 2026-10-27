@@ -9,12 +9,13 @@ sixteen palettes are protected territory (`DECISIONS.md` D-2026-08-26-03) and a
 `:root` rule would out-rank every `var(--accent, …)` fallback at once and flip
 the whole stylesheet to one global colour.
 
-`static/style.css` named `--accent` 828 times before this file, 817 after, and
+`static/style.css` named `--accent` 828 times before this file, 817 after,
 814 since `B23` moved SIX links off it — four spelled `var(--accent, var(--red))`
-and the two `details a` rules, which were bare.
+and the two `details a` rules, which were bare — and 813 since `H21` deleted the
+`.search-fb-*` chips nothing drew (one `var(--accent, var(--red))` border).
 Three populations, and they are not the same kind of thing:
 
-  * **562 sites reach the theme's red through their fallback.** 553 of them
+  * **561 sites reach the theme's red through their fallback.** 552 of them
     spell it `var(--accent, var(--red))`; nine take a longer road —
     `var(--red, #e53935)` and two more literals, plus two routed through the
     undefined `--accent-primary` first. They resolved to the theme's red before
@@ -64,7 +65,7 @@ What is pinned below, and why each is a defect if it breaks:
 
   * **`--accent` is defined nowhere in this stylesheet.** The single failure
     mode the row is built to avoid, asserted directly rather than inferred;
-  * **the no-change population stays 553 spelled and 562 resolved**, so a
+  * **the no-change population stays 552 spelled and 561 resolved**, so a
     fallback rewritten in place is visible in the diff of a test rather than
     only in a screenshot;
   * **every token named inside an `--accent` fallback exists**, with the one
@@ -315,7 +316,7 @@ _distance = css_colour.distance
 
 
 def test_accent_is_defined_nowhere_in_the_stylesheet():
-    """A `:root { --accent: … }` would out-rank all 814 fallbacks at once.
+    """A `:root { --accent: … }` would out-rank all 813 fallbacks at once.
 
     `--accent` is set per theme, beside `--red`, at the three places that set
     `--red`. Defining it here as well — in `:root`, in `:root.light`, in a
@@ -345,7 +346,7 @@ def test_the_no_change_population_holds_at_both_of_its_counts():
 
     Two counts, because the two that get quoted about this row are counts of
     different things and disagreeing about it has already cost one review pass:
-    553 sites spell the fallback `var(--red)` exactly, and a further nine reach
+    552 sites spell the fallback `var(--red)` exactly, and a further nine reach
     the same colour through a chain — `var(--red, #e53935)` and friends, plus
     two that route through the undefined `--accent-primary` first.
 
@@ -368,6 +369,12 @@ It was 552 until 2026-09-18, and the one that arrived is named rather than
     in the total below, which fell 815 → 813, and rose to 814 on 2026-09-18
     with `.skill-lint-problem`. None of the six stopped being an
     accent site by accident.
+
+    It was 553 until 2026-10-27, and the one that left is named: the
+    `border-color` of `.search-fb-add:focus, .search-fb-add:hover`, deleted
+    with the `.search-fallback-chain` block by `H21` — chips nothing ever drew
+    (Settings' fallback chain is `.settings-fallback-row`). 562 → 561 resolved
+    and 814 → 813 in total with it.
     """
     exact = [expr for _, expr in _var_uses("accent")
              if _fallback(expr) == "var(--red)"]
@@ -377,8 +384,10 @@ It was 552 until 2026-09-18, and the one that arrived is named rather than
     # `var(--red)`. Deliberately, in the direction that removes accent sites;
     # on every shipped palette `--accent` IS the red, so no pixel of the chip's
     # colour moved.
-    assert len(exact) == 551, (
-        f"expected 551 sites spelling the fallback `var(--red)` exactly, found "
+    # 551 -> 550, 560 -> 559, 812 -> 811: `H21` deleted the `.search-fb-*`
+    # chips nothing drew, whose `.search-fb-add` border was one of them.
+    assert len(exact) == 550, (
+        f"expected 550 sites spelling the fallback `var(--red)` exactly, found "
         f"{len(exact)}. If a site was legitimately added or removed, move this "
         "number and say which site in the commit — do not widen the assertion."
     )
@@ -396,12 +405,12 @@ It was 552 until 2026-09-18, and the one that arrived is named rather than
             continue  # a gaining site, counted by the population above
         if painted == red:
             resolving.append(expr)
-    assert len(resolving) == 560, (
-        f"expected 560 sites whose fallback resolves to the theme's red, found "
+    assert len(resolving) == 559, (
+        f"expected 559 sites whose fallback resolves to the theme's red, found "
         f"{len(resolving)}"
     )
-    assert len(_var_uses("accent")) == 812, (
-        f"expected 812 uses of --accent in total, found {len(_var_uses('accent'))}"
+    assert len(_var_uses("accent")) == 811, (
+        f"expected 811 uses of --accent in total, found {len(_var_uses('accent'))}"
     )
 
 

@@ -96,6 +96,23 @@ FILES["Board minutes, edited by hand.docx"] = _edited(
     (b"<w:body>", b'<w:body><w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr></w:p>'))
 FILES["Formats, edited by hand.xlsx"] = _edited(
     FILES["Formats.xlsx"], "xl/workbook.xml", (b'date1904="false"', b'date1904="TRUE"'))
+# `B1549`: a content cell repeated across columns past the sheet's last column,
+# and a repeated row of repeated content cells. SheetJS 0.20.3 held the
+# repeated cells and left `!ref` short of them, so the Library's CSV ended at
+# column E where the server's ran to G.
+_LAST_LEDGER_CELL = (b'<table:table-cell office:value-type="float" office:value="1" '
+                     b'calcext:value-type="float"><text:p>1</text:p></table:table-cell>'
+                     b'</table:table-row></table:table>')
+FILES["Repeats.ods"] = _edited(
+    FILES["Ledger 2026.ods"], "content.xml",
+    (_LAST_LEDGER_CELL, _LAST_LEDGER_CELL[:-len(b"</table:table>")]
+     + b'<table:table-row><table:table-cell office:value-type="string">'
+       b'<text:p>Repeat</text:p></table:table-cell>'
+       b'<table:table-cell table:number-columns-repeated="6" office:value-type="float" '
+       b'office:value="7"><text:p>7</text:p></table:table-cell></table:table-row>'
+       b'<table:table-row table:number-rows-repeated="2">'
+       b'<table:table-cell table:number-columns-repeated="2" office:value-type="string">'
+       b'<text:p>z</text:p></table:table-cell></table:table-row></table:table>'))
 
 _CONVERT = r"""
 const { chromium } = require('playwright');
@@ -120,7 +137,8 @@ const fs = require('fs');
         return { markdown: window.htmlToMarkdown(r.value) };
       }
       const wb = window.XLSX.read(buf, { type: 'array' });
-      return { sheets: wb.SheetNames.map((n) => [n, window.XLSX.utils.sheet_to_csv(wb.Sheets[n])]) };
+      // The Library's own sheet-to-text (`B1549`), not a restatement of it.
+      return { sheets: window.workbookSheetsCsv(window.XLSX, wb) };
     }, [name, b64]);
   }
   await browser.close();
@@ -136,7 +154,10 @@ def library(tmp_path_factory):
         pytest.skip(_SKIP)
     work = tmp_path_factory.mktemp("library-converters")
     h2m = js_definition(DOCLIB, DOCLIB.index("function htmlToMarkdown("))
-    (work / "h2m.js").write_text(h2m + "\nwindow.htmlToMarkdown = htmlToMarkdown;\n",
+    sheets = js_definition(DOCLIB, DOCLIB.index("function workbookSheetsCsv("))
+    (work / "h2m.js").write_text(h2m + "\n" + sheets
+                                 + "\nwindow.htmlToMarkdown = htmlToMarkdown;"
+                                 + "\nwindow.workbookSheetsCsv = workbookSheetsCsv;\n",
                                  encoding="utf-8")
     (work / "files.json").write_text(json.dumps(
         {n: base64.b64encode(b).decode() for n, b in FILES.items()}), encoding="utf-8")
@@ -266,6 +287,23 @@ def test_a_workbook_of_several_sheets_is_the_librarys_sheets_in_one_document(
         # date and quoted fields — read from BIFF records and from ODF cells.
         assert ('"Rent, office","1,200.00",25%,2026-10-02,"He said ""fine"""'
                 in expected.splitlines()), expected
+
+
+def test_a_repeated_cell_in_an_ods_is_one_text_at_every_door(env, monkeypatch, library):  # noqa: F811
+    """`B1549`'s `Verify:`. A content cell OpenDocument writes once with
+    `number-columns-repeated` is every column it covers, at the Library and at
+    the three server doors alike."""
+    _without_markitdown(monkeypatch)
+    name = "Repeats.ods"
+    libs = _library_documents(env, name, library[name])
+    ledger = next(d for d in libs if d.title.endswith("Q3 ledger"))
+    lines = ledger.current_content.splitlines()
+    assert "Repeat,7,7,7,7,7,7" in lines and lines.count("z,z,,,,,") == 2, lines
+    expected = "\n\n".join(f"# Sheet: {d.title.split(' - ', 1)[1]}\n\n{d.current_content}"
+                           for d in libs)
+    doors = _server_documents(env, monkeypatch, name, FILES[name])
+    for door, doc in doors.items():
+        assert doc.current_content == expected, door
 
 
 # ── `B1289`: a deck and a book, read without markitdown ─────────────────────

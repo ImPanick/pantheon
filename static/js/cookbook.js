@@ -37,6 +37,21 @@ import {
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 import backStack from './backStack.js';   // `B1229`: the door to Settings → Forge
+import { syncNotice } from './runStatus.js';   // `B492`
+
+/**
+ * What the Forge's trending list says when it has nothing to show. `B1229`:
+ * the hubs switched off is a switch, said as such. `B492`: HuggingFace held by
+ * the outbound limiter is a pause with a time (`held`, `runStatus.syncNotice`'s
+ * sentence) — "Couldn't load" read as a fault, and pressing again is what
+ * deepens a rate limit. Then a real failure, then an honest empty.
+ */
+function _trendingEmptyText({ hubsOff = false, held = '', lastErr = '' } = {}) {
+  if (hubsOff) return lastErr;
+  if (held) return held;
+  if (lastErr) return `Couldn't load trending models (${lastErr})`;
+  return 'No trending models found';
+}
 
 const STORAGE_KEY = 'cookbook-presets';
 const LAST_STATE_KEY = 'cookbook-last-state';
@@ -2730,11 +2745,15 @@ function _wireTabEvents(body) {
       try {
         let lastErr = '';
         let hubsOff = false;
+        let held = '';
         const _fetchLatest = async (v) => {
           const res = await fetch(`/api/cookbook/hf-latest?vram_gb=${v}&limit=10`);
           const data = await res.json();
           if (data.error) lastErr = data.error;   // HF API timeout/rate-limit etc.
           if (data.hubs_off) hubsOff = true;      // `B1229`: not a failure — a switch
+          // `B492`: HuggingFace held by the limiter — a pause with a time, in
+          // `runStatus.js`'s words, not "Couldn't load".
+          held = syncNotice(data.sync, 'HuggingFace') || held;
           return data.models || [];
         };
         let models = await _fetchLatest(vram);
@@ -2744,11 +2763,7 @@ function _wireTabEvents(body) {
         if (!models.length) {
           // Distinguish "the HF API failed" from "nothing matched" so an outage
           // doesn't masquerade as no-fitting-models.
-          const msg = hubsOff
-            ? esc(lastErr)
-            : lastErr
-              ? `Couldn't load trending models (${esc(lastErr)})`
-              : 'No trending models found';
+          const msg = esc(_trendingEmptyText({ hubsOff, held, lastErr }));
           hfList.innerHTML = `<div class="hwfit-loading">${msg}</div>`;
           return;
         }

@@ -220,6 +220,80 @@ def test_the_hand_off_is_exact_about_what_is_left():
                             "docs/release-notes/0.2.0.md": 2}
 
 
+# ── `B472`: the whole tracked tree, not only the app's roots ────────────────
+#
+# `P0-29` scoped itself to what the running app serves. The rest of the
+# reading surface is read too, by somebody: `Dockerfile` and the compose files
+# by an operator deciding what to mount, `start-macos.sh`, `launch-windows.ps1`,
+# `setup.py` and `scripts/check-docker-gpu.sh` print to a console during
+# install, and the two `integrations/*/skills/pantheon/SKILL.md` are the
+# product's own description handed to another agent — which told a user to
+# open a Cookbook there is no such thing as. Swept on 2026-10-27.
+#
+# Outside the app's roots a comment IS what is read (a compose file's `#`
+# lines are its documentation), so those files are read whole; inside them the
+# rule above (`_readable_text`) still applies.
+WHOLE_TREE_SKIP = ("tests/", ".pantheon/", "static/lib/", "library/")
+WHOLE_TREE_RESIDUE = {
+    **RESIDUE,
+    "CHANGELOG.md":
+        "History: the line records the rename itself — *Forge* (not "
+        "Cookbook) — and `CHANGELOG.md` says what each release did, in the "
+        "words of the day.",
+}
+
+
+def _whole_tree_offenders():
+    tracked = subprocess.run(["git", "ls-files"], cwd=_REPO,
+                             capture_output=True, text=True, check=True).stdout.split()
+    in_app = set(_shipped_files())
+    out = {}
+    for rel in tracked:
+        if rel.startswith(WHOLE_TREE_SKIP):
+            continue
+        path = _REPO / rel
+        if not path.is_file():
+            continue
+        if rel in in_app:
+            text = _readable_text(rel)
+        elif path.suffix == ".py":
+            text = _readable_text(rel)            # a script's strings are its output
+        else:
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue                           # bytes, not words
+            if path.suffix in {".js", ".mjs", ".css", ".html"}:
+                text = blank(path, text)
+        hits = NOUN.findall(text)
+        if hits:
+            out[rel] = len(hits)
+    return out
+
+
+def test_the_whole_tracked_tree_says_forge():
+    """`B472`'s `Verify:`: the derived rule over every tracked file returns
+    only the residue, and each survivor is named with its reason."""
+    found = _whole_tree_offenders()
+    unexpected = {rel: n for rel, n in found.items() if rel not in WHOLE_TREE_RESIDUE}
+    assert not unexpected, (
+        "The old product noun outside the app's roots (`B472`):\n  "
+        + "\n  ".join(f"{n:>3}  {rel}" for rel, n in sorted(unexpected.items())))
+    assert found == {"services/hwfit/image_models.py": 1,
+                     "docs/release-notes/0.2.0.md": 2,
+                     "CHANGELOG.md": 1}, found
+
+
+def test_the_agent_skills_name_the_forge_and_keep_its_paths():
+    """The two `SKILL.md` an agent reads: the noun moved, the API paths it
+    calls (`/api/agent/cookbook/...` and friends) did not."""
+    for agent in ("claude", "codex"):
+        text = (_REPO / "integrations" / agent / "skills" / "pantheon" / "SKILL.md").read_text(
+            encoding="utf-8")
+        assert not NOUN.search(text), agent
+        assert "Forge model-serve task" in text and "cookbook" in text, agent
+
+
 # ── what the rename must NOT have done ────────────────────────────────────────
 
 

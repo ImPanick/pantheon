@@ -548,6 +548,26 @@ def _string_list(values) -> list[str]:
     return [value for value in values or [] if isinstance(value, str)]
 
 
+def _state_file(personal_dir: str, legacy_name: str) -> str:
+    """The path of one of `PersonalDocsManager`'s state files — ``.<name>`` in
+    ``personal_dir`` — moving a file left under the visible name by an older
+    build onto it, once (`B1547`). A rename, so nothing is read or lost; when
+    both exist the hidden one is the newer and the visible one is left alone
+    for the operator rather than overwritten."""
+    hidden = os.path.join(personal_dir, "." + legacy_name)
+    legacy = os.path.join(personal_dir, legacy_name)
+    if not os.path.exists(hidden) and os.path.isfile(legacy):
+        try:
+            os.replace(legacy, hidden)
+            logger.info(f"Moved {legacy_name} to .{legacy_name} in {personal_dir} "
+                        f"(the manager's state is no longer indexed as a document)")
+        except OSError as e:
+            logger.warning(f"Could not move {legacy} to {hidden}: {e}; "
+                           f"reading it where it is")
+            return legacy
+    return hidden
+
+
 class PersonalDocsManager:
     """Manager class for personal document indexing and retrieval."""
 
@@ -597,8 +617,14 @@ class PersonalDocsManager:
         self._build_lock = threading.RLock()
         self.indexed_directories = []  # Track additional directories
         self.excluded_files: Set[str] = set()  # Files removed from RAG listing
-        self.directories_file = os.path.join(personal_dir, "indexed_directories.json")
-        self._excluded_file = os.path.join(personal_dir, "excluded_files.json")
+        # `B1547`. The manager's own state lives in the folder it indexes, so it
+        # is named as hidden files: the walk's one rule for what is not a
+        # document (`index_walk.is_indexable_file`) already leaves dot-files
+        # out, for both indexers, and a second skip-list would be a second rule
+        # (`Law 14`). Under the old visible names a folder holding `notes.md`
+        # indexed three documents, two of them this manager's JSON.
+        self.directories_file = _state_file(personal_dir, "indexed_directories.json")
+        self._excluded_file = _state_file(personal_dir, "excluded_files.json")
         self.load_directories()
         self._load_excluded()
 

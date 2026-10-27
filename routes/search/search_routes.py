@@ -12,6 +12,8 @@ from services.search import get_search_config, comprehensive_web_search, PROVIDE
 from services.search.core import _call_provider
 from services.search.providers import _get_provider_key, _get_search_instance
 from services.search.query import build_enhanced_query
+from services.search.analytics import RateLimitError
+from src.rate_limiter import throttle_sync
 
 logger = logging.getLogger(__name__)
 
@@ -65,10 +67,13 @@ def setup_search_routes() -> APIRouter:
         if time_filter is not None:
             time_filter = str(time_filter).strip() or None
         try:
+            report: Dict[str, Any] = {}
             context, sources = comprehensive_web_search(
-                query, return_sources=True, time_filter=time_filter,
+                query, return_sources=True, time_filter=time_filter, report=report,
             )
-            return {"context": context, "sources": sources}
+            # `B492`: a search the limiter held says so, and until when.
+            return {"context": context, "sources": sources, **({"sync": report["sync"]}
+                                                                if report.get("sync") else {})}
         except Exception as e:
             logger.error(f"Standalone web search failed: {e}")
             return {"context": "", "sources": [], "error": str(e)}
@@ -117,6 +122,15 @@ def setup_search_routes() -> APIRouter:
             elapsed = round(time.time() - t0, 2)
             return {"results": results, "provider": provider, "query_sent": sent,
                     "time": elapsed}
+        except RateLimitError as e:
+            # `B492`. The limiter is holding this provider (or it just said
+            # 429): not a fault to show in red but a pause, with the time it
+            # clears — Compare draws it with `runStatus.syncNotice`.
+            elapsed = round(time.time() - t0, 2)
+            logger.info(f"Search provider {provider} is held: {e}")
+            return {"results": [], "provider": provider, "label": PROVIDER_INFO[provider][0],
+                    "time": elapsed, "error": str(e),
+                    "sync": throttle_sync(e.host, e.retry_in)}
         except Exception as e:
             elapsed = round(time.time() - t0, 2)
             logger.error(f"Search provider {provider} failed: {e}")

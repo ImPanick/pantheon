@@ -937,11 +937,35 @@ def _kimi_says_so(url: str, r):
 
 
 def httpx_get_kimi_aware(url: str, headers: Optional[Dict], **kwargs):
-    return _kimi_says_so(url, httpx.get(url, headers=apply_kimi_code_headers(headers, url), **kwargs))
+    # `B1022`: a model list is asked through `paced_http` (routed and paced),
+    # with `httpx.get`'s `follow_redirects=False` kept.
+    from src import paced_http
+    kwargs.setdefault("follow_redirects", False)
+    return _kimi_says_so(url, paced_http.get_sync(url, headers=apply_kimi_code_headers(headers, url),
+                                                  **kwargs))
+
+
+def _post_routed(url: str, headers: Optional[Dict] = None, **kwargs):
+    """`B1022`. The non-streamed model call, routed the way `_client_for`
+    routes the streamed one (`B1014`): a destination `NO_PROXY` puts in a
+    range goes direct (`paced_http.direct_mounts`), every other one as the
+    environment says. `httpx.post` built a client that reads no range, so a
+    model server on the LAN behind an operator's proxy was sent to the proxy.
+
+    Routed and NOT paced, like its streamed twin: this is the model call
+    itself, and a configured provider's completions get everything its
+    subscription allows (`Law 16` clause 2) — the limiter is for the calls
+    around it (the model list, the probes), which go through `paced_http`.
+    `httpx.post`'s other defaults are kept: no redirect followed, the default
+    trust store. (`headers` is named so `check-outbound.py` counts this call
+    among the unpaced ones, which it is, on purpose.)"""
+    from src.paced_http import direct_mounts
+    with httpx.Client(mounts=direct_mounts(url)) as client:
+        return client.post(url, headers=headers, **kwargs)
 
 
 def httpx_post_kimi_aware(url: str, headers: Optional[Dict], **kwargs):
-    return _kimi_says_so(url, httpx.post(url, headers=apply_kimi_code_headers(headers, url), **kwargs))
+    return _kimi_says_so(url, _post_routed(url, headers=apply_kimi_code_headers(headers, url), **kwargs))
 
 
 async def httpx_post_kimi_aware_async(client, url: str, headers: Optional[Dict], **kwargs):
@@ -2150,7 +2174,8 @@ def list_model_ids(
         try:
             if ":11434" in base_chat_url or "ollama" in base_chat_url.lower():
                 root = base_chat_url.replace("/v1/chat/completions", "").replace("/chat/completions", "").rstrip("/")
-                r = httpx.get(root + "/api/tags", timeout=timeout)
+                from src import paced_http   # `B1022`
+                r = paced_http.get_sync(root + "/api/tags", timeout=timeout, follow_redirects=False)
                 r.raise_for_status()
                 return [m.get("name") or m.get("model") for m in (r.json().get("models") or []) if m.get("name") or m.get("model")]
         except Exception as e:

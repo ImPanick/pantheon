@@ -1,6 +1,6 @@
 ---
 name: pantheon
-description: Use when the user asks Codex to read or write Pantheon data (todos, email, calendar, memory, documents) or to launch/monitor/stop a Cookbook model-serve task through the scoped Codex Agent API. Requires PANTHEON_URL and PANTHEON_API_TOKEN.
+description: Use when the user asks Codex to read or write Pantheon data (todos, email, calendar, memory, documents) or to launch/monitor/stop a Forge model-serve task through the scoped Codex Agent API. Requires PANTHEON_URL and PANTHEON_API_TOKEN.
 ---
 
 # Pantheon
@@ -106,9 +106,9 @@ python3 integrations/codex/scripts/pantheon_api.py POST /api/codex/memory '{"tex
 - `POST /api/codex/emails/draft` — body matches `SendEmailRequest` (`to`, `cc`, `bcc`, `subject`, `body`, `body_html`, `attachments`, `account_id`, `in_reply_to`, `references`). Requires `email:draft` (or `email:send`).
 - `POST /api/codex/emails/send` — same body. Requires `email:send`. Never send without explicit user instruction.
 
-## Cookbook serve (debug a failing model launch)
+## Forge serve (debug a failing model launch)
 
-The Cookbook surface lets you reproduce what a human would do in Pantheon → Cookbook: read which serves are running, tail their tmux output to see why they crashed, edit the launch command, relaunch, kill a stuck one. Use this when the user is debugging a model server that won't come up (compute-capability errors, OOM, missing kernels, wrong attention backend, etc.).
+The Forge surface (its API paths still say `cookbook`) lets you reproduce what a human would do in Pantheon → Forge: read which serves are running, tail their tmux output to see why they crashed, edit the launch command, relaunch, kill a stuck one. Use this when the user is debugging a model server that won't come up (compute-capability errors, OOM, missing kernels, wrong attention backend, etc.).
 
 - `GET /api/codex/cookbook/tasks` — list active serve/download/install tasks (sessionId, type, status, repo_id, remoteHost, payload._cmd). Requires `cookbook:read`.
 - `GET /api/codex/cookbook/servers` — list configured servers (name, host, port, env type + path, model dirs). Requires `cookbook:read`.

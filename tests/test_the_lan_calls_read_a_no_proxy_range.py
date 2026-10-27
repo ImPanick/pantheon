@@ -37,6 +37,7 @@ def _server(handler_cls):
 @pytest.fixture
 def world(monkeypatch):
     asked = {"origin": [], "proxy": []}
+    world_state = {"image_url": ""}
 
     class Origin(http.server.BaseHTTPRequestHandler):
         def _send(self, code, body=b"", ctype="application/json"):
@@ -56,6 +57,8 @@ def world(monkeypatch):
                 return self._send(200, json.dumps({"data": [{"id": "alpha-7b"}]}).encode())
             if self.path == "/dav/contacts":
                 return self._send(200, _VCARD.encode(), "text/vcard")
+            if self.path == "/generated/chair.png":
+                return self._send(503)          # the tool keeps the URL, writes nothing
             return self._send(200, b'{"ok": true}')
 
         def do_REPORT(self):  # noqa: N802
@@ -70,6 +73,11 @@ def world(monkeypatch):
                 return self._send(200, b'{"text": "hello there"}')
             if self.path.endswith("/audio/speech"):
                 return self._send(200, b"ID3-mp3-bytes", "audio/mpeg")
+            if self.path.endswith("/images/generations"):
+                return self._send(200, json.dumps({"data": [{"url": world_state["image_url"]}]}).encode())
+            if self.path.endswith("/chat/completions"):
+                return self._send(200, json.dumps({"choices": [{"message": {
+                    "role": "assistant", "content": "from the LAN"}}]}).encode())
             return self._send(200, json.dumps({"data": [{"embedding": [0.1, 0.2]}]}).encode())
 
         def log_message(self, *a):
@@ -98,7 +106,9 @@ def world(monkeypatch):
     from src.rate_limiter import OutboundHostLimiter
     import src.rate_limiter as rl
     monkeypatch.setattr(rl, "outbound", OutboundHostLimiter({}))
-    yield {"port": origin.server_address[1], "asked": asked}
+    world_state["port"] = origin.server_address[1]
+    world_state["asked"] = asked
+    yield world_state
     origin.shutdown()
     proxy.shutdown()
 
@@ -188,4 +198,100 @@ def test_the_embedding_endpoint_check_reaches_a_lan_server_direct(world, monkeyp
     with pytest.raises(_Checked):
         set_endpoint(url=f"http://127.0.0.1:{world['port']}/v1/embeddings", model="m", api_key="")
     assert ("POST", "/v1/embeddings") in world["asked"]["origin"]
+    assert world["asked"]["proxy"] == []
+
+
+# ── wave t: the rest of the model probes, and the OAuth and device flows ────
+#
+# 27 → 3. The model probes the row named first (`model_routes` ×7,
+# `model_context` ×3, `llm_core`'s model list ×2, `chat_helpers` ×1) and the
+# OAuth and device flows (ChatGPT ×5, Copilot ×3, the mailbox's token refresh
+# and callback ×3) moved onto `paced_http`. And then 3 → 0: the non-streamed
+# model call is routed as its streamed twin is (`llm_core._post_routed`, not
+# paced — `Law 16` clause 2), and `ai_interaction`'s two image downloads are
+# awaited through `paced_http`.
+
+def test_the_endpoint_probes_reach_a_lan_model_server_direct(world, monkeypatch):
+    import routes.model_routes as M
+    import src.endpoint_resolver as R
+
+    monkeypatch.setattr(R, "resolve_url", lambda url: url, raising=False)
+    base = f"http://127.0.0.1:{world['port']}/v1"
+    assert M._probe_endpoint(base, None) == ["alpha-7b"]
+    assert M._ping_endpoint(base)["reachable"] is True
+    assert M._probe_single_model(base, None, "alpha-7b")["status"] == "ok"
+    assert {("GET", "/v1/models"), ("POST", "/v1/chat/completions")} <= set(world["asked"]["origin"])
+    assert world["asked"]["proxy"] == []
+
+
+def test_the_context_window_lookup_and_the_model_list_reach_it_direct(world, monkeypatch):
+    import src.endpoint_resolver as R
+    import src.llm_core as L
+    import src.model_context as C
+
+    monkeypatch.setattr(R, "resolve_url", lambda url: url, raising=False)
+    monkeypatch.setattr(C, "_configured_endpoint_kind", lambda url: None)
+    monkeypatch.setattr(L, "_configured_cached_model_ids", lambda url, **k: [])
+    base = f"http://127.0.0.1:{world['port']}/v1"
+    C._query_context_length(base, "alpha-7b")
+    assert L.list_model_ids(base, timeout=3) == ["alpha-7b"]
+    assert ("GET", "/slots") in world["asked"]["origin"]
+    assert world["asked"]["proxy"] == []
+
+
+def test_the_lm_studio_probe_reaches_it_direct(world):
+    from src import chat_helpers
+
+    chat_helpers._lmstudio_models_cache.clear()
+    chat_helpers._probe_lmstudio_models(f"http://127.0.0.1:{world['port']}/v1/chat/completions")
+    assert ("GET", "/api/v1/models") in world["asked"]["origin"]
+    assert world["asked"]["proxy"] == []
+
+
+def test_a_device_flow_on_a_host_in_the_range_goes_direct(world):
+    """GitHub Enterprise on the LAN is the case: Copilot's device flow and
+    model list against a host `NO_PROXY` puts in a range."""
+    from src import copilot
+
+    copilot.fetch_models(f"http://127.0.0.1:{world['port']}", "tok", timeout=3)
+    assert ("GET", "/models") in world["asked"]["origin"]
+    assert world["asked"]["proxy"] == []
+
+
+def test_the_model_call_itself_reaches_a_lan_model_server_direct(world, monkeypatch):
+    """`llm_call`'s non-streamed request — `httpx.post` until the last three
+    of `B1022` — to a model server `NO_PROXY` puts in a range."""
+    import src.endpoint_resolver as R
+    import src.llm_core as L
+    import src.model_context as C
+
+    monkeypatch.setattr(R, "resolve_url", lambda url: url, raising=False)
+    monkeypatch.setattr(C, "_configured_endpoint_kind", lambda url: None)
+    L._response_cache.clear()
+    url = f"http://127.0.0.1:{world['port']}/v1/chat/completions"
+    answer = L.llm_call(url, "alpha-7b", [{"role": "user", "content": "hello"}], timeout=5)
+    assert "from the LAN" in str(answer)
+    assert ("POST", "/v1/chat/completions") in world["asked"]["origin"]
+    assert world["asked"]["proxy"] == []
+
+
+async def test_a_generated_image_on_the_lan_is_fetched_direct(world, monkeypatch):
+    """An image server on the LAN that answers with a URL: `do_generate_image`
+    fetches the picture from it, not from the proxy (its download was
+    `httpx.get` until `B1022`'s last three). The origin answers the download
+    503, so the tool keeps the URL and writes nothing."""
+    import src.ai_interaction as A
+    import src.settings as settings
+
+    monkeypatch.setattr(settings, "load_settings", lambda: {})
+    base = f"http://127.0.0.1:{world['port']}/v1"
+
+    monkeypatch.setattr(A, "_resolve_model",
+                        lambda spec, owner=None, **k: (f"{base}/chat/completions", "dall-e-3", {}))
+    picture = f"http://127.0.0.1:{world['port']}/generated/chair.png"
+    world["image_url"] = picture
+    result = await A.do_generate_image("draw a chair\ndall-e-3")
+    assert result.get("image_url") == picture, result
+    assert ("POST", "/v1/images/generations") in world["asked"]["origin"]
+    assert ("GET", "/generated/chair.png") in world["asked"]["origin"]
     assert world["asked"]["proxy"] == []

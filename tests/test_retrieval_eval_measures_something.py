@@ -133,7 +133,9 @@ def test_both_engines_can_be_scored_over_the_same_corpus():
     corpus = _corpus()
     for name in retrieval_eval.CALL_PATHS:
         out = retrieval_eval.score(corpus, retrieval_eval.ENGINES[name](corpus, 5), 5)
-        assert out["n"] == len(corpus["probes"])
+        # `B713`: `n` counts the probes with an answer to recall; the ones that
+        # should find nothing are scored apart (`absent_n`).
+        assert out["n"] + out["absent_n"] == len(corpus["probes"])
         assert 0.0 <= out[f"recall@5"] <= 1.0
         assert 0.0 <= out["mrr"] <= 1.0
 

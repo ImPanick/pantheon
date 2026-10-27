@@ -1167,11 +1167,12 @@ app.include_router(setup_mcp_routes(mcp_manager))
 logger.info("MCP routes initialized")
 
 # AI Interaction tools (debates, pipelines, self-managing AI, UI control)
-from src.ai_interaction import set_session_manager as set_ai_session_manager, set_memory_manager as set_ai_memory_manager, set_rag_manager as set_ai_rag_manager
+# `B1545`: no RAG setter — the tools that search the index ask
+# `rag_singleton` (`get_rag_manager` / `rag_instance`), the one copy.
+from src.ai_interaction import set_session_manager as set_ai_session_manager, set_memory_manager as set_ai_memory_manager
 set_ai_session_manager(session_manager)
 set_ai_memory_manager(memory_manager, memory_vector)
-set_ai_rag_manager(rag_manager, personal_docs_mgr)
-logger.info("AI interaction tools initialized (session, memory, RAG, UI control)")
+logger.info("AI interaction tools initialized (session, memory, UI control)")
 
 # Webhooks
 from routes.webhook.webhook_routes import setup_webhook_routes

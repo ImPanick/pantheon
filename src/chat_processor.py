@@ -473,6 +473,10 @@ class ChatProcessor:
 
         # Add web search if enabled
         web_sources = []
+        # `B492`. A web search the limiter held — every provider asked us to
+        # wait — is kept here (as `_last_rag_off` is) for the route to say in
+        # the turn's `web_sources` frame, with the time it clears.
+        self._last_web_sync = None
         if use_web:
             try:
                 from src.llm_core import llm_call
@@ -526,9 +530,12 @@ class ChatProcessor:
 
                 if search_query:
                     # Execute web search using the final selected query
+                    _web_report: dict = {}
                     web_context, web_sources = comprehensive_web_search(
-                        search_query, time_filter=time_filter, return_sources=True
+                        search_query, time_filter=time_filter, return_sources=True,
+                        report=_web_report,
                     )
+                    self._last_web_sync = _web_report.get("sync")   # `B492`
                     preface.append(untrusted_context_message("web search results", web_context))
             except Exception as e:
                 logger.error(f"Web search failed: {e}")

@@ -564,9 +564,13 @@ def test_the_forge_already_reports_from_outside_its_own_window():
     btn = btn[:btn.index("</button>")]
     assert 'id="cookbook-bg-status"' in btn, "the Forge's live status is on its sidebar button"
     src = (JS / "cookbookRunning.js").read_text(encoding="utf-8")
-    poll = js_function(src, "async function _pollBackgroundStatus")
-    assert "cookbook-bg-status" in poll
-    assert "downloading" in poll
+    # `B813`: the poll no longer draws the text itself — it hands running work
+    # to the store (`_publishForgeWork`), and `_renderForgeDoor` draws it, with
+    # the words `_forgeTaskWords` says. Driven in
+    # `tests/test_a_running_job_is_one_answer_drawn_three_times_js.py`.
+    door = js_function(src, "function _renderForgeDoor")
+    assert "cookbook-bg-status" in door
+    assert "downloading" in js_function(src, "function _forgeTaskWords")
 
 
 def test_research_already_lights_its_rail_from_outside_its_own_window():

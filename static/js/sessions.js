@@ -2970,15 +2970,26 @@ export function markStreamComplete(sessionId) {
 
 // ── Rail notification dots ──
 // Keep rail buttons lit when background work is happening / finished
+
+// `B813`. The research rail has one painter: the research panel's
+// `_syncResearchRail`, registered here by the panel's `init`. It draws the
+// panel's running jobs from the background-work store (`modalManager`) and the
+// chats researching in place from `researchingInChat()` below — in-chat
+// research gets no dock chip, because it has no window to own one. This used to
+// toggle the rail's class itself and OR in `window._researchJobsActive`, a flag
+// the panel set so one re-render did not erase the other's dot.
+let _researchDoor = null;
+function setResearchDoor(fn) {
+  _researchDoor = typeof fn === 'function' ? fn : null;
+  if (_researchDoor) _researchDoor();
+}
+/** How many chats are researching in place right now. */
+function researchingInChat() { return _researchingSessions.size; }
+
 function _updateRailNotifs() {
-  // Research rail — pulsing while any session is researching
-  const railResearch = document.getElementById('rail-research');
-  if (railResearch) {
-    // OR in the Deep Research panel's job state (set by panel.js)
-    // so inline-research and panel-research both keep the rail lit.
-    const researching = _researchingSessions.size > 0 || !!window._researchJobsActive;
-    railResearch.classList.toggle('rail-notify', researching);
-  }
+  // Research rail — pulsing while any session is researching (`B813`: drawn
+  // by the research door, which reads `researchingInChat()`).
+  if (_researchDoor) _researchDoor();
   // Chats rail — show when a background stream completed
   const railChats = document.getElementById('rail-chats');
   if (railChats) {
@@ -3410,6 +3421,8 @@ const sessionModule = {
   clearStreaming,
   markStreamComplete,
   clearStreamComplete,
+  researchingInChat,   // `B813`
+  setResearchDoor,     // `B813`
   openLibrary,
   setSessionHasDocs,
   getSortMode,

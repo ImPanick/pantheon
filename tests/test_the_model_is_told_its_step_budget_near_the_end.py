@@ -15,7 +15,20 @@ not. The figure is asserted equal to the `agent_budget` frame's
 import asyncio
 import json
 
+import pytest
+
 import src.agent_loop as agent_loop
+from tests.helpers.no_endpoint import no_endpoint_answers  # B1520
+
+
+@pytest.fixture(autouse=True)
+def _no_endpoint_answers(monkeypatch):
+    """`B1546`. These turns run against `https://models.example.com/v1`, and the agent loop
+    asks it for its context window on the way in — six requests to the network
+    that passed because they failed.
+    The lookup now fails the way it did, with no socket opened."""
+    no_endpoint_answers(monkeypatch)
+
 
 URL = "https://models.example.com/v1"
 

@@ -37,6 +37,10 @@ import pytest
 
 # ── OAuth state signing ──────────────────────────────────────────
 
+# `B1022`: the OAuth and device-flow calls go through `paced_http` now, so
+# the fakes stand in at that seam (`paced_http.get_sync` / `post_sync`)
+# rather than at `httpx.get` / `httpx.post`, which those calls no longer use.
+
 def test_oauth_state_round_trips_account_and_owner():
     from routes.email_helpers import make_oauth_state, verify_oauth_state
 
@@ -208,7 +212,7 @@ def test_refresh_token_stored_encrypted_not_raw():
     fake_resp.raise_for_status = mock.MagicMock()
     fake_resp.json.return_value = {"access_token": raw_token, "expires_in": 3600}
 
-    with mock.patch("httpx.post", return_value=fake_resp), \
+    with mock.patch("src.paced_http.post_sync", return_value=fake_resp), \
          mock.patch("core.database.SessionLocal", Factory), \
          mock.patch("routes.email_helpers.os.environ.get", side_effect=lambda k, d="": {
              "GOOGLE_OAUTH_CLIENT_ID": "cid", "GOOGLE_OAUTH_CLIENT_SECRET": "csec"
@@ -240,7 +244,7 @@ def test_refresh_stores_encrypted_expiry_not_token():
     fake_resp.raise_for_status = mock.MagicMock()
     fake_resp.json.return_value = {"access_token": "ya29.secret", "expires_in": 3600}
 
-    with mock.patch("httpx.post", return_value=fake_resp), \
+    with mock.patch("src.paced_http.post_sync", return_value=fake_resp), \
          mock.patch("core.database.SessionLocal", Factory), \
          mock.patch("routes.email_helpers.os.environ.get", side_effect=lambda k, d="": {
              "GOOGLE_OAUTH_CLIENT_ID": "cid", "GOOGLE_OAUTH_CLIENT_SECRET": "csec"
@@ -399,8 +403,8 @@ async def test_callback_owner_mismatch_does_not_write_tokens():
     # State is genuinely signed, but for owner "bob" — not the row owner "alice".
     state = make_oauth_state("acct-x", "bob")
 
-    with mock.patch("httpx.post", return_value=token_resp), \
-         mock.patch("httpx.get", return_value=userinfo_resp), \
+    with mock.patch("src.paced_http.post_sync", return_value=token_resp), \
+         mock.patch("src.paced_http.get_sync", return_value=userinfo_resp), \
          mock.patch("core.database.SessionLocal", Factory):
         callback = _callback_endpoint()
         resp = await callback(code="4/code", state=state, error=None, request=_FakeRequest())
@@ -447,8 +451,8 @@ async def test_callback_valid_owner_writes_encrypted_tokens_to_intended_account(
 
     state = make_oauth_state("acct-v", "alice")
 
-    with mock.patch("httpx.post", return_value=token_resp), \
-         mock.patch("httpx.get", return_value=userinfo_resp), \
+    with mock.patch("src.paced_http.post_sync", return_value=token_resp), \
+         mock.patch("src.paced_http.get_sync", return_value=userinfo_resp), \
          mock.patch("core.database.SessionLocal", Factory):
         callback = _callback_endpoint()
         resp = await callback(code="4/code", state=state, error=None, request=_FakeRequest())
@@ -506,8 +510,8 @@ async def test_callback_redirect_uri_follows_the_request_scheme(scheme, monkeypa
 
     state = make_oauth_state("acct-s", "alice")
 
-    with mock.patch("httpx.post", return_value=token_resp) as mock_post, \
-         mock.patch("httpx.get", return_value=userinfo_resp), \
+    with mock.patch("src.paced_http.post_sync", return_value=token_resp) as mock_post, \
+         mock.patch("src.paced_http.get_sync", return_value=userinfo_resp), \
          mock.patch("core.database.SessionLocal", Factory):
         callback = _callback_endpoint()
         await callback(
@@ -542,8 +546,8 @@ async def test_callback_redirect_uri_env_override_still_wins(monkeypatch):
 
     state = make_oauth_state("acct-p", "alice")
 
-    with mock.patch("httpx.post", return_value=token_resp) as mock_post, \
-         mock.patch("httpx.get", return_value=userinfo_resp), \
+    with mock.patch("src.paced_http.post_sync", return_value=token_resp) as mock_post, \
+         mock.patch("src.paced_http.get_sync", return_value=userinfo_resp), \
          mock.patch("core.database.SessionLocal", Factory):
         callback = _callback_endpoint()
         await callback(code="4/code", state=state, error=None, request=_FakeRequest(scheme="http"))
@@ -614,8 +618,8 @@ async def test_callback_rejects_token_for_a_different_mailbox_identity():
     }
 
     state = make_oauth_state("acct-reconnect", "alice")
-    with mock.patch("httpx.post", return_value=token_resp), \
-         mock.patch("httpx.get", return_value=userinfo_resp), \
+    with mock.patch("src.paced_http.post_sync", return_value=token_resp), \
+         mock.patch("src.paced_http.get_sync", return_value=userinfo_resp), \
          mock.patch("core.database.SessionLocal", Factory):
         resp = await _callback_endpoint()(
             code="4/code",
@@ -663,8 +667,8 @@ async def test_callback_rejects_reconnect_without_a_fresh_refresh_token():
     }
 
     state = make_oauth_state("acct-refresh-proof", "alice")
-    with mock.patch("httpx.post", return_value=token_resp), \
-         mock.patch("httpx.get") as userinfo_get, \
+    with mock.patch("src.paced_http.post_sync", return_value=token_resp), \
+         mock.patch("src.paced_http.get_sync") as userinfo_get, \
          mock.patch("core.database.SessionLocal", Factory):
         resp = await _callback_endpoint()(
             code="4/code",
@@ -717,8 +721,8 @@ async def test_callback_requires_verified_mailbox_identity(userinfo_result):
         userinfo_call = mock.Mock(return_value=userinfo_resp)
 
     state = make_oauth_state("acct-no-identity", "alice")
-    with mock.patch("httpx.post", return_value=token_resp), \
-         mock.patch("httpx.get", userinfo_call), \
+    with mock.patch("src.paced_http.post_sync", return_value=token_resp), \
+         mock.patch("src.paced_http.get_sync", userinfo_call), \
          mock.patch("core.database.SessionLocal", Factory):
         resp = await _callback_endpoint()(
             code="4/code",
@@ -793,7 +797,7 @@ def test_refresh_failure_returns_none_no_secret_raised():
     failing_resp = mock.MagicMock()
     failing_resp.raise_for_status.side_effect = Exception("401 Unauthorized")
 
-    with mock.patch("httpx.post", return_value=failing_resp), \
+    with mock.patch("src.paced_http.post_sync", return_value=failing_resp), \
          mock.patch("core.database.SessionLocal", Factory), \
          mock.patch("routes.email_helpers.os.environ.get", side_effect=lambda k, d="": {
              "GOOGLE_OAUTH_CLIENT_ID": "cid", "GOOGLE_OAUTH_CLIENT_SECRET": "csec"

@@ -40,6 +40,18 @@ from netagent.tokens import (
     token_matches,
 )
 
+
+@pytest.fixture(autouse=True)
+def _the_route_probe_stays_on_this_machine(monkeypatch):
+    """`B1546`. `observe._addresses` asks which source address the default
+    route would use by UDP-connecting to a public resolver — it sends nothing,
+    but the suite's network guard (`B1520`) refuses the connect and named this
+    file twice. The trick is pointed at loopback here: the route it reports is
+    this machine's, and the guard has nothing to refuse."""
+    monkeypatch.setattr(observe, "ROUTE_PROBES",
+                        (("127.0.0.1", socket.AF_INET), ("::1", socket.AF_INET6)))
+
+
 _PKG = Path(__file__).resolve().parent.parent / "netagent"
 
 

@@ -6681,9 +6681,13 @@ def setup_email_routes():
         verifier = state_data.get("v") or ""
         if verifier:
             form["code_verifier"] = verifier
-        import httpx as _httpx
+        # `B1022`: the token exchange and the userinfo read go through
+        # `paced_http` — routed (a `NO_PROXY` range is honoured) and paced (a
+        # provider cooling down is refused before the call) — and follow no
+        # redirect, as `httpx.post`/`httpx.get` did not.
+        from src import paced_http
         try:
-            resp = _httpx.post(
+            resp = paced_http.post_sync(
                 providers.token_url(provider),
                 data=form,
                 # Some providers answer the token endpoint with form-encoded
@@ -6691,6 +6695,7 @@ def setup_email_routes():
                 # Asking for JSON costs nothing where it is already the default.
                 headers={"Accept": "application/json"},
                 timeout=10,
+                follow_redirects=False,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -6718,10 +6723,11 @@ def setup_email_routes():
         userinfo = None
         if provider.identity_source == providers.IDENTITY_USERINFO and provider.userinfo_url:
             try:
-                ui = _httpx.get(
+                ui = paced_http.get_sync(
                     providers.resolve_url(provider, provider.userinfo_url),
                     headers={"Authorization": f"Bearer {access_token}"},
                     timeout=10,
+                    follow_redirects=False,
                 )
                 if ui.is_success:
                     userinfo = ui.json()

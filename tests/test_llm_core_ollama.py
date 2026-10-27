@@ -40,7 +40,9 @@ def test_llm_call_posts_native_ollama_payload(monkeypatch):
             json={"message": {"content": "OK"}, "done": True},
         )
 
-    monkeypatch.setattr(llm_core.httpx, "post", fake_post)
+    # `B1022`: the non-streamed model call is `llm_core._post_routed` (routed
+    # by a `NO_PROXY` range) rather than `httpx.post`, so the fake stands there.
+    monkeypatch.setattr(llm_core, "_post_routed", fake_post)
 
     result = llm_core.llm_call(
         "https://ollama.com/api",
@@ -72,7 +74,9 @@ def test_llm_call_posts_bare_local_ollama_to_native_api(monkeypatch):
             json={"message": {"content": "OK"}, "done": True},
         )
 
-    monkeypatch.setattr(llm_core.httpx, "post", fake_post)
+    # `B1022`: the non-streamed model call is `llm_core._post_routed` (routed
+    # by a `NO_PROXY` range) rather than `httpx.post`, so the fake stands there.
+    monkeypatch.setattr(llm_core, "_post_routed", fake_post)
 
     result = llm_core.llm_call(
         "http://localhost:11434",
@@ -97,7 +101,9 @@ def test_openai_compatible_chat_url_shapes(monkeypatch):
             json={"choices": [{"message": {"content": "OK"}}]},
         )
 
-    monkeypatch.setattr(llm_core.httpx, "post", fake_post)
+    # `B1022`: the non-streamed model call is `llm_core._post_routed` (routed
+    # by a `NO_PROXY` range) rather than `httpx.post`, so the fake stands there.
+    monkeypatch.setattr(llm_core, "_post_routed", fake_post)
     llm_core._response_cache.clear()
 
     cases = [
@@ -120,7 +126,7 @@ def test_openai_compatible_chat_url_shapes(monkeypatch):
 def test_list_model_ids_from_openai_compatible_v1(monkeypatch):
     seen = {}
 
-    def fake_get(url, headers=None, timeout=None):
+    def fake_get(url, headers=None, timeout=None, **_kw):
         seen["url"] = url
         request = httpx.Request("GET", url)
         return httpx.Response(
@@ -129,7 +135,9 @@ def test_list_model_ids_from_openai_compatible_v1(monkeypatch):
             json={"data": [{"id": "qwen2.5-coder:7b"}]},
         )
 
-    monkeypatch.setattr(llm_core.httpx, "get", fake_get)
+    # `B1022`: the model list is asked through `paced_http.get_sync` now, so
+    # the fake stands in at that seam rather than at `httpx.get`.
+    monkeypatch.setattr("src.paced_http.get_sync", fake_get)
 
     assert llm_core.list_model_ids("http://localhost:11434/v1") == ["qwen2.5-coder:7b"]
     assert seen["url"] == "http://localhost:11434/v1/models"
@@ -279,7 +287,9 @@ def test_llm_call_threads_discovered_num_ctx(monkeypatch):
             json={"message": {"content": "OK"}, "done": True},
         )
 
-    monkeypatch.setattr(llm_core.httpx, "post", fake_post)
+    # `B1022`: the non-streamed model call is `llm_core._post_routed` (routed
+    # by a `NO_PROXY` range) rather than `httpx.post`, so the fake stands there.
+    monkeypatch.setattr(llm_core, "_post_routed", fake_post)
 
     llm_core.llm_call(
         "https://ollama.com/api",

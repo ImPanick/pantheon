@@ -257,8 +257,13 @@ def _observe(host: str, response) -> None:
 
 
 async def request(method: str, url: str, *, authenticated: bool = False,
-                  timeout: float = _DEFAULT_TIMEOUT, client=None, **kwargs) -> Any:
-    """Paced async request. Raises `OutboundRateLimited` when the host is blocked."""
+                  timeout: float = _DEFAULT_TIMEOUT, client=None, verify: Any = True,
+                  **kwargs) -> Any:
+    """Paced async request. Raises `OutboundRateLimited` when the host is blocked.
+
+    `verify` is the client's TLS setting, as `httpx.get(..., verify=)` took it
+    (`B1022`: the model probes pass the LLM path's extra CA bundle, from
+    `tls_overrides`); a caller that brings its own `client` brought its own."""
     import httpx
     from src.rate_limiter import outbound
 
@@ -266,7 +271,7 @@ async def request(method: str, url: str, *, authenticated: bool = False,
     await outbound.acquire_async(host, authenticated=authenticated)
     owns = client is None
     if owns:
-        client = httpx.AsyncClient(timeout=timeout, follow_redirects=True,
+        client = httpx.AsyncClient(timeout=timeout, follow_redirects=True, verify=verify,
                                    mounts=direct_mounts(url) or None)  # `B982`
     try:
         response = await client.request(method, url, **kwargs)
@@ -291,8 +296,10 @@ async def post(url: str, **kwargs) -> Any:
 
 
 def request_sync(method: str, url: str, *, authenticated: bool = False,
-                 timeout: float = _DEFAULT_TIMEOUT, client=None, **kwargs) -> Any:
-    """Paced sync request, for the `asyncio.to_thread` call sites."""
+                 timeout: float = _DEFAULT_TIMEOUT, client=None, verify: Any = True,
+                 **kwargs) -> Any:
+    """Paced sync request, for the `asyncio.to_thread` call sites. `verify` as
+    for `request`."""
     import httpx
     from src.rate_limiter import outbound
 
@@ -300,7 +307,7 @@ def request_sync(method: str, url: str, *, authenticated: bool = False,
     outbound.acquire(host, authenticated=authenticated)
     owns = client is None
     if owns:
-        client = httpx.Client(timeout=timeout, follow_redirects=True,
+        client = httpx.Client(timeout=timeout, follow_redirects=True, verify=verify,
                               mounts=direct_mounts(url) or None)  # `B982`
     try:
         response = client.request(method, url, **kwargs)

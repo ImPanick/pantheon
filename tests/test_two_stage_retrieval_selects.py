@@ -196,7 +196,9 @@ def test_the_lexical_path_keeps_every_memory_it_used_to_find():
     corpus = json.loads((Path(__file__).resolve().parents[1] / ".pantheon"
                          / "fixtures" / "retrieval_probe.json").read_text())
     answered = 0
-    for probe in corpus["probes"]:
+    # `B713`: the probes marked `absent` have no memory to find; they are the
+    # off-topic questions, scored by `retrieval_eval.score` as refusal/noise.
+    for probe in (p for p in corpus["probes"] if not p.get("absent")):
         got = ids(memory_retrieval.retrieve(probe["query"],
                                             [dict(m) for m in corpus["memories"]], k=5))
         if set(got) & set(probe["expect"]):

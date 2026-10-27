@@ -97,7 +97,9 @@ def every_socket(wire, monkeypatch):
         return SimpleNamespace(is_success=True, status_code=200, text="",
                                json=lambda: {"choices": [{"message": {"content": "ok"}}]})
 
-    monkeypatch.setattr(llm_core.httpx, "post", sync_post)
+    # `B1022`: the non-streamed model call is `llm_core._post_routed` (routed
+    # by a `NO_PROXY` range) rather than `httpx.post`, so the fake stands there.
+    monkeypatch.setattr(llm_core, "_post_routed", sync_post)
     return wire
 
 

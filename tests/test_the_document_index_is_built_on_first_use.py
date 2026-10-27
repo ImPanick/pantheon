@@ -129,9 +129,10 @@ def test_an_exclusion_before_the_build_is_kept_without_building(docs, counted):
     mgr.exclude_file(str(base / "seabed.txt"))
     assert counted == [] and mgr.index_built is False
     names = [f["name"] for f in mgr.get_file_list()]
-    # (`excluded_files.json` is the manager's own state file in the same
-    # folder, and is listed as a document — pre-existing, filed separately.)
+    # `B1547`: the manager's own state file in the same folder is hidden now,
+    # and no longer listed as a document beside them.
     assert "harbour.md" in names and "seabed.txt" not in names
+    assert not any(n.endswith(".json") for n in names), names
 
 
 def test_an_explicit_reload_still_builds_now(docs, counted):

@@ -19,6 +19,13 @@
 #                        says is inside it (`B336`: html2pdf.js 0.14.0 has no
 #                        advisory of its own and carries jsPDF 4.0.0 with nine
 #                        and DOMPurify 3.3.1 with eighteen)
+#   the record's tarball whether every shipped file's bytes are a file in the
+#                        `.tgz` its `source` names (`B426`). `check-licences.py`
+#                        rule 8 accepts a `single` answer on the absence of
+#                        evidence, and a bundle with no module paths and no
+#                        legal comments is that absence; finding the bytes in
+#                        upstream's own artifact makes `single` a fact, and a
+#                        file it does not hold fails the run.
 #
 # It runs weekly and on demand, never on push: a PR should not go red because
 # somebody else cut a release while it was open, and a developer should not have
@@ -68,5 +75,5 @@ jobs:
       # (`behind_ok`) or an advisory against what we ship is not explained in the
       # record (`osv_known`): an advisory check that never fails is a check
       # nobody reads (`B322`).
-      - name: Ask npm and OSV about every recorded version
+      - name: Ask npm and OSV about every recorded version, and find our bytes in upstream's
         run: python3 .pantheon/vendored-freshness.py

@@ -19,7 +19,8 @@ argument is *our claims are checkable* carried a checkable claim that nobody
 checked.
 
 So this is the checker for the claims CI makes about itself. Seven rules, each
-one a way a green check has meant nothing:
+one a way a green check has meant nothing (three more, 8–10, below their own
+headings — 10 is `B438`, the interpreter the suite runs on):
 
   **1  A required check must name a job that exists.** `docs/security-ci.md`
      tells the owner to type eight check names into branch protection. A name
@@ -768,6 +769,100 @@ def rule_ratchet_values_live_in_ci() -> list[str]:
 # ── run ───────────────────────────────────────────────────────────────────────
 
 
+# ── rule 10 — the suite runs on the interpreter the image ships, or says why ──
+#
+# `B438`. `ci.yml` ran the whole suite on 3.11 while the image ships 3.14
+# (`Dockerfile`'s `FROM python:3.14-slim`) — and `dependency-review.yml` already
+# said, in a comment that is the whole argument, that the interpreter is not
+# cosmetic: `requirements-optional.txt` gates packages on `python_version`, so
+# the dependency set depends on it. A green suite was therefore evidence about a
+# dependency set the product does not install, and nothing said so.
+#
+# The rule: every job that runs pytest pins the image's Python, or this table
+# records why not — keyed by the two versions it is about, so a bump of either
+# side makes the reason stale and somebody re-reads it. An entry for a job that
+# now matches, or that no longer runs the suite, is stale too.
+DOCKERFILE = ROOT / "Dockerfile"
+SUITE_ON_ANOTHER_PYTHON = {
+    # "workflow:job": (CI's python, the image's python, why)
+    "ci.yml:python-tests": (
+        "3.11", "3.14",
+        "B438: not yet measured on 3.14, and not a one-line bump. Every "
+        "python-version in ci.yml is one value the release gate mirrors (rule "
+        "5), so the suite moves with the checkers; the optional set changes "
+        "from 3.13 (requirements-optional.txt gates kokoro and soundfile, and "
+        "the Real-ESRGAN wheels do not build there, B850); and no run of the "
+        "suite on 3.14 exists to say what else moves. Until one is green, a "
+        "passing suite is evidence about 3.11."),
+    "ci.yml:law16-egress": (
+        "3.11", "3.14",
+        "B438: the egress test runs beside the suite, on the same pin, for the "
+        "same reason."),
+}
+
+
+def image_python() -> str | None:
+    """The `major.minor` of the last `FROM python:` stage in the Dockerfile —
+    the one the product runs in."""
+    found = re.findall(r"^FROM\s+python:(\d+\.\d+)", DOCKERFILE.read_text(encoding="utf-8"),
+                       re.M)
+    return found[-1] if found else None
+
+
+def suite_jobs() -> dict[str, str | None]:
+    """`{"workflow:job": python-version}` for every job that runs pytest."""
+    out: dict[str, str | None] = {}
+    for path in workflow_files():
+        for key, spec in jobs(load_workflow(path)).items():
+            steps = spec.get("steps") if isinstance(spec, dict) else None
+            steps = steps if isinstance(steps, list) else []
+            runs = " ".join(str(st.get("run", "")) for st in steps if isinstance(st, dict))
+            if not re.search(r"(?:-m\s+pytest|(?:^|\s)pytest\s)", runs):
+                continue
+            version = None
+            for st in steps:
+                if isinstance(st, dict) and "setup-python" in str(st.get("uses", "")):
+                    w = st.get("with") if isinstance(st.get("with"), dict) else {}
+                    version = str(w.get("python-version") or "") or None
+            out[f"{path.name}:{key}"] = version
+    return out
+
+
+def rule_suite_runs_where_the_image_runs() -> list[str]:
+    image = image_python()
+    if not image:
+        return ["the Dockerfile names no `FROM python:X.Y` stage — rule 10 has "
+                "nothing to compare the suite's interpreter with"]
+    problems: list[str] = []
+    found = suite_jobs()
+    if not found:
+        problems.append("no workflow job runs pytest — rule 10 is checking nothing")
+    for job, version in sorted(found.items()):
+        entry = SUITE_ON_ANOTHER_PYTHON.get(job)
+        on = ".".join(str(version or "").split(".")[:2])
+        if on == image:
+            if entry:
+                problems.append(
+                    f"{job} runs the suite on {on}, the image's Python, and "
+                    f"SUITE_ON_ANOTHER_PYTHON still says why it does not — "
+                    f"remove the entry")
+            continue
+        if not entry:
+            problems.append(
+                f"{job} runs the suite on {version or 'an unpinned Python'} and the "
+                f"image ships {image}: a green run is evidence about a dependency "
+                f"set the product does not install. Pin {image}, or say why not in "
+                f"SUITE_ON_ANOTHER_PYTHON (`B438`)")
+        elif (entry[0], entry[1]) != (on, image):
+            problems.append(
+                f"{job}: the recorded reason is about {entry[0]} against the "
+                f"image's {entry[1]}, and the job is now {on} against {image} — "
+                f"re-measure and re-write it (`B438`)")
+    for job in sorted(set(SUITE_ON_ANOTHER_PYTHON) - set(found)):
+        problems.append(f"SUITE_ON_ANOTHER_PYTHON names {job}, which runs no suite")
+    return problems
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--list", action="store_true",
@@ -803,6 +898,8 @@ def main() -> int:
         ("a skip proves itself", rule_skip_proves_itself()),
         ("a job installs what it imports", rule_job_installs_what_it_imports()),
         ("a ratchet's value lives in ci.yml", rule_ratchet_values_live_in_ci()),
+        ("the suite runs where the image runs, or says why",
+         rule_suite_runs_where_the_image_runs()),
     ]
 
     problems = [(title, p) for title, ps in rules for p in ps]

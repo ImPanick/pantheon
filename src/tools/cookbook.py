@@ -21,6 +21,7 @@ from routes._validators import validate_remote_host, validate_ssh_port
 
 from src.tools._common import _parse_tool_args
 from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
+from src.image_model_ids import SD_FORGE_LABEL  # `B471`: the backend, never a bare "Forge"
 
 logger = logging.getLogger(__name__)
 
@@ -406,6 +407,12 @@ async def _cookbook_register_task(
 # Patterns for detecting running LLM/diffusion model servers outside
 # the cookbook's task tracker. Each entry: (label, substring-list).
 # Match is case-insensitive against the FULL cmdline. First-match wins.
+#
+# `B471`: SD WebUI Forge's label is `SD_FORGE_LABEL`, never a bare "Forge" —
+# that is this product's own serving subsystem. And it is listed BEFORE the
+# A1111 entry: Forge launches through its own `webui.sh`, which A1111's needle
+# matched first, so a running SD WebUI Forge was reported as "A1111 WebUI".
+
 _MODEL_PROCESS_PATTERNS = [
     ("vLLM",            ["vllm.entrypoints", "vllm serve", "/vllm/", "vllm-openai"]),
     ("SGLang",          ["sglang.launch_server", "sglang/launch_server"]),
@@ -414,16 +421,26 @@ _MODEL_PROCESS_PATTERNS = [
     ("llama.cpp",       ["llama-server", "llama_cpp_server", "llamacppserver"]),
     ("Ollama",          ["ollama serve", "ollama runner", "/ollama "]),
     ("ComfyUI",         ["comfyui/main.py", "/ComfyUI/main.py", "ComfyUI"]),
+    (SD_FORGE_LABEL,    ["stable-diffusion-webui-forge", "forge/webui"]),
     ("A1111 WebUI",     ["stable-diffusion-webui/webui", "stable-diffusion-webui/launch", "webui.sh"]),
     ("Fooocus",         ["Fooocus/entry_with_update", "Fooocus/launch"]),
     ("InvokeAI",        ["invokeai-web", "invokeai.app", "invokeai/api_app"]),
-    ("Forge WebUI",     ["stable-diffusion-webui-forge", "forge/webui"]),
     ("SD.Next",         ["automatic/webui", "sd.next"]),
     ("TGI",             ["text-generation-launcher", "text_generation_launcher"]),
     ("Aphrodite",       ["aphrodite.endpoints", "aphrodite-engine"]),
     ("Triton",          ["tritonserver", "triton/main"]),
     ("Diffusers",       ["diffusers.pipelines", "StableDiffusionInpaintPipeline", "DiffusionPipeline"]),
 ]
+
+
+def model_process_label(cmdline: str) -> str:
+    """The label of the first `_MODEL_PROCESS_PATTERNS` entry a process's
+    command line matches (case-insensitive), or `""`."""
+    lower = (cmdline or "").lower()
+    for label, needles in _MODEL_PROCESS_PATTERNS:
+        if any(n.lower() in lower for n in needles):
+            return label
+    return ""
 
 
 def _cookbook_apply_retry_suggestion(cmd: str, suggestion: Dict[str, Any]) -> str:
@@ -645,35 +662,34 @@ def _scan_running_model_processes() -> List[Dict[str, Any]]:
             cmdline = raw.replace(b"\x00", b" ").decode("utf-8", errors="replace").strip()
             if not cmdline:
                 continue
-            lower = cmdline.lower()
-            for label, needles in _MODEL_PROCESS_PATTERNS:
-                if any(n.lower() in lower for n in needles):
-                    # Dedupe by (label, first-arg) — multi-worker servers
-                    # spawn N processes; only show one row per server.
-                    key = (label, cmdline.split(" ")[0])
-                    if key in seen_keys:
-                        break
-                    seen_keys.add(key)
-                    # Try to pluck a model name out of the cmdline.
-                    model = ""
-                    for tok in cmdline.split():
-                        if "/" in tok and any(s in tok.lower() for s in (
-                            "model", "checkpoint", ".safetensors", ".gguf", ".bin", "huggingface"
-                        )):
-                            model = tok
-                            break
-                    out.append({
-                        "session_id": f"pid-{pid_dir}",
-                        "model": model or label,
-                        "phase": "running (external)",
-                        "type": "serve",
-                        "remote": "local",
-                        "pid": int(pid_dir),
-                        "label": label,
-                        "cmdline_preview": cmdline[:140] + ("…" if len(cmdline) > 140 else ""),
-                        "external": True,
-                    })
+            label = model_process_label(cmdline)
+            if not label:
+                continue
+            # Dedupe by (label, first-arg) — multi-worker servers
+            # spawn N processes; only show one row per server.
+            key = (label, cmdline.split(" ")[0])
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            # Try to pluck a model name out of the cmdline.
+            model = ""
+            for tok in cmdline.split():
+                if "/" in tok and any(s in tok.lower() for s in (
+                    "model", "checkpoint", ".safetensors", ".gguf", ".bin", "huggingface"
+                )):
+                    model = tok
                     break
+            out.append({
+                "session_id": f"pid-{pid_dir}",
+                "model": model or label,
+                "phase": "running (external)",
+                "type": "serve",
+                "remote": "local",
+                "pid": int(pid_dir),
+                "label": label,
+                "cmdline_preview": cmdline[:140] + ("…" if len(cmdline) > 140 else ""),
+                "external": True,
+            })
     except Exception as e:
         logger.debug(f"_scan_running_model_processes failed: {e}")
     return out

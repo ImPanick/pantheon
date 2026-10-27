@@ -43,8 +43,10 @@ MAX_PIPELINE_STEPS = 10
 _session_manager = None
 _memory_manager = None
 _memory_vector = None
-_rag_manager = None
-_personal_docs_manager = None
+# `B1545`: no `_rag_manager` / `_personal_docs_manager` here. `set_rag_manager`
+# stored the boot-time manager and nothing in this module (or any other) read
+# it; after `B1532` it was a stale second copy of `rag_singleton.rag_instance`,
+# which is where a reader asks.
 
 
 def set_session_manager(mgr):
@@ -64,12 +66,6 @@ def set_memory_manager(mgr, vector=None):
     global _memory_manager, _memory_vector
     _memory_manager = mgr
     _memory_vector = vector
-
-
-def set_rag_manager(rag_mgr, personal_docs_mgr=None):
-    global _rag_manager, _personal_docs_manager
-    _rag_manager = rag_mgr
-    _personal_docs_manager = personal_docs_mgr
 
 
 # ---------------------------------------------------------------------------
@@ -840,7 +836,6 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
             try:
                 from src.database import SessionLocal, ModelEndpoint
                 from src.auth_helpers import owner_filter
-                import httpx as _req
                 _idb = SessionLocal()
                 try:
                     _img_q = _idb.query(ModelEndpoint).filter(
@@ -855,7 +850,13 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
                         if not _ibase.endswith("/v1"):
                             _ibase += "/v1"
                         try:
-                            _r = _req.get(_ibase + "/models", timeout=3)
+                            # `B1022`: this was `httpx.get` under the alias
+                            # `_req`, which hid it from `check-outbound.py`.
+                            # Routed and paced like the other model probes
+                            # (an image server on the LAN costs nothing), and
+                            # awaited; no redirect followed, as before.
+                            _r = await paced_http.get(_ibase + "/models", timeout=3,
+                                                      follow_redirects=False)
                             _r.raise_for_status()
                             _data = _r.json()
                             _ditems = _data if isinstance(_data, list) else (_data.get("data") or [])
@@ -1002,7 +1003,12 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
                 if not ok:
                     return {"error": f"Image API returned unsafe image URL: {reason}"}
                 try:
-                    dl_resp = httpx.get(result_url, timeout=60)
+                    # `B1022`: routed (a `NO_PROXY` range is honoured — an
+                    # image server on the LAN hands back LAN URLs) and paced,
+                    # and awaited rather than blocking the loop for up to a
+                    # minute. The URL check above is unchanged; no redirect is
+                    # followed, as `httpx.get` followed none.
+                    dl_resp = await paced_http.get(result_url, timeout=60, follow_redirects=False)
                     if dl_resp.status_code == 200:
                         img_dir = Path(GENERATED_IMAGES_DIR)
                         img_dir.mkdir(parents=True, exist_ok=True)
@@ -1284,7 +1290,9 @@ async def do_edit_image(
                 )
                 if not ok:
                     return {"error": f"Image edit API returned unsafe image URL: {reason}"}
-                dl_resp = httpx.get(result_url, timeout=60)
+                # `B1022`: as `do_generate_image`'s download — routed, paced,
+                # awaited, no redirect followed.
+                dl_resp = await paced_http.get(result_url, timeout=60, follow_redirects=False)
                 if dl_resp.status_code != 200:
                     return {"error": f"Could not download edited image ({dl_resp.status_code})"}
                 image_url, image_id = _save_image_bytes(dl_resp.content)

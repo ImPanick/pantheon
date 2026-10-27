@@ -3580,13 +3580,22 @@ def setup_cookbook_routes() -> APIRouter:
             "https://huggingface.co/api/models"
             f"?sort=trendingScore&direction=-1&limit={pool_size}&filter={pipeline}"
         )
+        from src.rate_limiter import OutboundRateLimited, throttle_sync
         try:
             # `P15-06` — huggingface.co carries a HostPolicy for a reason.
             from src import paced_http
             resp = await paced_http.get(url, timeout=15)
+            if resp.status_code == 429:
+                # `B492`: the limiter heard it; the Forge says when it clears.
+                return {"models": [], "error": "HF API HTTP 429",
+                        "sync": throttle_sync("huggingface.co")}
             if resp.status_code != 200:
                 return {"models": [], "error": f"HF API HTTP {resp.status_code}"}
             raw = resp.json()
+        except OutboundRateLimited as e:
+            # `B492`. Held before anything was sent: a pause with a time, which
+            # the Forge draws with `runStatus.syncNotice`, not a red failure.
+            return {"models": [], "error": str(e), "sync": throttle_sync(e.host, e.retry_after)}
         except Exception as e:
             return {"models": [], "error": str(e)}
 

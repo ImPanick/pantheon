@@ -151,7 +151,7 @@ Routes can be grouped into logical feature domains. Current flat structure obscu
 |--------|-------------|-------------|-------------------|
 | **Email** | `email_routes.py`, `email_helpers.py`, `email_pollers.py` | 5,936 | HIGH — most complex domain |
 | **Chat / Agent** | `chat_routes.py`, `chat_helpers.py`, `shell_routes.py`, `codex_routes.py`, `skills_routes.py` | 6,365 | HIGH — core interaction surface |
-| **Cookbook** | `cookbook_routes.py`, `cookbook_helpers.py`, `cookbook_output.py` | 4,110 | MEDIUM |
+| **Forge** (`cookbook_*`) | `cookbook_routes.py`, `cookbook_helpers.py`, `cookbook_output.py` | 4,110 | MEDIUM |
 | **Model / LLM** | `model_routes.py`, `assistant_routes.py`, `copilot_routes.py` | 2,764 | MEDIUM |
 | **Calendar / Contacts** | `calendar_routes.py`, `contacts_routes.py` | 2,336 | MEDIUM |
 | **Documents** | `document_routes.py`, `document_helpers.py` | 1,954 | LOW |
@@ -187,7 +187,7 @@ The 33 `do_*` functions in `tool_implementations.py` fall into natural domain gr
 | Category | `do_*` functions | Count |
 |----------|------------------|-------|
 | **System / config** | `do_manage_skills`, `do_manage_tasks`, `do_manage_endpoints`, `do_manage_mcp`, `do_manage_webhooks`, `do_manage_tokens`, `do_manage_settings`, `do_api_call`, `do_app_api` | 9 |
-| **Cookbook / model serving** | `do_download_model`, `do_serve_model`, `do_list_served_models`, `do_stop_served_model`, `do_tail_serve_output`, `do_list_downloads`, `do_cancel_download`, `do_search_hf_models`, `do_adopt_served_model`, `do_list_cookbook_servers`, `do_list_serve_presets`, `do_serve_preset`, `do_list_cached_models` | 13 |
+| **Forge / model serving** | `do_download_model`, `do_serve_model`, `do_list_served_models`, `do_stop_served_model`, `do_tail_serve_output`, `do_list_downloads`, `do_cancel_download`, `do_search_hf_models`, `do_adopt_served_model`, `do_list_cookbook_servers`, `do_list_serve_presets`, `do_serve_preset`, `do_list_cached_models` | 13 |
 | **Notes** | `do_manage_notes` | 1 |
 | **Calendar** | `do_manage_calendar` | 1 |
 | **Search** | `do_search_chats` | 1 |

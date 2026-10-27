@@ -69,7 +69,9 @@ def _capture_openai_payload(
             json={"choices": [{"message": {"content": "OK"}}]},
         )
 
-    monkeypatch.setattr(llm_core.httpx, "post", fake_post)
+    # `B1022`: the non-streamed model call is `llm_core._post_routed` (routed
+    # by a `NO_PROXY` range) rather than `httpx.post`, so the fake stands there.
+    monkeypatch.setattr(llm_core, "_post_routed", fake_post)
     result = llm_core.llm_call(
         url,
         model,

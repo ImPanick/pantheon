@@ -129,6 +129,7 @@ class RateLimiter:
 #     as `P15-09` rather than papered over here.
 
 import email.utils
+import math
 import random
 from dataclasses import dataclass, field
 from typing import Optional, Tuple
@@ -798,6 +799,25 @@ class OutboundHostLimiter:
 # each stay under the limit and jointly blow through it — which is exactly how
 # the importer and the cookbook's GitHub calls could collide today.
 outbound = OutboundHostLimiter()
+
+
+def throttle_sync(host: str = "", retry_after: Optional[float] = None) -> dict:
+    """`B492`. What a route answers when the limiter is holding the host its
+    feature calls: ``{"source": "throttled", "retry_in": seconds}`` — the shape
+    the mailbox's 60-second poll has answered with since `P15-12`, and the one
+    `static/js/runStatus.js` (`syncNotice` / `throttleNotice`) turns into the
+    sentence a person reads. ``retry_after`` is the refusal's own wait when
+    there was one (`OutboundRateLimited.retry_after`); otherwise the limiter
+    is asked how long ``host`` stays held. ``retry_in`` is ``None`` when nobody
+    knows — the client says so rather than inventing a countdown."""
+    wait = retry_after
+    if wait is None and host:
+        wait = outbound.blocked_for(host)
+    try:
+        wait = float(wait) if wait is not None else 0.0
+    except (TypeError, ValueError):
+        wait = 0.0
+    return {"source": "throttled", "retry_in": int(math.ceil(wait)) if wait > 0 else None}
 
 
 def host_of(url: str) -> str:

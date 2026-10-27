@@ -28,6 +28,10 @@ KIMI_CHAT_URL = "https://api.kimi.com/coding/v1/chat/completions"
 DENIED = '{"error":{"message":"only available for Coding Agents","type":"access_terminated_error"}}'
 
 
+# `B1022`: the model probes and lookups go through `paced_http` now, so the
+# fakes stand in at that seam (`paced_http.get_sync` / `post_sync`) rather
+# than at `httpx.get` / `httpx.post`, which those calls no longer use.
+
 class _Resp:
     def __init__(self, status, text="{}"):
         self.status_code = status
@@ -76,7 +80,9 @@ def test_one_request_with_its_own_name_and_a_refusal_said_in_words(monkeypatch):
         calls.append(headers.get("User-Agent"))
         return _Resp(403, DENIED)
 
-    monkeypatch.setattr(llm_core.httpx, "post", fake_post)
+    # `B1022`: the non-streamed model call is `llm_core._post_routed` (routed
+    # by a `NO_PROXY` range) rather than `httpx.post`, so the fake stands there.
+    monkeypatch.setattr(llm_core, "_post_routed", fake_post)
     r = httpx_post_kimi_aware(KIMI_CHAT_URL, {"Authorization": "Bearer x"}, json={})
     assert calls == [PANTHEON_USER_AGENT], "sent once, never again under another name"
     assert r.status_code == 403
@@ -85,14 +91,16 @@ def test_one_request_with_its_own_name_and_a_refusal_said_in_words(monkeypatch):
 
 
 def test_an_accepted_answer_comes_back_as_it_was(monkeypatch):
-    monkeypatch.setattr(llm_core.httpx, "get", lambda url, headers=None, **k: _Resp(200, '{"data":[]}'))
+    monkeypatch.setattr("src.paced_http.get_sync", lambda url, headers=None, **k: _Resp(200, '{"data":[]}'))
     r = httpx_get_kimi_aware("https://api.kimi.com/coding/v1/models", {})
     assert r.status_code == 200 and r.text == '{"data":[]}'
 
 
 def test_other_endpoints_are_untouched(monkeypatch):
     seen = []
-    monkeypatch.setattr(llm_core.httpx, "post",
+    # `B1022`: the non-streamed model call is `llm_core._post_routed` (routed
+    # by a `NO_PROXY` range) rather than `httpx.post`, so the fake stands there.
+    monkeypatch.setattr(llm_core, "_post_routed",
                         lambda url, headers=None, **k: seen.append(dict(headers)) or _Resp(403, DENIED))
     r = httpx_post_kimi_aware("https://api.openai.com/v1/chat/completions", {"A": "b"}, json={})
     assert seen == [{"A": "b"}] and r.text == DENIED

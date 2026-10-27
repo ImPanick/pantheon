@@ -190,7 +190,7 @@ def check_deps():
 
     if os.name != "nt" and shutil.which("tmux") is None:
         print("\n  [warn] tmux not found")
-        print("         Cookbook uses tmux for background downloads and model serves.")
+        print("         The Forge uses tmux for background downloads and model serves.")
         print("         Install it with your OS package manager, for example:")
         if sys.platform == "darwin":
             print("           brew install tmux")

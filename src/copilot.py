@@ -24,6 +24,13 @@ from urllib.parse import urlparse
 
 import httpx
 
+# `B1022`: every call here goes through `paced_http` — routed (a `NO_PROXY`
+# range is honoured, `B982`) and paced (a provider cooling down is refused
+# before the call, and its 429 is heard). `httpx.get`/`httpx.post` built a
+# client inside and took no `mounts=`. Redirects are not followed, as they
+# were not.
+from src import paced_http
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -152,11 +159,12 @@ def request_device_code(host: str = GITHUB_HOST, *, timeout: float = 10.0) -> Di
     """Start the device flow. Returns GitHub's
     ``{device_code, user_code, verification_uri, expires_in, interval}``.
     """
-    r = httpx.post(
+    r = paced_http.post_sync(
         device_code_url(host),
         headers=_oauth_post_headers(),
         json={"client_id": COPILOT_CLIENT_ID, "scope": COPILOT_SCOPE},
         timeout=timeout,
+        follow_redirects=False,
     )
     r.raise_for_status()
     return r.json()
@@ -167,7 +175,7 @@ def poll_access_token(host: str, device_code: str, *, timeout: float = 10.0) -> 
     ``error`` field (``authorization_pending``/``slow_down``) while the user
     hasn't authorised yet, or ``{access_token, ...}`` once they have.
     """
-    r = httpx.post(
+    r = paced_http.post_sync(
         access_token_url(host),
         headers=_oauth_post_headers(),
         json={
@@ -176,6 +184,7 @@ def poll_access_token(host: str, device_code: str, *, timeout: float = 10.0) -> 
             "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
         },
         timeout=timeout,
+        follow_redirects=False,
     )
     r.raise_for_status()
     return r.json()
@@ -189,7 +198,8 @@ def fetch_models(base: str, token: str, *, timeout: float = 15.0) -> List[Dict]:
     against API-shape drift).
     """
     url = base.rstrip("/") + "/models"
-    r = httpx.get(url, headers=copilot_headers(token), timeout=timeout)
+    r = paced_http.get_sync(url, headers=copilot_headers(token), timeout=timeout,
+                            follow_redirects=False)
     r.raise_for_status()
     data = (r.json() or {}).get("data") or []
 

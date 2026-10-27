@@ -7,6 +7,17 @@ import json
 import pytest
 
 import src.agent_loop as agent_loop
+from tests.helpers.no_endpoint import no_endpoint_answers  # B1520
+
+
+@pytest.fixture(autouse=True)
+def _no_endpoint_answers(monkeypatch):
+    """`B1546`. These turns run against made-up endpoints
+    (`https://api.example/v1`, `qwen.example`, `backup.example`), and the
+    agent loop asks each one for its context window on the way in — ten
+    requests to the network that passed because they failed. The lookup now
+    fails the way it did, with no socket opened."""
+    no_endpoint_answers(monkeypatch)
 
 
 PAN_QWEN = "pantheon-qwen3-4b"

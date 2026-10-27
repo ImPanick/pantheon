@@ -150,6 +150,9 @@ export const uiModule = { showToast: (m) => toasts.push(m) };
 
 def _node(tmp_path: Path, script: str) -> dict:
     (tmp_path / "ragNotice.js").write_text((ROOT / "static/js/ragNotice.js").read_text())
+    # `B492`: `ragNotice.js` takes its throttle words from `runStatus.js`
+    # (which imports nothing), so it is copied beside it.
+    (tmp_path / "runStatus.js").write_text((ROOT / "static/js/runStatus.js").read_text())
     (tmp_path / "dom.mjs").write_text(_FAKE_DOM)
     (tmp_path / "case.mjs").write_text(textwrap.dedent(script))
     done = subprocess.run(["node", str(tmp_path / "case.mjs")], cwd=tmp_path,

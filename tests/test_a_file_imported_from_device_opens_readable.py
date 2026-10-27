@@ -90,6 +90,7 @@ _LIBRARY = "\n".join([
     js_binding(DOCLIB, "SERVER_EXTRACTED_EXTS"),
     js_binding(DOCLIB, "CONVERTED_TO"),
     _whole(DOCLIB, "async function readFileContent("),
+    _whole(DOCLIB, "function workbookSheetsCsv("),   # `B1549`: both readers' sheet text
     _whole(DOCLIB, "async function importFileAsDocuments("),
     _whole(DOCLIB, "async function libraryImportFiles("),
 ])

@@ -7,7 +7,6 @@ import json
 import time
 import ipaddress
 import logging
-import httpx
 from urllib.parse import urlparse
 from fastapi import HTTPException
 from typing import List, Optional
@@ -160,7 +159,11 @@ def _probe_lmstudio_models(url: str) -> Optional[list]:
     authority = host if parsed.port is None else f"{host}:{parsed.port}"
     probe_url = f"{parsed.scheme or 'http'}://{authority}/api/v1/models"
     try:
-        r = httpx.get(probe_url, timeout=1.0, headers=_probe_auth_headers(url) or None)
+        # `B1022`: routed and paced like the other probes; a redirect is not
+        # followed, as `httpx.get` did not.
+        from src import paced_http
+        r = paced_http.get_sync(probe_url, timeout=1.0, headers=_probe_auth_headers(url) or None,
+                                follow_redirects=False)
     except Exception:
         return None
     try:

@@ -48,7 +48,17 @@ class ParseError(SearchEngineError):
 
 
 class RateLimitError(SearchEngineError):
-    """Raised when the remote service returns a rate-limit (HTTP 429)."""
+    """Raised when the remote service returns a rate-limit (HTTP 429), or the
+    limiter is holding its host.
+
+    `B492`: it says which host and, when known, for how long (`retry_in`,
+    seconds), so a route can tell the person when search comes back
+    (`src.rate_limiter.throttle_sync`) instead of returning no results."""
+
+    def __init__(self, message: str = "", *, host: str = "", retry_in=None):
+        super().__init__(message)
+        self.host = host
+        self.retry_in = retry_in
 
 
 # ----------------------------------------------------------------------

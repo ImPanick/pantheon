@@ -23,6 +23,7 @@ from src.upload_limits import (
     resolve_byte_limit,
 )
 from src.constants import GENERATED_IMAGES_DIR
+from src.image_model_ids import SD_FORGE_LABEL   # `B471`
 from src.optional_deps import patch_realesrgan_torchvision_compat
 
 from routes.gallery.gallery_helpers import (
@@ -1520,16 +1521,15 @@ def setup_gallery_routes() -> APIRouter:
         # user to spin up a real diffusion endpoint instead.
         if _is_openai_api_base(base):
             raise HTTPException(400,
-                "Harmonize needs a diffusion server that supports img2img "
                 # "Forge" twice in one sentence and meaning two different
                 # things: Stable Diffusion WebUI Forge is a third-party image
-                # backend this product already detects by name
-                # (`src/tools/cookbook.py`'s `Forge WebUI` entry), and it is
-                # now also the name of the subsystem that serves it (`B471`).
-                # Spelled out here because the sentence is what a user reads
-                # when their image generation has just refused.
-                "(SD WebUI / SD-Forge / Comfy). OpenAI's API doesn't expose "
-                "one. Serve a diffusion model in Forge → Launch.")
+                # backend this product detects by name, and it is also the
+                # name of the subsystem that serves it (`B471`). The backend's
+                # name comes from one place, `SD_FORGE_LABEL`, which the
+                # process detector's table uses too.
+                f"Harmonize needs a diffusion server that supports img2img "
+                f"(A1111 WebUI / {SD_FORGE_LABEL} / ComfyUI). OpenAI's API doesn't "
+                f"expose one. Serve a diffusion model in Forge → Launch.")
 
         # Try img2img-shaped routes in order. Most self-hosted servers
         # expose at least one of these. Whatever returns 200 wins.
