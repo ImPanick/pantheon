@@ -3332,8 +3332,10 @@ async function initReminderSettings() {
     const res = await fetch('/api/auth/integrations', { credentials: 'same-origin' });
     if (res.ok) {
       const data = await res.json();
+      // `P27-02`: the reminder channel is everyone's, so only a shared
+      // connection can carry it — one admin's own reaches only their notes.
       ntfyConfigured = (data.integrations || []).some(
-        i => (i.preset === 'ntfy' || (i.name || '').toLowerCase() === 'ntfy') && i.enabled !== false && i.base_url
+        i => (i.preset === 'ntfy' || (i.name || '').toLowerCase() === 'ntfy') && i.enabled !== false && i.base_url && i.shared !== false
       );
     }
   } catch (_) {}
@@ -3359,7 +3361,7 @@ async function initReminderSettings() {
     const res = await fetch('/api/auth/integrations', { credentials: 'same-origin' });
     if (res.ok) {
       const data = await res.json();
-      allIntegrations = (data.integrations || []).filter(i => i.base_url && i.enabled !== false);
+      allIntegrations = (data.integrations || []).filter(i => i.base_url && i.enabled !== false && i.shared !== false);
       webhookConfigured = allIntegrations.length > 0;
     }
   } catch (_) {}
@@ -3430,9 +3432,9 @@ async function initReminderSettings() {
       if (res.ok) {
         const data = await res.json();
         ntfyConfigured = (data.integrations || []).some(
-          i => (i.preset === 'ntfy' || (i.name || '').toLowerCase() === 'ntfy') && i.enabled !== false && i.base_url
+          i => (i.preset === 'ntfy' || (i.name || '').toLowerCase() === 'ntfy') && i.enabled !== false && i.base_url && i.shared !== false
         );
-        allIntegrations = (data.integrations || []).filter(i => i.base_url && i.enabled !== false);
+        allIntegrations = (data.integrations || []).filter(i => i.base_url && i.enabled !== false && i.shared !== false);
         webhookConfigured = allIntegrations.length > 0;
       }
     } catch (_) {}
@@ -4313,7 +4315,10 @@ async function initUnifiedIntegrations() {
     const items = [];
     // API integrations
     for (const intg of (apiRes.integrations || [])) {
-      items.push({ type: 'api', id: intg.id, name: intg.name || 'Unnamed', detail: intg.base_url || '', enabled: intg.enabled !== false, data: intg });
+      // `P27-02`: whose it is. Another admin's shared one is read-only here.
+      const whose = intg.mine ? (intg.shared ? ' · shared with everyone' : '')
+        : (intg.owner ? ` · shared by ${intg.owner}` : ' · shared');
+      items.push({ type: 'api', id: intg.id, name: intg.name || 'Unnamed', detail: (intg.base_url || '') + whose, enabled: intg.enabled !== false, data: intg, readOnly: intg.read_only === true });
     }
     // CalDAV — one card per account
     for (const acc of (calRes.accounts || [])) {
@@ -4416,9 +4421,9 @@ async function initUnifiedIntegrations() {
         <div style="font-size:11px;opacity:0.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(item.detail || '')}</div>
       </div>
       ${statusDot}
-      <button class="admin-btn-sm intg-del-btn" data-intg-id="${esc(item.id)}" data-intg-type="${esc(item.type)}" data-intg-name="${esc(item.name || '')}" title="Remove" style="background:none;border:none;padding:4px;cursor:pointer;color:var(--red);opacity:0.55;display:inline-flex;align-items:center;justify-content:center;">
+      ${item.readOnly ? '' : `<button class="admin-btn-sm intg-del-btn" data-intg-id="${esc(item.id)}" data-intg-type="${esc(item.type)}" data-intg-name="${esc(item.name || '')}" title="Remove" style="background:none;border:none;padding:4px;cursor:pointer;color:var(--red);opacity:0.55;display:inline-flex;align-items:center;justify-content:center;">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-      </button>
+      </button>`}
     </div>`;
   }
 
@@ -4665,6 +4670,8 @@ async function initUnifiedIntegrations() {
           <div class="settings-row"><label class="settings-label">Auth${_apiHint('How this service expects the credential to be sent. <b>Bearer</b> = sends "Authorization: Bearer YOUR_KEY" (most modern APIs, ntfy, OpenAI-style). <b>Header</b> = sends YOUR_KEY verbatim under a header name you choose (Miniflux uses X-Auth-Token). <b>Basic</b> = HTTP basic auth (user:pass). <b>None</b> = the API is open / no auth.')}</label><select id="uf-api-auth" class="settings-input"><option value="bearer">Bearer (most common)</option><option value="header">Header</option><option value="basic">Basic</option><option value="none">None</option></select></div>
           <div class="settings-row" id="uf-api-header-row"><label class="settings-label">Header${_apiHint('The HTTP header name the key goes under (Miniflux: X-Auth-Token; most others: Authorization). Only used when Auth = Header.')}</label><input id="uf-api-header" class="settings-input" placeholder="X-Auth-Token"></div>
           <div class="settings-row"><label class="settings-label">API Key${_apiHint('The secret token the service issued you (generated in its admin panel / settings). Used to prove your identity on each request. Required for any Auth mode except None.')}</label><input id="uf-api-key" class="settings-input" type="password" placeholder="Token/key"></div>
+          <div class="settings-row" id="uf-api-shared-row"><label class="settings-label" for="uf-api-shared">Shared</label><label style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;font-size:12px;"><input type="checkbox" id="uf-api-shared" aria-describedby="uf-api-shared-sub"><span id="uf-api-shared-sub">Everyone on this server may use it — their agents, reminders and briefs — and only you can change it. Off: yours alone.</span></label></div>
+          <div id="uf-api-readonly" class="admin-toggle-sub" role="note" hidden></div>
           <div class="settings-row" style="margin-top:10px;align-items:center;justify-content:flex-end;gap:6px;">
             <span id="uf-api-msg" style="font-size:11px;flex:1;margin-right:8px"></span>
             <button class="admin-btn-add" id="uf-api-test" style="display:inline-flex;align-items:center;gap:5px;background:transparent;color:var(--accent, var(--red));border-color:color-mix(in srgb, var(--accent, var(--red)) 45%, var(--border));">Test</button>
@@ -4718,6 +4725,7 @@ async function initUnifiedIntegrations() {
     })();
 
     const preset = el('uf-api-preset'), name = el('uf-api-name'), url = el('uf-api-url'), auth = el('uf-api-auth'), header = el('uf-api-header'), key = el('uf-api-key'), ntfyHint = el('uf-api-ntfy-hint');
+    const shared = el('uf-api-shared');
     let _editId = editId && editId !== 'new' ? editId : null;
     // Load existing
     if (_editId) {
@@ -4725,7 +4733,23 @@ async function initUnifiedIntegrations() {
         const r = await fetch('/api/auth/integrations', { credentials: 'same-origin' });
         const d = await r.json();
         const item = (d.integrations || []).find(i => i.id === _editId);
-        if (item) { name.value = item.name || ''; url.value = item.base_url || ''; auth.value = item.auth_type || 'none'; header.value = item.auth_header || ''; }
+        if (item) {
+          name.value = item.name || ''; url.value = item.base_url || ''; auth.value = item.auth_type || 'none'; header.value = item.auth_header || '';
+          if (shared) shared.checked = item.shared === true;
+          // `P27-02`. Another person's shared connection: theirs to change,
+          // so the form says whose and offers Test only.
+          if (item.read_only) {
+            [preset, name, url, auth, header, key, shared].forEach((f) => { if (f) f.disabled = true; });
+            const trig = el('uf-api-preset-trigger');
+            if (trig) trig.disabled = true;
+            const note = el('uf-api-readonly');
+            if (note) {
+              note.textContent = `Shared by ${item.owner || 'an admin'}: you and your agents may use it; only ${item.owner || 'they'} can change or remove it.`;
+              note.hidden = false;
+            }
+            el('uf-api-save').hidden = true;
+          }
+        }
       } catch (_) {}
     }
     // Native <select>: the option `value` is the preset key directly, so
@@ -4767,11 +4791,18 @@ async function initUnifiedIntegrations() {
       if (!urlValue) { el('uf-api-msg').textContent = 'Base URL required'; el('uf-api-msg').style.color = 'var(--red)'; return; }
       const body = { name: nameValue, base_url: urlValue, auth_type: auth.value, auth_header: header.value, preset: presetKey };
       if (key.value) body.api_key = key.value;
+      if (shared) body.shared = shared.checked === true;   // `P27-02`
       try {
         const u = _editId ? `/api/auth/integrations/${_editId}` : '/api/auth/integrations';
         const m = _editId ? 'PUT' : 'POST';
         const r = await fetch(u, { method: m, credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        if (!r.ok) throw new Error();
+        if (!r.ok) {
+          // `P27-02`: the server's sentence (whose it is), not "Failed".
+          const err = await r.json().catch(() => ({}));
+          el('uf-api-msg').textContent = (typeof err.detail === 'string' && err.detail) || 'Failed';
+          el('uf-api-msg').style.color = 'var(--red)';
+          return;
+        }
         const saved = await r.json().catch(() => null);
         // If this was a create, capture the new ID so Test works
         // immediately without needing a form reopen. The POST response

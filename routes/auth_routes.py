@@ -44,15 +44,17 @@ from src.settings import (
 )
 from src.tool_capabilities import TrustRung
 from src.integrations import (
-    load_integrations,
     add_integration,
     update_integration,
     delete_integration,
     get_integration,
-    mask_integration_secret,
+    integrations_for,
+    mask_for,
+    may_change,
     execute_api_call,
     INTEGRATION_PRESETS,
     migrate_from_settings,
+    migrate_to_accounts,
 )
 
 logger = logging.getLogger(__name__)
@@ -1320,15 +1322,31 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
 
     # Run migration on startup
     migrate_from_settings()
+    # `P27-02`. Once: today's entries become the admin's who made them, shared.
+    migrate_to_accounts()
+
+    def _changeable_integration(request: Request, integration_id: str) -> dict:
+        """`P27-02`. The integration this person may change: another
+        person's own is not found (404, never *forbidden* — its existence is
+        not theirs to learn), and a shared one somebody else owns is
+        read-only (403, with whose it is)."""
+        user = get_current_user(request)
+        item = get_integration(integration_id, user)
+        if not item:
+            raise HTTPException(404, "Integration not found")
+        if not may_change(item, user):
+            raise HTTPException(
+                403, f"“{item.get('name') or integration_id}” is {item.get('owner')}'s, shared "
+                     f"with everyone to use; only {item.get('owner')} can change or remove it.")
+        return item
 
     @router.get("/integrations")
     async def list_integrations_route(request: Request):
-        """List all integrations (admin only, keys masked)."""
+        """This admin's own integrations and the shared ones (`P27-02`),
+        keys masked; another person's own are not listed."""
         require_admin(request)
-        items = load_integrations()
-        # Mask API keys for frontend display
-        safe = [mask_integration_secret(item) for item in items]
-        return {"integrations": safe}
+        user = get_current_user(request)
+        return {"integrations": [mask_for(item, user) for item in integrations_for(user)]}
 
     @router.get("/integrations/presets")
     async def list_presets():
@@ -1337,26 +1355,34 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
 
     @router.post("/integrations")
     async def create_integration(request: Request):
-        """Create a new integration (admin only)."""
+        """Create a new integration (admin only) — this admin's own, shared
+        with everyone only when the body says `"shared": true` (`P27-02`)."""
         require_admin(request)
+        user = get_current_user(request)
         body = await request.json()
-        item = add_integration(body)
-        return {"ok": True, "integration": mask_integration_secret(item)}
+        if not isinstance(body, dict):
+            raise HTTPException(400, "An integration is an object.")
+        item = add_integration(body, owner=user)
+        return {"ok": True, "integration": mask_for(item, user)}
 
     @router.put("/integrations/{integration_id}")
     async def update_integration_route(integration_id: str, request: Request):
-        """Update an existing integration (admin only)."""
+        """Update an integration (admin only) — one's own (`P27-02`)."""
         require_admin(request)
+        _changeable_integration(request, integration_id)
         body = await request.json()
+        if not isinstance(body, dict):
+            raise HTTPException(400, "An integration is an object.")
         item = update_integration(integration_id, body)
         if not item:
             raise HTTPException(404, "Integration not found")
-        return {"ok": True, "integration": mask_integration_secret(item)}
+        return {"ok": True, "integration": mask_for(item, get_current_user(request))}
 
     @router.delete("/integrations/{integration_id}")
     async def delete_integration_route(integration_id: str, request: Request):
-        """Delete an integration (admin only)."""
+        """Delete an integration (admin only) — one's own (`P27-02`)."""
         require_admin(request)
+        _changeable_integration(request, integration_id)
         ok = delete_integration(integration_id)
         if not ok:
             raise HTTPException(404, "Integration not found")
@@ -1364,9 +1390,11 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
 
     @router.post("/integrations/{integration_id}/test")
     async def test_integration_route(integration_id: str, request: Request):
-        """Test connectivity to an integration (admin only)."""
+        """Test connectivity to an integration (admin only) — one's own or a
+        shared one (`P27-02`)."""
         require_admin(request)
-        integ = get_integration(integration_id)
+        _tester = get_current_user(request)
+        integ = get_integration(integration_id, _tester)
         if not integ:
             raise HTTPException(404, "Integration not found")
         preset = (integ.get("preset") or integ.get("name", "")).lower()
@@ -1467,7 +1495,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             "home assistant": "/api/",
         }
         path = health_paths.get(preset, "/")
-        result = await execute_api_call(integration_id, "GET", path)
+        result = await execute_api_call(integration_id, "GET", path, owner=_tester)
         if result.get("exit_code", 1) == 0:
             return {"ok": True, "message": "Connection successful"}
         return {"ok": False, "message": (result.get("error") or "Connection failed")[:300]}

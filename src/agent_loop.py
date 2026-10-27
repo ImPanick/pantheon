@@ -4918,7 +4918,8 @@ def _build_system_prompt(
     # The block is the person's own material: Pantheon writes the sentence
     # (*"You have access to the following API integrations via the api_call
     # tool"*) and the `id`, `name` and `description` come from the person's own
-    # `load_integrations()`. `D-2026-10-09-01` §1's principle — *the gate's
+    # integrations and the ones an admin shared (`integrations_for(owner)`,
+    # `P27-02` — both written by an admin, the only writer). `D-2026-10-09-01` §1's principle — *the gate's
     # subject is content that arrived from outside* — therefore applies, and
     # the ruling extends it here explicitly rather than by a lane's reading.
     #
@@ -4937,7 +4938,8 @@ def _build_system_prompt(
     if not suppress_local_context:
         try:
             from src.integrations import get_integrations_prompt
-            _integ_prompt = get_integrations_prompt()
+            # `P27-02`: this person's own integrations and the shared ones.
+            _integ_prompt = get_integrations_prompt(owner)
             if _integ_prompt:
                 _integ_message = own_context_message(
                     "integrations",
