@@ -183,6 +183,13 @@ export async function renderDesign(ctx) {
         ctx.say(r.data.new ? `Kept as version ${r.data.version}.` : `Nothing changed since version ${r.data.version}.`);
         await load();
       }));
+      // `P26-08`. The owner's: the design as work on the project, on a branch.
+      if (role() === 'owner') {
+        const b = _btn('design-btn', 'Build it', () => { state.building = !state.building; drawPanel(); },
+          'Hand this design to the project as a branch');
+        b.setAttribute('aria-pressed', String(!!state.building));
+        bar.appendChild(b);
+      }
     } else if (!live) {
       const what = state.showing.version ? `version ${state.showing.version}` : `variant ${state.showing.variant}`;
       bar.appendChild(_el('span', 'design-chip', `Showing ${what}`));
@@ -311,8 +318,107 @@ export async function renderDesign(ctx) {
       side.appendChild(panel);
     }
     if (state.tweaks && !state.showing.version && !state.showing.variant) side.appendChild(state.tweaks);
+    if (state.building && role() === 'owner') {
+      if (!state.buildBox) { state.buildBox = _el('div', 'design-build'); drawBuild(); }
+      side.appendChild(state.buildBox);
+    }
     if (state.collab) side.appendChild(state.collab);
     drawVersions(side);
+  }
+
+  // ── `P26-08`: Build it — a branch, its brief, a preview, and the person's yes ──
+  async function drawBuild() {
+    const box = state.buildBox;
+    box.textContent = '';
+    box.appendChild(_el('h3', 'design-section-title', 'Build it'));
+    const r = await ctx.call('GET', `/api/design/designs/${encodeURIComponent(ctx.slug)}/build${q()}`);
+    if (!r.ok) { box.appendChild(_el('p', 'design-section-sub', r.sentence)); return; }
+    const rec = r.data.build;
+    if (!rec || rec.status === 'closed' || rec.status === 'merged') {
+      if (rec && rec.status === 'merged') {
+        box.appendChild(_el('p', 'design-section-sub', `Merged into ${rec.base}${rec.merged_sha ? ` (${rec.merged_sha.slice(0, 8)})` : ''}. Build it again to start a new branch.`));
+        if (!rec.folder_removed) {
+          box.appendChild(_btn('design-btn', 'Remove the build folder', async () => {
+            const cl = await ctx.call('POST', `/api/design/designs/${encodeURIComponent(ctx.slug)}/build/close`, where());
+            if (!cl.ok) { ctx.say(cl.sentence, { error: true }); return; }
+            ctx.say(`The build folder is removed; ${rec.branch} stays.`);
+            drawBuild();
+          }));
+        }
+        if (ctx.backToProject && rec.project) box.appendChild(_btn('design-btn', 'Back to the project', () => ctx.backToProject(rec.project)));
+      }
+      box.appendChild(_el('p', 'design-section-sub', 'A branch of its own, design/' + ctx.slug + ', in a folder beside the project, with a brief the agent follows. Nothing reaches your branch until you say yes.'));
+      const base = document.createElement('input');
+      base.type = 'text';
+      base.placeholder = 'The project’s current branch';
+      base.setAttribute('aria-label', 'Build from the branch');
+      const acc = document.createElement('textarea');
+      acc.rows = 3;
+      acc.placeholder = 'What must be true when it is done — a line each';
+      acc.setAttribute('aria-label', 'Acceptance');
+      const lab = (t, el) => { const l = _el('label', 'design-field'); l.appendChild(_el('span', '', t)); l.appendChild(el); return l; };
+      box.appendChild(lab('From the branch', base));
+      box.appendChild(lab('Acceptance', acc));
+      box.appendChild(_btn('design-btn design-btn-primary', 'Make the branch', async () => {
+        const made = await ctx.call('POST', `/api/design/designs/${encodeURIComponent(ctx.slug)}/build`, { ...where(), base: base.value.trim() || null, acceptance: acc.value });
+        if (!made.ok) { ctx.say(made.sentence, { error: true }); return; }
+        state.buildMessage = made.data.message;
+        ctx.say(`Made ${made.data.branch} from ${made.data.base} in ${made.data.worktree}, with its brief committed. Start the work when you are ready.`);
+        drawBuild();
+      }));
+      return;
+    }
+    const st = r.data;
+    box.appendChild(_el('p', 'design-section-sub', `${rec.branch} from ${rec.base}, in ${rec.worktree}.`));
+    if (ctx.startBuild) {
+      box.appendChild(_btn('design-btn', 'Start the work in the chat', () => ctx.startBuild(rec, state.buildMessage
+        || `Build the design on the branch ${rec.branch}, in ${rec.worktree}: follow design/${ctx.slug}/BUILD.md there. Commit with the git tool on ${rec.branch} only — never switch to ${rec.base} and never merge; merging is mine.`),
+        'Make the build folder the chat’s workspace and send the brief'));
+    }
+    if (st.base_moved) box.appendChild(_el('p', 'design-section-sub', `${rec.base} has moved since the branch was made; the merge may need the branch brought up to date.`));
+    if (st.uncommitted) box.appendChild(_el('p', 'design-section-sub', `${st.uncommitted} change${st.uncommitted === 1 ? '' : 's'} in the build folder not committed yet.`));
+    const commits = _el('ol', 'design-versions');
+    (st.commits || []).forEach((c) => commits.appendChild(_el('li', 'design-version', c)));
+    box.appendChild(_el('p', 'design-section-sub', `${(st.commits || []).length} commit${(st.commits || []).length === 1 ? '' : 's'} on the branch:`));
+    box.appendChild(commits);
+    if (st.changes) { const pre = _el('pre', 'design-selector', st.changes); box.appendChild(pre); }
+    // Preview: the branch running, in the agent browser.
+    const addr = document.createElement('input');
+    addr.type = 'text';
+    addr.placeholder = 'localhost:5173';
+    addr.value = rec.preview || '';
+    addr.setAttribute('aria-label', 'Where the branch runs');
+    const row = _el('div', 'design-share-form');
+    row.appendChild(addr);
+    row.appendChild(_btn('design-btn', 'Preview', async () => {
+      const a = addr.value.trim();
+      if (!a) { ctx.say('Say where the branch runs — the agent tells you the address when it starts it.', { error: true }); return; }
+      const p = await ctx.call('POST', `/api/design/designs/${encodeURIComponent(ctx.slug)}/build/preview`, { ...where(), address: a });
+      if (!p.ok) { ctx.say(p.sentence, { error: true }); return; }
+      if (ctx.openBrowser) ctx.openBrowser(a);
+    }, 'Open the branch in the browser'));
+    box.appendChild(row);
+    // The merge: a press, then a yes.
+    const confirm = _el('div', 'design-share-form');
+    confirm.hidden = true;
+    const n = (st.commits || []).length;
+    confirm.appendChild(_el('p', 'design-section-sub', `Put ${n} commit${n === 1 ? '' : 's'} from ${rec.branch} into ${rec.base}?`));
+    confirm.appendChild(_btn('design-btn design-btn-primary', `Yes, merge into ${rec.base}`, async () => {
+      const m = await ctx.call('POST', `/api/design/designs/${encodeURIComponent(ctx.slug)}/build/merge`, { ...where(), yes: true });
+      if (!m.ok) { ctx.say(m.sentence, { error: true }); confirm.hidden = true; return; }
+      ctx.say(`Merged into ${m.data.into}.`);
+      drawBuild();
+    }));
+    confirm.appendChild(_btn('design-btn', 'Not now', () => { confirm.hidden = true; }));
+    box.appendChild(_btn('design-btn design-btn-primary', `Merge into ${rec.base}…`, () => { confirm.hidden = false; }));
+    box.appendChild(confirm);
+    box.appendChild(_btn('design-btn', 'Close the build', async () => {
+      const cl = await ctx.call('POST', `/api/design/designs/${encodeURIComponent(ctx.slug)}/build/close`, where());
+      if (!cl.ok) { ctx.say(cl.sentence, { error: true }); return; }
+      ctx.say(`The build folder is removed; ${rec.branch} stays.`);
+      drawBuild();
+    }, 'Remove the build folder; the branch stays'));
+    if (ctx.backToProject && rec.project) box.appendChild(_btn('design-btn', 'Back to the project', () => ctx.backToProject(rec.project)));
   }
 
   async function drawTweaks() {

@@ -24,6 +24,15 @@
     POST   /api/design/designs/{slug}/adjust                {project, selector, props} — the canvas
     POST   /api/design/designs/{slug}/tweaks                {project} → sliders for this design
 
+`P26-08` · *Build it* (`src/design_build.py`), the owner's:
+
+    POST   /api/design/designs/{slug}/build                 {project, base?, acceptance?} → the branch
+                                                            design/<slug>, its folder, BUILD.md committed
+    GET    /api/design/designs/{slug}/build?project=        its commits, changes, whether the base moved
+    POST   /api/design/designs/{slug}/build/preview         {project, address} where the person previews it
+    POST   /api/design/designs/{slug}/build/merge           {project, yes: true} — a person's yes, or nothing
+    POST   /api/design/designs/{slug}/build/close           {project} remove the build folder (the branch stays)
+
 `P26-09` · collaborators (`src/design_access.py`, the one check):
 
     GET    /api/design/shared                               shared with me: designs and systems
@@ -305,6 +314,55 @@ def setup_design_routes() -> APIRouter:
             return await F.suggest_tweaks(acc.owner, acc.project, acc.ref or slug)
         return await _design(request, go, slug=slug)
 
+    # ── *Build it* (`P26-08`) — the owner's, and the merge a person's yes ────
+
+    @router.post("/designs/{slug}/build")
+    async def build(slug: str, request: Request):
+        """Make `design/<slug>` and its folder, and commit the brief there.
+        Nothing on the base branch moves."""
+        from src import design_build as B
+
+        async def go(F, acc, b):
+            facts = await F.describe(acc.owner, acc.project, acc.ref)
+            css, sys_name = _system_for_brief(acc.owner, facts.get("system"))
+            return await B.start(acc.owner, acc.project, acc.ref, base=b.get("base"), acceptance=b.get("acceptance"),
+                                 system_css=css, system_name=sys_name, notes=_notes_for_brief(acc))
+        return await _design(request, go, slug=slug, at_least="owner")
+
+    @router.get("/designs/{slug}/build")
+    async def build_status(slug: str, request: Request):
+        from src import design_build as B
+
+        async def go(F, acc, _b):
+            return await B.status(acc.owner, acc.project, acc.ref)
+        return await _design(request, go, slug=slug, at_least="owner")
+
+    @router.post("/designs/{slug}/build/preview")
+    async def build_preview(slug: str, request: Request):
+        from src import design_build as B
+
+        async def go(F, acc, b):
+            return await B.set_preview(acc.owner, acc.project, acc.ref, b.get("address"))
+        return await _design(request, go, slug=slug, at_least="owner")
+
+    @router.post("/designs/{slug}/build/merge")
+    async def build_merge(slug: str, request: Request):
+        """The person's yes, and only theirs: `_design` refuses a token or the
+        assistant before this runs, and `yes` must be a literal true."""
+        from src import design_build as B
+
+        async def go(F, acc, b):
+            return await B.merge(acc.owner, acc.project, acc.ref, yes=b.get("yes"))
+        return await _design(request, go, slug=slug, at_least="owner")
+
+    @router.post("/designs/{slug}/build/close")
+    async def build_close(slug: str, request: Request):
+        from src import design_build as B
+
+        async def go(F, acc, _b):
+            return await B.close(acc.owner, acc.project, acc.ref)
+        return await _design(request, go, slug=slug, at_least="owner")
+
     # ── collaborators (`P26-09`) ────────────────────────────────────────────
 
     @router.get("/shared")
@@ -437,6 +495,35 @@ def setup_design_routes() -> APIRouter:
         return {"present": A.seen(acc, get_current_user(request))}
 
     return router
+
+
+def _system_for_brief(user, system_id):
+    """`(css, name)` of the design's system, for `BUILD.md` (`P26-08`)."""
+    if not system_id:
+        return "", ""
+    from core.database import DesignSystem
+    from src import design_access as A
+    db = SessionLocal()
+    try:
+        try:
+            acc = A.system_access(db, user, system_id)
+        except A.AccessRefused:
+            return "", ""
+        row = db.query(DesignSystem).filter(DesignSystem.id == acc.ref).first()
+        name = row.name if row else ""
+    finally:
+        db.close()
+    return _tokens_css(user, system_id), name
+
+
+def _notes_for_brief(acc):
+    """Every note on the design, with its author (`P26-09`), for `BUILD.md`."""
+    from src import design_access as A
+    db = SessionLocal()
+    try:
+        return A.notes_for_brief(db, acc)
+    finally:
+        db.close()
 
 
 def _tokens_css(user, system_id) -> str:

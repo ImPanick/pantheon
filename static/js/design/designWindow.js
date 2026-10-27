@@ -569,6 +569,19 @@ function _render() {
       body: _win.body, slug: _view.slug, project: _view.share ? '' : _project(), systems: _systems,
       share: _view.share || null, me: _me,
       say: _say, call: _call, sendToChat: _sendToChat,
+      // `P26-08`. The build folder becomes the chat's workspace (the agent's
+      // file tools work inside it), the brief is sent, and the branch is
+      // previewed in the agent browser — the person's own, in their workstation.
+      startBuild: async (rec, message) => {
+        const set = await workspaceModule.vetAndSetWorkspace(rec.worktree);
+        if (!set.ok) { _say(`${rec.worktree} could not be made the workspace; open it from the workspace picker.`, { error: true }); return; }
+        if (_sendToChat(message)) _say(`The chat now works in ${rec.worktree}, on ${rec.branch}. Back to the project from the build panel when you are done.`);
+      },
+      openBrowser: (address) => import('../browserWindow.js').then((m) => m.openAgentBrowser({ url: address, focus: true })),
+      backToProject: async (project) => {
+        const set = await workspaceModule.vetAndSetWorkspace(project);
+        _say(set.ok ? `The chat works in ${project} again.` : `${project} could not be made the workspace.`, { error: !set.ok });
+      },
       back: () => { _say(''); _view = { kind: 'home' }; _refresh(); },
       onLeave: (f) => _leave.push(f),
     });

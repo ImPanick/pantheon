@@ -50790,7 +50790,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .design-variant-head strong { flex: 1 1 auto; }
 .design-variant .design-frame { height: 260px; }
 .design-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.design-props, .design-tweaks { border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.design-props, .design-tweaks, .design-build { border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .design-selector { font-family: var(--font-mono, monospace); overflow-wrap: anywhere; }
 .design-tweak span { display: flex; justify-content: space-between; gap: 6px; }
 .design-tweak-value { font-family: var(--font-mono, monospace); opacity: 0.8; }
