@@ -171,10 +171,12 @@ def test_a_recording_with_speech_to_text_off_is_said_not_heard_to_the_page(world
 
 
 def test_the_page_is_told_a_zip_was_not_read(world):
+    # `B1291`: a `.zip` is listed from its central directory now, not refused —
+    # the page and the model are both told it was listed and not extracted.
     events, sent = _turn(world, "chat", attach=("bundle.zip", b"PK\x05\x06" + b"\x00" * 18, "application/zip"))
-    assert "[Attached file: bundle.zip — contents not read." in sent
+    assert "[Archive attached: bundle.zip — 0 files, 0 bytes uncompressed. Listed from its directory, not extracted.]" in sent
     att = [e for e in events if e.get("type") == "attachments"][0]["data"][0]
-    assert att["reach_note"].startswith("Not read: there is no reader for .zip files")
+    assert att["reach_note"].startswith("Listed: the model was given the names and sizes of the files inside.")
 
 
 def test_a_reload_keeps_the_sentence(world):
@@ -186,4 +188,4 @@ def test_a_reload_keeps_the_sentence(world):
     rows = hist.get("history") if isinstance(hist, dict) else hist
     user = [m for m in rows if m.get("role") == "user"][-1]
     atts = (user.get("metadata") or {}).get("attachments") or []
-    assert atts and atts[0].get("reach_note", "").startswith("Not read:")
+    assert atts and atts[0].get("reach_note", "").startswith("Listed:")   # `B1291`

@@ -554,7 +554,8 @@ def test_each_card_says_what_the_model_did_not_get_live_and_after_a_reload(drive
     assert asked and "MARKBIGQ7" in _said(asked[0])
     for when in ("live", "reloaded"):
         notes = seen[when]["notes"]
-        assert any(n.startswith("Not read: there is no reader for .zip files") for n in notes), (when, notes)
+        # `B1291`: the zip is listed now, and its card says so.
+        assert any(n.startswith("Listed: the model was given the names and sizes") for n in notes), (when, notes)
         assert any(n.startswith("Too long to send whole:") for n in notes), (when, notes)
         assert seen[when]["brackets"] is False, (when, "the model's bracket is drawn in the bubble")
 

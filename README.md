@@ -283,12 +283,13 @@ the project already declares, three were stale test stubs hiding behind broad `e
 and three were rules pinned to upstream's shape rather than this fork's.
 
 Measured against the fork point `b4d1293`: **156 commits, 1,964 files changed, 175,966
-insertions — 537 files added, 1,387 modified and 7 removed.** That last number is this fork's
-first law as a measurement: *an elevation, not a rewrite — we add, never subtract.* All seven
+insertions — 537 files added, 1,387 modified and 16 removed.** That last number is this fork's
+first law as a measurement: *an elevation, not a rewrite — we add, never subtract.* All sixteen
 deletions are named and argued in the [ledger](LEDGER.md); the fifth was found by a failing
 test nobody had looked at, and turned out to be upstream's logo wearing our filename, and the
 sixth and seventh were upstream's pictures under our filenames too, gone the day Pantheon got
-[a mark of its own](docs/brand/README.md).
+[a mark of its own](docs/brand/README.md). The last nine were upstream's eight recordings of its own
+interface and their encoder, which nothing showed (`B1167`).
 
 ## What's next
 

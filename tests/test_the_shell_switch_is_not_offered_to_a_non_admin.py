@@ -181,8 +181,10 @@ def _auth_status_callback() -> str:
     one place the person's column of the table is handed its answer."""
     src = APP_JS.read_text(encoding="utf-8")
     code = js_code(src)
-    at = src.index("fetch(`${API_BASE}/api/auth/status`")
-    assert code[at:at + 6] == "fetch(", "the anchor is in a comment or a string"
+    # `B1228`: the status is read through `appConfig.getAuthStatus`, the one
+    # request `init.js` shares, not a `fetch` of its own.
+    at = src.index("getAuthStatus()\n")
+    assert code[at:at + 14] == "getAuthStatus(", "the anchor is in a comment or a string"
     then = code.index(".then(d => {", at)
     brace = then + len(".then(d => ")
     return js_function("function _cb(d) " + src[brace:], "function _cb")
@@ -194,8 +196,14 @@ def test_the_composer_hides_the_switch_on_that_answer_and_nothing_else():
     the privilege is not consulted there (`Law 20`, option 2 — scoped first)."""
     body = js_code(_auth_status_callback())
     assert "window._isAdmin" in body, "cut the wrong callback"
-    assert re.search(r"applyToolVisibility\(\s*\{[^}]*shell:\s*d\.shell", body, re.S)
-    assert not re.search(r"\.can_use_bash\b", body)
+    # `B1543`: the status goes to the applier through `statusVisibility(d)`,
+    # whose `shell` is the server's answer and nothing else.
+    assert re.search(r"applyToolVisibility\(\s*statusVisibility\(\s*d\s*\)\s*\)", body)
+    vis = js_code(UI_VIS_JS.read_text(encoding="utf-8"))
+    helper = vis[vis.index("export function statusVisibility"):]
+    helper = helper[:helper.index("\n}\n")]
+    assert re.search(r"shell:\s*s\.shell\b", helper), helper
+    assert not re.search(r"\.can_use_bash\b", body) and not re.search(r"\.can_use_bash\b", helper)
 
 
 # ── Settings → Users ────────────────────────────────────────────────────────

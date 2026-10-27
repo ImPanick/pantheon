@@ -209,10 +209,10 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="add-never-subtract",
         area="Scale of the fork",
-        headline="537 files added. Seven removed, and all seven are argued.",
+        headline="537 files added. Sixteen removed, and all sixteen are argued.",
         stock="Upstream's file set at the fork point.",
         pantheon=(
-            "Everything upstream shipped is still here, minus seven files, each deleted "
+            "Everything upstream shipped is still here, minus sixteen files, each deleted "
             "with a recorded argument: `ACKNOWLEDGMENTS.md` (superseded by `CREDITS.md`, "
             "105 -> 483 lines), `scripts/_completion/odysseus.zsh` (a rename), "
             "`docs/pantheon-wordmark.png` (upstream's mark, **renamed and never "
@@ -223,18 +223,21 @@ CLAIMS: Tuple[Claim, ...] = (
             "now copies `docs/brand/pantheon.icns`), "
             "`static/fonts/custom/GohuFont.ttf` (verified first: 1,468 bytes, 13 sfnt "
             "tables, **3 glyphs**, metadata reading *Untitled1 / Copyright (c) 2025, "
-            "Unknown*), and `static/js/calendar/reminders.js` (a dead poller)."
+            "Unknown*), `static/js/calendar/reminders.js` (a dead poller), and — on "
+            "2026-10-27, `B1167` — upstream's eight recordings of *its own* interface "
+            "(`docs/*.webm`, about 6.4 MB that nothing showed) with their encoder, "
+            "`scripts/encode_previews.sh`."
         ),
         before="—",
-        after="537 added · 1,387 modified · 7 removed",
+        after="537 added · 1,387 modified · 16 removed",
         provenance="diffed",
         repro=f"git diff --name-status {FORK_POINT}..HEAD | grep '^D'",
         evidence=("CREDITS.md", ".pantheon/DECISIONS.md"),
-        rows=("P0-19", "P0-23", "P3-10", "P0-13", "B71", "D-2026-08-27-01"),
+        rows=("P0-19", "P0-23", "P3-10", "P0-13", "B71", "B1167", "D-2026-08-27-01"),
         how=(
             "This is the fork's first law as a measurement — *an elevation, not a rip "
-            "and re-write; we add, never subtract*. A ratio of 537 to 7 is only "
-            "evidence if all seven are named, so they are. The font is the one worth "
+            "and re-write; we add, never subtract*. A ratio of 537 to 16 is only "
+            "evidence if all sixteen are named, so they are. The font is the one worth "
             "reading: it was checked before deletion rather than taken on trust, and "
             "it turned out to be three glyphs under a copyright notice crediting nobody. "
             "**The fifth was found by a failing test nobody had looked at**: the "
@@ -440,12 +443,12 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="tests",
         area="Verification apparatus",
-        headline="Test files 792 -> 1818, and a suite of 20,309 passing with nothing red.",
+        headline="Test files 792 -> 1839, and a suite of 20,309 passing with nothing red.",
         stock="792 test files.",
-        pantheon=("1818 test files, and 20,309 tests passing, 0 failing, 113 skipped, "
+        pantheon=("1839 test files, and 20,309 tests passing, 0 failing, 113 skipped, "
                   "0 xfailed when the suite was last run whole — 2026-10-18, at `c66fe54`."),
         before="792 test files",
-        after="1818 test files · 20,309",
+        after="1839 test files · 20,309",
         provenance="diffed",
         repro=f"git ls-tree -r --name-only {FORK_POINT} | grep -c '^tests/test_.*\\.py$' && python3 -m pytest -q",
         evidence=("tests",),

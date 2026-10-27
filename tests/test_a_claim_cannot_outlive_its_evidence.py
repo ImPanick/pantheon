@@ -441,13 +441,15 @@ def test_the_ledger_names_every_deleted_file(claims):
     figure and its prose all had to move together — the headline said five
     while the sentence under it still said four, which no checker catches
     because both are prose. The sixth and seventh arrived on 2026-10-02
-    (`B71`, `P0-13`: upstream's two pictures under Pantheon's filenames).
+    (`B71`, `P0-13`: upstream's two pictures under Pantheon's filenames). The
+    last nine arrived on 2026-10-27 (`B1167`: upstream's eight recordings of
+    its own interface, and their encoder).
     """
     by_id = {c.id: c for c in claims.CLAIMS}
     claim = by_id["add-never-subtract"]
     text = claim.pantheon
-    assert "minus seven files" in text, "the prose must agree with the headline"
-    assert "Seven removed" in claim.headline and "7 removed" in claim.after
+    assert "minus sixteen files" in text, "the prose must agree with the headline"
+    assert "Sixteen removed" in claim.headline and "16 removed" in claim.after
     for deleted in (
         "ACKNOWLEDGMENTS.md",
         "odysseus.zsh",
@@ -456,6 +458,8 @@ def test_the_ledger_names_every_deleted_file(claims):
         "pantheon-wordmark.png",
         "pantheon.jpg",
         "pantheon-browser.jpg",
+        "docs/*.webm",
+        "encode_previews.sh",
     ):
         assert deleted in text, f"{deleted} is deleted in the tree and unnamed in the ledger"
 

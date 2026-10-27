@@ -32,14 +32,14 @@ are the numbers most likely to be quoted and least able to carry the weight.
 | Measure | Odysseus | Pantheon | Provenance |
 | --- | --- | --- | --- |
 | 156 commits and 175,966 inserted lines past the fork point. | `0 commits` | **`156 commits, 1,964 files changed, 175,966 insertions, 6,625 deletions`** | `diffed` |
-| 537 files added. Seven removed, and all seven are argued. | `—` | **`537 added · 1,387 modified · 7 removed`** | `diffed` |
+| 537 files added. Sixteen removed, and all sixteen are argued. | `—` | **`537 added · 1,387 modified · 16 removed`** | `diffed` |
 | Twelve upstream commits are not merged, and five of them are real fixes. | `0 behind` | **`8 with no patch-equivalent here (5 docs/deps, 2 advisory merges and 1 fix landed by hand)`** | `measured` |
 | recall@5 on one corpus: 0.40 lexical, 0.77 hybrid, 1.00 semantic. | `recall@5 0.40` | **`recall@5 1.00`** | `fixture` |
 | MRR 0.319 -> 0.931. Rank matters because memory is injected under a slot limit. | `MRR 0.319` | **`MRR 0.931`** | `fixture` |
 | The first scored run found three defects, which is what it was built for. | `0 measured` | **`3 defects on the first run`** | `measured` |
 | Ten thousand memories, under a millisecond a query, no service running. | `a service, or nothing` | **`0.82ms at 10,000 memories (15MB of index)`** | `measured` |
 | Twenty-nine checkers in CI, each one built from a defect that actually shipped. | `0` | **`29`** | `counted` |
-| Test files 792 -> 1818, and a suite of 20,309 passing with nothing red. | `792 test files` | **`1818 test files · 20,309`** | `diffed` |
+| Test files 792 -> 1839, and a suite of 20,309 passing with nothing red. | `792 test files` | **`1839 test files · 20,309`** | `diffed` |
 | One tracker, checked by a script, after it was silently wrong by nineteen. | `untracked` | **`every phase row recounted against its own ticks`** | `measured` |
 | Agents can run commands on the host. 52 rules they cannot reach say what never runs. | `no host reach` | **`52 compiled-in rules · 0 bypasses`** | `counted` |
 | Five of the 52 rules aren't about danger. They keep the other 47 enforceable. | `—` | **`5 opaque · 47 nuclear`** | `counted` |
@@ -78,21 +78,21 @@ are the numbers most likely to be quoted and least able to carry the weight.
 git diff --shortstat b4d1293..HEAD && git rev-list --count b4d1293..HEAD
 ```
 
-### 537 files added. Seven removed, and all seven are argued.
+### 537 files added. Sixteen removed, and all sixteen are argued.
 
-**`—` → `537 added · 1,387 modified · 7 removed`**  ·  provenance **`diffed`**
+**`—` → `537 added · 1,387 modified · 16 removed`**  ·  provenance **`diffed`**
 
 **Odysseus:** Upstream's file set at the fork point.
 
-**Pantheon:** Everything upstream shipped is still here, minus seven files, each deleted with a recorded argument: `ACKNOWLEDGMENTS.md` (superseded by `CREDITS.md`, 105 -> 483 lines), `scripts/_completion/odysseus.zsh` (a rename), `docs/pantheon-wordmark.png` (upstream's mark, **renamed and never repainted** — the filename said Pantheon and the pixels said Odysseus; `P0-13` says in as many words not to reuse it), `docs/pantheon.jpg` and `docs/pantheon-browser.jpg` (upstream's UI with Odysseus in the sidebar, and the macOS app icon's source — `B71`; the build now copies `docs/brand/pantheon.icns`), `static/fonts/custom/GohuFont.ttf` (verified first: 1,468 bytes, 13 sfnt tables, **3 glyphs**, metadata reading *Untitled1 / Copyright (c) 2025, Unknown*), and `static/js/calendar/reminders.js` (a dead poller).
+**Pantheon:** Everything upstream shipped is still here, minus sixteen files, each deleted with a recorded argument: `ACKNOWLEDGMENTS.md` (superseded by `CREDITS.md`, 105 -> 483 lines), `scripts/_completion/odysseus.zsh` (a rename), `docs/pantheon-wordmark.png` (upstream's mark, **renamed and never repainted** — the filename said Pantheon and the pixels said Odysseus; `P0-13` says in as many words not to reuse it), `docs/pantheon.jpg` and `docs/pantheon-browser.jpg` (upstream's UI with Odysseus in the sidebar, and the macOS app icon's source — `B71`; the build now copies `docs/brand/pantheon.icns`), `static/fonts/custom/GohuFont.ttf` (verified first: 1,468 bytes, 13 sfnt tables, **3 glyphs**, metadata reading *Untitled1 / Copyright (c) 2025, Unknown*), `static/js/calendar/reminders.js` (a dead poller), and — on 2026-10-27, `B1167` — upstream's eight recordings of *its own* interface (`docs/*.webm`, about 6.4 MB that nothing showed) with their encoder, `scripts/encode_previews.sh`.
 
-**How we got there.** This is the fork's first law as a measurement — *an elevation, not a rip and re-write; we add, never subtract*. A ratio of 537 to 7 is only evidence if all seven are named, so they are. The font is the one worth reading: it was checked before deletion rather than taken on trust, and it turned out to be three glyphs under a copyright notice crediting nobody. **The fifth was found by a failing test nobody had looked at**: the orphan-image guard had been red for the whole fork, saying a doc image was referenced by nothing — and the reason nothing referenced it was that it was upstream's logo wearing our filename. **The sixth and seventh went on 2026-10-02 (`4c2ef8e`, `P0-13`)**, the day Pantheon got a mark of its own: the two pictures were upstream's under our filenames too. That deletion count was re-measured where the fork point is not reachable — this clone begins at a snapshot import — as `git diff --name-status` from its first commit to `HEAD`, which deletes exactly those two pictures of upstream's (and one test file Pantheon itself added after the fork, not upstream's); the added and modified figures are the deployment box's reading of 2026-09-12 and have not been re-taken.
+**How we got there.** This is the fork's first law as a measurement — *an elevation, not a rip and re-write; we add, never subtract*. A ratio of 537 to 16 is only evidence if all sixteen are named, so they are. The font is the one worth reading: it was checked before deletion rather than taken on trust, and it turned out to be three glyphs under a copyright notice crediting nobody. **The fifth was found by a failing test nobody had looked at**: the orphan-image guard had been red for the whole fork, saying a doc image was referenced by nothing — and the reason nothing referenced it was that it was upstream's logo wearing our filename. **The sixth and seventh went on 2026-10-02 (`4c2ef8e`, `P0-13`)**, the day Pantheon got a mark of its own: the two pictures were upstream's under our filenames too. That deletion count was re-measured where the fork point is not reachable — this clone begins at a snapshot import — as `git diff --name-status` from its first commit to `HEAD`, which deletes exactly those two pictures of upstream's (and one test file Pantheon itself added after the fork, not upstream's); the added and modified figures are the deployment box's reading of 2026-09-12 and have not been re-taken.
 
 ```
 git diff --name-status b4d1293..HEAD | grep '^D'
 ```
 
-Argued in: `P0-19`, `P0-23`, `P3-10`, `P0-13`, `B71`, `D-2026-08-27-01`.
+Argued in: `P0-19`, `P0-23`, `P3-10`, `P0-13`, `B71`, `B1167`, `D-2026-08-27-01`.
 
 ### Twelve upstream commits are not merged, and five of them are real fixes.
 
@@ -202,13 +202,13 @@ python3 .pantheon/release-gate.py --fast
 
 Argued in: `P1-10`, `P3-13`, `P3-14`, `P3-17`, `P3-23`, `P10-04`, `P11-02b`, `B74`, `B111`, `B161`, `B320`, `B330`, `D-2026-09-08-01`, `D-2026-09-10-03`.
 
-### Test files 792 -> 1818, and a suite of 20,309 passing with nothing red.
+### Test files 792 -> 1839, and a suite of 20,309 passing with nothing red.
 
-**`792 test files` → `1818 test files · 20,309`**  ·  provenance **`diffed`**
+**`792 test files` → `1839 test files · 20,309`**  ·  provenance **`diffed`**
 
 **Odysseus:** 792 test files.
 
-**Pantheon:** 1818 test files, and 20,309 tests passing, 0 failing, 113 skipped, 0 xfailed when the suite was last run whole — 2026-10-18, at `c66fe54`.
+**Pantheon:** 1839 test files, and 20,309 tests passing, 0 failing, 113 skipped, 0 xfailed when the suite was last run whole — 2026-10-18, at `c66fe54`.
 
 **How we got there.** Every row in this fork's tracker lands with tests **and** mutations: the change is made, then the code is deliberately broken in a dozen ways to check the new tests actually notice. Mutation runs have repeatedly found that a passing test was proving nothing — a window that matched the next block's code, a scan satisfied by a name inside `if False:`. **Proximity is not reachability**, and only a mutation run says so. **Re-measured 2026-10-17 and both figures were badly stale**: the claim said *1,182 test files and 14,154 passing*, last set when that was true, while the tree held **1,541** and the suite answered **20,092 passing, 113 skipped, 2 xfailed, nothing red** in 1h16m. 353 of those files had landed without the headline moving — `B44`'s defect one level up, in the one line whose whole job is to summarise the rest. The file count is a `git ls-files` away, so `check-ledger.py` now derives it and fails on drift. The passing count cannot be checked without running the suite (1h16m), so it is a **dated** measurement that names the commit it was taken at, and the checker holds it to carrying both. That is a weaker claim than the file count and deliberately so: adding one test file is a one-line edit and does not pretend to re-measure 20,092 tests, while a figure five waves old is visibly five waves old instead of silently wrong — which is the whole defect this row is about. **The suite carried 14 standing failures for the fork's whole life and now carries none** — and the accounting is worth more than the number: eight were this container missing dependencies the project already declares, so they were never defects; three were test stubs left behind by a `headers=` argument, each raising `TypeError` into a broad `except` so the probe returned `None` and the assertion read as a logic bug; one was a rule written as an allowlist of one name instead of the property it meant; and two were pinning upstream's README and wordmark against a decision this fork had already recorded.
 
