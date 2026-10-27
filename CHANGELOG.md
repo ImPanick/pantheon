@@ -221,6 +221,15 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **Muted text is darker on light palettes and lighter on dark ones,** so it clears 4.5:1 on all of
+  them; links, model names in a chat, and the danger colour were moved for the same reason
+  (`B1486`, `B391`, `B395`, `B1084`, `B393`). Sidebar labels are 11px (`B784`).
+- **Every outbound HTTP call the server makes from module level goes through the path that reads
+  `NO_PROXY` ranges** — model discovery, the OAuth flows, image downloads (`B1022`); a held search
+  says when it comes back (`B492`).
+- **A fork is named `Fork: <name>`** and drawn with one mark (`B1530`); `RESEARCH_LLM_ENDPOINT`,
+  which nothing read, is no longer passed to the app (`H21`).
+
 - **A document records where it came from** — written here, imported, or derived — and only
   a document written here is given to the agent as the person's own words (`B1325`); documents
   older than the column are treated as untrusted.
@@ -363,6 +372,13 @@ the next one is cut.
   arming that a non-empty memory store did on its own.
 
 ### Fixed
+
+- **The one focus ring shows on every palette** — 92 outline suppressions that could hide it are
+  gone (`B662`); Settings, the model picker and the workflow view fit a phone (`B1255`, `B1347`,
+  `B1222`); the developer sandboxes hold still under Reduce Motion (`B663`).
+- **A running SD WebUI Forge is reported as itself,** not as A1111 (`B471`); the document index no
+  longer lists its own state files (`B1547`); an `.ods` repeated cell fills every column it covers
+  (`B1549`).
 
 - **Windows minimised to the dock come back after a reload** (`B1185`), every tour passes a step
   with nothing on screen (`B1537`), a page asks each boot read once (`B1228`), and a
