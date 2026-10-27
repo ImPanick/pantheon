@@ -2029,7 +2029,15 @@ function _renderNotes() {
     _renderLabelsInto(body);
     _renderQuickAdd(body);
     if (sorted.length === 0) {
-      body.insertAdjacentHTML('beforeend', `<div class="notes-empty">All caught up — no pending goal steps right now.</div>`);
+      // `B730`: the Today view's one state, in the shared shape, with the
+      // way back to the rest of the notes.
+      const host = document.createElement('div');
+      body.appendChild(host);
+      uiModule.renderEmptyState(host, {
+        kind: 'empty', className: 'notes-empty-msg', title: 'All caught up',
+        message: 'No pending goal steps right now.',
+        action: { label: 'Show all notes', onClick: () => { _activeFilter = null; _renderNotes(); } },
+      });
     } else {
       let todayHtml = `<div class="notes-today-wrap">
         <div class="notes-today-header">

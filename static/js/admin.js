@@ -656,20 +656,40 @@ async function loadEndpoints() {
       }
     }, 0);
   };
+  // `B730`. One state at a time, in the Local section; the API section has
+  // nothing of its own to say about an empty or failed list.
+  const _soleState = (spec) => {
+    const apiSection = listApi && listApi.closest('.adm-ep-section');
+    if (apiSection) apiSection.style.display = 'none';
+    if (listApi) listApi.innerHTML = '';
+    const localSection = listLocal && listLocal.closest('.adm-ep-section');
+    if (localSection) localSection.style.display = '';
+    if (listLocal) spec(listLocal);
+  };
   try {
     const res = await fetch('/api/model-endpoints', { credentials: 'same-origin' });
-    // Treat a non-OK response (e.g. 401/403 for non-admins, or backend
-    // returning an error envelope) the same as "no endpoints yet": show the
-    // empty state, not "Failed to load". The user just installed the app —
-    // there's literally nothing to load, so the error read as broken UI.
-    let data = [];
-    if (res.ok) {
-      try { data = await res.json(); } catch { data = []; }
+    // `B730`. A failed answer is not an empty list. This used to draw "None"
+    // for any non-OK answer on the grounds that a non-admin was refused here;
+    // since `B683` the list answers anyone signed in, so a refusal or a 500 is
+    // news, and a fresh install answers 200 `[]` and still reads as empty.
+    if (!res.ok) {
+      const refused = res.status === 401 || res.status === 403
+        ? '' : (await readRefusal(res, `The server answered ${res.status}.`)).sentence;
+      _soleState((host) => _refusedState(host, res.status, refused, loadEndpoints));
+      return;
     }
-    if (!Array.isArray(data) || data.length === 0) {
-      const empty = '<div class="admin-empty">None</div>';
-      if (listLocal) listLocal.innerHTML = empty;
-      if (listApi) listApi.innerHTML = '<div class="admin-empty">None</div>';
+    let data = [];
+    try { data = await res.json(); } catch { data = null; }
+    if (!Array.isArray(data)) {
+      _soleState((host) => _refusedState(host, 0, 'Its answer could not be read.', loadEndpoints));
+      return;
+    }
+    if (data.length === 0) {
+      _soleState((host) => uiModule.renderEmptyState(host, {
+        kind: 'empty', className: 'admin-empty', title: 'No models added yet',
+        message: 'Add a model server on this machine or your network, or a provider\'s API key.',
+        action: { label: 'Add Models', onClick: () => settingsModule.open('services') },
+      }));
       refreshDependentModelUi();
       return;
     }
@@ -1000,8 +1020,8 @@ async function loadEndpoints() {
     });
     refreshDependentModelUi();
   } catch (e) {
-    const err = '<div class="admin-error">Failed to load</div>';
-    [listLocal, listApi].forEach(c => { if (c) c.innerHTML = err; });
+    // `B730`: the shared error shape, the reason, and a way to ask again.
+    _soleState((host) => _refusedState(host, 0, `The server did not answer: ${e.message}`, loadEndpoints));
   }
 }
 
@@ -2466,8 +2486,22 @@ async function loadWebhooks() {
   const list = el('adm-whList');
   try {
     const res = await fetch('/api/webhooks', { credentials: 'same-origin' });
+    // `B730`. A refusal or a 500 read its JSON body as a list and drew
+    // "No webhooks configured" over it.
+    if (!res.ok) {
+      const refused = res.status === 401 || res.status === 403
+        ? '' : (await readRefusal(res, `The server answered ${res.status}.`)).sentence;
+      _refusedState(list, res.status, refused, loadWebhooks);
+      return;
+    }
     const hooks = await res.json();
-    if (!hooks.length) { list.innerHTML = '<div class="admin-empty">No webhooks configured</div>'; return; }
+    if (!Array.isArray(hooks) || !hooks.length) {
+      uiModule.renderEmptyState(list, {
+        kind: 'empty', className: 'admin-empty', title: 'No webhooks yet',
+        message: 'Add one below: a URL on a machine you choose, and the events to send it.',
+      });
+      return;
+    }
     list.innerHTML = hooks.map(w => {
       const events = (w.events || []).map(e => `<span class="admin-badge">${esc(e)}</span>`).join(' ');
       const statusBadge = w.last_status_code
@@ -3210,10 +3244,17 @@ async function loadUsage() {
   try {
     const res = await fetch(`/api/diagnostics/usage?days=${encodeURIComponent(days)}`,
                             { credentials: 'same-origin' });
-    if (!res.ok) { body.textContent = `Could not load usage (HTTP ${res.status}).`; return; }
+    // `B730`: the third state in the shape the other two are drawn in, with
+    // the server's words and a way to ask again.
+    if (!res.ok) {
+      const refused = res.status === 401 || res.status === 403
+        ? '' : (await readRefusal(res, `The server answered ${res.status}.`)).sentence;
+      _refusedState(body, res.status, refused, loadUsage);
+      return;
+    }
     data = await res.json();
   } catch (_e) {
-    body.textContent = 'Could not reach this Pantheon.';
+    _refusedState(body, 0, 'Could not reach this Pantheon.', loadUsage);
     return;
   }
 
@@ -3225,11 +3266,11 @@ async function loadUsage() {
     // Not an error, and it should not look like one. A fresh install has no
     // history, and saying "nothing yet" beats an empty chart that reads as
     // broken.
-    const empty = document.createElement('p');
-    empty.className = 'usage-empty';
-    empty.textContent = 'No model rounds recorded in this window yet. '
-      + 'Usage is recorded from the first message after this build.';
-    body.appendChild(empty);
+    // `B730`: through the shared shape, as the other lists in this panel.
+    uiModule.renderEmptyState(body, {
+      kind: 'empty', className: 'usage-empty', title: 'No model rounds recorded in this window yet',
+      message: 'Usage is recorded from the first message after this build. A longer range may have some.',
+    });
     return;
   }
 

@@ -2057,7 +2057,10 @@ async function _renderCompletedView() {
   list?.appendChild(spinnerModule.createLoadingRow('Loading…'));
   try {
     const res = await fetch(`${API_BASE}/api/tasks/runs/recent?limit=${_completedLimit}&max_result_chars=10000`, { credentials: 'same-origin' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error((body && body.detail) || `The server answered ${res.status}.`);
+    }
     const data = await res.json();
     const finished = (data.runs || []).map(_runToActivityEntry).filter(_isChatResultRun);
     _completedHasMore = !!data.has_more && _completedLimit < 200;
@@ -2065,7 +2068,11 @@ async function _renderCompletedView() {
     _syncCompletedTabCount(finished.length);
     if (!list) return;
     if (finished.length === 0) {
-      list.innerHTML = '<div class="doclib-empty task-completed-empty">No finished assistant or research runs yet.</div>';
+      // `B730`: the shared empty state.
+      uiModule.renderEmptyState(list, {
+        kind: 'empty', title: 'No finished assistant or research runs yet',
+        message: 'A run the assistant or Deep Research finishes is kept here: what it made, its error, or why it stopped.',
+      });
       return;
     }
     list.innerHTML = finished.map(_renderCompletedPreviewEntry).join('');
@@ -2082,7 +2089,14 @@ async function _renderCompletedView() {
     }
     _wireCompletedPreviewRows(list);
   } catch (e) {
-    if (list) list.innerHTML = `<div style="opacity:0.5;padding:12px;">Failed to load completed tasks: ${_escHtml(e.message || String(e))}</div>`;
+    // `B730`: the third state, at full ink (it was a line at half opacity),
+    // with the server's words and *Try again*.
+    if (list) {
+      uiModule.renderEmptyState(list, {
+        kind: 'error', title: 'Could not load completed tasks',
+        reason: String((e && e.message) || e), onRetry: _renderCompletedView,
+      });
+    }
   }
 }
 

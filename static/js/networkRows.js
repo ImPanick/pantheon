@@ -9,6 +9,7 @@
 // **Every rule lives in Python** (`src/networks.py`): this file shapes what is
 // on screen into the value the API takes and back, and nothing more — no CIDR
 // matching, no validation (`Law 13`).
+import uiModule from './ui.js';
 
 // `D-2026-10-25-03`. Two trust levels: trusted (the agent's own connections may
 // go there) and untrusted (listed, never connected to). The retired "limited"
@@ -150,10 +151,12 @@ export function renderRows(host, rows, opts = {}) {
   const redraw = () => renderRows(host, rows, opts);
   host.textContent = '';
   if (rows.length === 0) {
-    const none = document.createElement('div');
-    none.className = 'admin-toggle-sub networks-empty';
-    none.textContent = opts.emptyText || 'No networks declared.';
-    host.appendChild(none);
+    // `B730`: the shared empty state; the *Add* button under the list is the
+    // way in, so the state names it rather than drawing a second one.
+    uiModule.renderEmptyState(host, {
+      kind: 'empty', title: opts.emptyText || 'No networks declared.', icon: null,
+      message: opts.emptyHint || '',
+    });
     return;
   }
   rows.forEach((row, i) => host.appendChild(_rowEl(rows, row, i, opts, redraw)));

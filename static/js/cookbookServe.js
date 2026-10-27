@@ -4062,14 +4062,15 @@ function _renderCachedModelsData(list, data, host) {
   _cachedAllModels = allModels;
 
   if (!allModels.length) {
-    if (!host) {
-      list.innerHTML = '<div class="hwfit-loading" style="flex-direction:column;gap:6px;text-align:center;"><div>No cached models found</div><div style="font-size:11px;opacity:0.55;max-width:420px;line-height:1.4;">Docker Local uses Pantheon’s cache in <code>data/huggingface</code>. Download a model here, or copy an existing host HuggingFace cache into that folder once.</div></div>';
-    } else {
-      list.innerHTML = '<div class="hwfit-loading" style="flex-direction:column;gap:8px;text-align:center;"><div>No cached models found</div><div style="font-size:11px;opacity:0.55;max-width:420px;line-height:1.4;">No complete model folders were found on this server.</div><button type="button" class="hwfit-gpu-btn serve-empty-scan-btn" style="height:26px;padding:3px 10px;">Refresh</button></div>';
-      list.querySelector('.serve-empty-scan-btn')?.addEventListener('click', () => {
-        _fetchCachedModels(true);
-      });
-    }
+    // `B730`: the shared empty state (`ui.renderEmptyState`), its way out
+    // the scan again.
+    uiModule.renderEmptyState(list, {
+      kind: 'empty', title: 'No cached models found',
+      message: host
+        ? 'No complete model folders were found on this server.'
+        : 'Docker Local uses Pantheon’s cache in data/huggingface. Download a model here, or copy an existing host HuggingFace cache into that folder once.',
+      action: { label: 'Scan again', onClick: () => _fetchCachedModels(true) },
+    });
     const tagContainer = document.getElementById('serve-tags');
     if (tagContainer) tagContainer.innerHTML = '';
     return;
@@ -4241,9 +4242,10 @@ export async function _fetchCachedModels(fresh = false, opts = {}) {
     _renderCachedModelsData(list, data, host);
   } catch (e) {
     _dlWp.destroy();
-    list.innerHTML = `<div class="hwfit-loading" style="flex-direction:column;gap:8px;text-align:center;"><div style="color:var(--red);font-weight:600;">Cached model scan failed</div><div style="font-size:11px;opacity:0.65;max-width:420px;line-height:1.4;">${esc(e.message)}</div><button type="button" class="hwfit-gpu-btn serve-empty-scan-btn" style="height:26px;padding:3px 10px;">Retry</button></div>`;
-    list.querySelector('.serve-empty-scan-btn')?.addEventListener('click', () => {
-      _fetchCachedModels(true);
+    // `B730`: the third state in the same shape — the server's words, retry.
+    uiModule.renderEmptyState(list, {
+      kind: 'error', title: 'Cached model scan failed', reason: String(e.message || e),
+      onRetry: () => _fetchCachedModels(true), retryLabel: 'Retry',
     });
   }
 }

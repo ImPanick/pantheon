@@ -187,9 +187,12 @@ async function _fetchCalendars({ sync = true } = {}) {
   _calendarsError = null;
   try {
     const res = await fetch(`${API_BASE}/api/calendar/calendars`, { credentials: 'same-origin' });
-    const data = await res.json();
-    _calendars = data.calendars || [];
+    const data = await res.json().catch(() => ({}));
+    _calendars = Array.isArray(data.calendars) ? data.calendars : [];
     if (data.error) _calendarsError = data.error;
+    // `B730`. A refusal or a 500 carried no `calendars` and no `error`, and
+    // read as *No calendars yet*.
+    else if (!res.ok) _calendarsError = data.detail || `The server answered ${res.status}.`;
     _calendars.forEach((c, i) => {
       if (!c.color || c.color.startsWith('<')) c.color = CAL_PALETTE[i % CAL_PALETTE.length];
     });
@@ -792,6 +795,7 @@ function _updateDaySearchResults() {
   });
   dayDetail.querySelector('#cal-add-day')?.addEventListener('click', () => _showEventForm(null, _selectedDay));
   _wireQuickDelete(dayDetail);
+  _fillEmptyStates(dayDetail);   // `B730`: a search that matches nothing, said in place
 }
 
 // Step between calendar views by "zoom level" — pinch IN goes year→month→week,
@@ -840,68 +844,68 @@ function _render() {
 function _renderEmpty() {
   const body = document.getElementById('cal-body');
   if (!body) return;
-  const hasError = !!_calendarsError;
-  body.innerHTML = `
-    <div class="cal-empty-state">
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.3">
-        <rect x="3" y="4" width="18" height="18" rx="2"/>
-        <line x1="16" y1="2" x2="16" y2="6"/>
-        <line x1="8" y1="2" x2="8" y2="6"/>
-        <line x1="3" y1="10" x2="21" y2="10"/>
-      </svg>
-      <div class="cal-empty-title">${hasError ? 'Calendar unavailable' : 'No calendars yet'}</div>
-      <div class="cal-empty-msg">${hasError ? _e(_calendarsError) : 'Create a local calendar, import an .ics file, or sync via CalDAV.'}</div>
-      ${hasError ? `
-        <button class="cal-btn cal-btn-primary" id="cal-goto-settings">Open Settings</button>
-      ` : `
-        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:4px;">
-          <button class="cal-btn cal-btn-primary" id="cal-empty-new">New calendar</button>
-          <button class="cal-btn" id="cal-empty-import">Import .ics</button>
-        </div>
-        <div style="margin-top:10px;font-size:11px;opacity:0.55;">Or <a href="#" id="cal-empty-caldav" style="color:var(--accent, var(--red));text-decoration:none;font-weight:600;">set up CalDAV sync</a>.</div>
-      `}
-    </div>`;
-  document.getElementById('cal-goto-settings')?.addEventListener('click', () => {
-    closeCalendar();
-    const modal = document.getElementById('settings-modal');
-    if (modal) {
-      modal.classList.remove('hidden');
-      const tab = modal.querySelector('[data-settings-tab="integrations"]');
-      if (tab) tab.click();
-    }
+  // `B730`. The shape `P9-07`'s shared empty state was taken from, now drawn
+  // through it (`ui.renderEmptyState`): a calendar that could not be read
+  // says so with the server's words and *Try again* — it used to offer only
+  // Settings — and an install with none offers its three ways in.
+  if (_calendarsError) {
+    uiModule.renderEmptyState(body, {
+      kind: 'error', className: 'cal-empty-state', title: 'Calendar unavailable',
+      reason: _calendarsError,
+      onRetry: async () => { await _fetchCalendars({ sync: false }); _render(); },
+      action: { label: 'Open Settings', onClick: _openCalSettingsTab },
+    });
+    return;
+  }
+  uiModule.renderEmptyState(body, {
+    kind: 'empty', className: 'cal-empty-state', title: 'No calendars yet',
+    message: 'Create a local calendar, import an .ics file, or sync via CalDAV.',
+    actions: [
+      // New / Import open the calendar settings panel; the panel already has
+      // the "New calendar" button and the .ics file picker. Import triggers
+      // the file picker immediately so it's a one-click flow.
+      { label: 'New calendar', onClick: () => {
+        _showCalSettings();
+        setTimeout(() => document.getElementById('cal-settings-add')?.click(), 50);
+      } },
+      { label: 'Import .ics', onClick: () => {
+        _showCalSettings();
+        setTimeout(() => document.getElementById('cal-import-file')?.click(), 50);
+      } },
+      { label: 'Set up CalDAV sync', onClick: _openCalDavSync },
+    ],
   });
-  // New / Import open the calendar settings panel; the panel already
-  // has the "New calendar" button and the .ics file picker. Import
-  // triggers the file picker immediately so it's a one-click flow.
-  document.getElementById('cal-empty-new')?.addEventListener('click', () => {
-    _showCalSettings();
-    setTimeout(() => document.getElementById('cal-settings-add')?.click(), 50);
-  });
-  document.getElementById('cal-empty-import')?.addEventListener('click', () => {
-    _showCalSettings();
-    setTimeout(() => document.getElementById('cal-import-file')?.click(), 50);
-  });
-  document.getElementById('cal-empty-caldav')?.addEventListener('click', (e) => {
-    e.preventDefault();
-    closeCalendar();
-    // Integrations is an admin tab — settingsModule.open() only sets
-    // the .active class for admin tabs; the actual panel renders via
-    // adminModule.open(). Without the admin-first branch the modal
-    // appears with Integrations highlighted but showing the previous
-    // panel, so the user has to click the tab again to land there.
-    if (window.adminModule && typeof window.adminModule.open === 'function') {
-      try { window.adminModule.open('integrations'); return; } catch (_) {}
-    }
-    if (window.settingsModule && typeof window.settingsModule.open === 'function') {
-      try { window.settingsModule.open('integrations'); return; } catch (_) {}
-    }
-    const modal = document.getElementById('settings-modal');
-    if (modal) {
-      modal.classList.remove('hidden');
-      const tab = modal.querySelector('[data-settings-tab="integrations"]');
-      if (tab) tab.click();
-    }
-  });
+}
+
+function _openCalSettingsTab() {
+  closeCalendar();
+  const modal = document.getElementById('settings-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    const tab = modal.querySelector('[data-settings-tab="integrations"]');
+    if (tab) tab.click();
+  }
+}
+
+function _openCalDavSync() {
+  closeCalendar();
+  // Integrations is an admin tab — settingsModule.open() only sets
+  // the .active class for admin tabs; the actual panel renders via
+  // adminModule.open(). Without the admin-first branch the modal
+  // appears with Integrations highlighted but showing the previous
+  // panel, so the user has to click the tab again to land there.
+  if (window.adminModule && typeof window.adminModule.open === 'function') {
+    try { window.adminModule.open('integrations'); return; } catch (_) {}
+  }
+  if (window.settingsModule && typeof window.settingsModule.open === 'function') {
+    try { window.settingsModule.open('integrations'); return; } catch (_) {}
+  }
+  const modal = document.getElementById('settings-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    const tab = modal.querySelector('[data-settings-tab="integrations"]');
+    if (tab) tab.click();
+  }
 }
 
 // ── Header + Filters (shared) ──
@@ -1692,14 +1696,8 @@ async function _renderAgenda() {
   if (!dates.length) {
     // Empty-state mirrors the email panel: short message + a Settings ›
     // Integrations link to set up CalDAV, OR a quick "Create event" action.
-    h += '<div class="cal-empty" style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;">' +
-      '<span>No upcoming events</span>' +
-      '<span style="opacity:0.7;font-size:11px;">' +
-        '<a href="#" data-cal-open-settings="integrations" style="color:var(--accent,var(--red));text-decoration:underline;">Add a calendar</a>' +
-        ' &middot; ' +
-        '<a href="#" data-cal-create-event="1" style="color:var(--accent,var(--red));text-decoration:underline;">Create event</a>' +
-      '</span>' +
-    '</div>';
+    // `B730`: filled by `_fillEmptyStates` through the shared shape.
+    h += '<div data-cal-empty="agenda"></div>';
   } else {
     for (const date of dates) {
       const evs = byDate.get(date);
@@ -1739,21 +1737,6 @@ async function _renderAgenda() {
     const ev = _events.find(e => e.uid === el.dataset.uid);
     if (ev) _showEventForm(ev);
   }));
-  // Empty-state links: Settings › Integrations + Create event.
-  body.querySelector('[data-cal-open-settings]')?.addEventListener('click', (e) => {
-    e.preventDefault();
-    closeCalendar();
-    const modal = document.getElementById('settings-modal');
-    if (modal) {
-      modal.classList.remove('hidden');
-      const tab = modal.querySelector('[data-settings-tab="integrations"]');
-      if (tab) tab.click();
-    }
-  });
-  body.querySelector('[data-cal-create-event]')?.addEventListener('click', (e) => {
-    e.preventDefault();
-    _showEventForm(null);
-  });
   _updateBadge();
 }
 
@@ -1776,7 +1759,7 @@ async function _renderSearch() {
   let h = _headerHTML() + _filtersRowHTML() + '<div class="cal-search-results">';
   h += `<div class="cal-search-count">${results.length} result${results.length !== 1 ? 's' : ''} for "${_e(_searchQuery)}"</div>`;
   if (!results.length) {
-    h += '<div class="cal-empty">No events match your search</div>';
+    h += '<div data-cal-empty="search"></div>';   // `B730`
   } else {
     for (const ev of results) {
       const evDate = _localDateOf(ev.dtstart);
@@ -1901,7 +1884,7 @@ function _dayDetailHTML(dateStr) {
       .sort((a, b) => (a.dtstart || '').localeCompare(b.dtstart || ''));
     h += `<div class="cal-day-search-meta">${results.length} result${results.length !== 1 ? 's' : ''}</div>`;
     if (!results.length) {
-      h += '<div class="cal-empty">No events match</div>';
+      h += '<div data-cal-empty="search"></div>';   // `B730`
     } else {
       results.forEach(ev => {
         const date = ev.all_day ? ev.dtstart : _localDateOf(ev.dtstart);
@@ -1921,7 +1904,7 @@ function _dayDetailHTML(dateStr) {
     return h + '</div>';
   }
   const evs = _eventsForDay(dateStr);
-  if (!evs.length) h += '<div class="cal-empty">No events</div>';
+  if (!evs.length) h += `<div data-cal-empty="day" data-date="${_e(dateStr)}"></div>`;   // `B730`
   else evs.forEach(ev => {
     const t = ev.all_day ? 'All day' : _fmtTime(ev.dtstart) + ' – ' + _fmtTime(ev.dtend);
     const _bgStyle = _calItemBgStyle(ev);
@@ -1932,7 +1915,45 @@ function _dayDetailHTML(dateStr) {
 
 // ── Wire all common listeners ──
 
+/** `B730`. The calendar's lists are built as strings; each empty one leaves a
+ *  slot (with no `cal-empty` class: its `opacity: 0.3` would dim the buttons
+ *  of the way out to a third), filled here through the shared empty state with
+ *  its way out wired — no events coming up (add a calendar, or an event),
+ *  nothing matching a search (clear it), a day with nothing on it (add one).
+ *  A failed calendar read is `_renderEmpty`'s, before any list is drawn. */
+function _fillEmptyStates(body) {
+  body.querySelectorAll('[data-cal-empty]').forEach((slot) => {
+    const which = slot.dataset.calEmpty;
+    if (which === 'search') {
+      uiModule.renderEmptyState(slot, {
+        kind: 'filtered', title: 'No events match your search',
+        action: { label: 'Clear search', onClick: () => {
+          _searchQuery = '';
+          const input = document.getElementById('cal-search');
+          if (input) input.value = '';
+          _render();
+        } },
+      });
+    } else if (which === 'day') {
+      const date = slot.dataset.date;
+      uiModule.renderEmptyState(slot, {
+        kind: 'empty', title: 'No events', icon: null,
+        action: { label: 'Add event', onClick: () => _showEventForm(null, date) },
+      });
+    } else {
+      uiModule.renderEmptyState(slot, {
+        kind: 'empty', title: 'No upcoming events',
+        actions: [
+          { label: 'Create event', onClick: () => _showEventForm(null) },
+          { label: 'Add a calendar', onClick: _openCalSettingsTab },
+        ],
+      });
+    }
+  });
+}
+
 function _wireAll(body) {
+  _fillEmptyStates(body);
   // ── Day-detail splitter (drag to resize) ────────────────────────
   // Restores the saved height each render so the user's choice survives
   // navigation between months/weeks. Drag adjusts a single CSS variable

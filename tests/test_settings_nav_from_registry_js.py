@@ -377,7 +377,9 @@ def test_the_nav_is_drawn_when_the_module_loads_not_when_settings_first_opens():
     for name in ("calendar.js", "emailLibrary.js"):
         source = blank_text((ROOT / "static" / "js" / name).read_text(encoding="utf-8"))
         reachers += len(re.findall(r'\[data-settings-tab=', source))
-    assert reachers >= 5, (
+    # 5 -> 4 (2026-10-27): `B730` drew the calendar's empty states through the
+    # shared shape, and its two hand-written Settings doors became one helper.
+    assert reachers >= 4, (
         f"only {reachers} call sites bypass settingsModule.open() now — if that "
         "is zero, the module-load draw can move into initAll"
     )

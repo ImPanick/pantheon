@@ -30,7 +30,36 @@ from tests.helpers.source_text import blank
 ROOT = Path(__file__).resolve().parents[1]
 
 #: Sites, not names. Lower it when a list moves onto the shared shape.
-CEILING = 53   # 58 before the Brain's list and the notes list moved
+#: 58 before the Brain's list and the notes list moved; 53 → 24 when the rest
+#: of the lists did (`tests/test_more_lists_say_which_empty_they_are.py`).
+CEILING = 24
+
+#: `B730`. Every name still in the census, and why it is not a list's empty
+#: state — so a new one is a decision someone writes down here, and the row's
+#: "several names there are thumbnail placeholders, not list states" is a
+#: list and not a guess. A list that grows an empty state draws it through
+#: `ui.renderEmptyState` instead.
+NOT_LIST_STATES = {
+    "usage-empty": "index.html: the evals intro paragraph and its build status line borrow the type",
+    "cal-agenda-empty": "today's row inside an agenda that has other days — a day, not the list",
+    "cp-recent-empty": "the colour picker's strip of recent swatches",
+    "cmp-eval-empty": "Compare's eval-prompt menu, a popover",
+    "cookbook-gpu-popup-empty": "the GPU-process popover on a GPU button",
+    "serve-empty-auto-scan": "the cached-model list's loading state (it scans at once, with a spinner)",
+    "serve-empty-auto-wp": "the spinner's slot in that loading state",
+    "context-meter-empty": "the context meter with nothing in it — a gauge",
+    "gallery-editor-draft-thumb-empty": "a thumbnail placeholder",
+    "research-job-thumb-empty": "a thumbnail placeholder",
+    "memory-empty": "the Brain's loading row, import suggestion box and chat-extraction box",
+    "model-switch-empty": "the model picker, a popover that already says its three states "
+                          "(not answering + Retry, Add a model, No matching models; P23-04)",
+    "model-picker-empty-add": "that popover's Add a model button",
+    "empty'}": "a note card's title-less modifier",
+    "settings-search-empty": "the Settings finder's results popover",
+    "slash-ac-empty": "the slash-command autocomplete popover",
+    "skills-side-empty": "a sidebar section's hint (no packages, no groups yet), not a list",
+    "workspace-empty": "the folder browser's 'too many folders to list' note, a truncation",
+}
 
 _ATTR = re.compile(r'class="([^"]*)"')
 _ADD = re.compile(r"classList\.add\(([^)]*)\)")
@@ -82,3 +111,12 @@ def test_the_lists_moved_onto_the_shape_stay_there():
     # the chat-extraction box (`Nothing to keep from this chat.`).
     assert len(memory) <= 3, memory
     assert "static/js/ui.js" not in files
+
+
+def test_every_name_left_is_one_that_is_not_a_list_state():
+    """`B730`'s inventory, closed: what remains is named above with why."""
+    left = {n for _, n in census()} - set(NOT_LIST_STATES)
+    assert not left, (
+        f"{sorted(left)} draw a hand-made empty state. A list's empty state goes "
+        "through ui.renderEmptyState; anything else is written into NOT_LIST_STATES "
+        "with why it is not one.")

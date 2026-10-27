@@ -3562,7 +3562,23 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
         ? (Array.isArray(data?.items) ? data.items : Array.isArray(data?.images) ? data.images : [])
         : (Array.isArray(data?.documents) ? data.documents : Array.isArray(data?.items) ? data.items : []);
       if (!items.length) {
-        list.innerHTML = `<div class="email-pantheon-attach-empty">${q ? 'No matches' : `No ${kind === 'gallery' ? 'images' : 'documents'}`}</div>`;
+        // `B730`: nothing matched the search (and the way back), or nothing
+        // there at all — two states, said as two, in the shared shape.
+        if (q) {
+          uiModule.renderEmptyState(list, {
+            kind: 'filtered', title: 'No matches', icon: null,
+            action: { label: 'Clear search', onClick: () => {
+              const input = menu.querySelector('.email-pantheon-attach-search');
+              if (input) input.value = '';
+              _loadPantheonAttachItems(menu, kind);
+            } },
+          });
+        } else {
+          uiModule.renderEmptyState(list, {
+            kind: 'empty', icon: null,
+            title: `No ${kind === 'gallery' ? 'images' : 'documents'} yet`,
+          });
+        }
         _syncPantheonAttachSelection(menu);
         return;
       }
@@ -3605,7 +3621,11 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
       _syncPantheonAttachSelection(menu);
     } catch (err) {
       console.error('Failed to load Pantheon attach items:', err);
-      list.innerHTML = '<div class="email-pantheon-attach-empty">Could not load</div>';
+      // `B730`. "Could not load" said nothing a person could act on.
+      uiModule.renderEmptyState(list, {
+        kind: 'error', title: `Could not load ${kind === 'gallery' ? 'images' : 'documents'}`, icon: null,
+        reason: String((err && err.message) || err), onRetry: () => _loadPantheonAttachItems(menu, kind),
+      });
     }
   }
 

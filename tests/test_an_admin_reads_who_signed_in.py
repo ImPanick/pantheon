@@ -131,6 +131,11 @@ def _drive_panel(tmp_path, answer, then=""):
 
     (tmp_path / "dom.js").write_text(_DOM)
     shutil.copy(ROOT / "static" / "js" / "authAudit.js", tmp_path / "authAudit.js")
+    # `B730`: the panel draws its empty states through `ui.renderEmptyState`,
+    # served here as shipped.
+    from tests.helpers.esc_stub import empty_state_source, ui_default_stub
+    (tmp_path / "ui.js").write_text(ui_default_stub("emptyStateIcon, renderEmptyState,",
+                                                    before=empty_state_source()))
     case = """
 import { installDom } from './dom.js';
 const document = installDom();

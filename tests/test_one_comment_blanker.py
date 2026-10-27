@@ -171,8 +171,11 @@ def _naive(text: str) -> str:
 # `gallery.js` 1000 -> 900 (2026-10-26): `B1293` moved the editor's open
 # sequence into the exported `openInEditor`; the naive span still erases 934
 # lines of live code there.
+# `calendar.js` 1500 -> 1400 (2026-10-27): `B730` moved its empty states onto
+# `ui.renderEmptyState`, so the string-built markup they were went; the naive
+# span still erases 1,463 lines of live code there.
 @pytest.mark.parametrize("name,at_least", [
-    ("calendar.js", 1500), ("notes.js", 1500), ("settings.js", 250),
+    ("calendar.js", 1400), ("notes.js", 1500), ("settings.js", 250),
     ("gallery.js", 900), ("document.js", 900),
 ])
 def test_the_naive_form_really_does_blank_these_modules(name, at_least):

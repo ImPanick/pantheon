@@ -228,7 +228,9 @@ def test_an_empty_webhook_list_says_so(admin_sandbox):
         await tick();
         console.log(JSON.stringify({ list: html('adm-whList') }));
     """)
-    assert "No webhooks configured" in out["list"]
+    # `B730`: through the shared empty state, with the way out.
+    assert 'data-empty-state="empty"' in out["list"]
+    assert "No webhooks yet" in out["list"] and "Add one below" in out["list"]
 
 
 def test_the_add_form_posts_the_four_fields_the_route_takes(admin_sandbox):

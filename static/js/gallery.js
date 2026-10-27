@@ -125,6 +125,8 @@ let _activeModel = null;
 let _activeAlbum = null;
 let _galleryCascaded = false;   // play the domino-in cascade once per open
 let _favoritesOnly = false;
+// `B730`. Why the last library read failed, while nothing is on screen.
+let _galleryLoadError = '';
 let _sort = 'recent';
 let _shuffleSeed = Math.floor(Math.random() * 2 ** 31);
 let _offset = 0;
@@ -185,7 +187,14 @@ async function _fetchLibrary(append) {
   if (_favoritesOnly) params.set('favorites', 'true');
   try {
     const res = await fetch(`${API_BASE}/api/gallery/library?${params}`, { credentials: 'same-origin' });
+    // `B730`. A refusal or a 500 read its JSON body as a page of no items and
+    // drew *No photos yet*; it is the third state, said as one.
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error((body && body.detail) || `The server answered ${res.status}.`);
+    }
     const data = await res.json();
+    _galleryLoadError = '';
     if (append) {
       _items = _items.concat(data.items || []);
     } else {
@@ -209,7 +218,37 @@ async function _fetchLibrary(append) {
     _renderStats();
   } catch (e) {
     console.error('Gallery fetch error:', e);
+    // Photos already on screen stay (the stale-while-revalidate above); with
+    // none, the grid says it broke rather than holding skeletons forever.
+    if (!append && !_items.length) {
+      _galleryLoadError = String((e && e.message) || e || 'The gallery did not answer.');
+      _renderGrid();
+    } else if (uiModule) {
+      uiModule.showError(`The gallery did not refresh: ${(e && e.message) || e}`);
+    }
   }
+}
+
+
+/** `B730`. Whether a filter, a search, an album or favourites is narrowing
+ *  the grid — *nothing matched* rather than *nothing yet*. */
+function _galleryFiltered() {
+  return !!(_search || _activeTags.length || _activeModel || _activeAlbum || _favoritesOnly);
+}
+
+/** `B730`. Back to every photo: the way out of a grid filtered to nothing. */
+function _clearGalleryFilters() {
+  _search = '';
+  _activeTags = [];
+  _activeModel = null;
+  _activeAlbum = null;
+  _favoritesOnly = false;
+  const input = document.getElementById('gallery-search');
+  if (input) input.value = '';
+  const model = document.getElementById('gallery-model-filter');
+  if (model) model.value = '';
+  _fetchLibrary(false);
+  _renderAlbums();
 }
 
 async function _fetchAlbums() {
@@ -616,17 +655,25 @@ function _renderAlbumsGrid() {
   if (!wrap) return;
 
   const albums = _filteredAlbums();
+  // `B730`: both through the shared shape, each with its way out (and not
+  // the `gallery-albums-empty` class, whose `opacity: 0.7` would dim them).
   if (!_albums.length) {
-    wrap.innerHTML = `
-      <div class="gallery-albums-empty">
-        <p>No albums yet.</p>
-        <button class="gallery-select-btn" id="gallery-albums-new">+ New album</button>
-      </div>`;
-    _wireAlbumsEvents(wrap);
+    uiModule.renderEmptyState(wrap, {
+      kind: 'empty', title: 'No albums yet',
+      action: { label: '+ New album', onClick: _newAlbum },
+    });
     return;
   }
   if (!albums.length) {
-    wrap.innerHTML = `<div class="gallery-albums-empty"><p>No albums match "${_esc(_albumSearch)}".</p></div>`;
+    uiModule.renderEmptyState(wrap, {
+      kind: 'filtered', title: `No albums match "${_albumSearch}"`,
+      action: { label: 'Clear search', onClick: () => {
+        _albumSearch = '';
+        const input = document.getElementById('gallery-albums-search');
+        if (input) input.value = '';
+        _renderAlbumsGrid();
+      } },
+    });
     return;
   }
 
@@ -705,6 +752,21 @@ function _renderAlbumsGrid() {
 
 // Per-card / per-popmenu event wiring — extracted so both the empty
 // state and the real grid can reuse it.
+/** Ask for a name and make the album — the album grid's *New* tile and the
+ *  empty albums tab's way in (`B730`) share it. */
+async function _newAlbum() {
+  const name = (uiModule.styledPrompt
+    ? await uiModule.styledPrompt('Name your new album.', { title: 'New album', placeholder: 'e.g. Vacation 2026', confirmText: 'Create' })
+    : prompt('Album name:'));
+  if (!name?.trim()) return;
+  await fetch(`${API_BASE}/api/gallery/albums`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin', body: JSON.stringify({ name: name.trim() }),
+  });
+  await _fetchAlbums();
+  _renderAlbumsTab();
+}
+
 function _wireAlbumsEvents(scope) {
   const container = document.getElementById('gallery-albums-container');
   if (!container) return;
@@ -819,18 +881,7 @@ function _wireAlbumsEvents(scope) {
     });
   });
 
-  document.getElementById('gallery-albums-new')?.addEventListener('click', async () => {
-    const name = (uiModule.styledPrompt
-      ? await uiModule.styledPrompt('Name your new album.', { title: 'New album', placeholder: 'e.g. Vacation 2026', confirmText: 'Create' })
-      : prompt('Album name:'));
-    if (!name?.trim()) return;
-    await fetch(`${API_BASE}/api/gallery/albums`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin', body: JSON.stringify({ name: name.trim() }),
-    });
-    await _fetchAlbums();
-    _renderAlbumsTab();
-  });
+  document.getElementById('gallery-albums-new')?.addEventListener('click', _newAlbum);
 
   document.getElementById('gallery-albums-upload')?.addEventListener('click', () => {
     // <input webkitdirectory> picks a folder; we create an album with the
@@ -1273,8 +1324,31 @@ function _renderGrid() {
     </div>`;
 
   if (_items.length === 0) {
-    grid.innerHTML = uploadTile + '<div class="gallery-empty">No photos yet.</div>';
+    // `B730`. Three states through the shared shape: the read failed (its
+    // words, *Try again*); a filter hid everything (*Show all photos*) — it
+    // used to say *No photos yet* over a full library; or there are none
+    // (the upload tile beside it is the way in).
+    // The slot spans the grid's row: the state is a sentence and a button,
+    // not a tile. No `gallery-empty` class — its 35% ink is `B1408`'s defect.
+    grid.innerHTML = uploadTile + '<div data-gallery-empty style="grid-column:1/-1"></div>';
     _wireUploadTile();
+    const slot = grid.querySelector('[data-gallery-empty]');
+    if (_galleryLoadError) {
+      uiModule.renderEmptyState(slot, {
+        kind: 'error', title: 'Could not load the gallery',
+        reason: _galleryLoadError, onRetry: () => _fetchLibrary(false),
+      });
+    } else if (_galleryFiltered()) {
+      uiModule.renderEmptyState(slot, {
+        kind: 'filtered', title: 'No photos match',
+        action: { label: 'Show all photos', onClick: _clearGalleryFilters },
+      });
+    } else {
+      uiModule.renderEmptyState(slot, {
+        kind: 'empty', title: 'No photos yet',
+        message: 'Upload some, or make one: an image the assistant generates lands here.',
+      });
+    }
     if (loadMore) loadMore.style.display = 'none';
     return;
   }

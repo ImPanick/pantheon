@@ -1174,6 +1174,11 @@ export function renderEmptyState(host, spec = {}) {
   if (spec.action && spec.action.label && typeof spec.action.onClick === 'function') {
     addButton(spec.action.label, spec.action.onClick);
   }
+  // `B730`. More than one way out, in order — an empty calendar offers a new
+  // one, an import, or a sync, and the shape it came from drew all three.
+  for (const extra of (Array.isArray(spec.actions) ? spec.actions : [])) {
+    if (extra && extra.label && typeof extra.onClick === 'function') addButton(extra.label, extra.onClick);
+  }
   if (actions.childNodes.length) box.appendChild(actions);
 
   if (host) {

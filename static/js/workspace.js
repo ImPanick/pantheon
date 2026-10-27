@@ -150,8 +150,12 @@ function _render(data) {
   if (data.truncated) {
     rows += '<div class="workspace-empty">Too many folders to list. Type or paste a path above to jump in.</div>';
   }
-  if (!data.dirs.length && !data.parent) rows = '<div class="workspace-empty">No subfolders</div>';
-  body.innerHTML = rows || '<div class="workspace-empty">No subfolders</div>';
+  // `B730`. A folder with nothing under it is the list's one empty state,
+  // drawn through the shared shape below the `..` row that leads back out.
+  if (!data.dirs.length) rows += '<div data-workspace-empty></div>';
+  body.innerHTML = rows;
+  const none = body.querySelector('[data-workspace-empty]');
+  if (none) uiModule.renderEmptyState(none, { kind: 'empty', title: 'No subfolders', icon: null });
   body.querySelectorAll('.workspace-row').forEach((row) => {
     row.addEventListener('click', () => _navigate(decodeURIComponent(row.dataset.path)));
   });

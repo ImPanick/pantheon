@@ -387,6 +387,13 @@ if (mode === 'tone') {
   const api = makeExtra({
     document: doc,
     fetch: async () => ({ ok: true, json: async () => ({ runs, has_more: false }) }),
+    // `B730`: the tab's empty state is `ui.renderEmptyState`'s; recorded as
+    // the text it would show.
+    uiModule: { showToast() {}, showError() {}, copyToClipboard() {},
+                renderEmptyState: (host, spec) => {
+                  host.innerHTML = `<div class="empty-state" data-empty-state="${spec.kind}">`
+                    + `${spec.title || ''} ${spec.message || ''}</div>`;
+                } },
     _setTaskCompletionPending: () => {},
     _syncCompletedTabCount: () => {},
     _wireCompletedPreviewRows: () => {},
@@ -404,7 +411,7 @@ if (mode === 'tone') {
     const rows = written.split('<div class="memory-item doclib-chat-row task-completed-preview-row').slice(1);
     console.log(JSON.stringify({
       caption: caption.replace(/<[^>]*>/g, '').trim(),
-      empty: /task-completed-empty/.test(written)
+      empty: /data-empty-state=/.test(written)
         ? written.replace(/<[^>]*>/g, '').trim() : null,
       rows: rows.map((chunk) => ({
         // The dot's shared class, and the word beside it — `null` when the row

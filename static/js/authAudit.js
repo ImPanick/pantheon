@@ -14,6 +14,8 @@
 // Text only: every value here is server-derived, and an account name is
 // exactly the string a hostile sign-up would choose.
 
+import uiModule from './ui.js';
+
 const $ = (id) => document.getElementById(id);
 
 function _cell(tr, text, cls) {
@@ -43,33 +45,50 @@ export async function load() {
   if (party) qs.set('party', party);
   body.textContent = 'Loading…';
   let res, data;
+  // `B730`. Three states in the one shape (`ui.renderEmptyState`): it broke —
+  // the server's words and *Try again*; nothing matched the filter — and the
+  // way back to everything; nothing recorded at all.
+  const broke = (reason) => {
+    uiModule.renderEmptyState(body, {
+      kind: 'error', className: 'usage-empty', title: 'Could not load the audit log',
+      reason, onRetry: () => load(),
+    });
+  };
   try {
     res = await fetch(`/api/diagnostics/auth-events?${qs}`, { credentials: 'same-origin' });
     data = await res.json().catch(() => ({}));
   } catch (_) {
-    body.textContent = 'Could not reach this Pantheon.';
+    broke('Could not reach this Pantheon.');
     return null;
   }
   if (!res.ok) {
-    body.textContent = `Could not load the audit log (${(data && data.detail) || `HTTP ${res.status}`}).`;
+    broke(String((data && data.detail) || `The server answered ${res.status}.`));
     return null;
   }
   body.replaceChildren();
   if (data.error) {
-    const p = document.createElement('p');
-    p.className = 'usage-empty';
-    p.textContent = data.error;
-    body.appendChild(p);
+    broke(String(data.error));
     return data;
   }
   const events = Array.isArray(data.events) ? data.events : [];
   if (!events.length) {
-    const p = document.createElement('p');
-    p.className = 'usage-empty';
-    p.textContent = party
-      ? `Nothing recorded for ${party} with this filter.`
-      : 'Nothing recorded with this filter. Sign-ins, account and role changes are recorded from this build on.';
-    body.appendChild(p);
+    const filtered = !!party || outcome !== 'all';
+    if (filtered) {
+      uiModule.renderEmptyState(body, {
+        kind: 'filtered', className: 'usage-empty',
+        title: party ? `Nothing recorded for ${party} with this filter` : 'Nothing recorded with this filter',
+        action: { label: 'Show every event', onClick: () => {
+          if ($('auth-audit-party')) $('auth-audit-party').value = '';
+          if ($('auth-audit-outcome')) $('auth-audit-outcome').value = 'all';
+          load();
+        } },
+      });
+    } else {
+      uiModule.renderEmptyState(body, {
+        kind: 'empty', className: 'usage-empty', title: 'Nothing recorded yet',
+        message: 'Sign-ins, account and role changes are recorded from this build on.',
+      });
+    }
     return data;
   }
   const failures = events.filter((e) => e.outcome !== 'ok').length;

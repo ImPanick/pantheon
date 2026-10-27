@@ -18,6 +18,7 @@
 // in the other.
 
 import { invalidateSettings } from './appConfig.js';
+import uiModule from './ui.js';   // `B730`: the shared empty state
 // `B1475`. The rows are drawn by the one editor both network lists use.
 import { EMPTY_ROW, renderRows, rowsToValue, showProblems as _showProblems, valueToRows } from './networkRows.js';
 
@@ -402,23 +403,31 @@ async function loadPeople() {
   if (!host) return;
   host.textContent = '';
   let state;
+  // `B730`. Both states through the shared shape: a read that failed says so
+  // with *Try again* (it was a bare line of text); none declared says so.
   try {
     const res = await fetch('/api/networks/people');
-    if (!res.ok) throw new Error(`unavailable (${res.status})`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error((body && body.detail) || `The server answered ${res.status}.`);
+    }
     state = await res.json();
   } catch (e) {
-    host.textContent = String(e.message || e);
+    uiModule.renderEmptyState(host, {
+      kind: 'error', title: "Could not load everyone's networks",
+      reason: String(e.message || e), onRetry: () => loadPeople(),
+    });
     return;
   }
   if (box) box.checked = !!state.enabled;
   const people = Array.isArray(state.people) ? state.people : [];
   if (!people.length) {
-    const none = document.createElement('div');
-    none.className = 'admin-toggle-sub networks-empty';
-    none.textContent = state.enabled
-      ? 'Nobody has declared a network of their own yet.'
-      : 'Nobody has declared a network of their own.';
-    host.appendChild(none);
+    uiModule.renderEmptyState(host, {
+      kind: 'empty', icon: null,
+      title: state.enabled
+        ? 'Nobody has declared a network of their own yet.'
+        : 'Nobody has declared a network of their own.',
+    });
     return;
   }
   for (const person of people) {
