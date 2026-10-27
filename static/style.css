@@ -3281,11 +3281,15 @@ body.bg-pattern-sparkles {
       align-items: center;
       flex-shrink: 0;
     }
+    /* `B1557`: an off chip is an operable switch, not a disabled control, so
+       its label is a colour that reads rather than `--fg` at half opacity
+       (under 4.5:1 on all 23 palettes). `--chip-off-fg` is `applyColors`'s:
+       the dimmest `--fg` that clears 4.5:1 on the composer, in plan mode and
+       under the hover tint. Before that module boots, `--fg` itself. */
     .input-icon-btn {
       background: none;
       border: none;
-      color: var(--fg);
-      opacity: 0.5;
+      color: var(--chip-off-fg, var(--fg));
       cursor: pointer;
       padding: 6px;
       border-radius: 8px;
@@ -3296,7 +3300,7 @@ body.bg-pattern-sparkles {
       position: relative;
     }
     .input-icon-btn:hover {
-      opacity: 0.8;
+      color: var(--fg);
       background: color-mix(in srgb, var(--accent) 8%, transparent);
     }
 	    .input-icon-btn.active,
@@ -4106,13 +4110,14 @@ body.bg-pattern-sparkles {
       color: var(--chip-on-fg, var(--red));
       background: color-mix(in srgb, var(--red) 12%, transparent);
     }
+    /* `B1557`: the off chip's look, and so its legible label — the folder's
+       name is text, and it was `--fg` at half opacity like the rest. */
     #workspace-indicator-btn.active {
-      opacity: 0.5;
-      color: var(--fg);
+      color: var(--chip-off-fg, var(--fg));
       background: none;
     }
     #workspace-indicator-btn.active:hover {
-      opacity: 0.8;
+      color: var(--fg);
       background: color-mix(in srgb, var(--accent) 8%, transparent);
     }
     #workspace-indicator-btn.active > svg:not(.tool-indicator-x),

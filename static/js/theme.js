@@ -553,6 +553,25 @@ export function applyColors(colors) {
   const _onTint = [_inputBg, _planBar, colors.bg, colors.panel]
     .filter(Boolean).map((under) => mixHex(under, _red, 12));
   s.setProperty('--chip-on-fg', towardFloor(_red, _onTint, onAccentFor(_inputBg), 4.5 + 0.02));
+  // `B1557`. **The label of an off chip, legible too.** An off chip was drawn
+  // as `--fg` at `opacity: 0.5`, and half the text colour over the composer
+  // measured under 4.5:1 on all 23 palettes (`retrowave` 1.96, `cute` 2.14,
+  // `light` 2.29 … `organs` 4.36). Off is a state of an operable switch, not
+  // a disabled control, so its label has to read. It starts from exactly what
+  // was painted — `--fg` half-way over the composer — and moves toward `--fg`
+  // the least that clears 4.5:1 on the composer, the composer in plan mode,
+  // and the hover tint (8% accent) over each, so it stays as quiet as a label
+  // that reads can be and quieter than the on-state. `--fg` clears on
+  // `--panel` on every shipped palette (`check-contrast.py` A), and `--panel`
+  // is the default `--input-bg`; a custom composer colour that `--fg` does
+  // not clear moves toward black or white instead (`onAccentFor`).
+  if (colors.fg) {
+    const _offGrounds = [_inputBg, _planBar].flatMap((g) => [g, mixHex(g, _accent || _red, 8)]);
+    const _offToward = _offGrounds.every((g) => contrastRatio(colors.fg, g) >= 4.5 + 0.02)
+      ? colors.fg : onAccentFor(_inputBg);
+    s.setProperty('--chip-off-fg',
+                  towardFloor(mixHex(_inputBg, colors.fg, 50), _offGrounds, _offToward, 4.5 + 0.02));
+  }
 
   // Update favicon to match theme accent color. `_accent`, not `colors.red`:
   // the comment said accent and the argument said red, and until P1-01 made
