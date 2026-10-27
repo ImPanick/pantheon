@@ -4030,6 +4030,9 @@ async function _cmdFlip(args, ctx) {
   coin.style.cssText = 'width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;border:3px solid var(--border);color:var(--fg);background:var(--panel);animation:egg-spin 0.6s ease-out;cursor:pointer;user-select:none;transition:transform 0.15s;';
   coin.textContent = edge ? '!' : (isHeads ? 'H' : 'T');
   coin.title = edge ? 'Edge?!' : (isHeads ? 'Heads' : 'Tails');
+  coin.tabIndex = 0;                        // `B1576`: flipped from the keyboard too (`a11y.js`)
+  coin.setAttribute('role', 'button');
+  coin.dataset.a11yActivatable = '1';
   coin.addEventListener('click', () => {
     const r = Math.random() < 0.5;
     coin.style.animation = 'none'; coin.offsetHeight; coin.style.animation = 'egg-spin 0.6s ease-out';

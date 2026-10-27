@@ -794,6 +794,10 @@ function _renderList() {
     // The status pill replaces the old dot and doubles as pause/resume.
     const titleRow = document.createElement('div');
     titleRow.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;';
+    // `B1576`. Opens the task from the keyboard too; it holds the status
+    // button, so it is focusable and pressed by `a11y.js`'s delegated activation.
+    titleRow.tabIndex = 0;
+    titleRow.dataset.a11yActivatable = '1';
     const statusBadge = task.status === 'paused'
       ? `<button type="button" class="task-status-badge task-state-badge task-paused-badge" data-task-status-action="resume" title="Paused - click to resume" style="position:relative;top:4px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg><span class="task-state-label">paused</span></button>`
       : task.status === 'active'
@@ -1025,6 +1029,9 @@ function _renderList() {
       lr.className = `task-lastrun task-lastrun-${variant}`;
       lr.innerHTML = `<span class="task-lastrun-mark">${mark}</span> <span class="task-lastrun-text">${_escHtml(prev) || empty}</span>`;
       lr.title = 'Open full history';
+      lr.tabIndex = 0;                      // `B1576`: a button to a keyboard too (`a11y.js`)
+      lr.setAttribute('role', 'button');
+      lr.dataset.a11yActivatable = '1';
       lr.addEventListener('click', (e) => { e.stopPropagation(); _showRunHistory(task.id, task.name); });
       detail.appendChild(lr);
     }

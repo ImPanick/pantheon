@@ -100,6 +100,10 @@ export function createLayerPanelRenderer(deps) {
         (parentIsPaintTarget ? ' active' : '') +
         (layer.id === state.activeLayerId && !parentIsPaintTarget ? ' active-parent' : '');
       item.dataset.layerId = layer.id;
+      // `B1576`. Selects its layer from the keyboard too: focusable, pressed
+      // by `a11y.js`'s delegated activation (it holds its own buttons).
+      item.tabIndex = 0;
+      item.dataset.a11yActivatable = '1';
       // Hover thumbnail.
       item.addEventListener('mouseenter', () => showLayerThumb(item, layer));
       item.addEventListener('mouseleave', () => hideLayerThumb());
@@ -402,6 +406,8 @@ export function createLayerPanelRenderer(deps) {
           const sub = document.createElement('div');
           sub.className = 'ge-layer-item ge-adj-sub-item';
           sub.dataset.adjId = adj.id;
+          sub.tabIndex = 0;                       // `B1576`, as the layer row
+          sub.dataset.a11yActivatable = '1';
           const sVis = document.createElement('button');
           sVis.className = 'ge-layer-vis' + (adj.visible ? ' visible' : '');
           sVis.innerHTML = adj.visible ? EYE_OPEN_SM : EYE_OFF_SM;
@@ -489,6 +495,8 @@ export function createLayerPanelRenderer(deps) {
           sub.className = 'ge-layer-item ge-adj-sub-item ge-mask-sub-item' +
             (layer.activeMaskId === mk.id ? ' active' : '');
           sub.dataset.maskId = mk.id;
+          sub.tabIndex = 0;                       // `B1576`, as the layer row
+          sub.dataset.a11yActivatable = '1';
           const sVis = document.createElement('button');
           sVis.className = 'ge-layer-vis' + (mk.visible ? ' visible' : '');
           sVis.innerHTML = mk.visible ? EYE_OPEN_SM : EYE_OFF_SM;

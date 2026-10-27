@@ -548,7 +548,8 @@ function _showEventMoreMenu(ev, anchor) {
   dropdown.style.cssText = `position:fixed;z-index:${topPortalZ()};min-width:180px;background:var(--panel,var(--bg));border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.3);padding:4px;font-size:12px;top:${rect.bottom + 4}px;left:0px;visibility:hidden;`;
 
   const _item = (icon, label, onClick, danger) => {
-    const it = document.createElement('div');
+    const it = document.createElement('button');   // `B1576`: a menu item is a button
+    it.type = 'button';
     it.className = 'dropdown-item-compact' + (danger ? ' dropdown-item-danger' : '');
     it.innerHTML = `<span class="dropdown-icon">${icon}</span><span>${label}</span>`;
     it.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });

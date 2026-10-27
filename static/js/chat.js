@@ -1483,6 +1483,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     const wrap = document.createElement('div');
     wrap.className = 'msg msg-user msg-user-queued';
     wrap.dataset.queueId = item.id;
+    // `B1576`. Pressing a queued message sends it next; from the keyboard
+    // too, through `a11y.js`'s delegated activation. Not `role="button"`: the
+    // bubble holds its own buttons (edit, remove).
+    wrap.tabIndex = 0;
+    wrap.dataset.a11yActivatable = '1';
     wrap.addEventListener('click', (ev) => {
       if (ev.target && ev.target.closest && ev.target.closest('button, a, textarea, input')) return;
       _promoteQueuedRequest(item.id);
@@ -4780,6 +4785,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                         _iw.dataset.fileId = _att.id;
                         _iw.style.cursor = 'pointer';
                         _iw.onclick = () => window.open(API_BASE + '/api/upload/' + _att.id, '_blank');
+                        // `B1576`. Opened from the keyboard too (`a11y.js`).
+                        _iw.tabIndex = 0;
+                        _iw.setAttribute('role', 'button');
+                        _iw.dataset.a11yActivatable = '1';
+                        _iw.setAttribute('aria-label', 'Open ' + (_att.name || 'the image'));
                         const _im = document.createElement('img');
                         _im.src = API_BASE + '/api/upload/' + _att.id;
                         _im.alt = _att.name || 'Image';

@@ -1260,7 +1260,8 @@ function _rerenderCachedModels() {
       items.push({ label: 'Select', icon: _selectIco, action: 'select' });
       items.push({ label: 'Delete', icon: _deleteIco, action: 'delete', danger: true });
       for (const opt of items) {
-        const div = document.createElement('div');
+        const div = document.createElement('button');   // `B1576`: a menu item is a button
+        div.type = 'button';
         div.className = 'dropdown-item-compact' + (opt.danger ? ' dropdown-item-danger' : '');
         div.innerHTML = _di(opt.icon) + '<span>' + opt.label + '</span>';
         div.addEventListener('click', () => {
@@ -1309,7 +1310,8 @@ function _rerenderCachedModels() {
       // Mobile-only Cancel — gives an explicit close on touch devices where
       // outside-tap-to-close is fiddly. Hidden on desktop via CSS.
       const _cancelIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-      const cancelDiv = document.createElement('div');
+      const cancelDiv = document.createElement('button');   // `B1576`: a menu item is a button
+      cancelDiv.type = 'button';
       cancelDiv.className = 'dropdown-item-compact dropdown-cancel-mobile';
       cancelDiv.innerHTML = _di(_cancelIco) + '<span>Cancel</span>';
       cancelDiv.addEventListener('click', () => { closeDropdown(); });
@@ -2544,6 +2546,11 @@ function _rerenderCachedModels() {
           const it = document.createElement('div');
           it.className = 'dropdown-item-compact' + (p.favorite ? ' cookbook-saved-favorite' : '');
           it.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;';
+          // `B1576`. Loads the saved config; it holds its own favourite and
+          // delete buttons, so it is not a `<button>` — focusable, and pressed
+          // on Enter/Space by `a11y.js`'s delegated activation.
+          it.tabIndex = 0;
+          it.dataset.a11yActivatable = '1';
           const lbl = document.createElement('span');
           lbl.textContent = p.label || `Config ${idx + 1}`;
           lbl.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
@@ -2702,7 +2709,8 @@ function _rerenderCachedModels() {
           menu.className = 'cookbook-task-dropdown cookbook-launch-actions-menu';
           let closeMenu = () => menu.remove();
           const mk = (label, cls, onClick) => {
-            const it = document.createElement('div');
+            const it = document.createElement('button');   // `B1576`: a menu item is a button
+            it.type = 'button';
             it.className = 'dropdown-item-compact' + (cls ? ' ' + cls : '');
             it.style.cssText = 'display:flex;align-items:center;gap:8px;';
             it.textContent = label;
@@ -2762,7 +2770,8 @@ function _rerenderCachedModels() {
           menu.className = 'cookbook-task-dropdown cookbook-gpu-split-menu';
           let closeMenu = () => menu.remove();
           const mk = (label, cls, onClick) => {
-            const it = document.createElement('div');
+            const it = document.createElement('button');   // `B1576`: a menu item is a button
+            it.type = 'button';
             it.className = 'dropdown-item-compact' + (cls ? ' ' + cls : '');
             it.style.cssText = 'display:flex;align-items:center;gap:8px;';
             it.textContent = label;

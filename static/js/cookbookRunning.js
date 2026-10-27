@@ -2921,7 +2921,8 @@ export function _renderRunningTab() {
             dropdown.appendChild(sep);
           }
           _lastGroup = item.group || _lastGroup;
-          const div = document.createElement('div');
+          const div = document.createElement('button');   // `B1576`: a menu item is a button
+          div.type = 'button';
           div.className = 'dropdown-item-compact'
             + (item.danger ? ' cookbook-dropdown-danger' : '')
             + (item.mobileOnly ? ' dropdown-cancel-mobile' : '');

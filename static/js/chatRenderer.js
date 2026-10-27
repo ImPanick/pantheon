@@ -188,6 +188,12 @@ export function buildAttachCards(attachments) {
           if (e.target.closest('.attach-ocr-btn')) return;
           _openImageLightbox(att);
         });
+        // `B1576`. Reached from the keyboard: focusable, and pressed on
+        // Enter/Space by `a11y.js`'s delegated activation. Not `role="button"`
+        // — it can hold the OCR button, and a button in a button is invalid.
+        imgWrap.tabIndex = 0;
+        imgWrap.dataset.a11yActivatable = '1';
+        if (!imgWrap.title) imgWrap.title = `Open ${att.name || 'the image'}`;
       }
 
       let skel = null;
@@ -288,6 +294,12 @@ export function buildAttachCards(attachments) {
       if (att.id) {
         card.dataset.fileId = att.id;
         card.style.cursor = 'pointer';
+        // `B1576`. A button to a keyboard, pressed by `a11y.js`'s delegated
+        // activation; it holds no control of its own.
+        card.tabIndex = 0;
+        card.setAttribute('role', 'button');
+        card.dataset.a11yActivatable = '1';
+        card.setAttribute('aria-label', `Open ${att.name || 'the attachment'}`);
         card.addEventListener('click', () => {
           // PDFs & text/code/markdown → open in the Documents viewer
           // (others fall back to the raw file).
@@ -2404,6 +2416,10 @@ export function createMsgFooter(msgElement) {
         row.className = 'memory-used-row';
         row.style.cursor = 'pointer';
         row.title = 'Click to open memory manager';
+        // `B1576`. Each row opens its memory; from the keyboard too.
+        row.tabIndex = 0;
+        row.setAttribute('role', 'button');
+        row.dataset.a11yActivatable = '1';
         const badge = document.createElement('span');
         badge.className = 'memory-used-badge ' + (m.type === 'pinned' ? 'pinned' : 'recalled');
         badge.textContent = m.type === 'pinned' ? '\u25CF' : '\u21BB';
@@ -2498,6 +2514,9 @@ export function createMsgFooter(msgElement) {
         row.className = 'skills-used-row';
         row.style.cursor = 'pointer';
         row.title = 'Open this skill';
+        row.tabIndex = 0;                         // `B1576`, as the memory rows above
+        row.setAttribute('role', 'button');
+        row.dataset.a11yActivatable = '1';
         const badge = document.createElement('span');
         const teacherWritten = s.source === 'teacher-escalation';
         badge.className = 'skills-used-badge' + (teacherWritten ? ' taught' : '');
@@ -3057,6 +3076,11 @@ export function displayMetrics(messageElement, metrics) {
 
   const metricsContainer = document.createElement('span');
   metricsContainer.className = 'response-metrics';
+  // `B1576`. Pressing the timings opens the reply's cost and context; from the
+  // keyboard too (`a11y.js`'s delegated activation).
+  metricsContainer.tabIndex = 0;
+  metricsContainer.setAttribute('role', 'button');
+  metricsContainer.dataset.a11yActivatable = '1';
 
   const responseTime = metrics.response_time;
   const inputTokens = metrics.input_tokens || 0;

@@ -978,6 +978,11 @@ export function insertStreamDoneToast(sessionId, query) {
   var preview = query ? '"' + query.substring(0, 50) + (query.length > 50 ? '...' : '') + '"' : '';
   var div = document.createElement('div');
   div.className = 'msg msg-system stream-done-toast';
+  // `B1576`. Pressing it opens the chat whose reply is ready; from the
+  // keyboard too, through `a11y.js`'s delegated activation.
+  div.tabIndex = 0;
+  div.setAttribute('role', 'button');
+  div.dataset.a11yActivatable = '1';
   div.innerHTML = '<div class="body">'
     + '<span class="stream-done-indicator">●</span>'
     + '<span>Response ready in <strong>' + (name || 'chat').replace(/</g, '&lt;') + '</strong>'

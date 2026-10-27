@@ -2814,7 +2814,8 @@ export function openGallery() {
           dropdown.appendChild(sep);
           continue;
         }
-        const it = document.createElement('div');
+        const it = document.createElement('button');   // `B1576`: a menu item is a button
+        it.type = 'button';
         it.className = 'dropdown-item-compact' + (a.danger ? ' dropdown-item-danger' : '');
         const icon = document.createElement('span');
         icon.className = 'dropdown-icon';
@@ -2827,6 +2828,7 @@ export function openGallery() {
         if (a.disabled) {
           it.style.opacity = '0.5';
           it.style.pointerEvents = 'none';
+          it.disabled = true;   // `B1576`: a button now, so it says so to a keyboard too
         } else {
           it.addEventListener('click', (e) => {
             e.stopPropagation();

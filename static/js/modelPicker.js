@@ -751,6 +751,11 @@ function _initModelPickerDropdown() {
         const isCollapsed = _collapsedProviders.has(provider);
         const header = document.createElement('div');
         header.className = 'mp-provider-header';
+        // `B1576`. Folds its provider's models from the keyboard too (`a11y.js`).
+        header.tabIndex = 0;
+        header.setAttribute('role', 'button');
+        header.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+        header.dataset.a11yActivatable = '1';
         header.innerHTML =
           chevronIcon({ strokeWidth: 3, className: `mp-provider-chevron${isCollapsed ? ' collapsed' : ''}` })
           + `<span class="mp-provider-name">${_providerGroupName(provider)}</span>`

@@ -830,7 +830,8 @@ function _showEmailMenu(em, anchor, itemEl) {
   ];
 
   for (const a of actions) {
-    const menuItem = document.createElement('div');
+    const menuItem = document.createElement('button');   // `B1576`: a menu item is a button
+    menuItem.type = 'button';
     menuItem.className = 'dropdown-item-compact' + (a.danger ? ' dropdown-item-danger' : '');
     const arrow = a.submenu ? ' <span style="margin-left:auto;opacity:0.5;">›</span>' : '';
     menuItem.innerHTML = _icon(a.icon) + `<span>${a.label}</span>${arrow}`;
@@ -878,7 +879,8 @@ function _showRemindSubmenu(em, parentDropdown) {
     { label: 'Next week', sub: nextWeek.toLocaleDateString([], { weekday: 'short' }) + ' ' + nextWeek.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), date: nextWeek },
   ];
   for (const p of presets) {
-    const item = document.createElement('div');
+    const item = document.createElement('button');   // `B1576`: a menu item is a button
+    item.type = 'button';
     item.className = 'dropdown-item-compact';
     item.innerHTML = `<span>${p.label}</span><span style="margin-left:auto;opacity:0.5;font-size:10px;">${p.sub}</span>`;
     item.addEventListener('click', async (e) => {
@@ -888,7 +890,8 @@ function _showRemindSubmenu(em, parentDropdown) {
     });
     parentDropdown.appendChild(item);
   }
-  const customItem = document.createElement('div');
+  const customItem = document.createElement('button');   // `B1576`: a menu item is a button
+  customItem.type = 'button';
   customItem.className = 'dropdown-item-compact';
   customItem.innerHTML = '<span>Pick date and time…</span>';
   customItem.addEventListener('click', async (e) => {

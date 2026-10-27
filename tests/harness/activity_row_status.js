@@ -262,8 +262,11 @@ if (mode === 'tone') {
     // `B110` moved the badge's three colour variants out of an inline style and
     // onto `.task-lastrun-*` rules, so the stub element has to carry a class the
     // way a real one does or the harness reports "no colour at all".
+    // `B1576`: and it says it is a button to a keyboard (`role`, `tabIndex`,
+    // `data-a11y-activatable`), so the stub takes attributes and a dataset.
     createElement: () => ({ style: { cssText: '' }, className: '', innerHTML: '',
-                            title: '', addEventListener() {} }),
+                            title: '', dataset: {}, attrs: {}, addEventListener() {},
+                            setAttribute(k, v) { this.attrs[k] = String(v); } }),
   };
   const api = make(...names.map((n) => deps[n]), stubDoc,
                    { appendChild: (el) => appended.push(el) }, task);

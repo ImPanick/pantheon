@@ -3199,6 +3199,11 @@ function initializeEventListeners() {
 
       entry.appendChild(label);
       entry.appendChild(closeX);
+      // `B1576`. Restores its window from the keyboard too: focusable, and
+      // pressed on Enter/Space by `a11y.js`'s delegated activation. Not a `<button>`
+      // — it holds the × (a button of its own).
+      entry.tabIndex = 0;
+      entry.dataset.a11yActivatable = '1';
       entry.addEventListener('click', () => restoreModal(modal));
       dock.appendChild(entry);
       dockEntries.set(modal, entry);

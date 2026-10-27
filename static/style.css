@@ -47246,7 +47246,8 @@ body.settings-sidebar-resize-active {
    class sets: `.memory-item-title` keeps its size and weight, `.email-card-done`
    its colour, opacity and cursor. */
 button.email-card-open,
-button.email-card-done {
+button.email-card-done,
+button.doclib-card-open {
   -webkit-appearance: none;
   appearance: none;
   background: none;
@@ -47258,10 +47259,17 @@ button.email-card-done {
   line-height: inherit;
   min-width: 0;
 }
-button.email-card-open {
+button.email-card-open,
+button.doclib-card-open {
   color: inherit;
   text-align: left;
   cursor: inherit;
+}
+/* `B1576`. The Library's chat and archive rows had their title as a block
+   `<div>`; as a button it keeps the row's width, so its ellipsis still bites. */
+.doclib-chat-row button.doclib-card-open {
+  display: block;
+  width: 100%;
 }
 .skill-card-toggle { display: block; width: 100%; }
 /* The name column clips (a long description ellipsises inside it), and a

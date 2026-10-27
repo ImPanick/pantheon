@@ -2480,6 +2480,11 @@ function _wireServerEntry(entry, ed) {
     const dot = document.createElement('span');
     dot.className = 'cookbook-srv-status';
     dot.title = 'Click to test SSH';
+    // `B1576`. A button to a keyboard too (`a11y.js`).
+    dot.tabIndex = 0;
+    dot.setAttribute('role', 'button');
+    dot.setAttribute('aria-label', 'Test the SSH connection');
+    dot.dataset.a11yActivatable = '1';
     dot.addEventListener('click', (e) => { e.stopPropagation(); _testServerConnection(entry); });
     if (titleEl) titleEl.insertBefore(dot, titleEl.firstChild);
     else if (row) row.insertBefore(dot, row.firstChild);

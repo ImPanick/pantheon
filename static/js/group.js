@@ -289,9 +289,13 @@ function _initGroupTab() {
         const chipLabel = document.createElement('span');
         chipLabel.textContent = g.name || 'Group ' + (idx + 1);
         chip.appendChild(chipLabel);
-        const chipX = document.createElement('span');
+        // `B1576`. Removing a group is a button, not a `<span>` a mouse alone
+        // could press.
+        const chipX = document.createElement('button');
+        chipX.type = 'button';
         chipX.textContent = ' \u00d7';
-        chipX.style.cssText = 'opacity:0.4;margin-left:4px;cursor:pointer;';
+        chipX.setAttribute('aria-label', 'Remove ' + (g.name || 'Group ' + (idx + 1)));
+        chipX.style.cssText = 'opacity:0.4;margin-left:4px;cursor:pointer;background:none;border:0;padding:0;color:inherit;font:inherit;';
         chipX.addEventListener('click', (ev) => {
           ev.stopPropagation();
           groups.splice(idx, 1);

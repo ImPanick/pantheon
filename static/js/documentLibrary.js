@@ -220,7 +220,9 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     const dd = document.createElement('div');
     dd.className = 'dropdown session-dropdown-menu _lib-dd';
     for (const item of items) {
-      const row = document.createElement('div');
+      // `B1576`. Buttons, as every compact menu's items are now (`B661`).
+      const row = document.createElement('button');
+      row.type = 'button';
       row.className = 'dropdown-item-compact' + (item.danger ? ' dropdown-item-danger' : '');
       const iconKey = item.icon || item.label.toLowerCase();
       const iconSvg = _LIB_DD_ICONS[iconKey] || '';
@@ -229,7 +231,8 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       dd.appendChild(row);
     }
     if (typeof opts.onSelect === 'function') {
-      const sel = document.createElement('div');
+      const sel = document.createElement('button');
+      sel.type = 'button';
       sel.className = 'dropdown-item-compact';
       sel.innerHTML =
         '<span class="dropdown-icon"><span style="font-size:16px;line-height:1;position:relative;top:-2px;">●</span></span>'
@@ -237,7 +240,8 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       sel.addEventListener('click', (e) => { e.stopPropagation(); teardown(); opts.onSelect(); });
       dd.appendChild(sel);
     }
-    const cancel = document.createElement('div');
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
     cancel.className = 'dropdown-item-compact dropdown-cancel-mobile';
     cancel.innerHTML =
       '<span class="dropdown-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>'
@@ -946,8 +950,13 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
     // Title row with version badge
     const titleRow = document.createElement('div');
     titleRow.style.cssText = 'display:flex;align-items:center;gap:6px;width:100%;';
-    const titleEl = document.createElement('span');
-    titleEl.className = 'memory-item-title';
+    // `B1576`. The title is the card's keyboard control: a `<button>` whose
+    // press IS a click on the card (the handler below opens and closes it),
+    // because the card holds controls of its own — the select box, the menu —
+    // and cannot be one (`P10-02`; the shape `B661` gave the email card).
+    const titleEl = document.createElement('button');
+    titleEl.type = 'button';
+    titleEl.className = 'memory-item-title doclib-card-open';
     titleEl.style.cssText = 'flex:0 1 auto;min-width:0;';
     // Language-specific icon next to the title (matches the document's type:
     // markdown/csv/python/html/etc.). Falls back to the generic document icon
@@ -2795,11 +2804,14 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
         const msgCountHtml = _chatMsgs > 0
           ? '<span style="opacity:0.45;font-weight:normal;font-size:0.9em;margin-left:6px;">\u00b7 ' + _chatMsgs + ' msg' + (_chatMsgs === 1 ? '' : 's') + '</span>'
           : '';
+        // `B1576`. The title is a `<button>` — the row's keyboard control, as the
+        // document card's is: pressing it is a click on the row. Here and in
+        // the archive's three rows below.
         card.innerHTML =
           '<div class="doclib-chat-header" style="display:flex;align-items:center;width:100%;gap:6px;">' +
             cbHtml +
             '<div style="flex:1;min-width:0;">' +
-              '<div class="memory-item-title">' + chatIconSvg + _esc(s.name || 'Untitled') + msgCountHtml + '</div>' +
+              '<button type="button" class="memory-item-title doclib-card-open">' + chatIconSvg + _esc(s.name || 'Untitled') + msgCountHtml + '</button>' +
               '<div class="memory-item-meta" style="font-size:10px;opacity:0.4;margin-top:2px;">' + [model, _relTime(s.updated_at)].filter(Boolean).join(' \u00b7 ') + '</div>' +
             '</div>' +
             chevronSvg +
@@ -3253,7 +3265,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
           '<div class="doclib-chat-header" style="display:flex;align-items:center;width:100%;gap:6px;">' +
             cbHtml +
             '<div style="flex:1;min-width:0;">' +
-              '<div class="memory-item-title">' + arcIconSvg + _esc(s.name || 'Untitled') + '</div>' +
+              '<button type="button" class="memory-item-title doclib-card-open">' + arcIconSvg + _esc(s.name || 'Untitled') + '</button>' +
               '<div class="memory-item-meta" style="font-size:10px;opacity:0.4;margin-top:2px;">' + [model, _relTime(s.updated_at)].filter(Boolean).join(' \u00b7 ') + '</div>' +
             '</div>' +
             '<div class="memory-item-actions"><button class="memory-item-btn _arc-menu" title="Actions"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button></div>' +
@@ -3297,7 +3309,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
           '<div class="doclib-chat-header" style="display:flex;align-items:center;width:100%;gap:6px;">' +
             _dcb +
             '<div style="flex:1;min-width:0;">' +
-              '<div class="memory-item-title">' + _arcDocIco + _esc(d.title || 'Untitled') + '</div>' +
+              '<button type="button" class="memory-item-title doclib-card-open">' + _arcDocIco + _esc(d.title || 'Untitled') + '</button>' +
               '<div class="memory-item-meta" style="font-size:10px;opacity:0.4;margin-top:2px;">' + ['Document', (d.language || 'text'), _relTime(d.updated_at)].filter(Boolean).join(' · ') + '</div>' +
             '</div>' +
             '<div class="memory-item-actions"><button class="memory-item-btn _arc-doc-menu" title="Actions"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button></div>' +
@@ -3334,7 +3346,7 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
           '<div class="doclib-chat-header" style="display:flex;align-items:center;width:100%;gap:6px;">' +
             _rcb +
             '<div style="flex:1;min-width:0;">' +
-              '<div class="memory-item-title">' + _arcResIco + _esc(r.query || 'Research') + '</div>' +
+              '<button type="button" class="memory-item-title doclib-card-open">' + _arcResIco + _esc(r.query || 'Research') + '</button>' +
               '<div class="memory-item-meta" style="font-size:10px;opacity:0.4;margin-top:2px;">' + ['Research', (r.source_count ? r.source_count + ' sources' : ''), _relTime(r.completed_at ? new Date(r.completed_at * 1000).toISOString() : '')].filter(Boolean).join(' · ') + '</div>' +
             '</div>' +
             '<div class="memory-item-actions"><button class="memory-item-btn _arc-res-menu" title="Actions"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button></div>' +

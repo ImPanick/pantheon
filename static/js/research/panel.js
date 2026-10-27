@@ -823,6 +823,11 @@ function _renderJobs() {
     sec.className = 'research-section' + (collapsed ? ' collapsed' : '');
     const header = document.createElement('div');
     header.className = 'research-section-header';
+    // `B1576`. Folds its section from the keyboard too: focusable, pressed by
+    // `a11y.js`'s delegated activation. No `role="button"` — it can hold the
+    // section's Clear button.
+    header.tabIndex = 0;
+    header.dataset.a11yActivatable = '1';
     // Status dot on the right (visible even when folded):
     //  • Active = pulsing accent glow (work in progress)
     //  • any failed/cancelled job in Active = solid red
@@ -1045,6 +1050,10 @@ function _buildJobCard(job) {
     // `BRAIN-U-14`: an empty run offers no report — there is nothing in it.
     if (!failed) {
       card.style.cursor = 'pointer';
+      // `B1576`. Opens the report from the keyboard too; it holds its own
+      // action buttons, so it is focusable and pressed by `a11y.js`'s delegated activation.
+      card.tabIndex = 0;
+      card.dataset.a11yActivatable = '1';
       card.addEventListener('click', () => {
         window.open(`${_apiBase}/api/research/report/${job.id}`, '_blank');
       });

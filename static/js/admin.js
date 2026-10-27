@@ -187,6 +187,10 @@ async function loadUsers() {
       // Header: name + badges + delete
       const header = document.createElement('div');
       header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:4px 0;';
+      // `B1576`. Opens the account's privileges; it holds the rename, admin
+      // and delete buttons, so it is focusable and pressed by `a11y.js`'s delegated activation.
+      header.tabIndex = 0;
+      header.dataset.a11yActivatable = '1';
       const initial = u.username.charAt(0).toUpperCase();
       header.innerHTML = `
         <div class="admin-user-info">

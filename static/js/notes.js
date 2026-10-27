@@ -5488,6 +5488,13 @@ function _openMobileFullscreenEdit(id, fromCard) {
     const reader = document.createElement('div');
     reader.className = 'note-form-content-reader';
     reader.innerHTML = _linkify(note.content || '');
+    // `B1576`. The text editor is hidden behind this reading view until it
+    // is pressed, so a keyboard has to be able to press it: focusable, and
+    // pressed on Enter/Space by `a11y.js`'s delegated activation (a focused
+    // link inside still opens on its own Enter).
+    reader.tabIndex = 0;
+    reader.dataset.a11yActivatable = '1';
+    reader.title = 'Edit';
     ta.style.display = 'none';
     ta.insertAdjacentElement('beforebegin', reader);
     reader.addEventListener('click', (e) => {
@@ -5733,6 +5740,8 @@ function _addRowReadMode(row) {
   const span = document.createElement('span');
   span.className = 'note-cl-text-reader';
   span.innerHTML = _linkify(val);
+  span.tabIndex = 0;                         // `B1576`, as the note's reading view
+  span.dataset.a11yActivatable = '1';
   txt.style.display = 'none';
   txt.insertAdjacentElement('beforebegin', span);
   span.addEventListener('click', (e) => {

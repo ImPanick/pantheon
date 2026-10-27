@@ -534,7 +534,11 @@ async function moveToFolder(sessionId, folderName) {
 function buildFolderSubmenu(sessionId, currentFolder, dropdown) {
   const folders = getFolderNames();
 
-  const moveItem = document.createElement('div');
+  // `B1576`. Every item in these menus is a `<button type="button">`, as the
+  // email library's are (`B661`): a `<div>` with a click handler was reached by
+  // a mouse alone, so a keyboard could open the chat's menu and press nothing.
+  const moveItem = document.createElement('button');
+  moveItem.type = 'button';
   moveItem.className = 'dropdown-item-compact';
   moveItem.style.position = 'relative';
   const _folderIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
@@ -544,7 +548,8 @@ function buildFolderSubmenu(sessionId, currentFolder, dropdown) {
   sub.className = 'dropdown session-folder-submenu';
 
   // "No folder" option
-  const noneOpt = document.createElement('div');
+  const noneOpt = document.createElement('button');
+  noneOpt.type = 'button';
   noneOpt.className = 'dropdown-item-compact';
   if (!currentFolder) noneOpt.style.opacity = '0.5';
   noneOpt.textContent = '(No folder)';
@@ -558,7 +563,8 @@ function buildFolderSubmenu(sessionId, currentFolder, dropdown) {
 
   // Existing folders
   folders.forEach(f => {
-    const opt = document.createElement('div');
+    const opt = document.createElement('button');
+    opt.type = 'button';
     opt.className = 'dropdown-item-compact';
     if (f === currentFolder) opt.style.opacity = '0.5';
     opt.textContent = f;
@@ -575,7 +581,8 @@ function buildFolderSubmenu(sessionId, currentFolder, dropdown) {
   });
 
   // "New folder" option
-  const newOpt = document.createElement('div');
+  const newOpt = document.createElement('button');
+  newOpt.type = 'button';
   newOpt.className = 'dropdown-item-compact';
   // `--accent-primary` has zero declarations anywhere, and with no fallback
   // this resolved to `inherit` — so "+ New Folder" rendered identically to the
@@ -856,15 +863,18 @@ function createSessionItem(s) {
   const _copyIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
   const _memoryIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4a3 3 0 0 0-3 3v1a3 3 0 0 0-1 5.8V16a3 3 0 0 0 4 2.8"/><path d="M12 4a3 3 0 0 1 3 3v1a3 3 0 0 1 1 5.8V16a3 3 0 0 1-4 2.8"/><path d="M12 4v16"/></svg>';
 
-  const renameItem = document.createElement('div');
+  const renameItem = document.createElement('button');
+  renameItem.type = 'button';
   renameItem.className = 'dropdown-item-compact';
   renameItem.innerHTML = _icon(_renameIcon) + '<span>Rename</span>';
 
-  const archiveItem = document.createElement('div');
+  const archiveItem = document.createElement('button');
+  archiveItem.type = 'button';
   archiveItem.className = 'dropdown-item-compact';
   archiveItem.innerHTML = _icon(_archiveIcon) + '<span>Archive</span>';
 
-  const deleteItem = document.createElement('div');
+  const deleteItem = document.createElement('button');
+  deleteItem.type = 'button';
   deleteItem.className = 'dropdown-item-compact dropdown-item-danger';
   deleteItem.innerHTML = _icon(_deleteIcon) + '<span>Delete</span><span class="dropdown-shortcut">' + _mod + '+Alt+D</span>';
 
@@ -877,7 +887,8 @@ function createSessionItem(s) {
     const _favIcon = s.is_important
       ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>'
       : '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
-    const starItem = document.createElement('div');
+    const starItem = document.createElement('button');
+    starItem.type = 'button';
     starItem.className = 'dropdown-item-compact';
     starItem.innerHTML = _icon(_favIcon) + '<span>' + (s.is_important ? 'Unfavorite' : 'Favorite') + '</span><span class="dropdown-shortcut">' + _mod + '+Alt+F</span>';
     starItem.addEventListener('click', async (e) => {
@@ -893,7 +904,8 @@ function createSessionItem(s) {
     dropdown.appendChild(starItem);
   }
 
-  const copyItem = document.createElement('div');
+  const copyItem = document.createElement('button');
+  copyItem.type = 'button';
   copyItem.className = 'dropdown-item-compact';
   copyItem.innerHTML = _icon(_copyIcon) + '<span>Copy chat</span>';
   copyItem.addEventListener('click', async (e) => {
@@ -935,7 +947,8 @@ function createSessionItem(s) {
 
   // "Select" — enter bulk select mode with this session pre-selected
   if (!isOpenClaw) {
-    const selectMoreItem = document.createElement('div');
+    const selectMoreItem = document.createElement('button');
+    selectMoreItem.type = 'button';
     selectMoreItem.className = 'dropdown-item-compact';
     selectMoreItem.innerHTML = _icon('<span style="font-size:16px;line-height:1;">●</span>') + '<span>Select</span>';
     selectMoreItem.addEventListener('click', (e) => {
@@ -943,7 +956,7 @@ function createSessionItem(s) {
       dropdown.style.display = 'none';
       _enterSelectMode();
       const dot = div.querySelector('.session-select-cb');
-      if (dot) { dot._checked = true; dot.innerHTML = '●'; dot.style.opacity = '1'; dot.style.color = 'var(--accent, var(--red))'; _selectedIds.add(s.id); _updateBulkCount(); }
+      if (dot) { dot._checked = true; dot.setAttribute('aria-pressed', 'true'); dot.innerHTML = '●'; dot.style.opacity = '1'; dot.style.color = 'var(--accent, var(--red))'; _selectedIds.add(s.id); _updateBulkCount(); }
     });
     // On mobile, "Select" is the primary multi-pick action — put it at the top
     // of the menu. On desktop keep its original position.
@@ -967,7 +980,8 @@ function createSessionItem(s) {
   //
   // `window.memoryModule` rather than an import: `memory.js` imports this
   // file, and `createSessionItem` already reaches it this way for the same reason.
-  const memoryItem = document.createElement('div');
+  const memoryItem = document.createElement('button');
+  memoryItem.type = 'button';
   memoryItem.className = 'dropdown-item-compact';
   memoryItem.innerHTML = _icon(_memoryIcon) + '<span>Extract memories</span>';
   memoryItem.addEventListener('click', (e) => {
@@ -997,7 +1011,8 @@ function createSessionItem(s) {
   // Mobile-only Cancel — explicit close for touch users. CSS hides it on
   // desktop (outside-click already dismisses cleanly there).
   const _cancelIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-  const cancelItem = document.createElement('div');
+  const cancelItem = document.createElement('button');
+  cancelItem.type = 'button';
   cancelItem.className = 'dropdown-item-compact dropdown-cancel-mobile';
   cancelItem.innerHTML = _icon(_cancelIcon) + '<span>Cancel</span>';
   cancelItem.addEventListener('click', (e) => {
@@ -1422,6 +1437,12 @@ function _renderSessionListImpl() {
     header.className = 'session-folder-header';
     header.dataset.folderName = folderName;
     const collapsed = folderState[folderName] === false;
+    // `B1576`. The header opens and closes its folder, and holds buttons of
+    // its own (delete), so it cannot be a `<button>`: it is focusable and
+    // marked, and `a11y.js`'s delegated activation presses it on Enter/Space.
+    header.tabIndex = 0;
+    header.dataset.a11yActivatable = '1';
+    header.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
 
     // Drag handle for folder reordering
     const dragHandle = document.createElement('span');
@@ -1550,6 +1571,9 @@ function _renderSessionListImpl() {
     const unsortedHeader = document.createElement('div');
     unsortedHeader.className = 'session-folder-header';
     const unsortedCollapsed = loadFolderState()['__unsorted__'] === false;
+    unsortedHeader.tabIndex = 0;                      // `B1576`, as the folder headers above
+    unsortedHeader.dataset.a11yActivatable = '1';
+    unsortedHeader.setAttribute('aria-expanded', unsortedCollapsed ? 'false' : 'true');
 
     const dragHandle = document.createElement('span');
     dragHandle.className = 'folder-drag-handle';
@@ -1639,11 +1663,29 @@ function _postRenderSessionList(list) {
       if (_sessionListFocused) activeEl.focus();
     }
   }
+  _syncSessionTabStop(list);
 
   _initKeyboardNav(list);
   _initSwipeToDelete(list);
   initDragSort();
   _showSwipeHint(list);
+}
+
+/**
+ * `B1576`. The chat list is a listbox whose rows are `role="option"`, moved
+ * between with the arrow keys (`_onSessionListKeydown`) — and every row was
+ * `tabindex="-1"`, so Tab never reached the list at all: a keyboard could
+ * press the arrows only once a mouse had put the focus on a row. One row is
+ * the list's tab stop (roving tabindex): the open chat's, else the first.
+ */
+function _syncSessionTabStop(list, stop = null) {
+  const rows = list ? [...list.querySelectorAll('.list-item[data-session-id]')] : [];
+  if (!rows.length) return;
+  const target = stop
+    || rows.find(r => r.classList.contains('active-session'))
+    || rows.find(r => r.getAttribute('tabindex') === '0')
+    || rows[0];
+  for (const r of rows) r.setAttribute('tabindex', r === target ? '0' : '-1');
 }
 
 function _initKeyboardNav(list) {
@@ -1728,14 +1770,21 @@ function _enterSelectMode() {
   // Add select dots to all session items
   document.querySelectorAll('.list-item[data-session-id]').forEach(item => {
     if (item.querySelector('.session-select-cb')) return;
-    const dot = document.createElement('span');
+    // `B1576`. A `<button>` that says whether it is pressed: as a `<span>` the
+    // select-mode dot was a mouse's alone, and select mode is how several
+    // chats are archived or deleted at once.
+    const dot = document.createElement('button');
+    dot.type = 'button';
     dot.className = 'session-select-cb';
     dot.innerHTML = '○';
-    dot.style.cssText = 'cursor:pointer;font-size:16px;flex-shrink:0;opacity:0.4;transition:opacity 0.1s;user-select:none;';
+    dot.setAttribute('aria-pressed', 'false');
+    dot.setAttribute('aria-label', 'Select ' + ((item.querySelector('.grow') || {}).textContent || 'this chat'));
+    dot.style.cssText = 'cursor:pointer;font-size:16px;flex-shrink:0;opacity:0.4;transition:opacity 0.1s;user-select:none;background:none;border:0;padding:0;color:inherit;font-family:inherit;line-height:inherit;';
     dot._checked = false;
     dot.addEventListener('click', (e) => {
       e.stopPropagation();
       dot._checked = !dot._checked;
+      dot.setAttribute('aria-pressed', dot._checked ? 'true' : 'false');
       dot.innerHTML = dot._checked ? '●' : '○';
       dot.style.opacity = dot._checked ? '1' : '0.4';
       dot.style.color = dot._checked ? 'var(--accent, var(--red))' : '';
@@ -1802,6 +1851,7 @@ function _initBulkSelect() {
       selectAllDot.style.color = selectAll.checked ? 'var(--accent, var(--red))' : '';
       document.querySelectorAll('.session-select-cb').forEach(dot => {
         dot._checked = selectAll.checked;
+        dot.setAttribute('aria-pressed', selectAll.checked ? 'true' : 'false');
         dot.innerHTML = selectAll.checked ? '●' : '○';
         dot.style.opacity = selectAll.checked ? '1' : '0.4';
         dot.style.color = selectAll.checked ? 'var(--accent, var(--red))' : '';
@@ -2740,6 +2790,11 @@ export async function deleteCurrentSessionFromTopMenu() {
 async function _onSessionListKeydown(e) {
   const item = e.target.closest('.list-item[data-session-id]');
   if (!item) return;
+  // `B1576`. The row's keys are the row's: a press on a control inside it — the
+  // ⋮ button, an item of its menu, the select dot — is that control's. Enter
+  // on the ⋮ button opened this chat instead of its menu, and Backspace on a
+  // menu item would have asked to delete the chat.
+  if (e.target !== item) return;
 
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault();
@@ -2749,6 +2804,7 @@ async function _onSessionListKeydown(e) {
     if (idx < 0) return;
     const next = e.key === 'ArrowDown' ? allItems[idx + 1] : allItems[idx - 1];
     if (next) {
+      _syncSessionTabStop(uiModule.el('session-list'), next);   // `B1576`: the tab stop moves with the focus
       next.focus();
       const sid = next.dataset.sessionId;
       if (sid) selectSession(sid);
@@ -3189,7 +3245,8 @@ function _showDropdown(anchorEl, items) {
   const dd = document.createElement('div');
   dd.className = 'dropdown session-dropdown-menu archive-dd';
   for (const item of items) {
-    const row = document.createElement('div');
+    const row = document.createElement('button');
+    row.type = 'button';
     row.className = 'dropdown-item-compact' + (item.danger ? ' dropdown-item-danger' : '');
     row.innerHTML = '<span>' + item.label + '</span>';
     row.addEventListener('click', (e) => {

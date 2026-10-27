@@ -183,20 +183,125 @@ def test_the_readers_menu_is_buttons(walked):
 # ── the census, held ────────────────────────────────────────────────────────
 
 #: The row's scope (`Law 5`): `const|let|var <name> = document.createElement(
-#: 'div'|'span'|'li'|'td'|'tr')` followed anywhere in the same module by
-#: `<name>.addEventListener('click'` or `<name>.onclick =`, over `static/**/*.js`
-#: outside `static/lib/**`, comments blanked. 140 on `2760dbe1`; 129 after the
-#: email library's eleven. Most of what is left is not a control (backdrops,
-#: delegated containers, pointer surfaces) and the rest is `sessions.js` (under
-#: `a11y.js`'s `#sidebar .list-item` shim), `documentLibrary.js` and
-#: `chatRenderer.js` — the row's next cut. It may fall; it may not rise.
-CEILING = 129
+#: 'div'|'span'|'li'|'td'|'tr')` followed by `<name>.addEventListener('click'`
+#: or `<name>.onclick =`, over `static/**/*.js` outside `static/lib/**`,
+#: comments blanked. 140 on `2760dbe1`; 129 after the email library's eleven.
+#:
+#: `B1576` sharpened the scan and read every site:
+#:
+#:   * **the click is looked for in the declaration's own block**, not the whole
+#:     module. The module-wide name match counted 18 sites whose click belongs
+#:     to another variable of the same name — a `row` two thousand lines on, a
+#:     `card` a `querySelectorAll` callback names. 129 -> 111 is the scan
+#:     improving, not the product (`Law 13`'s note on a widened checker);
+#:   * a site the keyboard reaches **in place** is not counted: focusable and
+#:     pressed by `a11y.js`'s delegated activation (`data-a11y-activatable`),
+#:     or focusable with its own `keydown`;
+#:   * a site in `NOT_COUNTED` is not counted, with why — a backdrop, a
+#:     container that only routes or stops a click, a pointer surface, or a
+#:     control the keyboard reaches another way.
+#:
+#: What is left is real controls still a mouse's alone: one, Compare's model
+#: picker (`compare/selector.js`), whose options drop under a text input with no
+#: arrow-key way into them — it needs the model picker's
+#: `_handlePickerKeydown`, not a tab stop per option. It may fall; it may not rise.
+CEILING = 1
 
 _DECL = re.compile(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*document\.createElement\("
                    r"\s*['\"](?:div|span|li|td|tr)['\"]\s*\)")
 
+_BACKDROP = "a backdrop: a click outside the window closes it, and Escape is the keyboard's way"
+_ROUTES = "a container: it routes a click to the buttons inside it, or stops one"
 
-def census() -> list[tuple[str, str]]:
+#: `(module, name)` -> why the keyboard needs nothing from this element.
+NOT_COUNTED = {
+    ("static/js/assistant.js", "modal"): _BACKDROP,
+    ("static/js/calendar.js", "overlay"): _BACKDROP + "; its choices are buttons",
+    ("static/js/chatRenderer.js", "overlay"): _BACKDROP,
+    ("static/js/compare/scoreboard.js", "overlay"): _BACKDROP,
+    ("static/js/cookbookRunning.js", "overlay"): _BACKDROP,
+    ("static/js/cookbookServe.js", "ov"): _BACKDROP + "; its choices are buttons",
+    ("static/js/document.js", "overlay"): _BACKDROP,
+    ("static/js/documentLibrary.js", "modal"): _BACKDROP,
+    ("static/js/editor/fx/adj-popup.js", "backdrop"): _BACKDROP,
+    ("static/js/editor/wire-import.js", "overlay"): _BACKDROP,
+    ("static/js/emailLibrary.js", "modal"): _BACKDROP,
+    ("static/js/emailLibrary.js", "overlay"): _BACKDROP,
+    ("static/js/gallery.js", "modal"): _BACKDROP,
+    ("static/js/galleryEditor.js", "overlay"): _BACKDROP,
+    ("static/js/notes.js", "backdrop"): _BACKDROP,
+    ("static/js/research/panel.js", "overlay"): _BACKDROP,
+    ("static/js/sidebar-layout.js", "mobileBackdrop"): _BACKDROP + " (the phone's sidebar)",
+    ("static/js/tasks.js", "modal"): _BACKDROP,
+    ("static/js/chat.js", "nav"): _ROUTES + " (a reply's variant arrows)",
+    ("static/js/chatRenderer.js", "nav"): _ROUTES + " (a reply's variant arrows)",
+    ("static/js/compare/index.js", "grid"): _ROUTES + " (each pane's vote buttons)",
+    ("static/js/editor/fx/adj-popup.js", "menu"): _ROUTES + " (its items are buttons)",
+    ("static/js/document.js", "popover"): _ROUTES,
+    ("static/js/document.js", "menu"): _ROUTES + " (the reply choices are buttons)",
+    ("static/js/emailLibrary.js", "tagWrap"): _ROUTES + " (each tag is a button)",
+    ("static/js/emailLibrary.js", "navArrows"): _ROUTES + " (the arrows are buttons)",
+    ("static/js/emailLibrary.js", "reader"): _ROUTES,
+    ("static/js/emailLibrary.js", "menu"): _ROUTES + " (the reply choices are buttons)",
+    ("static/js/emailLibrary.js", "customRow"): _ROUTES + " (it holds an input and its Go button)",
+    ("static/js/sessions.js", "sub"): _ROUTES + " (the folder submenu; its items are buttons)",
+    ("static/js/sessions.js", "dropdown"): _ROUTES + " (a chat's menu; its items are buttons)",
+    ("static/js/slashCommands.js", "tooltip"): _ROUTES + " (the tour's Back, Skip and Next buttons)",
+    ("static/js/document.js", "pageWrap"):
+        "a PDF page: in drop mode a click places an annotation where the pointer lands",
+    ("static/js/document.js", "item"):
+        "a contact suggestion: a listbox option the arrow keys reach from the address input",
+    ("static/js/search-chat.js", "row"):
+        "a command-palette option: the arrow keys reach it from the search box (aria-activedescendant)",
+    ("static/js/modelPicker.js", "row"):
+        "a model in the picker: the arrow keys and Enter reach it from the picker's search box",
+    ("static/js/sessions.js", "div"):
+        "a chat in the sidebar list: a listbox option the arrow keys move between; "
+        "one row is the list's tab stop (`B1576`, roving tabindex)",
+    ("static/js/sessions.js", "icon"):
+        "a chat's favourite bookmark: a mouse shortcut for its menu's Unfavorite (and Ctrl+Alt+F)",
+    ("static/js/documentLibrary.js", "card"):
+        "a Library card or row: it holds its own controls, and its title is its button "
+        "(`.doclib-card-open`, `B1576`), whose press is a click on it",
+    ("static/js/emailLibrary.js", "card"):
+        "an email card: its subject is its button (`.email-card-open`, `B661`)",
+    ("static/js/skills.js", "card"):
+        "a skill card: its name is its button (`.skill-card-toggle`, `P10-06`)",
+    ("static/js/modalManager.js", "chip"):
+        _ROUTES + " (a minimised window: its Restore and Close are buttons, `P23-01`)",
+    ("static/js/notes.js", "addRow"):
+        _ROUTES + " (a wider target for its + Add button, which is the control)",
+    ("static/js/memory.js", "item"):
+        "a memory in select mode: its checkbox is the control; the row is a wider target for it",
+}
+
+
+def _block_end(text: str, pos: int) -> int:
+    """Where the block the declaration at `pos` sits in closes."""
+    depth = 0
+    for i in range(pos, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            if depth == 0:
+                return i
+            depth -= 1
+    return len(text)
+
+
+def _reached_in_place(body: str, name: str) -> bool:
+    n = re.escape(name)
+    if re.search(n + r"\s*\.\s*dataset\.a11yActivatable\s*=|"
+                 + n + r"\s*\.\s*setAttribute\(\s*['\"]data-a11y-activatable", body):
+        return True
+    focus = re.search(n + r"\s*\.\s*tabIndex\s*=\s*0\b|"
+                      + n + r"\s*\.\s*setAttribute\(\s*['\"]tabindex['\"]\s*,\s*['\"]0['\"]", body)
+    keys = re.search(n + r"\s*\.\s*addEventListener\(\s*['\"]keydown['\"]", body)
+    return bool(focus and keys)
+
+
+def sites() -> list[tuple[str, str, bool]]:
+    """`(module, name, reached in place)` for every site in the scope."""
     from tests.helpers.source_text import blank
     found = []
     for path in sorted((ROOT / "static").rglob("*.js")):
@@ -205,19 +310,43 @@ def census() -> list[tuple[str, str]]:
         text = blank(path)
         for m in _DECL.finditer(text):
             name = m.group(1)
+            end = _block_end(text, m.end())
             click = re.compile(r"\b" + re.escape(name)
                                + r"\s*\.\s*(?:addEventListener\(\s*['\"]click['\"]|onclick\s*=)")
-            if click.search(text, m.end()):
-                found.append((path.relative_to(ROOT).as_posix(), name))
+            if click.search(text, m.end(), end):
+                found.append((path.relative_to(ROOT).as_posix(), name,
+                              _reached_in_place(text[m.end():end], name)))
     return found
 
 
+def census() -> list[tuple[str, str]]:
+    """The sites still a mouse's alone."""
+    return [(f, n) for f, n, kb in sites() if not kb and (f, n) not in NOT_COUNTED]
+
+
 def test_no_new_clickable_div():
-    sites = census()
-    assert len(sites) <= CEILING, (
-        f"{len(sites)} non-native elements are given a click handler (ceiling {CEILING}). "
-        "Build a clickable thing as a <button type=\"button\">; if it holds other "
-        "controls, give it a button that is its name (P10-02) and say why in place.")
+    left = census()
+    assert len(left) <= CEILING, (
+        f"{len(left)} non-native elements are given a click handler (ceiling {CEILING}): "
+        f"{left}. Build a clickable thing as a <button type=\"button\">; if it holds other "
+        "controls, give it a button that is its name (P10-02), or make it focusable and "
+        "mark it data-a11y-activatable, and say why in place.")
+
+
+def test_every_entry_in_the_register_is_a_site_that_exists():
+    """A register entry for a site that is gone is a hole the next site of the
+    same name walks through unread."""
+    present = {(f, n) for f, n, _kb in sites()}
+    assert set(NOT_COUNTED) <= present, sorted(set(NOT_COUNTED) - present)
+
+
+def test_the_chat_list_and_the_library_and_the_transcript_are_off_the_census():
+    """`B1576`'s cut, held: the sidebar's menus, the Library's menus and cards,
+    and the transcript's attachments, images, memory and skill rows and timings."""
+    left = {f for f, _n in census()}
+    for module in ("static/js/sessions.js", "static/js/documentLibrary.js",
+                   "static/js/chatRenderer.js", "static/js/chat.js", "static/js/chatStream.js"):
+        assert module not in left, (module, [s for s in census() if s[0] == module])
 
 
 def test_the_email_library_keeps_its_buttons():
