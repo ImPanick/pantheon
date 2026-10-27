@@ -106,6 +106,21 @@ const marks = (root) => [...root.querySelectorAll('svg')].map((s) => s.innerHTML
              header: { text: meta.textContent, svgs: [...meta.querySelectorAll('svg')].map((s) => s.innerHTML),
                        spoken: meta.querySelector('[aria-label]') && meta.querySelector('[aria-label]').getAttribute('aria-label') } };
   }, { source, legacy });
+  // The header's own Rename, abandoned two ways: Escape, and leaving the
+  // field with the name unchanged.
+  out.renamed = {};
+  for (const how of ['Escape', 'unchanged']) {
+    await page.evaluate(() => document.getElementById('export-rename-btn').click());
+    await page.waitForSelector('#current-meta input.session-rename-input', { timeout: 10000 });
+    if (how === 'Escape') await page.keyboard.press('Escape');
+    else await page.evaluate(() => document.querySelector('#current-meta input.session-rename-input').blur());
+    await page.waitForTimeout(400);
+    out.renamed[how] = await page.evaluate(() => {
+      const m = document.getElementById('current-meta');
+      return { text: m.textContent, input: !!m.querySelector('input'),
+               svgs: [...m.querySelectorAll('svg')].map((s) => s.innerHTML) };
+    });
+  }
   const list = await (await context.request.get(BASE + '/api/sessions')).json().catch(() => null);
   const all = Array.isArray(list) ? list : (list && (list.sessions || list.items)) || [];
   out.names = all.map((s) => s.name);
@@ -160,6 +175,17 @@ def test_the_header_names_the_chat_and_says_fork_in_words(measured):
     assert header["spoken"] == "Fork:", header
     assert measured["fork"]["row"]["label"] == "Budget for May"
     assert measured["fork"]["row"]["iconName"] == "Fork"
+
+
+@pytest.mark.parametrize("how", ["Escape", "unchanged"])
+def test_a_header_rename_given_up_puts_the_mark_back(measured, how):
+    """The top bar's Rename swaps the header for a field, and giving it up put
+    the header back as its TEXT — and the drawn fork has none, so a fork's
+    header lost its mark until the next chat switch repainted it. The header is
+    put back as it was (`static/app.js`, the Rename handler)."""
+    got, header = measured["renamed"][how], measured["fork"]["header"]
+    assert not got["input"], got
+    assert got["text"] == header["text"] and got["svgs"] == header["svgs"], (got, header)
 
 
 def test_a_chat_forked_under_the_old_name_is_still_a_fork(measured):

@@ -34,8 +34,9 @@ _HAS_NODE = shutil.which("node") is not None
 
 _IMPORT_REWRITES = {
     "import Storage from './storage.js';": "import Storage from './storage.mjs';",
-    "import { chevronIcon } from './icons.js';": (
-        "import { chevronIcon } from './icons.mjs';"
+    # `B1530` added the drawn fork (the sidebar row's and the header's mark).
+    "import { chevronIcon, forkIcon } from './icons.js';": (
+        "import { chevronIcon, forkIcon } from './icons.mjs';"
     ),
     "import uiModule, { autoResize, styledPrompt } from './ui.js';": (
         "import uiModule, { autoResize, styledPrompt } from './ui.mjs';"

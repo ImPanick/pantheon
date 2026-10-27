@@ -305,8 +305,11 @@ def test_the_accent_graphic_floor_fails_on_two_palettes_not_the_three_B16_named(
 
 # ── `B22` ───────────────────────────────────────────────────────────────────
 
-# The nineteen. Floor per token is what the SHEET does with it: 4.5:1 where it
-# paints text, 3:1 where it only draws a border, a dot or a background.
+# The nineteen, seventeen of them here now: `--color-muted` left because nothing
+# paints in it (`B391`), and `--color-recording-hover` moved to
+# `_SURFACE_FLOORS` below because it is only ever a block under white (`B393`).
+# Floor per token is what the SHEET does with it: 4.5:1 where it paints text,
+# 3:1 where it only draws a border, a dot or a background.
 _SEMANTIC_FLOORS = {
     "green": BODY_FLOOR, "warn": BODY_FLOOR,
     "color-error": BODY_FLOOR, "color-error-light": GRAPHIC_FLOOR,

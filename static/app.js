@@ -791,7 +791,12 @@ function initializeEventListeners() {
       input.value = currentName;
       input.className = 'session-rename-input';
       input.style.cssText = 'font-size:inherit;background:transparent;border:none;border-bottom:1px solid var(--accent, var(--red));color:var(--fg);outline:none;width:100%;padding:0;';
-      const origText = metaEl.textContent;
+      // `B1530`: what the header held is put back as nodes, not as its text. A
+      // fork's header is the drawn fork beside the name (`paintChatName`), and
+      // an SVG has no text, so restoring `textContent` dropped the mark on
+      // Escape or an unchanged name — until the next chat switch repainted it.
+      const origNodes = [...metaEl.childNodes];
+      const restore = () => metaEl.replaceChildren(...origNodes);
       metaEl.textContent = '';
       metaEl.appendChild(input);
       input.focus();
@@ -804,23 +809,23 @@ function initializeEventListeners() {
           if (!sid && sessionModule.materializePendingSession) {
             try { await sessionModule.materializePendingSession(); sid = sessionModule.getCurrentSessionId(); } catch (_) {}
           }
-          if (!sid) { metaEl.textContent = newName; return; }
+          if (!sid) { sessionModule.paintChatName(metaEl, newName); return; }
           const fd = new FormData();
           fd.append('name', newName);
           await fetch(`${API_BASE}/api/session/${sid}`, { method: 'PATCH', body: fd });
           const _m = sessionModule.getSessions().find(s => s.id === sid);
           if (_m) _m.name = newName;
-          metaEl.textContent = newName;
+          sessionModule.paintChatName(metaEl, newName);   // `B1530`: a fork keeps its drawn mark
           uiModule.showToast('Renamed');
           sessionModule.loadSessions();
         } else {
-          metaEl.textContent = origText;
+          restore();
         }
       };
       input.addEventListener('blur', commit);
       input.addEventListener('keydown', (ev) => {
         if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
-        if (ev.key === 'Escape') { input.removeEventListener('blur', commit); metaEl.textContent = origText; }
+        if (ev.key === 'Escape') { input.removeEventListener('blur', commit); restore(); }
       });
     });
   }
