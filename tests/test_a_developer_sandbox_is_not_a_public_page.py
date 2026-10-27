@@ -69,7 +69,11 @@ docs = sorted(p.relative_to(STATIC_DIR).as_posix()
               if p.is_file() and mimetypes.guess_type(p.name)[0]
               in ("text/html", "application/xhtml+xml"))
 RESULT["documents"] = docs
-RESULT["file_sha"] = {d: hashlib.sha256((pathlib.Path(STATIC_DIR) / d).read_bytes()).hexdigest()
+# `B398`: the page as the server draws it — the shell's `{{chevron:…}}` are
+# filled from `icons.js` before it is served, so that is "the page's bytes".
+from src.shell_glyphs import render as _draw
+RESULT["file_sha"] = {d: hashlib.sha256(_draw((pathlib.Path(STATIC_DIR) / d).read_text(encoding="utf-8"))
+                                        .encode("utf-8")).hexdigest()
                       for d in docs}
 RESULT["exempt_exact"] = sorted(app_module.AUTH_EXEMPT_EXACT)
 
