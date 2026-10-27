@@ -185,7 +185,9 @@ def wire(monkeypatch):
         async def _aread(self):
             return b""
 
-    monkeypatch.setattr(llm_core.httpx, "post", sync_post)
+    # `B1022`: the non-streamed model call is `llm_core._post_routed` (routed
+    # by a `NO_PROXY` range) rather than `httpx.post`, so the fake stands there.
+    monkeypatch.setattr(llm_core, "_post_routed", sync_post)
     monkeypatch.setattr(llm_core, "httpx_post_kimi_aware_async", async_post)
     monkeypatch.setattr(llm_core, "_get_http_client", lambda: SimpleNamespace(
         stream=lambda method, url, json=None, **kw: _Stream(json)))

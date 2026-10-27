@@ -296,6 +296,20 @@ def test_a_module_level_call_is_counted_against_its_own_budget(repo):
     assert r.returncode == 1 and "ENV-BUDGET  1 module-level httpx calls, budget is 0" in r.stdout
 
 
+def test_an_alias_is_not_a_way_off_the_list(repo):
+    """`B1022`. `src/ai_interaction.py` asked image servers for their models
+    through `import httpx as _req` / `_req.get(…)`, and neither count saw it:
+    both read the chain for the word `httpx`. An alias is the library it names."""
+    (repo / "src" / "thing.py").write_text(
+        "def probe(url):\n"
+        "    import httpx as _req\n"
+        "    return _req.get(url, timeout=2)\n",
+        encoding="utf-8")
+    r = _run(["--max", "1000", "--max-env", "0"], repo)
+    assert r.returncode == 1 and "ENV-BUDGET  1 module-level httpx calls, budget is 0" in r.stdout
+    assert "unpaced outbound calls 1 in 1 file(s)" in r.stdout, r.stdout
+
+
 def test_routing_a_client_is_not_pacing_it(repo):
     """`direct_mounts` lives in `paced_http` and paces nothing: a function that
     only routes with it is still an unpaced call in the inventory."""

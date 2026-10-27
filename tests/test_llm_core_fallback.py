@@ -513,7 +513,9 @@ def test_response_cache_is_partitioned_by_non_secret_header_identity(monkeypatch
             json={"choices": [{"message": {"content": f"answer from {credential}"}}]},
         )
 
-    monkeypatch.setattr(llm_core.httpx, "post", fake_post)
+    # `B1022`: the non-streamed model call is `llm_core._post_routed` (routed
+    # by a `NO_PROXY` range) rather than `httpx.post`, so the fake stands there.
+    monkeypatch.setattr(llm_core, "_post_routed", fake_post)
     messages = [{"role": "user", "content": "same prompt"}]
     try:
         first = llm_core.llm_call(

@@ -145,7 +145,32 @@ def _root_chain(node) -> str:
     return ".".join(reversed(names))
 
 
-def _outbound_label(call):
+_HTTP_LIBRARIES = ("httpx", "requests", "aiohttp")
+
+
+def _library_aliases(tree) -> dict:
+    """`{alias: library}` for every `import httpx as _req` in a file.
+
+    `B1022`. `src/ai_interaction.py` asked an image server for its models with
+    `import httpx as _req` / `_req.get(…)`, and both rules here read the chain
+    for the word `httpx`, so that call was in neither count: an alias was a
+    way off the list that `src.paced_http` is supposed to be the only way off.
+    A chain whose root is an alias is read as the library it names."""
+    out = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.asname and alias.name in _HTTP_LIBRARIES:
+                    out[alias.asname] = alias.name
+    return out
+
+
+def _unalias(chain: str, aliases: dict) -> str:
+    head, _, rest = chain.partition(".")
+    return f"{aliases[head]}.{rest}".rstrip(".") if head in aliases else chain
+
+
+def _outbound_label(call, aliases=None):
     """A label when this call leaves the process, else None.
 
     An explicit `httpx`/`requests`/`aiohttp` in the chain is enough — except for
@@ -153,11 +178,12 @@ def _outbound_label(call):
     contains the word and is a dict access. A `client`-ish name needs an
     HTTP-shaped keyword to count, or every `self._sessions.get(id)` in the
     product reads as a network call. Both mistakes were made on the first run.
+    `aliases` (`_library_aliases`) reads `_req.get` as the `httpx.get` it is.
     """
     func = call.func
     if not isinstance(func, ast.Attribute):
         return None
-    chain = _root_chain(func.value)
+    chain = _unalias(_root_chain(func.value), aliases or {})
     if not chain:
         return None
     for library, methods in _LIBRARY_CALLS.items():   # `B1541`, before the ALL-CAPS rule:
@@ -170,7 +196,7 @@ def _outbound_label(call):
         return None
     low = chain.lower()
     kwargs = {k.arg for k in call.keywords if k.arg}
-    explicit = any(k in low for k in ("httpx", "requests", "aiohttp"))
+    explicit = any(k in low for k in _HTTP_LIBRARIES)
     clientish = "client" in low
     if explicit or (clientish and (kwargs & _HTTP_KWARGS)):
         return f"{chain}.{func.attr}"
@@ -316,10 +342,11 @@ def scan_clients():
             continue
         rel = path.relative_to(ROOT).as_posix()
         functions = _functions(tree)
+        aliases = _library_aliases(tree)   # `B1022`: `import httpx as _req`
         for call in ast.walk(tree):
             if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Attribute):
                 continue
-            owner = _root_chain(call.func.value)
+            owner = _unalias(_root_chain(call.func.value), aliases)
             if not _is_httpx(owner):
                 continue
             node = _enclosing(functions, call.lineno)
@@ -343,10 +370,11 @@ def scan():
             continue
         rel = path.relative_to(ROOT).as_posix()
         functions = _functions(tree)
+        aliases = _library_aliases(tree)   # `B1022`: `import httpx as _req`
         for call in ast.walk(tree):
             if not isinstance(call, ast.Call):
                 continue
-            label = _outbound_label(call)
+            label = _outbound_label(call, aliases)
             if label is None and _is_urlopen(call):
                 label = "urlopen"
             if label is None:

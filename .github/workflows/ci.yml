@@ -319,13 +319,15 @@ jobs:
       # (`model_routes` x7, `model_context` x3, `llm_core`'s model list x2,
       # `chat_helpers` x1) and the OAuth and device flows (ChatGPT x5, Copilot
       # x3, the mailbox token refresh and callback x3) moved onto `paced_http`.
-      # The three left, each for its reason: `llm_core.httpx_post_kimi_aware`
-      # is the model call itself, and pacing a configured provider's every
-      # completion is a cap `Law 16` clause 2 forbids; `ai_interaction`'s two
-      # downloads fetch a URL the image provider returned, whose home is
-      # `outbound_fetch` (SSRF classification per hop), not `paced_http`.
+      # 61 -> 59 and `--max-env` 3 -> 0 (`B1022`, wave t, the last three):
+      # `ai_interaction`'s two image downloads are awaited through
+      # `paced_http` (their URL check is unchanged); the non-streamed model
+      # call (`llm_core._post_routed`) is routed as its streamed twin is
+      # (`_client_for`, `B1014`) and deliberately NOT paced — pacing a
+      # configured provider's every completion is a cap `Law 16` clause 2
+      # forbids — so it stays in the unpaced count, by name.
       - name: check-outbound
-        run: python3 .pantheon/check-outbound.py --max 61 --max-env 3
+        run: python3 .pantheon/check-outbound.py --max 59 --max-env 0
       # P3-15. The other half of the same disease check-wiring measures: an
       # element id with no markup and a route with no caller are both something
       # that was built and never wired, and nothing in CI noticed because

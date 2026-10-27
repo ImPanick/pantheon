@@ -80,7 +80,9 @@ def test_one_request_with_its_own_name_and_a_refusal_said_in_words(monkeypatch):
         calls.append(headers.get("User-Agent"))
         return _Resp(403, DENIED)
 
-    monkeypatch.setattr(llm_core.httpx, "post", fake_post)
+    # `B1022`: the non-streamed model call is `llm_core._post_routed` (routed
+    # by a `NO_PROXY` range) rather than `httpx.post`, so the fake stands there.
+    monkeypatch.setattr(llm_core, "_post_routed", fake_post)
     r = httpx_post_kimi_aware(KIMI_CHAT_URL, {"Authorization": "Bearer x"}, json={})
     assert calls == [PANTHEON_USER_AGENT], "sent once, never again under another name"
     assert r.status_code == 403
@@ -96,7 +98,9 @@ def test_an_accepted_answer_comes_back_as_it_was(monkeypatch):
 
 def test_other_endpoints_are_untouched(monkeypatch):
     seen = []
-    monkeypatch.setattr(llm_core.httpx, "post",
+    # `B1022`: the non-streamed model call is `llm_core._post_routed` (routed
+    # by a `NO_PROXY` range) rather than `httpx.post`, so the fake stands there.
+    monkeypatch.setattr(llm_core, "_post_routed",
                         lambda url, headers=None, **k: seen.append(dict(headers)) or _Resp(403, DENIED))
     r = httpx_post_kimi_aware("https://api.openai.com/v1/chat/completions", {"A": "b"}, json={})
     assert seen == [{"A": "b"}] and r.text == DENIED

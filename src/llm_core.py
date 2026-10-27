@@ -945,8 +945,27 @@ def httpx_get_kimi_aware(url: str, headers: Optional[Dict], **kwargs):
                                                   **kwargs))
 
 
+def _post_routed(url: str, headers: Optional[Dict] = None, **kwargs):
+    """`B1022`. The non-streamed model call, routed the way `_client_for`
+    routes the streamed one (`B1014`): a destination `NO_PROXY` puts in a
+    range goes direct (`paced_http.direct_mounts`), every other one as the
+    environment says. `httpx.post` built a client that reads no range, so a
+    model server on the LAN behind an operator's proxy was sent to the proxy.
+
+    Routed and NOT paced, like its streamed twin: this is the model call
+    itself, and a configured provider's completions get everything its
+    subscription allows (`Law 16` clause 2) — the limiter is for the calls
+    around it (the model list, the probes), which go through `paced_http`.
+    `httpx.post`'s other defaults are kept: no redirect followed, the default
+    trust store. (`headers` is named so `check-outbound.py` counts this call
+    among the unpaced ones, which it is, on purpose.)"""
+    from src.paced_http import direct_mounts
+    with httpx.Client(mounts=direct_mounts(url)) as client:
+        return client.post(url, headers=headers, **kwargs)
+
+
 def httpx_post_kimi_aware(url: str, headers: Optional[Dict], **kwargs):
-    return _kimi_says_so(url, httpx.post(url, headers=apply_kimi_code_headers(headers, url), **kwargs))
+    return _kimi_says_so(url, _post_routed(url, headers=apply_kimi_code_headers(headers, url), **kwargs))
 
 
 async def httpx_post_kimi_aware_async(client, url: str, headers: Optional[Dict], **kwargs):
