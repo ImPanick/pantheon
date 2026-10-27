@@ -22,7 +22,8 @@ def test_build_context_preface_web_search_success(monkeypatch):
         use_memory=False
     )
 
-    mock_web_search.assert_called_with("extracted query", time_filter=None, return_sources=True)
+    mock_web_search.assert_called_with("extracted query", time_filter=None, return_sources=True,
+                                       report={})  # `B492`: a report dict rides along
 
 def test_build_context_preface_web_search_fallback_on_llm_failure(monkeypatch):
     """Test fallback to original query if LLM fails."""
@@ -44,7 +45,8 @@ def test_build_context_preface_web_search_fallback_on_llm_failure(monkeypatch):
         use_memory=False
     )
 
-    mock_web_search.assert_called_with("First line", time_filter=None, return_sources=True)
+    mock_web_search.assert_called_with("First line", time_filter=None, return_sources=True,
+                                       report={})  # `B492`: a report dict rides along
 
 def test_build_context_preface_web_search_fallback_on_empty_generation(monkeypatch):
     """Test fallback to original query if LLM returns empty string."""
@@ -65,7 +67,8 @@ def test_build_context_preface_web_search_fallback_on_empty_generation(monkeypat
         use_memory=False
     )
 
-    mock_web_search.assert_called_with("Fallback line", time_filter=None, return_sources=True)
+    mock_web_search.assert_called_with("Fallback line", time_filter=None, return_sources=True,
+                                       report={})  # `B492`: a report dict rides along
 
 def test_build_context_preface_web_search_query_sanitization(monkeypatch):
     """Test that query is truncated and whitespace collapsed."""

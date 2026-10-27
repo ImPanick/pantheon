@@ -11,10 +11,12 @@
  * once, not on every turn; a different reason is news again, and a turn that
  * searched clears both.
  *
- * No imports: the chip is found by id in the document handed in, and the toast
- * is the caller's (`uiModule.showToast`), so this runs under node as it runs
- * in the page.
+ * One import, the words (`runStatus.js`, which imports nothing): the chip is
+ * found by id in the document handed in, and the toast is the caller's
+ * (`uiModule.showToast`), so this runs under node as it runs in the page.
  */
+
+import { syncNotice } from './runStatus.js';
 
 const CHIP_ID = 'rag-indicator-btn';
 const CHIP_TITLE = 'RAG';
@@ -43,4 +45,17 @@ export function noteRagFrame(doc, frame, toast) {
   return true;
 }
 
-export default { noteRagFrame };
+/**
+ * `B492`. Read one `web_sources` frame. A turn whose web search the limiter
+ * held — every provider asked us to wait — carries no sources and `sync`; the
+ * chat says it in a toast, in `runStatus.js`'s words, with the time it clears.
+ * Returns whether it said anything.
+ */
+export function noteWebFrame(frame, toast) {
+  const said = syncNotice(frame && frame.sync, 'Web search');
+  if (!said) return false;
+  if (typeof toast === 'function') toast(said, 8000);
+  return true;
+}
+
+export default { noteRagFrame, noteWebFrame };

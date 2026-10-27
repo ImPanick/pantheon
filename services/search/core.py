@@ -410,12 +410,19 @@ def comprehensive_web_search(
     min_content_length: int = 0,
     return_sources: bool = False,
     fetch_content: bool = True,
+    report: Optional[dict] = None,
 ):
     """Perform comprehensive web search with content fetching and advanced filtering.
 
     ``fetch_content=False`` returns the search results and the block without
     fetching any page. (It was added for the `SearchService` facade, which
     asked for ten pages and read none; the facade is gone, `B1470`.)
+
+    ``report``: a dict the caller passes to be told what happened beside the
+    text. `B492`: when no provider answered because the limiter held every one
+    of them, ``report["sync"]`` is ``throttle_sync``'s ``{"source":
+    "throttled", "retry_in": …}`` — the soonest any of them clears — so the
+    feature can say when search comes back instead of showing nothing.
     """
     logger.info(f"Starting comprehensive search for: {query}")
     if time_filter:
@@ -454,6 +461,7 @@ def comprehensive_web_search(
         provider_note = _cache_note(cached["age_seconds"])
 
     provider_chain = _build_provider_chain(search_provider)
+    held: List[RateLimitError] = []   # `B492`: providers the limiter is holding
     for provider_name in ([] if search_results else provider_chain):
         last_err = None
         empty = False
@@ -466,6 +474,12 @@ def comprehensive_web_search(
                     logger.info(f"Comprehensive search: {provider_name} returned {len(search_results)} results")
                     break
                 empty = True
+            except RateLimitError as e:
+                # Not retried: a rate limit is not transient (`B1533`), and the
+                # second attempt was only another refusal.
+                last_err = e
+                logger.warning(f"Comprehensive search: {provider_name} is held: {e}")
+                break
             except Exception as e:
                 last_err = e
                 logger.warning(f"Comprehensive search: {provider_name} attempt {attempt + 1} failed: {e}")
@@ -473,6 +487,8 @@ def comprehensive_web_search(
             break
         if last_err is not None:
             provider_attempts[provider_name] = f"error: {last_err}"
+            if isinstance(last_err, RateLimitError):
+                held.append(last_err)
         elif empty:
             provider_attempts[provider_name] = "empty"
 
@@ -480,6 +496,19 @@ def comprehensive_web_search(
         _record_query(query, False, cache_hit=False, provider=None)
         tally = ", ".join(f"{p}:{r}" for p, r in provider_attempts.items()) or "no providers configured"
         any_errors = any(r.startswith("error") for r in provider_attempts.values())
+        if held and len(held) == len(provider_attempts):
+            # `B492`. Every provider tried was held by the limiter: search is
+            # paused, not broken, and it says until when.
+            from src.rate_limiter import throttle_sync
+            waits = [float(e.retry_in) for e in held if e.retry_in]
+            sync = throttle_sync(retry_after=min(waits) if waits else None)
+            if report is not None:
+                report["sync"] = sync
+            when = f" in {sync['retry_in']} s" if sync["retry_in"] else " when the provider lets us back in"
+            msg = (f"Web search is paused — every search provider asked us to wait; it retries{when}. "
+                   f"Tried: {tally}")
+            logger.warning(msg)
+            return (msg, []) if return_sources else msg
         if any_errors:
             msg = f"Web search failed — all providers errored or returned empty. Tried: {tally}"
         else:

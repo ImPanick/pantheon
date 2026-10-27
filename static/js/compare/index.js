@@ -43,6 +43,8 @@ import presetsModule from '../presets.js';
 import markdownModule from '../markdown.js';
 import { bindMenuDismiss } from '../escMenuStack.js';
 import { topPortalZ } from '../toolWindowZOrder.js';
+import { syncNotice } from '../runStatus.js';   // `B492`
+import { searchOutcomeNode } from './searchOutcome.js';   // `B492`
 
 var escapeHtml = uiModule.esc;
 
@@ -782,13 +784,8 @@ async function _executeCompare(message) {
             if (aiMsg) {
               const aiBody = aiMsg.querySelector('.body');
               aiBody.innerHTML = '';
-              if (data.error) {
-                aiBody.innerHTML = '<div style="color:var(--color-error);font-size:0.85em;">Error: ' + escapeHtml(data.error) + '</div>';
-              } else if (!data.results || data.results.length === 0) {
-                aiBody.innerHTML = '<div style="color:color-mix(in srgb, var(--fg) 50%, transparent);font-size:0.85em;font-style:italic;">No results found</div>';
-              } else {
-                aiBody.appendChild(_renderSearchResults(data));
-              }
+              // `B492`: held, failed, empty or found — decided in one place.
+              aiBody.appendChild(searchOutcomeNode(document, data, _renderSearchResults));
               const footer = document.createElement('div'); footer.className = 'msg-footer';
               const span = document.createElement('span'); span.className = 'response-metrics';
               const parts = [];
@@ -834,13 +831,8 @@ async function _executeCompare(message) {
         const aiBody = aiMsg.querySelector('.body');
         aiBody.innerHTML = '';
 
-        if (data.error) {
-          aiBody.innerHTML = '<div style="color:var(--color-error);font-size:0.85em;">Error: ' + escapeHtml(data.error) + '</div>';
-        } else if (!data.results || data.results.length === 0) {
-          aiBody.innerHTML = '<div style="color:color-mix(in srgb, var(--fg) 50%, transparent);font-size:0.85em;font-style:italic;">No results found</div>';
-        } else {
-          aiBody.appendChild(_renderSearchResults(data));
-        }
+        // `B492`: held, failed, empty or found — decided in one place.
+        aiBody.appendChild(searchOutcomeNode(document, data, _renderSearchResults));
 
         // Footer metrics
         const footer = document.createElement('div');
@@ -990,7 +982,11 @@ async function _executeCompare(message) {
         const searchRes = await fetch(`${state.API_BASE}/api/search`, { method: 'POST', body: fd });
         if (searchRes.ok) {
           const searchData = await searchRes.json();
-          if (searchData.context) sharedSearchContext = searchData.context;
+          // `B492`: every provider held — say so, and when, before the panes
+          // answer without the web.
+          const held = syncNotice(searchData.sync, 'Web search');
+          if (held) uiModule.showToast(held, 8000);
+          else if (searchData.context) sharedSearchContext = searchData.context;
           if (searchData.sources) sharedSearchSources = searchData.sources;
         }
       } catch (err) {

@@ -13,6 +13,7 @@ import Storage from '../storage.js';
 import uiModule from '../ui.js';
 import spinnerModule from '../spinner.js';
 import { bindMenuDismiss } from '../escMenuStack.js';
+import { searchOutcomeNode } from './searchOutcome.js';   // `B492`
 
 var escapeHtml = uiModule.esc;
 
@@ -128,13 +129,8 @@ async function rerollPane(paneIdx, overrideTimeout) {
       const data = await res.json();
       const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
       aiBody.innerHTML = '';
-      if (data.error) {
-        aiBody.innerHTML = '<div style="color:var(--color-error);font-size:0.85em;">Error: ' + escapeHtml(data.error) + '</div>';
-      } else if (!data.results || data.results.length === 0) {
-        aiBody.innerHTML = '<div style="color:color-mix(in srgb, var(--fg) 50%, transparent);font-size:0.85em;font-style:italic;">No results found</div>';
-      } else {
-        aiBody.appendChild(_renderSearchResults(data));
-      }
+      // `B492`: held, failed, empty or found — decided in one place.
+      aiBody.appendChild(searchOutcomeNode(document, data, _renderSearchResults));
       const footer = document.createElement('div');
       footer.className = 'msg-footer';
       const span = document.createElement('span');

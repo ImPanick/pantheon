@@ -283,6 +283,20 @@ export function throttleNotice({ source, retryIn, what } = {}) {
     : `${subject} is paused until the service lets us back in`;
 }
 
+/**
+ * `B492`. A response's `sync` as the sentence its feature shows, or `''`.
+ *
+ * `sync` is what every route that meets a held host answers with —
+ * `{ source: 'throttled', retry_in }` (`src/rate_limiter.throttle_sync`), the
+ * shape the mailbox's poll has sent since `P15-12`: Compare's search, the
+ * chat's `web_sources` frame and the Forge's HuggingFace list all read it
+ * here, so the words stay in this file and nowhere else (`Law 13`).
+ */
+export function syncNotice(sync, what) {
+  if (!sync || typeof sync !== 'object') return '';
+  return throttleNotice({ source: sync.source, retryIn: sync.retry_in, what });
+}
+
 /** The dot/stripe class for a throttled row, from the same ladder as the rest. */
 export function throttleDotClass() {
   return 'skipped';        // `runStatusTone('skipped') === 'info'` — not an error

@@ -139,6 +139,9 @@ class ChatContext:
     # `B1287`. Why retrieval did not run for this turn, when it was asked for
     # and no index answered (`ChatProcessor._last_rag_off`); `""` otherwise.
     rag_off: str = ""
+    # `B492`. The web search's `throttle_sync` when the limiter held every
+    # provider (`ChatProcessor._last_web_sync`); `None` otherwise.
+    web_sync: Optional[dict] = None
     context_messages_before_trim: int = 0
     context_messages_after_trim: int = 0
     context_tokens_before_trim: int = 0
@@ -1073,6 +1076,7 @@ async def build_chat_context(
     # Capture used memories immediately
     used_memories = getattr(chat_processor, '_last_used_memories', [])
     rag_off = str(getattr(chat_processor, '_last_rag_off', '') or '')   # `B1287`
+    web_sync = getattr(chat_processor, '_last_web_sync', None) or None   # `B492`
 
     # Inject pre-fetched search context (compare mode)
     if search_context and allow_tool_preprocessing and not casual_low_signal:
@@ -1182,6 +1186,7 @@ async def build_chat_context(
         preprocessed=preprocessed,
         context_trimmed=_context_trimmed,
         rag_off=rag_off,
+        web_sync=web_sync,
         context_messages_before_trim=_before_trim_messages,
         context_messages_after_trim=_after_trim_messages,
         context_tokens_before_trim=_before_trim_tokens,

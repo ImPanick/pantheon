@@ -730,6 +730,24 @@ def rag_frames(ctx) -> List[str]:
     return []
 
 
+def web_frames(ctx, web_sources) -> List[str]:
+    """The turn's web-search frame: what was found, or that search was paused.
+
+    `B492`. A turn whose web search the limiter held — every provider asked us
+    to wait — carried no `web_sources` frame, and the chat said nothing: no
+    sources, and no word that search had not happened. Now it carries one
+    `web_sources` frame with no sources and `sync` (`throttle_sync`'s
+    `{"source": "throttled", "retry_in": …}`), as `rag_frames` carries `off`;
+    the browser says it with `runStatus.syncNotice`. A search that ran and
+    found nothing is not this: it sends nothing, as before."""
+    if web_sources:
+        return [f"data: {json.dumps({'type': 'web_sources', 'data': web_sources})}\n\n"]
+    sync = getattr(ctx, "web_sync", None)
+    if sync:
+        return [f"data: {json.dumps({'type': 'web_sources', 'data': [], 'sync': sync})}\n\n"]
+    return []
+
+
 def _compacted_event(context_length, stats=None) -> str:
     """`P4-13`. The compaction notice, with what the compaction cost.
 
@@ -2590,8 +2608,8 @@ def setup_chat_routes(
             for _frame in rag_frames(ctx):
                 yield _frame
 
-            if web_sources:
-                yield f"data: {json.dumps({'type': 'web_sources', 'data': web_sources})}\n\n"
+            for _frame in web_frames(ctx, web_sources):   # `B492`
+                yield _frame
 
             # Emit which memories were injected into context (captured before stream)
             if ctx.used_memories:

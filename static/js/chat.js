@@ -42,7 +42,7 @@ import { startToolCard as _startToolCard, drawToolProgress as _drawToolProgress,
 // turn's other notes, drawn by the same module for the reload; (`B921`) the
 // compaction notice's words.
 import { renderAgentStop, renderAgentNote, compactionNoticeText, trimNoticeText } from './agentStops.js';
-import { noteRagFrame } from './ragNotice.js';   // `B1287`
+import { noteRagFrame, noteWebFrame } from './ragNotice.js';   // `B1287`, `B492`
 import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArrowUpRecall.js?v=20260714promptrecall';
 import {
   createIncrementalDisplayProjector,
@@ -4596,6 +4596,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 }
                 // Web search done — store sources for final render (don't render mid-stream)
                 holder._webSources = json.data;
+                // `B492`: no sources and `sync` — the search was held; say when.
+                noteWebFrame(json, uiModule.showToast);
                 if (json.data && json.data.length > 0) {
                   _sourcesData = json.data; _sourcesType = 'web';
                   _sourcesHtml = _buildSourcesBox(json.data, 'web');
