@@ -303,7 +303,9 @@ def test_its_door_opens_the_switch_with_the_way_back(drive):
     assert panel["back"] == "cookbook-modal", "the Settings header does not lead back to the Forge"
     # `B1258`: the token is edited here now (its door to the Forge is gone),
     # and `allow_model_download`, the other Hugging Face switch, has a door.
-    assert panel["doors"] == ["System › Switches", "Forge › Settings", "Forge › Launch",
+    # The servers are edited here too since `B1258`'s Servers card, so their
+    # door to the Forge's Settings tab is gone as well.
+    assert panel["doors"] == ["System › Switches", "Forge › Launch",
                               "Tasks", "Added Models", "Agent Tools"], panel["doors"]
 
 

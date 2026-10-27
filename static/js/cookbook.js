@@ -37,7 +37,7 @@ import {
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 import backStack from './backStack.js';   // `B1229`: the door to Settings → Forge
-import { mountHfToken } from './servingSettings.js';   // `B1258`: the token's one editor
+import { mountHfToken, mountServers } from './servingSettings.js';   // `B1258`: the token's one editor
 import { syncNotice } from './runStatus.js';   // `B492`
 
 /**
@@ -2087,68 +2087,12 @@ function _wireTabEvents(body) {
     }, { passive: true });
   }
 
-  // Sync server form DOM → _envState.servers
-  function _syncServers() {
-    const entries = document.querySelectorAll('.cookbook-server-entry');
-    const servers = [];
-    entries.forEach(entry => {
-      const name = entry.querySelector('.cookbook-srv-name')?.value?.trim() || '';
-      const host = entry.querySelector('.cookbook-srv-host')?.value?.trim() || '';
-      const port = entry.querySelector('.cookbook-srv-port')?.value?.trim() || '';
-      const env = entry.querySelector('.cookbook-srv-env')?.value || 'none';
-      const envPath = entry.querySelector('.cookbook-srv-path')?.value?.trim() || '';
-      const color = _serverColorValue(entry.querySelector('.cookbook-srv-color')?.value || '');
-      const platform = entry.dataset.platform || '';
-      const dirs = [];
-      entry.querySelectorAll('.cookbook-modeldir-tag').forEach(tag => {
-        // Read from data attribute (authoritative) — never parse displayed text
-        const d = _normalizeCookbookModelDir(tag.dataset.dir || '');
-        if (d) dirs.push(d);
-      });
-      // Directory flagged as the download target ('' = default HF cache).
-      const dlEl = entry.querySelector('.cookbook-modeldir-dl.active');
-      const downloadDir = dlEl ? (dlEl.dataset.dlDir || '') : '';
-      servers.push({ name, host, port, env, envPath, color, modelDirs: dirs, downloadDir, platform });
-    });
-    _envState.servers = servers;
-    // Auto-default: when the user has configured EXACTLY ONE remote server
-    // and hasn't picked one yet, select it. Without this, the dropdown
-    // stays on "Local" so the eventual serve/scan/launch resolves to no
-    // remote host and the backend rejects the call with 403 (Forbidden),
-    // which read to the user as a permission bug.
-    if (!_envState.remoteHost) {
-      const remotes = servers.filter(s => !_isLocalEntry(s));
-      if (remotes.length === 1) {
-        _envState.remoteHost = remotes[0].host;
-        _envState.env = remotes[0].env || 'none';
-        _envState.envPath = remotes[0].envPath || '';
-      }
-    }
-    const activeSrv = servers.find(s => s.host === _envState.remoteHost);
-    _envState.platform = activeSrv?.platform || '';
-    localStorage.setItem('cookbook-last-state', JSON.stringify(_envStateForStorage()));
-    _saveTasks(_loadTasks());
-    // Reflect the auto-default selection into every server dropdown so the
-    // UI matches the resolved host. Done in a microtask so the dropdowns
-    // exist by the time we set their .value.
-    Promise.resolve().then(() => {
-      const _want = _currentServerValue();
-      document.querySelectorAll('#hwfit-server-select, #hwfit-dl-server, #hwfit-cache-server, #hwfit-deps-server').forEach(sel => {
-        if (sel && sel.tagName === 'SELECT') {
-          sel.value = _want;
-          _applyServerSelectColor(sel);
-        }
-      });
-    });
-  }
-
-  // Wire server form inputs
-  document.querySelectorAll('.cookbook-srv-name, .cookbook-srv-color, .cookbook-srv-host, .cookbook-srv-port, .cookbook-srv-path').forEach(el => {
-    el.addEventListener('change', _syncServers);
-  });
-  document.querySelectorAll('.cookbook-srv-env').forEach(el => {
-    el.addEventListener('change', _syncServers);
-  });
+  // `B1258`. This window's copy of `_syncServers` — the second writer of
+  // `env.servers` through the whole-state save, reading every server card in
+  // the document — is gone: the servers' one editor
+  // (`cookbook-hwfit.js` `mountServersEditor`, mounted below) saves through
+  // `PUT /api/cookbook/servers`, and its auto-pick of a lone remote server
+  // moved to the Forge's `cookbook:servers-changed` listener there.
 
   // Server selector — the server is global, so switching it here re-scans the
   // main Scan/Download list (#hwfit-list) for the new server's hardware too.
@@ -2848,6 +2792,9 @@ function _wireTabEvents(body) {
   // same one Settings → Forge mounts; it saves through its own route
   // (`PUT /api/cookbook/hf-token`) rather than this window's whole-state save.
   mountHfToken(document.getElementById('cookbook-hf-token'), { inputId: 'cookbook-hf-token-input' });
+  // `B1258`. The servers' one editor, the same one Settings → Forge mounts;
+  // it saves through its own route (`PUT /api/cookbook/servers`).
+  mountServers(document.getElementById('cookbook-servers'), { idPrefix: 'cookbook' });
 }
 
 // ── Main render ──
@@ -3225,21 +3172,11 @@ function _renderRecipes() {
   html += '</div>';
 
   // ── Servers block ───────────────────────────────────────────────────
+  // `B1258`. Drawn by the servers' one editor (`servingSettings.mountServers`
+  // → `cookbook-hwfit.js` `mountServersEditor`, wired in `_wireTabEvents`),
+  // from `GET /api/cookbook/servers`; Settings → Forge mounts the same one.
   html += '<div class="admin-card" style="flex:0 0 auto;display:flex;flex-direction:column;">';
-  html += '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;margin-top:-4px;">';
-  html += '<h2 style="margin:0;padding:0;line-height:1;">Servers</h2>';
-  // Reuse the calendar +New pill: spinning plus, label fades in idea uses
-   // the same `.cal-add-btn-text` rules, so styling stays consistent.
-  html += '<button class="cal-add-btn cal-add-btn-text" id="cookbook-server-add" title="Add server" style="margin-left:auto;"><span class="cal-add-plus">+</span><span class="cal-add-label">Add</span></button>';
-  html += '</div>';
-  html += '<p class="memory-desc doclib-desc">Machines Pantheon can serve models on. Local is this one.</p>';
-  html += '<div class="memory-toolbar cookbook-servers-toolbar" style="margin-top:4px;">';
-  html += `<div id="cookbook-servers-list">`;
-  for (let i = 0; i < _es.servers.length; i++) {
-    html += _serverEntryHtml(_es.servers[i], i, _es.defaultServer || '', false);
-  }
-  html += `</div>`;
-  html += '</div>';
+  html += '<div id="cookbook-servers"></div>';
 
   html += '</div></div>';
 

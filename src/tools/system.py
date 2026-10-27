@@ -1150,6 +1150,10 @@ _APP_API_BLOCKLIST_METHOD_PATH = (
     # `B1258`. The Hugging Face token's own door: a credential the person sets
     # in Settings → Forge, never one the assistant writes for them.
     ("PUT",    "/api/cookbook/hf-token"),
+    # `B1258`. The servers' own door: which boxes this instance opens SSH to,
+    # the person's in Settings → Forge — the agent reads them
+    # (`list_cookbook_servers`) and never rewrites the list.
+    ("PUT",    "/api/cookbook/servers"),
     # Host-control routes: package install, engine rebuild, and process
     # signalling should not be reachable through the generic API bridge.
     ("POST",   "/api/cookbook/packages/install"),
@@ -1300,6 +1304,10 @@ async def do_app_api(content: str, owner: Optional[str] = None) -> Dict:
             return {"error": f"Registering, editing, toggling, deleting or calling an MCP server this way skips the command check that keeps a stdio server from running arbitrary code — it is the person's action, from {INTEGRATIONS_PLACE}. Use the `manage_mcp` tool for a server the agent may add (it enforces that check), or ask the person to add it in the UI.", "exit_code": 1}
         if "/api/email/accounts" in _match_path:
             return {"error": "Don't use /api/email/accounts via app_api — it is owner-filtered in tool context and may return empty. Use the `list_email_accounts` email tool, then pass `account` to list_emails/read_email.", "exit_code": 1}
+        if _match_path.startswith("/api/cookbook/servers") or _match_path.startswith("/api/cookbook/hf-token"):
+            # `B1258`: which boxes the instance opens SSH to, and the token it
+            # downloads with — each the person's, at its own door.
+            return {"error": "The Forge's servers and its Hugging Face token are the person's to set, in Settings → Forge — which machines this instance opens SSH to is not mine to change. I can list the servers (`list_cookbook_servers`); ask the person to add or change one.", "exit_code": 1}
         if "/api/cookbook/packages/install" in _match_path:
             return {"error": "Don't POST /api/cookbook/packages/install via app_api — package installation is host code execution. Use the dedicated Forge dependency UI/flow instead.", "exit_code": 1}
         if "/api/cookbook/rebuild-engine" in _match_path:

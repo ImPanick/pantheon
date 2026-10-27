@@ -53,7 +53,7 @@ import { readRefusal } from './workbench/refusal.js';
 // second copy that disagreed with it about `toggle_sidebar`.
 import { KEYBIND_DEFAULTS, KEYBIND_LABELS, keybindLayers, mergeKeybinds } from './keyboard-shortcuts.js';
 import { chevronIcon } from './icons.js';
-import { mountHfToken } from './servingSettings.js';   // `B1258`: the token's one editor
+import { mountHfToken, mountServers } from './servingSettings.js';   // `B1258`: the token's and the servers' one editor
 
 let initialized = false;
 let modalEl = null;
@@ -1987,13 +1987,17 @@ async function initForgeSettings() {
     });
     // `B1258` (1). The Hugging Face token's one editor, at its home.
     _forgeHfToken = mountHfToken(el('set-forgeHfToken'), { inputId: 'set-forgeHfTokenInput' });
-  } else if (_forgeHfToken) {
-    _forgeHfToken.refresh();
+    // `B1258` (1), the Servers card: the servers' one editor, at its home.
+    _forgeServers = mountServers(el('set-forgeServers'), { idPrefix: 'set-forge' });
+  } else {
+    if (_forgeHfToken) _forgeHfToken.refresh();
+    if (_forgeServers) _forgeServers.then((ed) => ed && ed.refresh && ed.refresh());
   }
   await Promise.all([_readForgeModelHubs(), _readForgeModelDownload()]);
 }
 
 let _forgeHfToken = null;
+let _forgeServers = null;   // a promise of the servers' editor (`B1258`)
 
 /* `B1258` (3). `allow_model_download` read beside the Forge's switch: the two
    Hugging Face switches, said together. Its control is the System panel's

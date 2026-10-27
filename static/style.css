@@ -26513,7 +26513,7 @@ body.gallery-selecting .gallery-dl-btn,
 }
 /* The "+" glyph in the Servers-header "+ Add" button, nudged up 1px (scoped so
    the shared calendar +New pill is unaffected). */
-#cookbook-server-add .cal-add-plus { position: relative; top: -1px; }
+#cookbook-server-add .cal-add-plus, #set-forge-server-add .cal-add-plus { position: relative; top: -1px; }
 /* Save button on a new server entry — same shape as Delete, accent-colored;
    turns green once saved. */
 .cookbook-server-save-btn {
@@ -41344,7 +41344,7 @@ button.cal-add-btn.cal-add-btn-text {
   transition: background 0.15s, border-color 0.15s;
 }
 /* Settings "+ Add server" matches the model-dir "+ Add" path button (22px). */
-#cookbook-server-add.cal-add-btn-text {
+#cookbook-server-add.cal-add-btn-text, #set-forge-server-add.cal-add-btn-text {
   height: 28px;
   min-width: 62px;
   border-radius: 14px;

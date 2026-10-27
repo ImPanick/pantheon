@@ -3327,10 +3327,18 @@
               <div id="set-forgeHfToken"></div>
             </div>
           </div>
+          <!-- `B1258` (1), the Servers card. The servers' one editor
+               (`servingSettings.js` `mountServers` → `cookbook-hwfit.js`
+               `mountServersEditor`), at its home; the Forge's Settings tab
+               mounts the same one. Its own route, `PUT /api/cookbook/servers`.
+               The door that stood in Serving below for "Servers, SSH ports,
+               Python environments and model folders" is this card now. -->
+          <div class="admin-card admin-only">
+            <div id="set-forgeServers"></div>
+          </div>
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>Serving</h2>
             <ul class="forge-settings-doors">
-              <li><span>Servers, SSH ports, Python environments and model folders</span><button type="button" class="admin-btn-sm" data-forge-door="forge:Settings">Forge › Settings</button></li>
               <li><span>Engine, port and launch command</span><button type="button" class="admin-btn-sm" data-forge-door="forge:Serve">Forge › Launch</button></li>
               <li><span>Scheduled launches</span><button type="button" class="admin-btn-sm" data-forge-door="tasks">Tasks</button></li>
               <li><span>Models Pantheon chats with</span><button type="button" class="admin-btn-sm" data-forge-door="settings:added-models">Added Models</button></li>

@@ -35,6 +35,7 @@ import {
 } from './cookbook.js';
 import uiModule from './ui.js';
 import spinnerModule from './spinner.js';
+import { readServers, saveServers } from './servingSettings.js';   // `B1258`: the servers' own route
 import { _loadTasks, _tmuxGracefulKill, _nextAvailablePort, _taskPort } from './cookbookRunning.js';
 import { openCookbookDependencies } from './cookbook-diagnosis.js';
 
@@ -2269,538 +2270,10 @@ export function _hwfitInit() {
   // cleared the input on save and overwrote _envState.hfToken with "", so the
   // debounced state sync never persisted the token to cookbook_state.json.
 
-  // Rebuild all server select dropdowns with current servers
-  function _rebuildServerSelect() {
-    const selectors = [
-      document.getElementById('hwfit-server-select'),
-      document.getElementById('hwfit-dl-server'),
-    ];
-    for (const sel of selectors) {
-      if (!sel) continue;
-      const currentVal = sel.value || _currentServerValue();
-      const localSrv = _envState.servers.find(s => !s.host || String(s.host).toLowerCase() === 'local') || {};
-      const localColor = /^#[0-9a-fA-F]{6}$/.test(String(localSrv.color || '').trim()) ? String(localSrv.color).trim() : '';
-      const localLabel = localSrv.name || 'Local';
-      let html = `<option value="local"${localColor ? ` style="color:${uiModule.esc(localColor)};"` : ''}>${uiModule.esc(localColor ? `● ${localLabel}` : localLabel)}</option>`;
-      _envState.servers.forEach((s, i) => {
-        if (!s.host) return;
-        const label = s.name || s.host || `Server ${i + 1}`;
-        const color = /^#[0-9a-fA-F]{6}$/.test(String(s.color || '').trim()) ? String(s.color).trim() : '';
-        html += `<option value="${uiModule.esc(_serverKey(s))}"${color ? ` style="color:${uiModule.esc(color)};"` : ''}>${uiModule.esc(color ? `● ${label}` : label)}</option>`;
-      });
-      sel.innerHTML = html;
-      sel.value = currentVal;
-      if (sel.selectedIndex < 0) sel.value = _currentServerValue();
-      if (sel.selectedIndex < 0) sel.value = 'local';
-      _applyServerSelectColor(sel);
-    }
-  }
-
-  // Servers — sync changes, add, remove
-  function _syncServers() {
-    const entries = document.querySelectorAll('.cookbook-server-entry');
-    _envState.servers = [];
-    entries.forEach(entry => {
-      const row = entry.querySelector('.cookbook-server-row');
-      if (!row) return;
-      const nameEl = row.querySelector('.cookbook-srv-name');
-      const hostEl = row.querySelector('.cookbook-srv-host');
-      const name = nameEl?.value.trim() || '';
-      const host = (hostEl?.disabled || hostEl?.readOnly) ? '' : (hostEl?.value.trim() || '');
-      const port = row.querySelector('.cookbook-srv-port')?.value.trim() || '';
-      const env = row.querySelector('.cookbook-srv-env')?.value || 'none';
-      const envPath = row.querySelector('.cookbook-srv-path')?.value.trim() || '';
-      const colorRaw = row.querySelector('.cookbook-srv-color')?.value?.trim() || '';
-      const color = /^#[0-9a-fA-F]{6}$/.test(colorRaw) ? colorRaw : '';
-      // Collect model directories from tags. Read the authoritative data-dir
-      // attribute, not textContent \u2014 the tag now also holds a download-target
-      // icon, and textContent would fold the icon/\u2716 glyph into the path.
-      const dirTags = entry.querySelectorAll('.cookbook-modeldir-tag');
-      const modelDirs = [];
-      dirTags.forEach(tag => {
-        const d = _normalizeCookbookModelDir(tag.dataset.dir || '');
-        if (d) modelDirs.push(d);
-      });
-      if (!modelDirs.length) modelDirs.push('~/.cache/huggingface/hub');
-      // Which dir (if any) is flagged as the download target. '' = HF cache.
-      const dlEl = entry.querySelector('.cookbook-modeldir-dl.active');
-      const downloadDir = dlEl ? (dlEl.dataset.dlDir || '') : '';
-      const platform = entry.dataset.platform || '';
-      _envState.servers.push({ name, host: host || '', port, env, envPath, color, modelDirs, modelDir: modelDirs.filter(d => d !== '~/.cache/huggingface/hub')[0] || modelDirs[0], downloadDir, platform });
-    });
-    // Do NOT auto-change the selected host here. _syncServers can run while the
-    // servers DOM is mid-render — host fields that are disabled/readonly read as
-    // empty (see above), which made the rebuilt list temporarily miss the
-    // selected server. The old code then "fell back" to the first remote server
-    // and persisted it, silently flipping the active host even though the
-    // dropdown still showed pantheon. The user's selection must only change via
-    // an explicit dropdown pick. Here we just refresh env/path if we can match
-    // the current host; otherwise leave remoteHost untouched.
-    const sel = _serverByVal(_envState.remoteServerKey || _envState.remoteHost);
-    if (sel) { _envState.env = sel.env; _envState.envPath = sel.envPath; }
-    _persistEnvState();
-  }
-
-  async function _testServerConnection(entry) {
-    const host = entry.querySelector('.cookbook-srv-host')?.value?.trim();
-    const port = entry.querySelector('.cookbook-srv-port')?.value?.trim() || '';
-    const dot = entry.querySelector('.cookbook-srv-status');
-    const msg = entry.querySelector('.cookbook-srv-test-msg');
-    const setMsg = (text, color = '') => {
-      if (!msg) return;
-      msg.textContent = text || '';
-      msg.title = text || '';
-      msg.style.color = color || '';
-      msg.style.opacity = text ? '0.75' : '0.55';
-    };
-    if (!dot) return;
-    if (!host) {
-      dot.className = 'cookbook-srv-status';
-      dot.title = 'Enter user@host to test';
-      setMsg('');
-      return;
-    }
-    dot.className = 'cookbook-srv-status testing';
-    dot.title = 'Testing SSH…';
-    setMsg('Testing SSH...');
-    const t0 = Date.now();
-    try {
-      const res = await fetch('/api/cookbook/test-ssh', {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host, ssh_port: port || undefined }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.detail || data.error || `HTTP ${res.status}`);
-      }
-      const ms = Date.now() - t0;
-      const out = (data.stdout || '').trim();
-      if (data.exit_code === 0 && out.startsWith('ok')) {
-        dot.className = 'cookbook-srv-status ok';
-        dot.title = `Reachable · ${ms} ms · use Dependencies to check tmux/HF setup`;
-        setMsg(`Connected · ${ms} ms`, 'var(--green,#50fa7b)');
-      } else {
-        dot.className = 'cookbook-srv-status fail';
-        const err = (data.stderr || data.stdout || (data.exit_code == null ? 'no exit code' : `exit ${data.exit_code}`)).toString().trim().slice(0, 240);
-        dot.title = `SSH failed: ${err}`;
-        setMsg(`Failed · ${err}`, 'var(--red,#e06c75)');
-      }
-    } catch (e) {
-      dot.className = 'cookbook-srv-status fail';
-      dot.title = `Test failed: ${e.message || e}`;
-      setMsg(`Failed · ${e.message || e}`, 'var(--red,#e06c75)');
-    }
-  }
-
-  function _singleQuote(value) {
-    return `'${String(value || '').replace(/'/g, `'\"'\"'`)}'`;
-  }
-
-  function _serverKeyCommand(host, port, publicKey) {
-    const pf = port && port !== '22' ? `-p ${port} ` : '';
-    const remote = [
-      `KEY=${_singleQuote(publicKey)}`,
-      'mkdir -p ~/.ssh',
-      'chmod 700 ~/.ssh',
-      'touch ~/.ssh/authorized_keys',
-      '(grep -qxF "$KEY" ~/.ssh/authorized_keys || printf "%s\\n" "$KEY" >> ~/.ssh/authorized_keys)',
-      'chmod 600 ~/.ssh/authorized_keys',
-    ].join(' && ');
-    return `ssh -o StrictHostKeyChecking=accept-new ${pf}${host} ${_singleQuote(remote)}`;
-  }
-
-  async function _fetchCookbookSshKey(generate = false) {
-    const res = await fetch('/api/cookbook/ssh-key', {
-      method: generate ? 'POST' : 'GET',
-      credentials: 'same-origin',
-    });
-    const data = await res.json();
-    if (generate && !data.ok) throw new Error(data.error || 'Failed to generate SSH key');
-    return (data.public_key || '').trim();
-  }
-
-  async function _populateServerKeyPanel(entry, generate = false) {
-    const panel = entry.querySelector('.cookbook-server-key-panel');
-    const cmdBox = entry.querySelector('.cookbook-server-key-command');
-    const copyBtn = entry.querySelector('.cookbook-server-key-copy');
-    const genBtn = entry.querySelector('.cookbook-server-key-gen');
-    if (!panel || !cmdBox) return;
-    const host = entry.querySelector('.cookbook-srv-host')?.value?.trim() || '';
-    const port = entry.querySelector('.cookbook-srv-port')?.value?.trim() || '';
-    if (!host || !host.includes('@')) {
-      cmdBox.value = 'Enter the server as user@host first.';
-      if (copyBtn) copyBtn.disabled = true;
-      return;
-    }
-    if (!/^[A-Za-z0-9._~-]+@[A-Za-z0-9._:-]+$/.test(host) || (port && !/^\d{1,5}$/.test(port))) {
-      cmdBox.value = 'Use a plain SSH target like user@host and an optional numeric port.';
-      if (copyBtn) copyBtn.disabled = true;
-      return;
-    }
-    if (genBtn) {
-      genBtn.disabled = true;
-      genBtn.textContent = generate ? 'Generating...' : 'Loading...';
-    }
-    try {
-      let publicKey = await _fetchCookbookSshKey(generate);
-      if (!publicKey && !generate) publicKey = await _fetchCookbookSshKey(true);
-      cmdBox.value = _serverKeyCommand(host, port, publicKey);
-      if (copyBtn) copyBtn.disabled = false;
-      if (genBtn) genBtn.textContent = 'Key ready';
-    } catch (e) {
-      cmdBox.value = e.message || String(e);
-      if (copyBtn) copyBtn.disabled = true;
-      if (genBtn) genBtn.textContent = 'Generate key';
-    } finally {
-      if (genBtn) genBtn.disabled = false;
-    }
-  }
-
-  function _wireServerEntry(entry) {
-    // Idempotency guard: _hwfitInit() can run more than once per panel open,
-    // and re-wiring would stack duplicate listeners on every control (e.g. the
-    // model-dir "+" button would add two tags per click, change handlers fire
-    // twice). Bind each entry exactly once.
-    if (entry.dataset.wired) return;
-    entry.dataset.wired = '1';
-    // Inject the status dot once if missing — into the card header next to the
-    // server name (was previously the first child of the input row).
-    const row = entry.querySelector('.cookbook-server-row');
-    const titleEl = entry.querySelector('.cookbook-server-title');
-    if (!entry.querySelector('.cookbook-srv-status')) {
-      const dot = document.createElement('span');
-      dot.className = 'cookbook-srv-status';
-      dot.title = 'Click to test SSH';
-      dot.addEventListener('click', (e) => { e.stopPropagation(); _testServerConnection(entry); });
-      if (titleEl) titleEl.insertBefore(dot, titleEl.firstChild);
-      else if (row) row.insertBefore(dot, row.firstChild);
-      // The local server (readonly host) is always reachable — show it green
-      // without an SSH test.
-      const _hostEl = entry.querySelector('.cookbook-srv-host');
-      if (_hostEl && (_hostEl.readOnly || _hostEl.disabled)) {
-        dot.className = 'cookbook-srv-status ok';
-        dot.title = 'Local (this machine)';
-      }
-    }
-    const checkBtn = entry.querySelector('.cookbook-server-check-btn');
-    if (checkBtn && !checkBtn.dataset.bound) {
-      checkBtn.dataset.bound = '1';
-      checkBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        _testServerConnection(entry);
-      });
-    }
-    // Default-server toggle: exclusive checkmark in the entry title. The chosen
-    // server is what Forge lands on (all dropdowns) on the next open.
-    const _defBtn = entry.querySelector('.cookbook-srv-default');
-    if (_defBtn && !_defBtn.dataset.bound) {
-      _defBtn.dataset.bound = '1';
-      _defBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const key = _defBtn.dataset.srvKey || '';
-        // Toggle off if it's already the default; otherwise make it the default.
-        _envState.defaultServer = (_envState.defaultServer === key) ? '' : key;
-        _persistEnvState();
-        document.querySelectorAll('.cookbook-srv-default').forEach(b => {
-          const on = !!_envState.defaultServer && b.dataset.srvKey === _envState.defaultServer;
-          b.classList.toggle('active', on);
-          b.innerHTML = _serverDefaultHtml(on);
-          b.title = on ? 'Default server — Forge opens here' : 'Make this the default server';
-        });
-        // Apply immediately so the dropdowns reflect it without reopening
-        // (inline — _applyServerSelection lives in cookbook.js and isn't imported here).
-        const _dk = _envState.defaultServer;
-        if (_dk) {
-          if (_dk === 'local') { _envState.remoteHost = ''; _envState.remoteServerKey = ''; _envState.env = 'none'; _envState.envPath = ''; _envState.platform = ''; }
-          else { const _s = _serverByVal(_dk); if (_s) { _envState.remoteHost = _s.host; _envState.remoteServerKey = _serverKey(_s); _envState.env = _s.env || 'none'; _envState.envPath = _s.envPath || ''; _envState.platform = _s.platform || ''; } }
-          _persistEnvState();
-          document.querySelectorAll('#hwfit-server-select, #hwfit-dl-server, #hwfit-cache-server, #hwfit-deps-server').forEach(sel => {
-            if (sel && sel.tagName === 'SELECT') sel.value = _currentServerValue();
-          });
-        }
-        const defaultSrv = _serverByVal(_envState.defaultServer);
-        uiModule.showToast(_envState.defaultServer
-          ? 'Default server: ' + (_envState.defaultServer === 'local' ? 'Local' : (defaultSrv?.name || defaultSrv?.host || 'selected server'))
-          : 'Default server cleared');
-      });
-    }
-    const keyBtn = entry.querySelector('.cookbook-server-key-btn');
-    if (keyBtn && !keyBtn.dataset.bound) {
-      keyBtn.dataset.bound = '1';
-      keyBtn.addEventListener('click', async () => {
-        const panel = entry.querySelector('.cookbook-server-key-panel');
-        if (!panel) return;
-        const willOpen = panel.classList.contains('hidden');
-        panel.classList.toggle('hidden', !willOpen);
-        panel.style.display = willOpen ? 'flex' : '';
-        if (willOpen) await _populateServerKeyPanel(entry, false);
-      });
-    }
-    const keyGenBtn = entry.querySelector('.cookbook-server-key-gen');
-    if (keyGenBtn && !keyGenBtn.dataset.bound) {
-      keyGenBtn.dataset.bound = '1';
-      keyGenBtn.addEventListener('click', () => _populateServerKeyPanel(entry, true));
-    }
-    const keyCopyBtn = entry.querySelector('.cookbook-server-key-copy');
-    if (keyCopyBtn && !keyCopyBtn.dataset.bound) {
-      keyCopyBtn.dataset.bound = '1';
-      keyCopyBtn.addEventListener('click', async () => {
-        const cmd = entry.querySelector('.cookbook-server-key-command')?.value?.trim() || '';
-        if (!cmd || cmd.startsWith('Enter ')) return;
-        await _copyText(cmd);
-        uiModule.showToast('SSH setup command copied');
-      });
-    }
-    _wireServerColorPicker(entry);
-    entry.querySelectorAll('input, select').forEach(el => {
-      el.addEventListener('change', () => {
-        const selectedBefore = _envState.remoteHost || '';
-        const entryHost = entry.querySelector('.cookbook-srv-host')?.value?.trim() || '';
-        const color = entry.querySelector('.cookbook-srv-color')?.value?.trim() || '';
-        const hasColor = /^#[0-9a-fA-F]{6}$/.test(color);
-        const colorWrap = entry.querySelector('.cookbook-srv-color-wrap');
-        if (hasColor) {
-          entry.style.setProperty('--cookbook-server-color', color);
-          colorWrap?.style.setProperty('--cookbook-server-color', color);
-        } else {
-          const autoColor = (colorWrap?.style.getPropertyValue('--cookbook-server-color') || entry.style.getPropertyValue('--cookbook-server-color') || '').trim();
-          if (/^#[0-9a-fA-F]{6}$/.test(autoColor)) {
-            entry.style.setProperty('--cookbook-server-color', autoColor);
-            colorWrap?.style.setProperty('--cookbook-server-color', autoColor);
-          } else {
-            entry.style.removeProperty('--cookbook-server-color');
-            colorWrap?.style.removeProperty('--cookbook-server-color');
-          }
-        }
-        colorWrap?.classList.toggle('has-color', true);
-        _syncServers();
-        _rebuildServerSelect();
-        if (selectedBefore && selectedBefore === entryHost) {
-          _hwfitCache = null;
-          _hwfitFetch();
-        }
-        if (!entry.querySelector('.cookbook-server-key-panel')?.classList.contains('hidden')) {
-          _populateServerKeyPanel(entry, false);
-        }
-        const saveBtn = entry.querySelector('.cookbook-server-save-btn.saved');
-        if (saveBtn) {
-          saveBtn.classList.remove('saved');
-          saveBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;flex-shrink:0;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save';
-        }
-      });
-    });
-    // Manual connectivity test after editing host or port. Existing saved
-    // servers are not auto-tested on panel open; unreachable hosts can stall the
-    // Forge UI and make opening the panel feel blocked.
-    entry.querySelectorAll('.cookbook-srv-host, .cookbook-srv-port').forEach(el => {
-      el.addEventListener('blur', () => _testServerConnection(entry));
-    });
-    // Cancel button on a brand-new server entry: discard it (no confirm — it's
-    // unsaved) and re-sync so the dropped blank server doesn't linger.
-    const cancelBtn = entry.querySelector('.cookbook-server-cancel-btn');
-    if (cancelBtn && !cancelBtn.dataset.bound) {
-      cancelBtn.dataset.bound = '1';
-      cancelBtn.addEventListener('click', () => {
-        entry.remove();
-        _syncServers();
-        _rebuildServerSelect();
-        _hwfitCache = null;
-        _hwfitFetch();
-      });
-    }
-    // Save button: persist + confirm with a check.
-    const saveBtn = entry.querySelector('.cookbook-server-save-btn');
-    if (saveBtn && !saveBtn.dataset.bound) {
-      saveBtn.dataset.bound = '1';
-      saveBtn.addEventListener('click', () => {
-        _syncServers();
-        _rebuildServerSelect();
-        // Broadcast for anything outside the settings tab that depends on
-        // the server list (Serve dialog host picker, Running tasks, etc.).
-        // Without this the user had to hard-refresh to see the new entry
-        // in those other places.
-        try {
-          document.dispatchEvent(new CustomEvent('cookbook:servers-changed', {
-            detail: { servers: _envState.servers.slice() },
-          }));
-        } catch (_) {}
-        saveBtn.classList.add('saved');
-        saveBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#50fa7b" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>Saved';
-        uiModule.showToast('Server saved');
-      });
-    }
-    const rmBtn = entry.querySelector('.cookbook-server-rm');
-    if (rmBtn) rmBtn.addEventListener('click', async () => {
-      const name = entry.querySelector('.cookbook-srv-name')?.value?.trim()
-                || entry.querySelector('.cookbook-srv-host')?.value?.trim()
-                || 'this server';
-      let ok = true;
-      if (uiModule && uiModule.styledConfirm) {
-        ok = await uiModule.styledConfirm(`Remove "${name}"?`, { confirmText: 'Remove', danger: true });
-      } else {
-        ok = confirm(`Remove "${name}"?`);
-      }
-      if (!ok) return;
-      entry.remove();
-      _syncServers();
-      _rebuildServerSelect();
-      try {
-        document.dispatchEvent(new CustomEvent('cookbook:servers-changed', {
-          detail: { servers: _envState.servers.slice() },
-        }));
-      } catch (_) {}
-      _hwfitCache = null;
-      _hwfitFetch();
-    });
-    // Setup is owned by cookbook.js's delegated handler (Settings behavior:
-    // select server + open the Dependencies tab). Don't bind the inline-install
-    // handler here too, or one click would do two conflicting things.
-    const setupBtn = null;
-    if (setupBtn) {
-      setupBtn.addEventListener('click', async () => {
-        const host = entry.querySelector('.cookbook-srv-host')?.value?.trim();
-        const port = entry.querySelector('.cookbook-srv-port')?.value?.trim() || '';
-        if (!host) return;
-        setupBtn.disabled = true;
-        const origText = setupBtn.textContent;
-        setupBtn.textContent = 'Installing...';
-        try {
-          const res = await fetch('/api/cookbook/setup', {
-            method: 'POST', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ host, ssh_port: port || undefined }),
-          });
-          const data = await res.json();
-          if (data.ok) {
-            setupBtn.textContent = '\u2713 Done';
-            setupBtn.style.color = '#50fa7b';
-            uiModule.showToast(`Setup complete (${data.platform})`);
-            // Store detected platform on the server entry
-            if (data.platform) {
-              entry.dataset.platform = data.platform;
-              _syncServers();
-              // Show platform badge
-              const existingBadge = entry.querySelector('.cookbook-platform-badge');
-              if (existingBadge) existingBadge.remove();
-              const badge = document.createElement('span');
-              badge.className = 'cookbook-platform-badge';
-              badge.style.cssText = 'font-size:8px;padding:1px 5px;border-radius:3px;border:1px solid ' + (data.platform === 'windows' ? 'var(--cyan,#56b6c2)' : 'var(--green,#98c379)') + ';color:' + (data.platform === 'windows' ? 'var(--cyan,#56b6c2)' : 'var(--green,#98c379)') + ';opacity:0.7;white-space:nowrap;flex-shrink:0;';
-              badge.textContent = data.platform;
-              setupBtn.parentNode.insertBefore(badge, setupBtn);
-            }
-            // Auto-set Termux model dir
-            if (data.platform === 'termux') {
-              const container = entry.querySelector('.cookbook-modeldirs');
-              if (container) {
-                const existing = [...container.querySelectorAll('.cookbook-modeldir-tag')].map(t => t.textContent.replace('\u2716', '').replace('\u2715', '').trim());
-                const termuxDir = '/data/data/com.termux/files/home/models';
-                if (!existing.includes(termuxDir)) {
-                  const tag = document.createElement('span');
-                  tag.className = 'cookbook-modeldir-tag';
-                  tag.dataset.dirIdx = existing.length;
-                  tag.innerHTML = `${uiModule.esc(termuxDir)} <span class="cookbook-modeldir-rm" title="Remove">\u2715</span>`;
-                  tag.querySelector('.cookbook-modeldir-rm').addEventListener('click', () => { tag.remove(); _syncServers(); });
-                  const addBtn = container.querySelector('.cookbook-modeldir-add');
-                  if (addBtn) container.insertBefore(tag, addBtn);
-                  else container.appendChild(tag);
-                  _syncServers();
-                }
-              }
-            }
-          } else {
-            setupBtn.textContent = 'Failed';
-            setupBtn.style.color = 'var(--red)';
-            uiModule.showError(data.error || data.output || 'Setup failed');
-          }
-        } catch (e) {
-          setupBtn.textContent = 'Error';
-          setupBtn.style.color = 'var(--red)';
-          uiModule.showError(e.message);
-        }
-        setTimeout(() => { setupBtn.disabled = false; setupBtn.textContent = origText; setupBtn.style.color = ''; }, 3000);
-      });
-    }
-    // Model dir add/remove
-    const addDirBtn = entry.querySelector('.cookbook-modeldir-add');
-    if (addDirBtn) addDirBtn.addEventListener('click', () => {
-      const raw = prompt('Model directory path:', '/data/models');
-      if (!raw) return;
-      const dir = raw.replaceAll('\u2715', '').replaceAll('\u2716', '').trim();
-      if (!dir) return;
-      // Don't add duplicates
-      const existing = [...entry.querySelectorAll('.cookbook-modeldir-tag')].some(t => (t.dataset.dir || t.textContent.trim()) === dir);
-      if (existing) return;
-      const container = entry.querySelector('.cookbook-modeldirs');
-      const tag = document.createElement('span');
-      tag.className = 'cookbook-modeldir-tag';
-      tag.dataset.dirIdx = container.querySelectorAll('.cookbook-modeldir-tag').length;
-      tag.dataset.dir = dir;
-      tag.innerHTML = `<span class="cookbook-modeldir-dl" title="Send downloads here" data-dl-dir="${uiModule.esc(dir)}">${_MODELDIR_CHECK_OFF}</span> ${uiModule.esc(dir)} <span class="cookbook-modeldir-rm" title="Remove">\u2716</span>`;
-      tag.querySelector('.cookbook-modeldir-rm').addEventListener('click', () => { tag.remove(); _syncServers(); });
-      _wireModelDirTarget(entry, tag.querySelector('.cookbook-modeldir-dl'));
-      container.insertBefore(tag, addDirBtn);
-      _syncServers();
-    });
-    entry.querySelectorAll('.cookbook-modeldir-rm').forEach(rm => {
-      rm.addEventListener('click', () => { rm.closest('.cookbook-modeldir-tag').remove(); _syncServers(); });
-    });
-    // Download-target toggles: clicking one makes that dir the sole target for
-    // this server (or the default HF cache if it's the default dir).
-    entry.querySelectorAll('.cookbook-modeldir-dl').forEach(dl => _wireModelDirTarget(entry, dl));
-  }
-
-  // Mark a model-dir tag as this server's download target (exclusive), then
-  // persist. Clicking ANYWHERE on the tag (not just the check) selects it \u2014
-  // except the remove \u2716, which has its own handler.
-  function _wireModelDirTarget(entry, dlEl) {
-    if (!dlEl) return;
-    const tag = dlEl.closest('.cookbook-modeldir-tag');
-    if (!tag || tag.dataset.dlBound) return;
-    tag.dataset.dlBound = '1';
-    tag.style.cursor = 'pointer';
-    tag.addEventListener('click', (e) => {
-      if (e.target.closest('.cookbook-modeldir-rm')) return;   // remove handled elsewhere
-      e.stopPropagation();
-      entry.querySelectorAll('.cookbook-modeldir-dl').forEach(d => {
-        d.classList.remove('active');
-        d.innerHTML = _MODELDIR_CHECK_OFF;          // uncheck the others
-        d.closest('.cookbook-modeldir-tag')?.classList.remove('cookbook-modeldir-target');
-        d.title = 'Send downloads here';
-      });
-      dlEl.classList.add('active');
-      dlEl.innerHTML = _MODELDIR_CHECK_ON;           // check the chosen one
-      tag.classList.add('cookbook-modeldir-target');
-      dlEl.title = 'Downloads go here';
-      _syncServers();
-      uiModule.showToast((dlEl.dataset.dlDir ? 'Downloads \u2192 ' + dlEl.dataset.dlDir : 'Downloads \u2192 default HF cache'));
-    });
-  }
-
-  document.querySelectorAll('.cookbook-server-entry').forEach(_wireServerEntry);
-
-  const addBtn = document.getElementById('cookbook-server-add');
-  if (addBtn && !addBtn.dataset.bound) {
-    addBtn.dataset.bound = '1';
-    addBtn.addEventListener('click', () => {
-      const list = document.getElementById('cookbook-servers-list');
-      if (!list) return;
-      const idx = list.children.length;
-      // Build the new entry with the SAME template as existing servers (Model
-      // Directory header, default checkmark, platform icon) \u2014 isNew swaps the
-      // delete button for a Save button. forceRemote keeps it editable.
-      const blank = { host: '', name: '', port: '', env: 'none', envPath: '', color: '', platform: '', modelDirs: ['~/.cache/huggingface/hub'] };
-      const wrap = document.createElement('div');
-      wrap.innerHTML = _serverEntryHtml(blank, idx, _envState.defaultServer || '', true, true);
-      const entry = wrap.firstElementChild;
-      list.appendChild(entry);
-      _wireServerEntry(entry);
-      _syncServers();
-      // Also refresh the server select dropdown
-      _rebuildServerSelect();
-      entry.querySelector('.cookbook-srv-host')?.focus();
-    });
-  }
+  // `B1258`. The servers' editor is `mountServersEditor` below, mounted by
+  // Settings → Forge and by this window's Settings tab; this window follows
+  // what it keeps (`cookbook:servers-changed`).
+  _followServerChanges();
 
   // Server selector dropdown
   const serverSelect = document.getElementById('hwfit-server-select');
@@ -2841,4 +2314,686 @@ export function _hwfitInit() {
   }
   _syncServerSelectColors();
 
+}
+
+// ── `B1258` · the servers' one editor ───────────────────────────────────────
+
+// Rebuild all server select dropdowns with current servers
+function _rebuildServerSelect() {
+  // `B1258`: every server dropdown the Forge draws, so a server edited in
+  // Settings → Forge is in each of them without reopening the window.
+  const selectors = [
+    document.getElementById('hwfit-server-select'),
+    document.getElementById('hwfit-dl-server'),
+    document.getElementById('hwfit-cache-server'),
+    document.getElementById('hwfit-deps-server'),
+  ];
+  for (const sel of selectors) {
+    if (!sel || sel.tagName !== 'SELECT') continue;
+    const currentVal = sel.value || _currentServerValue();
+    const localSrv = _envState.servers.find(s => !s.host || String(s.host).toLowerCase() === 'local') || {};
+    const localColor = /^#[0-9a-fA-F]{6}$/.test(String(localSrv.color || '').trim()) ? String(localSrv.color).trim() : '';
+    const localLabel = localSrv.name || 'Local';
+    let html = `<option value="local"${localColor ? ` style="color:${uiModule.esc(localColor)};"` : ''}>${uiModule.esc(localColor ? `● ${localLabel}` : localLabel)}</option>`;
+    _envState.servers.forEach((s, i) => {
+      if (!s.host) return;
+      const label = s.name || s.host || `Server ${i + 1}`;
+      const color = /^#[0-9a-fA-F]{6}$/.test(String(s.color || '').trim()) ? String(s.color).trim() : '';
+      html += `<option value="${uiModule.esc(_serverKey(s))}"${color ? ` style="color:${uiModule.esc(color)};"` : ''}>${uiModule.esc(color ? `● ${label}` : label)}</option>`;
+    });
+    sel.innerHTML = html;
+    sel.value = currentVal;
+    if (sel.selectedIndex < 0) sel.value = _currentServerValue();
+    if (sel.selectedIndex < 0) sel.value = 'local';
+    _applyServerSelectColor(sel);
+  }
+}
+
+async function _testServerConnection(entry) {
+  const host = entry.querySelector('.cookbook-srv-host')?.value?.trim();
+  const port = entry.querySelector('.cookbook-srv-port')?.value?.trim() || '';
+  const dot = entry.querySelector('.cookbook-srv-status');
+  const msg = entry.querySelector('.cookbook-srv-test-msg');
+  const setMsg = (text, color = '') => {
+    if (!msg) return;
+    msg.textContent = text || '';
+    msg.title = text || '';
+    msg.style.color = color || '';
+    msg.style.opacity = text ? '0.75' : '0.55';
+  };
+  if (!dot) return;
+  if (!host) {
+    dot.className = 'cookbook-srv-status';
+    dot.title = 'Enter user@host to test';
+    setMsg('');
+    return;
+  }
+  dot.className = 'cookbook-srv-status testing';
+  dot.title = 'Testing SSH…';
+  setMsg('Testing SSH...');
+  const t0 = Date.now();
+  try {
+    const res = await fetch('/api/cookbook/test-ssh', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host, ssh_port: port || undefined }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || data.error || `HTTP ${res.status}`);
+    }
+    const ms = Date.now() - t0;
+    const out = (data.stdout || '').trim();
+    if (data.exit_code === 0 && out.startsWith('ok')) {
+      dot.className = 'cookbook-srv-status ok';
+      dot.title = `Reachable · ${ms} ms · use Dependencies to check tmux/HF setup`;
+      setMsg(`Connected · ${ms} ms`, 'var(--green,#50fa7b)');
+    } else {
+      dot.className = 'cookbook-srv-status fail';
+      const err = (data.stderr || data.stdout || (data.exit_code == null ? 'no exit code' : `exit ${data.exit_code}`)).toString().trim().slice(0, 240);
+      dot.title = `SSH failed: ${err}`;
+      setMsg(`Failed · ${err}`, 'var(--red,#e06c75)');
+    }
+  } catch (e) {
+    dot.className = 'cookbook-srv-status fail';
+    dot.title = `Test failed: ${e.message || e}`;
+    setMsg(`Failed · ${e.message || e}`, 'var(--red,#e06c75)');
+  }
+}
+
+function _singleQuote(value) {
+  return `'${String(value || '').replace(/'/g, `'\"'\"'`)}'`;
+}
+
+function _serverKeyCommand(host, port, publicKey) {
+  const pf = port && port !== '22' ? `-p ${port} ` : '';
+  const remote = [
+    `KEY=${_singleQuote(publicKey)}`,
+    'mkdir -p ~/.ssh',
+    'chmod 700 ~/.ssh',
+    'touch ~/.ssh/authorized_keys',
+    '(grep -qxF "$KEY" ~/.ssh/authorized_keys || printf "%s\\n" "$KEY" >> ~/.ssh/authorized_keys)',
+    'chmod 600 ~/.ssh/authorized_keys',
+  ].join(' && ');
+  return `ssh -o StrictHostKeyChecking=accept-new ${pf}${host} ${_singleQuote(remote)}`;
+}
+
+async function _fetchCookbookSshKey(generate = false) {
+  const res = await fetch('/api/cookbook/ssh-key', {
+    method: generate ? 'POST' : 'GET',
+    credentials: 'same-origin',
+  });
+  const data = await res.json();
+  if (generate && !data.ok) throw new Error(data.error || 'Failed to generate SSH key');
+  return (data.public_key || '').trim();
+}
+
+async function _populateServerKeyPanel(entry, generate = false) {
+  const panel = entry.querySelector('.cookbook-server-key-panel');
+  const cmdBox = entry.querySelector('.cookbook-server-key-command');
+  const copyBtn = entry.querySelector('.cookbook-server-key-copy');
+  const genBtn = entry.querySelector('.cookbook-server-key-gen');
+  if (!panel || !cmdBox) return;
+  const host = entry.querySelector('.cookbook-srv-host')?.value?.trim() || '';
+  const port = entry.querySelector('.cookbook-srv-port')?.value?.trim() || '';
+  if (!host || !host.includes('@')) {
+    cmdBox.value = 'Enter the server as user@host first.';
+    if (copyBtn) copyBtn.disabled = true;
+    return;
+  }
+  if (!/^[A-Za-z0-9._~-]+@[A-Za-z0-9._:-]+$/.test(host) || (port && !/^\d{1,5}$/.test(port))) {
+    cmdBox.value = 'Use a plain SSH target like user@host and an optional numeric port.';
+    if (copyBtn) copyBtn.disabled = true;
+    return;
+  }
+  if (genBtn) {
+    genBtn.disabled = true;
+    genBtn.textContent = generate ? 'Generating...' : 'Loading...';
+  }
+  try {
+    let publicKey = await _fetchCookbookSshKey(generate);
+    if (!publicKey && !generate) publicKey = await _fetchCookbookSshKey(true);
+    cmdBox.value = _serverKeyCommand(host, port, publicKey);
+    if (copyBtn) copyBtn.disabled = false;
+    if (genBtn) genBtn.textContent = 'Key ready';
+  } catch (e) {
+    cmdBox.value = e.message || String(e);
+    if (copyBtn) copyBtn.disabled = true;
+    if (genBtn) genBtn.textContent = 'Generate key';
+  } finally {
+    if (genBtn) genBtn.disabled = false;
+  }
+}
+
+function _wireServerEntry(entry, ed) {
+  // Idempotency guard: _hwfitInit() can run more than once per panel open,
+  // and re-wiring would stack duplicate listeners on every control (e.g. the
+  // model-dir "+" button would add two tags per click, change handlers fire
+  // twice). Bind each entry exactly once.
+  if (entry.dataset.wired) return;
+  entry.dataset.wired = '1';
+  // Inject the status dot once if missing — into the card header next to the
+  // server name (was previously the first child of the input row).
+  const row = entry.querySelector('.cookbook-server-row');
+  const titleEl = entry.querySelector('.cookbook-server-title');
+  if (!entry.querySelector('.cookbook-srv-status')) {
+    const dot = document.createElement('span');
+    dot.className = 'cookbook-srv-status';
+    dot.title = 'Click to test SSH';
+    dot.addEventListener('click', (e) => { e.stopPropagation(); _testServerConnection(entry); });
+    if (titleEl) titleEl.insertBefore(dot, titleEl.firstChild);
+    else if (row) row.insertBefore(dot, row.firstChild);
+    // The local server (readonly host) is always reachable — show it green
+    // without an SSH test.
+    const _hostEl = entry.querySelector('.cookbook-srv-host');
+    if (_hostEl && (_hostEl.readOnly || _hostEl.disabled)) {
+      dot.className = 'cookbook-srv-status ok';
+      dot.title = 'Local (this machine)';
+    }
+  }
+  const checkBtn = entry.querySelector('.cookbook-server-check-btn');
+  if (checkBtn && !checkBtn.dataset.bound) {
+    checkBtn.dataset.bound = '1';
+    checkBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      _testServerConnection(entry);
+    });
+  }
+  // Default-server toggle: exclusive checkmark in the entry title. The chosen
+  // server is what Forge lands on (all dropdowns) on the next open.
+  const _defBtn = entry.querySelector('.cookbook-srv-default');
+  if (_defBtn && !_defBtn.dataset.bound) {
+    _defBtn.dataset.bound = '1';
+    _defBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const key = _defBtn.dataset.srvKey || '';
+      // Toggle off if it's already the default; otherwise make it the default.
+      // `B1258`: the default is the servers' own, saved with them.
+      ed.defaultServer = (ed.defaultServer === key) ? '' : key;
+      _envState.defaultServer = ed.defaultServer;
+      ed.sync({ now: true });
+      ed.host.querySelectorAll('.cookbook-srv-default').forEach(b => {
+        const on = !!_envState.defaultServer && b.dataset.srvKey === _envState.defaultServer;
+        b.classList.toggle('active', on);
+        b.innerHTML = _serverDefaultHtml(on);
+        b.title = on ? 'Default server — Forge opens here' : 'Make this the default server';
+      });
+      // Apply immediately so the dropdowns reflect it without reopening
+      // (inline — _applyServerSelection lives in cookbook.js and isn't imported here).
+      const _dk = _envState.defaultServer;
+      if (_dk) {
+        if (_dk === 'local') { _envState.remoteHost = ''; _envState.remoteServerKey = ''; _envState.env = 'none'; _envState.envPath = ''; _envState.platform = ''; }
+        else { const _s = _serverByVal(_dk); if (_s) { _envState.remoteHost = _s.host; _envState.remoteServerKey = _serverKey(_s); _envState.env = _s.env || 'none'; _envState.envPath = _s.envPath || ''; _envState.platform = _s.platform || ''; } }
+        _persistEnvState();
+        document.querySelectorAll('#hwfit-server-select, #hwfit-dl-server, #hwfit-cache-server, #hwfit-deps-server').forEach(sel => {
+          if (sel && sel.tagName === 'SELECT') sel.value = _currentServerValue();
+        });
+      }
+      const defaultSrv = _serverByVal(_envState.defaultServer);
+      uiModule.showToast(_envState.defaultServer
+        ? 'Default server: ' + (_envState.defaultServer === 'local' ? 'Local' : (defaultSrv?.name || defaultSrv?.host || 'selected server'))
+        : 'Default server cleared');
+    });
+  }
+  const keyBtn = entry.querySelector('.cookbook-server-key-btn');
+  if (keyBtn && !keyBtn.dataset.bound) {
+    keyBtn.dataset.bound = '1';
+    keyBtn.addEventListener('click', async () => {
+      const panel = entry.querySelector('.cookbook-server-key-panel');
+      if (!panel) return;
+      const willOpen = panel.classList.contains('hidden');
+      panel.classList.toggle('hidden', !willOpen);
+      panel.style.display = willOpen ? 'flex' : '';
+      if (willOpen) await _populateServerKeyPanel(entry, false);
+    });
+  }
+  const keyGenBtn = entry.querySelector('.cookbook-server-key-gen');
+  if (keyGenBtn && !keyGenBtn.dataset.bound) {
+    keyGenBtn.dataset.bound = '1';
+    keyGenBtn.addEventListener('click', () => _populateServerKeyPanel(entry, true));
+  }
+  const keyCopyBtn = entry.querySelector('.cookbook-server-key-copy');
+  if (keyCopyBtn && !keyCopyBtn.dataset.bound) {
+    keyCopyBtn.dataset.bound = '1';
+    keyCopyBtn.addEventListener('click', async () => {
+      const cmd = entry.querySelector('.cookbook-server-key-command')?.value?.trim() || '';
+      if (!cmd || cmd.startsWith('Enter ')) return;
+      await _copyText(cmd);
+      uiModule.showToast('SSH setup command copied');
+    });
+  }
+  _wireServerColorPicker(entry);
+  entry.querySelectorAll('input, select').forEach(el => {
+    el.addEventListener('change', () => {
+      const selectedBefore = _envState.remoteHost || '';
+      const entryHost = entry.querySelector('.cookbook-srv-host')?.value?.trim() || '';
+      const color = entry.querySelector('.cookbook-srv-color')?.value?.trim() || '';
+      const hasColor = /^#[0-9a-fA-F]{6}$/.test(color);
+      const colorWrap = entry.querySelector('.cookbook-srv-color-wrap');
+      if (hasColor) {
+        entry.style.setProperty('--cookbook-server-color', color);
+        colorWrap?.style.setProperty('--cookbook-server-color', color);
+      } else {
+        const autoColor = (colorWrap?.style.getPropertyValue('--cookbook-server-color') || entry.style.getPropertyValue('--cookbook-server-color') || '').trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(autoColor)) {
+          entry.style.setProperty('--cookbook-server-color', autoColor);
+          colorWrap?.style.setProperty('--cookbook-server-color', autoColor);
+        } else {
+          entry.style.removeProperty('--cookbook-server-color');
+          colorWrap?.style.removeProperty('--cookbook-server-color');
+        }
+      }
+      colorWrap?.classList.toggle('has-color', true);
+      // `B1258`: saved through the servers' own route; the Forge redraws
+      // its dropdowns (and rescans the selected server) from what was kept.
+      ed.sync({ rescan: !!selectedBefore && selectedBefore === entryHost });
+      if (!entry.querySelector('.cookbook-server-key-panel')?.classList.contains('hidden')) {
+        _populateServerKeyPanel(entry, false);
+      }
+      const saveBtn = entry.querySelector('.cookbook-server-save-btn.saved');
+      if (saveBtn) {
+        saveBtn.classList.remove('saved');
+        saveBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;flex-shrink:0;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save';
+      }
+    });
+  });
+  // Manual connectivity test after editing host or port. Existing saved
+  // servers are not auto-tested on panel open; unreachable hosts can stall the
+  // Forge UI and make opening the panel feel blocked.
+  entry.querySelectorAll('.cookbook-srv-host, .cookbook-srv-port').forEach(el => {
+    el.addEventListener('blur', () => _testServerConnection(entry));
+  });
+  // Cancel button on a brand-new server entry: discard it (no confirm — it's
+  // unsaved) and re-sync so the dropped blank server doesn't linger.
+  const cancelBtn = entry.querySelector('.cookbook-server-cancel-btn');
+  if (cancelBtn && !cancelBtn.dataset.bound) {
+    cancelBtn.dataset.bound = '1';
+    cancelBtn.addEventListener('click', () => {
+      entry.remove();
+      ed.sync({ now: true });
+    });
+  }
+  // Save button: persist + confirm with a check.
+  const saveBtn = entry.querySelector('.cookbook-server-save-btn');
+  if (saveBtn && !saveBtn.dataset.bound) {
+    saveBtn.dataset.bound = '1';
+    saveBtn.addEventListener('click', async () => {
+      // `B1258`: through the servers' own route; the editor tells every
+      // other window (`cookbook:servers-changed`) what was kept.
+      const wasNew = !!entry.dataset.isNew;
+      const saved = await ed.sync({ now: true, redraw: wasNew });
+      if (!saved) return;
+      if (wasNew) { uiModule.showToast('Server saved'); return; }   // redrawn as a saved server
+      saveBtn.classList.add('saved');
+      saveBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#50fa7b" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>Saved';
+      uiModule.showToast('Server saved');
+    });
+  }
+  const rmBtn = entry.querySelector('.cookbook-server-rm');
+  if (rmBtn) rmBtn.addEventListener('click', async () => {
+    const name = entry.querySelector('.cookbook-srv-name')?.value?.trim()
+              || entry.querySelector('.cookbook-srv-host')?.value?.trim()
+              || 'this server';
+    let ok = true;
+    if (uiModule && uiModule.styledConfirm) {
+      ok = await uiModule.styledConfirm(`Remove "${name}"?`, { confirmText: 'Remove', danger: true });
+    } else {
+      ok = confirm(`Remove "${name}"?`);
+    }
+    if (!ok) return;
+    entry.remove();
+    ed.sync({ now: true, rescan: true });
+  });
+  // Setup is owned by cookbook.js's delegated handler (Settings behavior:
+  // select server + open the Dependencies tab). Don't bind the inline-install
+  // handler here too, or one click would do two conflicting things.
+  const setupBtn = null;
+  if (setupBtn) {
+    setupBtn.addEventListener('click', async () => {
+      const host = entry.querySelector('.cookbook-srv-host')?.value?.trim();
+      const port = entry.querySelector('.cookbook-srv-port')?.value?.trim() || '';
+      if (!host) return;
+      setupBtn.disabled = true;
+      const origText = setupBtn.textContent;
+      setupBtn.textContent = 'Installing...';
+      try {
+        const res = await fetch('/api/cookbook/setup', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ host, ssh_port: port || undefined }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          setupBtn.textContent = '\u2713 Done';
+          setupBtn.style.color = '#50fa7b';
+          uiModule.showToast(`Setup complete (${data.platform})`);
+          // Store detected platform on the server entry
+          if (data.platform) {
+            entry.dataset.platform = data.platform;
+            ed.sync();
+            // Show platform badge
+            const existingBadge = entry.querySelector('.cookbook-platform-badge');
+            if (existingBadge) existingBadge.remove();
+            const badge = document.createElement('span');
+            badge.className = 'cookbook-platform-badge';
+            badge.style.cssText = 'font-size:8px;padding:1px 5px;border-radius:3px;border:1px solid ' + (data.platform === 'windows' ? 'var(--cyan,#56b6c2)' : 'var(--green,#98c379)') + ';color:' + (data.platform === 'windows' ? 'var(--cyan,#56b6c2)' : 'var(--green,#98c379)') + ';opacity:0.7;white-space:nowrap;flex-shrink:0;';
+            badge.textContent = data.platform;
+            setupBtn.parentNode.insertBefore(badge, setupBtn);
+          }
+          // Auto-set Termux model dir
+          if (data.platform === 'termux') {
+            const container = entry.querySelector('.cookbook-modeldirs');
+            if (container) {
+              const existing = [...container.querySelectorAll('.cookbook-modeldir-tag')].map(t => t.textContent.replace('\u2716', '').replace('\u2715', '').trim());
+              const termuxDir = '/data/data/com.termux/files/home/models';
+              if (!existing.includes(termuxDir)) {
+                const tag = document.createElement('span');
+                tag.className = 'cookbook-modeldir-tag';
+                tag.dataset.dirIdx = existing.length;
+                tag.innerHTML = `${uiModule.esc(termuxDir)} <span class="cookbook-modeldir-rm" title="Remove">\u2715</span>`;
+                tag.querySelector('.cookbook-modeldir-rm').addEventListener('click', () => { tag.remove(); ed.sync(); });
+                const addBtn = container.querySelector('.cookbook-modeldir-add');
+                if (addBtn) container.insertBefore(tag, addBtn);
+                else container.appendChild(tag);
+                ed.sync();
+              }
+            }
+          }
+        } else {
+          setupBtn.textContent = 'Failed';
+          setupBtn.style.color = 'var(--red)';
+          uiModule.showError(data.error || data.output || 'Setup failed');
+        }
+      } catch (e) {
+        setupBtn.textContent = 'Error';
+        setupBtn.style.color = 'var(--red)';
+        uiModule.showError(e.message);
+      }
+      setTimeout(() => { setupBtn.disabled = false; setupBtn.textContent = origText; setupBtn.style.color = ''; }, 3000);
+    });
+  }
+  // Model dir add/remove
+  const addDirBtn = entry.querySelector('.cookbook-modeldir-add');
+  if (addDirBtn) addDirBtn.addEventListener('click', () => {
+    const raw = prompt('Model directory path:', '/data/models');
+    if (!raw) return;
+    const dir = raw.replaceAll('\u2715', '').replaceAll('\u2716', '').trim();
+    if (!dir) return;
+    // Don't add duplicates
+    const existing = [...entry.querySelectorAll('.cookbook-modeldir-tag')].some(t => (t.dataset.dir || t.textContent.trim()) === dir);
+    if (existing) return;
+    const container = entry.querySelector('.cookbook-modeldirs');
+    const tag = document.createElement('span');
+    tag.className = 'cookbook-modeldir-tag';
+    tag.dataset.dirIdx = container.querySelectorAll('.cookbook-modeldir-tag').length;
+    tag.dataset.dir = dir;
+    tag.innerHTML = `<span class="cookbook-modeldir-dl" title="Send downloads here" data-dl-dir="${uiModule.esc(dir)}">${_MODELDIR_CHECK_OFF}</span> ${uiModule.esc(dir)} <span class="cookbook-modeldir-rm" title="Remove">\u2716</span>`;
+    tag.querySelector('.cookbook-modeldir-rm').addEventListener('click', () => { tag.remove(); ed.sync(); });
+    _wireModelDirTarget(entry, tag.querySelector('.cookbook-modeldir-dl'), ed);
+    container.insertBefore(tag, addDirBtn);
+    ed.sync();
+  });
+  entry.querySelectorAll('.cookbook-modeldir-rm').forEach(rm => {
+    rm.addEventListener('click', () => { rm.closest('.cookbook-modeldir-tag').remove(); ed.sync(); });
+  });
+  // Download-target toggles: clicking one makes that dir the sole target for
+  // this server (or the default HF cache if it's the default dir).
+  entry.querySelectorAll('.cookbook-modeldir-dl').forEach(dl => _wireModelDirTarget(entry, dl, ed));
+}
+
+// Mark a model-dir tag as this server's download target (exclusive), then
+// persist. Clicking ANYWHERE on the tag (not just the check) selects it \u2014
+// except the remove \u2716, which has its own handler.
+function _wireModelDirTarget(entry, dlEl, ed) {
+  if (!dlEl) return;
+  const tag = dlEl.closest('.cookbook-modeldir-tag');
+  if (!tag || tag.dataset.dlBound) return;
+  tag.dataset.dlBound = '1';
+  tag.style.cursor = 'pointer';
+  tag.addEventListener('click', (e) => {
+    if (e.target.closest('.cookbook-modeldir-rm')) return;   // remove handled elsewhere
+    e.stopPropagation();
+    entry.querySelectorAll('.cookbook-modeldir-dl').forEach(d => {
+      d.classList.remove('active');
+      d.innerHTML = _MODELDIR_CHECK_OFF;          // uncheck the others
+      d.closest('.cookbook-modeldir-tag')?.classList.remove('cookbook-modeldir-target');
+      d.title = 'Send downloads here';
+    });
+    dlEl.classList.add('active');
+    dlEl.innerHTML = _MODELDIR_CHECK_ON;           // check the chosen one
+    tag.classList.add('cookbook-modeldir-target');
+    dlEl.title = 'Downloads go here';
+    ed.sync();
+    uiModule.showToast((dlEl.dataset.dlDir ? 'Downloads \u2192 ' + dlEl.dataset.dlDir : 'Downloads \u2192 default HF cache'));
+  });
+}
+
+// Collect what the editor shows into the shape the route keeps. A server
+// added and not given an address yet is not a server; one whose address was
+// cleared is refused in a sentence rather than dropped.
+function _collectServers(ed) {
+  const servers = [];
+  let problem = '';
+  ed.list.querySelectorAll('.cookbook-server-entry').forEach(entry => {
+    const row = entry.querySelector('.cookbook-server-row');
+    if (!row) return;
+    const hostEl = row.querySelector('.cookbook-srv-host');
+    const isLocal = !!(hostEl && (hostEl.disabled || hostEl.readOnly));
+    const host = isLocal ? '' : (hostEl?.value.trim() || '');
+    if (!isLocal && !host) {
+      if (!entry.dataset.isNew) problem = 'A server needs its address (user@host). To take one away, Delete it.';
+      return;
+    }
+    const colorRaw = row.querySelector('.cookbook-srv-color')?.value?.trim() || '';
+    const modelDirs = [];
+    entry.querySelectorAll('.cookbook-modeldir-tag').forEach(tag => {
+      const d = _normalizeCookbookModelDir(tag.dataset.dir || '');
+      if (d) modelDirs.push(d);
+    });
+    if (!modelDirs.length) modelDirs.push('~/.cache/huggingface/hub');
+    const dlEl = entry.querySelector('.cookbook-modeldir-dl.active');
+    servers.push({
+      name: row.querySelector('.cookbook-srv-name')?.value.trim() || '',
+      host,
+      port: row.querySelector('.cookbook-srv-port')?.value.trim() || '',
+      env: row.querySelector('.cookbook-srv-env')?.value || 'none',
+      envPath: row.querySelector('.cookbook-srv-path')?.value.trim() || '',
+      color: /^#[0-9a-fA-F]{6}$/.test(colorRaw) ? colorRaw : '',
+      modelDirs,
+      downloadDir: dlEl ? (dlEl.dataset.dlDir || '') : '',
+      platform: entry.dataset.platform || '',
+    });
+  });
+  return { servers, problem };
+}
+
+// The Forge's own view follows every list an editor keeps: its dropdowns are
+// rebuilt, a selected server that went away falls back to Local, and with one
+// remote server and none picked, that one is picked (what `cookbook.js`'s
+// copy of `_syncServers` did on every change).
+let _followingServers = false;
+function _followServerChanges() {
+  if (_followingServers) return;
+  _followingServers = true;
+  document.addEventListener('cookbook:servers-changed', (e) => {
+    const d = (e && e.detail) || {};
+    if (!Array.isArray(d.servers)) return;
+    _envState.servers = d.servers.map(s => ({ ...s }));
+    _envState.defaultServer = d.defaultServer || '';
+    let rescan = !!d.rescan;
+    if (_envState.remoteHost && !_envState.servers.some(s => s.host === _envState.remoteHost)) {
+      _envState.remoteHost = '';
+      _envState.remoteServerKey = '';
+      _envState.env = 'none';
+      _envState.envPath = '';
+      _envState.platform = '';
+      rescan = true;
+    }
+    if (!_envState.remoteHost) {
+      const remotes = _envState.servers.filter(s => s.host);
+      if (remotes.length === 1 && !_envState.defaultServer) {
+        _envState.remoteHost = remotes[0].host;
+        _envState.remoteServerKey = _serverKey(remotes[0]);
+        _envState.env = remotes[0].env || 'none';
+        _envState.envPath = remotes[0].envPath || '';
+      }
+    }
+    const sel = _serverByVal(_envState.remoteServerKey || _envState.remoteHost);
+    if (sel) { _envState.env = sel.env; _envState.envPath = sel.envPath; _envState.platform = sel.platform || ''; }
+    _persistEnvState();
+    _rebuildServerSelect();
+    _syncServerSelectColors();
+    if (rescan && document.getElementById('hwfit-list')) {
+      _hwfitCache = null;
+      _hwfitFetch();
+    }
+  });
+}
+
+/**
+ * `B1258`. The servers' one editor: every server's card — address, SSH port,
+ * SSH check and key, Python environment, model folders, download folder,
+ * colour, the default — drawn into `host` from `GET /api/cookbook/servers`
+ * and saved through `PUT` with the revision it was drawn from. Settings →
+ * Forge (its home) and the Forge's Settings tab both mount it
+ * (`servingSettings.mountServers`). What it keeps is told to every window
+ * (`cookbook:servers-changed`): the other copy redraws, the Forge's
+ * dropdowns follow. A save made from an older list — a Forge left open in
+ * another tab — is answered with the list as it is now, and drawn.
+ */
+export function mountServersEditor(host, { idPrefix = 'set-forge' } = {}) {
+  _followServerChanges();
+  host.textContent = '';
+  const head = document.createElement('div');
+  head.style.cssText = 'display:flex;align-items:baseline;gap:8px;margin-bottom:2px;margin-top:-4px;';
+  const h2 = document.createElement('h2');
+  h2.style.cssText = 'margin:0;padding:0;line-height:1;';
+  h2.textContent = 'Servers';
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'cal-add-btn cal-add-btn-text cookbook-servers-add';
+  add.id = idPrefix === 'cookbook' ? 'cookbook-server-add' : `${idPrefix}-server-add`;
+  add.title = 'Add server';
+  add.style.marginLeft = 'auto';
+  add.innerHTML = '<span class="cal-add-plus">+</span><span class="cal-add-label">Add</span>';
+  head.append(h2, add);
+  const desc = document.createElement('p');
+  desc.className = 'memory-desc doclib-desc';
+  desc.textContent = 'Machines Pantheon can serve models on. Local is this one.';
+  const toolbar = document.createElement('div');
+  toolbar.className = 'memory-toolbar cookbook-servers-toolbar';
+  toolbar.style.marginTop = '4px';
+  const list = document.createElement('div');
+  list.className = 'cookbook-servers-list';
+  toolbar.appendChild(list);
+  const said = document.createElement('div');
+  said.className = 'admin-toggle-sub cookbook-servers-said';
+  said.setAttribute('role', 'status');
+  said.setAttribute('aria-live', 'polite');
+  host.append(head, desc, toolbar, said);
+
+  const ed = { host, list, rev: null, servers: [], defaultServer: '', hostPlatform: '', timer: null, chain: Promise.resolve(true) };
+
+  const say = (text, error = false) => { said.textContent = text || ''; said.style.color = error ? 'var(--red)' : ''; };
+
+  function normalize(servers) {
+    const out = [];
+    let local = false;
+    (servers || []).forEach(s => {
+      if (!s || typeof s !== 'object') return;
+      const isLocal = !s.host || String(s.host).toLowerCase() === 'local';
+      if (isLocal) {
+        if (local) return;
+        local = true;
+        out.unshift({ ...s, host: '', platform: ed.hostPlatform || '' });
+      } else {
+        out.push({ ...s });
+      }
+    });
+    if (!local) out.unshift({ host: '', env: 'none', envPath: '', modelDirs: ['~/.cache/huggingface/hub'], platform: ed.hostPlatform || '' });
+    return out;
+  }
+
+  function draw() {
+    // The auto colours count from the list being drawn.
+    _envState.servers = ed.servers.map(s => ({ ...s }));
+    list.innerHTML = ed.servers.map((s, i) => _serverEntryHtml(s, i, ed.defaultServer || '', false)).join('');
+    list.querySelectorAll('.cookbook-server-entry').forEach(entry => _wireServerEntry(entry, ed));
+  }
+
+  function take(answer, { publish = true, redraw = true, rescan = false } = {}) {
+    ed.rev = answer.rev;
+    ed.hostPlatform = answer.hostPlatform || ed.hostPlatform || '';
+    ed.servers = normalize(answer.servers);
+    ed.defaultServer = answer.defaultServer || '';
+    if (redraw) draw();
+    if (publish) {
+      try {
+        document.dispatchEvent(new CustomEvent('cookbook:servers-changed', {
+          detail: { servers: ed.servers.map(s => ({ ...s })), defaultServer: ed.defaultServer, rev: ed.rev, from: ed, rescan },
+        }));
+      } catch (_) {}
+    }
+  }
+
+  async function save({ redraw = false, rescan = false } = {}) {
+    const { servers, problem } = _collectServers(ed);
+    if (problem) { say(problem, true); return false; }
+    const out = await saveServers(servers, ed.defaultServer, ed.rev);
+    if (out.ok) {
+      say('');
+      take(out.state, { redraw, rescan });
+      return true;
+    }
+    if (out.conflict) {
+      take(out.current, { rescan: true });
+      say(out.error || 'The servers were changed elsewhere; this shows them as they are now.', true);
+      return false;
+    }
+    say(out.error, true);
+    return false;
+  }
+
+  // Changes save a moment after the last one; Save, Delete, Cancel and the
+  // default save at once. One save at a time, each from the revision the last
+  // one answered.
+  ed.sync = ({ now = false, redraw = false, rescan = false } = {}) => {
+    clearTimeout(ed.timer);
+    if (now) {
+      ed.chain = ed.chain.then(() => save({ redraw, rescan }));
+      return ed.chain;
+    }
+    return new Promise((resolve) => {
+      ed.timer = setTimeout(() => { ed.chain = ed.chain.then(() => save({ redraw, rescan })); ed.chain.then(resolve); }, 350);
+    });
+  };
+
+  add.addEventListener('click', () => {
+    const idx = list.children.length;
+    const blank = { host: '', name: '', port: '', env: 'none', envPath: '', color: '', platform: '', modelDirs: ['~/.cache/huggingface/hub'] };
+    const wrap = document.createElement('div');
+    wrap.innerHTML = _serverEntryHtml(blank, idx, ed.defaultServer || '', true, true);
+    const entry = wrap.firstElementChild;
+    entry.dataset.isNew = '1';
+    list.appendChild(entry);
+    _wireServerEntry(entry, ed);
+    entry.querySelector('.cookbook-srv-host')?.focus();
+  });
+
+  // Another copy kept a newer list: draw it (unless this copy has a save waiting).
+  document.addEventListener('cookbook:servers-changed', (e) => {
+    const d = (e && e.detail) || {};
+    if (d.from === ed || !host.isConnected || typeof d.rev !== 'number' || (ed.rev !== null && d.rev <= ed.rev)) return;
+    take({ servers: d.servers, defaultServer: d.defaultServer, rev: d.rev, hostPlatform: ed.hostPlatform }, { publish: false });
+  });
+
+  async function refresh() {
+    const got = await readServers();
+    if (!got) { say('The servers could not be read. Only someone who runs this instance sees them.', true); return null; }
+    take(got);
+    return got;
+  }
+  ed.refresh = refresh;
+  refresh();
+  return ed;
 }
