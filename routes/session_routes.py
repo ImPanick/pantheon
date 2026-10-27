@@ -1573,6 +1573,10 @@ def setup_session_routes(
             "deleted_empty": deleted_empty,
             "deleted_throwaway": deleted_throwaway,
             "unfiled_remaining": unfiled_remaining_after,
+            # `P9-09`. Which model chose the folders — provenance on what a
+            # model produced. Only on this answer: the cleanup-only answers
+            # above asked no model, and naming one there would be a guess.
+            "model": model,
         }
 
     @router.get("/session/{session_id}/context_info")

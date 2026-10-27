@@ -1024,7 +1024,10 @@ export function describeMemoryTidy(data) {
   const d = data || {};
   const superseded = Number(d.superseded) || 0;
   const conflicts = Number(d.contradictions) || 0;
-  let msg = `Tidied: ${Number(d.removed) || 0} removed (${Number(d.before) || 0} \u2192 ${Number(d.after) || 0})`;
+  // `P9-09`. The route names the model that rewrote the memories, and only
+  // when one was asked; provenance on what a model produced.
+  const model = typeof d.model === 'string' ? d.model.trim() : '';
+  let msg = `Tidied${model ? ` by ${model}` : ''}: ${Number(d.removed) || 0} removed (${Number(d.before) || 0} \u2192 ${Number(d.after) || 0})`;
   if (superseded) msg += ` \u2014 ${superseded} superseded, still on the record`;
   if (conflicts) msg += `, ${conflicts} conflict${conflicts === 1 ? '' : 's'} left for you`;
   return msg;

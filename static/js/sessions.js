@@ -3356,9 +3356,16 @@ export function describeChatTidy(data) {
   const updated = Number(data.updated) || 0;
   const folders = Array.isArray(data.folders) ? data.folders.length : 0;
   const remaining = Number(data.unfiled_remaining) || 0;
+  // `P9-09`. The folders are a model's guess, so the sentence names the model
+  // the route says chose them. Deletions are the route's own rules, not the
+  // model's, so the name rides on the filing clause only.
+  const model = typeof data.model === 'string' ? data.model.trim() : '';
   const parts = [];
   if (deleted) parts.push(`Deleted ${deleted} chat${deleted === 1 ? '' : 's'}`);
-  if (updated) parts.push(`filed ${updated} into ${folders} folder${folders === 1 ? '' : 's'}`);
+  if (updated) {
+    parts.push(`filed ${updated} into ${folders} folder${folders === 1 ? '' : 's'}`
+      + (model ? ` chosen by ${model}` : ''));
+  }
   if (!parts.length) return remaining ? `Nothing to delete — ${remaining} still unfiled` : 'Already tidy';
   let msg = parts.join(', ');
   msg = msg.charAt(0).toUpperCase() + msg.slice(1);

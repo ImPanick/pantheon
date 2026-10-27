@@ -241,18 +241,17 @@ def test_research_reports_still_carry_the_model_that_ran_them():
     assert re.search(r"research-job-model[\s\S]{0,60}job\.modelName", src)
 
 
-def test_the_two_tidy_endpoints_are_the_named_remainder():
-    """Not a wish — the measurement behind the `[·]`. Both handlers hold the
-    model in a local and answer without it, so each half is one key. When one of
-    them starts sending it, this test is what says the client can read it."""
+def test_the_two_tidy_endpoints_now_name_their_model():
+    """Was the measurement behind the `[·]`: both handlers held the model in a
+    local and answered without it. `P9-09`'s tidy half added the key to each
+    answer and a clause to each sentence; that is driven through the real
+    handlers and describers in `tests/test_tidy_names_its_model.py`. Kept here,
+    flipped, so this file's account of the six surfaces stays whole."""
     sess = (ROOT / "routes" / "session_routes.py").read_text(encoding="utf-8")
     payload = sess[sess.index('"status": "ok",\n            "folders"'):]
     payload = payload[:payload.index("}")]
-    assert '"model"' not in payload
-    assert 'logger.info(f"Auto-sort: using model={model}' in sess, (
-        "the model is in scope in the same handler — that is what makes it one key"
-    )
+    assert '"model": model' in payload
     mem = (ROOT / "routes" / "memory" / "memory_routes.py").read_text(encoding="utf-8")
     audit = mem[mem.index('"before": result.get("before", 0),'):]
     audit = audit[:audit.index("}")]
-    assert '"model"' not in audit
+    assert '"model":' in audit

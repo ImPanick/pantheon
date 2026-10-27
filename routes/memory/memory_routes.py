@@ -642,6 +642,13 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
             # since the last tidy. Frontend already says "Already clean"
             # for removed==0, so this is here for future use / debugging.
             "already_tidy": bool(result.get("already_tidy")),
+            # `P9-09`. Which model rewrote the memories — provenance on what a
+            # model produced. `None` when no model was asked: the set was
+            # unchanged since the last tidy (`already_tidy`) or there was
+            # nothing to audit (`before` 0), and naming a model there would
+            # credit it with a pass it never made.
+            "model": (None if result.get("already_tidy") or not result.get("before")
+                      else model),
         }
 
     @router.post("/import")
