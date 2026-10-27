@@ -2011,9 +2011,10 @@ body.bg-pattern-sparkles {
       border-color: var(--red);
       border-left-color: var(--red);
     }
-    /* Only show the red focus ring for keyboard navigation (Tab). Mouse
-       clicks shouldn't leave a sticky red outline on a sidebar item. */
-    .list-item:focus { outline: none; }
+    /* Only show the red focus ring for keyboard navigation (Tab); a mouse
+       click leaves none on a sidebar row. `.list-item:focus { outline: none }`
+       said so until `B662` — the one ring is `:focus-visible`-scoped
+       (`P10-01`), which already says it. */
     .list-item:focus-visible {
       outline: none;
       border-color: var(--red, var(--color-error));
@@ -3966,7 +3967,6 @@ body.bg-pattern-sparkles {
       padding: 6px 8px;
     }
     .queue-row-input:focus {
-      outline: none;
       border-color: color-mix(in srgb, var(--accent, var(--red)) 45%, transparent);
     }
     .queue-row-note { font-size: 11.5px; opacity: 0.75; }
@@ -8196,7 +8196,6 @@ body.bg-pattern-sparkles {
     }
     #custom-preset-modal .modal-body textarea:focus,
     #custom-preset-modal .modal-body input[type="text"]:focus {
-      outline: none;
       border-color: var(--red);
     }
 
@@ -8556,7 +8555,7 @@ body.bg-pattern-sparkles {
       background: var(--panel); border: 1px solid var(--border);
       border-radius: 6px; color: var(--fg); font-size: 0.85rem; box-sizing: border-box;
     }
-    .setup-wizard .setup-input:focus { border-color: var(--red); outline: none; }
+    .setup-wizard .setup-input:focus { border-color: var(--red); }
     .setup-wizard .setup-connect-btn {
       padding: 8px 20px; background: var(--red); color: var(--bg);
       border: none; border-radius: 6px; cursor: pointer; font-weight: 600; margin-top: 4px;
@@ -9120,7 +9119,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       flex: 1; padding: 5px 8px; border: 1px solid var(--border-control, var(--border)); border-radius: 6px;
       background: var(--bg); color: var(--fg); font-size: 12px; font-family: inherit;
     }
-    .theme-save-row input:focus { outline: none; border-color: var(--red); }
+    .theme-save-row input:focus { border-color: var(--red); }
     .theme-save-row input::placeholder { color: color-mix(in srgb, var(--fg) 35%, transparent); }
     .theme-save-row button {
       padding: 6px 12px; border: 1px solid var(--red); border-radius: 6px;
@@ -9152,7 +9151,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       background: var(--bg); color: var(--fg); font-size: 0.7rem;
       font-family: inherit; resize: vertical; min-height: 48px;
     }
-    .theme-import-area:focus { outline: none; border-color: var(--red); }
+    .theme-import-area:focus { border-color: var(--red); }
     .theme-import-area.hidden { display: none; }
     .theme-import-actions { display: flex; gap: 6px; margin-top: 4px; }
     .theme-import-actions.hidden { display: none; }
@@ -9165,7 +9164,7 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       background: var(--bg); color: var(--fg); font-size: 12px;
       font-family: inherit; cursor: pointer;
     }
-    .theme-fd-select:focus { outline: none; border-color: var(--red); }
+    .theme-fd-select:focus { border-color: var(--red); }
     .theme-fd-range {
       width: 100%;
       max-width: 100%;
@@ -9194,7 +9193,6 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       width: 14px; height: 14px; border-radius: 50%;
       background: var(--red); border: none; cursor: pointer;
     }
-    .theme-fd-range:focus { outline: none; }
     /* Color Harmony Generator */
     .theme-harmony-row { display: flex; gap: 8px; align-items: flex-end; }
     .harmony-generate-btn {
@@ -13428,7 +13426,6 @@ details a:hover {
   cursor: pointer;
 }
 .char-template-select:focus {
-  outline: none;
   border-color: var(--red);
 }
 .char-action-btn {
@@ -13987,7 +13984,6 @@ textarea.memory-add-input {
 }
 
 .memory-add-input:focus {
-  outline: none;
   border-color: var(--red);
 }
 
@@ -14433,7 +14429,6 @@ textarea.memory-add-input {
 }
 
 .memory-search-input:focus {
-  outline: none;
   border-color: var(--red);
 }
 
@@ -14661,10 +14656,6 @@ textarea.memory-add-input {
   min-width: 0;
 }
 
-.memory-item-edit-input:focus {
-  outline: none;
-}
-
 /* Edit row: text input + category select side by side */
 .memory-edit-row {
   display: flex;
@@ -14683,10 +14674,6 @@ textarea.memory-add-input {
   padding: 2px 8px;
   cursor: pointer;
   flex-shrink: 0;
-}
-
-.memory-edit-cat-select:focus {
-  outline: none;
 }
 
 .memory-item-editing {
@@ -14977,7 +14964,6 @@ textarea.memory-add-input {
   border-color: color-mix(in srgb, var(--accent, var(--red)) 50%, var(--border-control, var(--border)));
 }
 .memory-sort-select:focus {
-  outline: none;
   border-color: var(--red);
 }
 
@@ -17176,7 +17162,6 @@ mark.doc-find-mark.current {
      transparent here makes typed text disappear the moment the cursor
      enters the page. Keep the visible fg color instead. */
   color: var(--fg) !important;
-  outline: none !important;
 }
 .doc-editor-textarea::placeholder {
   color: var(--fg);
@@ -18898,7 +18883,7 @@ span[id$="-logo"] svg:not([width]) {
   font-family: inherit;
   font-size: 12px;
 }
-.admin-add-form input:focus { outline: none; border-color: var(--red); }
+.admin-add-form input:focus { border-color: var(--red); }
 .admin-switch-inline {
   display: flex;
   align-items: center;
@@ -18923,7 +18908,7 @@ span[id$="-logo"] svg:not([width]) {
   color: var(--fg);
   font-size: 12px;
 }
-.admin-model-form input:focus { outline: none; border-color: var(--red); }
+.admin-model-form input:focus { border-color: var(--red); }
 .admin-model-form-row {
   display: flex;
   gap: 6px;
@@ -19088,7 +19073,7 @@ span[id$="-logo"] svg:not([width]) {
   color: var(--fg);
   font-size: 12px;
 }
-.admin-rag-dir-row input:focus { outline: none; border-color: var(--red); }
+.admin-rag-dir-row input:focus { border-color: var(--red); }
 .admin-rag-dir-row button {
   padding: 5px 8px;
   border: none;
@@ -22694,7 +22679,6 @@ body.gallery-selecting .gallery-dl-btn,
 .gallery-tag-input:focus,
 .gallery-detail-name-input:focus {
   border-color: var(--red);
-  outline: none;
 }
 /* ↵ enter hint inside the Add-a-tag field (accent), replacing the "press Enter"
    placeholder text. */
@@ -24550,7 +24534,6 @@ body.gallery-selecting .gallery-dl-btn,
 }
 .hwfit-sf:focus {
   border-color: var(--accent, var(--red));
-  outline: none;
 }
 .hwfit-sf[type="text"] { width: 100%; }
 .hwfit-sf.hwfit-sf-wide { width: 100%; }
@@ -24657,7 +24640,6 @@ body.gallery-selecting .gallery-dl-btn,
 .hwfit-numstep-btn:active {
   background: color-mix(in srgb, var(--accent, var(--red)) 35%, transparent);
 }
-.hwfit-numstep-btn:focus { outline: none; }
 .hwfit-numstep-btn[data-step="-1"] { border-right: 1px solid var(--border); }
 .hwfit-numstep-btn[data-step="1"]  { border-left:  1px solid var(--border); }
 .hwfit-spec-group:has(input[type="checkbox"]:not(:checked)) .hwfit-spec-method,
@@ -26041,7 +26023,6 @@ body.gallery-selecting .gallery-dl-btn,
 }
 .cookbook-dl-repo:focus {
   border-color: var(--accent, var(--red));
-  outline: none;
 }
 .cookbook-dl-repo::placeholder {
   color: var(--fg-muted);
@@ -26615,7 +26596,7 @@ body.gallery-selecting .gallery-dl-btn,
   box-sizing: border-box;
 }
 .hwfit-toolbar select:focus,
-.hwfit-toolbar input:focus { outline: none; border-color: var(--red); }
+.hwfit-toolbar input:focus { border-color: var(--red); }
 .hwfit-toolbar .hwfit-server-select { min-width: 70px; flex-shrink: 0; }
 .hwfit-toolbar .hwfit-usecase { min-width: 70px; flex-shrink: 0; }
 .hwfit-toolbar .hwfit-usecase-btn { min-width: 0; width: 96px; flex-shrink: 0; font-size: 10px; }
@@ -28449,7 +28430,6 @@ a.chat-link[href^="#research-"] {
    action descriptions), overflowing the modal — clip it to the field width. */
 select.task-form-input { text-overflow: ellipsis; }
 .task-form-input:focus {
-  outline: none;
   border-color: var(--red);
 }
 /* `B873`. The two branches of a chain, side by side.
@@ -28796,7 +28776,6 @@ input.settings-select::-webkit-inner-spin-button {
 }
 input.settings-select::placeholder { color: color-mix(in srgb, var(--fg) 35%, transparent); }
 .settings-select:focus {
-  outline: none;
   border-color: var(--red);
 }
 /* `B1255`. Sixteen settings controls (Deep Research's and Agent Tools' number
@@ -29126,7 +29105,6 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   appearance: textfield;
 }
 .settings-input:focus {
-  outline: none;
   border-color: var(--red);
 }
 /* ── Contacts manager (Settings → Integrations → CardDAV) ── */
@@ -30158,7 +30136,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   opacity: 1;
 }
 .gallery-editor-template-select:hover { border-color: var(--red); }
-.gallery-editor-template-select:focus { outline: none; border-color: var(--red); }
+.gallery-editor-template-select:focus { border-color: var(--red); }
 /* Saved-drafts grid on the editor landing. Surfaces every persisted
    in-progress project so the user can resume without re-opening the
    original photo. Each card: thumbnail + name + last-saved hint + ×. */
@@ -30217,7 +30195,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   border: 1px solid var(--border);
   border-radius: 4px;
 }
-.gallery-editor-drafts-search:focus { outline: none; border-color: var(--red); }
+.gallery-editor-drafts-search:focus { border-color: var(--red); }
 /* The shared .gallery-select-btn has a -4px top margin + tall asymmetric padding
    meant for the main gallery toolbar; in this header it makes the button a
    different height / offset from the search box. Normalize so it lines up. */
@@ -30750,7 +30728,6 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   font-size: 12px;
 }
 .ge-ai-command-input:focus {
-  outline: none;
   border-color: var(--accent, var(--red));
 }
 .ge-ai-command-run {
@@ -31158,7 +31135,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
    suffix AND the custom spinner so they don't sit on top of each other.
    The suffix renders inside that reserved zone. */
 .ge-transform-popup-input-rot { width: 76px; padding-right: 30px; }
-.ge-transform-popup-input:focus { outline: none; border-color: var(--red); }
+.ge-transform-popup-input:focus { border-color: var(--red); }
 .ge-transform-input-locked {
   opacity: 0.4;
   cursor: not-allowed;
@@ -31314,7 +31291,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   position: relative;
   top: 0;
 }
-.ge-inpaint-popup-input:focus { outline: none; border-color: var(--red); }
+.ge-inpaint-popup-input:focus { border-color: var(--red); }
 .ge-inpaint-popup-run {
   padding: 6px 12px;
   font-size: 12px;
@@ -32375,7 +32352,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   background: color-mix(in srgb, var(--panel) 90%, transparent);
   color: var(--fg);
 }
-.ge-adj-cb-tone-select:focus { outline: none; border-color: var(--red); }
+.ge-adj-cb-tone-select:focus { border-color: var(--red); }
 .ge-adj-hist-details {
   margin-bottom: 8px;
 }
@@ -32872,7 +32849,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   font: inherit;
   font-size: 12px;
 }
-.ge-edge-input:focus { outline: none; border-color: var(--red); }
+.ge-edge-input:focus { border-color: var(--red); }
 .ge-edge-actions {
   display: flex;
   gap: 6px;
@@ -32919,7 +32896,7 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
   font: inherit;
   font-size: 14px;
 }
-.ge-canvas-prompt-field input:focus { outline: none; border-color: var(--red); }
+.ge-canvas-prompt-field input:focus { border-color: var(--red); }
 .ge-canvas-prompt-x {
   font-size: 18px;
   opacity: 0.4;
@@ -33521,7 +33498,7 @@ button .spinner-whirlpool {
   border: 1px solid var(--border); border-radius: 4px; font-size: 12px;
   font-family: inherit; margin-top: 4px; box-sizing: border-box;
 }
-.ge-inpaint-prompt:focus { border-color: var(--red); outline: none; }
+.ge-inpaint-prompt:focus { border-color: var(--red); }
 
 /* Responsive: stack on narrow screens.
 
@@ -39927,7 +39904,6 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
   min-height: 60px;
 }
 .note-form-goal-desc:focus {
-  outline: none;
   border-color: color-mix(in srgb, var(--accent-warm) 60%, var(--border-control, var(--border)));
 }
 .note-form-goal-actions {
@@ -40952,7 +40928,6 @@ body.notes-mobile-mode.notes-drag-mode .note-card-pin.active {
 .note-form-draw-be-btn:hover { color: var(--fg); }
 /* Active side picks up the theme accent so brush vs eraser is unmistakable. */
 .note-form-draw-be-btn.active { color: var(--accent-primary, var(--red)); }
-.note-form-draw-be-btn:focus { outline: none; }
 
 .note-form-draw-text,
 .note-form-draw-line,
@@ -42502,7 +42477,7 @@ button.cal-view-btn {
    spans its width; no width animation since growing/shrinking on every
    keystroke would jitter beside the events list. */
 .cal-search-input { background:color-mix(in srgb, var(--fg) 5%, var(--bg)); border:1px solid var(--border); border-radius:5px; padding:0 8px; height:24px; color:var(--fg); font-size:11px; font-family:inherit; width:120px; box-sizing:border-box; transition:width 0.15s; }
-.cal-search-input:focus { outline:none; border-color:var(--accent); width:180px; }
+.cal-search-input:focus { border-color:var(--accent); width:180px; }
 .cal-search-input.cal-day-search { width:100%; margin-bottom:0; transition:none; padding-left: 28px; }
 .cal-search-input.cal-day-search:focus { width:100%; }
 /* Wrap for the search input so the magnifying-glass icon can be absolute-
@@ -42586,7 +42561,7 @@ button.cal-view-btn {
 .assistant-field textarea { resize: vertical; min-height: 60px; }
 .assistant-field input:focus,
 .assistant-field select:focus,
-.assistant-field textarea:focus { outline: none; border-color: var(--accent, var(--red)); }
+.assistant-field textarea:focus { border-color: var(--accent, var(--red)); }
 .assistant-field-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
 .assistant-field-row > .assistant-field { flex: 1 1 180px; }
 .assistant-field-check { flex-direction: row !important; align-items: center; gap: 6px; padding-bottom: 7px; }
@@ -42638,7 +42613,7 @@ button.cal-view-btn {
   resize: vertical;
   min-height: 48px;
 }
-.assistant-checkin-prompt:focus { outline: none; border-color: var(--accent, var(--red)); }
+.assistant-checkin-prompt:focus { border-color: var(--accent, var(--red)); }
 .assistant-checkin-meta { font-size: 10px; opacity: 0.45; }
 .assistant-settings-actions {
   display: flex;
@@ -43026,7 +43001,7 @@ button.cal-event-more:hover { opacity:1 !important; }
   }
 }
 .cal-input { background:color-mix(in srgb, var(--fg) 5%, var(--bg)); border:1px solid var(--border); border-radius:5px; padding:7px 10px; color:var(--fg); font-size:12px; width:100%; box-sizing:border-box; }
-.cal-input:focus { outline:none; border-color:var(--accent); }
+.cal-input:focus { border-color:var(--accent); }
 .cal-input-time { width:auto; flex:1; }
 select.cal-input { appearance:auto; }
 textarea.cal-input { resize:vertical; font-family:inherit; }
@@ -43206,7 +43181,7 @@ body.research-panel-view #research-divider { display:none; }
   box-sizing:border-box;
   margin-top: 2px;
 }
-.research-query:focus { outline:none; border-color:var(--accent-primary, var(--red)); }
+.research-query:focus { border-color:var(--accent-primary, var(--red)); }
 .research-settings-row {
   display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap;
   padding: 8px 10px;
@@ -43930,7 +43905,7 @@ input.cp-swatch-input::selection { background: transparent; }
   font-family: ui-monospace, 'Fira Code', monospace;
   font-size: 12px; text-transform: lowercase;
 }
-.cp-hex:focus { outline: none; border-color: var(--red, #e06c75); }
+.cp-hex:focus { border-color: var(--red, #e06c75); }
 .cp-eyedropper {
   width: 26px; height: 26px;
   padding: 0;
@@ -44003,7 +43978,6 @@ input.cp-swatch-input::selection { background: transparent; }
   font-family: inherit;
 }
 .pdf-export-input:focus {
-  outline: none;
   border-color: var(--fg);
 }
 .sig-modal-overlay .modal-content { padding: 12px 14px; }
@@ -44808,9 +44782,12 @@ body.theme-frosted .modal {
   background: color-mix(in srgb, var(--fg) 4%, var(--panel));
   overflow: hidden;
 }
-/* Focused only programmatically (tabIndex -1) to move SR/keyboard position; no
-   visible outline on the whole card box. */
-.ask-user-card:focus { outline: none; }
+/* Focused only programmatically (tabIndex -1) to move SR/keyboard position.
+   `.ask-user-card:focus { outline: none }` stood here, and `P10-01`'s ring
+   has out-ranked it since that row (`!important`, three ids): after keyboard
+   use the card draws the one ring like every focused element. `B662` removed
+   the dead declaration; whether a card focused for a screen reader should
+   carry the ring is the redesign's question, not a cascade fight. */
 .ask-user-head {
   display: flex;
   justify-content: flex-end;

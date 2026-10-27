@@ -213,8 +213,14 @@ def test_the_suppression_population_is_a_hundred_not_ninety_nine():
     # cascade (`test_the_ring_out_ranks_every_suppression_in_the_sheet`), and
     # none was cancelling an outline another rule sets outside focus: no rule
     # in the sheet gives any of their selectors' classes a visible outline.
-    assert (nones, zeros) == (53, 0), (
-        f"expected 53 `outline: none` and 0 `outline: 0`, found {nones} and {zeros}"
+    # 53 + 0 -> 8 + 0: `B662` (b) deleted the 45 scoped to `:focus` (seven
+    # rules held nothing else and went whole). They suppressed the browser's
+    # own ring only in a browser that draws it on `:focus`, and the sheet does
+    # not run in one — see `test_the_sheet_needs_a_browser_that_rings_on_focus_visible`.
+    # The eight left substitute a ring of their own on `:focus-visible`;
+    # whether those stay as emphasis is `B662` (c), a judgement by eye.
+    assert (nones, zeros) == (8, 0), (
+        f"expected 8 `outline: none` and 0 `outline: 0`, found {nones} and {zeros}"
     )
 
 
@@ -239,12 +245,34 @@ def test_the_suppressions_split_three_ways():
     # 47 / 45 / 8 -> 0 / 45 / 8: `B662` (a). A suppression with no focus state
     # in its selector paints nothing in any state once the guard is in, so a
     # new one is drift — this keeps the population at nothing.
-    assert (bare, focus, focus_visible) == (0, 45, 8), (
-        f"expected 0 / 45 / 8, found {bare} / {focus} / {focus_visible}. "
+    # 0 / 45 / 8 -> 0 / 0 / 8: `B662` (b), above.
+    assert (bare, focus, focus_visible) == (0, 0, 8), (
+        f"expected 0 / 0 / 8, found {bare} / {focus} / {focus_visible}. "
         "Counted by RULE, not by selector: 100 rules carry a suppression and "
         "118 selectors are listed across them, and those are answers to "
         "different questions (`Law 5`)."
     )
+
+
+def test_the_sheet_needs_a_browser_that_rings_on_focus_visible():
+    """`B662` (b)'s premise, held where it lives.
+
+    A suppression scoped to `:focus` mattered only in a browser whose own
+    stylesheet draws the ring on `:focus` rather than `:focus-visible` — on a
+    mouse click there, the browser's ring would come back. Chromium (since 83),
+    Firefox (since 85) and Safari (since 15.4) all draw it on `:focus-visible`.
+    This sheet already cannot run on anything older than Chromium 123,
+    Firefox 120 or Safari 17.5: `B22`'s semantic tokens are `light-dark()` in
+    `:root`, and a browser without it drops every one of those declarations.
+    So the floor that made the 45 dead is a property of the sheet, and if the
+    sheet ever stops needing `light-dark()` the argument has to be made again.
+    """
+    root = re.search(r"(?:^|\})\s*:root\s*\{([^{}]*)\}", CSS)
+    assert root, ":root block not found"
+    scoped = re.findall(r"--[\w-]+\s*:\s*light-dark\(", root.group(1))
+    assert len(scoped) >= 10, (
+        f"`:root` scopes only {len(scoped)} tokens with light-dark(); the browser "
+        "floor `B662` (b) rests on is no longer the sheet's own")
 
 
 def test_the_focus_visible_rules_are_forty_two_not_thirty_five():
