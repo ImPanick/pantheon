@@ -213,7 +213,7 @@ through `from … import require_operator as X`, excluding `core/middleware.py` 
 same question asked to decide what a route *shows*, never whether it answers — is not a
 site: the endpoint list and its models (the retired `power-user` tier) ask it.
 
-derived-operator: direct 61 · Depends 6 · total 67
+derived-operator: direct 63 · Depends 6 · total 69
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -228,11 +228,13 @@ derived-operator: direct 61 · Depends 6 · total 67
 | `routes/codex_routes.py` | `_require_cookbook_scope` | `—` | not a route: the helper nine Codex cookbook routes call. It demands the scope from a bearer token and admin from a cookie session, and its docstring is the clearest statement in the tree of why cookbook is gated — host topology, task logs, tmux commands, model-serving controls |
 | `routes/cookbook_routes.py` | `cookbook_tasks_status` | `GET /api/cookbook/tasks/status` | progress of in-flight downloads and serves |
 | `routes/cookbook_routes.py` | `get_cookbook_state` | `GET /api/cookbook/state` | the serve-state file: which models are up, on which hosts |
+| `routes/cookbook_routes.py` | `get_hf_token` | `GET /api/cookbook/hf-token` | whether a Hugging Face token is stored, and how it reads masked — never the token. `B1258` |
 | `routes/cookbook_routes.py` | `list_gpus` | `GET /api/cookbook/gpus` | host GPU inventory. `GET /api/hwfit/system` answers the same question, and since `B541` behind the same gate |
 | `routes/cookbook_routes.py` | `model_cached` | `GET /api/model/cached` | what is already on disk |
 | `routes/cookbook_routes.py` | `model_download` | `POST /api/model/download` | pulls model weights onto the host's disk |
 | `routes/cookbook_routes.py` | `model_serve` | `POST /api/model/serve` | starts a model server in tmux |
 | `routes/cookbook_routes.py` | `save_cookbook_state` | `POST /api/cookbook/state` | rewrites it. `FORBIDDEN.md` blocks the agent's generic `app_api` from this pair after it wiped the file once |
+| `routes/cookbook_routes.py` | `set_hf_token` | `PUT /api/cookbook/hf-token` | stores the Hugging Face token, encrypted, or removes it; its only writer since the whole-state save stopped carrying it. `B1258` |
 | `routes/diagnostics_routes.py` | `get_database_stats` | `GET /api/db/stats` | row counts |
 | `routes/diagnostics_routes.py` | `get_diagnostic_bundle` | `GET /api/diagnostics/bundle` | the redacted support bundle |
 | `routes/diagnostics_routes.py` | `get_diagnostics_logs` | `GET /api/diagnostics/logs` | server logs, which carry every user's activity |

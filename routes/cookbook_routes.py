@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import os
+import threading
 import re
 import shlex
 import shutil
@@ -15,7 +16,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, Body, HTTPException, Request, Depends
 
 from src.auth_helpers import require_user
 from src.constants import COOKBOOK_STATE_FILE
@@ -399,6 +400,7 @@ def setup_cookbook_routes() -> APIRouter:
     router = APIRouter(tags=["cookbook"])
     _cookbook_state_path = Path(COOKBOOK_STATE_FILE)
     _state_get_cache = {"ts": 0.0, "mtime": 0.0, "value": None}
+    _hf_token_lock = threading.Lock()   # `B1258`: one token write at a time
     _tasks_status_cache = {"ts": 0.0, "value": None}
     _tasks_status_inflight = {"task": None}
 
@@ -624,11 +626,11 @@ def setup_cookbook_routes() -> APIRouter:
         env = state.get("env") if isinstance(state, dict) else None
         disk_env = on_disk.get("env") if isinstance(on_disk, dict) and isinstance(on_disk.get("env"), dict) else {}
         if isinstance(env, dict):
-            incoming = env.get("hfToken")
-            if incoming:
-                _validate_token(incoming)
-                env["hfToken"] = _encrypt_secret(incoming)
-            elif disk_env.get("hfToken"):
+            # `B1258`. The token has its own door (`PUT /api/cookbook/hf-token`).
+            # The whole-state save keeps what is on disk whatever it carries,
+            # so a Forge open in another tab can neither write back its own
+            # copy of a token nor clear one by leaving it out.
+            if disk_env.get("hfToken"):
                 env["hfToken"] = disk_env["hfToken"]
             else:
                 env.pop("hfToken", None)
@@ -3400,6 +3402,73 @@ def setup_cookbook_routes() -> APIRouter:
             return {"ok": False, "error": "kill command timed out"}
         except Exception as e:
             return {"ok": False, "error": str(e)[:200]}
+
+    # ── `B1258` · the Hugging Face token's own door ──
+    #
+    # It rode the whole-state save above from the browser's `_envState`, so
+    # its one editor had to live in the Forge and a stale tab could write it
+    # back. Two routes, the operator's like the rest of the Forge's serving:
+    # the answer says whether one is stored and its first and last four
+    # characters — never the token. Plain `def`: a small file read and write,
+    # in the thread pool rather than on the event loop (`B1223`).
+
+    def _hf_token_answer() -> dict:
+        token = ""
+        try:
+            if _cookbook_state_path.exists():
+                state = json.loads(_cookbook_state_path.read_text(encoding="utf-8"))
+                env = state.get("env") if isinstance(state, dict) else None
+                if isinstance(env, dict):
+                    token = _decrypt_secret(env.get("hfToken"))
+        except Exception:
+            token = ""
+        from_env = bool((os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN") or "").strip())
+        return {"configured": bool(token), "masked": _mask_secret(token) if token else "",
+                "from_environment": (not token) and from_env}
+
+    @router.get("/api/cookbook/hf-token")
+    def get_hf_token(request: Request):
+        """Whether a Hugging Face token is stored, and how it reads masked."""
+        require_operator(request)
+        return _hf_token_answer()
+
+    @router.put("/api/cookbook/hf-token")
+    def set_hf_token(request: Request, body: dict = Body(...)):
+        """Store the Hugging Face token (encrypted), or remove it with `""`."""
+        require_operator(request)
+        token = body.get("token") if isinstance(body, dict) else None
+        if not isinstance(token, str):
+            raise HTTPException(400, 'Send the token as {"token": "hf_…"}, or "" to remove it.')
+        token = token.strip()
+        if token:
+            try:
+                _validate_token(token)
+            except HTTPException:
+                raise HTTPException(
+                    400, "That is not a Hugging Face token: a token is one word of letters, digits, "
+                         "dots, dashes and underscores (hf_…). Nothing was changed.") from None
+        from core.atomic_io import atomic_write_json
+        with _hf_token_lock:
+            try:
+                state = (json.loads(_cookbook_state_path.read_text(encoding="utf-8"))
+                         if _cookbook_state_path.exists() else {})
+            except Exception:
+                # Rebuildable (`check-config-writes`): a file that cannot be
+                # read is repaired by this write, as by the whole-state save;
+                # the Forge's next save fills in the rest.
+                logger.warning("cookbook state unreadable; the token write starts it again")
+                state = {}
+            if not isinstance(state, dict):
+                state = {}
+            env = state.get("env") if isinstance(state.get("env"), dict) else {}
+            if token:
+                env["hfToken"] = _encrypt_secret(token)
+            else:
+                env.pop("hfToken", None)
+            state["env"] = env
+            atomic_write_json(_cookbook_state_path, state, indent=2)
+            _state_get_cache.update({"ts": 0.0, "mtime": 0.0, "value": None})
+        return _hf_token_answer()
 
     # ── Forge state persistence (cross-device sync) ──
 

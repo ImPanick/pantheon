@@ -1147,6 +1147,9 @@ _APP_API_BLOCKLIST_METHOD_PATH = (
     ("POST",   "/api/workstation"),
     ("POST",   "/api/cookbook/state"),   # whole-file overwrite — agent must use serve_preset/serve_model instead
     ("DELETE", "/api/cookbook/state"),
+    # `B1258`. The Hugging Face token's own door: a credential the person sets
+    # in Settings → Forge, never one the assistant writes for them.
+    ("PUT",    "/api/cookbook/hf-token"),
     # Host-control routes: package install, engine rebuild, and process
     # signalling should not be reachable through the generic API bridge.
     ("POST",   "/api/cookbook/packages/install"),

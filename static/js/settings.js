@@ -52,6 +52,7 @@ import { readRefusal } from './workbench/refusal.js';
 // second copy that disagreed with it about `toggle_sidebar`.
 import { KEYBIND_DEFAULTS, KEYBIND_LABELS, keybindLayers, mergeKeybinds } from './keyboard-shortcuts.js';
 import { chevronIcon } from './icons.js';
+import { mountHfToken } from './servingSettings.js';   // `B1258`: the token's one editor
 
 let initialized = false;
 let modalEl = null;
@@ -1913,11 +1914,26 @@ async function _readForgeModelHubs() {
   } catch (_) { return null; }
 }
 
-function _openForgeDoor(where) {
+function _openForgeDoor(where, focusId) {
   const [kind, tab] = String(where || '').split(':');
   if (kind === 'settings') {
     const button = modalEl && modalEl.querySelector(`[data-settings-tab="${tab}"]`);
     if (button) button.click();
+    // `B1258`: a door to one control lands on it (the System panel draws its
+    // switches after a fetch, so it is asked for until it is there).
+    if (focusId) {
+      let tries = 0;
+      const land = () => {
+        const target = document.getElementById(focusId);
+        if (target) {
+          try { target.scrollIntoView({ block: 'center' }); } catch (_) {}
+          target.focus();
+        } else if (++tries < 20) {
+          setTimeout(land, 100);
+        }
+      };
+      land();
+    }
     return;
   }
   if (kind === 'forge') {
@@ -1966,10 +1982,32 @@ async function initForgeSettings() {
     });
     const panel = modalEl && modalEl.querySelector('[data-settings-panel="forge"]');
     (panel ? panel.querySelectorAll('[data-forge-door]') : []).forEach((button) => {
-      button.addEventListener('click', () => _openForgeDoor(button.dataset.forgeDoor));
+      button.addEventListener('click', () => _openForgeDoor(button.dataset.forgeDoor, button.dataset.forgeFocus));
     });
+    // `B1258` (1). The Hugging Face token's one editor, at its home.
+    _forgeHfToken = mountHfToken(el('set-forgeHfToken'), { inputId: 'set-forgeHfTokenInput' });
+  } else if (_forgeHfToken) {
+    _forgeHfToken.refresh();
   }
-  await _readForgeModelHubs();
+  await Promise.all([_readForgeModelHubs(), _readForgeModelDownload()]);
+}
+
+let _forgeHfToken = null;
+
+/* `B1258` (3). `allow_model_download` read beside the Forge's switch: the two
+   Hugging Face switches, said together. Its control is the System panel's
+   tri-state (`B95`); this is the same answer `_envflagSourceLine` gives there. */
+async function _readForgeModelDownload() {
+  const out = el('set-forgeModelDownload');
+  if (!out) return;
+  try {
+    const res = await fetch('/api/auth/settings/flag-sources', { credentials: 'same-origin' });
+    if (!res.ok) throw new Error(String(res.status));
+    const info = ((await res.json()).flags || {}).allow_model_download;
+    out.textContent = info ? _envflagSourceLine(info) : 'not reported.';
+  } catch (_) {
+    out.textContent = 'could not be read.';
+  }
 }
 
 /* ── How often the inbox is checked (`B1152`, f-mail) ──
