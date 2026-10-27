@@ -45,11 +45,11 @@
         s.setProperty('--panel', c.panel);
         s.setProperty('--border', c.border);
         if (c.red) s.setProperty('--red', c.red);
-        // P1-01, mirrored from applyColors() in static/js/theme.js. The 553
+        // P1-01, mirrored from applyColors() in static/js/theme.js. The 552
         // `var(--accent, var(--red))` sites in style.css ride the `--red` set
         // on the line above, but the 200 bare `var(--accent)` ones stay voided
         // until the module boots — a visible flash on every cold load without
-        // this. Counts re-derived 2026-09-18; they move as style.css grows.
+        // this. Counts re-derived 2026-10-27; they move as style.css grows.
         var _ac = c.accent || c.red;
         if (_ac) s.setProperty('--accent', _ac);
         // `P1-08`, mirrored from `applyColors()` in static/js/theme.js. The

@@ -198,24 +198,28 @@ def _decl(block: str, prop: str):
 # ── the census, corrected ──────────────────────────────────────────────────
 
 
-def test_the_suppression_population_is_a_hundred_not_ninety_nine():
-    """The row's premise, re-measured. It said 97 + 2; it is 98 + 2.
+def test_the_suppression_population_is_counted_not_quoted():
+    """The row's premise, re-measured. It said 97 + 2; it was 98 + 2 on
+    2026-09-18 (a hundred — this test was named for it).
 
     Pinned so the next one to arrive is a decision somebody made rather than a
     number that drifted. If a suppression is legitimately added or removed,
-    move this and say which rule in the commit.
+    move this and say which rule in the commit. 98 → 97 on 2026-10-27:
+    `.search-fb-add`'s `outline: none` left with the `.search-fallback-chain`
+    block `H21` deleted — a chip nothing ever drew.
     """
     nones = len(re.findall(r"(?:^|[{;])\s*outline\s*:\s*none\s*(?:!important)?\s*(?=[;}])", CSS, re.M))
     zeros = len(re.findall(r"(?:^|[{;])\s*outline\s*:\s*0\s*(?:!important)?\s*(?=[;}])", CSS, re.M))
-    assert (nones, zeros) == (98, 2), (
-        f"expected 98 `outline: none` and 2 `outline: 0`, found {nones} and {zeros}"
+    assert (nones, zeros) == (97, 2), (
+        f"expected 97 `outline: none` and 2 `outline: 0`, found {nones} and {zeros}"
     )
 
 
 def test_the_suppressions_split_three_ways():
-    """47 with no focus pseudo-class, 45 on `:focus`, 8 on `:focus-visible`.
+    """46 with no focus pseudo-class, 45 on `:focus`, 8 on `:focus-visible`
+    (47 until `H21` deleted `.search-fb-add`, 2026-10-27).
 
-    The split is the argument for the fix: the 47 look harmless (an outline is
+    The split is the argument for the fix: the 46 look harmless (an outline is
     already `none` by default) and are ring suppressions all the same, because
     the only state in which anything sets an outline on them is the one the
     browser sets it in.
@@ -230,10 +234,10 @@ def test_the_suppressions_split_three_ways():
             focus += 1
         else:
             bare += 1
-    assert (bare, focus, focus_visible) == (47, 45, 8), (
-        f"expected 47 / 45 / 8, found {bare} / {focus} / {focus_visible}. "
-        "Counted by RULE, not by selector: 100 rules carry a suppression and "
-        "118 selectors are listed across them, and those are answers to "
+    assert (bare, focus, focus_visible) == (46, 45, 8), (
+        f"expected 46 / 45 / 8, found {bare} / {focus} / {focus_visible}. "
+        "Counted by RULE, not by selector: 99 rules carry a suppression and "
+        "117 selectors are listed across them, and those are answers to "
         "different questions (`Law 5`)."
     )
 
