@@ -253,13 +253,23 @@ def _get_or_reset_collection(chroma_client, name: str, metadata: Dict[str, Any],
     ids = preserved.get("ids") or []
     docs = preserved.get("documents") or []
     metas = preserved.get("metadatas") or []
+    # `P9-15c`. A row with no text cannot be re-embedded from it — the chat
+    # index keeps none on purpose (`src/chat_vector.py`) and rebuilds from
+    # `chat_messages` instead. Re-embedding the empty string would fill the new
+    # collection with one meaningless vector per id, each of which then reads
+    # as already indexed; such rows are dropped, and their owner refills them.
+    kept = [(i, d, m) for i, d, m in zip(ids, docs, list(metas) + [{}] * max(0, len(ids) - len(metas)))
+            if isinstance(d, str) and d.strip()]
+    text_ids = [i for i, _d, _m in kept]
+    text_docs = [d for _i, d, _m in kept]
+    text_metas = [m for _i, _d, m in kept]
     prepared_batches = []
-    if ids and docs:
+    if text_ids:
         try:
-            for start in range(0, len(ids), 100):
-                batch_ids = ids[start:start + 100]
-                batch_docs = docs[start:start + 100]
-                batch_metas = metas[start:start + 100]
+            for start in range(0, len(text_ids), 100):
+                batch_ids = text_ids[start:start + 100]
+                batch_docs = text_docs[start:start + 100]
+                batch_metas = text_metas[start:start + 100]
                 if len(batch_metas) < len(batch_ids):
                     batch_metas += [{}] * (len(batch_ids) - len(batch_metas))
                 prepared_batches.append((
@@ -315,7 +325,7 @@ def _get_or_reset_collection(chroma_client, name: str, metadata: Dict[str, Any],
             logger.warning("Could not restore previous collection %s: %s", name, restore_error)
         raise RuntimeError(f"Could not write reset collection {name}: {e}") from e
     if prepared_batches:
-        logger.info("Re-embedded %s rows after resetting %s", len(ids), name)
+        logger.info("Re-embedded %s rows after resetting %s", len(text_ids), name)
 
     return collection
 

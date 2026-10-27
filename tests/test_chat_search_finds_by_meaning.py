@@ -288,3 +288,25 @@ def test_the_box_says_how_a_chat_was_found_and_when_it_could_not_look_by_meaning
     assert rows[1]["marks"] == ["crash"]
     assert re.match(r"^\d+ results?$", out["both"]["status"]), out["both"]["status"]
     assert out["none"]["status"] == f"Nothing matches “zzqx”. {KEYWORD_ONLY_SENTENCE}"
+
+
+def test_a_new_embedding_model_rebuilds_the_index_from_the_chats(monkeypatch, tmp_path, chats):
+    """The index keeps no text, so when the embedding model changes there is
+    nothing to re-embed a row *from*: the reset drops the rows and the backfill
+    refills them from `chat_messages`. Re-embedding the empty string instead
+    would leave one meaningless vector per message, each reading as indexed."""
+    from src import embedding_lanes
+
+    first = _index(monkeypatch, tmp_path)
+    first._build()
+    assert first.lanes()[0].count() == 4
+
+    class NewModel(ConceptEmbedder):
+        model = "concept-test-2"
+
+    monkeypatch.setattr(embedding_lanes, "_build_custom_client", lambda: NewModel())
+    second = _index(monkeypatch, tmp_path)
+    monkeypatch.setattr(embedding_lanes, "_build_custom_client", lambda: NewModel())
+    second._build()
+    assert second.lanes()[0].count() == 4
+    assert {r.message_id for r in _search(chats, "segfault")[0]} == {"m-exc", "m-literal"}
