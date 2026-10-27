@@ -1246,9 +1246,10 @@ async function _cmdSessionClear(args, ctx) {
 }
 
 // `P7-11a`. The formats `GET /api/session/{sid}/export` serves, Markdown
-// first because it is the default. One list for the parser and the help line:
-// the help said "Download as markdown" while the parser took all four and a
-// `> name.ext` redirect, so three of them were invisible to anyone reading it.
+// first because it is the default — the parser's list, and the one the
+// `export` entry's help and usage in `COMMANDS` spell out. The help said
+// "Download as markdown" while the parser took all four and a `> name.ext`
+// redirect, so three of them were invisible to anyone reading it.
 const _EXPORT_FORMATS = ['md', 'txt', 'json', 'html'];
 
 async function _cmdSessionExport(args, ctx) {
@@ -4480,9 +4481,11 @@ const COMMANDS = {
       'sort':        { handler: _cmdSessionSort,        alias: [],                 help: 'Auto-sort into folders',      usage: '/chats sort' },
       'info':        { handler: _cmdSessionInfo,        alias: ['stat'],           help: 'Show chat details',           usage: '/chats info' },
       'clear':       { handler: _cmdSessionClear,       alias: [],                 help: 'Clear chat display',          usage: '/chats clear' },
+      // `P7-11a`: the four `_EXPORT_FORMATS`, written out — this table is read
+      // as a literal on its own (the palette's tests cut it out of the file).
       'export':      { handler: _cmdSessionExport,      alias: ['cat'],
-                       help: `Download the whole chat as ${_EXPORT_FORMATS.slice(0, -1).join(', ')} or ${_EXPORT_FORMATS.slice(-1)} (${_EXPORT_FORMATS[0]} if none is named), or to a file: > name.ext`,
-                       usage: `/chats export [${_EXPORT_FORMATS.join('|')}]` }   // `P7-11a`
+                       help: 'Download the whole chat as md, txt, json or html (md if none is named), or to a file: > name.ext',
+                       usage: '/chats export [md|txt|json|html]' }
     }
   },
   toggle: {
