@@ -113,16 +113,29 @@
         }
         var fH=h2hsl(c.fg),bH=h2hsl(c.bg),rH=h2hsl(c.red||'#e06c75');
         var dk=bH[2]<50;
-        s.setProperty('--hl-bg', hsl2h(bH[0],bH[1],dk?Math.max(bH[2]-4,0):Math.min(bH[2]+4,100)));
+        var hb=hsl2h(bH[0],bH[1],dk?Math.max(bH[2]-4,0):Math.min(bH[2]+4,100));
+        // `B1554`, mirrored from `_syntaxClearsTheBlock()` in static/js/theme.js:
+        // each syntax colour moved the least that clears 4.5:1 on the code
+        // block, toward whichever of black or white is legible on it (a tie to
+        // black, as `onAccentFor()`). Same walk, same rounding, so this paint
+        // and the module's agree on every palette.
+        var clr=(function(){
+          function lm(hx){var d=String(hx).replace('#','');var v=[0,2,4].map(function(i){var x=parseInt(d.substr(i,2),16)/255;return x<=0.04045?x/12.92:Math.pow((x+0.055)/1.055,2.4)});return 0.2126*v[0]+0.7152*v[1]+0.0722*v[2]}
+          function cr(a,b){var x=lm(a),y=lm(b);return(Math.max(x,y)+0.05)/(Math.min(x,y)+0.05)}
+          function mx(a,b,p){var t=p/100;var o='#';for(var i=0;i<6;i+=2){var x=parseInt(a.substr(i+1,2),16),y=parseInt(b.substr(i+1,2),16);o+=Math.max(0,Math.min(255,Math.round(y*t+x*(1-t)))).toString(16).padStart(2,'0')}return o}
+          var ink=cr('#000000',hb)>=cr('#ffffff',hb)?'#000000':'#ffffff';
+          return function(hx){for(var p=0;p<=100;p++){var k=mx(hx,ink,p);if(cr(k,hb)>=4.5)return k}return ink};
+        })();
+        s.setProperty('--hl-bg', hb);
         s.setProperty('--hl-fg', c.fg);
-        s.setProperty('--hl-keyword', hsl2h((rH[0]+280)%360,Math.min(rH[1]+10,80),dk?70:45));
-        s.setProperty('--hl-string', hsl2h(40,Math.min(fH[1]+20,70),dk?72:42));
-        s.setProperty('--hl-comment', hsl2h(fH[0],Math.max(fH[1]-20,5),(fH[2]*0.5+bH[2]*0.5)));
-        s.setProperty('--hl-function', hsl2h(210,Math.min(fH[1]+20,75),dk?70:42));   // `B395`: theme.js's number
-        s.setProperty('--hl-number', hsl2h(20,Math.min(fH[1]+15,65),dk?68:48));
-        s.setProperty('--hl-builtin', hsl2h(180,Math.min(fH[1]+15,60),dk?65:40));
-        s.setProperty('--hl-variable', hsl2h((fH[0]+30)%360,Math.min(fH[1]+5,60),fH[2]));
-        s.setProperty('--hl-params', hsl2h(fH[0],Math.max(fH[1]-5,10),dk?Math.min(fH[2]+8,85):Math.max(fH[2]-8,25)));
+        s.setProperty('--hl-keyword', clr(hsl2h((rH[0]+280)%360,Math.min(rH[1]+10,80),dk?70:45)));
+        s.setProperty('--hl-string', clr(hsl2h(40,Math.min(fH[1]+20,70),dk?72:42)));
+        s.setProperty('--hl-comment', clr(hsl2h(fH[0],Math.max(fH[1]-20,5),(fH[2]*0.5+bH[2]*0.5))));
+        s.setProperty('--hl-function', clr(hsl2h(210,Math.min(fH[1]+20,75),dk?70:42)));   // `B395`: theme.js's number
+        s.setProperty('--hl-number', clr(hsl2h(20,Math.min(fH[1]+15,65),dk?68:48)));
+        s.setProperty('--hl-builtin', clr(hsl2h(180,Math.min(fH[1]+15,60),dk?65:40)));
+        s.setProperty('--hl-variable', clr(hsl2h((fH[0]+30)%360,Math.min(fH[1]+5,60),fH[2])));
+        s.setProperty('--hl-params', clr(hsl2h(fH[0],Math.max(fH[1]-5,10),dk?Math.min(fH[2]+8,85):Math.max(fH[2]-8,25))));
         // Apply advanced overrides if present.
         //
         // This map has to hold exactly the keys `ADV_KEYS` in

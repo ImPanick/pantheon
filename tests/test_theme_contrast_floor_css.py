@@ -837,13 +837,13 @@ def test_nothing_paints_in_the_muted_pivot():
 
 # What `B395`'s pass found when it measured every `--hl-*` against the code
 # block (`--hl-bg`, the derived surface `pre` sits on): the function hue
-# clears everywhere, and five of the others do not. Recorded as measured, per
-# token, so the population cannot grow unnoticed; raising them is a syntax
-# palette change across every code block in the product, filed from this pass
-# rather than made inside a link row.
-_SYNTAX_UNDER_ON_CODE = {
-    "hl-keyword": 3, "hl-string": 7, "hl-comment": 16, "hl-number": 8, "hl-builtin": 5,
-}
+# cleared everywhere, and five of the others did not — `hl-keyword` on 3
+# palettes, `hl-string` 7, `hl-comment` 16, `hl-number` 8, `hl-builtin` 5.
+# `B1554` emptied it: each colour is walked, per palette, the least that
+# clears (`theme.js` `_syntaxClearsTheBlock`;
+# `tests/test_every_syntax_colour_reads_on_the_code_block.py`). Kept, empty, so
+# a token joining it is a named change.
+_SYNTAX_UNDER_ON_CODE: dict = {}
 
 
 def test_the_link_hue_clears_the_code_block_too_and_the_rest_is_counted(palettes):

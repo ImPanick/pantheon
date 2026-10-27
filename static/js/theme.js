@@ -179,6 +179,12 @@ function hslToHex(h, s, l) {
 }
 
 function deriveSyntaxColors(colors) {
+  return _syntaxClearsTheBlock(_syntaxAtFixedLightness(colors));
+}
+
+// The palette as the derivation picks it, one lightness per scheme; what
+// `deriveSyntaxColors` hands on is this after `B1554`'s walk below.
+function _syntaxAtFixedLightness(colors) {
   const [fgH, fgS, fgL] = hexToHSL(colors.fg);
   const [bgH, bgS, bgL] = hexToHSL(colors.bg);
   const [redH, redS, redL] = hexToHSL(colors.red || '#e06c75');
@@ -203,6 +209,24 @@ function deriveSyntaxColors(colors) {
     variable: hslToHex((fgH + 30) % 360, Math.min(fgS + 5, 60), isDark ? fgL : fgL),
     params: hslToHex(fgH, Math.max(fgS - 5, 10), isDark ? Math.min(fgL + 8, 85) : Math.max(fgL - 8, 25)),
   };
+}
+
+//: `B1554`. **Every syntax colour clears 4.5:1 on the code block it is painted
+//: on.** The fixed lightnesses above are one number per scheme for every
+//: palette, so five of them landed under AA on `--hl-bg` somewhere — measured
+//: over the 23: `comment` on 16, `number` 8, `string` 7, `builtin` 5,
+//: `keyword` 3. Each is moved, per palette, the least that clears, toward
+//: whichever of black or white is legible on the block (`onAccentFor`), so its
+//: hue holds and a colour that already cleared is left exactly as it was —
+//: `function` (`--link-fg`, `B395`) among them. Comments get no lower floor:
+//: they are text a person reads. `static/index.html`'s first-paint copy does
+//: the same walk, so the two writers agree on every palette.
+function _syntaxClearsTheBlock(syn) {
+  const ink = onAccentFor(syn.bg);
+  for (const key of ['keyword', 'string', 'comment', 'function', 'number', 'builtin', 'variable', 'params']) {
+    syn[key] = towardFloor(syn[key], [syn.bg], ink, 4.5);
+  }
+  return syn;
 }
 
 // `P1-08`. WCAG 2.x relative luminance, and the one foreground choice made
