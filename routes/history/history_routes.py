@@ -496,7 +496,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         works — it is the right shape for a caller that really does know the
         row index (`Law 1`).
         """
-        _verify_session_owner(request, session_id)
+        await asyncio.to_thread(_verify_session_owner, request, session_id)
         try:
             body = await request.json()
             spec = body.get("from_user_message")
@@ -527,7 +527,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
     @router.post("/api/session/{session_id}/message")
     async def add_message(request: Request, session_id: str):
         """Add a message to a session (for slash command persistence)."""
-        _verify_session_owner(request, session_id)
+        await asyncio.to_thread(_verify_session_owner, request, session_id)
         try:
             body = await request.json()
             role = body.get("role", "assistant")
@@ -548,7 +548,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
     @router.post("/api/session/{session_id}/delete-messages")
     async def delete_messages(request: Request, session_id: str):
         """Delete specific messages by DB ID (or legacy index)."""
-        _verify_session_owner(request, session_id)
+        await asyncio.to_thread(_verify_session_owner, request, session_id)
         try:
             body = await request.json()
             # `B1223`: the database work, off the event loop.
@@ -622,7 +622,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
     @router.post("/api/session/{session_id}/edit-message")
     async def edit_message(request: Request, session_id: str):
         """Edit the content of a message by its database ID."""
-        _verify_session_owner(request, session_id)
+        await asyncio.to_thread(_verify_session_owner, request, session_id)
         try:
             body = await request.json()
             # `B1223`: the database work, off the event loop.
@@ -733,7 +733,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
     @router.post("/api/session/{session_id}/update-last-meta")
     async def update_last_meta(request: Request, session_id: str):
         """Merge metadata into the last assistant message (e.g. save variants)."""
-        _verify_session_owner(request, session_id)
+        await asyncio.to_thread(_verify_session_owner, request, session_id)
         try:
             body = await request.json()
             # `B1223`: the database work, off the event loop.
@@ -787,7 +787,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
     @router.post("/api/session/{session_id}/merge-last-assistant")
     async def merge_last_assistant(request: Request, session_id: str):
         """Merge the last two assistant messages into one (for continue)."""
-        _verify_session_owner(request, session_id)
+        await asyncio.to_thread(_verify_session_owner, request, session_id)
         try:
             body = await request.json()
             # `B1223`: the database work, off the event loop.
@@ -881,7 +881,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
     @router.post("/api/session/{session_id}/fork")
     async def fork_session(request: Request, session_id: str):
         """Create a new session with messages copied up to keep_count."""
-        _verify_session_owner(request, session_id)
+        await asyncio.to_thread(_verify_session_owner, request, session_id)
         try:
             body = await request.json()
             keep_count = body.get("keep_count", 0)
@@ -961,7 +961,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         ``?mode=``) ``get_session_mode``. The owner check's row is the one read
         now: the refresh is handed it, and the chat's last mode is its column.
         """
-        row = _verify_session_owner(request, session_id)
+        row = await asyncio.to_thread(_verify_session_owner, request, session_id)
         try:
             session = session_manager.get_session(session_id, row=row)
         except KeyError:
@@ -1074,7 +1074,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
           * the response carries both shapes: `summarized`/`kept` (what
             `slashCommands.js` prints) and `before`/`after`/`message`.
         """
-        _verify_session_owner(request, session_id)
+        await asyncio.to_thread(_verify_session_owner, request, session_id)
         from src.auth_helpers import effective_user
         try:
             session = session_manager.get_session(session_id)
@@ -1112,7 +1112,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             )
 
             # Use utility model if available
-            util_url, util_model, util_headers = resolve_endpoint("utility", owner=owner or None)
+            util_url, util_model, util_headers = await asyncio.to_thread(resolve_endpoint, "utility", owner=owner or None)
             compact_url = util_url or session.endpoint_url
             compact_model = util_model or session.model
             compact_headers = util_headers if util_url else session.headers

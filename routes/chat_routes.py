@@ -1585,27 +1585,33 @@ def setup_chat_routes(
 
         # Verify the caller owns this session before loading it.
         # Without this, any authenticated user can post into another user's chat.
-        _verify_session_owner(request, session)
+        await asyncio.to_thread(_verify_session_owner, request, session)
 
         try:
             sess = session_manager.get_session(session)
         except KeyError:
             raise HTTPException(404, CHAT_GONE)
         owner = effective_user(request)
-        if _clear_orphaned_session_endpoint(sess, owner=owner):
-            raise HTTPException(400, "Selected model endpoint was removed. Pick another model in Settings.")
 
-        # Empty model + live endpoint = setup race (Issue #587). Repair from
-        # the endpoint's cached model list before privilege checks, which
-        # otherwise see "" and behave inconsistently with the allowlist.
-        _recover_empty_session_model(sess, session, owner=owner)
-        # `D-2026-10-07-02` §1: no model, or one nothing lists → a 4xx that
-        # says why, never a silent default.
-        _require_usable_model(request, sess, owner=owner)
+        # `B1580`: the endpoints table, the chat's row and today's message
+        # count, read in a worker thread rather than on the event loop.
+        def _settle_the_model_and_gate():
+            if _clear_orphaned_session_endpoint(sess, owner=owner):
+                raise HTTPException(400, "Selected model endpoint was removed. Pick another model in Settings.")
 
-        # Same allowed_models + daily-cap gate as chat_stream (mirror so the
-        # non-streaming path can't be used to bypass).
-        _enforce_chat_privileges(request, sess)
+            # Empty model + live endpoint = setup race (Issue #587). Repair from
+            # the endpoint's cached model list before privilege checks, which
+            # otherwise see "" and behave inconsistently with the allowlist.
+            _recover_empty_session_model(sess, session, owner=owner)
+            # `D-2026-10-07-02` §1: no model, or one nothing lists → a 4xx that
+            # says why, never a silent default.
+            _require_usable_model(request, sess, owner=owner)
+
+            # Same allowed_models + daily-cap gate as chat_stream (mirror so the
+            # non-streaming path can't be used to bypass).
+            _enforce_chat_privileges(request, sess)
+
+        await asyncio.to_thread(_settle_the_model_and_gate)
 
         tool_policy = build_effective_tool_policy(last_user_message=message)
         allow_tool_preprocessing = not tool_policy.block_all_tool_calls
@@ -1767,7 +1773,7 @@ def setup_chat_routes(
         sess.add_message(ChatMessage("assistant", _clean_reply, metadata=_clean_md))
 
         from core.database import update_session_last_accessed
-        update_session_last_accessed(session)
+        await asyncio.to_thread(update_session_last_accessed, session)  # `B1580`
         session_manager.save_sessions()
 
         # Background tasks (memory, webhook, auto-name)
@@ -2026,7 +2032,7 @@ def setup_chat_routes(
             )
             # Verify ownership AFTER coerce (which may resolve a default session)
             # but BEFORE loading. Prevents cross-user session hijack.
-            _verify_session_owner(request, session)
+            await asyncio.to_thread(_verify_session_owner, request, session)
             sess = session_manager.get_session(session)
             owner = effective_user(request)
             if tool_approval_id:
@@ -2132,19 +2138,23 @@ def setup_chat_routes(
                 external_untrusted_context_seen = (
                     external_untrusted_context_seen or retired_tool_approval_taint
                 )
-            _reconcile_selected_route_from_request(request, sess, session, form_data, owner=owner)
-            if _clear_orphaned_session_endpoint(sess, owner=owner):
-                raise HTTPException(400, "Selected model endpoint was removed. Pick another model in Settings.")
-            # Issue #587: picker shows a model from the endpoint cache but
-            # s.model never made it onto the DB row (first-send race after
-            # endpoint setup, or a previous endpoint delete/recreate). Pull
-            # the first cached model off the matching endpoint so the
-            # upstream isn't called with model="" (which surfaces as a
-            # generic 401/503).
-            _recover_empty_session_model(sess, session, owner=owner)
-            # `D-2026-10-07-02` §1: no model, or one nothing lists → a 4xx
-            # that says why, never a silent default.
-            _require_usable_model(request, sess, owner=owner)
+            def _settle_the_model():
+                _reconcile_selected_route_from_request(request, sess, session, form_data, owner=owner)
+                if _clear_orphaned_session_endpoint(sess, owner=owner):
+                    raise HTTPException(400, "Selected model endpoint was removed. Pick another model in Settings.")
+                # Issue #587: picker shows a model from the endpoint cache but
+                # s.model never made it onto the DB row (first-send race after
+                # endpoint setup, or a previous endpoint delete/recreate). Pull
+                # the first cached model off the matching endpoint so the
+                # upstream isn't called with model="" (which surfaces as a
+                # generic 401/503).
+                _recover_empty_session_model(sess, session, owner=owner)
+                # `D-2026-10-07-02` §1: no model, or one nothing lists → a 4xx
+                # that says why, never a silent default.
+                _require_usable_model(request, sess, owner=owner)
+            # `B1580`: each of the four reads the endpoints table or writes the
+            # chat's row — one worker thread for all of them, not the event loop.
+            await asyncio.to_thread(_settle_the_model)
             if (
                 chat_mode == "chat"
                 and isinstance(message, str)
@@ -2188,11 +2198,6 @@ def setup_chat_routes(
         #      by this user in the last UTC day; 429 if at/over the cap.
         # Admins always have full privileges via get_privileges (returns
         # ADMIN_PRIVILEGES wholesale) so this is a no-op for them.
-        _enforce_chat_privileges(request, sess)
-
-        # Ensure session has auth headers
-        resolve_session_auth(sess, session, owner=effective_user(request))
-
         # Check for research_pending BEFORE mode persist overwrites it
         # An approval response resumes the sealed agent action.  Do not let
         # mutable form fields, or a stale research_pending session marker,
@@ -2201,10 +2206,19 @@ def setup_chat_routes(
             not tool_approval_continuation
             and request_flag(use_research)  # `B97`
         )
-        if not do_research and not tool_approval_continuation:
-            if get_session_mode(session) == 'research_pending':
-                do_research = True
-                logger.info(f"Session {session} in research_pending — auto-triggering research")
+        read_the_mode = not do_research and not tool_approval_continuation
+
+        # `B1580`: the gates count today's messages and read the endpoints,
+        # and the mode is a row — in a worker thread, not on the event loop.
+        def _gate_and_read_the_mode():
+            _enforce_chat_privileges(request, sess)
+            # Ensure session has auth headers
+            resolve_session_auth(sess, session, owner=effective_user(request))
+            return get_session_mode(session) if read_the_mode else None
+
+        if await asyncio.to_thread(_gate_and_read_the_mode) == 'research_pending':
+            do_research = True
+            logger.info(f"Session {session} in research_pending — auto-triggering research")
 
         att_ids = []
         if tool_approval_continuation:
@@ -2219,7 +2233,8 @@ def setup_chat_routes(
             except Exception as e:
                 logger.warning("Failed to parse attachments JSON, ignoring attachments", exc_info=e)
 
-        image_generation_session = _is_image_generation_session(sess, owner=effective_user(request))
+        image_generation_session = await asyncio.to_thread(  # `B1580`: reads the endpoints
+            _is_image_generation_session, sess, owner=effective_user(request))
         no_memory = request_flag(form_data.get("no_memory"))  # `B97`
         if image_generation_session:
             no_memory = True
@@ -3992,7 +4007,7 @@ def setup_chat_routes(
     # ------------------------------------------------------------------ #
     @router.get("/api/chat/resume/{session_id}")
     async def chat_resume(request: Request, session_id: str) -> StreamingResponse:
-        _verify_session_owner(request, session_id)
+        await asyncio.to_thread(_verify_session_owner, request, session_id)
         _active_run = agent_runs.get_active_run(session_id)
         if _active_run is None:
             raise HTTPException(404, "No active run for this session")
@@ -4008,7 +4023,7 @@ def setup_chat_routes(
     # ------------------------------------------------------------------ #
     @router.post("/api/chat/stop/{session_id}")
     async def chat_stop(request: Request, session_id: str) -> Dict[str, Any]:
-        _verify_session_owner(request, session_id)
+        await asyncio.to_thread(_verify_session_owner, request, session_id)
         _expected_run_id = request.headers.get("X-Pantheon-Run-Id")
         _run = agent_runs.get_active_run(session_id)
         stopped = agent_runs.stop(session_id, _expected_run_id)
@@ -4055,7 +4070,7 @@ def setup_chat_routes(
         # A caller with no session at all still gets 401 from the same call —
         # that is authentication, not ownership, and stays as it is.
         try:
-            _verify_session_owner(request, session_id)
+            await asyncio.to_thread(_verify_session_owner, request, session_id)
         except HTTPException as exc:
             if exc.status_code == 404:
                 raise HTTPException(403, exc.detail)
@@ -4126,7 +4141,7 @@ def setup_chat_routes(
     # ------------------------------------------------------------------ #
     @router.get("/api/chat/stream_status/{session_id}")
     async def chat_stream_status(request: Request, session_id: str) -> Dict[str, Any]:
-        _verify_session_owner(request, session_id)
+        await asyncio.to_thread(_verify_session_owner, request, session_id)
         # A detached run can still be going even if _active_streams was popped;
         # report it as active so the client knows to reconnect via /resume.
         # Read once via .get() to avoid a KeyError race between the membership
@@ -4188,7 +4203,8 @@ def setup_chat_routes(
             return results
         from routes.session_routes import _HIDDEN_SYSTEM_SESSION_NAMES
         return {
-            "chats": search_session_titles(
+            "chats": await asyncio.to_thread(
+                search_session_titles,
                 q,
                 owner=_user,
                 restrict_owner=_user is not None,
@@ -4221,7 +4237,7 @@ def setup_chat_routes(
         if not session_id or not original_text or not instruction:
             raise HTTPException(400, "session_id, original_text, and instruction are required")
 
-        _verify_session_owner(request, session_id)
+        await asyncio.to_thread(_verify_session_owner, request, session_id)
 
         try:
             sess = session_manager.get_session(session_id)
@@ -4355,16 +4371,22 @@ def setup_chat_routes(
         owner = effective_user(request)
         selected_id = str(endpoint_id or "").strip()
         selected_url = str(endpoint_url or "").strip()
-        run_url = ""
-        if selected_id or selected_url:
-            try:
-                resolved = _selected_registered_endpoint(selected_id, selected_url, owner=owner)
-            except Exception:
-                logger.warning("agent limits: selected endpoint lookup failed", exc_info=True)
-                resolved = None
-            run_url = resolved[0] if resolved else selected_url
-        caps = configured_agent_caps()
-        limits = agent_run_limits(run_url, caps.rounds, caps.tool_calls)
+
+        def _limits():
+            run_url = ""
+            if selected_id or selected_url:
+                try:
+                    resolved = _selected_registered_endpoint(selected_id, selected_url, owner=owner)
+                except Exception:
+                    logger.warning("agent limits: selected endpoint lookup failed", exc_info=True)
+                    resolved = None
+                run_url = resolved[0] if resolved else selected_url
+            caps = configured_agent_caps()
+            return agent_run_limits(run_url, caps.rounds, caps.tool_calls)
+
+        # `B1580`: the endpoint lookup and the local-endpoint question read the
+        # endpoints table — in a worker thread, not on the event loop.
+        limits = await asyncio.to_thread(_limits)
         # `P7-12`. Part of "how far can it run unattended": the assistant may
         # raise a limit nobody typed for one run on its own, up to what a
         # person could type, and has to ask before raising one somebody did.
@@ -4403,7 +4425,7 @@ def setup_chat_routes(
         """
         owner = _allow_rule_owner(request)
         return {
-            "rules": tool_allow_rules.list_rules(owner),
+            "rules": await asyncio.to_thread(tool_allow_rules.list_rules, owner),  # `B1580`
             # The vocabulary travels with the list so a chooser is built from
             # the store's own kinds. Hardcoding the three strings client-side
             # would be a second vocabulary, and a kind added to one and not the
@@ -4423,7 +4445,8 @@ def setup_chat_routes(
             # is not, or the mistake ships as a rule in the wrong list.
             raise HTTPException(403, "An allow rule can only be created for yourself")
         try:
-            return tool_allow_rules.create_rule(
+            return await asyncio.to_thread(  # `B1580`: a row, written off the loop
+                tool_allow_rules.create_rule,
                 owner,
                 body.tool_name,
                 body.match_kind,
@@ -4439,7 +4462,7 @@ def setup_chat_routes(
     async def delete_tool_allow_rule(request: Request, rule_id: str) -> Dict[str, str]:
         owner = _allow_rule_owner(request)
         try:
-            revoked = tool_allow_rules.delete_rule(owner, rule_id)
+            revoked = await asyncio.to_thread(tool_allow_rules.delete_rule, owner, rule_id)  # `B1580`
         except Exception:
             logger.warning("tool allow rule revoke failed", exc_info=True)
             raise HTTPException(500, "Could not revoke the allow rule")
@@ -4496,7 +4519,7 @@ def setup_chat_routes(
         """
         sess = _grant_session(request, session_id)
         try:
-            revoked = revoke_chat_session_grants(sess)
+            revoked = await asyncio.to_thread(revoke_chat_session_grants, sess)  # `B1580`
         except Exception:
             logger.warning("tool approval grant revoke failed", exc_info=True)
             raise HTTPException(500, "Could not revoke the session grant")

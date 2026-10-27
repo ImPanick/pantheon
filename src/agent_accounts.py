@@ -30,6 +30,7 @@ add it as a login.
 
 from __future__ import annotations
 
+import asyncio
 import re
 import secrets
 from typing import Any, Dict, List, Optional
@@ -163,8 +164,10 @@ async def set_up(db, owner: Optional[str], admin_item: str, body: Dict[str, Any]
                          "notes": f"Made by Pantheon on {url} as {TEMPLATES[template]['label']} "
                                   f"role {role}, from “{admin['label']}”."}))
     from src.events import record_event
-    record_event("vault_agent_account", name=label, owner=owner,
-                 detail={"service": template, "role": role, "url": url, "from": admin["id"]})
+    # `B1580`: the row too, off the event loop like the item it records.
+    await asyncio.to_thread(record_event, "vault_agent_account", name=label, owner=owner,
+                            detail={"service": template, "role": role, "url": url,
+                                    "from": admin["id"]})
     return item
 
 

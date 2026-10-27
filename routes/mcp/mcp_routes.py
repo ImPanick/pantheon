@@ -292,7 +292,7 @@ def setup_mcp_routes(mcp_manager: McpManager):
         binaries on the host."""
         require_admin(request)
         # `B870` — one mint, in `src/mcp_manager.py` beside the id rule.
-        server_id = new_mcp_server_id()
+        server_id = await asyncio.to_thread(new_mcp_server_id)
 
         # Validate
         if transport == "stdio" and not command:

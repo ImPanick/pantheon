@@ -732,11 +732,11 @@ def setup_research_routes(research_handler, session_manager=None) -> APIRouter:
                 ep_headers = dict(r_headers)
 
         if not ep_url or not ep_model:
-            _merge(*resolve_endpoint("chat", owner=user))
+            _merge(*await asyncio.to_thread(resolve_endpoint, "chat", owner=user))
         if not ep_url or not ep_model:
-            _merge(*resolve_endpoint("research", owner=user))
+            _merge(*await asyncio.to_thread(resolve_endpoint, "research", owner=user))
         if not ep_url or not ep_model:
-            _merge(*resolve_endpoint("utility", owner=user))
+            _merge(*await asyncio.to_thread(resolve_endpoint, "utility", owner=user))
 
         def _db_work():
             if not ep_url or not ep_model:

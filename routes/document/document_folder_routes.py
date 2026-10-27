@@ -15,6 +15,7 @@ Writes take `can_use_documents`, the privilege `POST /api/document` already
 checks — making a folder is making something in the library.
 """
 
+import asyncio
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -127,24 +128,24 @@ def register_document_folder_routes(router: APIRouter) -> None:
 
     @router.post("/api/document-folders")
     async def create_document_folder(request: Request, req: FolderCreate) -> Dict[str, Any]:
-        return _write(request, folders.create_folder, req.folder)
+        return await asyncio.to_thread(_write, request, folders.create_folder, req.folder)
 
     @router.post("/api/document-folders/rename")
     async def rename_document_folder(request: Request, req: FolderRename) -> Dict[str, Any]:
-        return _write(request, folders.rename_folder, req.folder, req.name)
+        return await asyncio.to_thread(_write, request, folders.rename_folder, req.folder, req.name)
 
     @router.post("/api/document-folders/move")
     async def move_document_folder(request: Request, req: FolderMove) -> Dict[str, Any]:
-        return _write(request, folders.move_folder, req.folder, req.to)
+        return await asyncio.to_thread(_write, request, folders.move_folder, req.folder, req.to)
 
     @router.post("/api/document-folders/remove")
     async def remove_document_folder(request: Request, req: FolderRemove) -> Dict[str, Any]:
-        return _write(request, folders.remove_folder, req.folder, req.contents,
-                      dry_run=req.dry_run)
+        return await asyncio.to_thread(_write, request, folders.remove_folder, req.folder,
+                                       req.contents, dry_run=req.dry_run)
 
     @router.post("/api/document-folders/file")
     async def file_documents_into_folder(request: Request, req: DocumentsFile) -> Dict[str, Any]:
-        return _write(request, folders.file_documents, req.document_ids, req.to)
+        return await asyncio.to_thread(_write, request, folders.file_documents, req.document_ids, req.to)
 
     # ── `B1006` · the scheduled tidy's proposal, answered by the person ─────
     #
@@ -159,7 +160,7 @@ def register_document_folder_routes(router: APIRouter) -> None:
     async def waiting_document_plans(request: Request) -> Dict[str, Any]:
         owner = _reader(request)
         return {"plans": [dict(p.review, plan_id=p.plan_id)
-                          for p in folders.waiting_reviews(owner)]}
+                          for p in await asyncio.to_thread(folders.waiting_reviews, owner)]}
 
     @router.post("/api/document-folders/plans/{plan_id}/answer")
     async def answer_document_plan(request: Request, plan_id: str,
@@ -167,7 +168,7 @@ def register_document_folder_routes(router: APIRouter) -> None:
         from src.document_actions import answer_review
 
         owner = _person(request)
-        plan = folders.waiting_review(plan_id, owner)
+        plan = await asyncio.to_thread(folders.waiting_review, plan_id, owner)
         if plan is None:
             raise HTTPException(404, "That tidy is no longer waiting — it was answered, a "
                                      "newer one replaced it, or it lapsed.")
@@ -175,4 +176,4 @@ def register_document_folder_routes(router: APIRouter) -> None:
         if answer not in (folders.PLAN_APPROVE_LABEL, folders.PLAN_DECLINE_LABEL):
             raise HTTPException(400, f"Answer \"{folders.PLAN_APPROVE_LABEL}\" or "
                                      f"\"{folders.PLAN_DECLINE_LABEL}\".")
-        return answer_review(plan, answer)
+        return await asyncio.to_thread(answer_review, plan, answer)
