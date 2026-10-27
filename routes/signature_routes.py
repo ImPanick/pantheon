@@ -84,7 +84,7 @@ def setup_signature_routes() -> APIRouter:
     router = APIRouter(tags=["signatures"])
 
     @router.get("/api/signatures")
-    async def list_signatures(request: Request) -> Dict[str, Any]:
+    def list_signatures(request: Request) -> Dict[str, Any]:
         user = get_current_user(request)
         db = SessionLocal()
         try:
@@ -99,7 +99,7 @@ def setup_signature_routes() -> APIRouter:
             db.close()
 
     @router.post("/api/signatures")
-    async def create_signature(request: Request, req: SignatureCreate) -> Dict[str, Any]:
+    def create_signature(request: Request, req: SignatureCreate) -> Dict[str, Any]:
         user = get_current_user(request)
         b64 = _normalize_signature_png(req.data)
         width = _signature_dimension(req.width)
@@ -127,7 +127,7 @@ def setup_signature_routes() -> APIRouter:
             db.close()
 
     @router.delete("/api/signatures/{sig_id}")
-    async def delete_signature(sig_id: str, request: Request) -> Dict[str, Any]:
+    def delete_signature(sig_id: str, request: Request) -> Dict[str, Any]:
         user = get_current_user(request)
         db = SessionLocal()
         try:

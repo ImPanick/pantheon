@@ -246,7 +246,7 @@ async def test_the_callback_refuses_an_unknown_provider_without_touching_the_dat
         raise AssertionError("the database must not be opened for an unknown provider")
 
     monkeypatch.setattr("core.database.SessionLocal", _explode)
-    resp = await callback(
+    resp = callback(   # `B1223`: a plain `def` now
         provider_id="github", code="c", state="s", error=None, request=None
     )
     assert "email_oauth_error=unknown_provider" in resp.headers["location"]

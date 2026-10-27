@@ -220,8 +220,9 @@ def test_an_integrations_test_button_is_paced_and_reached_direct(proxy, lan, mon
 
     monkeypatch.setattr(outbound, "acquire_async", acquire_async)
     base = lan.base + ("/hook" if preset == "discord_webhook" else "")
+    # `P27-02`: asked for the tester's own or a shared one.
     monkeypatch.setattr(auth_routes, "get_integration",
-                        lambda i: {"id": i, "preset": preset, "base_url": base})
+                        lambda i, person=None: {"id": i, "preset": preset, "base_url": base})
     monkeypatch.setattr(auth_routes, "_load_settings", lambda: {"reminder_ntfy_topic": "reminders"})
     manager = SimpleNamespace(
         get_username_for_token=lambda token: "admin", is_admin=lambda user: True)

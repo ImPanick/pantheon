@@ -116,7 +116,7 @@ def _write(request: Request, op, *args, **kwargs) -> Dict[str, Any]:
 
 def register_document_folder_routes(router: APIRouter) -> None:
     @router.get("/api/document-folders")
-    async def list_document_folders(request: Request,
+    def list_document_folders(request: Request,
                                     archived: bool = Query(False)) -> Dict[str, Any]:
         owner = _reader(request)
         db = SessionLocal()

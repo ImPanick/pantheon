@@ -137,7 +137,8 @@ def test_email_style_hardcoded_rules_stay_in_system_role(monkeypatch):
 
 def _patch_integrations(monkeypatch, description: str):
     fake_integ = types.ModuleType("src.integrations")
-    fake_integ.get_integrations_prompt = lambda: description
+    # `P27-02`: the block is a person's (their own and the shared ones).
+    fake_integ.get_integrations_prompt = lambda owner=None: description
     monkeypatch.setitem(sys.modules, "src.integrations", fake_integ)
     _bust_prompt_cache()
 

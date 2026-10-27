@@ -287,7 +287,7 @@ def setup_backup_routes(memory_manager, preset_manager, skills_manager) -> APIRo
     router = APIRouter(tags=["backup"])
 
     @router.get("/api/export")
-    async def export_data(request: Request):
+    def export_data(request: Request):
         """Export all user data as a downloadable JSON file."""
         require_admin(request)
         user = get_current_user(request)

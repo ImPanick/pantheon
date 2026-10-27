@@ -150,7 +150,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
     # ---- POST /api/document ----
     @router.post("/api/document")
-    async def create_document(request: Request, req: DocumentCreate) -> Dict[str, Any]:
+    def create_document(request: Request, req: DocumentCreate) -> Dict[str, Any]:
         from src.auth_helpers import require_privilege
         user = require_privilege(request, "can_use_documents")
         folder = _import_folder(req.folder)
@@ -287,7 +287,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
     # ---- POST /api/documents/import-pdf ----
     @router.post("/api/documents/import-pdf")
-    async def import_pdf(
+    def import_pdf(
         request: Request,
         file: UploadFile = File(...),
         session_id: Optional[str] = Form(None),
@@ -422,7 +422,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
     # ---- POST /api/documents/import-office ----
     @router.post("/api/documents/import-office")
-    async def import_office(
+    def import_office(
         request: Request,
         file: UploadFile = File(...),
         session_id: Optional[str] = Form(None),
@@ -567,7 +567,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
     # ---- GET /api/documents/library ----
     @router.get("/api/documents/library")
-    async def documents_library(
+    def documents_library(
         request: Request,
         search: Optional[str] = Query(None),
         language: Optional[str] = Query(None),
@@ -740,7 +740,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
     # ---- GET /api/documents/{session_id} ----
     @router.get("/api/documents/{session_id}")
-    async def list_documents(request: Request, session_id: str) -> List[Dict[str, Any]]:
+    def list_documents(request: Request, session_id: str) -> List[Dict[str, Any]]:
         user = get_current_user(request)
         db = SessionLocal()
         try:
@@ -763,7 +763,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
     # ---- GET /api/document/{doc_id} ----
     @router.get("/api/document/{doc_id}")
-    async def get_document(request: Request, doc_id: str) -> Dict[str, Any]:
+    def get_document(request: Request, doc_id: str) -> Dict[str, Any]:
         user = get_current_user(request)
         db = SessionLocal()
         try:
@@ -777,7 +777,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
     # ---- POST /api/document/{doc_id}/archive — soft-archive / restore ----
     @router.post("/api/document/{doc_id}/archive")
-    async def archive_document(request: Request, doc_id: str, archived: bool = Query(True)) -> Dict[str, Any]:
+    def archive_document(request: Request, doc_id: str, archived: bool = Query(True)) -> Dict[str, Any]:
         user = get_current_user(request)
         db = SessionLocal()
         try:
@@ -793,7 +793,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
     # ---- POST /api/document/{doc_id}/extract-pdf-text ----
     @router.post("/api/document/{doc_id}/extract-pdf-text")
-    async def extract_pdf_text(request: Request, doc_id: str) -> Dict[str, Any]:
+    def extract_pdf_text(request: Request, doc_id: str) -> Dict[str, Any]:
         """Re-run pypdf+VL text extraction against the PDF linked to this doc
         and merge the result into the doc's markdown content. Idempotent — the
         existing body (everything below the title heading) is replaced.
@@ -917,7 +917,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
     VERSION_COALESCE_SECONDS = 60
 
     @router.put("/api/document/{doc_id}")
-    async def update_document(request: Request, doc_id: str, req: DocumentUpdate) -> Dict[str, Any]:
+    def update_document(request: Request, doc_id: str, req: DocumentUpdate) -> Dict[str, Any]:
         user = get_current_user(request)
         db = SessionLocal()
         try:
@@ -992,7 +992,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
     # ---- PATCH /api/document/{doc_id} — metadata only ----
     @router.patch("/api/document/{doc_id}")
-    async def patch_document(request: Request, doc_id: str, req: DocumentPatch) -> Dict[str, Any]:
+    def patch_document(request: Request, doc_id: str, req: DocumentPatch) -> Dict[str, Any]:
         user = get_current_user(request)
         db = SessionLocal()
         try:
@@ -1031,7 +1031,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
     # ---- DELETE /api/document/{doc_id} — soft delete ----
     @router.delete("/api/document/{doc_id}")
-    async def delete_document(request: Request, doc_id: str) -> Dict[str, str]:
+    def delete_document(request: Request, doc_id: str) -> Dict[str, str]:
         user = get_current_user(request)
         db = SessionLocal()
         try:
@@ -1059,7 +1059,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
     # ---- GET /api/document/{doc_id}/versions ----
     @router.get("/api/document/{doc_id}/versions")
-    async def list_versions(request: Request, doc_id: str) -> List[Dict[str, Any]]:
+    def list_versions(request: Request, doc_id: str) -> List[Dict[str, Any]]:
         user = get_current_user(request)
         db = SessionLocal()
         try:
@@ -1084,7 +1084,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
     # ---- GET /api/document/{doc_id}/version/{num} ----
     @router.get("/api/document/{doc_id}/version/{num}")
-    async def get_version(request: Request, doc_id: str, num: int) -> Dict[str, Any]:
+    def get_version(request: Request, doc_id: str, num: int) -> Dict[str, Any]:
         user = get_current_user(request)
         db = SessionLocal()
         try:
@@ -1105,7 +1105,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
     # ---- POST /api/document/{doc_id}/restore/{num} ----
     @router.post("/api/document/{doc_id}/restore/{num}")
-    async def restore_version(request: Request, doc_id: str, num: int) -> Dict[str, Any]:
+    def restore_version(request: Request, doc_id: str, num: int) -> Dict[str, Any]:
         user = get_current_user(request)
         db = SessionLocal()
         try:
@@ -1146,7 +1146,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
     # ---- POST /api/documents/tidy — clean up broken/empty documents ----
     @router.post("/api/documents/tidy")
-    async def tidy_documents(request: Request) -> Dict[str, Any]:
+    def tidy_documents(request: Request) -> Dict[str, Any]:
         """Fix empty titles and remove broken/empty documents (user's docs only)."""
         user = get_current_user(request)
         db = SessionLocal()
@@ -1367,7 +1367,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
     # ---- POST /api/document/{doc_id}/export-pdf/preview ----
     @router.post("/api/document/{doc_id}/export-pdf/preview")
-    async def export_pdf_preview(doc_id: str, request: Request) -> Dict[str, Any]:
+    def export_pdf_preview(doc_id: str, request: Request) -> Dict[str, Any]:
         """Return the field-value mapping that would be written to the PDF.
 
         Frontend shows this in a confirmation modal so the user can spot/fix
@@ -1429,7 +1429,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
     # ---- GET /api/document/{doc_id}/render-pages ----
     @router.get("/api/document/{doc_id}/render-pages")
-    async def render_pages(doc_id: str, request: Request) -> Dict[str, Any]:
+    def render_pages(doc_id: str, request: Request) -> Dict[str, Any]:
         """Return per-page metadata for the interactive PDF view.
 
         Each page entry has its rendered-image dimensions (matching what
@@ -1500,7 +1500,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
     # ---- GET /api/document/{doc_id}/page/{n}.png ----
     @router.get("/api/document/{doc_id}/page/{page_no}.png")
-    async def render_page_png(doc_id: str, page_no: int, request: Request):
+    def render_page_png(doc_id: str, page_no: int, request: Request):
         """Render one page of the source PDF as a PNG (no values stamped — the
         frontend overlays HTML form inputs on top)."""
         from fastapi.responses import Response
@@ -1681,7 +1681,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
     # ---- GET /api/document/{doc_id}/render-pdf ----
     @router.get("/api/document/{doc_id}/render-pdf")
-    async def render_pdf(doc_id: str, request: Request):
+    def render_pdf(doc_id: str, request: Request):
         """Inline PDF preview filled with the current markdown values.
 
         Same plumbing as the export route, but no signature stamping and
@@ -1781,7 +1781,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
     # ---- GET /api/document/{doc_id}/export-pdf ----
     @router.get("/api/document/{doc_id}/export-pdf")
-    async def export_pdf(doc_id: str, request: Request):
+    def export_pdf(doc_id: str, request: Request):
         """Stream the filled PDF for download.
 
         Reads field values and signature selections from the markdown — there
@@ -1920,7 +1920,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
     # ---- POST /api/document/{doc_id}/prepare-signed-reply ----
     @router.post("/api/document/{doc_id}/prepare-signed-reply")
-    async def prepare_signed_reply(doc_id: str, request: Request):
+    def prepare_signed_reply(doc_id: str, request: Request):
         """Bake the current PDF state (form fields + signature stamps +
         annotations) into a flattened PDF, drop it in COMPOSE_UPLOADS_DIR
         and return the reply context (To/Subject/threading headers) so the

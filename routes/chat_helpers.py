@@ -989,8 +989,12 @@ async def build_chat_context(
         user_meta = {"attachments": preprocessed.attachment_meta} if preprocessed.attachment_meta else None
         _append_incognito_message(session_id, "user", preprocessed.user_content, user_meta)
     elif persist_user_message:
-        user_message = add_user_message(sess, chat_handler, preprocessed, incognito=False,
-                                        from_person=request_is_a_person(request))
+        # `B1223`. The person's message is written off the event loop: on it, a
+        # SQLite write lock held elsewhere stalled every request while this
+        # waited — and a send is the write a person makes first.
+        user_message = await asyncio.to_thread(
+            add_user_message, sess, chat_handler, preprocessed, incognito=False,
+            from_person=request_is_a_person(request))
 
     # Fire events
     if persist_user_message and not incognito:

@@ -580,9 +580,9 @@ def _integrations(owner) -> list:
     admin's agent can call one (`api_call` is in `NON_ADMIN_BLOCKED_TOOLS`)."""
     if not _reaches(owner, "api_call"):
         return []
-    from src.integrations import load_integrations
+    from src.integrations import integrations_for
     out = []
-    for item in load_integrations():
+    for item in integrations_for(owner):   # `P27-02`: theirs and the shared
         if not isinstance(item, dict) or not item.get("id"):
             continue
         out.append({"id": str(item["id"]), "name": str(item.get("name") or item["id"]),

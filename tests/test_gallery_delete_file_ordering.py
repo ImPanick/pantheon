@@ -59,7 +59,7 @@ def test_file_kept_when_commit_fails(tmp_path, monkeypatch):
 
     delete = _delete_endpoint()
     with pytest.raises(HTTPException):
-        asyncio.run(delete(Request(scope={"type": "http"}), "img-1"))
+        (delete(Request(scope={"type": "http"}), "img-1"))
 
     # File must survive a failed commit — the record is still active after rollback.
     assert (tmp_path / "data" / "generated_images" / "x.png").exists()
@@ -76,7 +76,7 @@ def test_file_removed_on_successful_delete(tmp_path, monkeypatch):
     monkeypatch.setattr(gallery_routes, "SessionLocal", SessionLocal)
 
     delete = _delete_endpoint()
-    result = asyncio.run(delete(Request(scope={"type": "http"}), "img-1"))
+    result = (delete(Request(scope={"type": "http"}), "img-1"))
 
     assert result["status"] == "deleted"
     assert not (tmp_path / "data" / "generated_images" / "x.png").exists()

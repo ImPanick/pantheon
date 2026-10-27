@@ -3313,13 +3313,24 @@
               </div>
               <div class="admin-toggle-sub forge-settings-sub">From huggingface.co and ollama.com. Off, the Forge works from the models it already has.</div>
               <div id="set-forgeModelHubsMsg" class="forge-settings-msg" role="status" aria-live="polite"></div>
+              <!-- `B1258` (3). The other Hugging Face switch, read here beside
+                   this one: `allow_model_download` — the models Pantheon
+                   itself fetches (the embedding model, Whisper). Its one
+                   control stays in System (an env-backed tri-state, `B95`);
+                   this row says what it is set to and opens it. -->
+              <ul class="forge-settings-doors">
+                <li><span>Models Pantheon runs itself — embeddings, local speech-to-text: <span id="set-forgeModelDownload">…</span></span><button type="button" class="admin-btn-sm" data-forge-door="settings:system" data-forge-focus="set-envflag-allow_model_download">System › Switches</button></li>
+              </ul>
+              <!-- `B1258` (1). The token's one editor (`static/js/servingSettings.js`),
+                   mounted here and in the Forge's Settings tab; its own route,
+                   `PUT /api/cookbook/hf-token`. -->
+              <div id="set-forgeHfToken"></div>
             </div>
           </div>
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>Serving</h2>
             <ul class="forge-settings-doors">
               <li><span>Servers, SSH ports, Python environments and model folders</span><button type="button" class="admin-btn-sm" data-forge-door="forge:Settings">Forge › Settings</button></li>
-              <li><span>Hugging Face token</span><button type="button" class="admin-btn-sm" data-forge-door="forge:Settings">Forge › Settings</button></li>
               <li><span>Engine, port and launch command</span><button type="button" class="admin-btn-sm" data-forge-door="forge:Serve">Forge › Launch</button></li>
               <li><span>Scheduled launches</span><button type="button" class="admin-btn-sm" data-forge-door="tasks">Tasks</button></li>
               <li><span>Models Pantheon chats with</span><button type="button" class="admin-btn-sm" data-forge-door="settings:added-models">Added Models</button></li>
@@ -3818,6 +3829,14 @@
                 <div class="admin-toggle-sub" id="agents-maxNote" hidden></div>
               </div>
               <input type="number" id="agents-maxInput" class="settings-select" min="1" max="16" step="1" aria-labelledby="agents-maxLabel" aria-describedby="agents-maxSub">
+            </div>
+            <!-- `P24-09`. The contract check's optional judge (`agents_judge`). -->
+            <div class="admin-toggle-row">
+              <div>
+                <div class="admin-toggle-label" id="agents-judgeLabel">A model reads each delivery too</div>
+                <div class="admin-toggle-sub" id="agents-judgeSub">Off: what an agent leaves is checked by code only — its answer's words, its document, its drafts, its file. On: once those checks pass, the model set for background tasks also reads the delivery against what the agent promises and puts its verdict and reasons in the run's report; a no gets the run's one more try. It uses the models already set up here, so nothing new is contacted.</div>
+              </div>
+              <label class="admin-switch"><input type="checkbox" id="agents-judgeToggle" aria-labelledby="agents-judgeLabel" aria-describedby="agents-judgeSub"><span class="admin-slider"></span></label>
             </div>
             <div id="agents-settingsResult" class="admin-toggle-sub" role="status" hidden></div>
           </div>

@@ -519,12 +519,32 @@ def fire_event(event_name: str, owner: Optional[str] = None,
     inherits context.
     """
     origin = _RUN_ORIGIN.get()
+
+    def _schedule():
+        asyncio.get_running_loop().create_task(
+            _handle_event(event_name, owner, payload, origin=origin))
+
     try:
-        loop = asyncio.get_running_loop()
-        loop.create_task(_handle_event(event_name, owner, payload, origin=origin))
+        asyncio.get_running_loop()
     except RuntimeError:
-        # No running loop — run in a new one (shouldn't happen in FastAPI)
-        asyncio.run(_handle_event(event_name, owner, payload, origin=origin))
+        pass
+    else:
+        _schedule()
+        return
+    # `B1223`. A plain `def` route runs in Starlette's thread pool, where no
+    # loop is running. Running the handler there with `asyncio.run` gave it a
+    # loop of its own, beside the app's — and the scheduler it reaches for
+    # lives on the app's. So from a worker thread the event is handed to the
+    # app's loop (`anyio.from_thread`, as `routes/workspace_routes.py` does),
+    # and the route does not wait for its handling, exactly as on the loop.
+    try:
+        import anyio.from_thread
+        anyio.from_thread.run_sync(_schedule)
+        return
+    except RuntimeError:
+        pass
+    # No app loop at all (a script, a test): run it here, as before.
+    asyncio.run(_handle_event(event_name, owner, payload, origin=origin))
 
 
 def _resolve_event_owner(owner: Optional[str]) -> Optional[str]:

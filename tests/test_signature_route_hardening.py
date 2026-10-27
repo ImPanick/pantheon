@@ -83,7 +83,7 @@ def test_create_signature_stores_normalized_png_and_drops_svg(monkeypatch):
     monkeypatch.setattr(signature_routes, "Signature", _SignatureRecord)
     create_signature = _route_endpoint("/api/signatures", "POST")
 
-    response = asyncio.run(create_signature(
+    response = (create_signature(
         _request(),
         signature_routes.SignatureCreate(
             name=" Full signature ",

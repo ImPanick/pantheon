@@ -2,6 +2,7 @@
 # routes/note_routes.py
 """Google Keep-style notes / checklists API."""
 
+import asyncio
 import json
 import uuid
 import logging
@@ -401,7 +402,7 @@ async def dispatch_reminder(
         try:
             import httpx
             import json as _wjson
-            from src.integrations import load_integrations
+            from src.integrations import integrations_for
             # Built-in payload defaults for known presets so users don't have
             # to configure a template just to use a standard service.
             _PRESET_TEMPLATE_DEFAULTS = {
@@ -412,8 +413,9 @@ async def dispatch_reminder(
             if not intg_id:
                 webhook_error = "No webhook integration selected"
             else:
+                # `P27-02`: the reminder's owner's own or a shared one.
                 intg = next(
-                    (i for i in load_integrations()
+                    (i for i in integrations_for(owner or None)
                      if i.get("id") == intg_id and i.get("base_url")),
                     None,
                 )
@@ -473,10 +475,11 @@ async def dispatch_reminder(
     ntfy_error = ""
     if channel == "ntfy":
         try:
-            from src.integrations import load_integrations
+            from src.integrations import integrations_for
             import httpx
+            # `P27-02`: the reminder's owner's own or a shared one.
             intg = next(
-                (i for i in load_integrations()
+                (i for i in integrations_for(owner or None)
                  if i.get("preset") == "ntfy" and i.get("enabled", True) and i.get("base_url")),
                 None,
             )
@@ -874,35 +877,38 @@ def setup_note_routes(task_scheduler=None, upload_handler=None):
         """Update sort_order for a list of note IDs in the order provided."""
         user = _owner(request)
         body = await request.json()
-        ids = body.get("ids", [])
-        if not isinstance(ids, list):
-            raise HTTPException(400, "ids must be a list")
-        # v2 review HIGH-12: drop the legacy `(owner == user) | (owner ==
-        # None)` OR which let an authenticated user silently reorder
-        # every legacy-null-owner note belonging to other accounts. In
-        # an unconfigured (single-user) auth deploy the OR is still safe
-        # because there's no second user to attack; we keep that branch
-        # explicit and gated on AuthManager.is_configured.
-        try:
-            from src.auth_manager_access import shared_auth_manager  # `P23-07` (`PERF-M-15`)
-            _allow_null = not shared_auth_manager().is_configured
-        except Exception:
-            _allow_null = False
-        db = SessionLocal()
-        try:
-            for i, nid in enumerate(ids):
-                q = db.query(Note).filter(Note.id == nid)
-                if user is not None:
-                    if _allow_null:
-                        q = q.filter((Note.owner == user) | (Note.owner == None))  # noqa: E711
-                    else:
-                        q = q.filter(Note.owner == user)
-                note = q.first()
-                if note:
-                    note.sort_order = i
-            db.commit()
-            return {"ok": True, "count": len(ids)}
-        finally:
-            db.close()
+        # `B1223`: the database work, off the event loop.
+        def _off_the_loop():
+            ids = body.get("ids", [])
+            if not isinstance(ids, list):
+                raise HTTPException(400, "ids must be a list")
+            # v2 review HIGH-12: drop the legacy `(owner == user) | (owner ==
+            # None)` OR which let an authenticated user silently reorder
+            # every legacy-null-owner note belonging to other accounts. In
+            # an unconfigured (single-user) auth deploy the OR is still safe
+            # because there's no second user to attack; we keep that branch
+            # explicit and gated on AuthManager.is_configured.
+            try:
+                from src.auth_manager_access import shared_auth_manager  # `P23-07` (`PERF-M-15`)
+                _allow_null = not shared_auth_manager().is_configured
+            except Exception:
+                _allow_null = False
+            db = SessionLocal()
+            try:
+                for i, nid in enumerate(ids):
+                    q = db.query(Note).filter(Note.id == nid)
+                    if user is not None:
+                        if _allow_null:
+                            q = q.filter((Note.owner == user) | (Note.owner == None))  # noqa: E711
+                        else:
+                            q = q.filter(Note.owner == user)
+                    note = q.first()
+                    if note:
+                        note.sort_order = i
+                db.commit()
+                return {"ok": True, "count": len(ids)}
+            finally:
+                db.close()
+        return await asyncio.to_thread(_off_the_loop)
 
     return router

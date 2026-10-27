@@ -261,7 +261,7 @@ def test_the_exchange_sends_the_verifier(configured, provider_id, monkeypatch):
     # `B1022`: the callback exchanges the code through `paced_http.post_sync`
     # (routed by a `NO_PROXY` range, paced), not `httpx.post`.
     with mock.patch("src.paced_http.post_sync", return_value=token_resp) as posted:
-        asyncio.run(_endpoint("callback")(
+        (_endpoint("callback")(
             provider_id=provider_id, code="4/code", state=state,
             error=None, request=None))
     sent = posted.call_args.kwargs["data"]
@@ -283,7 +283,7 @@ def test_a_state_without_a_verifier_sends_no_empty_parameter(configured):
     # `B1022`: the callback exchanges the code through `paced_http.post_sync`
     # (routed by a `NO_PROXY` range, paced), not `httpx.post`.
     with mock.patch("src.paced_http.post_sync", return_value=token_resp) as posted:
-        asyncio.run(_endpoint("callback")(
+        (_endpoint("callback")(
             provider_id="google", code="4/code", state=state,
             error=None, request=None))
     assert "code_verifier" not in posted.call_args.kwargs["data"]
@@ -317,7 +317,7 @@ def test_the_client_secret_is_still_sent(configured):
     # `B1022`: the callback exchanges the code through `paced_http.post_sync`
     # (routed by a `NO_PROXY` range, paced), not `httpx.post`.
     with mock.patch("src.paced_http.post_sync", return_value=token_resp) as posted:
-        asyncio.run(_endpoint("callback")(
+        (_endpoint("callback")(
             provider_id="google", code="4/code", state=state,
             error=None, request=None))
     assert posted.call_args.kwargs["data"]["client_secret"] == "secret"

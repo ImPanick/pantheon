@@ -291,7 +291,12 @@ def _join_integration_url(base_url: str, path: str) -> str:
 
 
 def load_integrations() -> List[Dict[str, Any]]:
-    """Load all integrations from disk with secrets decrypted for runtime use."""
+    """Load all integrations from disk with secrets decrypted for runtime use.
+
+    `P27-02`: **every** account's. Nothing that answers a person — a list, a
+    prompt, a tool, a reminder — reads this directly; it asks
+    `integrations_for(person)`, which is the one rule for whose they are.
+    """
     if not os.path.exists(DATA_FILE):
         return []
     try:
@@ -336,17 +341,120 @@ def save_integrations(integrations: List[Dict[str, Any]]) -> None:
     safe_chmod(DATA_FILE, 0o600)
 
 
-def get_integration(integration_id: str) -> Optional[Dict[str, Any]]:
-    """Get a single integration by id."""
+# ---------------------------------------------------------------------------
+# `P27-02` · whose a service connection is
+# ---------------------------------------------------------------------------
+#
+# The file was one global list, so every admin's key was in every admin's
+# list, every admin's agent's prompt and every admin's `api_call` — and in a
+# non-admin's reminder and daily brief. Each record now carries `owner` (the
+# account that added it) and `shared` (a yes/no its owner sets). The rule, in
+# one place (`Law 7`):
+#
+# * a person sees and their tools use **their own** and **the shared** ones —
+#   never another person's own, whoever they are, admin or not;
+# * only the owner changes or removes one; a shared one is read-only to
+#   everyone else;
+# * a record with no owner is from before this row: shared, until the
+#   one-time `migrate_to_accounts` gives it to the admin who made it.
+#
+# The adversary (`Law 17`) is a second account on the same install — another
+# admin, or a person whose reminder or brief the server runs — reading or
+# spending a key that was never theirs. Only an admin adds one today: the
+# server makes the requests an integration is for, and `api_call` is an
+# admin's tool (`NON_ADMIN_BLOCKED_TOOLS`), so a non-admin's own entry would
+# be a key nothing of theirs could use.
+
+def is_shared(item: Dict[str, Any]) -> bool:
+    """Shared with every account: marked so, or from before `P27-02`."""
+    return item.get("shared") is True or not item.get("owner")
+
+
+def visible_to(item: Dict[str, Any], person: Optional[str]) -> bool:
+    """May `person` see this integration and have their tools use it?"""
+    return is_shared(item) or (bool(person) and item.get("owner") == person)
+
+
+def may_change(item: Dict[str, Any], person: Optional[str]) -> bool:
+    """Only its owner changes or removes one (an unmigrated record is any
+    admin's, as every record was before)."""
+    return bool(person) and (not item.get("owner") or item.get("owner") == person)
+
+
+def integrations_for(person: Optional[str]) -> List[Dict[str, Any]]:
+    """The integrations `person` may see and use: their own and the shared."""
+    return [item for item in load_integrations() if visible_to(item, person)]
+
+
+def mask_for(integration: Dict[str, Any], person: Optional[str]) -> Dict[str, Any]:
+    """A copy safe to answer `person` with, saying whose it is. Its owner sees
+    the key's first four characters, as before; anyone else sees only that one
+    is set — not a character of somebody else's key."""
+    safe = mask_integration_secret(integration)
+    mine = bool(person) and integration.get("owner") == person
+    if not mine:
+        safe["api_key"] = ""
+    safe["has_key"] = bool(integration.get("api_key"))
+    safe["owner"] = integration.get("owner")
+    safe["shared"] = is_shared(integration)
+    safe["mine"] = mine
+    safe["read_only"] = not may_change(integration, person)
+    return safe
+
+
+def _first_admin() -> Optional[str]:
+    """The install's first admin — the account setup made — or `None`."""
+    try:
+        from src.auth_manager_access import shared_auth_manager
+        users = shared_auth_manager().list_users()
+    except Exception as exc:
+        log.warning("No admin list for the integrations' owner (%s)", exc)
+        return None
+    return next((u["username"] for u in users if u.get("is_admin")), None)
+
+
+def migrate_to_accounts(admins: Optional[List[str]] = None) -> int:
+    """`P27-02`. One time: give every record from before per-account
+    connections to the admin who made them, shared — so nothing anyone uses
+    today stops working. The file never said who made one; until this row only
+    an admin could, so it is the install's first admin (the account setup
+    made), or the only one. Answers how many records it named an owner for;
+    a second run finds none."""
+    items = load_integrations()
+    legacy = [i for i in items if not i.get("owner")]
+    if not legacy:
+        return 0
+    owner = admins[0] if admins else _first_admin()
+    if not owner:
+        return 0   # before setup: nobody to give them to yet; asked again next boot
+    for item in legacy:
+        item["owner"] = owner
+        item["shared"] = True
+    save_integrations(items)
+    log.info("P27-02: %d integration(s) from before per-account connections given to %s, shared",
+             len(legacy), owner)
+    return len(legacy)
+
+
+def get_integration(integration_id: str, person: Optional[str] = None,
+                    *, any_owner: bool = False) -> Optional[Dict[str, Any]]:
+    """One integration by id — `person`'s own or a shared one (`P27-02`).
+    `any_owner=True` is for the server's own bookkeeping, never an answer to a
+    person."""
     for item in load_integrations():
-        if item.get("id") == integration_id:
+        if item.get("id") == integration_id and (any_owner or visible_to(item, person)):
             return item
     return None
 
 
-def add_integration(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Add a new integration. If 'preset' is given, merge preset defaults first."""
+def add_integration(data: Dict[str, Any], owner: Optional[str] = None) -> Dict[str, Any]:
+    """Add a new integration. If 'preset' is given, merge preset defaults first.
+
+    `P27-02`: it is `owner`'s, and shared only when `data["shared"]` is a
+    literal `true` — never whatever owner the body names."""
     integration: Dict[str, Any] = {}
+    data = {k: v for k, v in dict(data).items() if k not in ("owner", "shared")} | {
+        "owner": owner, "shared": data.get("shared") is True}
 
     preset_key = data.get("preset")
     if preset_key and preset_key in INTEGRATION_PRESETS:
@@ -388,6 +496,12 @@ def update_integration(integration_id: str, data: Dict[str, Any]) -> Optional[Di
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
 
+    # `P27-02`: an edit never hands a connection to somebody else, and
+    # `shared` is a yes/no or it is not changed.
+    data.pop("owner", None)
+    if "shared" in data and not isinstance(data["shared"], bool):
+        data.pop("shared")
+
     integrations = load_integrations()
     for item in integrations:
         if item.get("id") == integration_id:
@@ -420,9 +534,10 @@ def _strip_html_tags(html: str) -> str:
     return text
 
 
-def _find_integration(identifier: str) -> Optional[Dict[str, Any]]:
-    """Find integration by id or name (case-insensitive)."""
-    integrations = load_integrations()
+def _find_integration(identifier: str, owner: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Find integration by id or name (case-insensitive), among `owner`'s own
+    and the shared ones (`P27-02`) — another person's is not found."""
+    integrations = integrations_for(owner)
     # try id first
     for item in integrations:
         if item.get("id") == identifier:
@@ -598,8 +713,15 @@ async def execute_api_call(
     body: Optional[Any] = None,
     extra_headers: Optional[Dict[str, str]] = None,
     structured: bool = False,
+    *,
+    owner: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Execute an HTTP request against a registered integration.
+
+    `owner` (`P27-02`): the person the call is made for — only their own or a
+    shared integration is found. `None` is the server acting for nobody, and
+    it finds only the shared ones: a caller that forgets to say whose call it
+    is fails closed, never into somebody else's key.
 
     `structured` (`P22-13`): also answer `http_status` and, for a JSON reply of
     at most `API_CALL_BODY_JSON_MAX_BYTES`, `body_json` — the parsed body, for a
@@ -609,7 +731,7 @@ async def execute_api_call(
     structured call is not handed the body twice.
     """
 
-    integration = _find_integration(integration_id)
+    integration = _find_integration(integration_id, owner)
     if not integration:
         return {"error": f"Integration not found: {integration_id}", "exit_code": 1}
 
@@ -871,12 +993,13 @@ async def execute_api_call(
 # System prompt helper
 # ---------------------------------------------------------------------------
 
-def get_integrations_prompt() -> str:
-    """Return a string describing all enabled integrations for system prompt injection.
+def get_integrations_prompt(owner: Optional[str]) -> str:
+    """Return a string describing `owner`'s enabled integrations — their own
+    and the shared ones (`P27-02`) — for system prompt injection.
 
     Returns empty string if no integrations are enabled.
     """
-    integrations = load_integrations()
+    integrations = integrations_for(owner)
     enabled = [i for i in integrations if i.get("enabled", True)]
     if not enabled:
         return ""
@@ -922,18 +1045,21 @@ def migrate_from_settings() -> None:
     if not miniflux_url or not miniflux_key:
         return
 
-    # Check if a miniflux integration already exists
+    # Check if a miniflux integration already exists (anybody's)
     existing = load_integrations()
     for item in existing:
         if item.get("preset") == "miniflux":
             log.info("Miniflux integration already exists, skipping migration")
             return
 
+    # `P27-02`: the two keys were the instance's, so the connection is shared,
+    # and the first admin's to change.
     add_integration({
         "preset": "miniflux",
         "base_url": miniflux_url.rstrip("/"),
         "api_key": miniflux_key,
-    })
+        "shared": True,
+    }, owner=_first_admin())
 
     # Clear migrated keys
     settings.pop("miniflux_url", None)

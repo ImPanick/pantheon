@@ -274,6 +274,71 @@ def resolve_context_budget(key: str, owner=None, *, ceiling_default=None,
         key, owner, ceiling_default=ceiling_default, ceiling=ceiling).value
 
 
+# ── `P2-08` · the shared ceiling, scaled to the model's window ──────────────
+#
+# `D-2026-08-26-06`: *"Scale the budget off the model's context window, falling
+# back to today's 24,000 when the window cannot be proven. Keep
+# first-come-first-served … a per-role ceiling under `P12-04` … must use
+# `budget_context_for_model(…, fallback=0)`"* — and reconcile the numbers
+# together. They move together here because the share is taken of the *input
+# token budget* (`agent_input_budget`, the number the agent loop trims to),
+# not of the raw window: the attachment total and the token budget it sits
+# inside are one computation, so the first can never be larger than the second.
+#
+# **Measured before this, on `a16e7d75`**, through the product's own estimator
+# (`estimate_tokens`, chars × 0.3): ten files sharing the 24,000-character
+# ceiling got 2,400 characters each on a model with a proven 128K window — a
+# 111,411-token input budget, of which attachments could use 7,204 — while on a
+# proven 8K window the same 24,000 characters were 7,204 tokens against a
+# 6,963-token budget, so `context_compactor.trim_for_context` dropped the
+# memory and retrieved-context messages to make room, with no marker
+# (`tests/test_attachment_budget_scales_with_the_window.py` drives both).
+#
+# The rule:
+# * an unproven window (`0`) keeps the ceiling exactly as `P12-04` resolves it
+#   — 24,000 unless a role or the instance set a number;
+# * a proven window gives attachments `ATTACHMENT_WINDOW_SHARE` of the input
+#   budget, in characters — so the rest of the turn (system prompt, memory,
+#   retrieved context, the conversation) keeps the other half;
+# * a ceiling someone *set* (role profile or instance setting) stays a ceiling:
+#   the scaled number never exceeds it. The shipped default is not a choice
+#   anybody made, so with nothing set the window decides — the reading
+#   `budget_is_explicit` gives `agent_input_token_budget` (`P2-09`).
+
+#: The share of the input token budget one turn's attachments may take.
+ATTACHMENT_WINDOW_SHARE = 0.5
+#: `model_context.estimate_tokens`' own rate, inverted: it counts a character
+#: as 0.3 tokens, so a token budget is this many characters.
+CHARS_PER_TOKEN = 1 / 0.3
+
+
+def resolve_attachment_total(owner=None, *, window_tokens: int = 0,
+                             ceiling_default=None):
+    """The shared attachment total for one turn, and the layer that decided it.
+
+    `window_tokens` is the *proven* window — `budget_context_for_model(url,
+    model, fallback=0)` — so `0` means unknown. Answers a `ResolvedLimit`
+    whose `source` is `"window"` when the window decided, with `clamped` set
+    when it held the turn below a ceiling somebody set.
+    """
+    from src.limit_policy import ResolvedLimit
+
+    configured = resolve_context_budget_detail(
+        CONTEXT_BUDGET_CEILING, owner, ceiling_default=ceiling_default)
+    window = _int_or_zero(window_tokens)
+    if window <= 0:
+        return configured
+    from src.settings import get_setting
+    input_tokens = agent_input_budget(window, get_setting, owner=owner) or window
+    scaled = int(input_tokens * ATTACHMENT_WINDOW_SHARE * CHARS_PER_TOKEN)
+    scaled = max(MIN_CONTEXT_BUDGET_CHARS, min(MAX_CONTEXT_BUDGET_CHARS, scaled))
+    if configured.source == "default":
+        return ResolvedLimit(value=scaled, source="window")
+    if scaled < configured.value:
+        return ResolvedLimit(value=scaled, source="window", clamped=True)
+    return configured
+
+
 def fit_to_context_budget(text: str, key: str, owner=None, *,
                           ceiling_default=None, ceiling=None, marker: str = ""):
     """`(text, marker)` — `text` cut to `key`'s budget, `marker` empty if it fit.
@@ -557,6 +622,15 @@ def context_window_report(owner=None, *, turn: dict | None = None,
     is metering is worse than no meter (`Law 7`).
     """
     report = context_budget_report(owner, ceiling_default=ceiling_default)
+    if turn is not None and turn.get("total_source") == "window":
+        # `P2-08`. The turn's total came from the model's window: the ceiling
+        # the composer draws is that number, or the meter and the message
+        # would state two different allowances (`Law 7`).
+        for entry in report["budgets"]:
+            if entry["is_ceiling"]:
+                entry.update({"chars": int(turn.get("total_chars") or 0), "source": "window",
+                              "clamped": bool(turn.get("total_clamped")),
+                              "window_tokens": int(turn.get("window_tokens") or 0)})
     segments = []
     for key in CONTEXT_SEGMENTS:
         entry = {"key": key, "label": CONTEXT_SEGMENT_LABELS[key],

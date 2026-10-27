@@ -92,6 +92,8 @@ class RunPlan:
     sealed: bool = False
     blind: bool = False
     workspace: Optional[str] = None
+    #: `P24-09`. What the agent is for, in its file's words — the judge reads it.
+    tagline: str = ""
 
 
 #: `D-2026-10-24-01`. A tool with any of these effects can carry data out of
@@ -314,7 +316,8 @@ def plan_for_task(db, task, run_id: Optional[str] = None) -> Optional[RunPlan]:
                    ask_effects=ask, never_effects=never, context_messages=msgs,
                    skill_lines=lines, memory=manifest.memory, delivers=manifest.delivers,
                    owner=hire.owner, inputs=inputs, project=hire.project,
-                   sealed=is_sealed(tools), blind=is_blind(tools), workspace=workspace_for(hire.owner, hire.project))
+                   sealed=is_sealed(tools), blind=is_blind(tools), workspace=workspace_for(hire.owner, hire.project),
+                   tagline=manifest.tagline)
 
 
 # ── The report ──────────────────────────────────────────────────────────────
@@ -506,6 +509,147 @@ def answer_so_far(answer: str) -> dict:
     from src.prompt_security import untrusted_context_message
     return untrusted_context_message("your answer so far (this run)", (answer or "")[:ANSWER_MAX_CHARS],
                                      arm_tool_gate=False)
+
+
+# ── `P24-09` · the judge, second and optional ───────────────────────────────
+#
+# After the code's checks pass, a model may read the delivery against what the
+# file promises — opt-in (`agents_judge`, Settings → Agents, off as shipped),
+# and only through the person's own background-task chain (`task_llm_call_async`
+# with the run's own endpoint as its fallback): no new destination (`Law 16`).
+# Its verdict is an enum, never a yes/no a reader can flip (`Law 10`):
+#
+# * `delivered` — it agrees; the check is ✓.
+# * `not_delivered` — it says what is missing; the check is ✗, and it feeds the
+#   same single repair pass the code's misses do.
+# * `unread` — it gave no usable reading (no model answered, or not JSON). The
+#   code's checks are the contract, so this does not fail a run that passed
+#   them — and the report says plainly that only they counted.
+
+JUDGE_VERDICTS = ("delivered", "not_delivered", "unread")
+JUDGE_CHECK = "a second reading"
+JUDGE_ANSWER_CHARS = 12_000
+_JUDGE_REASONS = 5
+_JUDGE_REASON_CHARS = 300
+
+
+def judge_enabled() -> bool:
+    """`P24-09`. Has an admin asked for the judge? Read as `is True`, so a
+    string stored by hand turns nothing on."""
+    from src.settings import get_setting
+    return get_setting("agents_judge", False) is True
+
+
+def describe_deliverable(d: Dict[str, Any], inputs: Optional[Dict[str, Any]] = None) -> str:
+    """One `delivers` entry in a person's words — what the judge is asked about."""
+    if d.get("label"):
+        return str(d["label"])
+    words = d.get("must_contain") or []
+    say = f", which says: {', '.join(words)}" if words else ""
+    kind = d.get("kind")
+    if kind == "answer":
+        return "An answer" + say
+    if kind == "document":
+        title = _fill(str(d.get("title") or ""), inputs or {})
+        return (f"A document titled “{title}”" if title else "A document") + (
+            f", with the sections: {', '.join(words)}" if words else "")
+    if kind == "email_draft":
+        cap = d.get("max")
+        return "Email drafts" + (f", at most {cap}" if isinstance(cap, int) else "")
+    if kind == "file":
+        return f"The file {_fill(str(d.get('title') or ''), inputs or {})} in the projects folder" + say
+    return str(kind or "something")
+
+
+def judge_messages(plan: "RunPlan", answer: str, checks: List[Dict[str, Any]]) -> List[dict]:
+    """What the judge is handed: the promises, what the code found, and the
+    answer — the answer as data, since it may quote mail or a page the run
+    read and must not instruct the judge."""
+    from src.prompt_security import untrusted_context_message
+    promises = "\n".join(f"- {describe_deliverable(d, plan.inputs)}" for d in plan.delivers or ())
+    found = "\n".join(f"- {c.get('detail')}" for c in checks or () if c.get("check") != JUDGE_CHECK)
+    system = (
+        "You check whether an agent's run delivered what its file promises. You are not the "
+        "agent and you do no work: you read and decide.\n"
+        f"The agent: {plan.name}" + (f" — {plan.tagline}" if plan.tagline else "") + "\n"
+        f"It promises to leave:\n{promises}\n"
+        f"Code has already checked, and found:\n{found or '- nothing to check'}\n"
+        "Read the answer below and decide whether it really does what is promised — not "
+        "just that the words appear, but that it is the thing a person would expect.\n"
+        'Reply with JSON only, nothing else: {"verdict": "delivered" or "not_delivered", '
+        '"reasons": ["one short sentence each, at most five"]}. When it is not delivered, '
+        "say exactly what is missing, as the agent would need to hear it to fix it."
+    )
+    return [
+        {"role": "system", "content": system},
+        untrusted_context_message("the agent's answer (this run)",
+                                  (answer or "")[:JUDGE_ANSWER_CHARS], arm_tool_gate=False),
+        {"role": "user", "content": "Your verdict, as JSON only."},
+    ]
+
+
+def read_verdict(text: str) -> Optional[Dict[str, Any]]:
+    """The judge's reply → `{verdict, reasons}`, or `None` when it is not the
+    JSON it was asked for. A reasoning model's thinking is stripped first."""
+    try:
+        from src.text_helpers import strip_think
+        text = strip_think(text or "", prose=False) or text
+    except Exception:
+        pass
+    raw = str(text or "")
+    start, end = raw.find("{"), raw.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        data = json.loads(raw[start:end + 1])
+    except ValueError:
+        return None
+    if not isinstance(data, dict) or data.get("verdict") not in ("delivered", "not_delivered"):
+        return None
+    reasons = data.get("reasons") or []
+    if isinstance(reasons, str):
+        reasons = [reasons]
+    if not isinstance(reasons, list):
+        reasons = []
+    reasons = [str(r).strip()[:_JUDGE_REASON_CHARS] for r in reasons if str(r).strip()][:_JUDGE_REASONS]
+    return {"verdict": data["verdict"], "reasons": reasons}
+
+
+async def judge_delivery(plan: "RunPlan", answer: str, checks: List[Dict[str, Any]],
+                         call) -> Dict[str, Any]:
+    """Ask the judge once; answer its check, in the shape the report keeps.
+
+    `call(messages)` is the person's own model chain (the scheduler hands
+    `task_llm_call_async` bound to the run's endpoint and owner)."""
+    try:
+        reply = await call(judge_messages(plan, answer, checks))
+        verdict = read_verdict(reply)
+        why = "its reply was not the verdict it was asked for" if verdict is None else ""
+    except Exception as exc:
+        verdict, why = None, f"no model answered: {str(exc)[:160]}"
+    if verdict is None:
+        return {"check": JUDGE_CHECK, "ok": True, "verdict": "unread", "reasons": [],
+                "detail": f"The judge model gave no reading ({why}), so only the checks above count."}
+    reasons = verdict["reasons"]
+    if verdict["verdict"] == "delivered":
+        return {"check": JUDGE_CHECK, "ok": True, "verdict": "delivered", "reasons": reasons,
+                "detail": "The judge model read it and agrees it delivers"
+                          + (f": {reasons[0]}" if reasons else ".")}
+    said = " ".join(r if r.endswith((".", "!", "?")) else r + "." for r in reasons) \
+        or "It did not say why."
+    return {"check": JUDGE_CHECK, "ok": False, "verdict": "not_delivered", "reasons": reasons,
+            "detail": f"The judge model read it and says it does not deliver: {said}"}
+
+
+async def checks_for_run(db, plan: "RunPlan", answer: str, steps: List[dict], *,
+                         since=None, judge=None) -> List[Dict[str, Any]]:
+    """The code's checks, then — only when they all pass, the plan promises
+    something, and `judge` is given (the scheduler gives it only when
+    `judge_enabled()`) — the judge's reading beside them."""
+    checks = check_contract(db, plan, answer, steps, since=since)
+    if judge is not None and plan.delivers and not failed(checks):
+        checks.append(await judge_delivery(plan, answer, checks, judge))
+    return checks
 
 
 def undelivered_sentence(name: str, checks: List[Dict[str, Any]]) -> str:

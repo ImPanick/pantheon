@@ -121,3 +121,27 @@ def test_the_gate_is_written_once_and_not_once_per_caller():
     assert not offenders, (
         "a FastEmbed client is constructed without asking the `Law 16` gate: "
         + ", ".join(offenders))
+
+
+def test_a_whisper_model_is_built_only_where_the_gate_is_asked():
+    """`B1565`. The same rule for local speech-to-text: `WhisperModel(name)`
+    fetches from Hugging Face, so every construction in non-test Python sits
+    in a function that also asks `ensure_whisper_download_permitted` (which
+    reads the one consent, `model_download_allowed`). Behaviour is driven in
+    `tests/test_local_whisper_asks_before_it_downloads.py`."""
+    offenders, found = [], 0
+    for path in sorted(ROOT.glob("src/**/*.py")) + sorted(ROOT.glob("services/**/*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            calls = [n for n in ast.walk(fn) if isinstance(n, ast.Call)]
+            if not any(isinstance(c.func, ast.Name) and c.func.id == "WhisperModel" for c in calls):
+                continue
+            found += 1
+            if not any(isinstance(c.func, ast.Name) and c.func.id == "ensure_whisper_download_permitted"
+                       for c in calls):
+                offenders.append(f"{path.relative_to(ROOT)}:{fn.lineno} {fn.name}")
+    assert found, "the scan found no WhisperModel construction at all — it is measuring nothing"
+    assert not offenders, (
+        "a Whisper model is built without asking the `Law 16` gate: " + ", ".join(offenders))

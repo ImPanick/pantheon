@@ -392,44 +392,47 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
                                          403 unless a person (`request_is_a_person`)
         """
         body = await _body(request)
-        sent = [key for key in ("graph", "positions", "pins", "checked") if key in body]
-        if len(sent) != 1:
-            raise WorkflowRefused(
-                400, "Send one of: the document (graph, with base_version), positions, pins, "
-                     "or the steps you checked.")
-        if check and sent[0] != "graph":
-            raise WorkflowRefused(400, "?check=true checks a document; send its graph.")
-        if sent[0] == "checked" and not request_is_a_person(request):
-            # `SLICE-EF-DESIGN` § 1.1. Asked before the workflow is even read:
-            # the `app_api` blocklist cannot see a body, so this is the control.
-            raise WorkflowRefused(403, store.ONLY_A_PERSON_CHECKS)
-        db = SessionLocal()
-        try:
-            wf = store.owned_workflow(db, workflow_id, _owner(request))
-            if sent[0] == "checked":
-                saved = store.check_steps(db, wf, body["checked"])
-                return {"workflow": doc(db, wf), "saved": saved}
-            if sent[0] == "positions":
-                saved = store.save_positions(db, wf, body["positions"])
-                return {"saved": saved, "version": wf.version}
-            trigger = store.require_trigger(db, wf)
-            if sent[0] == "pins":
-                dropped = store.save_pins(db, wf, trigger, body["pins"])
-                return {"workflow": doc(db, wf, trigger), "saved": store.SAVED_PINS,
-                        "dropped": dropped}
-            if not isinstance(body["graph"], (dict, str)):
-                raise WorkflowRefused(400, "graph must be the workflow's document.")
-            # `integrate-e`: who is saving decides what a changed step's mark
-            # becomes — a person's change clears it, anything else's sets it.
-            saved = store.save_document(
-                db, wf, trigger, name=body.get("name"), graph=body["graph"],
-                base_version=body.get("base_version"), check=check,
-                by_person=request_is_a_person(request))
-            if saved == "check":
-                return {"ok": True, "check": True}
-            return {"workflow": doc(db, wf, trigger), "saved": saved}
-        finally:
-            db.close()
+        # `B1223`: the database work, off the event loop.
+        def _off_the_loop():
+            sent = [key for key in ("graph", "positions", "pins", "checked") if key in body]
+            if len(sent) != 1:
+                raise WorkflowRefused(
+                    400, "Send one of: the document (graph, with base_version), positions, pins, "
+                         "or the steps you checked.")
+            if check and sent[0] != "graph":
+                raise WorkflowRefused(400, "?check=true checks a document; send its graph.")
+            if sent[0] == "checked" and not request_is_a_person(request):
+                # `SLICE-EF-DESIGN` § 1.1. Asked before the workflow is even read:
+                # the `app_api` blocklist cannot see a body, so this is the control.
+                raise WorkflowRefused(403, store.ONLY_A_PERSON_CHECKS)
+            db = SessionLocal()
+            try:
+                wf = store.owned_workflow(db, workflow_id, _owner(request))
+                if sent[0] == "checked":
+                    saved = store.check_steps(db, wf, body["checked"])
+                    return {"workflow": doc(db, wf), "saved": saved}
+                if sent[0] == "positions":
+                    saved = store.save_positions(db, wf, body["positions"])
+                    return {"saved": saved, "version": wf.version}
+                trigger = store.require_trigger(db, wf)
+                if sent[0] == "pins":
+                    dropped = store.save_pins(db, wf, trigger, body["pins"])
+                    return {"workflow": doc(db, wf, trigger), "saved": store.SAVED_PINS,
+                            "dropped": dropped}
+                if not isinstance(body["graph"], (dict, str)):
+                    raise WorkflowRefused(400, "graph must be the workflow's document.")
+                # `integrate-e`: who is saving decides what a changed step's mark
+                # becomes — a person's change clears it, anything else's sets it.
+                saved = store.save_document(
+                    db, wf, trigger, name=body.get("name"), graph=body["graph"],
+                    base_version=body.get("base_version"), check=check,
+                    by_person=request_is_a_person(request))
+                if saved == "check":
+                    return {"ok": True, "check": True}
+                return {"workflow": doc(db, wf, trigger), "saved": saved}
+            finally:
+                db.close()
+        return await asyncio.to_thread(_off_the_loop)
 
     @router.get("/{workflow_id}/export")
     @_answers
@@ -493,16 +496,19 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
     @_answers
     async def restore_version(request: Request, workflow_id: str, version: str):
         body = await _body(request)
-        db = SessionLocal()
-        try:
-            wf = store.owned_workflow(db, workflow_id, _owner(request))
-            trigger = store.require_trigger(db, wf)
-            saved = store.restore_version(db, wf, trigger, version,
-                                          base_version=body.get("base_version"),
-                                          by_person=request_is_a_person(request))
-            return {"workflow": doc(db, wf, trigger), "saved": saved}
-        finally:
-            db.close()
+        # `B1223`: the database work, off the event loop.
+        def _off_the_loop():
+            db = SessionLocal()
+            try:
+                wf = store.owned_workflow(db, workflow_id, _owner(request))
+                trigger = store.require_trigger(db, wf)
+                saved = store.restore_version(db, wf, trigger, version,
+                                              base_version=body.get("base_version"),
+                                              by_person=request_is_a_person(request))
+                return {"workflow": doc(db, wf, trigger), "saved": saved}
+            finally:
+                db.close()
+        return await asyncio.to_thread(_off_the_loop)
 
     # ── 7, 8: On / Off, and the chain it came from ───────────────────────────
 
@@ -510,18 +516,21 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
     @_answers
     async def switch_workflow(request: Request, workflow_id: str):
         body = await _body(request)
-        if not isinstance(body.get("on"), bool):
-            raise WorkflowRefused(400, "Say whether to switch it on or off: {\"on\": true} or {\"on\": false}.")
-        db = SessionLocal()
-        try:
-            wf = store.owned_workflow(db, workflow_id, _owner(request))
-            trigger = store.require_trigger(db, wf)
-            chain_paused, notes = store.switch_workflow(db, wf, trigger, on=body["on"],
-                                                        name_of=_name_of)
-            return {"workflow": doc(db, wf, trigger), "chain_paused": chain_paused,
-                    "notes": notes}
-        finally:
-            db.close()
+        # `B1223`: the database work, off the event loop.
+        def _off_the_loop():
+            if not isinstance(body.get("on"), bool):
+                raise WorkflowRefused(400, "Say whether to switch it on or off: {\"on\": true} or {\"on\": false}.")
+            db = SessionLocal()
+            try:
+                wf = store.owned_workflow(db, workflow_id, _owner(request))
+                trigger = store.require_trigger(db, wf)
+                chain_paused, notes = store.switch_workflow(db, wf, trigger, on=body["on"],
+                                                            name_of=_name_of)
+                return {"workflow": doc(db, wf, trigger), "chain_paused": chain_paused,
+                        "notes": notes}
+            finally:
+                db.close()
+        return await asyncio.to_thread(_off_the_loop)
 
     @router.post("/{workflow_id}/restore-chain")
     @_answers
@@ -857,16 +866,19 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         if not request_is_a_person(request):
             raise WorkflowRefused(403, store.ONLY_A_PERSON_FIXES)
         body = await _body(request)
-        db = SessionLocal()
-        try:
-            wf = store.owned_workflow(db, workflow_id, _owner(request))
-            trigger = store.require_trigger(db, wf)
-            base = body.get("base_version")
-            saved = store.save_fix(db, wf, trigger, node_id=node_id, config=body.get("config"),
-                                   base_version=base)
-            return {"workflow": doc(db, wf, trigger), "saved": saved, "undo_version": int(base)}
-        finally:
-            db.close()
+        # `B1223`: the database work, off the event loop.
+        def _off_the_loop():
+            db = SessionLocal()
+            try:
+                wf = store.owned_workflow(db, workflow_id, _owner(request))
+                trigger = store.require_trigger(db, wf)
+                base = body.get("base_version")
+                saved = store.save_fix(db, wf, trigger, node_id=node_id, config=body.get("config"),
+                                       base_version=base)
+                return {"workflow": doc(db, wf, trigger), "saved": saved, "undo_version": int(base)}
+            finally:
+                db.close()
+        return await asyncio.to_thread(_off_the_loop)
 
     return router
 

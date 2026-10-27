@@ -990,9 +990,12 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
 # API call tool
 # ---------------------------------------------------------------------------
 
-async def do_api_call(content: str) -> Dict:
-    """Execute an API call to a registered integration."""
-    from src.integrations import execute_api_call, load_integrations
+async def do_api_call(content: str, owner: Optional[str] = None) -> Dict:
+    """Execute an API call to a registered integration.
+
+    `P27-02`: `owner`'s own integrations and the shared ones — another
+    person's is neither found nor named in the list of what is available."""
+    from src.integrations import execute_api_call, integrations_for
     try:
         args = json.loads(content)
     except json.JSONDecodeError:
@@ -1010,7 +1013,7 @@ async def do_api_call(content: str) -> Dict:
                 pass
 
     integration_name = args.get("integration", "")
-    integrations = load_integrations()
+    integrations = integrations_for(owner)
     intg = next((i for i in integrations if i["id"] == integration_name
                  or i["name"].lower() == integration_name.lower()), None)
     if not intg:
@@ -1027,6 +1030,7 @@ async def do_api_call(content: str) -> Dict:
         # `P22-13`. Only a literal `true` asks: a workflow's HTTP step reads
         # `body_json`/`http_status`; a model's call is answered as before.
         structured=args.get("structured") is True,
+        owner=owner,
     )
 
 
@@ -1143,6 +1147,9 @@ _APP_API_BLOCKLIST_METHOD_PATH = (
     ("POST",   "/api/workstation"),
     ("POST",   "/api/cookbook/state"),   # whole-file overwrite — agent must use serve_preset/serve_model instead
     ("DELETE", "/api/cookbook/state"),
+    # `B1258`. The Hugging Face token's own door: a credential the person sets
+    # in Settings → Forge, never one the assistant writes for them.
+    ("PUT",    "/api/cookbook/hf-token"),
     # Host-control routes: package install, engine rebuild, and process
     # signalling should not be reachable through the generic API bridge.
     ("POST",   "/api/cookbook/packages/install"),

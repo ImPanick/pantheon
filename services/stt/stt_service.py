@@ -4,12 +4,48 @@
 
 import io
 import logging
+import os
 import httpx
 import tempfile
 from pathlib import Path
 from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
+
+
+def ensure_whisper_download_permitted(model_size: str) -> str:
+    """What to build the local Whisper model from, or `ModelDownloadNotPermitted`.
+
+    `B1565`. `WhisperModel("base")` resolves the name through Hugging Face —
+    it fetches the model the first time, and asks the Hub again on later runs —
+    and it was called with no question asked, while FastEmbed's construction of
+    the same kind of thing asks `ensure_fastembed_download_permitted`. One
+    consent (`model_download_allowed`, the `allow_model_download` switch and
+    `PANTHEON_ALLOW_MODEL_DOWNLOAD`), two models it governs; `Law 16`.
+
+    Answers the name itself when fetching is allowed, or when the name is
+    already a folder on disk (a path costs no network). Otherwise it looks in
+    the local cache *with the network off* (`local_files_only`) and answers
+    the cached folder, so the constructor is handed a path and never reaches
+    the Hub; with nothing cached it raises with the sentence a person can act
+    on. `tests/test_the_model_download_gate_has_one_door.py` fails on a
+    `WhisperModel(...)` built anywhere this is not asked.
+    """
+    from src.embedding_lanes import ModelDownloadNotPermitted, model_download_allowed
+
+    name = str(model_size or "base")
+    if os.path.isdir(name) or model_download_allowed():
+        return name
+    try:
+        from faster_whisper.utils import download_model
+        return download_model(name, local_files_only=True)
+    except Exception:
+        raise ModelDownloadNotPermitted(
+            f"Local speech-to-text needs the Whisper “{name}” model, which is not downloaded, "
+            "and Pantheon does not fetch models on its own. Turn on “Download models from the "
+            "internet” (Settings → System) to fetch it from Hugging Face once, or choose a "
+            "speech-to-text endpoint in Settings instead."
+        ) from None
 
 
 class STTService:
@@ -25,6 +61,10 @@ class STTService:
 
     def __init__(self):
         self._whisper_model = None  # lazy-init
+        # `B1565`. Why local Whisper is not available, in a person's words —
+        # the download gate's refusal. Cleared on the next attempt, so turning
+        # the switch on is enough; nothing is remembered as refused.
+        self._whisper_refusal: Optional[str] = None
 
     # ── Settings ──
 
@@ -63,9 +103,16 @@ class STTService:
             except ImportError:
                 logger.warning("faster-whisper not installed. Install with: pip install faster-whisper")
                 return None
+            settings = self._load_settings()
+            model_size = settings.get("stt_model", "base")
+            self._whisper_refusal = None
             try:
-                settings = self._load_settings()
-                model_size = settings.get("stt_model", "base")
+                source = ensure_whisper_download_permitted(model_size)
+            except Exception as e:
+                self._whisper_refusal = str(e)
+                logger.warning("Local speech-to-text not started: %s", e)
+                return None
+            try:
                 # faster-whisper runs on CTranslate2, not torch. torch is only
                 # used (optionally) to detect a CUDA device for acceleration —
                 # if it's missing or unusable we just run on CPU. Keeping this
@@ -81,12 +128,17 @@ class STTService:
                     use_cuda = False
                 device = "cuda" if use_cuda else "cpu"
                 compute_type = "float16" if device == "cuda" else "int8"
-                self._whisper_model = WhisperModel(model_size, device=device, compute_type=compute_type)
+                self._whisper_model = WhisperModel(source, device=device, compute_type=compute_type)
                 logger.info(f"faster-whisper model '{model_size}' loaded on {device}")
             except Exception as e:
                 logger.error(f"Failed to load whisper model: {e}")
                 return None
         return self._whisper_model
+
+    def unavailable_reason(self) -> Optional[str]:
+        """`B1565`. The sentence for why local Whisper is not running, when
+        the download gate is the reason; `None` otherwise."""
+        return self._whisper_refusal
 
     def _transcribe_local(self, audio_bytes: bytes, language: str = "") -> Optional[str]:
         model = self._get_whisper()
@@ -195,6 +247,8 @@ class STTService:
         if provider == "local":
             whisper = self._get_whisper()
             stats["model_loaded"] = whisper is not None
+            if self._whisper_refusal:
+                stats["unavailable_reason"] = self._whisper_refusal
         elif provider == "browser":
             stats["model"] = "Browser (Web Speech API)"
         elif provider.startswith("endpoint:"):

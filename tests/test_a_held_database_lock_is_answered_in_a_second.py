@@ -240,11 +240,16 @@ def test_the_app_database_is_written_ahead(held_lock_on_the_real_app):
     assert held_lock_on_the_real_app["journal_mode"] == "wal"
 
 
-def test_a_write_under_a_held_lock_is_a_503_with_a_sentence_in_under_a_second(held_lock_on_the_real_app):
+def test_a_write_under_a_held_lock_waits_its_turn_off_the_loop(held_lock_on_the_real_app):
+    """`B1223` changed this. `POST /api/email/accounts` was an `async def`
+    doing its database work on the loop, so `P23-07` bounded the wait at half
+    a second and answered a 503. It is a plain `def` now (Starlette's thread
+    pool), so it waits the patient 5 s off the loop — the lock is held for
+    three — and lands. What `P23-07` guarantees on the loop is still driven
+    above, on an engine (`test_on_the_event_loop_a_held_lock_is_refused_in_half_a_second`)."""
     write = held_lock_on_the_real_app["write"]
-    assert write["status"] == 503, write
-    assert write["body"] == {"detail": database.DATABASE_BUSY_DETAIL}
-    assert write["ms"] < 1000, f"refused after {write['ms']:.0f} ms"
+    assert write["status"] == 200, write
+    assert write["ms"] > 1000, f"it did not wait for the lock: {write['ms']:.0f} ms"
 
 
 def test_other_requests_answer_while_the_lock_is_held(held_lock_on_the_real_app):

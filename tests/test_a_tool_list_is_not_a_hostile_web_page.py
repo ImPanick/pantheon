@@ -180,7 +180,9 @@ def _prompt_with_integration(*, question: str = OWNER_QUESTION,
                     "base_url": "https://rosters.example",
                 },
             ])
-            assert integrations_mod.get_integrations_prompt(), (
+            # `P27-02`: an ownerless record (from before per-account
+            # connections) is shared, so it is in anybody's block.
+            assert integrations_mod.get_integrations_prompt(None), (
                 "the integration must really be enabled and in the prompt"
             )
             return _prompt(question=question)

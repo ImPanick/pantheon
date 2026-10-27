@@ -5009,8 +5009,9 @@ class TaskScheduler:
         # Auto-discover API integrations (Miniflux RSS, etc.).
         try:
             import httpx
-            from src.integrations import load_integrations
-            for integ in load_integrations():
+            from src.integrations import integrations_for
+            # `P27-02`: the task owner's own and the shared ones.
+            for integ in integrations_for(task.owner):
                 if not integ.get("enabled"):
                     continue
                 preset = integ.get("preset", "")
@@ -5495,8 +5496,19 @@ class TaskScheduler:
             # flagged — never retried forever. A repair that parks on a card
             # parks the run, as any run does.
             _since = _agent_rt.run_started_at(db, run_id)
-            checks = _agent_rt.check_contract(db, agent_plan, result or "",
-                                              self.run_steps(run_id), since=_since)
+            # `P24-09`. The judge, when an admin asked for one: the person's
+            # own background-task chain with this run's endpoint as its
+            # fallback (`task_llm_call_async`) — no new destination.
+            _judge = None
+            if _agent_rt.judge_enabled():
+                from src.task_endpoint import task_llm_call_async as _judge_call
+
+                async def _judge(messages, _url=endpoint_url, _model=model, _owner=task.owner):
+                    return await _judge_call(messages, fallback_url=_url, fallback_model=_model,
+                                             owner=_owner, timeout=120)
+            checks = await _agent_rt.checks_for_run(db, agent_plan, result or "",
+                                                    self.run_steps(run_id), since=_since,
+                                                    judge=_judge)
             repaired = False
             for _ in range(_agent_rt.REPAIR_PASSES):
                 if not _agent_rt.failed(checks):
@@ -5525,8 +5537,9 @@ class TaskScheduler:
                     pass
                 result = again or result
                 repaired = True
-                checks = _agent_rt.check_contract(db, agent_plan, result or "",
-                                                  self.run_steps(run_id), since=_since)
+                checks = await _agent_rt.checks_for_run(db, agent_plan, result or "",
+                                                        self.run_steps(run_id), since=_since,
+                                                        judge=_judge)
             # `P24-06`. What the run left, and its carry-forward into the
             # hire's notebook. A report that cannot be kept does not fail a
             # run that did its job — the run's own record still says so.

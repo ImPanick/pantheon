@@ -213,7 +213,12 @@ def test_a_cut_file_is_said_with_how_much_went(send):
     assert meta["big.txt"]["reach"] == "cut"
 
 
-def test_a_file_with_no_room_left_is_said_not_sent(send):
+def test_a_file_with_no_room_left_is_said_not_sent(send, monkeypatch):
+    # `P2-08`: the allowance scales with a model's proven window, and this
+    # model's is in the known table (128K: room for both files). Held at an
+    # unproven window, the 24,000 this case is about.
+    import src.model_context as mc
+    monkeypatch.setattr(mc, "budget_context_for_model", lambda url, model, fallback=0: 0)
     big = ("lorem ipsum dolor " * 4000).encode()
     _content, meta = send([("one.txt", big, "text/plain"), ("two.txt", b"MARKTWO", "text/plain")])
     assert meta["two.txt"]["reach"] == "omitted"

@@ -37,6 +37,7 @@ import {
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { topPortalZ } from './toolWindowZOrder.js';
 import backStack from './backStack.js';   // `B1229`: the door to Settings → Forge
+import { mountHfToken } from './servingSettings.js';   // `B1258`: the token's one editor
 import { syncNotice } from './runStatus.js';   // `B492`
 
 /**
@@ -2843,37 +2844,10 @@ function _wireTabEvents(body) {
   // one, appending two rows per click — removed.
 
 
-  // HF token — save on change
-  const hfInput = document.getElementById('hwfit-hftoken');
-  if (hfInput) {
-    hfInput.addEventListener('change', async () => {
-      const val = hfInput.value.trim();
-      _envState.hfToken = val;
-      try { await _persistEnvState(); } catch {}
-      if (val) {
-        _envState.hfTokenConfigured = true;
-        const masked = val.length > 6 ? val.slice(0, 3) + '…' + val.slice(-3) : '••••';
-        _envState.hfTokenMasked = masked;
-        hfInput.placeholder = `Stored (${masked}) - enter a new token to replace`;
-        hfInput.value = '';
-        let check = hfInput.parentNode.querySelector('.hwfit-hf-check');
-        if (!check) {
-          check = document.createElement('span');
-          check.className = 'hwfit-hf-check';
-          check.title = 'Token stored';
-          check.textContent = '✓';
-          check.style.cssText = 'font-weight:800;color:var(--green,#50fa7b);font-size:15px;line-height:1;flex-shrink:0;position:relative;top:2px;';
-          hfInput.parentNode.insertBefore(check, hfInput);
-        }
-        const flash = document.createElement('span');
-        flash.textContent = 'Saved';
-        flash.style.cssText = 'margin-left:8px;font-size:11px;color:var(--green,#50fa7b);opacity:0;transition:opacity 0.18s;flex-shrink:0;position:relative;top:1px;';
-        hfInput.parentNode.appendChild(flash);
-        requestAnimationFrame(() => { flash.style.opacity = '1'; });
-        setTimeout(() => { flash.style.opacity = '0'; setTimeout(() => flash.remove(), 220); }, 1400);
-      }
-    });
-  }
+  // `B1258`. The Hugging Face token's one editor (`servingSettings.js`), the
+  // same one Settings → Forge mounts; it saves through its own route
+  // (`PUT /api/cookbook/hf-token`) rather than this window's whole-state save.
+  mountHfToken(document.getElementById('cookbook-hf-token'), { inputId: 'cookbook-hf-token-input' });
 }
 
 // ── Main render ──
@@ -3238,25 +3212,16 @@ function _renderRecipes() {
   // Download tab's block-per-section layout).
   html += '<div class="cookbook-group hidden cookbook-settings-stack" data-backend-group="Settings">';
 
-  // ── HuggingFace Token block ─────────────────────────────────────────
+  // ── Hugging Face token block ─────────────────────────────────────────
+  // `B1258`. Drawn by the one editor Settings → Forge also mounts
+  // (`servingSettings.js` `mountHfToken`, wired in `_wireTabEvents`); its home
+  // is Settings → Forge, and this card says so.
   html += '<div class="admin-card" style="flex:0 0 auto;display:flex;flex-direction:column;">';
   html += '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">';
-  html += '<h2 style="margin:0;padding:0;line-height:1;">HuggingFace Token</h2>';
+  html += '<h2 style="margin:0;padding:0;line-height:1;">Hugging Face token</h2>';
   html += '</div>';
-  html += '<p class="memory-desc doclib-desc">Personal access token for downloading gated and private models.</p>';
-  html += '<div class="memory-toolbar">';
-  html += `<div style="display:flex;gap:4px;align-items:center;">`;
-  // Bold green check shown when a token is stored (a placeholder can't style a
-  // single glyph, so it's its own element next to the input).
-  if (_es.hfTokenConfigured) {
-    html += `<span class="hwfit-hf-check" title="Token stored" style="font-weight:800;color:var(--green,#50fa7b);font-size:15px;line-height:1;flex-shrink:0;position:relative;top:2px;">✓</span>`;
-  }
-  const hfPlaceholder = _es.hfTokenConfigured
-    ? `Stored (${esc(_es.hfTokenMasked || 'configured')}) - enter a new token to replace`
-    : 'hf_...';
-  html += `<input type="password" class="memory-search-input" id="hwfit-hftoken" value="${esc(_es.hfToken || '')}" placeholder="${hfPlaceholder}" style="flex:1;" />`;
-  html += `</div>`;
-  html += '</div>';
+  html += '<p class="memory-desc doclib-desc">For downloading gated and private models. The same setting as Settings › Forge.</p>';
+  html += '<div id="cookbook-hf-token"></div>';
   html += '</div>';
 
   // ── Servers block ───────────────────────────────────────────────────

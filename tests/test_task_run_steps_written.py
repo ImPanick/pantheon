@@ -216,14 +216,14 @@ async def test_the_step_log_reaches_the_wire(task_db, monkeypatch):
 
     req = SimpleNamespace(state=SimpleNamespace(current_user=None))
 
-    history = await _endpoint("GET", "/api/tasks/{task_id}/runs")(req, "t1")
+    history = _endpoint("GET", "/api/tasks/{task_id}/runs")(req, "t1")
     row = history["runs"][0]
     assert [s["detail"] for s in row["steps"]] == [
         "Scanned 3 sessions", "Deleted 1 empty session"]
     assert row["step_count"] == 2
 
     # The list feed carries the count and not two hundred step bodies per row.
-    recent = await _endpoint("GET", "/api/tasks/runs/recent")(req)
+    recent = _endpoint("GET", "/api/tasks/runs/recent")(req)
     feed_row = next(r for r in recent["runs"] if r["id"] == "r1")
     assert feed_row["step_count"] == 2
     assert feed_row["steps"] == []

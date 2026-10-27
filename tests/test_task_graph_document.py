@@ -170,7 +170,7 @@ async def test_the_list_endpoint_carries_the_graph_beside_the_tasks(task_db, mon
                     if getattr(r, "path", None) == "/api/tasks"
                     and "GET" in getattr(r, "methods", set()))
 
-    out = await endpoint(SimpleNamespace(state=SimpleNamespace(current_user=None)))
+    out = endpoint(SimpleNamespace(state=SimpleNamespace(current_user=None)))  # `B1223`: a plain `def` now
     assert {n["id"] for n in out["graph"]["nodes"]} == {"a", "b"}
     assert [(e["from"], e["to"]) for e in out["graph"]["edges"]] == [("a", "b")]
 

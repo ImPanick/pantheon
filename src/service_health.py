@@ -431,8 +431,10 @@ def _gather_inputs() -> Dict[str, Any]:
     except Exception as e:
         logger.debug(f"service_health: settings load failed: {e}")
     try:
-        from src.integrations import load_integrations
-        integrations = load_integrations() or []
+        from src.integrations import integrations_for
+        # `P27-02`: the instance's health is the shared connections' — the
+        # ones every reminder can go through — not one admin's own.
+        integrations = integrations_for(None) or []
     except Exception as e:
         logger.debug(f"service_health: integrations load failed: {e}")
     try:
