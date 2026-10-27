@@ -108,6 +108,14 @@ the next one is cut.
 
 ### Added
 
+- **Chat search finds a chat by what it meant,** not only by its words, when an embedding model is
+  set up; each result says whether it matched by word, by meaning or both, and with no model the
+  search says it searched by word only (`P9-15c`).
+- **Skills → Growth:** a dated list of what made each skill stronger or weaker and why — formed,
+  tested, published, edited, used, removed — for the last 7, 30 or 90 days (`P13-08`).
+- **A recording goes to a model that can hear it** as the recording itself (WAV or MP3), when the
+  model's server says it takes audio; any other model still gets the transcript (`B1290`).
+- **Download Chat** offers `.md`, `.txt`, `.json` and `.html` from the chat's menu (`P7-11a`).
 - **`.xls`, `.ods`, `.pptx` and `.epub` are read on a default install,** and an attached `.zip`
   lists what is in it and reads its small text files (`B1178`, `B1289`, `B1291`).
 - **Diagnostics → Evals and → Sign-ins and access:** an operator runs an eval suite from a recent
@@ -221,6 +229,15 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **Running the instance is its own privilege, `can_run_instance`.** Model endpoints, the Forge,
+  embeddings and the other operator routes now answer anyone holding it — an admin always does,
+  and the new *Run this instance* switch in Settings → Users grants it to someone else — while
+  users, tokens, MCP and the vault stay admin-only. `GET /api/model-endpoints` answers every
+  signed-in person, showing a member only their own and shared endpoints and the models they may
+  use, with no key fingerprint (`B683`).
+- **Composer chips have one on-state** whose label clears 4.5:1 on every palette, and the error
+  and recording colours are split into a text colour and a fill; syntax colours in code blocks
+  were moved the least that clears 4.5:1 (`B1552`, `B1553`, `B1554`).
 - **Muted text is darker on light palettes and lighter on dark ones,** so it clears 4.5:1 on all of
   them; links, model names in a chat, and the danger colour were moved for the same reason
   (`B1486`, `B391`, `B395`, `B1084`, `B393`). Sidebar labels are 11px (`B784`).
@@ -373,6 +390,9 @@ the next one is cut.
 
 ### Fixed
 
+- **A checklist item is ticked from the keyboard,** the note form's text box no longer traps Tab,
+  and a list the agent made works in the form (`B1551`); Shift+Enter breaks the line on a phone
+  (`B1086`); a model behind a private CA answers the non-streamed call too (`B1556`).
 - **The one focus ring shows on every palette** — 92 outline suppressions that could hide it are
   gone (`B662`); Settings, the model picker and the workflow view fit a phone (`B1255`, `B1347`,
   `B1222`); the developer sandboxes hold still under Reduce Motion (`B663`).

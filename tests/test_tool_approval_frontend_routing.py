@@ -6,8 +6,10 @@ ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "static"
 
 # `B1104`. THE approval-path modules — the one place they are listed. Their
-# `?v=` cache-buster moves together or a browser pairs new code with a cached
-# copy and the approval click lands on the New-chat branch. `FORBIDDEN.md` said
+# `?v=` string moves together or the page loads two instances of one module (a
+# browser keeps one per URL), each with its own state, and the approval click
+# lands on the New-chat branch (`B1562`: not a cached copy — static files are
+# `no-cache` and the worker is network-first, `AGENTS.md` § Operational facts). `FORBIDDEN.md` said
 # "six" and this test checked five; measured on `7a7f9b2` by following one
 # approval click through the code, six is true and the one missing was
 # `app.js`: it owns the send button's own click handler — the New chat /
@@ -158,7 +160,7 @@ def test_every_changed_approval_module_is_cache_busted_together():
     version = _wave_version()
 
     # Every versioned reference to any approval-path module, across the whole
-    # of `static/` — a stale one pairs new code with a cached interceptor and
+    # of `static/` — one out of step loads a second instance of that module and
     # the approval click lands on the New-chat branch.
     modules = {_module_file(name): name for name in APPROVAL_PATH_MODULES}
     stale = {}
