@@ -3230,16 +3230,22 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 	      const isPlanMode = !!toggleState.plan_mode && !(el('research-toggle') && el('research-toggle').checked);
 	      let isAgentMode = (toggleState.mode || 'chat') === 'agent';
       const isIncognito = isIncognitoForSend;
-	      const workspaceAgentIntent = !isIncognito && /\b(fix|debug|implement|change|update|refactor|patch|review|test|run|execute|start|launch|build|lint|typecheck|benchmark|eval|terminal[- ]bench|tbench|repo|repository|codebase|project|app|server|api|frontend|backend|bug|issue|pr|file|folder|directory|source|logs?|trace|stacktrace|traceback|docker|container|tmux|terminal|shell|git|branch|commit|diff|pytest|process|port|endpoint|computer|machine|laptop|device|system)\b/i.test(String(msg || ''));
+	      // `P7-01`, the browser half. A 58-word keyword bag (*change, update,
+	      // review, test, run, build, source, system, device, app* …) used to
+	      // send this turn as `mode=agent` and then overwrite the shell toggle
+	      // with `allow_bash=true` — so a person who had switched the shell off
+	      // got it back by typing "update", and the server, told the person had
+	      // picked Agent themselves, reported no promotion at all. Both are gone:
+	      // the page sends the mode and the toggle the person set, and the route
+	      // decides (`classify_tool_intent`, a message naming a workspace path),
+	      // reports the promotion as `auto_escalated`, and may grant the shell
+	      // only where nobody said no (`escalation_grants_shell`).
 	      // `B06`. Asked of `planWindow` rather than of a local copy, so it is
 	      // still true on turn two.
 	      const executingPlan = (!isPlanMode && planWindow.isExecuting())
 	        ? (_getStoredPlan() || '')
 	        : '';
 	      if (isPlanMode || executingPlan) {
-	        isAgentMode = true;
-	      }
-	      if (!isAgentMode && workspaceAgentIntent) {
 	        isAgentMode = true;
 	      }
 	      // Auto-escalate to agent mode when a document is open — the user expects
@@ -3270,7 +3276,6 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 	        fd.set('plan_mode', 'false');
 	      }
       fd.append('allow_bash', el('bash-toggle').checked ? 'true' : 'false');
-      if (workspaceAgentIntent) fd.set('allow_bash', 'true');
       const ragChk = el('rag-toggle');
       if (ragChk && !ragChk.checked) {
         fd.append('use_rag', 'false');
@@ -3315,7 +3320,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       currentAbort = abortCtrl;
 
 	      const _tState = Storage.loadToggleState();
-	      const _isAgent = (_tState.mode || 'chat') === 'agent' || !!_tState.plan_mode || workspaceAgentIntent;
+	      // A turn the route promotes is cleared by its first `agent_prep`
+	      // well inside the chat timeout, so the keyword guess (`P7-01`) is not
+	      // needed to lengthen it.
+	      const _isAgent = (_tState.mode || 'chat') === 'agent' || !!_tState.plan_mode;
 
       // Timeout: 6 min for research and agent mode, 3 min otherwise
       const timeoutMs = el('research-toggle').checked || _isAgent ? RESEARCH_TIMEOUT_MS : DEFAULT_TIMEOUT_MS;
