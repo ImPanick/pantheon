@@ -33,7 +33,7 @@ import memoryModule from './js/memory.js?v=20261009census';
 import voiceRecorderModule from './js/voiceRecorder.js';
 import censorModule from './js/censor.js';
 import galleryModule from './js/gallery.js?v=20260708match1';
-import { UI_VIS_DEFAULT_OFF, resolveVisibility, applyToolVisibility, guardRouteOpener, installToolDoorGuard, noteStatusAsked, noteStatusFailed, onToolVisibilityApplied, statusVisibility, toolShown, whenToolVisibilityReady } from './js/ui_visibility.js';
+import { UI_VIS_DEFAULT_OFF, resolveVisibility, applyToolVisibility, guardRouteOpener, installToolDoorGuard, noteStatusAsked, noteStatusFailed, onToolVisibilityApplied, statusVisibility, toolShown, viewerMayRunInstance, whenToolVisibilityReady } from './js/ui_visibility.js';
 import tasksModule from './js/tasks.js?v=20261009census';
 import calendarModule from './js/calendar.js';
 import notesModule from './js/notes.js';
@@ -4425,7 +4425,17 @@ function startPantheonApp() {
       try { sessionModule.updateModelPicker(); } catch (_) {}
     }).catch(() => {});
   }, 3500);
-  runNonCriticalStartup(() => ragModule.loadPersonalDocs(), 9000);
+  // `B1583`. The knowledge index's list is the operator's (`require_operator`,
+  // `B1568`), and this warmup asked it of everyone nine seconds after boot: a
+  // guest's page load got `GET /api/personal` 403 — seen in a full run, where
+  // a slower boot put the warmup inside `test_a_guest_asks_for_nothing_only_an_admin_may_have`'s
+  // window, and missed alone, where the drive had closed before it fired. It
+  // asks the status first, as every other operator-only load does
+  // (`viewerMayRunInstance`); opening the panel still asks, and says why.
+  runNonCriticalStartup(() => {
+    viewerMayRunInstance().then((may) => { if (may) ragModule.loadPersonalDocs(); })
+      .finally(() => { window.__pantheonKnowledgeWarmupDone = true; });   // a drive's named condition
+  }, 9000);
 	  runNonCriticalStartup(() => memoryModule.loadMemories(), 12000);
 
 	  // Ensure proper initial state

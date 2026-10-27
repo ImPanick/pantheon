@@ -181,23 +181,40 @@ _PROBE = textwrap.dedent(
     with TestClient(app_module.app) as client:
         sign_in(app_module, client)  # the install's admin: there is always authentication (`D-2026-10-07-02` §2)
         out["journal_mode"] = sqlite3.connect(DB).execute("PRAGMA journal_mode").fetchone()[0]
-        held = threading.Event()
+        # `B1583`. Warmed first: the first request a fresh app answers on a
+        # route builds FastAPI's route state for it on the loop — measured
+        # 340 ms quiet and 2 s with the machine busy, with no lock anywhere —
+        # and the side request queued behind the write's was the one that
+        # missed 1,000 ms beside a full run. An empty body is refused before
+        # it writes anything.
+        client.get("/api/auth/status")
+        out["warm"] = client.post("/api/email/accounts", json={}).status_code
+        # `B1583`: the order of events, not their durations. The lock is held
+        # until the side requests are done (at most 4 s, inside the write's
+        # patient 5 s) and at least 1.5 s, so the write has to wait for it.
+        held, sides_done, released = threading.Event(), threading.Event(), threading.Event()
         def hold():
             c = sqlite3.connect(DB, timeout=1)
             c.execute("BEGIN IMMEDIATE")
             c.execute("UPDATE notes SET updated_at = updated_at WHERE 0")
-            held.set(); time.sleep(3); c.rollback(); c.close()
+            t0 = time.monotonic(); held.set()
+            sides_done.wait(4.0)
+            time.sleep(max(0.0, 1.5 - (time.monotonic() - t0)))
+            released.set(); c.rollback(); c.close()   # said before it is so: no write can land between
         holder = threading.Thread(target=hold); holder.start(); held.wait()
         res = {}
         def write():
             t0 = time.perf_counter()
             r = client.post("/api/email/accounts", json=ACCOUNT)
-            res.update(status=r.status_code, body=r.json(), ms=(time.perf_counter() - t0) * 1000)
+            res.update(status=r.status_code, body=r.json(), ms=(time.perf_counter() - t0) * 1000,
+                       after_release=released.is_set())
         writer = threading.Thread(target=write); writer.start(); time.sleep(0.05)
         side = []
-        for _ in range(6):
-            t0 = time.perf_counter(); client.get("/api/auth/status")
-            side.append((time.perf_counter() - t0) * 1000); time.sleep(0.1)
+        for _ in range(3):
+            t0 = time.perf_counter(); r = client.get("/api/auth/status")
+            side.append({"ms": (time.perf_counter() - t0) * 1000, "status": r.status_code,
+                         "while_held": not released.is_set()})
+        sides_done.set()
         writer.join(); holder.join()
         out["write"] = res; out["side_ms"] = side
         r = client.post("/api/email/accounts", json=ACCOUNT)
@@ -249,14 +266,20 @@ def test_a_write_under_a_held_lock_waits_its_turn_off_the_loop(held_lock_on_the_
     above, on an engine (`test_on_the_event_loop_a_held_lock_is_refused_in_half_a_second`)."""
     write = held_lock_on_the_real_app["write"]
     assert write["status"] == 200, write
-    assert write["ms"] > 1000, f"it did not wait for the lock: {write['ms']:.0f} ms"
+    # `B1583`: it landed only once the lock was gone — the order, not a
+    # duration a loaded machine can stretch or a quiet one shrink.
+    assert write["after_release"] is True, f"it did not wait for the lock: {write}"
 
 
 def test_other_requests_answer_while_the_lock_is_held(held_lock_on_the_real_app):
+    """`B1583`. It asserted `max(side) < 1000` ms and missed by 35 ms beside a
+    full run. What it is about is an order: a request that touches no database
+    is answered while the lock is still held and the write is still waiting for
+    it — so the loop is not stuck behind the lock. A loop held in a 5 s busy
+    wait (`P23-07`'s defect) answers them only after the release."""
     side = held_lock_on_the_real_app["side_ms"]
-    # One side request may land inside the half-second wait; none waits 5 s.
-    assert max(side) < 1000, side
-    assert sorted(side)[len(side) // 2] < 100, side
+    assert side and all(s["status"] == 200 for s in side), side
+    assert all(s["while_held"] for s in side), side
 
 
 def test_the_same_write_succeeds_once_the_lock_is_gone(held_lock_on_the_real_app):
