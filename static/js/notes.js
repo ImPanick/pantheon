@@ -3067,7 +3067,13 @@ function _loadDraft(id) {
 function _clearDraft(id) { try { localStorage.removeItem(_draftKey(id)); } catch {} }
 function _collectFormDraft(form) {
   if (!form) return null;
-  const type = form.querySelector('.note-form-type-pill.active')?.dataset.type || 'note';
+  // `B1560`. The form's own type (`_buildForm` keeps `data-note-type` beside
+  // `currentType`, which Save reads), not the lit pill: there are pills for
+  // Note, Todo and Draw only, so an agent-made `checklist` — and a legacy
+  // `goal` — had none lit, its draft was recorded as a plain note with empty
+  // content and no items, and reopening restored that over the list.
+  const type = form.dataset.noteType
+    || form.querySelector('.note-form-type-pill.active')?.dataset.type || 'note';
   const d = {
     _ts: Date.now(),
     note_type: type,
@@ -3201,6 +3207,8 @@ function _buildForm(note = null) {
   `;
 
   let currentType = type;
+  // `B1560`: the type the draft autosave records, kept with `currentType`.
+  form.dataset.noteType = type;
   let currentColor = color;
   // Stash original-form values so round-trips (Note→Todo→Note) restore the
   // user's hand-formatted text instead of a join of generated items. Same the
@@ -3294,6 +3302,7 @@ function _buildForm(note = null) {
         });
       }
       currentType = newType;
+      form.dataset.noteType = newType;   // `B1560`
       const seg = form.querySelector('.note-form-type-seg');
       seg?.classList.toggle('is-todo', newType === 'todo');
       seg?.classList.toggle('is-draw', newType === 'draw');
