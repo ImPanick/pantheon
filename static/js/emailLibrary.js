@@ -5242,8 +5242,16 @@ function _createCard(em) {
   titleRow.className = 'email-card-titlerow';
   titleRow.style.cssText = 'display:flex;align-items:center;gap:6px;';
 
-  const titleEl = document.createElement('span');
-  titleEl.className = 'memory-item-title';
+  // `B661`. The subject is the card's keyboard control: a `<button>` that
+  // opens and closes the email the way a click on the card does, because
+  // pressing it IS a click on the card (the handler below). The card itself
+  // cannot be the button — it holds its own: the select box, the done
+  // toggle, the tags, the reader's arrows (`P10-02`'s rule, the shape
+  // `.skill-card-toggle` set). Before this, Tab reached a card's tags and
+  // never the email.
+  const titleEl = document.createElement('button');
+  titleEl.type = 'button';
+  titleEl.className = 'memory-item-title email-card-open';
   titleEl.textContent = em.subject || '(no subject)';
   // Hover preview: surface the cached AI summary directly on the title via
   // a native browser tooltip — no need to open the email to skim it.
@@ -5298,9 +5306,13 @@ function _createCard(em) {
   // Done check + unread dot stay next to the subject on the left.
   const isSentFolder = /sent/i.test(cardFolder);
   if (!isSentFolder) {
-    const doneCheck = document.createElement('span');
+    // `B661`: a button — it is the card's done toggle, and a `<span>` with a
+    // click handler could not be reached or pressed from a keyboard.
+    const doneCheck = document.createElement('button');
+    doneCheck.type = 'button';
     doneCheck.className = 'email-card-done' + (em.is_answered ? ' active' : '');
     doneCheck.title = em.is_answered ? 'Mark not done' : 'Mark done';
+    doneCheck.setAttribute('aria-pressed', em.is_answered ? 'true' : 'false');
     doneCheck.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
     const _toggleDone = async (e) => {
       if (e) e.stopPropagation();
@@ -5312,6 +5324,7 @@ function _createCard(em) {
       em.is_answered = newState;
       doneCheck.classList.toggle('active', newState);
       doneCheck.title = newState ? 'Mark not done' : 'Mark done';
+      doneCheck.setAttribute('aria-pressed', newState ? 'true' : 'false');
       // Animate in both directions so the user gets explicit feedback when
       // un-checking too — without this the hover state and the active state
       // look identical, so the click felt like a no-op.
@@ -8041,7 +8054,11 @@ function _showReaderMoreMenu(em, card, reader, anchor) {
       dropdown.appendChild(sep);
       continue;
     }
-    const item = document.createElement('div');
+    // `B661`. Every item in these menus is a `<button type="button">`: a
+    // `<div>` with a click handler was reachable by mouse alone, so a keyboard
+    // opened the menu and could press nothing in it.
+    const item = document.createElement('button');
+    item.type = 'button';
     item.className = 'dropdown-item-compact' + (a.danger ? ' dropdown-item-danger' : '');
     const arrow = a.submenu ? '<span style="margin-left:auto;opacity:0.5;">›</span>' : '';
     item.innerHTML = _icon(a.icon) + `<span>${a.label}</span>${arrow}`;
@@ -8063,7 +8080,8 @@ function _showReaderMoreMenu(em, card, reader, anchor) {
   // Mobile-only Cancel item — explicit close for touch users. CSS hides it
   // on desktop where outside-click already dismisses cleanly.
   const _cancelIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-  const cancelItem = document.createElement('div');
+  const cancelItem = document.createElement('button');
+  cancelItem.type = 'button';
   cancelItem.className = 'dropdown-item-compact dropdown-cancel-mobile';
   cancelItem.innerHTML = _icon(_cancelIco) + '<span>Cancel</span>';
   cancelItem.addEventListener('click', (e) => {
@@ -8252,7 +8270,8 @@ function _showCardMenu(em, anchor) {
   );
 
   for (const a of actions) {
-    const item = document.createElement('div');
+    const item = document.createElement('button');
+    item.type = 'button';
     item.className = 'dropdown-item-compact' + (a.danger ? ' dropdown-item-danger' : '');
     const arrow = a.submenu ? '<span style="margin-left:auto;opacity:0.5;">›</span>' : '';
     item.innerHTML = _icon(a.icon) + `<span>${a.label}</span>${arrow}`;
@@ -8270,7 +8289,8 @@ function _showCardMenu(em, anchor) {
   // Mobile-only Cancel item — explicit close for touch users. CSS hides it
   // on desktop where outside-click already dismisses cleanly.
   const _cancelIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-  const cancelItem = document.createElement('div');
+  const cancelItem = document.createElement('button');
+  cancelItem.type = 'button';
   cancelItem.className = 'dropdown-item-compact dropdown-cancel-mobile';
   cancelItem.innerHTML = _icon(_cancelIco) + '<span>Cancel</span>';
   cancelItem.addEventListener('click', (e) => {
@@ -8303,7 +8323,8 @@ function _showBulkActionsMenu(anchor) {
     { label: 'Mark Unread', icon: _unreadIco, action: () => _bulkAction('unread') },
   ];
   for (const a of items) {
-    const it = document.createElement('div');
+    const it = document.createElement('button');
+    it.type = 'button';
     it.className = 'dropdown-item-compact' + (a.danger ? ' dropdown-item-danger' : '');
     it.innerHTML = `<span class="dropdown-icon">${a.icon}</span><span>${a.label}</span>`;
     it.addEventListener('click', (e) => { e.stopPropagation(); close(); a.action(); });
@@ -8311,7 +8332,8 @@ function _showBulkActionsMenu(anchor) {
   }
   // Mobile-only Cancel — matches the per-card and sidebar dropdowns.
   const _cancelIco2 = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-  const cancelIt = document.createElement('div');
+  const cancelIt = document.createElement('button');
+  cancelIt.type = 'button';
   cancelIt.className = 'dropdown-item-compact dropdown-cancel-mobile';
   cancelIt.innerHTML = `<span class="dropdown-icon">${_cancelIco2}</span><span>Cancel</span>`;
   cancelIt.addEventListener('click', (e) => {
@@ -8736,7 +8758,8 @@ function _showEmailTranslateSubmenu(reader, parentDropdown) {
 
   const languages = ['English', 'Swedish', 'Japanese', 'Spanish', 'French', 'German'];
   for (const language of languages) {
-    const item = document.createElement('div');
+    const item = document.createElement('button');
+    item.type = 'button';
     item.className = 'dropdown-item-compact';
     item.innerHTML = `<span>${language}</span>`;
     item.addEventListener('click', async (e) => {
@@ -8772,7 +8795,8 @@ function _showLibRemindSubmenu(em, parentDropdown) {
     { label: 'Next week', sub: nextWeek.toLocaleDateString([], { weekday:'short' }) + ' ' + nextWeek.toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }), date: nextWeek },
   ];
   for (const p of presets) {
-    const item = document.createElement('div');
+    const item = document.createElement('button');
+    item.type = 'button';
     item.className = 'dropdown-item-compact';
     item.innerHTML = `<span>${p.label}</span><span style="margin-left:auto;opacity:0.5;font-size:10px;">${p.sub}</span>`;
     item.addEventListener('click', async (e) => {
@@ -8782,7 +8806,8 @@ function _showLibRemindSubmenu(em, parentDropdown) {
     });
     parentDropdown.appendChild(item);
   }
-  const customItem = document.createElement('div');
+  const customItem = document.createElement('button');
+  customItem.type = 'button';
   customItem.className = 'dropdown-item-compact';
   customItem.innerHTML = '<span>Pick date and time…</span>';
   customItem.addEventListener('click', (e) => {
@@ -8806,7 +8831,8 @@ function _showLibRemindSubmenu(em, parentDropdown) {
   parentDropdown.appendChild(customItem);
   // "Note" — prompts for free-text and saves it as a note without a
   // due_date, so no timer/reminder fires.
-  const noteItem = document.createElement('div');
+  const noteItem = document.createElement('button');
+  noteItem.type = 'button';
   noteItem.className = 'dropdown-item-compact';
   noteItem.innerHTML = '<span>Note</span>';
   noteItem.addEventListener('click', (e) => {
