@@ -19,8 +19,9 @@ else.
 
 * **A signed-in person who is not an admin** (`P11` multi-user). Fonts are
   instance-wide — every browser on the instance loads them — so adding one is
-  running the instance, not using it. ``require_admin`` (the operator tier in
-  ``.pantheon/P11-AUTH-MAP.md``); single-user installs pass it as the owner.
+  running the instance, not using it. ``require_operator`` (the operator tier in
+  ``.pantheon/P11-AUTH-MAP.md``, `B683`): an admin, or a person an admin let run
+  the instance; single-user installs pass it as the owner.
 * **A hostile file handed to an admin as "a font"** — an HTML or SVG page
   renamed ``.woff2``, a polyglot with a font's first four bytes, an SVG font.
   The name must end in one of four suffixes (``FONT_MIME_TYPES``) and the bytes
@@ -225,10 +226,10 @@ def setup_font_routes():
     @router.post("/custom")
     async def upload_custom_font(request: Request, file: UploadFile = File(...)):
         """Add a font for everyone on this instance. `P2-24`; see the module docstring."""
-        from core.middleware import require_admin
+        from core.middleware import require_operator
         from src.auth_helpers import get_current_user
 
-        require_admin(request)
+        require_operator(request)
         data = await read_upload_limited(
             file, resolve_byte_limit("font_upload_max_bytes", get_current_user(request)),
             "Font upload")
@@ -275,8 +276,8 @@ def setup_font_routes():
         """Remove an uploaded font, for everyone on this instance. `B937`.
 
         A font added by mistake could only be taken out on the server. The same
-        adversary and the same controls as the upload (`Law 17`): an admin only,
-        because the font is every browser's; the stored-name pattern, so only a
+        adversary and the same controls as the upload (`Law 17`): whoever runs the
+        instance only (`require_operator`, `B683`), because the font is every browser's; the stored-name pattern, so only a
         file the upload route could have written is named; and the containment
         check, so the name cannot leave `DATA_DIR/fonts`. A hand-dropped font in
         `static/fonts/custom/` is the operator's file and is not removable from
@@ -288,9 +289,9 @@ def setup_font_routes():
         the owner's trust controls (`B896`). A font it removed is one an admin
         adds back; nothing it gains reach through.
         """
-        from core.middleware import require_admin
+        from core.middleware import require_operator
 
-        require_admin(request)
+        require_operator(request)
         if not _UPLOADED_NAME_RE.match(filename or ""):
             raise HTTPException(404, "Font not found")
         path = os.path.join(UPLOADED_FONTS_DIR, filename)

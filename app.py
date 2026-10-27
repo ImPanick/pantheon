@@ -1732,6 +1732,16 @@ async def _startup_event():
 
     _startup_tasks.append(asyncio.create_task(_hold_workstation_backend()))
 
+    # `P9-15c`. Chat search by meaning: the index builds its embedding lanes,
+    # catches up on old chats and embeds each new message on its own worker
+    # thread, so starting it costs this function nothing. With no embedding
+    # model set up it stays off and the search says so.
+    try:
+        from src.chat_vector import chat_index
+        chat_index().start()
+    except Exception as e:  # noqa: BLE001 — search by keyword still works
+        logger.warning("Chat search by meaning not started: %s", e)
+
     # Startup warmups are opt-in. They make later requests a little warmer, but
     # they also compete with the first seconds of real UI use on slow or busy
     # machines. Default to clear/idle startup and let requests warm what they use.

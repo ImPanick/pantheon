@@ -78,15 +78,15 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 139 · Depends 21 · total 160
+derived: direct 76 · Depends 15 · total 91
 
 ### tier summary
 
 | tier | sites |
 |---|---|
 | `superuser` | 69 |
-| `operator` | 66 |
-| `power-user` | 3 |
+| `operator` | 0 |
+| `power-user` | 0 |
 | `only-because-nothing-finer-existed` | 22 |
 
 ### `superuser` — **69 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
@@ -163,84 +163,9 @@ derived: direct 139 · Depends 21 · total 160
 | `routes/workstation_routes.py` | `_watched` | `—` | not a route: `GET /api/workstation/screen` and `GET /api/workstation/control` ask it when a `person` is named — an admin may watch another person's workstation screen and who holds it, and only watch (the input, take-over and reset routes take no `person`). Without `person` the caller's own screen, open to anyone the workstation answers. Another person's screen is their data, so this stays the owner's. `B1424` |
 | `routes/person_network_routes.py` | `everyones_networks` | `GET /api/networks/people` | every person's own networks — names, hosts, ranges, trust — and of a linked vault login only that one is linked, never which item or anything in it. Other people's data: the owner's omni-sight (`D-2026-10-25-04` §5). `B1475` |
 
-### `operator` — **66 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. This is the tier that makes a role model worth building, because today the only way to hand someone the operator's job is to hand them the owner's.
+### `operator` — **0 operator sites.** Running the box: endpoints, models, probes, logs, webhooks, storage. A person who keeps the instance up needs all of it and needs none of the tier above. **Retired from `require_admin` by `B683`**: every site that stood here asks `require_operator` now, which also lets through a person an admin granted `can_run_instance` — per person in Settings → Users, or through a role. They are § G's table, where the checker holds them to the tree the way it holds this one.
 
-| file | function | route | protects |
-|---|---|---|---|
-| `routes/codex_routes.py` | `_require_cookbook_scope` | `—` | not a route: the helper nine Codex cookbook routes call. It demands the scope from a bearer token and admin from a cookie session, and its docstring is the clearest statement in the tree of why cookbook is gated — host topology, task logs, tmux commands, model-serving controls |
-| `routes/font_routes.py` | `upload_custom_font` | `POST /api/fonts/custom` | adds a font every browser on the instance loads. Fonts are instance-wide theme assets, so adding one is running the box, not using it. `P2-24`; the route keeps its own allowlist and content check on top of this gate |
-| `routes/font_routes.py` | `delete_custom_font` | `DELETE /api/fonts/custom/{filename}` | removes an uploaded font from every browser on the instance — the same act as adding one, undone. `B937`; the route keeps the upload's stored-name pattern and containment check on top of this gate |
-| `routes/cookbook_routes.py` | `list_gpus` | `GET /api/cookbook/gpus` | host GPU inventory. `GET /api/hwfit/system` answers the same question, and since `B541` behind the same gate |
-| `routes/cookbook_routes.py` | `get_cookbook_state` | `GET /api/cookbook/state` | the serve-state file: which models are up, on which hosts |
-| `routes/cookbook_routes.py` | `cookbook_tasks_status` | `GET /api/cookbook/tasks/status` | progress of in-flight downloads and serves |
-| `routes/cookbook_routes.py` | `model_cached` | `GET /api/model/cached` | what is already on disk |
-| `routes/cookbook_routes.py` | `save_cookbook_state` | `POST /api/cookbook/state` | rewrites it. `FORBIDDEN.md` blocks the agent's generic `app_api` from this pair after it wiped the file once |
-| `routes/cookbook_routes.py` | `model_download` | `POST /api/model/download` | pulls model weights onto the host's disk |
-| `routes/cookbook_routes.py` | `model_serve` | `POST /api/model/serve` | starts a model server in tmux |
-| `routes/diagnostics_routes.py` | `get_database_stats` | `GET /api/db/stats` | row counts |
-| `routes/diagnostics_routes.py` | `get_diagnostic_bundle` | `GET /api/diagnostics/bundle` | the redacted support bundle |
-| `routes/diagnostics_routes.py` | `list_evals` | `GET /api/diagnostics/evals` | the eval suites this build ships |
-| `routes/diagnostics_routes.py` | `get_diagnostics_logs` | `GET /api/diagnostics/logs` | server logs, which carry every user's activity |
-| `routes/diagnostics_routes.py` | `list_auth_events` | `GET /api/diagnostics/auth-events` | the auth audit log — every account's sign-ins, refusals, role and privilege changes, filtered by either party. Read by the person keeping the instance up after something goes wrong, like the logs above it. `B684` |
-| `routes/diagnostics_routes.py` | `get_self_check` | `GET /api/diagnostics/self-check` | the boot self-check |
-| `routes/diagnostics_routes.py` | `get_service_health` | `GET /api/diagnostics/services` | which subsystems answered |
-| `routes/diagnostics_routes.py` | `get_rag_stats` | `GET /api/rag/stats` | collection sizes |
-| `routes/diagnostics_routes.py` | `prometheus_metrics` | `GET /metrics` | the Prometheus scrape endpoint. `Law 16` clause 4 makes this the operator's to point where they like, which is exactly the operator tier |
-| `routes/diagnostics_routes.py` | `run_eval` | `POST /api/diagnostics/evals/{name}/run` | runs one; it costs the instance's model budget |
-| `routes/hwfit_routes.py` | `setup_hwfit_routes` | `—` | not a route: a router-level `dependencies=[Depends(require_admin)]` covering all five `/api/hwfit` routes — hardware detection on the serving host, or over SSH on a host the caller names. Host topology, like `list_gpus` above, and the choice of which box this instance opens SSH to. `B541`: until 2026-10-02 the middleware was the whole gate, and `/profiles` with no host was a directory-existence probe on the serving host for any signed-in account |
-| `routes/embedding_routes.py` | `setup_embedding_routes` | `—` | not a route: a router-level `dependencies=[Depends(require_admin)]` covering every route under `/api/embeddings`. One site, whole-surface reach — the shape `P11-02`'s refactor should prefer |
-| `routes/model_routes.py` | `delete_model_endpoint` | `DELETE /api/model-endpoints/{ep_id}` | deletes it |
-| `routes/model_routes.py` | `discover_local` | `GET /api/discover` | LAN/local discovery, which makes outbound connections |
-| `routes/model_routes.py` | `probe_local_endpoints` | `GET /api/model-endpoints/probe-local` | scans loopback ports for local model servers |
-| `routes/model_routes.py` | `probe_endpoint_models` | `GET /api/model-endpoints/{ep_id}/probe` | asks one endpoint what it serves |
-| `routes/model_routes.py` | `ping_endpoints` | `GET /api/ping` | reachability of every configured endpoint |
-| `routes/model_routes.py` | `probe_models` | `GET /api/probe` | probes them all |
-| `routes/model_routes.py` | `toggle_model_endpoint` | `PATCH /api/model-endpoints/{ep_id}` | enables or disables an endpoint for everyone |
-| `routes/model_routes.py` | `update_hidden_models` | `PATCH /api/model-endpoints/{ep_id}/models` | changes what every user sees in the picker |
-| `routes/model_routes.py` | `create_model_endpoint` | `POST /api/model-endpoints` | creates one, storing a provider API key |
-| `routes/model_routes.py` | `test_model_endpoint` | `POST /api/model-endpoints/test` | tests a candidate endpoint, spending a call |
-| `routes/model_routes.py` | `probe_selected` | `POST /api/probe-selected` | probes a chosen subset |
-| `routes/model_routes.py` | `update_tools` | `POST /api/tools` | the instance-wide tool enablement map |
-| `routes/personal_routes.py` | `delete_file_from_rag` | `DELETE /api/personal/file` | drops one file from the index |
-| `routes/personal_routes.py` | `remove_directory_from_rag` | `DELETE /api/personal/remove_directory` | un-points it |
-| `routes/personal_routes.py` | `add_directory_to_rag` | `POST /api/personal/add_directory` | points the indexer at a host directory — filesystem reach, not document management |
-| `routes/personal_routes.py` | `api_personal_reload` | `POST /api/personal/reload` | re-indexes the whole corpus |
-| `routes/shell_routes.py` | `tmux_attach` | `GET /api/shell/tmux-attach` | the command that opens one of the instance's tmux sessions in a terminal (or, `action=list`, lists them — `B913`): whether the server runs in a container, the uid its sessions belong to, the login name on a native install. It runs nothing — `B909`; the Forge's tasks are operator work and this is how they are reached. Every route in this file is on this gate since `B543` |
-| `routes/skills_routes.py` | `list_builtin_skills` | `GET /api/skills/builtin` | the inventory of every built-in tool the agent has, with the first 240 characters of the instruction block each one is given. Gated by `P2-21` on 2026-09-18; until then it made no auth call at all, beside the PUT and DELETE below it |
-| `routes/skills_routes.py` | `get_builtin_skill` | `GET /api/skills/builtin/{name}` | the whole instruction block, override included — the same text the model is given. The read half of the pair below, gated at the same height for the same reason |
-| `routes/skills_routes.py` | `reset_builtin_override` | `DELETE /api/skills/builtin/{name}` | puts it back |
-| `routes/skills_routes.py` | `set_builtin_override` | `PUT /api/skills/builtin/{name}` | rewrites a built-in skill's text for every user's agent |
-| `routes/upload_routes.py` | `upload_stats` | `GET /api/upload/stats` | aggregate upload storage |
-| `routes/upload_routes.py` | `manual_cleanup` | `POST /api/upload/cleanup` | deletes expired uploads across all owners |
-| `routes/tts_routes.py` | `clear_tts_cache` | `POST /api/tts/clear-cache` | discards every cached speech clip on the instance — one directory, keyed by text, provider, model, voice and speed and never by person, so there is no owner scope to give it. The same act as the upload cleanup above, at the same height. `B540`: it made no privilege check until 2026-10-02, when a signed-in non-admin was measured emptying it |
-| `routes/webhook/webhook_routes.py` | `delete_webhook` | `DELETE /api/webhooks/{webhook_id}` | removes one |
-| `routes/webhook/webhook_routes.py` | `list_webhooks` | `GET /api/webhooks` | the outbound webhook inventory. All five reach `require_admin` under the alias `_require_admin`, which is why a grep for `require_admin(` finds none of them |
-| `routes/webhook/webhook_routes.py` | `toggle_webhook` | `PATCH /api/webhooks/{webhook_id}` | enables or disables one |
-| `routes/webhook/webhook_routes.py` | `create_webhook` | `POST /api/webhooks` | adds an outbound destination the instance will POST to |
-| `routes/webhook/webhook_routes.py` | `test_webhook` | `POST /api/webhooks/{webhook_id}/test` | fires a test delivery |
-| `routes/workstation_routes.py` | `workstation_check` | `POST /api/workstation/check` | *Check now*: asks the workstation whether it answers, even while it is switched off, and pushes the admin's `sudo` setting to the daemon when it differs. Running the box. `P20-02` |
-| `routes/workstation_routes.py` | `_caller_is_admin` | `—` | not a route: `GET /api/workstation/status` asks it whether to add the admin's view — the address in effect and where it and the token came from, never the token. A 403 here means "no admin view", not a refusal; the status route itself is open to anyone signed in. Asked of `require_admin` rather than `is_admin` so rule C does not rise. `P20-02` |
-| `routes/workstation_routes.py` | `workstation_machines` | `GET /api/workstation/machines` | the workstation's own containers in Pantheon's compose project — each one's state — or the sentence naming the host-Docker opt-in. Running the box. `B1478` |
-| `routes/workstation_routes.py` | `workstation_machine_act` | `POST /api/workstation/machines/{service}/{action}` | start, stop or restart one of the workstation's services, through the host's Docker where the operator gave Pantheon it; only those services, only those three acts. Running the box. `B1478` |
-| `routes/workstation_routes.py` | `workstation_machine_logs` | `GET /api/workstation/machines/{service}/logs` | the last lines one workstation service wrote. Logs. `B1478` |
-| `routes/workstation_routes.py` | `workstation_backend` | `POST /api/workstation/backend` | the backend switch: saves the choice and starts that backend's services and stops the other's, where Pantheon has the host's Docker. Running the box. `B1478` |
-| `routes/auth_routes.py` | `set_features` | `POST /api/auth/features` | the instance's UI feature toggles. Not auth-exempt since `B542`; on this gate since `B543` |
-| `routes/auth_routes.py` | `settings_flag_sources` | `GET /api/auth/settings/flag-sources` | which layer — setting, environment, default — answers each tri-state flag. `B543` |
-| `routes/auth_routes.py` | `settings_ranges` | `GET /api/auth/settings/ranges` | the range each whole-number setting is held to, for the Settings fields that write them. `B1539` |
-| `routes/auth_routes.py` | `check_networks` | `POST /api/auth/networks/check` | validates a proposed `networks` value and says what it claims; saves nothing. `B543` |
-| `routes/auth_routes.py` | `network_agent_health` | `GET /api/auth/networks/agent` | whether the network agent is there and is the agent. `B543` |
-| `routes/auth_routes.py` | `host_guard_rules` | `GET /api/auth/networks/guard` | the agent's permanent guard list, read-only. `B543` |
-| `routes/auth_routes.py` | `network_devices` | `GET /api/auth/networks/devices` | the LAN device inventory, refreshed from the agent. `B543` |
-| `routes/auth_routes.py` | `name_network_device` | `POST /api/auth/networks/devices/name` | names a device by its MAC. `B543` |
-| `routes/shell_routes.py` | `list_packages` | `GET /api/cookbook/packages` | which optional serving packages are installed, locally or on the selected server. `B543` |
-
-### `power-user` — **3 power-user sites.** Reads a capable user needs in order to work, gated as if they were instance control. All three are the model picker's inventory (a fourth, `GET /api/providers`, had no caller and went with `B1482`): a non-admin can be given `allowed_models` in `DEFAULT_PRIVILEGES` today and still cannot see which endpoints exist.
-
-| file | function | route | protects |
-|---|---|---|---|
-| `routes/model_routes.py` | `list_model_endpoints` | `GET /api/model-endpoints` | the endpoint list with keys masked. Same argument: choosing a model is a user act gated as an operator one |
-| `routes/model_routes.py` | `get_endpoint_dependents` | `GET /api/model-endpoints/{ep_id}/dependents` | what would break if an endpoint went away |
-| `routes/model_routes.py` | `list_endpoint_models` | `GET /api/model-endpoints/{ep_id}/models` | the cached model list for one endpoint |
+### `power-user` — **0 power-user sites.** Reads a capable user needs in order to work, gated as if they were instance control. **Retired by `B683`.** `GET /api/model-endpoints` and `GET /api/model-endpoints/{ep_id}/models` answer anyone signed in now: whoever runs the instance (`runs_instance` asks `require_operator`) sees every endpoint and field as before, and anyone else sees their own and the shared endpoints, each with only the models `allowed_models` lets them use — the rule `/api/models` and a chat send already apply. `…/dependents`, the third, was the delete confirmation's read and is in § G.
 
 ### `only-because-nothing-finer-existed` — **22 only-because-nothing-finer-existed sites.** The gate is on the shape of the store, not on the act. Contacts, presets and the personal index are one shared file with no owner column, and the receipts are per-run data with no owner scope — so "admin" is standing in for an ownership check nobody has written. These are the rows `P11-02` should retire, and retiring them is a data-model change, not an auth change.
 
@@ -268,6 +193,97 @@ derived: direct 139 · Depends 21 · total 160
 | `routes/preset_routes.py` | `update_custom_preset` | `POST /api/presets/custom` | saves a persona into the single shared presets file. A second user cannot have one of their own, so admin is the only available answer |
 | `routes/preset_routes.py` | `save_group_presets` | `POST /api/presets/groups` | same file, same reason |
 | `routes/preset_routes.py` | `save_user_template` | `POST /api/presets/templates` | same file, same reason |
+
+## G · every `require_operator` site (`B683`)
+
+The `operator` tier of § A, on its own gate. `core.middleware.require_operator` asks
+`require_admin` first — unchanged, so an admin's way in never depends on the privilege
+store (`B531`) — and then lets through one more caller: a person whose privileges resolve
+`can_run_instance` to `True`, through `src.auth_helpers.resolve_privilege`, the one rule
+(user → role → registry; the registry declares it `False`). Pantheon's own loopback
+naming nobody passes, as at `require_admin`; a loopback naming a person is that person
+(`B1175`); a bearer token is the `api` sentinel and is refused (`B70`). None of § A's
+`superuser` sites reads the key, so a role that grants it — the `operator` role
+`P11-02` described and could not ship — reaches every row below and none of those.
+
+Scope (`Law 5`): every call to `core.middleware.require_operator` and every
+`Depends(require_operator)`, in tracked non-test Python outside `.pantheon/`, resolved
+through `from … import require_operator as X`, excluding `core/middleware.py` itself
+(where the gates compose each other). Derived by AST, like § A. `runs_instance` — the
+same question asked to decide what a route *shows*, never whether it answers — is not a
+site: the endpoint list and its models (the retired `power-user` tier) ask it.
+
+derived-operator: direct 61 · Depends 6 · total 67
+
+| file | function | route | protects |
+|---|---|---|---|
+| `routes/auth_routes.py` | `check_networks` | `POST /api/auth/networks/check` | validates a proposed `networks` value and says what it claims; saves nothing. `B543` |
+| `routes/auth_routes.py` | `host_guard_rules` | `GET /api/auth/networks/guard` | the agent's permanent guard list, read-only. `B543` |
+| `routes/auth_routes.py` | `name_network_device` | `POST /api/auth/networks/devices/name` | names a device by its MAC. `B543` |
+| `routes/auth_routes.py` | `network_agent_health` | `GET /api/auth/networks/agent` | whether the network agent is there and is the agent. `B543` |
+| `routes/auth_routes.py` | `network_devices` | `GET /api/auth/networks/devices` | the LAN device inventory, refreshed from the agent. `B543` |
+| `routes/auth_routes.py` | `set_features` | `POST /api/auth/features` | the instance's UI feature toggles. Not auth-exempt since `B542`; on this gate since `B543` |
+| `routes/auth_routes.py` | `settings_flag_sources` | `GET /api/auth/settings/flag-sources` | which layer — setting, environment, default — answers each tri-state flag. `B543` |
+| `routes/auth_routes.py` | `settings_ranges` | `GET /api/auth/settings/ranges` | the range each whole-number setting is held to, for the Settings fields that write them. `B1539` |
+| `routes/codex_routes.py` | `_require_cookbook_scope` | `—` | not a route: the helper nine Codex cookbook routes call. It demands the scope from a bearer token and admin from a cookie session, and its docstring is the clearest statement in the tree of why cookbook is gated — host topology, task logs, tmux commands, model-serving controls |
+| `routes/cookbook_routes.py` | `cookbook_tasks_status` | `GET /api/cookbook/tasks/status` | progress of in-flight downloads and serves |
+| `routes/cookbook_routes.py` | `get_cookbook_state` | `GET /api/cookbook/state` | the serve-state file: which models are up, on which hosts |
+| `routes/cookbook_routes.py` | `list_gpus` | `GET /api/cookbook/gpus` | host GPU inventory. `GET /api/hwfit/system` answers the same question, and since `B541` behind the same gate |
+| `routes/cookbook_routes.py` | `model_cached` | `GET /api/model/cached` | what is already on disk |
+| `routes/cookbook_routes.py` | `model_download` | `POST /api/model/download` | pulls model weights onto the host's disk |
+| `routes/cookbook_routes.py` | `model_serve` | `POST /api/model/serve` | starts a model server in tmux |
+| `routes/cookbook_routes.py` | `save_cookbook_state` | `POST /api/cookbook/state` | rewrites it. `FORBIDDEN.md` blocks the agent's generic `app_api` from this pair after it wiped the file once |
+| `routes/diagnostics_routes.py` | `get_database_stats` | `GET /api/db/stats` | row counts |
+| `routes/diagnostics_routes.py` | `get_diagnostic_bundle` | `GET /api/diagnostics/bundle` | the redacted support bundle |
+| `routes/diagnostics_routes.py` | `get_diagnostics_logs` | `GET /api/diagnostics/logs` | server logs, which carry every user's activity |
+| `routes/diagnostics_routes.py` | `get_rag_stats` | `GET /api/rag/stats` | collection sizes |
+| `routes/diagnostics_routes.py` | `get_self_check` | `GET /api/diagnostics/self-check` | the boot self-check |
+| `routes/diagnostics_routes.py` | `get_service_health` | `GET /api/diagnostics/services` | which subsystems answered |
+| `routes/diagnostics_routes.py` | `list_auth_events` | `GET /api/diagnostics/auth-events` | the auth audit log — every account's sign-ins, refusals, role and privilege changes, filtered by either party. Read by the person keeping the instance up after something goes wrong, like the logs above it. `B684` |
+| `routes/diagnostics_routes.py` | `list_evals` | `GET /api/diagnostics/evals` | the eval suites this build ships |
+| `routes/diagnostics_routes.py` | `prometheus_metrics` | `GET /metrics` | the Prometheus scrape endpoint. `Law 16` clause 4 makes this the operator's to point where they like, which is exactly the operator tier |
+| `routes/diagnostics_routes.py` | `run_eval` | `POST /api/diagnostics/evals/{name}/run` | runs one; it costs the instance's model budget |
+| `routes/embedding_routes.py` | `setup_embedding_routes` | `—` | not a route: a router-level `dependencies=[Depends(require_admin)]` covering every route under `/api/embeddings`. One site, whole-surface reach — the shape `P11-02`'s refactor should prefer |
+| `routes/font_routes.py` | `delete_custom_font` | `DELETE /api/fonts/custom/{filename}` | removes an uploaded font from every browser on the instance — the same act as adding one, undone. `B937`; the route keeps the upload's stored-name pattern and containment check on top of this gate |
+| `routes/font_routes.py` | `upload_custom_font` | `POST /api/fonts/custom` | adds a font every browser on the instance loads. Fonts are instance-wide theme assets, so adding one is running the box, not using it. `P2-24`; the route keeps its own allowlist and content check on top of this gate |
+| `routes/hwfit_routes.py` | `setup_hwfit_routes` | `—` | not a route: a router-level `dependencies=[Depends(require_admin)]` covering all five `/api/hwfit` routes — hardware detection on the serving host, or over SSH on a host the caller names. Host topology, like `list_gpus` above, and the choice of which box this instance opens SSH to. `B541`: until 2026-10-02 the middleware was the whole gate, and `/profiles` with no host was a directory-existence probe on the serving host for any signed-in account |
+| `routes/model_routes.py` | `create_model_endpoint` | `POST /api/model-endpoints` | creates one, storing a provider API key |
+| `routes/model_routes.py` | `delete_model_endpoint` | `DELETE /api/model-endpoints/{ep_id}` | deletes it |
+| `routes/model_routes.py` | `discover_local` | `GET /api/discover` | LAN/local discovery, which makes outbound connections |
+| `routes/model_routes.py` | `get_endpoint_dependents` | `GET /api/model-endpoints/{ep_id}/dependents` | what would break if an endpoint went away — the instance's settings that name it. The map tiered it `power-user` until `B683`; its one caller is the confirmation before `DELETE /api/model-endpoints/{ep_id}` (`admin.js`), which is the operator's act, so it is the operator's read |
+| `routes/model_routes.py` | `ping_endpoints` | `GET /api/ping` | reachability of every configured endpoint |
+| `routes/model_routes.py` | `probe_endpoint_models` | `GET /api/model-endpoints/{ep_id}/probe` | asks one endpoint what it serves |
+| `routes/model_routes.py` | `probe_local_endpoints` | `GET /api/model-endpoints/probe-local` | scans loopback ports for local model servers |
+| `routes/model_routes.py` | `probe_models` | `GET /api/probe` | probes them all |
+| `routes/model_routes.py` | `probe_selected` | `POST /api/probe-selected` | probes a chosen subset |
+| `routes/model_routes.py` | `test_model_endpoint` | `POST /api/model-endpoints/test` | tests a candidate endpoint, spending a call |
+| `routes/model_routes.py` | `toggle_model_endpoint` | `PATCH /api/model-endpoints/{ep_id}` | enables or disables an endpoint for everyone |
+| `routes/model_routes.py` | `update_hidden_models` | `PATCH /api/model-endpoints/{ep_id}/models` | changes what every user sees in the picker |
+| `routes/model_routes.py` | `update_tools` | `POST /api/tools` | the instance-wide tool enablement map |
+| `routes/personal_routes.py` | `add_directory_to_rag` | `POST /api/personal/add_directory` | points the indexer at a host directory — filesystem reach, not document management |
+| `routes/personal_routes.py` | `api_personal_reload` | `POST /api/personal/reload` | re-indexes the whole corpus |
+| `routes/personal_routes.py` | `delete_file_from_rag` | `DELETE /api/personal/file` | drops one file from the index |
+| `routes/personal_routes.py` | `remove_directory_from_rag` | `DELETE /api/personal/remove_directory` | un-points it |
+| `routes/shell_routes.py` | `list_packages` | `GET /api/cookbook/packages` | which optional serving packages are installed, locally or on the selected server. `B543` |
+| `routes/shell_routes.py` | `tmux_attach` | `GET /api/shell/tmux-attach` | the command that opens one of the instance's tmux sessions in a terminal (or, `action=list`, lists them — `B913`): whether the server runs in a container, the uid its sessions belong to, the login name on a native install. It runs nothing — `B909`; the Forge's tasks are operator work and this is how they are reached. Every route in this file is on this gate since `B543` |
+| `routes/skills_routes.py` | `get_builtin_skill` | `GET /api/skills/builtin/{name}` | the whole instruction block, override included — the same text the model is given. The read half of the pair below, gated at the same height for the same reason |
+| `routes/skills_routes.py` | `list_builtin_skills` | `GET /api/skills/builtin` | the inventory of every built-in tool the agent has, with the first 240 characters of the instruction block each one is given. Gated by `P2-21` on 2026-09-18; until then it made no auth call at all, beside the PUT and DELETE below it |
+| `routes/skills_routes.py` | `reset_builtin_override` | `DELETE /api/skills/builtin/{name}` | puts it back |
+| `routes/skills_routes.py` | `set_builtin_override` | `PUT /api/skills/builtin/{name}` | rewrites a built-in skill's text for every user's agent |
+| `routes/tts_routes.py` | `clear_tts_cache` | `POST /api/tts/clear-cache` | discards every cached speech clip on the instance — one directory, keyed by text, provider, model, voice and speed and never by person, so there is no owner scope to give it. The same act as the upload cleanup above, at the same height. `B540`: it made no privilege check until 2026-10-02, when a signed-in non-admin was measured emptying it |
+| `routes/upload_routes.py` | `manual_cleanup` | `POST /api/upload/cleanup` | deletes expired uploads across all owners |
+| `routes/upload_routes.py` | `upload_stats` | `GET /api/upload/stats` | aggregate upload storage |
+| `routes/webhook/webhook_routes.py` | `create_webhook` | `POST /api/webhooks` | adds an outbound destination the instance will POST to |
+| `routes/webhook/webhook_routes.py` | `delete_webhook` | `DELETE /api/webhooks/{webhook_id}` | removes one |
+| `routes/webhook/webhook_routes.py` | `list_webhooks` | `GET /api/webhooks` | the outbound webhook inventory. All five reach `require_admin` under the alias `_require_admin`, which is why a grep for `require_admin(` finds none of them |
+| `routes/webhook/webhook_routes.py` | `test_webhook` | `POST /api/webhooks/{webhook_id}/test` | fires a test delivery |
+| `routes/webhook/webhook_routes.py` | `toggle_webhook` | `PATCH /api/webhooks/{webhook_id}` | enables or disables one |
+| `routes/workstation_routes.py` | `_caller_runs_instance` | `—` | not a route: `GET /api/workstation/status` asks it whether to add the admin's view (`_caller_is_admin` until `B683`) — the address in effect and where it and the token came from, never the token. A 403 here means "no admin view", not a refusal; the status route itself is open to anyone signed in. Asked of `require_admin` rather than `is_admin` so rule C does not rise. `P20-02` |
+| `routes/workstation_routes.py` | `workstation_backend` | `POST /api/workstation/backend` | the backend switch: saves the choice and starts that backend's services and stops the other's, where Pantheon has the host's Docker. Running the box. `B1478` |
+| `routes/workstation_routes.py` | `workstation_check` | `POST /api/workstation/check` | *Check now*: asks the workstation whether it answers, even while it is switched off, and pushes the admin's `sudo` setting to the daemon when it differs. Running the box. `P20-02` |
+| `routes/workstation_routes.py` | `workstation_machine_act` | `POST /api/workstation/machines/{service}/{action}` | start, stop or restart one of the workstation's services, through the host's Docker where the operator gave Pantheon it; only those services, only those three acts. Running the box. `B1478` |
+| `routes/workstation_routes.py` | `workstation_machine_logs` | `GET /api/workstation/machines/{service}/logs` | the last lines one workstation service wrote. Logs. `B1478` |
+| `routes/workstation_routes.py` | `workstation_machines` | `GET /api/workstation/machines` | the workstation's own containers in Pantheon's compose project — each one's state — or the sentence naming the host-Docker opt-in. Running the box. `B1478` |
 
 ## B · what gates the fifteen quiet route files (`P11-02d`)
 
@@ -343,15 +359,15 @@ routes: 40
 | `PUT /api/auth/open-signup` | `set_signup_enabled` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
 | `DELETE /api/auth/users` | `admin_delete_user` | `middleware + get_current_user + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
 | `GET /api/auth/features` | `get_features` | `exempt` | yes — the feature flags the pre-login page renders from. Read only, no secrets. |
-| `POST /api/auth/features` | `set_features` | `middleware + require_admin` | yes — `B542`: the exemption names GET only now, so the write meets the middleware like any route, and `require_admin` (`B543`) behind it. It was exempt with only the handler's own check in front of the instance's feature flags. |
+| `POST /api/auth/features` | `set_features` | `middleware + require_operator` | yes — `B542`: the exemption names GET only now, so the write meets the middleware like any route, and the operator gate (`B543`; `require_operator` since `B683`) behind it. It was exempt with only the handler's own check in front of the instance's feature flags. |
 | `GET /api/auth/settings` | `get_settings` | `exempt + _get_current_user + is_admin` | yes — exempt on purpose, and it scrubs: an admin gets the full set, everyone else a copy with secrets blanked. The scrub is the control, and it is in the handler where it belongs. |
-| `POST /api/auth/networks/check` | `check_networks` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
-| `GET /api/auth/networks/agent` | `network_agent_health` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
-| `GET /api/auth/networks/guard` | `host_guard_rules` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
-| `GET /api/auth/networks/devices` | `network_devices` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
-| `POST /api/auth/networks/devices/name` | `name_network_device` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
-| `GET /api/auth/settings/flag-sources` | `settings_flag_sources` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
-| `GET /api/auth/settings/ranges` | `settings_ranges` | `middleware + require_admin` | yes — `B1539`: the bounds of settings only an admin writes; read by the admin's Settings fields. |
+| `POST /api/auth/networks/check` | `check_networks` | `middleware + require_operator` | yes — the operator's (`B683`: an admin, or a person an admin let run the instance), and since `B543` a shared gate says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `GET /api/auth/networks/agent` | `network_agent_health` | `middleware + require_operator` | yes — the operator's (`B683`: an admin, or a person an admin let run the instance), and since `B543` a shared gate says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `GET /api/auth/networks/guard` | `host_guard_rules` | `middleware + require_operator` | yes — the operator's (`B683`: an admin, or a person an admin let run the instance), and since `B543` a shared gate says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `GET /api/auth/networks/devices` | `network_devices` | `middleware + require_operator` | yes — the operator's (`B683`: an admin, or a person an admin let run the instance), and since `B543` a shared gate says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `POST /api/auth/networks/devices/name` | `name_network_device` | `middleware + require_operator` | yes — the operator's (`B683`: an admin, or a person an admin let run the instance), and since `B543` a shared gate says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `GET /api/auth/settings/flag-sources` | `settings_flag_sources` | `middleware + require_operator` | yes — the operator's (`B683`: an admin, or a person an admin let run the instance), and since `B543` a shared gate says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `GET /api/auth/settings/ranges` | `settings_ranges` | `middleware + require_operator` | yes — `B1539`: the bounds of settings only an admin writes; read by the admin's Settings fields. |
 | `POST /api/auth/settings` | `set_settings` | `middleware + require_admin` | yes — `B542`: exempt for GET only now, so the write that sets every app setting, credentials included, needs a session, and `require_admin` (`B543`) behind it. |
 | `GET /api/auth/integrations` | `list_integrations_route` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
 | `GET /api/auth/integrations/presets` | `list_presets` | `exempt` | yes — preset templates with `api_key` stripped in the comprehension; nothing instance-specific. |
@@ -429,9 +445,9 @@ routes: 4
 | route | handler | gate | intended |
 |---|---|---|---|
 | `GET /api/fonts/custom` | `list_custom_fonts` | `middleware` | yes — the font names under `static/fonts/custom` (which `AUTH_EXEMPT_PREFIXES` already serves to the same audience) and under `DATA_DIR/fonts`, plus the upload's allowlist. Login is the right bar. |
-| `POST /api/fonts/custom` | `upload_custom_font` | `middleware + get_current_user + require_admin` | yes — `P2-24`. Admin, because a font is loaded by every browser on the instance; `get_current_user` resolves the `P12-01` byte cap for the person uploading. |
+| `POST /api/fonts/custom` | `upload_custom_font` | `middleware + get_current_user + require_operator` | yes — `P2-24`. The operator's (`B683`), because a font is loaded by every browser on the instance; `get_current_user` resolves the `P12-01` byte cap for the person uploading. |
 | `GET /api/fonts/custom/{filename}` | `get_custom_font` | `middleware` | yes — `P2-24`. An uploaded font, served to anyone signed in because every signed-in theme may use it; a fixed name pattern, a fixed `font/*` type, `nosniff` and `attachment`. |
-| `DELETE /api/fonts/custom/{filename}` | `delete_custom_font` | `middleware + require_admin` | yes — `B937`. Admin, as for adding one: a font is every browser's. Only a name the upload could have stored, only inside `DATA_DIR/fonts`; a hand-dropped font is the operator's file and is not removable here. |
+| `DELETE /api/fonts/custom/{filename}` | `delete_custom_font` | `middleware + require_operator` | yes — `B937`. The operator's, as for adding one: a font is every browser's. Only a name the upload could have stored, only inside `DATA_DIR/fonts`; a hand-dropped font is the operator's file and is not removable here. |
 
 #### `routes/hwfit_routes.py`
 
@@ -441,11 +457,11 @@ routes: 5
 
 | route | handler | gate | intended |
 |---|---|---|---|
-| `GET /api/hwfit/system` | `get_system` | `middleware + require_admin` | yes — `B541`. `?host=user@server` makes the instance open SSH to a host the caller names; admin, as `GET /api/cookbook/gpus` is for the same question. The SSRF validators still run behind the gate. |
-| `GET /api/hwfit/models` | `get_models` | `middleware + require_admin` | yes — `B541`. Same `host`/`ssh_port` pair, same detection path; `refresh_catalog=1` also starts a HuggingFace catalogue refresh on the instance's paced outbound budget — since `P23-07` in a thread, one at a time and at most once per five minutes. |
-| `GET /api/hwfit/profiles` | `get_serve_profiles` | `middleware + require_admin` | yes — `B541`. Same, and `model_path` runs `test -d` / `find` on the target, the serving host when no host is named. |
-| `GET /api/hwfit/image-models` | `get_image_models` | `middleware + require_admin` | yes — `B541`. Same. |
-| `GET /api/hwfit/catalog-refresh` | `get_catalog_refresh` | `middleware + require_admin` | yes — `P23-07`. Where the background catalogue refresh `refresh_catalog=1` starts is (`idle`/`running`/`done`/`failed`, with counts); the Forge follows it to redraw. Reads no host and starts nothing. |
+| `GET /api/hwfit/system` | `get_system` | `middleware + require_operator` | yes — `B541`. `?host=user@server` makes the instance open SSH to a host the caller names; the operator's (`B683`), as `GET /api/cookbook/gpus` is for the same question. The SSRF validators still run behind the gate. |
+| `GET /api/hwfit/models` | `get_models` | `middleware + require_operator` | yes — `B541`. Same `host`/`ssh_port` pair, same detection path; `refresh_catalog=1` also starts a HuggingFace catalogue refresh on the instance's paced outbound budget — since `P23-07` in a thread, one at a time and at most once per five minutes. |
+| `GET /api/hwfit/profiles` | `get_serve_profiles` | `middleware + require_operator` | yes — `B541`. Same, and `model_path` runs `test -d` / `find` on the target, the serving host when no host is named. |
+| `GET /api/hwfit/image-models` | `get_image_models` | `middleware + require_operator` | yes — `B541`. Same. |
+| `GET /api/hwfit/catalog-refresh` | `get_catalog_refresh` | `middleware + require_operator` | yes — `P23-07`. Where the background catalogue refresh `refresh_catalog=1` starts is (`idle`/`running`/`done`/`failed`, with counts); the Forge follows it to redraw. Reads no host and starts nothing. |
 
 #### `routes/prefs_routes.py`
 
@@ -497,7 +513,7 @@ routes: 3
 |---|---|---|---|
 | `GET /api/tts/stats` | `get_tts_stats` | `middleware` | yes — counters for a local service. |
 | `POST /api/tts/synthesize` | `synthesize_speech` | `middleware` | yes — a signed-in user synthesising their own text. |
-| `POST /api/tts/clear-cache` | `clear_tts_cache` | `middleware + require_admin` | yes — `B540`. An instance-wide mutation, so admin, at the height of the same act on uploads (`POST /api/upload/cleanup`). There is no owner to scope it to — nothing records whose clip is whose — and the product's one caller runs it after an admin-only voice change. A no-login install keeps it: `require_admin` returns when auth is off. |
+| `POST /api/tts/clear-cache` | `clear_tts_cache` | `middleware + require_operator` | yes — `B540`. An instance-wide mutation, so the operator's (`B683`), at the height of the same act on uploads (`POST /api/upload/cleanup`). There is no owner to scope it to — nothing records whose clip is whose — and the product's one caller runs it after an admin-only voice change. |
 
 #### `routes/workspace_routes.py`
 
@@ -523,15 +539,17 @@ the number of admin decisions added — which is the behaviour the map was built
 The paragraph above is about the 107 that predate roles; the counts below are live.
 
 - **69 superuser sites do not move.** They are already right.
-- **66 operator sites are the phase's return.** Today the only way to let someone keep
-  the instance up is to make them the owner. An `operator` overlay on
-  `DEFAULT_PRIVILEGES` retires the 66 operator sites without touching any of the
-  69 superuser sites. (Both counts in the one spelling `check-auth-map.py` checks
+- **An `operator` overlay on `DEFAULT_PRIVILEGES` was the phase's return, and since
+  `B683` it is there:** 0 operator sites are left on `require_admin`, and none of the
+  69 superuser sites moved. The only way to let someone keep the instance up was to make
+  them the owner; now `can_run_instance` is declared, and every site of the tier asks
+  `require_operator` (§ G). (Both counts in the one spelling `check-auth-map.py` checks
   wherever it appears: this sentence said *"48 gates … the 37"* through every gate
   added after it was written, and it is the sentence this section concludes from —
   `B1143`.)
-- **3 power-user sites are one privilege key.** `allowed_models` already exists in
-  `DEFAULT_PRIVILEGES`; a user who has it still cannot list the endpoints it names.
+- **0 power-user sites: they were one privilege key.** `allowed_models` already existed
+  in `DEFAULT_PRIVILEGES` and the endpoint list did not consult it; since `B683` it does,
+  for everyone signed in.
 - **22 only-because-nothing-finer-existed sites are not an auth job at all.** Contacts,
   presets and the personal index need an owner column; the diagnostics receipts need an
   owner scope. Changing the gate before the store has an owner would swap one wrong
@@ -548,12 +566,13 @@ calls outside a request.
 
 Every route in the tree — not only § B's fifteen files — whose handler reaches
 `validate_remote_host`, `validate_ssh_port` or `run_ssh_command` must also reach
-`require_admin`. The two validators are the `FORBIDDEN.md` Part 2 SSRF control on a
+`require_admin` or, since `B683`, `require_operator` — the operator's gate, which is
+`require_admin` with one more door for a person an admin let run the instance. The two validators are the `FORBIDDEN.md` Part 2 SSRF control on a
 caller-chosen target, so reaching one marks a route that will open a connection to a
 box its caller picked; the third opens the SSH session itself. Reach is the same
 closure § B uses: the module's own call graph, plus every `Depends(f)` on the router
 or the route's decorator. The Codex cookbook routes count as gated because
-`_require_cookbook_scope` reaches `require_admin` for a cookie session; an API token
+`_require_cookbook_scope` reaches `require_operator` for a cookie session; an API token
 there is held to its `cookbook:*` scope instead, which is that helper's documented
 design.
 
@@ -562,7 +581,7 @@ signed-in account named, while `GET /api/cookbook/gpus` — one directory away, 
 question — was admin-only. Nobody had compared the two files. There is no ceiling,
 because the number allowed through ungated is zero:
 
-derived-ssh-targets: 14 routes in 3 files, 14 behind require_admin
+derived-ssh-targets: 14 routes in 3 files, 14 behind require_admin or require_operator
 
 ## F · the `/static` mount hands out no page (`B370`)
 

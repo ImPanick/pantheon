@@ -1100,6 +1100,10 @@ async def build_chat_context(
     # history: the session id may be a temporary wrapper or, in buggy clients, a
     # stale normal session id. Only the ephemeral incognito transcript is safe.
     messages = preface + (_incognito_messages(session_id) if incognito else sess.get_context_messages())
+    # `B1290`. A recording goes to a model as sound on its own turn only: an
+    # earlier turn's would be sent again to whatever model the chat is on now.
+    from src.attachment_refs import without_sounds
+    messages = without_sounds(messages, keep_last_user=True)
 
     # Current date/time — injected as a standalone *user*-role context message
     # placed immediately before the latest user turn, NOT folded into the

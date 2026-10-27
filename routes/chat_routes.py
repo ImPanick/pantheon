@@ -635,6 +635,15 @@ def _chat_candidate_request_factory(
         if not context_length:
             context_length = fallback_context_length
         request_messages = trim_for_context(candidate_messages, context_length)
+        # `B1290`. Only the selected model was asked whether it hears; a
+        # fallback that says nothing, or no, is sent the turn's words alone —
+        # an audio part it does not take would fail the turn it is rescuing.
+        from src.attachment_refs import has_sounds, without_sounds
+        if has_sounds(request_messages):
+            from src.chat_helpers import audio_answer
+            if await asyncio.to_thread(audio_answer, candidate_model or "",
+                                       candidate_url or "") is not True:
+                request_messages = without_sounds(request_messages)
         state["requests"][index] = request_messages
         state["context_lengths"][index] = context_length
         state["compactions"][index] = compaction_state
@@ -4051,21 +4060,30 @@ def setup_chat_routes(
         `B1249`. With ``chats=1`` (the Ctrl+K palette) the answer is
         ``{"chats": [...], "results": [...]}``: the chats whose *name* holds the
         words as well, which the message search never looked at, so a chat could
-        not be found by its own title."""
+        not be found by its own title.
+
+        `P9-15c`. Each result says how it was found (`match`: keyword, meaning
+        or both), and the palette's answer carries ``meaning`` —
+        ``{"meaning": bool, "sentence": str}`` — the line that says whether the
+        search looked by meaning, and why not when it did not."""
         if not q or not q.strip():
             return {"chats": [], "results": []} if chats else []
 
         _user = effective_user(request)
-        results = [
-            result.to_dict()
-            for result in search_session_messages(
-                q,
-                limit=limit,
-                owner=_user,
-                restrict_owner=_user is not None,
-                include_legacy_owner=False,
-            )
-        ]
+        # `P9-15c`. Keyword and meaning in one list; `meaning` says which was
+        # searched, and why not when it was not. Off the event loop, because
+        # the meaning half embeds the query.
+        meaning: dict = {}
+        found = await asyncio.to_thread(
+            search_session_messages,
+            q,
+            limit=limit,
+            owner=_user,
+            restrict_owner=_user is not None,
+            include_legacy_owner=False,
+            report=meaning,
+        )
+        results = [result.to_dict() for result in found]
         if not chats:
             return results
         from routes.session_routes import _HIDDEN_SYSTEM_SESSION_NAMES
@@ -4078,6 +4096,7 @@ def setup_chat_routes(
                 hidden_names=("Nobody", "Incognito", *_HIDDEN_SYSTEM_SESSION_NAMES),
             ),
             "results": results,
+            "meaning": meaning,
         }
 
     # ------------------------------------------------------------------ #

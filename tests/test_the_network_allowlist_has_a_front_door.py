@@ -268,9 +268,9 @@ def test_the_check_endpoint_is_admin_only():
     """It reads nothing secret, but it reveals the shape of the operator's
     network and every other settings route here is admin-gated."""
     fn = _route_fn("routes/auth_routes.py", "check_networks")
-    # `B543`: the one gate, `core.middleware.require_admin`, instead of a
-    # hand-written `is_admin` check and its own 403.
-    assert _named_calls(fn, "require_admin"), "the check endpoint is not admin-gated"
+    # `B543`: one shared gate instead of a hand-written `is_admin` check and its
+    # own 403. `B683`: the operator tier's, `core.middleware.require_operator`.
+    assert _named_calls(fn, "require_operator"), "the check endpoint is not gated"
 
 
 def test_the_panel_exists_and_is_reachable():

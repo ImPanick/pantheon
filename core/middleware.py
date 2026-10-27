@@ -150,13 +150,29 @@ def require_admin(request: Request):
     auth-off install to pass. Until 2026-10-07 `AUTH_ENABLED=false` returned
     here for everyone, a caller with no session included.
     """
-    internal, person = _internal_request_person(request)
-    if internal and person is None:
+    auth_mgr, user = _gated_person(request, "Admin only")
+    if user is None:
         return
-
-    auth_mgr = getattr(request.app.state, "auth_manager", None)
-    if not auth_mgr or not auth_mgr.is_configured:
+    if not auth_mgr.is_admin(user):
         raise HTTPException(403, "Admin only")
+
+
+def _gated_person(request: Request, refusal: str):
+    """Who an admin-family gate is asked about: `(auth_manager, person)`.
+
+    `(auth_manager, None)` is Pantheon itself — the internal-tool loopback
+    naming nobody — which every such gate lets through. A loopback naming a
+    person is that person (`B1175`). Anything else that names nobody, or names
+    a request sentinel, is refused with `refusal`. One answer for
+    `require_admin` and `require_operator` (`B683`), so the two gates cannot
+    disagree about who is asking.
+    """
+    internal, person = _internal_request_person(request)
+    auth_mgr = getattr(request.app.state, "auth_manager", None)
+    if internal and person is None:
+        return auth_mgr, None
+    if not auth_mgr or not auth_mgr.is_configured:
+        raise HTTPException(403, refusal)
     user = person if internal else getattr(request.state, "current_user", None)
     # `B543`. A request sentinel is never an admin, whatever the store says:
     # `api` is what `AuthMiddleware` names a bearer-token request (`B70` — a
@@ -166,8 +182,69 @@ def require_admin(request: Request):
     # like every other admin route and there is one answer to "is this an
     # admin". All are reserved usernames, so no account can hold one — this
     # is the refusal said where it is decided, not a new one.
-    if not user or user in REQUEST_SENTINEL_OWNERS or not auth_mgr.is_admin(user):
-        raise HTTPException(403, "Admin only")
+    if not user or user in REQUEST_SENTINEL_OWNERS:
+        raise HTTPException(403, refusal)
+    return auth_mgr, user
+
+
+#: `B683`. What a person is told at an operator gate they may not pass — who
+#: may, and where the door is (`Law 15`), never a bare "Admin only".
+OPERATOR_REFUSAL = (
+    "Only an admin, or someone an admin has let run this instance, can do this. "
+    "An admin can turn on “Run this instance” for you in Settings → Users.")
+
+
+def require_operator(request: Request):
+    """`B683`. The gate for running the instance — `require_admin` with one more door.
+
+    `.pantheon/P11-AUTH-MAP.md` tiers every admin gate, and its `operator`
+    tier — models and endpoints, the Forge's serving, diagnostics and logs,
+    webhooks, the embeddings, the personal index, the workstation's machines —
+    is the work of keeping the box up, which needs none of the `superuser`
+    tier above it. Until this gate those sites asked `is_admin`, so the only
+    way to hand somebody the operator's job was to hand them the owner's.
+
+    It answers **yes** to exactly three callers: Pantheon itself (the
+    loopback naming nobody, as `require_admin`); an admin, asked through
+    `require_admin` unchanged, so an admin's way in never depends on the
+    privilege store (`B531`); and a person whose privileges resolve
+    `can_run_instance` to `True` — per person, or through a role
+    (`resolve_privilege`, the one rule: user → role → registry, and the
+    registry declares it `False`). A loopback naming a person is that person
+    (`B1175`); a bearer token is the `api` sentinel and is refused (`B70`).
+
+    The adversary (`Law 17`) is a signed-in person nobody granted it, and
+    text their assistant reads steering it here; both are refused. A store
+    that cannot be read refuses a non-admin with `PRIVILEGE_STORE_SENTENCE`
+    (`D-2026-10-26-01` §1) — it never grants.
+    """
+    try:
+        require_admin(request)
+        return
+    except HTTPException:
+        pass
+    auth_mgr, user = _gated_person(request, OPERATOR_REFUSAL)
+    if user is None:  # Pantheon itself — `require_admin` already said yes
+        return
+    from core.auth import OPERATOR_PRIVILEGE
+    from src.auth_helpers import privileges_or_refuse, resolve_privilege
+    if resolve_privilege(privileges_or_refuse(auth_mgr, user), OPERATOR_PRIVILEGE) is True:
+        return
+    raise HTTPException(403, OPERATOR_REFUSAL)
+
+
+def runs_instance(request: Request) -> bool:
+    """`B683`. Whether `require_operator` would let this request through.
+
+    For a route open to every signed-in person that shows the person who runs
+    the instance more — the endpoint list (`GET /api/model-endpoints`), the
+    workstation's status — asked of the gate itself rather than restated.
+    """
+    try:
+        require_operator(request)
+    except HTTPException:
+        return False
+    return True
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):

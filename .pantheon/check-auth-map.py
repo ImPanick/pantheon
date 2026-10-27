@@ -54,6 +54,12 @@ Four populations, derived:
      has no ceiling: the population behind it is every such route, and the
      number allowed through ungated is zero.
 
+  G  every `require_operator` site (`B683`). The operator tier of § A,
+     retired from `require_admin` onto the gate that also lets through a
+     person holding `can_run_instance` — derived and held to the map's § G
+     table exactly as rule A holds § A, so a site cannot move between the two
+     gates without the map saying which tier it is.
+
   F  the `/static` mount hands out no document (`B370`). `/static` is an
      auth-exempt prefix because the login page loads its assets from it
      before anyone is signed in — and anything else that lands under it is
@@ -130,10 +136,24 @@ AUTH_NAMES = frozenset({
     "storage_owner_for_request", "require_api_token_scope",
     "require_chat_api_token_scope", "owner_is_admin",
     "is_admin", "_verify_session_owner",
+    # `B683`: the operator gate, and the view decision that asks it.
+    "require_operator", "runs_instance",
 })
 
 #: The other ways this codebase answers "is this person an admin".
 OTHER_GATE_NAMES = frozenset({"is_admin", "owner_is_admin"})
+
+#: `B683`. The two gates § A and § G hold to the map, by the name each is
+#: defined under in `core/middleware.py`. `require_operator` is `require_admin`
+#: with one more door — a person whose privileges grant `can_run_instance`.
+ADMIN_GATE = "require_admin"
+OPERATOR_GATE = "require_operator"
+
+#: Where both gates are defined. Its calls are the gates composing each other
+#: (`require_operator` asks `require_admin` first; `runs_instance` asks
+#: `require_operator`), not sites that protect anything, so neither rule
+#: counts them — the same reason rule C skips `require_admin`'s own body.
+GATE_MODULE = "core/middleware.py"
 
 HTTP_METHODS = frozenset({
     "get", "post", "put", "delete", "patch", "head", "options", "websocket",
@@ -282,8 +302,8 @@ def _enclosing(tree: ast.Module) -> dict[int, list[ast.FunctionDef | ast.AsyncFu
     return stack_of
 
 
-def require_admin_aliases(tree: ast.Module) -> set[str]:
-    """Every local name bound to `core.middleware.require_admin` in this module.
+def gate_aliases(tree: ast.Module, gate: str = ADMIN_GATE) -> set[str]:
+    """Every local name bound to `core.middleware.<gate>` in this module.
 
     `routes/webhook/webhook_routes.py` does `from core.middleware import
     require_admin as _require_admin`, so five real gates answer to a name a
@@ -292,25 +312,43 @@ def require_admin_aliases(tree: ast.Module) -> set[str]:
     implementation is a different finding, and its `is_admin` call is counted
     in rule C. `routes/shell_routes.py` was that module until `B543`.
     """
-    names = {"require_admin"}
+    names = {gate}
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("middleware"):
             for alias in node.names:
-                if alias.name == "require_admin":
+                if alias.name == gate:
                     names.add(alias.asname or alias.name)
     return names
 
 
+def require_admin_aliases(tree: ast.Module) -> set[str]:
+    """`gate_aliases` for `require_admin` — rule A's, and rule E's half of it."""
+    return gate_aliases(tree, ADMIN_GATE)
+
+
 def require_admin_sites(root: Path = ROOT, rels: list[str] | None = None) -> list[Site]:
     """Every `require_admin` gate in the tree, direct call or FastAPI dependency."""
+    return gate_sites(root, rels, ADMIN_GATE)
+
+
+def require_operator_sites(root: Path = ROOT, rels: list[str] | None = None) -> list[Site]:
+    """Rule G: every `require_operator` gate in the tree (`B683`)."""
+    return gate_sites(root, rels, OPERATOR_GATE)
+
+
+def gate_sites(root: Path = ROOT, rels: list[str] | None = None,
+               gate: str = ADMIN_GATE) -> list[Site]:
+    """Every site of one gate in the tree, direct call or FastAPI dependency."""
     if rels is None:
         rels = tracked_python(root)
     sites: list[Site] = []
     for rel in rels:
-        tree = _parse(root, rel, containing="require_admin")
+        if rel == GATE_MODULE:
+            continue
+        tree = _parse(root, rel, containing=gate)
         if tree is None:
             continue
-        aliases = require_admin_aliases(tree)
+        aliases = gate_aliases(tree, gate)
         # A module that defines its own `require_admin` (none do today) would
         # otherwise have its definition counted as a use of itself.
         local_defs = {
@@ -482,11 +520,13 @@ def ssh_target_routes(root: Path = ROOT, rels: list[str] | None = None) -> list[
         tree = _parse(root, rel, containing=tuple(SSH_TARGET_NAMES))
         if tree is None:
             continue
-        admin = require_admin_aliases(tree)
+        # `B683`: the operator gate is the operator's too — `require_admin`
+        # with one more door, for a person an admin let run the instance.
+        gates = require_admin_aliases(tree) | gate_aliases(tree, OPERATOR_GATE)
         for node, method, path, reach in route_reach(tree):
             if reach & SSH_TARGET_NAMES:
                 out.append(TargetRoute(rel, method, path, node.name, node.lineno,
-                                       bool(reach & admin)))
+                                       bool(reach & gates)))
     out.sort(key=lambda r: (r.file, r.line))
     return out
 
@@ -659,6 +699,8 @@ class ParsedMap(NamedTuple):
     route_counts: dict   # file -> claimed route count
     ssh_total: str = ""  # the claimed `derived-ssh-targets:` line, raw (rule E)
     static_total: str = ""  # the claimed `derived-static-documents:` line, raw (rule F)
+    operator_sites: dict = {}  # (file, func) -> row, § G (`B683`)
+    operator_total: str = ""   # the claimed `derived-operator:` line, raw (rule G)
 
 
 def parse_map(text: str) -> ParsedMap:
@@ -669,6 +711,8 @@ def parse_map(text: str) -> ParsedMap:
     other_total = ""
     ssh_total = ""
     static_total = ""
+    operator_sites: dict[tuple[str, str], dict] = {}
+    operator_total = ""
     routes: dict[str, dict[str, dict]] = {}
     route_counts: dict[str, int] = {}
 
@@ -700,6 +744,9 @@ def parse_map(text: str) -> ParsedMap:
         if line.lower().startswith("derived-static-documents:"):
             static_total = line[len("derived-static-documents:"):].strip()
             continue
+        if line.lower().startswith("derived-operator:"):
+            operator_total = line[len("derived-operator:"):].strip()
+            continue
         m = re.match(r"^routes:\s*(\d+)\s*$", line, re.I)
         if m and route_file:
             route_counts[route_file] = int(m.group(1))
@@ -721,6 +768,15 @@ def parse_map(text: str) -> ParsedMap:
                     "route": _bare(cells[2]), "protects": cells[3], "tier": tier,
                 }
             continue
+        if section.startswith("g ") or section.startswith("g·"):
+            if head == "file" or len(cells) < 4:
+                continue
+            key = (_bare(cells[0]), _bare(cells[1]))
+            operator_sites[key] = {
+                "file": _bare(cells[0]), "func": _bare(cells[1]),
+                "route": _bare(cells[2]), "protects": cells[3], "tier": "operator",
+            }
+            continue
         if section.startswith("b"):
             if head in ("route", "method"):
                 continue
@@ -730,7 +786,7 @@ def parse_map(text: str) -> ParsedMap:
                     "gate": _bare(cells[2]), "intended": cells[3],
                 }
     return ParsedMap(sites, tier_summary, site_total, other_total, routes, route_counts,
-                     ssh_total, static_total)
+                     ssh_total, static_total, operator_sites, operator_total)
 
 
 def _gate_from_source(route: Route, exact: dict[str, frozenset[str]],
@@ -824,6 +880,52 @@ def problems(root: Path, text: str, *, max_other: int) -> tuple[list[str], dict]
             f"`{want_total}`."
         )
 
+    # ── G ────────────────────────────────────────────────────────────────────
+    # `B683`. The operator tier's own gate, held to § G as § A is held to the
+    # tree: every site mapped, every mapped site real, each route as the
+    # source says. A site moving from `require_admin` to `require_operator`
+    # leaves § A's tables and must arrive in § G's, so the tier table shrinks
+    # by exactly the number the operator gate gained.
+    op_sites = require_operator_sites(root)
+    op_by_key: dict[tuple[str, str], Site] = {}
+    for site in op_sites:
+        if site.key in op_by_key:
+            out.append(
+                f"{site.file}:{site.line}: a second require_operator site in `{site.func}` "
+                f"(the first is line {op_by_key[site.key].line}). § G keys on file + "
+                "function, so give one of them its own helper.")
+            continue
+        op_by_key[site.key] = site
+    for key, site in sorted(op_by_key.items()):
+        row = parsed.operator_sites.get(key)
+        if row is None:
+            out.append(
+                f"{site.file}:{site.line}: `require_operator` in `{site.func}` "
+                f"({site.route or 'no route'}) is not in § G. A person holding "
+                "`can_run_instance` passes it, so the map must say what it protects.")
+            continue
+        if row["route"] != (site.route or "—"):
+            out.append(
+                f"{site.file}: `{site.func}` is mapped in § G as `{row['route']}` and the "
+                f"source says `{site.route or '—'}`.")
+        if not row["protects"]:
+            out.append(f"{site.file}: `{site.func}` has an empty `protects` cell in § G.")
+        if key in parsed.sites:
+            out.append(
+                f"{site.file}: `{site.func}` is in § A and in § G. It is one gate or the "
+                "other; drop the row that no longer describes it.")
+    for key in sorted(set(parsed.operator_sites) - set(op_by_key)):
+        out.append(
+            f"{key[0]}: § G has `{key[1]}` and there is no `require_operator` there "
+            "— drop the row so the map stays a description of the tree.")
+    op_direct = sum(1 for s in op_sites if s.kind == "direct")
+    want_op = (f"direct {op_direct} · Depends {len(op_sites) - op_direct} · "
+               f"total {len(op_sites)}")
+    if parsed.operator_total != want_op:
+        out.append(
+            f"§ G's `derived-operator:` line says `{parsed.operator_total}` and the tree "
+            f"says `{want_op}`.")
+
     # ── B ────────────────────────────────────────────────────────────────────
     exact, patterns = auth_exempt(root)
     if not exact:
@@ -906,14 +1008,14 @@ def problems(root: Path, text: str, *, max_other: int) -> tuple[list[str], dict]
     for t in ungated:
         out.append(
             f"{t.file}:{t.line}: `{t.key}` reaches a remote host its caller names "
-            f"(`{t.func}` reaches {' / '.join(sorted(SSH_TARGET_NAMES))}) and no "
-            "`require_admin` stands in front of it. Which box this instance opens a "
-            "connection to is the operator's call (`B541`): gate the route, or put "
-            "its router behind `Depends(require_admin)`."
+            f"(`{t.func}` reaches {' / '.join(sorted(SSH_TARGET_NAMES))}) and neither "
+            "`require_admin` nor `require_operator` stands in front of it. Which box "
+            "this instance opens a connection to is the operator's call (`B541`): gate "
+            "the route, or put its router behind `Depends(require_operator)`."
         )
     target_files = {t.file for t in targets}
     want_ssh = (f"{len(targets)} routes in {len(target_files)} files, "
-                f"{len(targets) - len(ungated)} behind require_admin")
+                f"{len(targets) - len(ungated)} behind require_admin or require_operator")
     if parsed.ssh_total != want_ssh:
         out.append(
             f"§ E's `derived-ssh-targets:` line says `{parsed.ssh_total}` and the tree "
@@ -961,6 +1063,7 @@ def problems(root: Path, text: str, *, max_other: int) -> tuple[list[str], dict]
     return out, {
         "sites": len(sites), "direct": direct, "depends": depends,
         "mapped": len(parsed.sites), "routes": live_routes,
+        "operator_sites": len(op_sites), "operator_mapped": len(parsed.operator_sites),
         "others": len(others), "ssh_targets": len(targets), "ssh_ungated": len(ungated),
         "static_documents": len(documents), "static_unowned": len(unowned),
     }
@@ -982,7 +1085,8 @@ def main(argv: list[str] | None = None) -> int:
 
     print(
         f"require_admin sites {n['sites']} (direct {n['direct']} · Depends "
-        f"{n['depends']})  ·  mapped {n['mapped']}  ·  routes in "
+        f"{n['depends']})  ·  mapped {n['mapped']}  ·  require_operator sites "
+        f"{n['operator_sites']} (mapped {n['operator_mapped']})  ·  routes in "
         f"{len(ROUTE_FILES)} files {n['routes']}  ·  admin gates outside "
         f"require_admin {n['others']} (max {args.max})  ·  routes reaching a "
         f"caller-named host {n['ssh_targets']} ({n['ssh_ungated']} ungated)  ·  "
@@ -993,8 +1097,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {p}")
     if args.list:
         print()
-        for site in require_admin_sites(ROOT):
-            print(f"  {site.file}:{site.line:<6} {site.kind:<8} "
+        listed = ([("admin", s) for s in require_admin_sites(ROOT)]
+                  + [("operator", s) for s in require_operator_sites(ROOT)])
+        for gate, site in listed:
+            print(f"  {site.file}:{site.line:<6} {gate:<8} {site.kind:<8} "
                   f"{site.route or '—':<48} {site.func}")
     return 1 if found else 0
 

@@ -168,3 +168,52 @@ def search_index_text(content: Any) -> str:
     if isinstance(content, list):
         return _text_from_blocks(content)
     return persistable_message_content(content)
+
+
+# ── `B1290`: a recording given as sound, on its own turn only ───────────────
+
+SOUND_PART = "input_audio"
+
+
+def has_sounds(messages: Iterable[Any]) -> bool:
+    """Whether any message carries a recording as sound (`input_audio`)."""
+    for message in messages or []:
+        content = message.get("content") if isinstance(message, dict) else None
+        if isinstance(content, list) and any(
+                isinstance(p, dict) and p.get("type") == SOUND_PART for p in content):
+            return True
+    return False
+
+
+def without_sounds(messages: list, *, keep_last_user: bool = False) -> list:
+    """`messages` with every `input_audio` part taken out — but the newest
+    user message's when `keep_last_user`. A message left with text alone is
+    its text, the shape `build_user_content` gives a message with no media.
+
+    `B1290`. A recording goes to a model as sound on the turn it is attached
+    to, because only that turn's model was asked whether it hears
+    (`chat_helpers.audio_answer`). Left in the history it would be sent again
+    to whatever model the chat is on next — most local servers refuse an audio
+    part and fail the whole turn — and the reply to it already says what was
+    heard; its text part still names the recording. Copies; never mutates the
+    session's own messages."""
+    if not has_sounds(messages):
+        return messages
+    keep = -1
+    if keep_last_user:
+        for index in range(len(messages) - 1, -1, -1):
+            if isinstance(messages[index], dict) and messages[index].get("role") == "user":
+                keep = index
+                break
+    out = []
+    for index, message in enumerate(messages):
+        content = message.get("content") if isinstance(message, dict) else None
+        if index == keep or not isinstance(content, list) or not any(
+                isinstance(p, dict) and p.get("type") == SOUND_PART for p in content):
+            out.append(message)
+            continue
+        parts = [p for p in content if not (isinstance(p, dict) and p.get("type") == SOUND_PART)]
+        if all(isinstance(p, dict) and p.get("type") == "text" for p in parts):
+            parts = "\n".join(str(p.get("text") or "") for p in parts).strip()
+        out.append({**message, "content": parts})
+    return out

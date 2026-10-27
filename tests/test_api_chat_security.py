@@ -65,6 +65,8 @@ def _load_webhook_routes_for_test(monkeypatch):
     core_db.ModelEndpoint = object
     core_middleware = types.ModuleType("core.middleware")
     core_middleware.require_admin = lambda request: None
+    # `B683`: the webhook routes ask the operator gate.
+    core_middleware.require_operator = lambda request: None
     webhook_manager = types.ModuleType("src.webhook_manager")
     webhook_manager.WebhookManager = object
     webhook_manager.validate_webhook_url = lambda url: url

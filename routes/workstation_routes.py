@@ -92,7 +92,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
-from core.middleware import require_admin
+from core.middleware import require_admin, require_operator
 from src import workstation_access as wa
 from src.auth_helpers import require_user
 from src.workstation_client import WorkstationError
@@ -190,12 +190,14 @@ def setup_workstation_routes() -> APIRouter:
     def _auth_manager(request: Request):
         return getattr(request.app.state, "auth_manager", None)
 
-    def _caller_is_admin(request: Request) -> bool:
+    def _caller_runs_instance(request: Request) -> bool:
         """Whether the status answer includes the admin's view. Asked of
-        `require_admin` itself rather than restated, so auth-off and the
-        single operator get the same answer here as on every admin route."""
+        the operator gate itself rather than restated, so this view and the
+        routes beside it that act on it (`/check`, `/machines`, `/backend`)
+        answer the same people: an admin, or a person an admin let run the
+        instance (`require_operator`, `B683`)."""
         try:
-            require_admin(request)
+            require_operator(request)
         except HTTPException:
             return False
         return True
@@ -204,13 +206,13 @@ def setup_workstation_routes() -> APIRouter:
     async def workstation_status(request: Request):
         """Is the workstation on, may I use it, and does it answer."""
         owner = require_user(request)
-        return await wa.status_for(owner, is_admin=_caller_is_admin(request),
+        return await wa.status_for(owner, is_admin=_caller_runs_instance(request),
                                    auth_manager=_auth_manager(request))
 
     @router.post("/check")
     async def workstation_check(request: Request):
-        """Admin only: ask the workstation now, even while it is switched off."""
-        require_admin(request)
+        """Whoever runs the instance (`B683`): ask the workstation now, even while it is switched off."""
+        require_operator(request)
         owner = require_user(request)
         return await wa.status_for(owner, is_admin=True, auth_manager=_auth_manager(request),
                                    probe_when_off=True)
@@ -251,8 +253,8 @@ def setup_workstation_routes() -> APIRouter:
 
     @router.get("/machines")
     async def workstation_machines(request: Request):
-        """Admin only: the workstation's containers and what Pantheon may do."""
-        require_admin(request)
+        """Whoever runs the instance (`B683`): the workstation's containers and what Pantheon may do."""
+        require_operator(request)
         from src import workstation_control as wctl
         out: Dict[str, Any] = {"available": wctl.available(), "choice": wa.wc.backend_choice(),
                                "backend": wa.backend_setting(), "vm_configured": wa.wc.vm_configured(),
@@ -272,20 +274,21 @@ def setup_workstation_routes() -> APIRouter:
 
     @router.post("/machines/{service}/{action}")
     async def workstation_machine_act(request: Request, service: str, action: str):
-        """Admin only: start, stop or restart one workstation service."""
-        require_admin(request)
+        """Whoever runs the instance (`B683`): start, stop or restart one workstation service."""
+        require_operator(request)
         wctl, api, project = _docker()
         try:
             done = wctl.act(api, project, service, action)
         except wctl.DockerControlError as e:
             raise HTTPException(400, str(e))
-        logger.info("workstation %s: %s by an admin", service, action)
+        logger.info("workstation %s: %s by %s", service, action,
+                    getattr(request.state, "current_user", None) or "Pantheon")
         return {"ok": True, **done}
 
     @router.get("/machines/{service}/logs")
     async def workstation_machine_logs(request: Request, service: str, tail: int = 200):
-        """Admin only: the last lines a workstation service wrote."""
-        require_admin(request)
+        """Whoever runs the instance (`B683`): the last lines a workstation service wrote."""
+        require_operator(request)
         wctl, api, project = _docker()
         try:
             return {"service": service, "text": wctl.logs(api, project, service, tail)}
@@ -294,9 +297,9 @@ def setup_workstation_routes() -> APIRouter:
 
     @router.post("/backend")
     async def workstation_backend(request: Request):
-        """Admin only: choose the backend — stored, and with the host's Docker,
+        """Whoever runs the instance (`B683`): choose the backend — stored, and with the host's Docker,
         that backend started and the other stopped."""
-        require_admin(request)
+        require_operator(request)
         body = await _body(request)
         try:
             choice = wa.validate_setting("workstation_backend", body.get("backend"))
@@ -323,7 +326,8 @@ def setup_workstation_routes() -> APIRouter:
             out["sentence"] = f"Saved, but nothing was switched: {e.detail}"
         except wctl.DockerControlError as e:
             out["sentence"] = f"Saved, but nothing was switched: {e}"
-        logger.info("workstation backend set to %s (%s) by an admin", choice, backend)
+        logger.info("workstation backend set to %s (%s) by %s", choice, backend,
+                    getattr(request.state, "current_user", None) or "Pantheon")
         return out
 
     # ── `P20-05`: watch it, take it over, hand it back ────────────────────────

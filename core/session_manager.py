@@ -63,6 +63,21 @@ def _parse_msg_content(raw):
     return raw
 
 
+def _index_for_meaning(message_ids) -> None:
+    """`P9-15c`. Hand saved messages to the search-by-meaning index, which
+    embeds them on its own thread once the app has started it. Never raises:
+    a message that is saved and not indexed is found by keyword, and the
+    index's backfill finds it later."""
+    try:
+        from src.chat_vector import chat_index
+        index = chat_index()
+        for mid in message_ids:
+            if mid:
+                index.index_soon(mid)
+    except Exception:  # noqa: BLE001 — never a reason a message is not saved
+        pass
+
+
 class SessionManager:
     """
     Manages chat sessions with database persistence.
@@ -302,6 +317,7 @@ class SessionManager:
             message.metadata['_db_id'] = msg_id
 
             logger.debug(f"Persisted message to session {session_id}")
+            _index_for_meaning([msg_id])
 
         except Exception as e:
             logger.error(f"Error persisting message: {e}")
@@ -403,6 +419,7 @@ class SessionManager:
             db_session.last_message_at = now
 
             db.commit()
+            _index_for_meaning([(m.metadata or {}).get("_db_id") for m in messages])
             session.history = list(messages)
             session._history = session.history
             session.message_count = len(messages)
@@ -661,6 +678,12 @@ class SessionManager:
                 # the ghost had no rows) together with the session delete.
                 db.commit()
                 logger.info(f"Deleted session {session_id}")
+                # `P9-15c`: its messages leave the search-by-meaning index too.
+                try:
+                    from src.chat_vector import chat_index
+                    chat_index().forget_session(session_id)
+                except Exception:  # noqa: BLE001 — a hit is read back through the DB anyway
+                    pass
                 return True
             return False
 

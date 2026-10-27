@@ -25,7 +25,7 @@ MAX_SECRET_LEN = 256
 MAX_MESSAGE_LEN = 32_000
 
 
-from core.middleware import require_admin as _require_admin
+from core.middleware import require_operator
 
 
 def _select_api_chat_fallback_endpoint(db, token_owner: Optional[str]):
@@ -80,7 +80,7 @@ def setup_webhook_routes(
 
     @router.get("/webhooks")
     def list_webhooks(request: Request):
-        _require_admin(request)
+        require_operator(request)
         db = SessionLocal()
         try:
             hooks = db.query(Webhook).all()
@@ -110,18 +110,20 @@ def setup_webhook_routes(
         secret: str = Form(""),
         events: str = Form(""),
     ):
-        _require_admin(request)
+        require_operator(request)
         name = name.strip()[:MAX_NAME_LEN]
         if not name:
             raise HTTPException(400, "Webhook name is required")
         try:
-            # `B692`: an admin typed it, so the LAN is allowed — and logged.
+            # `B692`: whoever runs the instance typed it (an admin, or a person
+            # an admin let — `require_operator`, `B683`), so the LAN is allowed
+            # — and logged.
             url = validate_webhook_url(url, allow_lan=True)
         except ValueError as e:
             raise HTTPException(400, str(e))
         from src.webhook_manager import is_lan_destination
         if is_lan_destination(url):
-            logger.info("webhook %r points at a LAN address (%s), allowed for an admin (B692)",
+            logger.info("webhook %r points at a LAN address (%s), allowed for whoever runs the instance (B692)",
                         name, url.split("?", 1)[0][:200])
         try:
             events = validate_events(events)
@@ -155,7 +157,7 @@ def setup_webhook_routes(
 
     @router.post("/webhooks/{webhook_id}/test")
     async def test_webhook(request: Request, webhook_id: str):
-        _require_admin(request)
+        require_operator(request)
         db = SessionLocal()
         try:
             wh = db.query(Webhook).filter(Webhook.id == webhook_id).first()
@@ -170,7 +172,7 @@ def setup_webhook_routes(
 
     @router.patch("/webhooks/{webhook_id}")
     def toggle_webhook(request: Request, webhook_id: str):
-        _require_admin(request)
+        require_operator(request)
         db = SessionLocal()
         try:
             wh = db.query(Webhook).filter(Webhook.id == webhook_id).first()
@@ -184,7 +186,7 @@ def setup_webhook_routes(
 
     @router.delete("/webhooks/{webhook_id}")
     def delete_webhook(request: Request, webhook_id: str):
-        _require_admin(request)
+        require_operator(request)
         db = SessionLocal()
         try:
             deleted = db.query(Webhook).filter(Webhook.id == webhook_id).delete()

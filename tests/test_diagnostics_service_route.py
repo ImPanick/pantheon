@@ -33,6 +33,7 @@ def _client_with_admin_gate(monkeypatch, gate):
     # monkeypatch.setattr restores these after the test — a plain assignment
     # would leak the fakes into every later test in the session.
     monkeypatch.setattr(diag, "require_admin", gate)
+    monkeypatch.setattr(diag, "require_operator", gate)  # `B683`: the operator tier's route
     monkeypatch.setattr(sh, "collect_service_health", _fake_collect)
 
     app = FastAPI()

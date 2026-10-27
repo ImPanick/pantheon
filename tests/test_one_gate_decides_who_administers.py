@@ -113,7 +113,13 @@ def test_the_two_files_ask_require_admin_and_nothing_else():
     sites = {(s.file, s.func) for s in checker.require_admin_sites(
         ROOT, ["routes/auth_routes.py", "routes/shell_routes.py"])}
     for func in ("list_users", "admin_create_user", "set_user_admin", "admin_delete_user",
-                 "set_settings", "set_features", "create_integration"):
+                 "set_settings", "create_integration"):
         assert ("routes/auth_routes.py", func) in sites, func
-    for func in ("shell_exec", "shell_stream", "install_system_deps", "rebuild_engine", "list_packages"):
+    for func in ("shell_exec", "shell_stream", "install_system_deps", "rebuild_engine"):
         assert ("routes/shell_routes.py", func) in sites, func
+    # `B683`: `set_features` and `list_packages` are the operator tier's, and
+    # ask the operator gate — still one gate's answer, never a hand-rolled one.
+    operator = {(s.file, s.func) for s in checker.require_operator_sites(
+        ROOT, ["routes/auth_routes.py", "routes/shell_routes.py"])}
+    assert ("routes/auth_routes.py", "set_features") in operator
+    assert ("routes/shell_routes.py", "list_packages") in operator

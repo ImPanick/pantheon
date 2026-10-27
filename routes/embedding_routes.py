@@ -9,7 +9,7 @@ import asyncio
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Form, Depends
 from core.constants import EMBEDDING_ENDPOINT_FILE, FASTEMBED_CACHE_DIR
-from core.middleware import require_admin
+from core.middleware import require_operator
 from src.runtime_paths import get_app_root
 from src.env_flags import env_flag
 
@@ -112,7 +112,7 @@ def _save_custom_endpoint(data: dict):
 
 
 def setup_embedding_routes():
-    router = APIRouter(prefix="/api/embeddings", dependencies=[Depends(require_admin)])
+    router = APIRouter(prefix="/api/embeddings", dependencies=[Depends(require_operator)])
 
     @router.get("/models")
     def list_models():

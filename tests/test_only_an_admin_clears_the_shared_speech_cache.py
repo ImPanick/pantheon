@@ -82,7 +82,8 @@ def test_a_signed_in_non_admin_cannot_clear_the_instance_s_cache(probe):
     another person's request had made was gone."""
     row = probe["member"]
     assert row["status"] == 403, row
-    assert "Admin only" in row["body"], row
+    # `B683`: the operator gate's sentence — who may, and where the switch is.
+    assert "Only an admin, or someone an admin has let run this instance" in row["body"], row
     assert row["clip_survived"] is True, row
     assert row["clear_cache_calls"] == 0, row
 

@@ -199,7 +199,8 @@ def _delete_route(monkeypatch, TestSessionLocal):
     import src.ai_interaction as ai_interaction
 
     monkeypatch.setattr(mr, "SessionLocal", TestSessionLocal)
-    monkeypatch.setattr(mr, "require_admin", lambda request: None)
+    # `B683`: deleting an endpoint is the operator tier's, on its own gate.
+    monkeypatch.setattr(mr, "require_operator", lambda request: None)
     monkeypatch.setattr(mr, "_load_settings", lambda: {})
     monkeypatch.setattr(mr, "_save_settings", lambda settings: None)
     monkeypatch.setattr(prefs_routes, "_load", lambda: {})

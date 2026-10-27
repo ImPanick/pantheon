@@ -274,7 +274,9 @@ def test_search_chats_formats_shared_results(monkeypatch):
     from src import session_search
     from src.tool_implementations import do_search_chats
 
-    def fake_search(query, limit=20, owner=None, include_archived=False, context_messages=1, db=None):
+    # `P9-15c`: the tool passes `report` for the keyword-only sentence.
+    def fake_search(query, limit=20, owner=None, include_archived=False, context_messages=1, db=None,
+                    report=None):
         return [
             SessionSearchResult(
                 message_id="m2",

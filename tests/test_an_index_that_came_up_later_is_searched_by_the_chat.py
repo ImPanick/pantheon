@@ -126,6 +126,7 @@ def test_the_stats_line_and_the_health_card_read_the_index_as_it_stands(index, m
     from src import service_health
 
     monkeypatch.setattr(diag, "require_admin", lambda request: None)
+    monkeypatch.setattr(diag, "require_operator", lambda request: None)  # `B683`
     seen = []
 
     async def health(rag_manager=None, memory_vector=None):

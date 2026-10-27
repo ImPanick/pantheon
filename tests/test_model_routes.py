@@ -1021,7 +1021,9 @@ def test_patch_models_saves_pinned_models(monkeypatch):
     ep = _make_endpoint()
     db = _PinnedFakeDb([ep])
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
     endpoint = _get_route("/api/model-endpoints/{ep_id}/models", "PATCH")
 
     request = _PinnedFakeRequest(body={"pinned_models": ["deploy-1", "deploy-1", "deploy-2"]})
@@ -1035,7 +1037,9 @@ def test_patch_models_pinned_does_not_clobber_hidden(monkeypatch):
     ep = _make_endpoint(hidden_models=json.dumps(["hide-me"]))
     db = _PinnedFakeDb([ep])
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
     endpoint = _get_route("/api/model-endpoints/{ep_id}/models", "PATCH")
 
     request = _PinnedFakeRequest(body={"pinned_models": ["deploy-1"]})
@@ -1053,7 +1057,9 @@ def test_patch_api_hidden_payload_converts_to_pinned(monkeypatch):
     )
     db = _PinnedFakeDb([ep])
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
     endpoint = _get_route("/api/model-endpoints/{ep_id}/models", "PATCH")
 
     result = asyncio.run(endpoint("ep1", _PinnedFakeRequest(body={"hidden": ["m2"]})))
@@ -1072,7 +1078,9 @@ def test_patch_api_hidden_empty_pins_all_cached_models(monkeypatch):
     )
     db = _PinnedFakeDb([ep])
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
     endpoint = _get_route("/api/model-endpoints/{ep_id}/models", "PATCH")
 
     result = asyncio.run(endpoint("ep1", _PinnedFakeRequest(body={"hidden": []})))
@@ -1087,7 +1095,9 @@ def test_get_models_returns_pinned_when_probe_empty(monkeypatch):
     ep = _make_endpoint(pinned_models=json.dumps(["deploy-1"]))
     db = _PinnedFakeDb([ep])
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
     monkeypatch.setattr(model_routes, "_probe_endpoint", lambda *a, **k: [])
     endpoint = _get_route("/api/model-endpoints/{ep_id}/models", "GET")
 
@@ -1106,7 +1116,9 @@ def test_get_api_models_marks_picker_as_pinned_only(monkeypatch):
     )
     db = _PinnedFakeDb([ep])
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
     endpoint = _get_route("/api/model-endpoints/{ep_id}/models", "GET")
 
     result = endpoint("ep1", _PinnedFakeRequest(), SimpleNamespace(headers={}))
@@ -1126,7 +1138,9 @@ def test_get_fresh_api_models_marks_cached_inventory_as_pinned(monkeypatch):
     )
     db = _PinnedFakeDb([ep])
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
     endpoint = _get_route("/api/model-endpoints/{ep_id}/models", "GET")
 
     result = endpoint("ep1", _PinnedFakeRequest(), SimpleNamespace(headers={}))
@@ -1148,7 +1162,9 @@ def test_get_legacy_api_models_preserves_hidden_selection_as_pinned(monkeypatch)
     )
     db = _PinnedFakeDb([ep])
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
     endpoint = _get_route("/api/model-endpoints/{ep_id}/models", "GET")
 
     result = endpoint("ep1", _PinnedFakeRequest(), SimpleNamespace(headers={}))
@@ -1163,7 +1179,9 @@ def test_reprobe_preserves_pinned_models(monkeypatch):
     ep = _make_endpoint(pinned_models=json.dumps(["deploy-1"]))
     db = _PinnedFakeDb([ep])
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
     monkeypatch.setattr(model_routes, "_probe_endpoint", lambda *a, **k: ["m1"])
     monkeypatch.setattr(model_routes, "_is_chat_model", lambda m: True)
     monkeypatch.setattr(
@@ -1196,7 +1214,9 @@ def test_reprobe_chatgpt_subscription_does_not_hide_models(monkeypatch):
     )
     db = _PinnedFakeDb([ep])
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
     monkeypatch.setattr(model_routes, "_normalize_base", lambda url: url.rstrip("/"))
     monkeypatch.setattr(model_routes, "_probe_endpoint", lambda *a, **k: ["gpt-5.1-codex", "gpt-5.1"])
     monkeypatch.setattr(model_routes, "_is_chat_model", lambda m: True)
@@ -1284,7 +1304,9 @@ def _patch_create_deps(monkeypatch, db, settings=None):
     # (no real settings.json). Returned so tests can assert what was persisted.
     settings = {"default_endpoint_id": "exists"} if settings is None else settings
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
     monkeypatch.setattr(model_routes, "ModelEndpoint", _RecordingEndpoint)
     monkeypatch.setattr(model_routes, "_normalize_base", lambda b: b)
     monkeypatch.setattr(model_routes, "_rewrite_loopback_for_docker", lambda b, **k: b)
@@ -1307,7 +1329,9 @@ def test_list_model_endpoints_returns_key_fingerprint(monkeypatch):
     )
     db = _PinnedFakeDb([endpoint_with_key, endpoint_without_key])
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
     endpoint = _get_route("/api/model-endpoints", "GET")
 
     result = endpoint(_PinnedFakeRequest())
@@ -1326,7 +1350,9 @@ def test_list_api_endpoint_defaults_inventory_to_visible_when_none_pinned(monkey
     )
     db = _PinnedFakeDb([ep])
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
     endpoint = _get_route("/api/model-endpoints", "GET")
 
     result = endpoint(_PinnedFakeRequest())
@@ -1364,7 +1390,9 @@ def test_list_api_endpoint_returns_pinned_picker_models(monkeypatch):
     )
     db = _PinnedFakeDb([ep])
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
     endpoint = _get_route("/api/model-endpoints", "GET")
 
     result = endpoint(_PinnedFakeRequest())
@@ -1383,7 +1411,9 @@ def test_list_api_endpoint_pinned_models_ignore_stale_hidden_state(monkeypatch):
     )
     db = _PinnedFakeDb([ep])
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
     endpoint = _get_route("/api/model-endpoints", "GET")
 
     result = endpoint(_PinnedFakeRequest())
@@ -1400,7 +1430,9 @@ def test_list_api_endpoint_derives_pins_from_legacy_hidden_state(monkeypatch):
     )
     db = _PinnedFakeDb([ep])
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
     endpoint = _get_route("/api/model-endpoints", "GET")
 
     result = endpoint(_PinnedFakeRequest())
@@ -1883,7 +1915,9 @@ async def test_probe_local_skips_tailscale_proxy_endpoint(monkeypatch):
 
     monkeypatch.setattr(model_routes, "ModelEndpoint", _RouteModelEndpoint)
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
     monkeypatch.setattr(model_routes, "_probe_endpoint", lambda *a, **k: (_ for _ in ()).throw(AssertionError("full probe should not run")))
 
     pinged = []
@@ -2006,7 +2040,9 @@ def test_llm_core_list_model_ids_uses_cached_configured_proxy(monkeypatch):
 def test_explicit_proxy_test_fetches_models_with_long_timeout(monkeypatch):
     router = model_routes.setup_model_routes(model_discovery=None)
 
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
     monkeypatch.setattr(model_routes, "_ping_endpoint", lambda *a, **k: (_ for _ in ()).throw(AssertionError("ping should not run when model listing succeeds")))
 
     calls = []
@@ -2041,7 +2077,9 @@ def test_explicit_proxy_add_fetches_and_caches_models_with_long_timeout(monkeypa
 
     monkeypatch.setattr(model_routes, "ModelEndpoint", _RouteModelEndpoint)
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
     monkeypatch.setattr(model_routes, "_load_settings", lambda: {})
     monkeypatch.setattr(model_routes, "_save_settings", lambda settings: None)
     monkeypatch.setattr("src.auth_helpers.get_current_user", lambda request: None)
@@ -2101,7 +2139,9 @@ def test_manual_refresh_uses_long_timeout_and_saves_full_model_list(monkeypatch)
 
     monkeypatch.setattr(model_routes, "ModelEndpoint", _RouteModelEndpoint)
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
 
     calls = []
     refreshed = ["cached-model", "mistral/mistral-small-2603", "provider/nested/model/id"]
@@ -2146,7 +2186,9 @@ def test_manual_refresh_defaults_to_proxy_long_timeout(monkeypatch):
 
     monkeypatch.setattr(model_routes, "ModelEndpoint", _RouteModelEndpoint)
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
 
     timeouts = []
 
@@ -2186,7 +2228,9 @@ def test_manual_refresh_timeout_offers_nothing_and_says_why(monkeypatch):
 
     monkeypatch.setattr(model_routes, "ModelEndpoint", _RouteModelEndpoint)
     monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
-    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    # `B683`: the endpoint routes are the operator tier's (`runs_instance` for the list).
+    monkeypatch.setattr(model_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(model_routes, "runs_instance", lambda request: True)
 
     def fake_probe(base_url, api_key=None, timeout=2, outcome=None):
         raise httpx.TimeoutException("timed out")

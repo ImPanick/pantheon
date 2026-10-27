@@ -8,7 +8,7 @@ from copy import deepcopy
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from core.middleware import require_admin
+from core.middleware import require_operator
 from core.platform_compat import run_ssh_command
 from routes._validators import validate_remote_host, validate_ssh_port
 
@@ -195,7 +195,8 @@ def setup_hwfit_routes():
     # `routes/codex_routes.py`'s `_require_cookbook_scope` writes the reason
     # down — "cookbook surfaces expose host topology". Detection is host
     # topology, and choosing which box this instance opens SSH to is the
-    # operator's call (`P11-AUTH-MAP.md` § A, `operator`).
+    # operator's call (`P11-AUTH-MAP.md`, `operator` tier) — since `B683`
+    # `require_operator`: an admin, or a person an admin let run the instance.
     #
     # **On the router, not on each handler**, so a fifth `/api/hwfit` route is
     # gated on the commit that adds it — the shape `routes/embedding_routes.py`
@@ -208,7 +209,7 @@ def setup_hwfit_routes():
     # install for `require_admin` to wave through, `D-2026-10-07-02` §2). The validators still run after this (`FORBIDDEN.md`
     # Part 2): an admin naming `-oProxyCommand=…` is refused as before.
     router = APIRouter(prefix="/api/hwfit", tags=["hwfit"],
-                       dependencies=[Depends(require_admin)])
+                       dependencies=[Depends(require_operator)])
 
     @router.get("/system")
     def get_system(host: str = "", ssh_port: str = "", platform: str = "", fresh: bool = False):

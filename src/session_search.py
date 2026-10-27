@@ -31,6 +31,8 @@ class SessionSearchResult:
     timestamp: str | None
     context_before: list[dict[str, Any]]
     context_after: list[dict[str, Any]]
+    #: `P9-15c`. How it was found: `keyword`, `meaning`, or `both` (`Law 10`).
+    match: str = "keyword"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -42,7 +44,79 @@ class SessionSearchResult:
             "timestamp": self.timestamp,
             "context_before": self.context_before,
             "context_after": self.context_after,
+            "match": self.match,
         }
+
+
+#: `P9-15c`. Reciprocal-rank fusion's constant: a result's score is the sum of
+#: `1 / (RRF_K + rank)` over the lists it is in. 60 is the value the method was
+#: published with, and it lets a message found both ways outrank one found
+#: first by either alone without letting either list's scores — bm25 and
+#: cosine, on scales that cannot be compared — decide anything.
+RRF_K = 60
+
+
+def _meaning_results(db, query: str, limit: int, owner: str | None, include_archived: bool,
+                     restrict_owner: bool, include_legacy_owner: bool,
+                     report: dict | None) -> list[SessionSearchResult]:
+    """`P9-15c`. The messages whose meaning is nearest `query`, read back from
+    `chat_messages` through the keyword search's own filters — so a vector
+    whose message is gone, archived, or someone else's finds nothing. Empty,
+    with `report` saying why, when there is no index to ask."""
+    try:
+        from src.chat_vector import chat_index
+
+        index = chat_index()
+        status = index.status()
+        # Narrowed to the person's own rows where that is the whole scope; a
+        # legacy-owner or unscoped search reads more and filters below.
+        narrow = restrict_owner and not include_legacy_owner
+        hits = index.search(query, limit if narrow else limit * 4,
+                            owner if narrow else None, restrict=narrow) if status["meaning"] else None
+    except Exception as e:  # noqa: BLE001 — a search by keyword still answers
+        logger.warning("chat search by meaning failed: %s", e)
+        status, hits = {"meaning": False,
+                        "sentence": "Searched by keyword only: the search by meaning failed "
+                                    "and the server's log says why."}, None
+    if report is not None:
+        report.update({"meaning": bool(status.get("meaning")) and hits is not None,
+                       "sentence": status.get("sentence", "")})
+    if not hits:
+        return []
+    order = [h["message_id"] for h in hits]
+    q = (db.query(DBChatMessage, DBSession.name)
+         .join(DBSession, DBChatMessage.session_id == DBSession.id)
+         .filter(DBChatMessage.id.in_(order), DBChatMessage.role.in_(SEARCH_ROLES)))
+    if not include_archived:
+        q = q.filter(DBSession.archived == False)  # noqa: E712
+    q = q.filter(~DBSession.name.like("SFT trace batch%"))
+    if restrict_owner:
+        q = _owner_filter(q, owner, include_legacy_owner)
+    found = {msg.id: (msg, name) for msg, name in q.all()}
+    rows = [(found[mid][0], found[mid][1], _snippet(found[mid][0].content or "", ""))
+            for mid in order if mid in found][:limit]
+    return [replace(r, match="meaning") for r in _rows_to_results(db, rows, "", 0)]
+
+
+def _fuse(keyword: list[SessionSearchResult], meaning: list[SessionSearchResult],
+          limit: int) -> list[SessionSearchResult]:
+    """`P9-15c`. One list from two, by reciprocal-rank fusion (`RRF_K`). A
+    message in both keeps its keyword snippet — the words the person typed,
+    marked — and is tagged `both`. With no meaning list this is the keyword
+    list unchanged."""
+    if not meaning:
+        return keyword[:limit]
+    score: dict[str, float] = {}
+    pick: dict[str, SessionSearchResult] = {}
+    for results in (keyword, meaning):
+        for rank, r in enumerate(results):
+            score[r.message_id] = score.get(r.message_id, 0.0) + 1.0 / (RRF_K + rank + 1)
+            if r.message_id in pick:
+                pick[r.message_id] = replace(pick[r.message_id], match="both")
+            else:
+                pick[r.message_id] = r
+    ordered = sorted(pick, key=lambda mid: -score[mid])
+    return [pick[mid] for mid in ordered[:limit]]
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -352,11 +426,20 @@ def search_session_messages(
     restrict_owner: bool = True,
     include_legacy_owner: bool = True,
     db=None,
+    report: dict | None = None,
 ) -> list[SessionSearchResult]:
-    """Search session transcripts using FTS5 when available.
+    """Search session transcripts by keyword (FTS5 when available, `LIKE`
+    otherwise) and by meaning, in one list.
 
     `owner=None` is deliberately treated as legacy/null-owner scope rather
     than global access.
+
+    `P9-15c`. The meaning half asks `src.chat_vector` for the nearest messages
+    and the two lists are fused by rank (`_fuse`); each result says how it was
+    found (`match`). With no embedding model set up there is nothing to ask,
+    the answer is the keyword search exactly as before, and `report` — when
+    given — carries `{"meaning": bool, "sentence": str}`, the sentence the
+    search box shows the person.
     """
     query = (query or "").strip()
     if not query:
@@ -381,37 +464,28 @@ def search_session_messages(
             restrict_owner,
             include_legacy_owner,
         )
-        if fts_results is not None:
-            like_results = _search_like(
-                db,
-                query,
-                limit,
-                owner,
-                include_archived,
-                0,
-                restrict_owner,
-                include_legacy_owner,
-            )
-            merged: list[SessionSearchResult] = []
-            seen: set[str] = set()
-            for result in [*fts_results, *like_results]:
-                if result.message_id in seen:
-                    continue
-                seen.add(result.message_id)
-                merged.append(result)
-                if len(merged) >= limit:
-                    break
-            return _with_context(db, merged, context_messages)
-        return _search_like(
+        like_results = _search_like(
             db,
             query,
             limit,
             owner,
             include_archived,
-            context_messages,
+            0,
             restrict_owner,
             include_legacy_owner,
         )
+        keyword: list[SessionSearchResult] = []
+        seen: set[str] = set()
+        for result in [*(fts_results or []), *like_results]:
+            if result.message_id in seen:
+                continue
+            seen.add(result.message_id)
+            keyword.append(result)
+            if len(keyword) >= limit:
+                break
+        meaning = _meaning_results(db, query, limit, owner, include_archived,
+                                   restrict_owner, include_legacy_owner, report)
+        return _with_context(db, _fuse(keyword, meaning, limit), context_messages)
     finally:
         if owns_db:
             db.close()
