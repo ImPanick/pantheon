@@ -120,7 +120,7 @@ def test_openai_compatible_chat_url_shapes(monkeypatch):
 def test_list_model_ids_from_openai_compatible_v1(monkeypatch):
     seen = {}
 
-    def fake_get(url, headers=None, timeout=None):
+    def fake_get(url, headers=None, timeout=None, **_kw):
         seen["url"] = url
         request = httpx.Request("GET", url)
         return httpx.Response(
@@ -129,7 +129,9 @@ def test_list_model_ids_from_openai_compatible_v1(monkeypatch):
             json={"data": [{"id": "qwen2.5-coder:7b"}]},
         )
 
-    monkeypatch.setattr(llm_core.httpx, "get", fake_get)
+    # `B1022`: the model list is asked through `paced_http.get_sync` now, so
+    # the fake stands in at that seam rather than at `httpx.get`.
+    monkeypatch.setattr("src.paced_http.get_sync", fake_get)
 
     assert llm_core.list_model_ids("http://localhost:11434/v1") == ["qwen2.5-coder:7b"]
     assert seen["url"] == "http://localhost:11434/v1/models"
