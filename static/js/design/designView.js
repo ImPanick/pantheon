@@ -16,6 +16,13 @@
 // **An adjustment is a file change**, made by the server in one style block of
 // the page and kept as a version; the frame reloads from the file, so what is
 // shown is what is saved. Values are the design system's tokens first.
+//
+// **Shared** (`P26-09`): a design someone shared is opened by its share's id,
+// never its owner's path; the server answers the caller's role and decides
+// every write by it. A viewer sees, a commenter adds notes (*Select* then
+// picks the element a note is about), an editor changes it as its owner does.
+
+import { drawCollab, may } from './collab.js';
 
 const PROPS_TEXT = ['color', 'font-size', 'font-weight', 'text-align', 'line-height', 'letter-spacing'];
 const PROPS_BOX = ['background-color', 'padding', 'gap', 'border-radius', 'justify-content', 'align-items', 'max-width'];
@@ -72,9 +79,12 @@ export const PICKED_PROPS = [...new Set([...PROPS_TEXT, ...PROPS_BOX])];
  * say(text, {error}), call(method, url, body), sendToChat(text), back() }.
  */
 export async function renderDesign(ctx) {
-  const q = (extra = '') => `?project=${encodeURIComponent(ctx.project)}${extra}`;
+  const q = (extra = '') => (ctx.share ? `?share=${encodeURIComponent(ctx.share)}` : `?project=${encodeURIComponent(ctx.project)}`) + extra;
+  // Where a write names the design: by the share it came through, or the caller's own project.
+  const where = () => (ctx.share ? { share: ctx.share } : { project: ctx.project });
   const previewUrl = (extra = '') => `/api/design/designs/${encodeURIComponent(ctx.slug)}/preview${q(extra)}`;
-  const state = { showing: {}, selected: null, selecting: false, data: null };
+  const state = { showing: {}, selected: null, selecting: false, data: null, collab: null };
+  const role = () => ((state.data && state.data.access) || {}).role || 'owner';
   const body = ctx.body;
   body.textContent = '';
   body.appendChild(_btn('design-back', '← Design', () => ctx.back()));
@@ -99,6 +109,16 @@ export async function renderDesign(ctx) {
     if (!r.ok) { ctx.say(r.sentence, { error: true }); return false; }
     state.data = r.data;
     state.showing = r.data.showing || {};
+    if (!state.collab) {
+      state.collab = _el('div', 'design-collab-box');
+      const acc = r.data.access || { role: 'owner' };
+      drawCollab(state.collab, { kind: 'design', ref: ctx.slug, project: ctx.project, share: ctx.share || null,
+        role: acc.role, owner: acc.owner, name: r.data.name }, {
+        call: ctx.call, say: ctx.say, me: ctx.me || acc.owner,
+        selected: () => (state.selected ? state.selected.selector : null),
+        onLeave: ctx.onLeave,
+      });
+    }
     draw();
     return true;
   }
@@ -125,17 +145,31 @@ export async function renderDesign(ctx) {
     title.textContent = d.name;
     bar.textContent = '';
     const live = !state.showing.version && !state.showing.variant;
-    if (live) {
+    const canEdit = may(role(), 'edit');
+    if (live && !canEdit) {
+      // `P26-09`. Not an editor: the page, and for a commenter an element to
+      // pin a note to. The server refuses a change whatever is drawn here.
+      bar.appendChild(_el('span', 'design-chip', role() === 'commenter' ? 'You can comment' : 'You can look'));
+      if (may(role(), 'note')) {
+        const sel = _btn('design-btn design-select-btn', 'Select', () => setSelecting(!state.selecting),
+          'Select the element your note is about');
+        sel.setAttribute('aria-pressed', String(state.selecting));
+        bar.appendChild(sel);
+      }
+    }
+    if (live && canEdit) {
       const sel = _btn('design-btn design-select-btn', 'Select', () => setSelecting(!state.selecting),
         'Select an element on the page to adjust it');
       sel.setAttribute('aria-pressed', String(state.selecting));
       bar.appendChild(sel);
       bar.appendChild(_btn('design-btn', 'Tweaks', () => drawTweaks()));
+      // Variants are the agent's work in the owner's project, asked in the
+      // owner's chat — an editor's agent works in its own person's folders.
       const n = document.createElement('select');
       n.setAttribute('aria-label', 'How many variants');
       ['2', '3', '4'].forEach((k) => { const o = document.createElement('option'); o.value = k; o.textContent = `${k} variants`; n.appendChild(o); });
-      bar.appendChild(n);
-      bar.appendChild(_btn('design-btn', 'Try variants', () => {
+      if (role() === 'owner') bar.appendChild(n);
+      if (role() === 'owner') bar.appendChild(_btn('design-btn', 'Try variants', () => {
         const k = Number(n.value);
         ctx.sendToChat(`Make ${k} variants of the design in ${d.folder}/ — each a different direction on the same brief `
           + `(layout, density, emphasis), each self-contained in ${d.folder}/variants/1/index.html … `
@@ -144,17 +178,17 @@ export async function renderDesign(ctx) {
         ctx.say(`Asked for ${k} variants. Open this design again when the agent says they are there.`);
       }));
       bar.appendChild(_btn('design-btn', 'Keep a version', async () => {
-        const r = await ctx.call('POST', `/api/design/designs/${encodeURIComponent(ctx.slug)}/versions`, { project: ctx.project });
+        const r = await ctx.call('POST', `/api/design/designs/${encodeURIComponent(ctx.slug)}/versions`, where());
         if (!r.ok) { ctx.say(r.sentence, { error: true }); return; }
         ctx.say(r.data.new ? `Kept as version ${r.data.version}.` : `Nothing changed since version ${r.data.version}.`);
         await load();
       }));
-    } else {
+    } else if (!live) {
       const what = state.showing.version ? `version ${state.showing.version}` : `variant ${state.showing.variant}`;
       bar.appendChild(_el('span', 'design-chip', `Showing ${what}`));
-      if (state.showing.version) {
+      if (canEdit && state.showing.version) {
         bar.appendChild(_btn('design-btn design-btn-primary', 'Step back to this', () => restore(state.showing.version)));
-      } else {
+      } else if (canEdit) {
         bar.appendChild(_btn('design-btn design-btn-primary', 'Keep this variant', () => keep(state.showing.variant)));
       }
       bar.appendChild(_btn('design-btn', 'Back to the present', () => { state.selected = null; load(); }));
@@ -170,7 +204,7 @@ export async function renderDesign(ctx) {
         const top = _el('div', 'design-variant-head');
         top.appendChild(_el('strong', '', `Variant ${v}`));
         top.appendChild(_btn('design-btn', 'Look closer', () => load(`&variant=${encodeURIComponent(v)}`)));
-        top.appendChild(_btn('design-btn design-btn-primary', 'Keep this', () => keep(v)));
+        if (canEdit) top.appendChild(_btn('design-btn design-btn-primary', 'Keep this', () => keep(v)));
         cell.appendChild(top);
         const holder = _el('div', 'design-variant-frame');
         cell.appendChild(holder);
@@ -206,7 +240,7 @@ export async function renderDesign(ctx) {
     if (!(d.versions || []).length) box.appendChild(_el('p', 'design-section-sub', 'No versions yet: the first is kept when the page is.'));
     box.appendChild(list);
     const vs = d.versions || [];
-    if (vs.length >= 2 && !state.showing.version && !state.showing.variant) {
+    if (vs.length >= 2 && !state.showing.version && !state.showing.variant && may(role(), 'edit')) {
       box.appendChild(_btn('design-btn', 'Undo the last change', () => restore(vs[vs.length - 2].n)));
     }
   }
@@ -214,7 +248,15 @@ export async function renderDesign(ctx) {
   function drawPanel() {
     side.textContent = '';
     const s = state.selected;
-    if (s && !state.showing.version && !state.showing.variant) {
+    if (s && !may(role(), 'edit')) {
+      // A commenter's pick is what a note is about, nothing more.
+      const panel = _el('div', 'design-props');
+      panel.appendChild(_el('h3', 'design-section-title', `<${s.tag}>${s.text ? ` “${s.text}”` : ''}`));
+      panel.appendChild(_el('p', 'design-section-sub design-selector', s.selector));
+      panel.appendChild(_el('p', 'design-section-sub', 'Your next note is about this element.'));
+      panel.appendChild(_btn('design-btn', 'Done', () => { state.selected = null; setSelecting(false); drawPanel(); }));
+      side.appendChild(panel);
+    } else if (s && !state.showing.version && !state.showing.variant) {
       const panel = _el('div', 'design-props');
       panel.appendChild(_el('h3', 'design-section-title', `<${s.tag}>${s.text ? ` “${s.text}”` : ''}`));
       panel.appendChild(_el('p', 'design-section-sub design-selector', s.selector));
@@ -258,7 +300,7 @@ export async function renderDesign(ctx) {
         });
         if (!Object.keys(change).length) { ctx.say('Pick something to change first.'); return; }
         const r = await ctx.call('POST', `/api/design/designs/${encodeURIComponent(ctx.slug)}/adjust`,
-          { project: ctx.project, selector: s.selector, props: change, system: state.data.system || null });
+          { ...where(), selector: s.selector, props: change, system: state.data.system || null });
         if (!r.ok) { ctx.say(r.sentence, { error: true }); return; }
         ctx.say(`Adjusted and kept as version ${r.data.version}.`);
         // "now" is what was just written, not what was picked before it.
@@ -269,11 +311,12 @@ export async function renderDesign(ctx) {
       side.appendChild(panel);
     }
     if (state.tweaks && !state.showing.version && !state.showing.variant) side.appendChild(state.tweaks);
+    if (state.collab) side.appendChild(state.collab);
     drawVersions(side);
   }
 
   async function drawTweaks() {
-    const r = await ctx.call('POST', `/api/design/designs/${encodeURIComponent(ctx.slug)}/tweaks`, { project: ctx.project });
+    const r = await ctx.call('POST', `/api/design/designs/${encodeURIComponent(ctx.slug)}/tweaks`, where());
     if (!r.ok) { ctx.say(r.sentence, { error: true }); return; }
     const box = _el('div', 'design-tweaks');
     box.appendChild(_el('h3', 'design-section-title', 'Tweaks'));
@@ -284,7 +327,7 @@ export async function renderDesign(ctx) {
       clearTimeout(timer);
       timer = setTimeout(async () => {
         const w = await ctx.call('POST', `/api/design/designs/${encodeURIComponent(ctx.slug)}/adjust`,
-          { project: ctx.project, selector: ':root', props: { [name]: value } });
+          { ...where(), selector: ':root', props: { [name]: value } });
         if (!w.ok) ctx.say(w.sentence, { error: true });
         else { ctx.say(`Tweaked; kept as version ${w.data.version}.`); state.data.versions.push({ n: w.data.version, note: `Tweaked ${name}` }); drawPanel(); }
       }, 600);
@@ -317,7 +360,7 @@ export async function renderDesign(ctx) {
   }
 
   async function restore(n) {
-    const r = await ctx.call('POST', `/api/design/designs/${encodeURIComponent(ctx.slug)}/restore`, { project: ctx.project, version: n });
+    const r = await ctx.call('POST', `/api/design/designs/${encodeURIComponent(ctx.slug)}/restore`, { ...where(), version: n });
     if (!r.ok) { ctx.say(r.sentence, { error: true }); return; }
     ctx.say(`Stepped back to version ${n}; what was there is kept as a version too.${(r.data.left || []).length ? ` Files from later stay: ${r.data.left.join(', ')}.` : ''}`);
     state.selected = null;
@@ -325,7 +368,7 @@ export async function renderDesign(ctx) {
   }
 
   async function keep(v) {
-    const r = await ctx.call('POST', `/api/design/designs/${encodeURIComponent(ctx.slug)}/keep`, { project: ctx.project, variant: v });
+    const r = await ctx.call('POST', `/api/design/designs/${encodeURIComponent(ctx.slug)}/keep`, { ...where(), variant: v });
     if (!r.ok) { ctx.say(r.sentence, { error: true }); return; }
     ctx.say(`Kept variant ${v}.${r.data.others.length ? ` Variant${r.data.others.length > 1 ? 's' : ''} ${r.data.others.join(', ')} kept as versions.` : ''}`);
     state.selected = null;

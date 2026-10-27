@@ -289,6 +289,20 @@ async def create(owner: Optional[str], project: str, body: Dict[str, Any]) -> Di
     return {"slug": slug, "folder": f"{DESIGN_DIR}/{slug}", **meta}
 
 
+async def describe(owner: Optional[str], project: str, slug: str) -> Dict[str, Any]:
+    """A design's facts from its `design.json`, without keeping a version —
+    what sharing it (`P26-09`) and handing it off (`P26-08`) read. 404 when
+    there is no such design."""
+    slug = _clean_slug(slug)
+    fs = await _Fs(owner, project).open()
+    try:
+        meta = json.loads(await fs.read(f"{DESIGN_DIR}/{slug}/{META}") or b"{}")
+    except (DesignFileRefused, ValueError):
+        raise DesignFileRefused("There is no such design in this project.", 404) from None
+    return {"slug": slug, "folder": f"{DESIGN_DIR}/{slug}", "name": str(meta.get("name") or slug),
+            "kind": meta.get("kind"), "system": meta.get("system"), "brief": str(meta.get("brief") or "")}
+
+
 async def opened(owner: Optional[str], project: str, slug: str, *, version: Optional[int] = None,
                  variant: Optional[str] = None) -> Dict[str, Any]:
     """The design as the window shows it: its facts, its versions, its

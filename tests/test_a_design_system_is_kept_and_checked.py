@@ -42,7 +42,10 @@ def db(tmp_path, monkeypatch):
     import core.database as cdb
     engine = create_engine(f"sqlite:///{tmp_path / 'design.db'}", connect_args={"check_same_thread": False},
                            poolclass=NullPool)
-    cdb.Base.metadata.create_all(engine, tables=[cdb.DesignSystem.__table__])
+    # `P26-09`: the routes read the studio's sharing table too (a system that
+    # is not yours is looked for among those shared with you).
+    cdb.Base.metadata.create_all(engine, tables=[cdb.DesignSystem.__table__, cdb.DesignShare.__table__,
+                                                 cdb.DesignNote.__table__])
     factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     monkeypatch.setattr(cdb, "SessionLocal", factory)
     import src.workstation_access as wa

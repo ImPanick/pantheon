@@ -19,6 +19,8 @@ import { makeWindowDraggable } from '../windowDrag.js';
 import workspaceModule from '../workspace.js';
 import { STARTS, briefMessage } from './starts.js';
 import { renderDesign } from './designView.js';
+import { drawCollab, may, ROLE_WORDS } from './collab.js';
+import { getAuthStatus } from '../appConfig.js';
 
 export const MODAL_ID = 'design-modal';
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -35,6 +37,8 @@ let _roles = [];
 let _designs = [];          // `P26-06`: the project's designs
 let _designsNote = '';
 let _leave = [];            // what a design's view undoes when it is left
+let _shared = { designs: [], systems: [] };   // `P26-09`: shared with me
+let _me = null;             // who is signed in, to say "You" on a note
 
 function _el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -110,6 +114,14 @@ async function _loadDesigns() {
   else _designsNote = r.sentence;
 }
 
+async function _loadShared() {
+  const r = await _call('GET', '/api/design/shared');
+  _shared = r.ok ? { designs: r.data.designs || [], systems: r.data.systems || [] } : { designs: [], systems: [] };
+  if (_me === null) {
+    try { const st = await getAuthStatus(); _me = (st && st.username) || ''; } catch (_) { _me = ''; }
+  }
+}
+
 async function _loadSystems() {
   const q = _project() ? `?project=${encodeURIComponent(_project())}` : '';
   const r = await _call('GET', `/api/design/systems${q}`);
@@ -164,6 +176,20 @@ function _renderHome() {
   });
   body.appendChild(dl);
 
+  // `P26-09`. Designs someone shared with me, opened by the share — never by
+  // their owner's path, which this window is not told.
+  if (_shared.designs.length) {
+    body.appendChild(_el('h3', 'design-section-title', 'Shared with me'));
+    const sl = _el('div', 'design-systems design-designs design-shared');
+    _shared.designs.forEach((d) => {
+      const card = _btn('design-system-card design-design-card', '', () => { _say(''); _view = { kind: 'design', slug: d.slug, share: d.share }; _render(); }, `Open ${d.name}, shared by ${d.owner}`);
+      card.appendChild(_el('span', 'design-system-name', d.name));
+      card.appendChild(_el('span', 'design-chip', `${d.owner} · ${d.role}`));
+      sl.appendChild(card);
+    });
+    body.appendChild(sl);
+  }
+
   const head = _el('div', 'design-section-head');
   head.appendChild(_el('h3', 'design-section-title', 'Design systems'));
   head.appendChild(_btn('design-btn', '+ New design system', () => { _say(''); _view = { kind: 'system' }; _render(); }));
@@ -177,7 +203,8 @@ function _renderHome() {
   _systems.forEach((sys) => {
     const card = _btn('design-system-card', '', () => { _say(''); _view = { kind: 'system', id: sys.id }; _render(); }, `Open ${sys.name}`);
     card.appendChild(_el('span', 'design-system-name', sys.name));
-    card.appendChild(_el('span', 'design-chip', sys.scope === 'project' ? 'Project' : 'Personal'));
+    card.appendChild(_el('span', 'design-chip', sys.shared ? `Shared by ${sys.shared.owner} · ${sys.shared.role}`
+      : (sys.scope === 'project' ? 'Project' : 'Personal')));
     card.appendChild(_swatches(sys.tokens));
     if ((sys.warnings || []).length) card.appendChild(_el('span', 'design-system-warn', 'low contrast'));
     list.appendChild(card);
@@ -285,10 +312,26 @@ function _nums(text) {
 function _renderSystem(id) {
   const existing = _systems.find((s) => s.id === id) || null;
   let tokens = existing ? JSON.parse(JSON.stringify(existing.tokens)) : null;
+  // `P26-09`. A system shared with me: what my role lets me do with it.
+  const role = existing && existing.shared ? existing.shared.role : 'owner';
   const body = _win.body;
   body.appendChild(_btn('design-back', '← Design', () => { _say(''); _view = { kind: 'home' }; _render(); }));
   body.appendChild(_el('h2', 'design-page-title', existing ? existing.name : 'New design system'));
   body.appendChild(_el('p', 'design-section-sub', 'Palette, type and voice. Reusable by you and the agent.'));
+  let collab = null;
+  if (existing) {
+    collab = _el('div', 'design-collab-box');
+    drawCollab(collab, { kind: 'system', ref: existing.id, role, owner: existing.shared ? existing.shared.owner : _me, name: existing.name },
+      { call: _call, say: _say, me: _me, onLeave: (f) => _leave.push(f) });
+    if (!may(role, 'edit')) {
+      // Not an editor: its swatches, its notes, nothing to change.
+      body.appendChild(_swatches(existing.tokens, 24));
+      if ((existing.tokens || {}).voice) body.appendChild(_el('p', 'design-section-sub', existing.tokens.voice));
+      body.appendChild(_el('p', 'design-section-sub', `Shared with you by ${existing.shared.owner}: you ${ROLE_WORDS[role]}. Use it in a brief like your own.`));
+      body.appendChild(collab);
+      return;
+    }
+  }
 
   const top = _el('div', 'design-system-top');
   const name = _input('Name (e.g. Acme Brand)');
@@ -309,6 +352,7 @@ function _renderSystem(id) {
   const projBtn = scopeBtn('project', 'Project', `Kept in ${_projectName() || 'the workspace'} as a file the agent reads`);
   const persBtn = scopeBtn('personal', 'Personal', 'Yours, in every project');
   if (!_project()) { projBtn.disabled = true; projBtn.title = 'Pick a workspace first to keep it in a project'; }
+  if (role !== 'owner') { projBtn.disabled = true; persBtn.disabled = true; }   // where it lives is its owner's
   scope.appendChild(projBtn);
   scope.appendChild(persBtn);
   const sync = () => [projBtn, persBtn].forEach((b) => b.setAttribute('aria-checked', String(b.dataset.scope === scopeNow)));
@@ -441,7 +485,7 @@ function _renderSystem(id) {
 
     const save = _btn('design-btn design-btn-primary', existing ? 'Save changes' : 'Save', () => doSave(false));
     foot.appendChild(save);
-    if (existing) {
+    if (existing && role === 'owner') {
       foot.appendChild(_btn('design-btn design-danger', 'Remove', async () => {
         const r = await _call('DELETE', `/api/design/systems/${encodeURIComponent(existing.id)}`);
         if (!r.ok) { _say(r.sentence, { error: true }); return; }
@@ -454,7 +498,8 @@ function _renderSystem(id) {
   }
 
   async function doSave(accept) {
-    const payload = { name: name.value, scope: scopeNow, tokens, project: _project() || null };
+    const payload = role === 'owner' ? { name: name.value, scope: scopeNow, tokens, project: _project() || null }
+      : { name: name.value, tokens };
     if (accept) payload.accept_low_contrast = true;
     const r = existing
       ? await _call('PUT', `/api/design/systems/${encodeURIComponent(existing.id)}`, payload)
@@ -474,6 +519,7 @@ function _renderSystem(id) {
   }
 
   drawTokens();
+  if (collab) body.appendChild(collab);
   if (!existing) name.focus();
 }
 
@@ -520,7 +566,8 @@ function _render() {
   _win.body.textContent = '';
   if (_view.kind === 'design') {
     renderDesign({
-      body: _win.body, slug: _view.slug, project: _project(), systems: _systems,
+      body: _win.body, slug: _view.slug, project: _view.share ? '' : _project(), systems: _systems,
+      share: _view.share || null, me: _me,
       say: _say, call: _call, sendToChat: _sendToChat,
       back: () => { _say(''); _view = { kind: 'home' }; _refresh(); },
       onLeave: (f) => _leave.push(f),
@@ -542,7 +589,7 @@ function _teardown() {
 }
 
 async function _refresh() {
-  await Promise.all([_loadSystems(), _view.kind === 'home' ? _loadDesigns() : Promise.resolve()]);
+  await Promise.all([_loadSystems(), _loadShared(), _view.kind === 'home' ? _loadDesigns() : Promise.resolve()]);
   _render();
 }
 
