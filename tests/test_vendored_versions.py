@@ -51,6 +51,18 @@ def _freshness():
     return mod
 
 
+def _upstream_holds_ours(records):
+    """`B426` gave `ask` a fourth question — are the shipped bytes in the
+    tarball the record's `source` names — and its default asks the registry.
+    These cases are about the other three, so it is answered here, offline,
+    as if each tarball held exactly the bytes we ship (`B1520`: a test does
+    not leave this machine; it used to try 108 times)."""
+    def tarball(url):
+        return {f"package/{path}": digest for rec in records if rec.get("source") == url
+                for path, digest in (rec.get("files") or {}).items()}
+    return tarball
+
+
 def load(path=CHECKER):
     spec = importlib.util.spec_from_file_location(f"_cvv_{id(path)}", path)
     mod = importlib.util.module_from_spec(spec)
@@ -352,7 +364,7 @@ def test_the_json_the_freshness_workflow_reads_is_complete():
     npm = [r for r in records if r["registry"] == "npm"]
     found = vf.ask(npm, lambda pkg: {"latest": "999.0.0", **{
         r.get("dist_tag") or "latest": "999.0.0" for r in npm}},
-        lambda pkg, ver: [])
+        lambda pkg, ver: [], _upstream_holds_ours(npm))
     owned = {r["entry"] for r in npm if r["behind_ok"]}
     assert {line.split(":")[0] for line in found["filed"] if " ⊃ " not in line} == owned
     assert {line.split(":")[0] for line in found["behind"] if " ⊃ " not in line} == \
@@ -362,7 +374,8 @@ def test_the_json_the_freshness_workflow_reads_is_complete():
     found = vf.ask([explained], lambda pkg: {"latest": explained["version"],
                                              explained.get("dist_tag") or "latest":
                                              explained["version"]},
-                   lambda pkg, ver: [{"id": gid}] if pkg == explained["package"] else [])
+                   lambda pkg, ver: [{"id": gid}] if pkg == explained["package"] else [],
+                   _upstream_holds_ours([explained]))
     assert found["vulnerable"] == [] and len(found["excused"]) == 1
 
 
@@ -498,7 +511,8 @@ def test_the_freshness_workflow_is_handed_the_inner_packages():
     # the bundle, at the versions the record carries.
     asked = []
     _freshness().ask([records["html2pdf.js"]], lambda pkg: {"latest": "0"},
-                     lambda pkg, ver: asked.append((pkg, ver)) or [])
+                     lambda pkg, ver: asked.append((pkg, ver)) or [],
+                     _upstream_holds_ours([records["html2pdf.js"]]))
     assert ("jspdf", "4.0.0") in asked and ("dompurify", "3.3.1") in asked, (
         "the freshness job no longer asks OSV about the packages inside a bundle")
 
