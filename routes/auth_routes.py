@@ -22,7 +22,7 @@ from src.events import record_auth_event
 # invisible to `.pantheon/check-auth-map.py`'s call-graph closure — which
 # is the exact defect that hid five `require_admin` gates in
 # `webhook_routes.py` and made `P11-02b`'s count wrong in both directions.
-from src.auth_helpers import get_current_user
+from src.auth_helpers import get_current_user, require_user
 from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 from src.roles import RoleError, describe as describe_role
 from src.constants import DEEP_RESEARCH_DIR, MEMORY_FILE, PASSWORD_MIN_LENGTH, SKILLS_DIR
@@ -48,16 +48,23 @@ from src.integrations import (
     update_integration,
     delete_integration,
     get_integration,
+    calls_from_server,
     integrations_for,
+    is_shared,
     mask_for,
     may_change,
     execute_api_call,
+    server_calls_for,
     INTEGRATION_PRESETS,
     migrate_from_settings,
     migrate_to_accounts,
 )
 
 logger = logging.getLogger(__name__)
+
+# `B1573`. Why a member's connection is theirs alone (`Law 15`).
+SHARING_IS_THE_SERVERS = ("A shared connection is called by the server for everyone, so only an admin "
+                          "shares one. Yours stays yours: your agents call it from your workstation.")
 
 
 class LoginRequest(BaseModel):
@@ -1335,53 +1342,75 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         if not item:
             raise HTTPException(404, "Integration not found")
         if not may_change(item, user):
+            # `B1573`: one from before `P27-02` has no owner yet — it is any
+            # admin's, and a member now reaches this route.
+            owner = item.get("owner")
             raise HTTPException(
-                403, f"“{item.get('name') or integration_id}” is {item.get('owner')}'s, shared "
-                     f"with everyone to use; only {item.get('owner')} can change or remove it.")
+                403, f"“{item.get('name') or integration_id}” is {owner + chr(39) + 's' if owner else 'an admin' + chr(39) + 's'}, "
+                     f"shared with everyone to use; only {owner or 'an admin'} can change or remove it.")
         return item
 
     @router.get("/integrations")
     async def list_integrations_route(request: Request):
-        """This admin's own integrations and the shared ones (`P27-02`),
-        keys masked; another person's own are not listed."""
-        require_admin(request)
-        user = get_current_user(request)
-        return {"integrations": [mask_for(item, user) for item in integrations_for(user)]}
+        """The caller's own integrations and the shared ones (`P27-02`),
+        keys masked; another person's own are not listed. `B1573`: anyone
+        signed in — a member owns connections too — told whether they may
+        share one (`may_share`: the server calls a shared one for everyone)."""
+        user = require_user(request)
+        return {"integrations": [mask_for(item, user) for item in integrations_for(user)],
+                "may_share": server_calls_for(user)}
 
     @router.get("/integrations/presets")
     async def list_presets():
         """List available integration presets."""
         return {"presets": {k: {kk: vv for kk, vv in v.items() if kk != "api_key"} for k, v in INTEGRATION_PRESETS.items()}}
 
+    def _may_share(user, body: dict, item: Optional[dict] = None) -> None:
+        """`B1573`. A shared connection is called by the server for
+        everyone, so only someone the server makes those requests for shares
+        one; a member's stays theirs. And one already shared — an admin's who
+        is a member now — is not re-pointed by them: they may take it back
+        (`shared: false`) or switch it off, not change where the server calls."""
+        if server_calls_for(user):
+            return
+        if body.get("shared") is True:
+            raise HTTPException(403, SHARING_IS_THE_SERVERS)
+        if item is not None and is_shared(item) and set(body) - {"shared", "enabled"}:
+            raise HTTPException(403, "This connection is shared, so the server calls it for everyone: "
+                                     "only an admin changes it. You may stop sharing it or switch it off.")
+
     @router.post("/integrations")
     async def create_integration(request: Request):
-        """Create a new integration (admin only) — this admin's own, shared
-        with everyone only when the body says `"shared": true` (`P27-02`)."""
-        require_admin(request)
-        user = get_current_user(request)
+        """Create a new integration — the caller's own, shared with everyone
+        only when the body says `"shared": true` (`P27-02`). `B1573`: anyone
+        signed in; a member's is never shared, and is called from their
+        workstation (`integrations.calls_from_server`)."""
+        user = require_user(request)
         body = await request.json()
         if not isinstance(body, dict):
             raise HTTPException(400, "An integration is an object.")
+        _may_share(user, body)
         item = add_integration(body, owner=user)
         return {"ok": True, "integration": mask_for(item, user)}
 
     @router.put("/integrations/{integration_id}")
     async def update_integration_route(integration_id: str, request: Request):
-        """Update an integration (admin only) — one's own (`P27-02`)."""
-        require_admin(request)
-        _changeable_integration(request, integration_id)
+        """Update an integration — one's own (`P27-02`; `B1573`: anyone's own)."""
+        user = require_user(request)
+        current = _changeable_integration(request, integration_id)
         body = await request.json()
         if not isinstance(body, dict):
             raise HTTPException(400, "An integration is an object.")
+        _may_share(user, body, current)
         item = update_integration(integration_id, body)
         if not item:
             raise HTTPException(404, "Integration not found")
-        return {"ok": True, "integration": mask_for(item, get_current_user(request))}
+        return {"ok": True, "integration": mask_for(item, user)}
 
     @router.delete("/integrations/{integration_id}")
     async def delete_integration_route(integration_id: str, request: Request):
-        """Delete an integration (admin only) — one's own (`P27-02`)."""
-        require_admin(request)
+        """Delete an integration — one's own (`P27-02`; `B1573`: anyone's own)."""
+        require_user(request)
         _changeable_integration(request, integration_id)
         ok = delete_integration(integration_id)
         if not ok:
@@ -1390,13 +1419,19 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
 
     @router.post("/integrations/{integration_id}/test")
     async def test_integration_route(integration_id: str, request: Request):
-        """Test connectivity to an integration (admin only) — one's own or a
-        shared one (`P27-02`)."""
-        require_admin(request)
-        _tester = get_current_user(request)
+        """Test connectivity to an integration — one's own or a shared one
+        (`P27-02`). `B1573`: a member's own is tested from their workstation,
+        as their agent calls it (the GET below, through `execute_api_call`);
+        one the server calls is tested by the server, for a caller the server
+        makes such requests for."""
+        _tester = require_user(request)
         integ = get_integration(integration_id, _tester)
         if not integ:
             raise HTTPException(404, "Integration not found")
+        from_server = calls_from_server(integ)
+        if from_server and not server_calls_for(_tester):
+            raise HTTPException(403, f"“{integ.get('name') or integration_id}” is called by the server, "
+                                     "for everyone; testing it is its owner's or an admin's.")
         preset = (integ.get("preset") or integ.get("name", "")).lower()
 
         # ntfy is special: a GET / proves the server is reachable but
@@ -1406,7 +1441,10 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         # to the topic the Reminders panel is configured to use. If the
         # subscriber app is wired up correctly, this is what the green
         # checkmark + a phone ping confirms together.
-        if preset == "ntfy":
+        # `B1573`: these two post from this machine, so only for one the
+        # server calls; a member's own ntfy or Discord hook is asked by the
+        # GET below, from their workstation.
+        if preset == "ntfy" and from_server:
             import httpx
             from urllib.parse import urlparse
             # Strip any path/query the user accidentally pasted in the
@@ -1462,7 +1500,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                     hint = " If this is Docker Compose ntfy, set NTFY_BIND to that host/Tailscale IP and NTFY_BASE_URL to the same server URL in .env, then recreate ntfy."
                 return {"ok": False, "message": f"ntfy publish to {full_url} failed: {e}.{hint}"[:500]}
 
-        if preset == "discord_webhook":
+        if preset == "discord_webhook" and from_server:
             import httpx
             webhook_url = (integ.get("base_url") or "").strip()
             if not webhook_url:

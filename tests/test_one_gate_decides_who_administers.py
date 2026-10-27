@@ -45,7 +45,9 @@ ASK = (
     ("GET", "/api/auth/users", None),
     ("PUT", "/api/auth/open-signup", {"enabled": False}),
     ("GET", "/api/auth/settings/flag-sources", None),
-    ("GET", "/api/auth/integrations", None),
+    # `B1573`: the integrations list answers each person their own now; the
+    # role catalogue stands in as this file's admin read.
+    ("GET", "/api/auth/roles", None),
     ("POST", "/api/shell/exec", {"command": "true"}),
 )
 for label, who in (("anonymous", None), ("member", MEMBER), ("admin", ADMIN)):
@@ -112,8 +114,10 @@ def test_the_two_files_ask_require_admin_and_nothing_else():
     assert len(others) == 1 and others[0].startswith("routes/auth_routes.py:"), others
     sites = {(s.file, s.func) for s in checker.require_admin_sites(
         ROOT, ["routes/auth_routes.py", "routes/shell_routes.py"])}
+    # `B1573`: `create_integration` asks `require_user` now (a member owns
+    # connections too); `upsert_role` stands in for it.
     for func in ("list_users", "admin_create_user", "set_user_admin", "admin_delete_user",
-                 "set_settings", "create_integration"):
+                 "set_settings", "upsert_role"):
         assert ("routes/auth_routes.py", func) in sites, func
     for func in ("shell_exec", "shell_stream", "install_system_deps", "rebuild_engine"):
         assert ("routes/shell_routes.py", func) in sites, func

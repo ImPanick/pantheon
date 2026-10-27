@@ -336,7 +336,7 @@ async def server_bitwarden_items(owner: Optional[str]) -> List[Dict[str, Any]]:
     session = _load_vault_config().get("session")
     if not session:
         raise TransferRefused("The server's Bitwarden link is not set up or is locked. An admin sets and "
-                              "unlocks it in Settings → Integrations.", 409)
+                              "unlocks it in Workbench → MCP & Integrations.", 409)
     stdout, stderr, rc = await _run_bw(["list", "items"], session=session)
     if rc != 0:
         raise TransferRefused(f"Bitwarden said: {stderr.strip()[:200] or 'it could not list the items'}. "

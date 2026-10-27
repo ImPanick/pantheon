@@ -671,7 +671,9 @@ def test_the_lifted_set_is_the_nine_for_whoever_may_use_the_workstation(ws, sett
     assert lifted_tools("ann") == frozenset()          # off
     _on(settings, ws)
     # `B985`: and `get_workspace`, which then answers about the same home.
-    assert lifted_tools("ann") == WORKSTATION_TOOLS | {"get_workspace", "git", "shell_with_login"} == lifted_tools("boss")
+    # `B1573`: and `api_call`, the person's own connections, called from there.
+    assert (lifted_tools("ann") == WORKSTATION_TOOLS | {"get_workspace", "git", "shell_with_login", "api_call"}
+            == lifted_tools("boss"))
     assert lifted_tools("bob") == frozenset()
     settings["workstation_route_tools"] = False
     assert lifted_tools("ann") == frozenset()
@@ -804,8 +806,9 @@ def test_the_privilege_matrix(ws, settings, people, host_dir, tool, owner, switc
 
 
 # `B985` lifted `get_workspace` with the nine (`test_get_workspace_is_lifted_with_the_nine.py`);
-# nothing else is.
-@pytest.mark.parametrize("tool", ["manage_bg_jobs", "host_shell", "api_call"])
+# `B1573` `api_call`, for the person's own connections only
+# (`test_a_members_own_connection_is_called_from_their_workstation.py`); nothing else is.
+@pytest.mark.parametrize("tool", ["manage_bg_jobs", "host_shell"])
 def test_the_grant_lifts_the_nine_and_nothing_wider(ws, settings, people, tool):
     _on(settings, ws)
     _, r = _call(tool, "{}", "ann")

@@ -994,8 +994,11 @@ async def do_api_call(content: str, owner: Optional[str] = None) -> Dict:
     """Execute an API call to a registered integration.
 
     `P27-02`: `owner`'s own integrations and the shared ones — another
-    person's is neither found nor named in the list of what is available."""
-    from src.integrations import execute_api_call, integrations_for
+    person's is neither found nor named in the list of what is available.
+    `B1573`: exactly the ones `owner`'s agent reaches
+    (`integrations.agent_integrations_for`) — for a member whose tools run in
+    their workstation, their own, called from there."""
+    from src.integrations import agent_integrations_for, execute_api_call
     try:
         args = json.loads(content)
     except json.JSONDecodeError:
@@ -1013,7 +1016,7 @@ async def do_api_call(content: str, owner: Optional[str] = None) -> Dict:
                 pass
 
     integration_name = args.get("integration", "")
-    integrations = integrations_for(owner)
+    integrations = agent_integrations_for(owner)
     intg = next((i for i in integrations if i["id"] == integration_name
                  or i["name"].lower() == integration_name.lower()), None)
     if not intg:

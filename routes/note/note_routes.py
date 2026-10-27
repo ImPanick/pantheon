@@ -402,7 +402,7 @@ async def dispatch_reminder(
         try:
             import httpx
             import json as _wjson
-            from src.integrations import integrations_for
+            from src.integrations import server_integrations_for
             # Built-in payload defaults for known presets so users don't have
             # to configure a template just to use a standard service.
             _PRESET_TEMPLATE_DEFAULTS = {
@@ -413,9 +413,10 @@ async def dispatch_reminder(
             if not intg_id:
                 webhook_error = "No webhook integration selected"
             else:
-                # `P27-02`: the reminder's owner's own or a shared one.
+                # `P27-02`: the reminder's owner's own or a shared one — one
+                # the server calls (`B1573`: never a member's own).
                 intg = next(
-                    (i for i in integrations_for(owner or None)
+                    (i for i in server_integrations_for(owner or None)
                      if i.get("id") == intg_id and i.get("base_url")),
                     None,
                 )
@@ -475,11 +476,12 @@ async def dispatch_reminder(
     ntfy_error = ""
     if channel == "ntfy":
         try:
-            from src.integrations import integrations_for
+            from src.integrations import server_integrations_for
             import httpx
-            # `P27-02`: the reminder's owner's own or a shared one.
+            # `P27-02`: the reminder's owner's own or a shared one — one the
+            # server calls (`B1573`: never a member's own).
             intg = next(
-                (i for i in integrations_for(owner or None)
+                (i for i in server_integrations_for(owner or None)
                  if i.get("preset") == "ntfy" and i.get("enabled", True) and i.get("base_url")),
                 None,
             )

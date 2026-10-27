@@ -6,8 +6,8 @@ import time
 import uuid
 import logging
 import re
-from typing import Dict, List, Optional, Any
-from urllib.parse import urljoin, urlparse, urlunparse
+from typing import Dict, List, Optional, Any, Tuple
+from urllib.parse import urlencode, urljoin, urlparse, urlunparse
 
 import httpcore
 import httpx
@@ -360,10 +360,20 @@ def save_integrations(integrations: List[Dict[str, Any]]) -> None:
 #
 # The adversary (`Law 17`) is a second account on the same install — another
 # admin, or a person whose reminder or brief the server runs — reading or
-# spending a key that was never theirs. Only an admin adds one today: the
-# server makes the requests an integration is for, and `api_call` is an
-# admin's tool (`NON_ADMIN_BLOCKED_TOOLS`), so a non-admin's own entry would
-# be a key nothing of theirs could use.
+# spending a key that was never theirs.
+#
+# `B1573` · **where the requests are made from.** `api_call` on this machine
+# is a request the server makes to wherever a record points, its key attached
+# — why it is an admin's tool (`NON_ADMIN_BLOCKED_TOOLS`). So a connection is
+# called by the server only when it is shared (only an admin shares one) or
+# its owner is someone the server makes such requests for (`server_calls_for`,
+# asked of the tool policy as `api_call` is). A member's own connection is
+# called the way `P27-09`'s `connections test` reaches an address: from their
+# workstation, by `curl` in their own account, where their own shell already
+# reaches — and only by their own agent. The adversary there is the member:
+# the server makes no request for their record (not the agent's call, not a
+# reminder, not the brief, not *Test*), and a member is never handed a shared
+# connection's key in their workstation.
 
 def is_shared(item: Dict[str, Any]) -> bool:
     """Shared with every account: marked so, or from before `P27-02`."""
@@ -377,8 +387,13 @@ def visible_to(item: Dict[str, Any], person: Optional[str]) -> bool:
 
 def may_change(item: Dict[str, Any], person: Optional[str]) -> bool:
     """Only its owner changes or removes one (an unmigrated record is any
-    admin's, as every record was before)."""
-    return bool(person) and (not item.get("owner") or item.get("owner") == person)
+    admin's, as every record was before — `B1573`: asked as `server_calls_for`,
+    now that a member reaches these routes too)."""
+    if not person:
+        return False
+    if not item.get("owner"):
+        return server_calls_for(person)
+    return item.get("owner") == person
 
 
 def integrations_for(person: Optional[str]) -> List[Dict[str, Any]]:
@@ -386,10 +401,61 @@ def integrations_for(person: Optional[str]) -> List[Dict[str, Any]]:
     return [item for item in load_integrations() if visible_to(item, person)]
 
 
+def server_calls_for(person: Optional[str]) -> bool:
+    """`B1573`. Does the server make an integration's requests for `person`
+    — and so may they share one with everyone? Asked of the tool policy, as
+    `api_call` itself is (an admin; nobody before setup), not as a further
+    "is this an admin"."""
+    from src.tool_security import blocked_tools_for_owner
+    return "api_call" not in blocked_tools_for_owner(person)
+
+
+def calls_from_server(item: Dict[str, Any]) -> bool:
+    """`B1573`. Is this connection called by the server? A shared one, or
+    one whose owner the server calls for. A member's own: no — from their
+    workstation, or not at all."""
+    return is_shared(item) or server_calls_for(item.get("owner"))
+
+
+def server_integrations_for(person: Optional[str]) -> List[Dict[str, Any]]:
+    """The connections the server itself calls on `person`'s behalf — their
+    reminders, their daily brief: those of `integrations_for` the server
+    calls. A member's own is left out (`B1573`): the server makes no request
+    to an address a member chose."""
+    return [item for item in integrations_for(person) if calls_from_server(item)]
+
+
+def agent_integrations_for(person: Optional[str]) -> List[Dict[str, Any]]:
+    """What `person`'s agent reaches with `api_call` — the list its prompt
+    names and the tool finds by (`B1573`):
+
+    * someone the server calls for (an admin): their own and the shared;
+    * a member whose tools run in their workstation (`api_call` is lifted
+      for them, `workstation_tools.LIFTED_TOOLS`): **their own** — never a
+      shared one, whose key would go into their workstation and whose
+      requests are the server's;
+    * anyone else: none, as `api_call` is refused them.
+    """
+    return [item for item in integrations_for(person) if _agent_reaches(item, person)]
+
+
+def _agent_reaches(item: Dict[str, Any], person: Optional[str]) -> bool:
+    """`agent_integrations_for`'s rule for one record `person` can see."""
+    if server_calls_for(person):
+        return True
+    if is_shared(item) or not person or item.get("owner") != person:
+        return False
+    from src.agent_tools.workstation_tools import lifted_tools
+    return "api_call" in lifted_tools(person)
+
+
 def mask_for(integration: Dict[str, Any], person: Optional[str]) -> Dict[str, Any]:
     """A copy safe to answer `person` with, saying whose it is. Its owner sees
     the key's first four characters, as before; anyone else sees only that one
-    is set — not a character of somebody else's key."""
+    is set — not a character of somebody else's key.
+
+    `B1573`: and where its requests are made from (`called_from`: `server` or
+    `workstation`), and whether `person`'s own agents reach it (`your_agents`)."""
     safe = mask_integration_secret(integration)
     mine = bool(person) and integration.get("owner") == person
     if not mine:
@@ -399,6 +465,8 @@ def mask_for(integration: Dict[str, Any], person: Optional[str]) -> Dict[str, An
     safe["shared"] = is_shared(integration)
     safe["mine"] = mine
     safe["read_only"] = not may_change(integration, person)
+    safe["called_from"] = "server" if calls_from_server(integration) else "workstation"
+    safe["your_agents"] = visible_to(integration, person) and _agent_reaches(integration, person)
     return safe
 
 
@@ -705,6 +773,284 @@ API_CALL_BODY_JSON_MAX_BYTES = 1024 * 1024
 _UNPARSED = object()
 
 
+def _reply(status: int, content_type: str, text: str, size: int, structured: bool) -> Dict[str, Any]:
+    """An HTTP answer as `execute_api_call` answers it — whichever machine
+    made the request (`B1573`: the server, or the owner's workstation).
+    `size` is the body's length in bytes."""
+    parsed_json: Any = _UNPARSED
+
+    # Format response body
+    if "application/json" in content_type:
+        try:
+            data = json.loads(text)
+            parsed_json = data
+            full = json.dumps(data, indent=2, ensure_ascii=False)
+            if len(full) > 12000:
+                if isinstance(data, list):
+                    # Binary-search for the largest prefix such that the
+                    # final array (prefix + sentinel) fits within the limit.
+                    # Pre-compute the sentinel so we know its serialized size.
+                    sentinel_placeholder = {
+                        "_truncated": True,
+                        "total_items": len(data),
+                        "shown_items": 0,
+                    }
+                    # Overhead: the sentinel appears as an extra array element.
+                    # Add a conservative padding for the separating comma,
+                    # newline, and indentation characters (~6 chars).
+                    sentinel_overhead = len(
+                        json.dumps(sentinel_placeholder, indent=2, ensure_ascii=False)
+                    ) + 6
+                    budget = 12000 - sentinel_overhead
+                    lo, hi = 0, len(data)
+                    while lo < hi:
+                        mid = (lo + hi + 1) // 2
+                        candidate = json.dumps(
+                            data[:mid], indent=2, ensure_ascii=False
+                        )
+                        if len(candidate) < budget:
+                            lo = mid
+                        else:
+                            hi = mid - 1
+                    sentinel = {
+                        "_truncated": True,
+                        "total_items": len(data),
+                        "shown_items": lo,
+                    }
+                    formatted = json.dumps(
+                        data[:lo] + [sentinel], indent=2, ensure_ascii=False
+                    )
+                elif isinstance(data, dict):
+                    # Truncate dict entries until the result fits, then add
+                    # the _truncated marker.  Walk keys in insertion order.
+                    DICT_LIMIT = 12000
+                    kept: dict = {}
+                    for k, v in data.items():
+                        candidate = json.dumps(
+                            {**kept, k: v, "_truncated": True},
+                            indent=2,
+                            ensure_ascii=False,
+                        )
+                        if len(candidate) <= DICT_LIMIT:
+                            kept[k] = v
+                        else:
+                            break
+                    formatted = json.dumps(
+                        {**kept, "_truncated": True}, indent=2, ensure_ascii=False
+                    )
+                else:
+                    total = len(full)
+                    formatted = full[:12000] + f"\n... (truncated, {total} chars total)"
+            else:
+                formatted = full
+        except (json.JSONDecodeError, ValueError):
+            formatted = text
+            if len(formatted) > 12000:
+                total = len(formatted)
+                formatted = formatted[:12000] + f"\n... (truncated, {total} chars total)"
+    elif "text/html" in content_type:
+        formatted = _strip_html_tags(text)
+        if len(formatted) > 12000:
+            total = len(formatted)
+            formatted = formatted[:12000] + f"\n... (truncated, {total} chars total)"
+    else:
+        formatted = text
+        if len(formatted) > 12000:
+            total = len(formatted)
+            formatted = formatted[:12000] + f"\n... (truncated, {total} chars total)"
+
+    output = f"HTTP {status}\n{formatted}"
+
+    extra: Dict[str, Any] = {}
+    if structured:
+        extra["http_status"] = status
+        if (parsed_json is not _UNPARSED
+                and size <= API_CALL_BODY_JSON_MAX_BYTES):
+            extra["body_json"] = parsed_json
+
+    if status >= 400:
+        return {
+            "error": output,
+            "exit_code": 1,
+            # The error string includes the remote response body.  Preserve
+            # it for diagnostics, but make its provenance explicit so the
+            # agent gate does not treat HTTP failure as content-free.
+            "untrusted_content": True,
+            **extra,
+        }
+
+    return {"output": output, "exit_code": 0, **extra}
+
+
+def _credentials(integration: Dict[str, Any], params: Optional[Dict[str, Any]],
+                 extra_headers: Optional[Dict[str, str]]
+                 ) -> Tuple[Dict[str, str], Optional[Dict[str, Any]], Optional[Tuple[str, str]]]:
+    """The request's headers, query and basic-auth pair, with the
+    integration's key where its auth type says — one recipe for the server's
+    request and the workstation's (`B1573`)."""
+    headers: Dict[str, str] = {}
+    if extra_headers:
+        headers.update(extra_headers)
+
+    api_key = integration.get("api_key", "")
+    auth_type = integration.get("auth_type", "none")
+
+    if auth_type == "header" and api_key:
+        # Fall back based on preset/name when auth_header is unset or empty
+        header_name = integration.get("auth_header") or ""
+        if not header_name:
+            preset = (integration.get("preset") or integration.get("name", "")).lower()
+            header_defaults = {
+                "miniflux": "X-Auth-Token",
+                "linkding": "Authorization",
+                "gitea": "Authorization",
+            }
+            header_name = header_defaults.get(preset, "Authorization")
+        headers[header_name] = api_key
+    elif auth_type == "bearer" and api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    elif auth_type == "query" and api_key:
+        params = dict(params or {})
+        param_name = integration.get("auth_param", "api_key")
+        params[param_name] = api_key
+
+    # auth_type == "basic" — expects api_key as "user:password"
+    basic = None
+    if auth_type == "basic" and api_key:
+        parts = api_key.split(":", 1)
+        if len(parts) == 2:
+            basic = (parts[0], parts[1])
+    return headers, params, basic
+
+
+# ── `B1573` · a member's own connection, called from their workstation ────────
+#
+# By `curl` in their workstation account, as `connections test` asks an
+# address (`P27-09`), through `git_tools._Place` — the person's proxy and
+# trusted file (`P27-04`) and the admin's network rules apply as to their own
+# shell. Everything that carries the key — the URL (a query key), the headers,
+# the basic pair — and the body go to curl on its standard input as a config
+# file (`curl --config -`), so none of it is in a command line another account
+# on that box could list. The answer is the same shape as the server's
+# (`_reply`); the body is read to `WORKSTATION_BODY_MAX` bytes, under the
+# daemon's 1 MB.
+
+WORKSTATION_CALL_TIMEOUT_S = 30
+WORKSTATION_BODY_MAX = 900_000
+_WORKSTATION_MARK = "\n@@pantheon-api-call@@ "
+_HTTP_METHOD = re.compile(r"^[A-Z]{1,16}$")
+_CURL_SCRIPT = (
+    'f=$(mktemp) || exit 90\n'
+    "trap 'rm -f \"$f\"' EXIT\n"
+    "w=$(curl --config - -o \"$f\" -w '%{http_code} %{size_download} %{content_type}')\n"
+    'rc=$?\n'
+    f'head -c {WORKSTATION_BODY_MAX} "$f"\n'
+    'printf \'\\n@@pantheon-api-call@@ %s %s\\n\' "$rc" "$w"\n'
+    'exit 0\n'
+)
+
+
+def _curl_value(value: str) -> str:
+    """A value for a curl config file: double-quoted, with the escapes curl
+    reads there (backslash, quote, newline, carriage return, tab)."""
+    out = (value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+           .replace("\r", "\\r").replace("\t", "\\t"))
+    return f'"{out}"'
+
+
+def _query_value(value: Any) -> str:
+    """A query parameter's value, spelled as httpx spells it for the server's
+    request (`true`/`false`, nothing for `None`)."""
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    return "" if value is None else str(value)
+
+
+def _with_query(url: str, params: Optional[Dict[str, Any]]) -> str:
+    if not params:
+        return url
+    pairs = []
+    for k, v in params.items():
+        for one in (v if isinstance(v, (list, tuple)) else [v]):
+            pairs.append((str(k), _query_value(one)))
+    return url + ("&" if "?" in url else "?") + urlencode(pairs)
+
+
+def _curl_config(method: str, url: str, headers: Dict[str, str], basic: Optional[Tuple[str, str]],
+                 body: Any) -> str:
+    lines = [f"url = {_curl_value(url)}", f"request = {_curl_value(method)}",
+             'proto = "=http,https"', "globoff", "silent", "show-error",
+             f"max-time = {WORKSTATION_CALL_TIMEOUT_S}"]
+    named = {k.lower() for k in headers}
+    if body is not None and "content-type" not in named:
+        headers = {**headers, "Content-Type": "application/json"}
+    for k, v in headers.items():
+        lines.append(f"header = {_curl_value(f'{k}: {v}')}")
+    if basic:
+        lines.append(f"user = {_curl_value(f'{basic[0]}:{basic[1]}')}")
+    if body is not None:
+        lines.append(f"data-binary = {_curl_value(json.dumps(body))}")
+    return "\n".join(lines) + "\n"
+
+
+async def _call_from_workstation(integration: Dict[str, Any], method: str, url: str,
+                                 params: Optional[Dict[str, Any]], body: Any,
+                                 extra_headers: Optional[Dict[str, str]],
+                                 structured: bool) -> Dict[str, Any]:
+    from src.agent_tools.git_tools import _Place, _where
+    from src.workstation_client import WorkstationError
+
+    name = integration.get("name") or integration.get("id")
+    method = str(method or "GET").upper()
+    if not _HTTP_METHOD.match(method):
+        return {"error": f"“{method[:20]}” is not an HTTP method.", "exit_code": 1}
+    headers, params, basic = _credentials(integration, params, extra_headers)
+    for k, v in headers.items():
+        if (not isinstance(k, str) or not isinstance(v, str) or not k.strip()
+                or re.search(r"[\r\n:]", k) or re.search(r"[\r\n]", v)):
+            return {"error": "Each header is a name and a value, one line each.", "exit_code": 1}
+    try:
+        config = _curl_config(method, _with_query(url, params), headers, basic, body)
+    except (TypeError, ValueError):
+        return {"error": "The body is not JSON.", "exit_code": 1}
+
+    place = _Place(integration.get("owner"), None)
+    refused = await place.open()
+    if refused is not None:
+        return refused
+    if not place.in_workstation:
+        return {"error": (f"“{name}” is your own connection, so it is called from your workstation, "
+                          "and this account has none turned on — the server makes no request for it. "
+                          "Ask an admin for a workstation."), "exit_code": 1}
+    try:
+        r = await place.client.exec(place.account, _CURL_SCRIPT, shell="bash", cwd=place.base(),
+                                    timeout_s=WORKSTATION_CALL_TIMEOUT_S + 15,
+                                    env={"LC_ALL": "C.UTF-8", **place.names_env}, stdin=config)
+    except WorkstationError as e:
+        return e.as_result()
+    out = r.get("stdout") or ""
+    if _WORKSTATION_MARK not in out:
+        why = (r.get("stderr") or "").strip().splitlines()[-1:] or ["no answer"]
+        return {"error": f"Your workstation did not say how the call to {name} went: {why[0][:200]}",
+                "exit_code": 1, **_where(place)}
+    text, tail = out.rsplit(_WORKSTATION_MARK, 1)
+    rc, code, size, ctype = (tail.strip().split(" ", 3) + ["", "", "", ""])[:4]
+    if rc != "0":
+        if rc == "28":
+            return {"error": f"Request to {name} timed out", "exit_code": 1, **_where(place)}
+        why = (r.get("stderr") or "").strip().splitlines()[-1:] or [f"curl exit {rc}"]
+        return {"error": f"Request failed: {why[0][:300]}", "exit_code": 1, **_where(place)}
+    try:
+        status, length = int(code), int(size)
+    except ValueError:
+        return {"error": f"Your workstation's answer from {name} could not be read.", "exit_code": 1,
+                **_where(place)}
+    return {**_reply(status, ctype.strip(), text, length, structured), **_where(place)}
+
+
+
 async def execute_api_call(
     integration_id: str,
     method: str,
@@ -769,6 +1115,13 @@ async def execute_api_call(
 
     url = _join_integration_url(base_url, path)
 
+    if not calls_from_server(integration):
+        # `B1573`. A member's own connection: from their workstation, never
+        # from here — so above the SSRF guard, whose subject is a request this
+        # machine makes, and which this one is not.
+        return await _call_from_workstation(integration, method, url, params, body,
+                                            extra_headers, structured)
+
     # SSRF guard — same check used by the gallery endpoint, embeddings,
     # CardDAV, and the reminder webhook sender. Link-local / metadata
     # addresses (169.254.x.x — the cloud credential-exfil vector) are always
@@ -804,47 +1157,15 @@ async def execute_api_call(
         return {"error": "URL rejected: host did not resolve to a usable address", "exit_code": 1}
 
     method = method.upper()
-
-    # Build headers
-    headers: Dict[str, str] = {}
-    if extra_headers:
-        headers.update(extra_headers)
-
     api_key = integration.get("api_key", "")
     auth_type = integration.get("auth_type", "none")
-
-    if auth_type == "header" and api_key:
-        # Fall back based on preset/name when auth_header is unset or empty
-        header_name = integration.get("auth_header") or ""
-        if not header_name:
-            preset = (integration.get("preset") or integration.get("name", "")).lower()
-            header_defaults = {
-                "miniflux": "X-Auth-Token",
-                "linkding": "Authorization",
-                "gitea": "Authorization",
-            }
-            header_name = header_defaults.get(preset, "Authorization")
-        headers[header_name] = api_key
-    elif auth_type == "bearer" and api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    elif auth_type == "query" and api_key:
-        if params is None:
-            params = {}
-        param_name = integration.get("auth_param", "api_key")
-        params[param_name] = api_key
-
-    # auth_type == "basic" — expects api_key as "user:password"
-    auth = None
-    if auth_type == "basic" and api_key:
-        parts = api_key.split(":", 1)
-        if len(parts) == 2:
-            auth = httpx.BasicAuth(parts[0], parts[1])
+    headers, params, basic = _credentials(integration, params, extra_headers)
+    auth = httpx.BasicAuth(*basic) if basic else None
 
     from src import paced_http
     from src.networks import NetworkScopeViolation
     from src.rate_limiter import OutboundRateLimited
 
-    parsed_json: Any = _UNPARSED
     try:
         # `P22-13`. Paced, through the pinned client (`FORBIDDEN.md` Part 2:
         # `OutboundHostLimiter` on every third-party call). This was a bare
@@ -868,110 +1189,8 @@ async def execute_api_call(
                 auth=auth,
             )
 
-        content_type = response.headers.get("content-type", "")
-        status = response.status_code
-
-        # Format response body
-        if "application/json" in content_type:
-            try:
-                data = response.json()
-                parsed_json = data
-                full = json.dumps(data, indent=2, ensure_ascii=False)
-                if len(full) > 12000:
-                    if isinstance(data, list):
-                        # Binary-search for the largest prefix such that the
-                        # final array (prefix + sentinel) fits within the limit.
-                        # Pre-compute the sentinel so we know its serialized size.
-                        sentinel_placeholder = {
-                            "_truncated": True,
-                            "total_items": len(data),
-                            "shown_items": 0,
-                        }
-                        # Overhead: the sentinel appears as an extra array element.
-                        # Add a conservative padding for the separating comma,
-                        # newline, and indentation characters (~6 chars).
-                        sentinel_overhead = len(
-                            json.dumps(sentinel_placeholder, indent=2, ensure_ascii=False)
-                        ) + 6
-                        budget = 12000 - sentinel_overhead
-                        lo, hi = 0, len(data)
-                        while lo < hi:
-                            mid = (lo + hi + 1) // 2
-                            candidate = json.dumps(
-                                data[:mid], indent=2, ensure_ascii=False
-                            )
-                            if len(candidate) < budget:
-                                lo = mid
-                            else:
-                                hi = mid - 1
-                        sentinel = {
-                            "_truncated": True,
-                            "total_items": len(data),
-                            "shown_items": lo,
-                        }
-                        formatted = json.dumps(
-                            data[:lo] + [sentinel], indent=2, ensure_ascii=False
-                        )
-                    elif isinstance(data, dict):
-                        # Truncate dict entries until the result fits, then add
-                        # the _truncated marker.  Walk keys in insertion order.
-                        DICT_LIMIT = 12000
-                        kept: dict = {}
-                        for k, v in data.items():
-                            candidate = json.dumps(
-                                {**kept, k: v, "_truncated": True},
-                                indent=2,
-                                ensure_ascii=False,
-                            )
-                            if len(candidate) <= DICT_LIMIT:
-                                kept[k] = v
-                            else:
-                                break
-                        formatted = json.dumps(
-                            {**kept, "_truncated": True}, indent=2, ensure_ascii=False
-                        )
-                    else:
-                        total = len(full)
-                        formatted = full[:12000] + f"\n... (truncated, {total} chars total)"
-                else:
-                    formatted = full
-            except (json.JSONDecodeError, ValueError):
-                formatted = response.text
-                if len(formatted) > 12000:
-                    total = len(formatted)
-                    formatted = formatted[:12000] + f"\n... (truncated, {total} chars total)"
-        elif "text/html" in content_type:
-            formatted = _strip_html_tags(response.text)
-            if len(formatted) > 12000:
-                total = len(formatted)
-                formatted = formatted[:12000] + f"\n... (truncated, {total} chars total)"
-        else:
-            formatted = response.text
-            if len(formatted) > 12000:
-                total = len(formatted)
-                formatted = formatted[:12000] + f"\n... (truncated, {total} chars total)"
-
-        output = f"HTTP {status}\n{formatted}"
-
-        extra: Dict[str, Any] = {}
-        if structured:
-            extra["http_status"] = status
-            if (parsed_json is not _UNPARSED
-                    and len(response.content or b"") <= API_CALL_BODY_JSON_MAX_BYTES):
-                extra["body_json"] = parsed_json
-
-        if status >= 400:
-            return {
-                "error": output,
-                "exit_code": 1,
-                # The error string includes the remote response body.  Preserve
-                # it for diagnostics, but make its provenance explicit so the
-                # agent gate does not treat HTTP failure as content-free.
-                "untrusted_content": True,
-                **extra,
-            }
-
-        return {"output": output, "exit_code": 0, **extra}
+        return _reply(response.status_code, response.headers.get("content-type", ""),
+                      response.text, len(response.content or b""), structured)
 
     except OutboundRateLimited as exc:
         # The host said stop, and the wait is longer than a call sits through.
@@ -996,10 +1215,12 @@ async def execute_api_call(
 def get_integrations_prompt(owner: Optional[str]) -> str:
     """Return a string describing `owner`'s enabled integrations — their own
     and the shared ones (`P27-02`) — for system prompt injection.
+    `B1573`: the ones `owner`'s agent can call (`agent_integrations_for`): a
+    member is not told of a connection their `api_call` would not find.
 
     Returns empty string if no integrations are enabled.
     """
-    integrations = integrations_for(owner)
+    integrations = agent_integrations_for(owner)
     enabled = [i for i in integrations if i.get("enabled", True)]
     if not enabled:
         return ""

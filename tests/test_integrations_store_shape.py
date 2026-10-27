@@ -25,6 +25,8 @@ def integrations_routes(tmp_path, monkeypatch):
     monkeypatch.setattr(auth_routes, "migrate_from_settings", lambda: None)
 
     class _AuthManager:
+        is_configured = True
+
         def get_username_for_token(self, token):
             return "admin" if token == "session-token" else None
 
@@ -33,6 +35,12 @@ def integrations_routes(tmp_path, monkeypatch):
 
     from tests.helpers.signed_in import stamped_endpoint
     manager = _AuthManager()
+    # `B1573`: who may change a record from before `P27-02` (any admin) is
+    # asked of the tool policy, which reads the process's auth manager — the
+    # app's own, as `app.py` registers it; a fake stands in as the class
+    # (`src.auth_manager_access`).
+    import core.auth
+    monkeypatch.setattr(core.auth, "AuthManager", _AuthManager)
     router = auth_routes.setup_auth_routes(manager)
 
     def endpoint(path, method):

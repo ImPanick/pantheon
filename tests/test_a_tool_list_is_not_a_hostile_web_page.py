@@ -166,10 +166,18 @@ def _prompt_with_integration(*, question: str = OWNER_QUESTION,
 
     from src import integrations as integrations_mod
 
+    import core.auth
+    from tests.helpers.signed_in import people
+
     with tempfile.TemporaryDirectory() as data_dir:
         path = os.path.join(data_dir, "integrations.json")
         original = integrations_mod.DATA_FILE
         integrations_mod.DATA_FILE = path
+        # `B1573`: the block names what the owner's agent can call with
+        # `api_call`; `_prompt`'s owner is this install's admin, as the
+        # person whose prompt carries a shared connection is.
+        original_manager = core.auth._SHARED_AUTH_MANAGER
+        core.auth._SHARED_AUTH_MANAGER = people(os.path.join(data_dir, "auth"), admin="joseph", members=())
         try:
             integrations_mod.save_integrations([
                 {
@@ -181,13 +189,15 @@ def _prompt_with_integration(*, question: str = OWNER_QUESTION,
                 },
             ])
             # `P27-02`: an ownerless record (from before per-account
-            # connections) is shared, so it is in anybody's block.
-            assert integrations_mod.get_integrations_prompt(None), (
+            # connections) is shared, so it is in anybody's block whose agent
+            # calls connections the server makes.
+            assert integrations_mod.get_integrations_prompt("joseph"), (
                 "the integration must really be enabled and in the prompt"
             )
             return _prompt(question=question)
         finally:
             integrations_mod.DATA_FILE = original
+            core.auth._SHARED_AUTH_MANAGER = original_manager
 
 
 def _integration_message(messages):

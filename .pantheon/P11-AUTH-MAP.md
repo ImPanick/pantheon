@@ -78,18 +78,18 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 76 · Depends 15 · total 91
+derived: direct 71 · Depends 15 · total 86
 
 ### tier summary
 
 | tier | sites |
 |---|---|
-| `superuser` | 69 |
+| `superuser` | 64 |
 | `operator` | 0 |
 | `power-user` | 0 |
 | `only-because-nothing-finer-existed` | 22 |
 
-### `superuser` — **69 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
+### `superuser` — **64 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -151,11 +151,6 @@ derived: direct 76 · Depends 15 · total 91
 | `routes/auth_routes.py` | `set_signup_enabled` | `PUT /api/auth/open-signup` | opens or closes registration, the one switch `D-2026-10-07-02` §2 leaves. `B543` |
 | `routes/auth_routes.py` | `admin_delete_user` | `DELETE /api/auth/users` | deletes an account and revokes its sessions and tokens. `B543` |
 | `routes/auth_routes.py` | `set_settings` | `POST /api/auth/settings` | writes every app setting, credentials included. Not auth-exempt since `B542`; on this gate since `B543` |
-| `routes/auth_routes.py` | `list_integrations_route` | `GET /api/auth/integrations` | the API integrations and their (masked) credentials. `B543` |
-| `routes/auth_routes.py` | `create_integration` | `POST /api/auth/integrations` | stores a new integration with its credential. `B543` |
-| `routes/auth_routes.py` | `update_integration_route` | `PUT /api/auth/integrations/{integration_id}` | rewrites one, credential included. `B543` |
-| `routes/auth_routes.py` | `delete_integration_route` | `DELETE /api/auth/integrations/{integration_id}` | removes one. `B543` |
-| `routes/auth_routes.py` | `test_integration_route` | `POST /api/auth/integrations/{integration_id}/test` | calls the integration's service with its stored credential. `B543` |
 | `routes/shell_routes.py` | `shell_exec` | `POST /api/shell/exec` | runs a shell command on the serving host — "RCE-after-signup" if it were anyone's. On this gate since `B543` folded the file's own `_require_admin` into it |
 | `routes/shell_routes.py` | `shell_stream` | `POST /api/shell/stream` | the same, streamed. `B543` |
 | `routes/shell_routes.py` | `install_system_deps` | `POST /api/cookbook/install-system-deps` | installs OS packages, locally or over SSH, from an allowlist. `B543` |
@@ -373,12 +368,12 @@ routes: 40
 | `GET /api/auth/settings/flag-sources` | `settings_flag_sources` | `middleware + require_operator` | yes — the operator's (`B683`: an admin, or a person an admin let run the instance), and since `B543` a shared gate says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
 | `GET /api/auth/settings/ranges` | `settings_ranges` | `middleware + require_operator` | yes — `B1539`: the bounds of settings only an admin writes; read by the admin's Settings fields. |
 | `POST /api/auth/settings` | `set_settings` | `middleware + require_admin` | yes — `B542`: exempt for GET only now, so the write that sets every app setting, credentials included, needs a session, and `require_admin` (`B543`) behind it. |
-| `GET /api/auth/integrations` | `list_integrations_route` | `middleware + get_current_user + require_admin` | yes — admin is right for this (`P27-02`: and it is answered with the person's own integrations and the shared ones), and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `GET /api/auth/integrations` | `list_integrations_route` | `middleware + require_user` | yes — `B1573`: anyone signed in, because a connection is its owner's (`P27-02`) and a member owns them too; the route answers and changes only the caller's own (another's is 404) and the shared (read-only, 403 naming whose), refuses `shared: true` from anyone the server does not call for, and a member's own is called from their workstation, never by the server (`integrations.calls_from_server`). |
 | `GET /api/auth/integrations/presets` | `list_presets` | `exempt` | yes — preset templates with `api_key` stripped in the comprehension; nothing instance-specific. |
-| `POST /api/auth/integrations` | `create_integration` | `middleware + get_current_user + require_admin` | yes — admin is right for this (`P27-02`: and it is answered with the person's own integrations and the shared ones), and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
-| `PUT /api/auth/integrations/{integration_id}` | `update_integration_route` | `middleware + get_current_user + require_admin` | yes — admin is right for this (`P27-02`: and it is answered with the person's own integrations and the shared ones), and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
-| `DELETE /api/auth/integrations/{integration_id}` | `delete_integration_route` | `middleware + get_current_user + require_admin` | yes — admin is right for this (`P27-02`: and it is answered with the person's own integrations and the shared ones), and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
-| `POST /api/auth/integrations/{integration_id}/test` | `test_integration_route` | `middleware + get_current_user + require_admin` | yes — admin is right for this (`P27-02`: and it is answered with the person's own integrations and the shared ones), and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `POST /api/auth/integrations` | `create_integration` | `middleware + require_user` | yes — `B1573`: anyone signed in, because a connection is its owner's (`P27-02`) and a member owns them too; the route answers and changes only the caller's own (another's is 404) and the shared (read-only, 403 naming whose), refuses `shared: true` from anyone the server does not call for, and a member's own is called from their workstation, never by the server (`integrations.calls_from_server`). |
+| `PUT /api/auth/integrations/{integration_id}` | `update_integration_route` | `middleware + get_current_user + require_user` | yes — `B1573`: anyone signed in, because a connection is its owner's (`P27-02`) and a member owns them too; the route answers and changes only the caller's own (another's is 404) and the shared (read-only, 403 naming whose), refuses `shared: true` from anyone the server does not call for, and a member's own is called from their workstation, never by the server (`integrations.calls_from_server`). |
+| `DELETE /api/auth/integrations/{integration_id}` | `delete_integration_route` | `middleware + get_current_user + require_user` | yes — `B1573`: anyone signed in, because a connection is its owner's (`P27-02`) and a member owns them too; the route answers and changes only the caller's own (another's is 404) and the shared (read-only, 403 naming whose), refuses `shared: true` from anyone the server does not call for, and a member's own is called from their workstation, never by the server (`integrations.calls_from_server`). |
+| `POST /api/auth/integrations/{integration_id}/test` | `test_integration_route` | `middleware + require_user` | yes — `B1573`: the caller's own or a shared one (`P27-02`). A member's own is asked from their workstation, as their agent calls it; one the server calls is tested by the server only for a caller it makes such requests for (`integrations.server_calls_for`, the tool policy's answer for `api_call`), anyone else 403 in a sentence. |
 
 #### `routes/chat_routes.py`
 
@@ -542,10 +537,11 @@ this file's hand-rolled pattern, so the population that this map covers grew by 
 the number of admin decisions added — which is the behaviour the map was built to give.
 The paragraph above is about the 107 that predate roles; the counts below are live.
 
-- **69 superuser sites do not move.** They are already right.
+- **64 superuser sites do not move.** They are already right. (`B1573` took five off the tier: the
+  API-integration routes answer each person's own, so they ask `require_user`, § B.)
 - **An `operator` overlay on `DEFAULT_PRIVILEGES` was the phase's return, and since
   `B683` it is there:** 0 operator sites are left on `require_admin`, and none of the
-  69 superuser sites moved. The only way to let someone keep the instance up was to make
+  64 superuser sites moved. The only way to let someone keep the instance up was to make
   them the owner; now `can_run_instance` is declared, and every site of the tier asks
   `require_operator` (§ G). (Both counts in the one spelling `check-auth-map.py` checks
   wherever it appears: this sentence said *"48 gates … the 37"* through every gate

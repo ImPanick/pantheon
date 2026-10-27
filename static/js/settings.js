@@ -4334,16 +4334,17 @@ async function initUnifiedIntegrations() {
   }
 
   async function fetchAll() {
-    // `B1192`. Six of these lists are an admin's — the instance's API
-    // integrations, contacts, MCP servers, vault and tokens — and a non-admin's
-    // room asked for all six and was answered 403 six times. Not asked now;
-    // the room shows that person their own (email, calendars, logins, git).
+    // `B1192`. Five of these lists are an admin's — contacts, MCP servers,
+    // vault and tokens — and a non-admin's room asked for them and was
+    // answered 403 each time. Not asked now; the room shows that person their
+    // own (email, calendars, logins, git). `B1573`: and their API connections,
+    // which are anyone's to own.
     const admin = await viewerMayAdminister();
     const adminList = (url, empty) => (admin
       ? fetch(url, { credentials: 'same-origin' }).then(r => r.ok ? r.json() : empty).catch(() => empty)
       : Promise.resolve(empty));
     const [apiRes, calRes, cardRes, contactsRes, emailAccountsRes, mcpRes, vaultRes, tokenRes, calendarsRes, loginsRes, gitRes] = await Promise.all([
-      adminList('/api/auth/integrations', { integrations: [] }),
+      fetch('/api/auth/integrations', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : { integrations: [] }).catch(() => ({ integrations: [] })),
       fetch('/api/calendar/config/accounts', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : { accounts: [] }).catch(() => ({ accounts: [] })),
       adminList('/api/contacts/config', {}),
       adminList('/api/contacts/list', { contacts: [], count: 0 }),
@@ -4360,7 +4361,9 @@ async function initUnifiedIntegrations() {
     // API integrations
     for (const intg of (apiRes.integrations || [])) {
       // `P27-02`: whose it is. Another admin's shared one is read-only here.
-      const whose = intg.mine ? (intg.shared ? ' · shared with everyone' : '')
+      // `B1573`: and a member's own says where it is called from.
+      const whose = intg.mine ? (intg.shared ? ' · shared with everyone'
+        : (intg.called_from === 'workstation' ? ' · called from your workstation' : ''))
         : (intg.owner ? ` · shared by ${intg.owner}` : ' · shared');
       items.push({ type: 'api', id: intg.id, name: intg.name || 'Unnamed', detail: (intg.base_url || '') + whose, enabled: intg.enabled !== false, data: intg, readOnly: intg.read_only === true });
     }
@@ -4771,30 +4774,45 @@ async function initUnifiedIntegrations() {
     const preset = el('uf-api-preset'), name = el('uf-api-name'), url = el('uf-api-url'), auth = el('uf-api-auth'), header = el('uf-api-header'), key = el('uf-api-key'), ntfyHint = el('uf-api-ntfy-hint');
     const shared = el('uf-api-shared');
     let _editId = editId && editId !== 'new' ? editId : null;
+    const note = el('uf-api-readonly');
+    const say = (text) => { if (note) { note.textContent = text; note.hidden = !text; } };
+    let listing = null;
+    try {
+      const r = await fetch('/api/auth/integrations', { credentials: 'same-origin' });
+      listing = r.ok ? await r.json() : null;
+    } catch (_) {}
+    // `B1573`. Only someone the server calls for shares a connection; a
+    // member's is theirs alone, called from their workstation.
+    if (listing && listing.may_share === false) {
+      const row = el('uf-api-shared-row');
+      if (row) row.hidden = true;
+      if (!_editId) say('Yours alone: your agents call it from your workstation, and the server makes no request for it.');
+    }
     // Load existing
-    if (_editId) {
-      try {
-        const r = await fetch('/api/auth/integrations', { credentials: 'same-origin' });
-        const d = await r.json();
-        const item = (d.integrations || []).find(i => i.id === _editId);
-        if (item) {
-          name.value = item.name || ''; url.value = item.base_url || ''; auth.value = item.auth_type || 'none'; header.value = item.auth_header || '';
-          if (shared) shared.checked = item.shared === true;
-          // `P27-02`. Another person's shared connection: theirs to change,
-          // so the form says whose and offers Test only.
-          if (item.read_only) {
-            [preset, name, url, auth, header, key, shared].forEach((f) => { if (f) f.disabled = true; });
-            const trig = el('uf-api-preset-trigger');
-            if (trig) trig.disabled = true;
-            const note = el('uf-api-readonly');
-            if (note) {
-              note.textContent = `Shared by ${item.owner || 'an admin'}: you and your agents may use it; only ${item.owner || 'they'} can change or remove it.`;
-              note.hidden = false;
-            }
-            el('uf-api-save').hidden = true;
-          }
+    if (_editId && listing) {
+      const item = (listing.integrations || []).find(i => i.id === _editId);
+      if (item) {
+        name.value = item.name || ''; url.value = item.base_url || ''; auth.value = item.auth_type || 'none'; header.value = item.auth_header || '';
+        if (shared) shared.checked = item.shared === true;
+        // `P27-02`. Another person's shared connection: theirs to change,
+        // so the form says whose and offers Test only.
+        if (item.read_only) {
+          [preset, name, url, auth, header, key, shared].forEach((f) => { if (f) f.disabled = true; });
+          const trig = el('uf-api-preset-trigger');
+          if (trig) trig.disabled = true;
+          // `B1573`: a member's agents do not call a shared one, and the
+          // server tests it only for an admin.
+          say(item.your_agents
+            ? `Shared by ${item.owner || 'an admin'}: you and your agents may use it; only ${item.owner || 'they'} can change or remove it.`
+            : `Shared by ${item.owner || 'an admin'}: the server uses it for reminders and briefs. Your agents call only your own connections, from your workstation. Only ${item.owner || 'they'} can change or remove it.`);
+          el('uf-api-save').hidden = true;
+          if (!item.your_agents) el('uf-api-test').hidden = true;
+        } else if (item.called_from === 'workstation') {
+          say(item.your_agents
+            ? 'Yours alone: your agents call it from your workstation, and the server makes no request for it. Test asks it from there too.'
+            : 'Yours alone, called from your workstation — and this account has none turned on, so your agents cannot call it yet. Ask an admin for one.');
         }
-      } catch (_) {}
+      }
     }
     // Native <select>: the option `value` is the preset key directly, so
     // no typed-name → key lookup is needed (datalist-era leftover).

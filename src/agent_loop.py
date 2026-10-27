@@ -4918,15 +4918,18 @@ def _build_system_prompt(
     # The block is the person's own material: Pantheon writes the sentence
     # (*"You have access to the following API integrations via the api_call
     # tool"*) and the `id`, `name` and `description` come from the person's own
-    # integrations and the ones an admin shared (`integrations_for(owner)`,
-    # `P27-02` — both written by an admin, the only writer). `D-2026-10-09-01` §1's principle — *the gate's
+    # integrations and the ones an admin shared (`agent_integrations_for(owner)`,
+    # `P27-02` — written by the person themselves or by an admin who shared
+    # it; `B1573`: a member writes only their own, which reaches only their own
+    # prompt, and never shares one). `D-2026-10-09-01` §1's principle — *the gate's
     # subject is content that arrived from outside* — therefore applies, and
     # the ruling extends it here explicitly rather than by a lane's reading.
     #
     # The laundering question §1 asked about memory and skills was asked again
     # here before this changed, and the answer is the same: the write is
     # gated. `POST /api/integrations` and `PUT /api/integrations/{id}` are the
-    # only writers (`routes/auth_routes.py`), both refuse a non-admin 403, and
+    # only writers (`routes/auth_routes.py`), both refuse a `shared: true` from
+    # anyone the server does not call for (403), and
     # the agent's own route to them is `app_api`, which `_APP_API_BLOCKLIST_*`
     # does **not** block — but `app_api` carries `ToolEffect.ADMIN_CHANGE`,
     # which is in `POST_EXTERNAL_BLOCKED_EFFECTS`. So an agent that read a
@@ -4938,7 +4941,8 @@ def _build_system_prompt(
     if not suppress_local_context:
         try:
             from src.integrations import get_integrations_prompt
-            # `P27-02`: this person's own integrations and the shared ones.
+            # `P27-02`: this person's own integrations and the shared ones —
+            # `B1573`: the ones their agent's `api_call` reaches.
             _integ_prompt = get_integrations_prompt(owner)
             if _integ_prompt:
                 _integ_message = own_context_message(
