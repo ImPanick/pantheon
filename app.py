@@ -690,6 +690,26 @@ def route_owned_page(filename: str) -> str:
     return abs_join(STATIC_DIR, filename)
 
 
+def win32_folded_spelling(path: str) -> str:
+    """`B1142`. The name Win32 path normalisation would open for `path`,
+    casefolded — so the `B262` table can be asked about a spelling the one
+    shipped platform where it matters folds and `os.path.normpath` does not.
+
+    Win32 drops trailing dots and spaces from a name (`index.html.`,
+    `index.html%20`) and reads `name:stream` as a stream of `name`
+    (`index.html::$DATA` is the file's own bytes). Every segment is folded,
+    which is a superset of what Win32 does to the middle of a path: wider is
+    the safe direction for a rule whose only effect is a redirect to the
+    page's own route. An 8.3 short name (`INDEX~1.HTM`) cannot be folded from
+    its spelling at all; `_RevalidatingStatic.file_response` catches that one
+    by what it resolves to.
+    """
+    parts = []
+    for part in path.replace("\\", "/").split("/"):
+        parts.append(part.split(":", 1)[0].rstrip(". "))
+    return "/".join(parts).casefold()
+
+
 class _RevalidatingStatic(StaticFiles):
     """Serve static assets normally, but force the browser to REVALIDATE
     source files (.js/.css/.html) on every load instead of serving a stale
@@ -770,8 +790,19 @@ class _RevalidatingStatic(StaticFiles):
         serves `INDEX.HTML` out of `index.html`, and a rule that guards an
         auth boundary may not be the one thing on the path that is
         case-sensitive.
+
+        **`B1142`: a spelling is a lead, not the decision.** Windows resolves
+        more spellings to `index.html` than `normpath` and `casefold` fold —
+        `index.html.`, `index.html%20`, `index.html::$DATA`, the 8.3 name
+        `INDEX~1.HTM` — and each would have missed this table and been served
+        by `StaticFiles.lookup_path`. So this asks twice: here, by the spelling
+        Win32 would open (`win32_folded_spelling`), which also covers a page a
+        deployment names but did not ship; and in `file_response`, by **the
+        file the path resolved to** (`os.path.samestat` against each table
+        entry), which no spelling can get round — an 8.3 name, a hard link, a
+        symlink, a case-insensitive volume all arrive there as the same file.
         """
-        owner = ROUTE_OWNED_STATIC_PAGES.get(path.replace(os.sep, "/").casefold())
+        owner = ROUTE_OWNED_STATIC_PAGES.get(win32_folded_spelling(path.replace(os.sep, "/")))
         # Only what a mount answers at all. `StaticFiles.get_response` refuses
         # anything but GET and HEAD with a 405, and redirecting a POST instead
         # would be this rule quietly widening the methods the mount accepts.
@@ -810,7 +841,16 @@ class _RevalidatingStatic(StaticFiles):
         A read failure leaves the response exactly as it was — no sources,
         every inline block refused, which is where this started. It may not
         turn a served file into a 500.
+
+        `B1142`. And before anything: the file about to be served is compared
+        with every route-owned page by what it **is** — `os.path.samestat` —
+        and a match goes to that page's route, whatever the URL spelled. This
+        is the one place every served byte passes, the `304` included, so it
+        is where the `B262` rule cannot be spelled round.
         """
+        owner = self._route_owning(stat_result)
+        if owner is not None and scope.get("method") in ("GET", "HEAD"):
+            return RedirectResponse(url=with_asgi_root_path(scope, owner), status_code=302)
         page = os.fspath(full_path)
         if page.endswith(".html"):
             try:
@@ -825,6 +865,23 @@ class _RevalidatingStatic(StaticFiles):
                     # `serve_html_with_nonce` uses from a route handler.
                     scope.setdefault("state", {})["csp_script_hashes"] = hashes
         return super().file_response(full_path, stat_result, scope, status_code)
+
+    def _route_owning(self, stat_result):
+        """`B1142`. The route of the table entry `stat_result` is the same file
+        as, in this mount's own directories, or `None`. An entry not on disk
+        (`backgrounds.html` is not shipped) matches nothing here; the spelling
+        check in `get_response` still sends its name to its route."""
+        if stat_result is None:
+            return None
+        for directory in self.all_directories:
+            for name, route in ROUTE_OWNED_STATIC_PAGES.items():
+                try:
+                    owned = os.stat(os.path.join(directory, name))
+                except OSError:
+                    continue
+                if os.path.samestat(owned, stat_result):
+                    return route
+        return None
 
 
 app.mount("/static", _RevalidatingStatic(directory=STATIC_DIR), name="static")
