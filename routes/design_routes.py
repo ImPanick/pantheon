@@ -60,6 +60,7 @@ is spelled in `static/js/design/designWindow.js` or `designView.js`.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any, Dict
 
@@ -171,7 +172,7 @@ def setup_design_routes() -> APIRouter:
             # `P26-09`. An editor it is shared with changes its name and
             # tokens, in its owner's store; where it lives stays the owner's.
             try:
-                acc = A.need(_access_for(user, "system", "", system_id, None), "editor")
+                acc = A.need(await asyncio.to_thread(_access_for, user, "system", "", system_id, None), "editor")
             except A.AccessRefused as r:
                 return _refused(r.sentence, r.status)
             if not acc.mine:
@@ -236,7 +237,8 @@ def setup_design_routes() -> APIRouter:
         project = body.get("project") if "project" in body else request.query_params.get("project", "")
         try:
             if share:
-                acc = A.need(_access_for(user, "design", "", slug, share), at_least)
+                # `B1223`: the share is looked up off the event loop.
+                acc = A.need(await asyncio.to_thread(_access_for, user, "design", "", slug, share), at_least)
             else:
                 acc = A.Access("design", user, str(project or "").strip(), str(slug or "").strip().lower(), "owner")
         except A.AccessRefused as r:
@@ -403,15 +405,20 @@ def setup_design_routes() -> APIRouter:
             return _refused(str(e))
         user = get_current_user(request)
         try:
-            acc = A.need(_access_for(user, body.get("kind"), body.get("project"), body.get("ref"), None), "owner")
+            # `B1223`: every database step here runs off the event loop.
+            acc = A.need(await asyncio.to_thread(_access_for, user, body.get("kind"), body.get("project"),
+                                                 body.get("ref"), None), "owner")
             if acc.kind == "design":
                 facts = await F.describe(user, acc.project, acc.ref)   # 404 for a design that is not there
                 acc = A.Access("design", user, acc.project, acc.ref, "owner", None, facts["name"])
-            db = SessionLocal()
-            try:
-                return A.share(db, user, acc, body.get("invitee"), body.get("role"))
-            finally:
-                db.close()
+
+            def _db_work():
+                db = SessionLocal()
+                try:
+                    return A.share(db, user, acc, body.get("invitee"), body.get("role"))
+                finally:
+                    db.close()
+            return await asyncio.to_thread(_db_work)
         except (A.AccessRefused, F.DesignFileRefused) as r:
             return _refused(r.sentence, r.status)
 
@@ -455,13 +462,16 @@ def setup_design_routes() -> APIRouter:
             body = await _body(request)
         except ValueError as e:
             return _refused(str(e))
-        try:
+        def _db_work():
             acc = _note_access(request, body)
             db = SessionLocal()
             try:
                 return A.add_note(db, get_current_user(request), acc, body.get("text"), body.get("selector"))
             finally:
                 db.close()
+        try:
+            # `B1223`: off the event loop.
+            return await asyncio.to_thread(_db_work)
         except A.AccessRefused as r:
             return _refused(r.sentence, r.status)
 
@@ -489,7 +499,7 @@ def setup_design_routes() -> APIRouter:
         except ValueError as e:
             return _refused(str(e))
         try:
-            acc = A.need(_note_access(request, body), "viewer")
+            acc = A.need(await asyncio.to_thread(_note_access, request, body), "viewer")   # `B1223`
         except A.AccessRefused as r:
             return _refused(r.sentence, r.status)
         return {"present": A.seen(acc, get_current_user(request))}

@@ -232,9 +232,11 @@ def test_the_admin_route_accepts_it_and_stores_the_absolute_path(tmp_path):
     create_server("weather", tools=["get_forecast"], data_dir=str(tmp_path))
     registration = registration_for("weather", data_dir=str(tmp_path))
 
-    engine = create_engine(
-        "sqlite:///:memory:", connect_args={"check_same_thread": False}
-    )
+    # `B1223`: the routes read and write in a worker thread now, and an in-memory
+    # SQLite is one per connection — one connection for every thread.
+    from sqlalchemy.pool import StaticPool
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False},
+                           poolclass=StaticPool)
     Base.metadata.create_all(engine)
     Factory = sessionmaker(bind=engine)
 

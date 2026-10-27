@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # routes/model_routes.py
 """Routes for model and provider management."""
+import asyncio
 import os
 import re
 import uuid
@@ -2804,47 +2805,62 @@ def setup_model_routes(model_discovery):
         without clobbering the other.
         """
         require_operator(request)
-        db = SessionLocal()
-        try:
-            ep = db.query(ModelEndpoint).filter(ModelEndpoint.id == ep_id).first()
-            if not ep:
-                raise HTTPException(404, "Endpoint not found")
-            body = await request.json()
-            if not isinstance(body, dict):
-                raise HTTPException(400, "Body must be a JSON object")
-            if "hidden" in body:
-                hidden = body.get("hidden")
-                if not isinstance(hidden, list):
-                    raise HTTPException(400, "hidden must be a list of model IDs")
-                base = _normalize_base(ep.base_url)
-                kind = _effective_endpoint_kind(ep, base)
-                if _picker_requires_pinning(base, kind):
-                    # Compatibility for older/admin UI paths that still submit
-                    # the previous hide-list shape. API pickers are allow-lists:
-                    # convert "unchecked models" into an explicit pinned list so
-                    # Settings summary, /api/models, and chat agree.
-                    selected = _visible_models(_cached_model_ids(ep), hidden, None)
-                    ep.pinned_models = json.dumps(selected)
-                    ep.hidden_models = None
-                else:
-                    ep.hidden_models = json.dumps(hidden) if hidden else None
-            # Accept either "pinned" or "pinned_models" for the manual IDs list.
-            if "pinned_models" in body or "pinned" in body:
-                pinned = _normalize_model_ids(body.get("pinned_models", body.get("pinned")))
-                base = _normalize_base(ep.base_url)
-                kind = _effective_endpoint_kind(ep, base)
-                if _picker_requires_pinning(base, kind):
-                    ep.pinned_models = json.dumps(pinned)
-                    ep.hidden_models = None
-                else:
-                    ep.pinned_models = json.dumps(pinned) if pinned else None
-            db.commit()
-            _invalidate_models_cache()
-            hidden_count = len(json.loads(ep.hidden_models)) if ep.hidden_models else 0
-            pinned_count = len(json.loads(ep.pinned_models)) if ep.pinned_models else 0
-            return {"id": ep_id, "hidden_count": hidden_count, "pinned_count": pinned_count}
-        finally:
-            db.close()
+
+        # `B1223`: the endpoint is read, and its lists written, off the event
+        # loop — first whether it is there (a missing one is a 404 before the
+        # body is read, as it was), then the change.
+        def _exists():
+            db = SessionLocal()
+            try:
+                if not db.query(ModelEndpoint).filter(ModelEndpoint.id == ep_id).first():
+                    raise HTTPException(404, "Endpoint not found")
+            finally:
+                db.close()
+        await asyncio.to_thread(_exists)
+        body = await request.json()
+
+        def _db_work():
+            db = SessionLocal()
+            try:
+                ep = db.query(ModelEndpoint).filter(ModelEndpoint.id == ep_id).first()
+                if not ep:
+                    raise HTTPException(404, "Endpoint not found")
+                if not isinstance(body, dict):
+                    raise HTTPException(400, "Body must be a JSON object")
+                if "hidden" in body:
+                    hidden = body.get("hidden")
+                    if not isinstance(hidden, list):
+                        raise HTTPException(400, "hidden must be a list of model IDs")
+                    base = _normalize_base(ep.base_url)
+                    kind = _effective_endpoint_kind(ep, base)
+                    if _picker_requires_pinning(base, kind):
+                        # Compatibility for older/admin UI paths that still submit
+                        # the previous hide-list shape. API pickers are allow-lists:
+                        # convert "unchecked models" into an explicit pinned list so
+                        # Settings summary, /api/models, and chat agree.
+                        selected = _visible_models(_cached_model_ids(ep), hidden, None)
+                        ep.pinned_models = json.dumps(selected)
+                        ep.hidden_models = None
+                    else:
+                        ep.hidden_models = json.dumps(hidden) if hidden else None
+                # Accept either "pinned" or "pinned_models" for the manual IDs list.
+                if "pinned_models" in body or "pinned" in body:
+                    pinned = _normalize_model_ids(body.get("pinned_models", body.get("pinned")))
+                    base = _normalize_base(ep.base_url)
+                    kind = _effective_endpoint_kind(ep, base)
+                    if _picker_requires_pinning(base, kind):
+                        ep.pinned_models = json.dumps(pinned)
+                        ep.hidden_models = None
+                    else:
+                        ep.pinned_models = json.dumps(pinned) if pinned else None
+                db.commit()
+                _invalidate_models_cache()
+                hidden_count = len(json.loads(ep.hidden_models)) if ep.hidden_models else 0
+                pinned_count = len(json.loads(ep.pinned_models)) if ep.pinned_models else 0
+                return {"id": ep_id, "hidden_count": hidden_count, "pinned_count": pinned_count}
+            finally:
+                db.close()
+        return await asyncio.to_thread(_db_work)
 
     @router.get("/default-chat")
     def get_default_chat(request: Request):
@@ -2948,83 +2964,87 @@ def setup_model_routes(model_discovery):
                     body = {}
         except Exception:
             body = {}
-        db = SessionLocal()
-        try:
-            ep = db.query(ModelEndpoint).filter(ModelEndpoint.id == ep_id).first()
-            if not ep:
-                raise HTTPException(404, "Endpoint not found")
-            if body:
-                if "supports_tools" in body:
-                    # `P3-22`: one parser for the tri-state, shared with the
-                    # create route, which used to accept spellings this one
-                    # silently turned back into Auto.
-                    ep.supports_tools = _parse_supports_tools(body["supports_tools"])
-                if "is_enabled" in body:
-                    v_ie = body['is_enabled']
-                    ep.is_enabled = request_flag(v_ie)  # `B97`
-                if "name" in body and isinstance(body["name"], str):
-                    ep.name = body["name"].strip() or ep.name
-                if "model_type" in body and isinstance(body["model_type"], str):
-                    ep.model_type = body["model_type"].strip() or ep.model_type
-                if "pinned_models" in body:
-                    _pinned = _normalize_model_ids(body["pinned_models"])
-                    _base_for_pins = _normalize_base(ep.base_url)
-                    _kind_for_pins = _effective_endpoint_kind(ep, _base_for_pins)
-                    if _picker_requires_pinning(_base_for_pins, _kind_for_pins):
-                        ep.pinned_models = json.dumps(_pinned)
-                        ep.hidden_models = None
-                    else:
-                        ep.pinned_models = json.dumps(_pinned) if _pinned else None
-                if "endpoint_kind" in body:
-                    ep.endpoint_kind = _normalize_endpoint_kind(body.get("endpoint_kind"))
-                if "model_refresh_mode" in body:
-                    ep.model_refresh_mode = _normalize_endpoint_refresh_mode(
-                        body.get("model_refresh_mode"),
-                        _endpoint_kind(ep),
-                        ep.base_url,
-                    )
-                if "model_refresh_interval" in body:
-                    interval = _parse_positive_int(body.get("model_refresh_interval"), minimum=30, maximum=86400)
-                    ep.model_refresh_interval = interval
-                if "model_refresh_timeout" in body:
-                    timeout = _parse_positive_int(body.get("model_refresh_timeout"), minimum=1, maximum=60)
-                    ep.model_refresh_timeout = timeout
-                # Rotating an API key used to require DELETE+POST, which wiped
-                # endpoint_url/model from every session referencing the old base
-                # URL. Allow in-place updates so the admin can change the key
-                # (or correct a typo'd base URL) without nuking session state.
-                if "api_key" in body and isinstance(body["api_key"], str):
-                    _new_key = body["api_key"].strip()
-                    # Empty string means "clear it" (e.g. local Ollama no longer needs a key).
-                    ep.api_key = _new_key or None
-                if "base_url" in body and isinstance(body["base_url"], str):
-                    _new_base = body["base_url"].strip().rstrip("/")
-                    for _suffix in ("/models", "/chat/completions", "/completions", "/v1/messages"):
-                        if _new_base.endswith(_suffix):
-                            _new_base = _new_base[: -len(_suffix)].rstrip("/")
-                    _new_base = _normalize_base(_new_base)
-                    if _new_base:
-                        ep.base_url = _new_base
-            else:
-                ep.is_enabled = not ep.is_enabled
-            db.commit()
-            _invalidate_models_cache()
-            _local_probe_cache["data"] = None
-            return {
-                "id": ep.id,
-                "is_enabled": ep.is_enabled,
-                "supports_tools": ep.supports_tools,
-                "name": ep.name,
-                "model_type": ep.model_type,
-                "base_url": ep.base_url,
-                "pinned_models": _normalize_model_ids(getattr(ep, "pinned_models", None)),
-                "endpoint_kind": getattr(ep, "endpoint_kind", None) or "auto",
-                "model_refresh_mode": getattr(ep, "model_refresh_mode", None) or "auto",
-                "model_refresh_interval": getattr(ep, "model_refresh_interval", None),
-                "model_refresh_timeout": getattr(ep, "model_refresh_timeout", None),
-            }
-        finally:
-            db.close()
+
+        def _db_work():
+            db = SessionLocal()
+            try:
+                ep = db.query(ModelEndpoint).filter(ModelEndpoint.id == ep_id).first()
+                if not ep:
+                    raise HTTPException(404, "Endpoint not found")
+                if body:
+                    if "supports_tools" in body:
+                        # `P3-22`: one parser for the tri-state, shared with the
+                        # create route, which used to accept spellings this one
+                        # silently turned back into Auto.
+                        ep.supports_tools = _parse_supports_tools(body["supports_tools"])
+                    if "is_enabled" in body:
+                        v_ie = body['is_enabled']
+                        ep.is_enabled = request_flag(v_ie)  # `B97`
+                    if "name" in body and isinstance(body["name"], str):
+                        ep.name = body["name"].strip() or ep.name
+                    if "model_type" in body and isinstance(body["model_type"], str):
+                        ep.model_type = body["model_type"].strip() or ep.model_type
+                    if "pinned_models" in body:
+                        _pinned = _normalize_model_ids(body["pinned_models"])
+                        _base_for_pins = _normalize_base(ep.base_url)
+                        _kind_for_pins = _effective_endpoint_kind(ep, _base_for_pins)
+                        if _picker_requires_pinning(_base_for_pins, _kind_for_pins):
+                            ep.pinned_models = json.dumps(_pinned)
+                            ep.hidden_models = None
+                        else:
+                            ep.pinned_models = json.dumps(_pinned) if _pinned else None
+                    if "endpoint_kind" in body:
+                        ep.endpoint_kind = _normalize_endpoint_kind(body.get("endpoint_kind"))
+                    if "model_refresh_mode" in body:
+                        ep.model_refresh_mode = _normalize_endpoint_refresh_mode(
+                            body.get("model_refresh_mode"),
+                            _endpoint_kind(ep),
+                            ep.base_url,
+                        )
+                    if "model_refresh_interval" in body:
+                        interval = _parse_positive_int(body.get("model_refresh_interval"), minimum=30, maximum=86400)
+                        ep.model_refresh_interval = interval
+                    if "model_refresh_timeout" in body:
+                        timeout = _parse_positive_int(body.get("model_refresh_timeout"), minimum=1, maximum=60)
+                        ep.model_refresh_timeout = timeout
+                    # Rotating an API key used to require DELETE+POST, which wiped
+                    # endpoint_url/model from every session referencing the old base
+                    # URL. Allow in-place updates so the admin can change the key
+                    # (or correct a typo'd base URL) without nuking session state.
+                    if "api_key" in body and isinstance(body["api_key"], str):
+                        _new_key = body["api_key"].strip()
+                        # Empty string means "clear it" (e.g. local Ollama no longer needs a key).
+                        ep.api_key = _new_key or None
+                    if "base_url" in body and isinstance(body["base_url"], str):
+                        _new_base = body["base_url"].strip().rstrip("/")
+                        for _suffix in ("/models", "/chat/completions", "/completions", "/v1/messages"):
+                            if _new_base.endswith(_suffix):
+                                _new_base = _new_base[: -len(_suffix)].rstrip("/")
+                        _new_base = _normalize_base(_new_base)
+                        if _new_base:
+                            ep.base_url = _new_base
+                else:
+                    ep.is_enabled = not ep.is_enabled
+                db.commit()
+                _invalidate_models_cache()
+                _local_probe_cache["data"] = None
+                return {
+                    "id": ep.id,
+                    "is_enabled": ep.is_enabled,
+                    "supports_tools": ep.supports_tools,
+                    "name": ep.name,
+                    "model_type": ep.model_type,
+                    "base_url": ep.base_url,
+                    "pinned_models": _normalize_model_ids(getattr(ep, "pinned_models", None)),
+                    "endpoint_kind": getattr(ep, "endpoint_kind", None) or "auto",
+                    "model_refresh_mode": getattr(ep, "model_refresh_mode", None) or "auto",
+                    "model_refresh_interval": getattr(ep, "model_refresh_interval", None),
+                    "model_refresh_timeout": getattr(ep, "model_refresh_timeout", None),
+                }
+            finally:
+                db.close()
+        # `B1223`: its database work runs off the event loop.
+        return await asyncio.to_thread(_db_work)
 
     def _settings_using_endpoint(ep_id: str) -> list:
         """Return human-readable labels for settings that reference this endpoint."""

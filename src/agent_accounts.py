@@ -123,9 +123,16 @@ async def set_up(db, owner: Optional[str], admin_item: str, body: Dict[str, Any]
         raise AccountRefused("The user name is 2–39 lower-case letters, digits, dots, dashes or underscores, "
                              "starting with a letter.")
     label = str(body.get("label") or "").strip() or f"{TEMPLATES[template]['label']} ({username})"
-    if any(x.lower() == label.lower() for x in V.labels(db, owner)):
-        raise AccountRefused(f"You already have an item named “{label}”; pick another name first.", 409)
-    admin = V.for_use(db, owner, admin_item, by="agent account setup")
+    from src.vault_names import with_db
+
+    def check(session):
+        if any(x.lower() == label.lower() for x in V.labels(session, owner)):
+            raise AccountRefused(f"You already have an item named “{label}”; pick another name first.", 409)
+        return V.for_use(session, owner, admin_item, by="agent account setup")
+    # `B1223`: `db` None — the vault is read, and the new item kept, in
+    # sessions of their own off the event loop, none held across the service's
+    # answers.
+    admin = await with_db(db, check)
     if admin["kind"] != "login" or not admin["origins"]:
         raise AccountRefused("Set up an agent account from a login with the service's address.")
     url = admin["origins"][0]
@@ -149,11 +156,12 @@ async def set_up(db, owner: Optional[str], admin_item: str, body: Dict[str, Any]
             first = "made the user" if n > 1 else "made nothing"
             raise AccountRefused(f"{TEMPLATES[template]['label']} refused step {n} of {len(steps)} "
                                  f"({first}): {said[-400:] or 'no answer'}", 502)
-    item = V.create(db, owner, {"kind": "login", "label": label, "addresses": admin["origins"],
-                                "username": username, "secret": new_password, "agent_account": True,
-                                "use": "chat",
-                                "notes": f"Made by Pantheon on {url} as {TEMPLATES[template]['label']} "
-                                         f"role {role}, from “{admin['label']}”."})
+    item = await with_db(db, lambda session: V.create(
+        session, owner, {"kind": "login", "label": label, "addresses": admin["origins"],
+                         "username": username, "secret": new_password, "agent_account": True,
+                         "use": "chat",
+                         "notes": f"Made by Pantheon on {url} as {TEMPLATES[template]['label']} "
+                                  f"role {role}, from “{admin['label']}”."}))
     from src.events import record_event
     record_event("vault_agent_account", name=label, owner=owner,
                  detail={"service": template, "role": role, "url": url, "from": admin["id"]})

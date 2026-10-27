@@ -44,6 +44,7 @@ here is spelled in `static/js/agents/agentsApi.js`, its one caller.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any, Dict, Optional
@@ -257,31 +258,35 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
             body = await _body(request)
         except H.HireRefused as r:
             return _refused(r.sentence, r.status)
-        db = SessionLocal()
-        try:
-            hire = _hire_or_none(db, hire_id, user)
-            if hire is None or hire.owner != user:
-                # Watching another person's hire is an admin's; changing it is not.
-                return _refused(NO_SUCH_HIRE if hire is None else
-                                "This agent was summoned by someone else. You can pause or dismiss it, not change it.",
-                                404 if hire is None else 403)
-            m = get_agent(hire.owner, hire.agent_id)
-            if m is None:
-                return _refused("This agent's file is gone or broken, so the hire cannot be changed. "
-                                "Dismiss it, or put the file back.", 409)
-            H.update_hire(db, hire, m, inputs=body.get("inputs"), grants=body.get("grants"),
-                          tz_name=body["tz_name"] if "tz_name" in body else ...,
-                          project=body["project"] if "project" in body else ...,
-                          name=body.get("name"), to_version=bool(body.get("update")))
-            if body.get("update") and hire.status == "attention":
-                H.set_status(db, hire, m, "on")
-            db.commit()
-            return H.hire_to_dict(db, hire, m)
-        except H.HireRefused as r:
-            db.rollback()
-            return _refused(r.sentence, r.status)
-        finally:
-            db.close()
+
+        def _db_work():
+            db = SessionLocal()
+            try:
+                hire = _hire_or_none(db, hire_id, user)
+                if hire is None or hire.owner != user:
+                    # Watching another person's hire is an admin's; changing it is not.
+                    return _refused(NO_SUCH_HIRE if hire is None else
+                                    "This agent was summoned by someone else. You can pause or dismiss it, not change it.",
+                                    404 if hire is None else 403)
+                m = get_agent(hire.owner, hire.agent_id)
+                if m is None:
+                    return _refused("This agent's file is gone or broken, so the hire cannot be changed. "
+                                    "Dismiss it, or put the file back.", 409)
+                H.update_hire(db, hire, m, inputs=body.get("inputs"), grants=body.get("grants"),
+                              tz_name=body["tz_name"] if "tz_name" in body else ...,
+                              project=body["project"] if "project" in body else ...,
+                              name=body.get("name"), to_version=bool(body.get("update")))
+                if body.get("update") and hire.status == "attention":
+                    H.set_status(db, hire, m, "on")
+                db.commit()
+                return H.hire_to_dict(db, hire, m)
+            except H.HireRefused as r:
+                db.rollback()
+                return _refused(r.sentence, r.status)
+            finally:
+                db.close()
+        # `B1223`: its database work runs off the event loop.
+        return await asyncio.to_thread(_db_work)
 
     @router.post("/hires/{hire_id}/status")
     async def hire_status(request: Request, hire_id: str):
@@ -292,36 +297,40 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
             body = await _body(request)
         except H.HireRefused as r:
             return _refused(r.sentence, r.status)
-        db = SessionLocal()
-        try:
-            hire = _hire_or_none(db, hire_id, user)
-            if hire is None:
-                return _refused(NO_SUCH_HIRE, 404)
-            # flag-spelling: not a yes/no. A hire's status is one word of
-            # `HIRE_STATUSES` (`on`, `paused`, …), and `set_status` refuses
-            # any other in a sentence; `1` or `yes` here is a refusal, not on.
-            status = body.get("status")
-            if status == "on" and hire.owner != user:
-                return _refused("Only the person who summoned it can switch it back on.", 403)
-            m = get_agent(hire.owner, hire.agent_id)
-            if m is None:
-                if status == "on":
-                    return _refused("This agent's file is gone or broken, so it cannot run. "
-                                    "Dismiss it, or put the file back.", 409)
-                H.needs_attention(db, hire, "Paused by hand; its agent file is gone or broken.")
-            else:
-                if status == "on" and m.version != hire.version:
-                    return _refused(f"{m.name} is at {m.version} now. Update the hire first.", 409)
-                H.set_status(db, hire, m, status)
-            if hire.owner != user:
-                logger.info("[agents] %s set %s's hire %s to %s", user, hire.owner, hire.id, status)
-            db.commit()
-            return H.hire_to_dict(db, hire, m)
-        except H.HireRefused as r:
-            db.rollback()
-            return _refused(r.sentence, r.status)
-        finally:
-            db.close()
+
+        def _db_work():
+            db = SessionLocal()
+            try:
+                hire = _hire_or_none(db, hire_id, user)
+                if hire is None:
+                    return _refused(NO_SUCH_HIRE, 404)
+                # flag-spelling: not a yes/no. A hire's status is one word of
+                # `HIRE_STATUSES` (`on`, `paused`, …), and `set_status` refuses
+                # any other in a sentence; `1` or `yes` here is a refusal, not on.
+                status = body.get("status")
+                if status == "on" and hire.owner != user:
+                    return _refused("Only the person who summoned it can switch it back on.", 403)
+                m = get_agent(hire.owner, hire.agent_id)
+                if m is None:
+                    if status == "on":
+                        return _refused("This agent's file is gone or broken, so it cannot run. "
+                                        "Dismiss it, or put the file back.", 409)
+                    H.needs_attention(db, hire, "Paused by hand; its agent file is gone or broken.")
+                else:
+                    if status == "on" and m.version != hire.version:
+                        return _refused(f"{m.name} is at {m.version} now. Update the hire first.", 409)
+                    H.set_status(db, hire, m, status)
+                if hire.owner != user:
+                    logger.info("[agents] %s set %s's hire %s to %s", user, hire.owner, hire.id, status)
+                db.commit()
+                return H.hire_to_dict(db, hire, m)
+            except H.HireRefused as r:
+                db.rollback()
+                return _refused(r.sentence, r.status)
+            finally:
+                db.close()
+        # `B1223`: its database work runs off the event loop.
+        return await asyncio.to_thread(_db_work)
 
     @router.delete("/hires/{hire_id}")
     def fire_hire(request: Request, hire_id: str):
@@ -353,26 +362,30 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
             body = await _body(request)
         except H.HireRefused as r:
             return _refused(r.sentence, r.status)
-        from src.agents.teams import get_team
-        agents, _ = catalogue(user)
-        by_id = {m.id: m for m in agents}
-        team = get_team(user, team_id, by_id.keys())
-        if team is None:
-            return _refused("There is no team called that in the hall.", 404)
-        db = SessionLocal()
-        try:
-            done = H.hire_team(db, owner=user, team=team, manifests=by_id,
-                               inputs=body.get("inputs"), tz_name=body.get("tz_name"),
-                               project=body.get("project"))
-            db.commit()
-            return {"team": team.name,
-                    "hired": [H.hire_to_dict(db, h, by_id.get(h.agent_id)) for h in done["hired"]],
-                    "kept": done["kept"]}
-        except H.HireRefused as r:
-            db.rollback()
-            return _refused(r.sentence, r.status)
-        finally:
-            db.close()
+
+        def _db_work():
+            from src.agents.teams import get_team
+            agents, _ = catalogue(user)
+            by_id = {m.id: m for m in agents}
+            team = get_team(user, team_id, by_id.keys())
+            if team is None:
+                return _refused("There is no team called that in the hall.", 404)
+            db = SessionLocal()
+            try:
+                done = H.hire_team(db, owner=user, team=team, manifests=by_id,
+                                   inputs=body.get("inputs"), tz_name=body.get("tz_name"),
+                                   project=body.get("project"))
+                db.commit()
+                return {"team": team.name,
+                        "hired": [H.hire_to_dict(db, h, by_id.get(h.agent_id)) for h in done["hired"]],
+                        "kept": done["kept"]}
+            except H.HireRefused as r:
+                db.rollback()
+                return _refused(r.sentence, r.status)
+            finally:
+                db.close()
+        # `B1223`: its database work runs off the event loop.
+        return await asyncio.to_thread(_db_work)
 
     @router.post("/{agent_id}/try")
     async def try_agent(request: Request, agent_id: str):
@@ -391,20 +404,25 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
         m = get_agent(user, agent_id)
         if m is None:
             return _refused(NO_SUCH_AGENT, 404)
-        db = SessionLocal()
-        try:
-            hire = H.make_hire(db, owner=user, manifest=m, inputs=body.get("inputs"),
-                               grants=body.get("grants"), tz_name=body.get("tz_name"),
-                               project=body.get("project"), name=body.get("name"),
-                               status="trial")
-            db.commit()
-            first = H.task_ids_of(db, hire.id)[0]
-            out = H.hire_to_dict(db, hire, m)
-        except H.HireRefused as r:
-            db.rollback()
-            return _refused(r.sentence, r.status)
-        finally:
-            db.close()
+
+        def _db_work():
+            db = SessionLocal()
+            try:
+                hire = H.make_hire(db, owner=user, manifest=m, inputs=body.get("inputs"),
+                                   grants=body.get("grants"), tz_name=body.get("tz_name"),
+                                   project=body.get("project"), name=body.get("name"),
+                                   status="trial")
+                db.commit()
+                return H.task_ids_of(db, hire.id)[0], H.hire_to_dict(db, hire, m), None
+            except H.HireRefused as r:
+                db.rollback()
+                return None, None, _refused(r.sentence, r.status)
+            finally:
+                db.close()
+        # `B1223`: the hire is written off the event loop; the run it starts is the loop's.
+        first, out, refused = await asyncio.to_thread(_db_work)
+        if refused is not None:
+            return refused
         from src.interactive_gate import STARTED_BY_PERSON
         started = await task_scheduler.run_task_now(first, force=True, started_by=STARTED_BY_PERSON)
         out["started"] = bool(started)
@@ -446,18 +464,22 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
         m = get_agent(user, agent_id)
         if m is None:
             return _refused(NO_SUCH_AGENT, 404)
-        db = SessionLocal()
-        try:
-            hire = H.make_hire(db, owner=user, manifest=m, inputs=body.get("inputs"),
-                               grants=body.get("grants"), tz_name=body.get("tz_name"),
-                               project=body.get("project"), name=body.get("name"))
-            db.commit()
-            return H.hire_to_dict(db, hire, m)
-        except H.HireRefused as r:
-            db.rollback()
-            return _refused(r.sentence, r.status)
-        finally:
-            db.close()
+
+        def _db_work():
+            db = SessionLocal()
+            try:
+                hire = H.make_hire(db, owner=user, manifest=m, inputs=body.get("inputs"),
+                                   grants=body.get("grants"), tz_name=body.get("tz_name"),
+                                   project=body.get("project"), name=body.get("name"))
+                db.commit()
+                return H.hire_to_dict(db, hire, m)
+            except H.HireRefused as r:
+                db.rollback()
+                return _refused(r.sentence, r.status)
+            finally:
+                db.close()
+        # `B1223`: its database work runs off the event loop.
+        return await asyncio.to_thread(_db_work)
 
     # ── `P24-20` · New agent, Describe it, Customise ────────────────────────
     # A person's own file, in their own layer. Writing one is the person's

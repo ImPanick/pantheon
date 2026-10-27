@@ -853,16 +853,20 @@ def setup_note_routes(task_scheduler=None, upload_handler=None):
             if "llm_persona" in body:
                 _override["reminder_llm_persona"] = str(body["llm_persona"] or "")
         else:
-            db = SessionLocal()
-            try:
-                note = db.query(Note).filter(Note.id == note_id).first()
-                if not note:
-                    raise HTTPException(404, "Note not found")
-                if caller is not None and note.owner != caller:
-                    raise HTTPException(404, "Note not found")
-                title, note_body = _reminder_text_from_note(note)
-            finally:
-                db.close()
+            def _db_work():
+                nonlocal note_body, title
+                db = SessionLocal()
+                try:
+                    note = db.query(Note).filter(Note.id == note_id).first()
+                    if not note:
+                        raise HTTPException(404, "Note not found")
+                    if caller is not None and note.owner != caller:
+                        raise HTTPException(404, "Note not found")
+                    title, note_body = _reminder_text_from_note(note)
+                finally:
+                    db.close()
+            # `B1223`: the note is read off the event loop.
+            await asyncio.to_thread(_db_work)
 
         return await dispatch_reminder(
             title=title, note_body=note_body, note_id=note_id,

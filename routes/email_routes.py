@@ -6332,39 +6332,45 @@ def setup_email_routes():
         # the test actually sends the real password to the server.
         acc_id = body.get("account_id")
         if acc_id:
-            _assert_owns_account(acc_id, owner)
-            from core.database import SessionLocal, EmailAccount
-            from src.secret_storage import decrypt as _decrypt
-            db = SessionLocal()
-            try:
-                row = db.get(EmailAccount, acc_id)
-                if not row:
-                    return {"ok": False, "imap": {"ok": False, "error": "Account not found"}}
-                saved_body = {
-                    "imap_host": row.imap_host or "",
-                    "imap_port": row.imap_port or 993,
-                    "imap_user": row.imap_user or "",
-                    "imap_password": _decrypt(row.imap_password or ""),
-                    "imap_starttls": bool(row.imap_starttls),
-                    "smtp_host": row.smtp_host or "",
-                    "smtp_port": row.smtp_port or 465,
-                    "smtp_security": _smtp_security_mode({"smtp_security": getattr(row, "smtp_security", ""), "smtp_port": row.smtp_port}),
-                    "smtp_user": row.smtp_user or "",
-                    "smtp_password": _decrypt(row.smtp_password or ""),
-                    "oauth_provider": row.oauth_provider or "",
-                    "oauth_access_token": row.oauth_access_token or "",
-                    "oauth_refresh_token": row.oauth_refresh_token or "",
-                    "oauth_token_expiry": row.oauth_token_expiry or "",
-                    "account_id": acc_id,
-                }
-                for key, value in body.items():
-                    if key == "account_id" or key in _SERVER_OWNED_OAUTH_FIELDS:
-                        continue
-                    if value not in (None, ""):
-                        saved_body[key] = value
-                body = saved_body
-            finally:
-                db.close()
+            def _saved_body():
+                _assert_owns_account(acc_id, owner)
+                from core.database import SessionLocal, EmailAccount
+                from src.secret_storage import decrypt as _decrypt
+                db = SessionLocal()
+                try:
+                    row = db.get(EmailAccount, acc_id)
+                    if not row:
+                        return None
+                    saved_body = {
+                        "imap_host": row.imap_host or "",
+                        "imap_port": row.imap_port or 993,
+                        "imap_user": row.imap_user or "",
+                        "imap_password": _decrypt(row.imap_password or ""),
+                        "imap_starttls": bool(row.imap_starttls),
+                        "smtp_host": row.smtp_host or "",
+                        "smtp_port": row.smtp_port or 465,
+                        "smtp_security": _smtp_security_mode({"smtp_security": getattr(row, "smtp_security", ""), "smtp_port": row.smtp_port}),
+                        "smtp_user": row.smtp_user or "",
+                        "smtp_password": _decrypt(row.smtp_password or ""),
+                        "oauth_provider": row.oauth_provider or "",
+                        "oauth_access_token": row.oauth_access_token or "",
+                        "oauth_refresh_token": row.oauth_refresh_token or "",
+                        "oauth_token_expiry": row.oauth_token_expiry or "",
+                        "account_id": acc_id,
+                    }
+                    for key, value in body.items():
+                        if key == "account_id" or key in _SERVER_OWNED_OAUTH_FIELDS:
+                            continue
+                        if value not in (None, ""):
+                            saved_body[key] = value
+                    return saved_body
+                finally:
+                    db.close()
+            # `B1223`: the saved account is read off the event loop.
+            saved = await asyncio.to_thread(_saved_body)
+            if saved is None:
+                return {"ok": False, "imap": {"ok": False, "error": "Account not found"}}
+            body = saved
         else:
             # OAuth state belongs to a saved, owner-checked account. Do not let
             # inline test payloads select the OAuth branch or supply token data.

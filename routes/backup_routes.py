@@ -2,6 +2,7 @@
 """Backup routes — export/import user data (memories, presets, settings, skills, preferences,
 and — `P22-24` — tasks and workflows)."""
 
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -521,17 +522,21 @@ def setup_backup_routes(memory_manager, preset_manager, skills_manager) -> APIRo
         # ── Tasks, then workflows (`P22-24`) ──
         switched_off = []
         if isinstance(body.get("tasks"), list) or isinstance(body.get("workflows"), list):
-            from core.database import SessionLocal
-            db = SessionLocal()
-            try:
-                if isinstance(body.get("tasks"), list):
-                    count = restore_tasks(db, user, body["tasks"])
-                    imported.append(f"{count} task{'s' if count != 1 else ''}")
-                if isinstance(body.get("workflows"), list):
-                    count, switched_off = restore_workflows(db, user, body["workflows"])
-                    imported.append(f"{count} workflow{'s' if count != 1 else ''}")
-            finally:
-                db.close()
+            def _db_work():
+                nonlocal switched_off
+                from core.database import SessionLocal
+                db = SessionLocal()
+                try:
+                    if isinstance(body.get("tasks"), list):
+                        count = restore_tasks(db, user, body["tasks"])
+                        imported.append(f"{count} task{'s' if count != 1 else ''}")
+                    if isinstance(body.get("workflows"), list):
+                        count, switched_off = restore_workflows(db, user, body["workflows"])
+                        imported.append(f"{count} workflow{'s' if count != 1 else ''}")
+                finally:
+                    db.close()
+            # `B1223`: its database work runs off the event loop.
+            await asyncio.to_thread(_db_work)
 
         if not imported:
             return {"ok": False, "message": "No recognized data found in the file"}

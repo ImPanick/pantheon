@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # routes/session_routes.py
+import asyncio
 import re
 import html
 import json
@@ -860,24 +861,29 @@ def setup_session_routes(
             ids = body.get("ids", [])
         except Exception:
             ids = []
-        deleted_count = 0
-        for sid in ids:
-            try:
-                _verify_session_owner(request, sid, session_manager)
-                
-                # Enforce "starred" protection consistent with single-session delete
-                db = SessionLocal()
-                try:
-                    db_sess = db.query(DbSession).filter(DbSession.id == sid).first()
-                    if db_sess and db_sess.is_important:
-                        continue
-                finally:
-                    db.close()
 
-                if session_manager.delete_session(sid):
-                    deleted_count += 1
-            except Exception:
-                pass
+        def _db_work():
+            deleted_count = 0
+            for sid in ids:
+                try:
+                    _verify_session_owner(request, sid, session_manager)
+                
+                    # Enforce "starred" protection consistent with single-session delete
+                    db = SessionLocal()
+                    try:
+                        db_sess = db.query(DbSession).filter(DbSession.id == sid).first()
+                        if db_sess and db_sess.is_important:
+                            continue
+                    finally:
+                        db.close()
+
+                    if session_manager.delete_session(sid):
+                        deleted_count += 1
+                except Exception:
+                    pass
+            return deleted_count
+        # `B1223`: each chat is checked and deleted off the event loop, as the one-chat delete is.
+        deleted_count = await asyncio.to_thread(_db_work)
         return {"deleted": deleted_count}
 
     @router.delete("/session/{sid}")

@@ -21,6 +21,7 @@ Every refusal is `{detail: "<sentence>"}` (`Law 15`). Each path is spelled in
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any, Dict
 
@@ -88,14 +89,18 @@ def setup_person_network_routes() -> APIRouter:
         except ValueError as e:
             return _refused(str(e), 413 if "64 KiB" in str(e) else 400)
         user = get_current_user(request)
-        db = SessionLocal()
-        try:
-            return {**PN.save(db, user, body.get("networks", [])), "choices": _choices(user)}
-        except PN.NetworksRefused as r:
-            db.rollback()
-            return _refused(r.sentence, r.status)
-        finally:
-            db.close()
+
+        def _db_work():
+            db = SessionLocal()
+            try:
+                return {**PN.save(db, user, body.get("networks", [])), "choices": _choices(user)}
+            except PN.NetworksRefused as r:
+                db.rollback()
+                return _refused(r.sentence, r.status)
+            finally:
+                db.close()
+        # `B1223`: its database work runs off the event loop.
+        return await asyncio.to_thread(_db_work)
 
     @router.post("/mine/check")
     async def check_my_networks(request: Request):
@@ -109,13 +114,17 @@ def setup_person_network_routes() -> APIRouter:
         value = body.get("networks", [])
         probe = str(body.get("probe") or "").strip()
         user = get_current_user(request)
-        db = SessionLocal()
-        try:
-            problems = PN.validate(db, user, value)
-        finally:
-            db.close()
-        return {"problems": problems, "probe": probe,
-                "matched": matches_for(value, probe) if probe else None}
+
+        def _db_work():
+            db = SessionLocal()
+            try:
+                problems = PN.validate(db, user, value)
+            finally:
+                db.close()
+            return {"problems": problems, "probe": probe,
+                    "matched": matches_for(value, probe) if probe else None}
+        # `B1223`: the networks are checked off the event loop.
+        return await asyncio.to_thread(_db_work)
 
     @router.get("/people")
     def everyones_networks(request: Request):

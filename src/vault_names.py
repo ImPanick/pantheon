@@ -20,6 +20,7 @@ it only when its fingerprint is the one the person confirmed.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -46,6 +47,26 @@ def wanted(db, owner: Optional[str]) -> Dict[str, Any]:
     return {"map": dict(sorted(names.items())), "pins": pins}
 
 
+async def with_db(db, fn):
+    """`fn(session)`: in the caller's session when one is given, otherwise in
+    a session of its own, off the event loop (`B1223`) — so a route never
+    holds one open across a probe of the person's network."""
+    if db is not None:
+        return fn(db)
+
+    def work():
+        from core.database import SessionLocal
+        own = SessionLocal()
+        try:
+            return fn(own)
+        except Exception:
+            own.rollback()
+            raise
+        finally:
+            own.close()
+    return await asyncio.to_thread(work)
+
+
 def _digest(body: Dict[str, Any]) -> str:
     return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()[:16]
 
@@ -53,12 +74,7 @@ def _digest(body: Dict[str, Any]) -> str:
 async def sync(client, account: str, owner: Optional[str], *, force: bool = False) -> Dict[str, Any]:
     """Send the set when it changed since it was last sent. Answers what
     commands are given; `{}` when nothing is mapped or pinned."""
-    from core.database import SessionLocal
-    db = SessionLocal()
-    try:
-        body = wanted(db, owner)
-    finally:
-        db.close()
+    body = await with_db(None, lambda db: wanted(db, owner))   # `B1223`: off the event loop
     digest = _digest(body)
     with _cache_lock:
         last = _sent.get(account)
@@ -189,15 +205,18 @@ async def _probe(owner: Optional[str], origin: str, mapped_to: str) -> Dict[str,
 async def test(db, owner: Optional[str], item_id: str) -> Dict[str, Any]:
     """What a person reads before mapping or pinning: per address, whether
     the name resolves on their network, whether it answers, and which
-    certificate it shows."""
+    certificate it shows. `db` None: the item is read in a session of its own,
+    off the event loop (`with_db`)."""
     from src import vault as V
-    row = V._find(db, V.account(owner), item_id)
-    if row is None or row.id != item_id:
-        raise V.VaultRefused("There is no such item in your vault.", 404)
-    names = V.mapped(row)
-    pins = V.pinned(row)
+
+    def read(session):
+        row = V._find(session, V.account(owner), item_id)
+        if row is None or row.id != item_id:
+            raise V.VaultRefused("There is no such item in your vault.", 404)
+        return row.id, row.label, V.mapped(row), V.pinned(row), json.loads(row.addresses or "[]")
+    row_id, label, names, pins, addresses = await with_db(db, read)
     out = []
-    for origin in json.loads(row.addresses or "[]")[:4]:
+    for origin in addresses[:4]:
         host = urlsplit(origin).hostname or ""
         got = await _probe(owner, origin, names.get(host, ""))
         cert = got.get("cert")
@@ -207,32 +226,45 @@ async def test(db, owner: Optional[str], item_id: str) -> Dict[str, Any]:
             cert["changed"] = bool(pin and pin.get("sha256") != cert["sha256"])
             cert.pop("pem", None)
         out.append({"origin": origin, "mapped_to": names.get(host) or None, **got})
-    return {"id": row.id, "label": row.label, "results": out}
+    return {"id": row_id, "label": label, "results": out}
 
 
 async def pin(db, owner: Optional[str], item_id: str, origin: str, sha256: str) -> Dict[str, Any]:
     """Keep the certificate `origin` shows now, if it is the one the person
-    confirmed by its fingerprint (`D-2026-10-24-03` §3)."""
+    confirmed by its fingerprint (`D-2026-10-24-03` §3). `db` None: the item
+    is read and written in sessions of its own, off the event loop."""
     from src import vault as V
-    row = V._find(db, V.account(owner), item_id)
-    if row is None or row.id != item_id:
-        raise V.VaultRefused("There is no such item in your vault.", 404)
-    if origin not in json.loads(row.addresses or "[]") or not origin.startswith("https://"):
-        raise V.VaultRefused("Pin a certificate for one of this login's https addresses.")
-    host = urlsplit(origin).hostname or ""
-    got = await _probe(owner, origin, V.mapped(row).get(host, ""))
+
+    def find(session):
+        row = V._find(session, V.account(owner), item_id)
+        if row is None or row.id != item_id:
+            raise V.VaultRefused("There is no such item in your vault.", 404)
+        return row
+
+    def read(session):
+        row = find(session)
+        if origin not in json.loads(row.addresses or "[]") or not origin.startswith("https://"):
+            raise V.VaultRefused("Pin a certificate for one of this login's https addresses.")
+        return V.mapped(row).get(urlsplit(origin).hostname or "", "")
+    mapped_to = await with_db(db, read)
+    got = await _probe(owner, origin, mapped_to)
     cert = got.get("cert") or {}
     if not cert.get("pem"):
         raise V.VaultRefused(f"{origin} showed no certificate: {got.get('tls_error') or 'no answer'}.", 502)
     if cert["sha256"] != str(sha256 or "").strip().upper():
         raise V.VaultRefused(f"{origin} now shows a different certificate ({cert['sha256'][:23]}…) from the one "
                              "you confirmed. Test it again and look before trusting it.", 409)
-    pins = V.pinned(row)
-    pins[origin] = {"sha256": cert["sha256"], "pem": cert["pem"], "subject": cert.get("subject", "")}
-    row.pins = json.dumps(pins)
-    db.commit()
+
+    def write(session):
+        row = find(session)
+        pins = V.pinned(row)
+        pins[origin] = {"sha256": cert["sha256"], "pem": cert["pem"], "subject": cert.get("subject", "")}
+        row.pins = json.dumps(pins)
+        session.commit()
+        return V.public(row)
+    kept = await with_db(db, write)
     logger.info("vault: %s pinned a certificate for %s", V.account(owner), origin)
-    return V.public(row)
+    return kept
 
 
 def unpin(db, owner: Optional[str], item_id: str, origin: str) -> Dict[str, Any]:

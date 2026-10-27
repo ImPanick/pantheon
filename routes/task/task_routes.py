@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """CRUD routes for scheduled tasks."""
 
+import asyncio
 import json
 import logging
 import secrets
@@ -648,38 +649,42 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         if user:
             await task_scheduler.ensure_defaults(user)
 
-        resumed = 0
-        if enable:
-            db = SessionLocal()
-            try:
-                tasks = db.query(ScheduledTask).filter(
-                    ScheduledTask.owner == user,
-                    ScheduledTask.task_type == "action",
-                    ScheduledTask.action.in_(list(HOUSEKEEPING_DEFAULTS.keys())),
-                ).all()
-                for task in tasks:
-                    defs = HOUSEKEEPING_DEFAULTS.get(task.action or "")
-                    if defs and defs.get("ship_paused"):
-                        continue
-                    if task.status == "active":
-                        continue
-                    task.status = "active"
-                    if (task.trigger_type or "schedule") == "schedule":
-                        # `P8-32`. In the task's own zone. Resuming a
-                        # crew-member-linked daily task used to place its next
-                        # run in UTC.
-                        task.next_run = compute_next_run(
-                            task.schedule,
-                            task.scheduled_time,
-                            task.scheduled_day,
-                            task.scheduled_date,
-                            cron_expression=task.cron_expression,
-                            tz_name=_task_tz(db, task=task),
-                        )
-                    resumed += 1
-                db.commit()
-            finally:
-                db.close()
+        def _db_work():
+            resumed = 0
+            if enable:
+                db = SessionLocal()
+                try:
+                    tasks = db.query(ScheduledTask).filter(
+                        ScheduledTask.owner == user,
+                        ScheduledTask.task_type == "action",
+                        ScheduledTask.action.in_(list(HOUSEKEEPING_DEFAULTS.keys())),
+                    ).all()
+                    for task in tasks:
+                        defs = HOUSEKEEPING_DEFAULTS.get(task.action or "")
+                        if defs and defs.get("ship_paused"):
+                            continue
+                        if task.status == "active":
+                            continue
+                        task.status = "active"
+                        if (task.trigger_type or "schedule") == "schedule":
+                            # `P8-32`. In the task's own zone. Resuming a
+                            # crew-member-linked daily task used to place its next
+                            # run in UTC.
+                            task.next_run = compute_next_run(
+                                task.schedule,
+                                task.scheduled_time,
+                                task.scheduled_day,
+                                task.scheduled_date,
+                                cron_expression=task.cron_expression,
+                                tz_name=_task_tz(db, task=task),
+                            )
+                        resumed += 1
+                    db.commit()
+                finally:
+                    db.close()
+            return resumed
+        # `B1223`: the housekeeping tasks are resumed off the event loop.
+        resumed = await asyncio.to_thread(_db_work)
         return {"ok": True, "opened": True, "enabled": bool(prefs.get("tasks_enabled")), "resumed": resumed}
 
     # Actions that execute shell/SSH commands or cross into admin-only Forge
@@ -937,87 +942,92 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             webhook_token = secrets.token_urlsafe(32)
 
         task_id = str(uuid.uuid4())
-        db = SessionLocal()
-        try:
-            then_task_id = _validate_then_task_id(db, req.then_task_id, user)
-            else_task_id = _validate_then_task_id(db, req.else_task_id, user)
-            if then_task_id or else_task_id:
-                # `P22-01`. Nothing leads to a task that does not exist yet, so
-                # what this can find at create is a defect waiting downstream —
-                # a loop or an over-long chain this task would lead into.
-                _refuse_a_workflow_that_cannot_run(
-                    db, task_id=task_id, owner=user, name=name, action=req.action,
-                    then_task_id=then_task_id, else_task_id=else_task_id, user=user)
-            crew_member_id = _validate_crew_member_id(db, req.crew_member_id, user)
-            execution = _validate_execution_settings(req, user)
-            # `P8-32`. In the task's own zone, from the moment it is created.
-            # This call passed no `tz_name` at all, so a task linked to a crew
-            # member in Sydney was created with a UTC `next_run` and only
-            # started firing in Sydney time once its FIRST run recomputed it
-            # through `_resolve_task_timezone`. The crew-member timezone this
-            # row's premise says "already exists" was wired at **one** of the
-            # six places that compute a next run, and the executor was the one.
-            if req.trigger_type == "schedule":
-                next_run = compute_next_run(
-                    req.schedule, req.scheduled_time,
-                    req.scheduled_day, sched_date,
-                    cron_expression=req.cron_expression,
-                    tz_name=_task_tz(db, crew_member_id=crew_member_id,
-                                     tz_name=execution.get("tz_name")),
+
+        def _db_work():
+            nonlocal next_run
+            db = SessionLocal()
+            try:
+                then_task_id = _validate_then_task_id(db, req.then_task_id, user)
+                else_task_id = _validate_then_task_id(db, req.else_task_id, user)
+                if then_task_id or else_task_id:
+                    # `P22-01`. Nothing leads to a task that does not exist yet, so
+                    # what this can find at create is a defect waiting downstream —
+                    # a loop or an over-long chain this task would lead into.
+                    _refuse_a_workflow_that_cannot_run(
+                        db, task_id=task_id, owner=user, name=name, action=req.action,
+                        then_task_id=then_task_id, else_task_id=else_task_id, user=user)
+                crew_member_id = _validate_crew_member_id(db, req.crew_member_id, user)
+                execution = _validate_execution_settings(req, user)
+                # `P8-32`. In the task's own zone, from the moment it is created.
+                # This call passed no `tz_name` at all, so a task linked to a crew
+                # member in Sydney was created with a UTC `next_run` and only
+                # started firing in Sydney time once its FIRST run recomputed it
+                # through `_resolve_task_timezone`. The crew-member timezone this
+                # row's premise says "already exists" was wired at **one** of the
+                # six places that compute a next run, and the executor was the one.
+                if req.trigger_type == "schedule":
+                    next_run = compute_next_run(
+                        req.schedule, req.scheduled_time,
+                        req.scheduled_day, sched_date,
+                        cron_expression=req.cron_expression,
+                        tz_name=_task_tz(db, crew_member_id=crew_member_id,
+                                         tz_name=execution.get("tz_name")),
+                    )
+                notifications_enabled = (
+                    False if req.task_type == "action" and req.notifications_enabled is None
+                    else bool(req.notifications_enabled) if req.notifications_enabled is not None
+                    else True
                 )
-            notifications_enabled = (
-                False if req.task_type == "action" and req.notifications_enabled is None
-                else bool(req.notifications_enabled) if req.notifications_enabled is not None
-                else True
-            )
-            # Validate chained task belongs to same owner
-            if req.then_task_id:
-                chain_target = db.query(ScheduledTask).filter(
-                    ScheduledTask.id == req.then_task_id
-                ).first()
-                if not chain_target:
-                    raise HTTPException(400, "Chained task not found")
-                if chain_target.owner != user:
-                    raise HTTPException(403, "Cannot chain to another user's task")
-            task = ScheduledTask(
-                id=task_id,
-                owner=user,
-                name=name,
-                prompt=req.prompt,
-                task_type=req.task_type,
-                action=req.action,
-                schedule=req.schedule,
-                scheduled_time=req.scheduled_time,
-                scheduled_day=req.scheduled_day,
-                scheduled_date=sched_date,
-                cron_expression=req.cron_expression,
-                trigger_type=req.trigger_type,
-                trigger_event=req.trigger_event,
-                # Written down rather than left null: a null meant 1 at the bus
-                # and 5 in the form, and a field whose absence means two
-                # different things in two places is the ambiguity `Law 10` is
-                # about.
-                trigger_count=trigger_count,
-                trigger_counter=0,
-                next_run=next_run,
-                status="active" if (req.trigger_type in ("event", "webhook") or next_run) else "completed",
-                output_target=req.output_target,
-                model=req.model or None,
-                endpoint_url=req.endpoint_url or None,
-                then_task_id=then_task_id,
-                else_task_id=else_task_id,
-                webhook_token=webhook_token,
-                notifications_enabled=notifications_enabled,
-                character_id=(req.character_id or None),
-                crew_member_id=crew_member_id,
-                **execution,
-            )
-            db.add(task)
-            db.commit()
-            db.refresh(task)
-            return _task_to_dict(task)
-        finally:
-            db.close()
+                # Validate chained task belongs to same owner
+                if req.then_task_id:
+                    chain_target = db.query(ScheduledTask).filter(
+                        ScheduledTask.id == req.then_task_id
+                    ).first()
+                    if not chain_target:
+                        raise HTTPException(400, "Chained task not found")
+                    if chain_target.owner != user:
+                        raise HTTPException(403, "Cannot chain to another user's task")
+                task = ScheduledTask(
+                    id=task_id,
+                    owner=user,
+                    name=name,
+                    prompt=req.prompt,
+                    task_type=req.task_type,
+                    action=req.action,
+                    schedule=req.schedule,
+                    scheduled_time=req.scheduled_time,
+                    scheduled_day=req.scheduled_day,
+                    scheduled_date=sched_date,
+                    cron_expression=req.cron_expression,
+                    trigger_type=req.trigger_type,
+                    trigger_event=req.trigger_event,
+                    # Written down rather than left null: a null meant 1 at the bus
+                    # and 5 in the form, and a field whose absence means two
+                    # different things in two places is the ambiguity `Law 10` is
+                    # about.
+                    trigger_count=trigger_count,
+                    trigger_counter=0,
+                    next_run=next_run,
+                    status="active" if (req.trigger_type in ("event", "webhook") or next_run) else "completed",
+                    output_target=req.output_target,
+                    model=req.model or None,
+                    endpoint_url=req.endpoint_url or None,
+                    then_task_id=then_task_id,
+                    else_task_id=else_task_id,
+                    webhook_token=webhook_token,
+                    notifications_enabled=notifications_enabled,
+                    character_id=(req.character_id or None),
+                    crew_member_id=crew_member_id,
+                    **execution,
+                )
+                db.add(task)
+                db.commit()
+                db.refresh(task)
+                return _task_to_dict(task)
+            finally:
+                db.close()
+        # `B1223`: the task is checked and written off the event loop.
+        return await asyncio.to_thread(_db_work)
 
     @router.get("/notifications")
     async def get_notifications(request: Request):
@@ -1073,38 +1083,43 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             raise HTTPException(400, "decision must be approve_task (Allow once) or deny.")
         approval_id = (body.approval_id or "").strip()
         user = _owner(request)
-        db = SessionLocal()
-        try:
-            task = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
-            if (task is None or (user and task.owner != user)
-                    or (task.task_type or "llm") != "llm"):
-                raise HTTPException(404, "No such question.")
-            run = db.query(TaskRun).filter(TaskRun.id == run_id,
-                                           TaskRun.task_id == task.id).first()
-            if run is None:
-                raise HTTPException(404, "No such run of this task.")
-            if run.status != "waiting":
-                raise HTTPException(409, "This run is not waiting for an answer any more.")
-            rec = (db.query(TaskRunNode)
-                   .filter(TaskRunNode.run_id == run.id, TaskRunNode.node_id == PLAIN_TASK_NODE,
-                           TaskRunNode.status == "waiting").first())
-            waiting = waiting_of(rec) if rec is not None else None
-            if (not waiting or waiting.get("kind") != WAITING_APPROVAL
-                    or waiting.get("approval_id") != approval_id):
-                raise HTTPException(409, "This run is not waiting on this question any more.")
-            if waiting.get("held_by"):
-                # `B1173`. A workflow's *Run task* step ran this task and asks
-                # this question itself; answered here, the workflow would wait
-                # on a card nobody can answer any more.
-                raise HTTPException(409, (
-                    f"The workflow “{waiting.get('held_by_name') or '?'}” ran this task "
-                    f"and is asking this question — answer it there."))
-            owner, tz_name = task.owner, _resolve_task_timezone(db, task)
-            session = waiting.get("session_id") or ""
-            # `B1111`, as the workflow's door reads it (`integrate-g`).
-            tool = waiting.get("tool_label") or waiting.get("tool") or "the action"
-        finally:
-            db.close()
+
+        def _db_work():
+            db = SessionLocal()
+            try:
+                task = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
+                if (task is None or (user and task.owner != user)
+                        or (task.task_type or "llm") != "llm"):
+                    raise HTTPException(404, "No such question.")
+                run = db.query(TaskRun).filter(TaskRun.id == run_id,
+                                               TaskRun.task_id == task.id).first()
+                if run is None:
+                    raise HTTPException(404, "No such run of this task.")
+                if run.status != "waiting":
+                    raise HTTPException(409, "This run is not waiting for an answer any more.")
+                rec = (db.query(TaskRunNode)
+                       .filter(TaskRunNode.run_id == run.id, TaskRunNode.node_id == PLAIN_TASK_NODE,
+                               TaskRunNode.status == "waiting").first())
+                waiting = waiting_of(rec) if rec is not None else None
+                if (not waiting or waiting.get("kind") != WAITING_APPROVAL
+                        or waiting.get("approval_id") != approval_id):
+                    raise HTTPException(409, "This run is not waiting on this question any more.")
+                if waiting.get("held_by"):
+                    # `B1173`. A workflow's *Run task* step ran this task and asks
+                    # this question itself; answered here, the workflow would wait
+                    # on a card nobody can answer any more.
+                    raise HTTPException(409, (
+                        f"The workflow “{waiting.get('held_by_name') or '?'}” ran this task "
+                        f"and is asking this question — answer it there."))
+                owner, tz_name = task.owner, _resolve_task_timezone(db, task)
+                session = waiting.get("session_id") or ""
+                # `B1111`, as the workflow's door reads it (`integrate-g`).
+                tool = waiting.get("tool_label") or waiting.get("tool") or "the action"
+            finally:
+                db.close()
+            return owner, session, tool, tz_name
+        # `B1223`: the question is looked up off the event loop; the answer is the scheduler's, on the loop.
+        owner, session, tool, tz_name = await asyncio.to_thread(_db_work)
         try:
             outcome, verdict = await task_scheduler.answer_question(
                 task_id=task_id, run_id=run_id, node_id=PLAIN_TASK_NODE, item=None,
@@ -1532,30 +1547,36 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                      "continues along its chain.")
         user = _owner(request)
         chain_rows = None
-        db = SessionLocal()
-        try:
-            task = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
-            if not task:
-                raise HTTPException(404, "Task not found")
-            if user and task.owner != user:
-                raise HTTPException(403, "Access denied")
-            # Unconditional, and a dry run is no exception: answering "you may
-            # not run this" only on the real path would turn the dry path into
-            # a way to read an admin-only task's configuration.
-            _require_admin_for_task_action(user, task.task_type, task.action, db=db, task=task)
-            is_workflow = (task.task_type or "") == "workflow"
-            if chain:
-                # `P22-04`. The rule the engine asks before it continues from
-                # this task (`P22-01`), asked here before the head's dry run is
-                # recorded, so a refusal writes nothing.
-                from src.task_scheduler import chain_dry_run_rows, describe_graph_refusal
-                chain_rows, refusal = chain_dry_run_rows(db, task)
-                if refusal is not None:
-                    names = {row.id: _display_task_name(row) for row in chain_rows}
-                    raise HTTPException(
-                        400, describe_graph_refusal(refusal, names, first=task.id))
-        finally:
-            db.close()
+
+        def _check():
+            nonlocal chain_rows
+            db = SessionLocal()
+            try:
+                task = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
+                if not task:
+                    raise HTTPException(404, "Task not found")
+                if user and task.owner != user:
+                    raise HTTPException(403, "Access denied")
+                # Unconditional, and a dry run is no exception: answering "you may
+                # not run this" only on the real path would turn the dry path into
+                # a way to read an admin-only task's configuration.
+                _require_admin_for_task_action(user, task.task_type, task.action, db=db, task=task)
+                is_workflow = (task.task_type or "") == "workflow"
+                if chain:
+                    # `P22-04`. The rule the engine asks before it continues from
+                    # this task (`P22-01`), asked here before the head's dry run is
+                    # recorded, so a refusal writes nothing.
+                    from src.task_scheduler import chain_dry_run_rows, describe_graph_refusal
+                    chain_rows, refusal = chain_dry_run_rows(db, task)
+                    if refusal is not None:
+                        names = {row.id: _display_task_name(row) for row in chain_rows}
+                        raise HTTPException(
+                            400, describe_graph_refusal(refusal, names, first=task.id))
+            finally:
+                db.close()
+            return task, is_workflow
+        # `B1223`: the task is checked off the event loop; the run is the scheduler's, on the loop.
+        task, is_workflow = await asyncio.to_thread(_check)
         # `B1047`. A person pressed this, so the run waits only for a chat
         # reply in progress and is not stopped by the page they pressed it on;
         # background work keeps the idle gate (`src.interactive_gate.STARTED_BY`).
@@ -1575,21 +1596,24 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             # history fetch away — in the shape `GET /{task_id}/runs` serves
             # (`_run_to_dict`), so whatever draws a run draws this one (`Law 7`).
             if isinstance(started, str):
-                db = SessionLocal()
-                try:
-                    run = db.query(TaskRun).filter(TaskRun.id == started).first()
-                    out["run_id"] = started
-                    out["run"] = (_run_to_dict(run, is_workflow=is_workflow)
-                                  if run is not None else None)
-                    if is_workflow:
-                        # `P22-05`. A workflow's plan is per step, in that run's
-                        # dry node records — read back here in the shape of
-                        # wave B's `chain` entries (design § 5), so the canvas
-                        # draws a document's plan as it draws a chain's.
-                        from src.workflow_store import dry_plan_nodes
-                        out["nodes"] = dry_plan_nodes(db, started)
-                finally:
-                    db.close()
+                def _read_plan():
+                    db = SessionLocal()
+                    try:
+                        run = db.query(TaskRun).filter(TaskRun.id == started).first()
+                        out["run_id"] = started
+                        out["run"] = (_run_to_dict(run, is_workflow=is_workflow)
+                                      if run is not None else None)
+                        if is_workflow:
+                            # `P22-05`. A workflow's plan is per step, in that run's
+                            # dry node records — read back here in the shape of
+                            # wave B's `chain` entries (design § 5), so the canvas
+                            # draws a document's plan as it draws a chain's.
+                            from src.workflow_store import dry_plan_nodes
+                            out["nodes"] = dry_plan_nodes(db, started)
+                    finally:
+                        db.close()
+                # `B1223`: the dry run's record is read off the event loop.
+                await asyncio.to_thread(_read_plan)
             if chain:
                 from src.task_scheduler import DRY_RUN_HEADLINE, plan_dry_chain
                 head_run = out.get("run") or {}
@@ -1609,15 +1633,19 @@ def setup_task_routes(task_scheduler) -> APIRouter:
     @router.post("/{task_id}/stop")
     async def stop_task_now(request: Request, task_id: str):
         user = _owner(request)
-        db = SessionLocal()
-        try:
-            task = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
-            if not task:
-                raise HTTPException(404, "Task not found")
-            if user and task.owner != user:
-                raise HTTPException(403, "Access denied")
-        finally:
-            db.close()
+
+        def _check():
+            db = SessionLocal()
+            try:
+                task = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
+                if not task:
+                    raise HTTPException(404, "Task not found")
+                if user and task.owner != user:
+                    raise HTTPException(403, "Access denied")
+            finally:
+                db.close()
+        # `B1223`: the task is checked off the event loop.
+        await asyncio.to_thread(_check)
         stopped = await task_scheduler.stop_task(task_id)
         if not stopped:
             raise HTTPException(404, "Task is not running")
@@ -1923,32 +1951,36 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         directly as `webhook_trigger(task_id, token)`. FastAPI resolves
         `request` by type and not by position, so the order costs nothing.
         """
-        db = SessionLocal()
-        try:
-            task = db.query(ScheduledTask).filter(
-                ScheduledTask.id == task_id,
-                ScheduledTask.webhook_token == token,
-                ScheduledTask.status == "active",
-            ).first()
-            if not task:
-                raise HTTPException(404, "Not found")
-            # The admin-only action this trigger would run: the task's own,
-            # or — `P22-05` — a workflow's Action step or a Run task step's
-            # target. `admin_only_action_of` is the engine's one answer, asked
-            # here as the scheduler asks it before a run, and the refusal is
-            # filed under that action's name (`record_admin_refusal(action=)`),
-            # so it reads as the run's own refusal would (one question for
-            # every task since the wave C merge; the route asked a plain
-            # task's action itself until then).
-            found = admin_only_action_of(db, task)
-            if found and not owner_has_admin_task_privileges(task.owner):
-                # This used to pause the task and write no run row, so the only
-                # trace was a 403 handed to whoever POSTed the webhook — not the
-                # owner, who just found a paused task. Same rule as the
-                # scheduler's, now the same recording (Law 13).
-                raise HTTPException(403, record_admin_refusal(db, task, action=found))
-        finally:
-            db.close()
+
+        def _check():
+            db = SessionLocal()
+            try:
+                task = db.query(ScheduledTask).filter(
+                    ScheduledTask.id == task_id,
+                    ScheduledTask.webhook_token == token,
+                    ScheduledTask.status == "active",
+                ).first()
+                if not task:
+                    raise HTTPException(404, "Not found")
+                # The admin-only action this trigger would run: the task's own,
+                # or — `P22-05` — a workflow's Action step or a Run task step's
+                # target. `admin_only_action_of` is the engine's one answer, asked
+                # here as the scheduler asks it before a run, and the refusal is
+                # filed under that action's name (`record_admin_refusal(action=)`),
+                # so it reads as the run's own refusal would (one question for
+                # every task since the wave C merge; the route asked a plain
+                # task's action itself until then).
+                found = admin_only_action_of(db, task)
+                if found and not owner_has_admin_task_privileges(task.owner):
+                    # This used to pause the task and write no run row, so the only
+                    # trace was a 403 handed to whoever POSTed the webhook — not the
+                    # owner, who just found a paused task. Same rule as the
+                    # scheduler's, now the same recording (Law 13).
+                    raise HTTPException(403, record_admin_refusal(db, task, action=found))
+            finally:
+                db.close()
+        # `B1223`: the token and the task are checked off the event loop; the run is the scheduler's, on the loop.
+        await asyncio.to_thread(_check)
         trigger = build_trigger(
             TRIGGER_SOURCE_WEBHOOK, TRIGGER_SOURCE_WEBHOOK,
             await _webhook_payload(request),

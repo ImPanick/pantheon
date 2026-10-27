@@ -292,28 +292,40 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         ways = [key for key in ("from_task_id", "describe", "file") if body.get(key) is not None]
         if len(ways) > 1:
             raise WorkflowRefused(400, "Send one of: from_task_id, describe, or file.")
-        db = SessionLocal()
-        try:
-            if "describe" in ways:
-                from src import workflow_assist
+        # `B1223`: the database work runs in worker threads. A draft from the
+        # person's words asks a model between its reads and its write, so its
+        # session is handed to each step in turn (`draft_workflow`); the other
+        # ways are one step each.
+        if "describe" in ways:
+            from src import workflow_assist
+            db = await asyncio.to_thread(SessionLocal)
+            try:
                 drafted = await workflow_assist.draft_workflow(
                     db, user, body.get("describe"), tz=body.get("tz"))
-                return {"workflow": doc(db, drafted.wf, drafted.trigger), "notes": drafted.notes,
-                        "missing": drafted.missing, "destinations": drafted.destinations}
-            if "file" in ways:
-                from src import workflow_share
-                made = workflow_share.import_file(db, user, body.get("file"))
-                return {"workflow": doc(db, made.wf, made.trigger), "notes": made.notes,
-                        "missing": made.missing, "destinations": made.destinations}
-            if from_task_id:
-                wf, trigger, notes = store.convert_chain(
-                    db, owner=user, from_task_id=str(from_task_id), name=body.get("name"),
-                    positions=_task_canvas_positions(user), name_of=_name_of)
-            else:
-                wf, trigger, notes = store.create_workflow(db, owner=user, name=body.get("name"))
-            return {"workflow": doc(db, wf, trigger), "notes": notes}
-        finally:
-            db.close()
+                return await asyncio.to_thread(lambda: {
+                    "workflow": doc(db, drafted.wf, drafted.trigger), "notes": drafted.notes,
+                    "missing": drafted.missing, "destinations": drafted.destinations})
+            finally:
+                await asyncio.to_thread(db.close)
+
+        def _db_work():
+            db = SessionLocal()
+            try:
+                if "file" in ways:
+                    from src import workflow_share
+                    made = workflow_share.import_file(db, user, body.get("file"))
+                    return {"workflow": doc(db, made.wf, made.trigger), "notes": made.notes,
+                            "missing": made.missing, "destinations": made.destinations}
+                if from_task_id:
+                    wf, trigger, notes = store.convert_chain(
+                        db, owner=user, from_task_id=str(from_task_id), name=body.get("name"),
+                        positions=_task_canvas_positions(user), name_of=_name_of)
+                else:
+                    wf, trigger, notes = store.create_workflow(db, owner=user, name=body.get("name"))
+                return {"workflow": doc(db, wf, trigger), "notes": notes}
+            finally:
+                db.close()
+        return await asyncio.to_thread(_db_work)
 
     def _task_canvas_positions(user):
         """Where the person put the chain's steps on the tasks canvas
@@ -616,52 +628,63 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             raise WorkflowRefused(400, "The step in the body is not the step in the address.")
         if source not in TEST_SOURCES:
             raise WorkflowRefused(400, f"source must be one of: {', '.join(TEST_SOURCES)}.")
-        db = SessionLocal()
+        # `B1223`: the workflow is read and the step checked in worker threads,
+        # the session handed to each in turn — the test input may ask a model
+        # between them.
+        db = await asyncio.to_thread(SessionLocal)
         try:
-            wf = store.owned_workflow(db, workflow_id, _owner(request))
-            trigger = store.require_trigger(db, wf)
-            rows = store.owner_rows(db, wf.owner)
-            # Validated exactly as on save (design § 4): the step as a document
-            # of one, so an unsaved step is tested on its unsaved settings and a
-            # refusal is the sentence a save would give.
-            from src.workflow_document import GRAPH_VERSION, START_KEY
-            stored = store.stored_graph(wf)
-            if "{{" in json.dumps(node.get("config") or {}, default=str):
-                # `P22-09`. A step that refers to the steps before it is
-                # checked where it stands — a reference must name a step
-                # upstream of it, which a document of one never has.
-                checked_graph = store.check_document(
-                    db, _with_node(stored, dict(node, pinned=None)), owner=wf.owner,
-                    own_task_id=trigger.id, rows=rows)
-                checked = next(n for n in store.nodes_of(checked_graph)
-                               if str(n.get("id")) == str(node_id))
-            else:
-                alone = {"v": GRAPH_VERSION, START_KEY: {"position": None},
-                         "nodes": [dict(node, pinned=None)], "edges": []}
-                checked = store.nodes_of(store.check_document(
-                    db, alone, owner=wf.owner, own_task_id=trigger.id, rows=rows))[0]
-            graph = _with_node(stored, checked)
+            def _check():
+                wf = store.owned_workflow(db, workflow_id, _owner(request))
+                trigger = store.require_trigger(db, wf)
+                rows = store.owner_rows(db, wf.owner)
+                # Validated exactly as on save (design § 4): the step as a document
+                # of one, so an unsaved step is tested on its unsaved settings and a
+                # refusal is the sentence a save would give.
+                from src.workflow_document import GRAPH_VERSION, START_KEY
+                stored = store.stored_graph(wf)
+                if "{{" in json.dumps(node.get("config") or {}, default=str):
+                    # `P22-09`. A step that refers to the steps before it is
+                    # checked where it stands — a reference must name a step
+                    # upstream of it, which a document of one never has.
+                    checked_graph = store.check_document(
+                        db, _with_node(stored, dict(node, pinned=None)), owner=wf.owner,
+                        own_task_id=trigger.id, rows=rows)
+                    checked = next(n for n in store.nodes_of(checked_graph)
+                                   if str(n.get("id")) == str(node_id))
+                else:
+                    alone = {"v": GRAPH_VERSION, START_KEY: {"position": None},
+                             "nodes": [dict(node, pinned=None)], "edges": []}
+                    checked = store.nodes_of(store.check_document(
+                        db, alone, owner=wf.owner, own_task_id=trigger.id, rows=rows))[0]
+                graph = _with_node(stored, checked)
+                return wf, trigger, rows, stored, checked, graph
+            wf, trigger, rows, stored, checked, graph = await asyncio.to_thread(_check)
             envelope, dropped = await _test_input(
                 db, wf, trigger, stored, graph, checked, source, body.get("input"))
-            tasks_by_id = rows[0]
-            from src.workflow_document import needs_test_confirmation
-            from src.workflow_effects import workflow_resources
-            # `P22-13`/`P22-14` (`wf-rules`' merge point 5). What the person can
-            # reach — so an MCP tool its server marks read-only is known to be,
-            # and the plan of an HTTP, MCP or Code step is the document's own.
-            resources = workflow_resources(wf.owner)
-            if needs_test_confirmation(checked, tasks_by_id, resources) and not body.get("confirm"):
-                plan = _node_plan(checked, wf.owner, tasks_by_id, resources)
-                return {
-                    "outcome": TEST_NEEDS_CONFIRMATION,
-                    "plan": plan,
-                    "effects": _effects_not_in(plan, _node_effect_sentences(
-                        checked, tasks_by_id, resources)),
-                    "input_used": envelope, "dropped": dropped, "source": source,
-                }
-            name = wf.name
+
+            def _plan():
+                tasks_by_id = rows[0]
+                from src.workflow_document import needs_test_confirmation
+                from src.workflow_effects import workflow_resources
+                # `P22-13`/`P22-14` (`wf-rules`' merge point 5). What the person can
+                # reach — so an MCP tool its server marks read-only is known to be,
+                # and the plan of an HTTP, MCP or Code step is the document's own.
+                resources = workflow_resources(wf.owner)
+                if needs_test_confirmation(checked, tasks_by_id, resources) and not body.get("confirm"):
+                    plan = _node_plan(checked, wf.owner, tasks_by_id, resources)
+                    return {
+                        "outcome": TEST_NEEDS_CONFIRMATION,
+                        "plan": plan,
+                        "effects": _effects_not_in(plan, _node_effect_sentences(
+                            checked, tasks_by_id, resources)),
+                        "input_used": envelope, "dropped": dropped, "source": source,
+                    }, None
+                return None, wf.name
+            early, name = await asyncio.to_thread(_plan)
+            if early is not None:
+                return early
         finally:
-            db.close()
+            await asyncio.to_thread(db.close)
         try:
             # `B1093`. Only for as long as somebody is waiting for the answer.
             result = await _while_the_request_waits(
@@ -754,20 +777,25 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         if item is not None and (isinstance(item, bool) or not isinstance(item, int)):
             raise WorkflowRefused(400, "item must be a whole number or null.")
         user = _owner(request)
-        db = SessionLocal()
-        try:
-            wf = store.owned_workflow(db, workflow_id, user)
-            run, rec, waiting = store.find_waiting_step(db, wf, run_id, node_id, item, approval_id)
-            trigger = store.trigger_of(db, wf)
-            owner = wf.owner
-            session = waiting.get("session_id") or ""
-            # `B1111`: the tool as the step's panel names it.
-            tool = waiting.get("tool_label") or waiting.get("tool") or "the action"
-            label = rec.label or rec.node_id
-            tz_name = _resolve_task_timezone(db, trigger) if trigger is not None else None
-            task_id = run.task_id
-        finally:
-            db.close()
+
+        def _read():
+            db = SessionLocal()
+            try:
+                wf = store.owned_workflow(db, workflow_id, user)
+                run, rec, waiting = store.find_waiting_step(db, wf, run_id, node_id, item, approval_id)
+                trigger = store.trigger_of(db, wf)
+                owner = wf.owner
+                session = waiting.get("session_id") or ""
+                # `B1111`: the tool as the step's panel names it.
+                tool = waiting.get("tool_label") or waiting.get("tool") or "the action"
+                label = rec.label or rec.node_id
+                tz_name = _resolve_task_timezone(db, trigger) if trigger is not None else None
+                task_id = run.task_id
+            finally:
+                db.close()
+            return label, owner, run, session, task_id, tool, tz_name
+        # `B1223`: the waiting step is read off the event loop; the answer is the scheduler's, on the loop.
+        label, owner, run, session, task_id, tool, tz_name = await asyncio.to_thread(_read)
         # `B1102`. Steps 3–5 are the scheduler's one answer core, which a plain
         # task's door calls too (`TaskScheduler.answer_question`, `Law 14`).
         try:
@@ -806,39 +834,44 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         if item is not None and (isinstance(item, bool) or not isinstance(item, int)):
             raise WorkflowRefused(400, "item must be a whole number or null.")
         user = _owner(request)
-        db = SessionLocal()
-        try:
-            wf = store.owned_workflow(db, workflow_id, user)
-            run = (db.query(TaskRun).filter(TaskRun.id == run_id, TaskRun.task_id == wf.task_id)
-                   .first() if wf.task_id else None)
-            if run is None:
-                raise WorkflowRefused(404, "No such run of this workflow.")
-            q = db.query(TaskRunNode).filter(TaskRunNode.run_id == run.id,
-                                             TaskRunNode.node_id == node_id,
-                                             TaskRunNode.dry.is_(False))
-            q = q.filter(TaskRunNode.item.is_(None)) if item is None else \
-                q.filter(TaskRunNode.item == item)
-            rec = q.order_by(TaskRunNode.attempt.desc(), TaskRunNode.seq.desc()).first()
-            if rec is None:
-                raise WorkflowRefused(404, "That step has no record in this run.")
-            record = node_record_to_dict(rec)
+
+        def _read():
+            db = SessionLocal()
             try:
-                current = parse_graph(store.stored_graph(wf))
-            except DocumentError as err:
-                raise store._document_error_refusal(err) from None
-            node = next((n for n in store.nodes_of(current) if str(n.get("id")) == node_id), None)
-            if node is None:
-                raise WorkflowRefused(404, "That step is not in the workflow any more.")
-            ran_graph, kept = store.graph_of_version(db, wf, rec.workflow_version)
-            ran = next((n for n in store.nodes_of(ran_graph) if str(n.get("id")) == node_id), None)
-            changed = (ran is None or store._step_content(ran) != store._step_content(node)
-                       or (not kept and rec.workflow_version != wf.version))
-            rows = store.owner_rows(db, wf.owner)
-            trigger = store.trigger_of(db, wf)
-            owner = wf.owner
-            base_version = wf.version
-        finally:
-            db.close()
+                wf = store.owned_workflow(db, workflow_id, user)
+                run = (db.query(TaskRun).filter(TaskRun.id == run_id, TaskRun.task_id == wf.task_id)
+                       .first() if wf.task_id else None)
+                if run is None:
+                    raise WorkflowRefused(404, "No such run of this workflow.")
+                q = db.query(TaskRunNode).filter(TaskRunNode.run_id == run.id,
+                                                 TaskRunNode.node_id == node_id,
+                                                 TaskRunNode.dry.is_(False))
+                q = q.filter(TaskRunNode.item.is_(None)) if item is None else \
+                    q.filter(TaskRunNode.item == item)
+                rec = q.order_by(TaskRunNode.attempt.desc(), TaskRunNode.seq.desc()).first()
+                if rec is None:
+                    raise WorkflowRefused(404, "That step has no record in this run.")
+                record = node_record_to_dict(rec)
+                try:
+                    current = parse_graph(store.stored_graph(wf))
+                except DocumentError as err:
+                    raise store._document_error_refusal(err) from None
+                node = next((n for n in store.nodes_of(current) if str(n.get("id")) == node_id), None)
+                if node is None:
+                    raise WorkflowRefused(404, "That step is not in the workflow any more.")
+                ran_graph, kept = store.graph_of_version(db, wf, rec.workflow_version)
+                ran = next((n for n in store.nodes_of(ran_graph) if str(n.get("id")) == node_id), None)
+                changed = (ran is None or store._step_content(ran) != store._step_content(node)
+                           or (not kept and rec.workflow_version != wf.version))
+                rows = store.owner_rows(db, wf.owner)
+                trigger = store.trigger_of(db, wf)
+                owner = wf.owner
+                base_version = wf.version
+            finally:
+                db.close()
+            return base_version, changed, current, node, owner, record, rows, trigger
+        # `B1223`: the step's record is read off the event loop.
+        base_version, changed, current, node, owner, record, rows, trigger = await asyncio.to_thread(_read)
         resources = workflow_resources(owner)
         try:
             explained = await workflow_assist.explain_step(
@@ -1088,14 +1121,15 @@ async def _test_input(db, wf, trigger, stored, graph, node, source, raw):
     node_id = str(node.get("id"))
     if source == "none":
         return None, []
-    refused = _source_refusals(db, trigger, graph, node_id, label).get(source)
+    # `B1223`: its reads run in a worker thread, the caller's session handed to it.
+    refused = (await asyncio.to_thread(_source_refusals, db, trigger, graph, node_id, label)).get(source)
     if refused is not None:
         why, kind, refusal = refused
         if refusal is not None:
             raise refusal
         raise WorkflowRefused(400, why + _TEST_SOURCE_NEXT.get(source, {}).get(kind, ""))
     if source == "last":
-        value, _found = _last_input(db, trigger, node_id)
+        value, _found = await asyncio.to_thread(_last_input, db, trigger, node_id)
         return value, []
     if source == "pinned":
         pinned = next((n.get("pinned") for n in store.nodes_of(stored)

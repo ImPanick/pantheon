@@ -541,53 +541,57 @@ def setup_research_routes(research_handler, session_manager=None) -> APIRouter:
                 user = tool_owner
         session_id = f"rp-{uuid.uuid4().hex[:12]}"
 
-        if body.endpoint_id:
-            from src.database import SessionLocal
-            db = SessionLocal()
-            try:
-                # Owner-scoped: never resolve another user's private endpoint
-                # (and its decrypted api_key / internal base_url). A scoped miss
-                # reads as 404 so the endpoint's existence isn't revealed.
-                ep = _owned_enabled_endpoint(db, user, body.endpoint_id)
-                if not ep:
-                    raise HTTPException(404, "Endpoint not found or disabled")
-                resolved = _resolve_endpoint_runtime(ep, owner=user, model=body.model)
-                if not resolved:
-                    raise HTTPException(400, "Endpoint is not configured with a usable model.")
-                ep_url, ep_model, ep_headers = resolved
-            finally:
-                db.close()
-        else:
-            ep_url, ep_model, ep_headers = resolve_endpoint("research", owner=user)
-            if not ep_url:
-                ep_url, ep_model, ep_headers = resolve_endpoint("utility", owner=user)
-            # When neither research nor utility is configured, use the user's
-            # configured DEFAULT model (default_endpoint_id/default_model) rather
-            # than arbitrarily grabbing the first enabled endpoint's first model
-            # (which surfaced gpt-3.5). "Default" should mean the default model.
-            if not ep_url:
-                ep_url, ep_model, ep_headers = resolve_endpoint("default", owner=user)
-            if not ep_url:
-                ep_url, ep_model, ep_headers = resolve_endpoint("chat", owner=user)
-            if not ep_url:
+        def _db_work():
+            if body.endpoint_id:
                 from src.database import SessionLocal
                 db = SessionLocal()
                 try:
-                    # Owner-scoped first-enabled fallback: the caller's own rows
-                    # + legacy null-owner shared rows only — never borrow another
-                    # user's private endpoint/api_key. Same fix as the
-                    # /api/v1/chat fallback (webhook_routes._first_enabled_endpoint).
-                    ep = _owned_enabled_endpoint(db, user)
-                    if ep:
-                        resolved = _resolve_endpoint_runtime(ep, owner=user)
-                        if resolved:
-                            ep_url, ep_model, ep_headers = resolved
+                    # Owner-scoped: never resolve another user's private endpoint
+                    # (and its decrypted api_key / internal base_url). A scoped miss
+                    # reads as 404 so the endpoint's existence isn't revealed.
+                    ep = _owned_enabled_endpoint(db, user, body.endpoint_id)
+                    if not ep:
+                        raise HTTPException(404, "Endpoint not found or disabled")
+                    resolved = _resolve_endpoint_runtime(ep, owner=user, model=body.model)
+                    if not resolved:
+                        raise HTTPException(400, "Endpoint is not configured with a usable model.")
+                    ep_url, ep_model, ep_headers = resolved
                 finally:
                     db.close()
-            if not ep_url:
-                raise HTTPException(400, "No endpoints configured. Add one in Settings first.")
-            if body.model:
-                ep_model = body.model
+            else:
+                ep_url, ep_model, ep_headers = resolve_endpoint("research", owner=user)
+                if not ep_url:
+                    ep_url, ep_model, ep_headers = resolve_endpoint("utility", owner=user)
+                # When neither research nor utility is configured, use the user's
+                # configured DEFAULT model (default_endpoint_id/default_model) rather
+                # than arbitrarily grabbing the first enabled endpoint's first model
+                # (which surfaced gpt-3.5). "Default" should mean the default model.
+                if not ep_url:
+                    ep_url, ep_model, ep_headers = resolve_endpoint("default", owner=user)
+                if not ep_url:
+                    ep_url, ep_model, ep_headers = resolve_endpoint("chat", owner=user)
+                if not ep_url:
+                    from src.database import SessionLocal
+                    db = SessionLocal()
+                    try:
+                        # Owner-scoped first-enabled fallback: the caller's own rows
+                        # + legacy null-owner shared rows only — never borrow another
+                        # user's private endpoint/api_key. Same fix as the
+                        # /api/v1/chat fallback (webhook_routes._first_enabled_endpoint).
+                        ep = _owned_enabled_endpoint(db, user)
+                        if ep:
+                            resolved = _resolve_endpoint_runtime(ep, owner=user)
+                            if resolved:
+                                ep_url, ep_model, ep_headers = resolved
+                    finally:
+                        db.close()
+                if not ep_url:
+                    raise HTTPException(400, "No endpoints configured. Add one in Settings first.")
+                if body.model:
+                    ep_model = body.model
+            return ep_headers, ep_model, ep_url
+        # `B1223`: the endpoint is resolved off the event loop; starting the research (a task on the loop) stays here.
+        ep_headers, ep_model, ep_url = await asyncio.to_thread(_db_work)
 
         # max_rounds=0 → "Auto", let AI decide; pass 20 as the safety cap.
         effective_max_rounds = body.max_rounds if body.max_rounds > 0 else 20
@@ -733,28 +737,32 @@ def setup_research_routes(research_handler, session_manager=None) -> APIRouter:
             _merge(*resolve_endpoint("research", owner=user))
         if not ep_url or not ep_model:
             _merge(*resolve_endpoint("utility", owner=user))
-        if not ep_url or not ep_model:
-            # Last resort: this user's enabled endpoint, plus legacy shared rows.
-            from src.database import SessionLocal
-            from src.endpoint_resolver import normalize_base, build_chat_url, build_headers
-            db = SessionLocal()
-            try:
-                ep = _owned_enabled_endpoint(db, user)
-                if ep:
-                    base = normalize_base(ep.base_url)
-                    fallback_url = build_chat_url(base)
-                    fallback_headers = build_headers(ep.api_key, base)
-                    fallback_model = ""
-                    if ep.cached_models:
-                        try:
-                            models = json.loads(ep.cached_models)
-                            if models:
-                                fallback_model = _first_chat_model(models)
-                        except Exception:
-                            pass
-                    _merge(fallback_url, fallback_model, fallback_headers)
-            finally:
-                db.close()
+
+        def _db_work():
+            if not ep_url or not ep_model:
+                # Last resort: this user's enabled endpoint, plus legacy shared rows.
+                from src.database import SessionLocal
+                from src.endpoint_resolver import normalize_base, build_chat_url, build_headers
+                db = SessionLocal()
+                try:
+                    ep = _owned_enabled_endpoint(db, user)
+                    if ep:
+                        base = normalize_base(ep.base_url)
+                        fallback_url = build_chat_url(base)
+                        fallback_headers = build_headers(ep.api_key, base)
+                        fallback_model = ""
+                        if ep.cached_models:
+                            try:
+                                models = json.loads(ep.cached_models)
+                                if models:
+                                    fallback_model = _first_chat_model(models)
+                            except Exception:
+                                pass
+                        _merge(fallback_url, fallback_model, fallback_headers)
+                finally:
+                    db.close()
+        # `B1223`: the fallback endpoint is read off the event loop.
+        await asyncio.to_thread(_db_work)
 
         if not ep_url or not ep_model:
             raise HTTPException(400, "No endpoint configured — add one in Settings first")

@@ -19,7 +19,6 @@ browser's own zone set to New York.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import sys
 from datetime import datetime, timezone
@@ -104,8 +103,9 @@ def test_the_form_shows_and_saves_it_on_that_clock(sandbox, task_db, monkeypatch
     import routes.task.task_routes as task_routes
     monkeypatch.setattr(task_routes, "SessionLocal", task_db)
     update = _endpoint("/api/tasks/{task_id}", "PUT")
-    saved = json.loads(json.dumps(asyncio.run(
-        update(_REQUEST, "t1", task_routes.TaskUpdate(**body)))))
+    # `B1223`: the update route is a plain `def` (Starlette runs it in its
+    # thread pool), so it is called, not awaited.
+    saved = json.loads(json.dumps(update(_REQUEST, "t1", task_routes.TaskUpdate(**body))))
     when = datetime.fromisoformat(saved["next_run"].rstrip("Z")).replace(tzinfo=timezone.utc)
     paris = when.astimezone(ZoneInfo("Europe/Paris"))
     assert (paris.hour, paris.minute) == (9, 0), paris
