@@ -96,7 +96,11 @@ def _db(rows=((("abcd1234", "Test server"), None),)):
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    # `B1223`: the routes read and write in a worker thread now, and an in-memory
+    # SQLite is one per connection — one connection for every thread.
+    from sqlalchemy.pool import StaticPool
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False},
+                           poolclass=StaticPool)
     Base.metadata.create_all(engine)
     Factory = sessionmaker(bind=engine)
     db = Factory()

@@ -994,8 +994,11 @@ async def do_api_call(content: str, owner: Optional[str] = None) -> Dict:
     """Execute an API call to a registered integration.
 
     `P27-02`: `owner`'s own integrations and the shared ones — another
-    person's is neither found nor named in the list of what is available."""
-    from src.integrations import execute_api_call, integrations_for
+    person's is neither found nor named in the list of what is available.
+    `B1573`: exactly the ones `owner`'s agent reaches
+    (`integrations.agent_integrations_for`) — for a member whose tools run in
+    their workstation, their own, called from there."""
+    from src.integrations import agent_integrations_for, execute_api_call
     try:
         args = json.loads(content)
     except json.JSONDecodeError:
@@ -1013,7 +1016,7 @@ async def do_api_call(content: str, owner: Optional[str] = None) -> Dict:
                 pass
 
     integration_name = args.get("integration", "")
-    integrations = integrations_for(owner)
+    integrations = agent_integrations_for(owner)
     intg = next((i for i in integrations if i["id"] == integration_name
                  or i["name"].lower() == integration_name.lower()), None)
     if not intg:
@@ -1150,6 +1153,10 @@ _APP_API_BLOCKLIST_METHOD_PATH = (
     # `B1258`. The Hugging Face token's own door: a credential the person sets
     # in Settings → Forge, never one the assistant writes for them.
     ("PUT",    "/api/cookbook/hf-token"),
+    # `B1258`. The servers' own door: which boxes this instance opens SSH to,
+    # the person's in Settings → Forge — the agent reads them
+    # (`list_cookbook_servers`) and never rewrites the list.
+    ("PUT",    "/api/cookbook/servers"),
     # Host-control routes: package install, engine rebuild, and process
     # signalling should not be reachable through the generic API bridge.
     ("POST",   "/api/cookbook/packages/install"),
@@ -1300,6 +1307,10 @@ async def do_app_api(content: str, owner: Optional[str] = None) -> Dict:
             return {"error": f"Registering, editing, toggling, deleting or calling an MCP server this way skips the command check that keeps a stdio server from running arbitrary code — it is the person's action, from {INTEGRATIONS_PLACE}. Use the `manage_mcp` tool for a server the agent may add (it enforces that check), or ask the person to add it in the UI.", "exit_code": 1}
         if "/api/email/accounts" in _match_path:
             return {"error": "Don't use /api/email/accounts via app_api — it is owner-filtered in tool context and may return empty. Use the `list_email_accounts` email tool, then pass `account` to list_emails/read_email.", "exit_code": 1}
+        if _match_path.startswith("/api/cookbook/servers") or _match_path.startswith("/api/cookbook/hf-token"):
+            # `B1258`: which boxes the instance opens SSH to, and the token it
+            # downloads with — each the person's, at its own door.
+            return {"error": "The Forge's servers and its Hugging Face token are the person's to set, in Settings → Forge — which machines this instance opens SSH to is not mine to change. I can list the servers (`list_cookbook_servers`); ask the person to add or change one.", "exit_code": 1}
         if "/api/cookbook/packages/install" in _match_path:
             return {"error": "Don't POST /api/cookbook/packages/install via app_api — package installation is host code execution. Use the dedicated Forge dependency UI/flow instead.", "exit_code": 1}
         if "/api/cookbook/rebuild-engine" in _match_path:

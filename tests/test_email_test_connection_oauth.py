@@ -23,8 +23,12 @@ def _make_orm_db():
     """Return (Session, SessionFactory) backed by an isolated in-memory SQLite DB."""
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
     from core.database import Base
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    # `B1223`: the route reads the saved account in a worker thread now, and an
+    # in-memory SQLite is one per connection — one connection for every thread.
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False},
+                           poolclass=StaticPool)
     Base.metadata.create_all(engine)
     Factory = sessionmaker(bind=engine)
     return Factory(), Factory

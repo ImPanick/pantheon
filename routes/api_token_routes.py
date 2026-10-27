@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """API Token management routes — /api/tokens/*."""
 
+import asyncio
 import secrets
 import uuid
 
@@ -171,33 +172,38 @@ def setup_api_token_routes() -> APIRouter:
             payload = {}
         if not isinstance(payload, dict):
             payload = {}
-        with get_db_session() as db:
-            token = db.query(ApiToken).filter(ApiToken.id == token_id).first()
-            if not token:
-                raise HTTPException(404, "Token not found")
-            if current_user and token.owner != current_user:
-                raise HTTPException(403, "Not your token")
-            if isinstance(payload.get("name"), str) and payload["name"].strip():
-                token.name = payload["name"].strip()[:MAX_NAME_LEN]
-            # Only touch scopes when the caller actually sent them. A partial
-            # update such as a rename ({"name": ...} with no "scopes" key) must
-            # not silently reset the token to the default scope — that dropped
-            # every previously granted scope.
-            if "scopes" in payload:
-                token.scopes = ",".join(_normalize_scopes(payload.get("scopes")))
-            db.add(token)
-            current_scopes = [
-                s.strip()
-                for s in (getattr(token, "scopes", "") or DEFAULT_SCOPES).split(",")
-                if s.strip()
-            ]
-            response = {
-                "id": token_id,
-                "name": getattr(token, "name", ""),
-                "owner": getattr(token, "owner", None),
-                "token_prefix": getattr(token, "token_prefix", ""),
-                "scopes": current_scopes,
-            }
+
+        def _db_work():
+            with get_db_session() as db:
+                token = db.query(ApiToken).filter(ApiToken.id == token_id).first()
+                if not token:
+                    raise HTTPException(404, "Token not found")
+                if current_user and token.owner != current_user:
+                    raise HTTPException(403, "Not your token")
+                if isinstance(payload.get("name"), str) and payload["name"].strip():
+                    token.name = payload["name"].strip()[:MAX_NAME_LEN]
+                # Only touch scopes when the caller actually sent them. A partial
+                # update such as a rename ({"name": ...} with no "scopes" key) must
+                # not silently reset the token to the default scope — that dropped
+                # every previously granted scope.
+                if "scopes" in payload:
+                    token.scopes = ",".join(_normalize_scopes(payload.get("scopes")))
+                db.add(token)
+                current_scopes = [
+                    s.strip()
+                    for s in (getattr(token, "scopes", "") or DEFAULT_SCOPES).split(",")
+                    if s.strip()
+                ]
+                response = {
+                    "id": token_id,
+                    "name": getattr(token, "name", ""),
+                    "owner": getattr(token, "owner", None),
+                    "token_prefix": getattr(token, "token_prefix", ""),
+                    "scopes": current_scopes,
+                }
+            return response
+        # `B1223`: the token's row is read and written off the event loop.
+        response = await asyncio.to_thread(_db_work)
         _invalidate_cache(request)
         return response
 

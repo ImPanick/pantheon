@@ -246,10 +246,12 @@ def test_a_text_reply_has_a_status_and_no_parsed_body(server):
 
 def test_the_tool_asks_for_structure_only_on_a_literal_true(server):
     from src.tools.system import do_api_call
+    # `B1573`: the tool finds what its owner's agent reaches — here the
+    # fixture's admin; an owner of nobody reaches none.
     as_word = _run(do_api_call(json.dumps({"integration": "Miniflux", "path": "/v1/entries",
-                                           "structured": "true"})))
+                                           "structured": "true"}), owner="local"))
     as_true = _run(do_api_call(json.dumps({"integration": "Miniflux", "path": "/v1/entries",
-                                           "structured": True})))
+                                           "structured": True}), owner="local"))
     assert "body_json" not in as_word
     assert as_true["body_json"] == server.payload
 

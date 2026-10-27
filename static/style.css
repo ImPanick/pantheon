@@ -26518,7 +26518,7 @@ body.gallery-selecting .gallery-dl-btn,
 }
 /* The "+" glyph in the Servers-header "+ Add" button, nudged up 1px (scoped so
    the shared calendar +New pill is unaffected). */
-#cookbook-server-add .cal-add-plus { position: relative; top: -1px; }
+#cookbook-server-add .cal-add-plus, #set-forge-server-add .cal-add-plus { position: relative; top: -1px; }
 /* Save button on a new server entry — same shape as Delete, accent-colored;
    turns green once saved. */
 .cookbook-server-save-btn {
@@ -41348,7 +41348,7 @@ button.cal-add-btn.cal-add-btn-text {
   transition: background 0.15s, border-color 0.15s;
 }
 /* Settings "+ Add server" matches the model-dir "+ Add" path button (22px). */
-#cookbook-server-add.cal-add-btn-text {
+#cookbook-server-add.cal-add-btn-text, #set-forge-server-add.cal-add-btn-text {
   height: 28px;
   min-width: 62px;
   border-radius: 14px;
@@ -50819,7 +50819,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .design-variant-head strong { flex: 1 1 auto; }
 .design-variant .design-frame { height: 260px; }
 .design-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.design-props, .design-tweaks { border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.design-props, .design-tweaks, .design-build { border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .design-selector { font-family: var(--font-mono, monospace); overflow-wrap: anywhere; }
 .design-tweak span { display: flex; justify-content: space-between; gap: 6px; }
 .design-tweak-value { font-family: var(--font-mono, monospace); opacity: 0.8; }
@@ -50829,6 +50829,19 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .design-version-on .design-version-pick { font-weight: 700; }
 .design-version-when { opacity: 0.6; font-size: 11px; }
 .design-design-card { height: auto; }
+
+/* ── `P26-09` · collaborators: people, notes with their authors, who has it open ── */
+.design-collab { border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.design-collab-box { min-width: 0; }
+.design-shares, .design-notes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+.design-share { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.design-share-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.design-share-form, .design-note-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; }
+.design-share-form input { flex: 1 1 120px; min-width: 0; }
+.design-note-form textarea { flex: 1 1 100%; min-width: 0; font: inherit; }
+.design-note-item { display: flex; flex-direction: column; gap: 2px; font-size: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.design-note-head { display: flex; gap: 6px; align-items: baseline; justify-content: space-between; }
+.design-note-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* `B1478`. The workstation's containers in Settings → Workstation, for an admin. */
 .ws-machines { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 10px; }

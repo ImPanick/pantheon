@@ -108,9 +108,16 @@ def test_a_body_cannot_name_its_owner_and_only_the_owner_moves_shared(two):
     assert stored[a]["owner"] == ADMIN and stored[a]["shared"] is True, "shared by its owner, still theirs"
 
 
-def test_a_member_has_no_list_and_their_tools_see_only_the_shared(two):
+def test_a_member_sees_the_shared_read_only_and_their_tools_see_only_the_shared(two):
     accounts, *_ = two
-    assert accounts(MEMBER).get("/api/auth/integrations").status_code == 403
+    # `B1573`: a member owns connections too, so the list answers them —
+    # here with the shared one only, read-only, its key not shown, and they
+    # may not share one of their own.
+    seen = accounts(MEMBER).get("/api/auth/integrations")
+    assert seen.status_code == 200 and seen.json()["may_share"] is False
+    (only,) = seen.json()["integrations"]
+    assert (only["name"], only["read_only"], only["api_key"], only["your_agents"]) == ("House ntfy", True, "", False)
+    assert "ADA-" not in seen.text and "CYD-" not in seen.text
     assert [i["name"] for i in I.integrations_for(MEMBER)] == ["House ntfy"]
     assert [i["name"] for i in I.integrations_for(None)] == ["House ntfy"], "the server's own: the shared"
 

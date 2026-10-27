@@ -26,10 +26,13 @@ function _say(text, { error = false } = {}) {
   out.classList.toggle('git-settings-error', !!error);
 }
 
+// Every path is spelled whole where it is called, so `check-unreachable.py`
+// sees each route's caller (`P27-10`: four of these read as callerless while
+// they were `BASE` plus a tail).
 async function _call(method, path, body) {
   let res;
   try {
-    res = await fetch(BASE + (path || ''), {
+    res = await fetch(path, {
       method,
       credentials: 'same-origin',
       headers: body ? { 'Content-Type': 'application/json' } : {},
@@ -113,7 +116,7 @@ function _agentAccountInto(row, item) {
   const go = _btn('Make it', 'vault-agent-account-go', async () => {
     go.disabled = true;
     _say(`Making ${user.value} on ${item.addresses[0] || 'the service'}…`);
-    const r = await _call('POST', `/items/${encodeURIComponent(item.id)}/agent-account`,
+    const r = await _call('POST', `/api/vault/mine/items/${encodeURIComponent(item.id)}/agent-account`,
       { template: svc.value, role: role.value, username: user.value });
     go.disabled = false;
     if (!r.ok) { _say(r.sentence, { error: true }); return; }
@@ -137,7 +140,7 @@ async function _testInto(row, item) {
   const box = _el('div', 'vault-test');
   box.appendChild(_el('p', 'admin-toggle-sub', 'Testing from your workstation…'));
   row.appendChild(box);
-  const r = await _call('POST', `/items/${encodeURIComponent(item.id)}/test`);
+  const r = await _call('POST', `/api/vault/mine/items/${encodeURIComponent(item.id)}/test`);
   box.textContent = '';
   if (!r.ok) { box.appendChild(_el('p', 'admin-toggle-sub git-settings-error', r.sentence)); return; }
   (r.data.results || []).forEach((res) => {
@@ -164,7 +167,7 @@ async function _testInto(row, item) {
       map.appendChild(field);
       map.appendChild(_btn(res.mapped_to ? 'Change' : 'Map it', 'vault-map-btn', async () => {
         const m = { ...(item.mapped || {}), [host]: ip.value.trim() };
-        const u = await _call('PUT', `/items/${encodeURIComponent(item.id)}`, { mapped: m });
+        const u = await _call('PUT', `/api/vault/mine/items/${encodeURIComponent(item.id)}`, { mapped: m });
         if (!u.ok) { _say(u.sentence, { error: true }); return; }
         item.mapped = u.data.mapped;
         _say(`${host} now reaches ${ip.value.trim()} for you — in your browser and your commands. Testing again…`);
@@ -174,7 +177,7 @@ async function _testInto(row, item) {
         map.appendChild(_btn('Unmap', 'vault-unmap-btn', async () => {
           const m = { ...(item.mapped || {}) };
           delete m[host];
-          const u = await _call('PUT', `/items/${encodeURIComponent(item.id)}`, { mapped: m });
+          const u = await _call('PUT', `/api/vault/mine/items/${encodeURIComponent(item.id)}`, { mapped: m });
           if (!u.ok) { _say(u.sentence, { error: true }); return; }
           item.mapped = u.data.mapped;
           await _testInto(row, item);
@@ -193,14 +196,14 @@ async function _testInto(row, item) {
       }
       if (!c.trusted && !c.pinned) {
         part.appendChild(_btn('Trust this certificate', 'vault-pin-btn', async () => {
-          const u = await _call('POST', `/items/${encodeURIComponent(item.id)}/pin`, { origin: res.origin, sha256: c.sha256 });
+          const u = await _call('POST', `/api/vault/mine/items/${encodeURIComponent(item.id)}/pin`, { origin: res.origin, sha256: c.sha256 });
           if (!u.ok) { _say(u.sentence, { error: true }); return; }
           _say(`Trusted for ${res.origin} only — this exact certificate, in your browser and your commands.`);
           await _testInto(row, item);
         }));
       } else if (c.pinned) {
         part.appendChild(_btn('Forget the pin', 'vault-unpin-btn', async () => {
-          const u = await _call('POST', `/items/${encodeURIComponent(item.id)}/pin`, { origin: res.origin, remove: true });
+          const u = await _call('POST', `/api/vault/mine/items/${encodeURIComponent(item.id)}/pin`, { origin: res.origin, remove: true });
           if (!u.ok) { _say(u.sentence, { error: true }); return; }
           await _testInto(row, item);
         }));
@@ -222,7 +225,7 @@ function _revealInto(row, item) {
   const go = _btn('Show', 'vault-reveal-go', async () => {
     const password = pw.value;
     pw.value = '';
-    const r = await _call('POST', `/items/${encodeURIComponent(item.id)}/reveal`, { password });
+    const r = await _call('POST', `/api/vault/mine/items/${encodeURIComponent(item.id)}/reveal`, { password });
     if (!r.ok) { _say(r.sentence, { error: true }); return; }
     box.textContent = '';
     const shown = _el('dl', 'vault-shown');
@@ -243,9 +246,89 @@ function _revealInto(row, item) {
   pw.focus();
 }
 
+// ── `P27-10`: bring logins in, take them out ───────────────────────────────
+
+function _sayTransfer(text, { error = false } = {}) {
+  const out = $('vault-transfer-result');
+  if (!out) return;
+  out.textContent = text || '';
+  out.hidden = !text;
+  out.classList.toggle('git-settings-error', !!error);
+}
+
+/** What an import did, in sentences — names, never values. */
+export function transferReport(r) {
+  const n = (r.imported || []).length;
+  const parts = [n ? `Brought in ${n} item${n === 1 ? '' : 's'}.` : 'Nothing new was brought in.'];
+  const already = (r.already || []).length;
+  if (already) parts.push(`${already} ${already === 1 ? 'was' : 'were'} already in your vault.`);
+  const left = r.left_out || [];
+  if (left.length) {
+    parts.push(`Left out: ${left.slice(0, 8).map((x) => `“${x.name}” (${x.why})`).join('; ')}${left.length > 8 ? `; and ${left.length - 8} more` : ''}.`);
+  }
+  const said = r.said || [];
+  if (said.length) {
+    parts.push(said.slice(0, 8).map((x) => `“${x.name}”: ${x.said}.`).join(' ') + (said.length > 8 ? ` And ${said.length - 8} more notes.` : ''));
+  }
+  if (n) parts.push('Each asks you before an agent signs in with it; change that on its row.');
+  return parts.join(' ');
+}
+
+async function _import() {
+  const input = $('vault-import-file');
+  const file = input && input.files && input.files[0];
+  if (!file) { _sayTransfer('Pick a file first: a Bitwarden or Vaultwarden export, or a Pantheon export.', { error: true }); return; }
+  let text;
+  try { text = await file.text(); } catch (_) { _sayTransfer('That file could not be read.', { error: true }); return; }
+  const pass = $('vault-import-passphrase');
+  const passphrase = pass ? pass.value : '';
+  if (pass) pass.value = '';
+  _sayTransfer(`Bringing in ${file.name}…`);
+  const r = await _call('POST', '/api/vault/mine/import', passphrase ? { text, passphrase } : { text });
+  if (!r.ok) { _sayTransfer(r.sentence, { error: true }); return; }
+  input.value = '';
+  _sayTransfer(transferReport(r.data));
+  await _refresh();
+}
+
+async function _importServer() {
+  _sayTransfer("Reading the server's Bitwarden…");
+  const r = await _call('POST', '/api/vault/mine/import', { source: 'server-bitwarden' });
+  if (!r.ok) { _sayTransfer(r.sentence, { error: true }); return; }
+  _sayTransfer(transferReport(r.data));
+  await _refresh();
+}
+
+async function _export() {
+  const a = $('vault-export-passphrase');
+  const b = $('vault-export-passphrase-again');
+  const pw = $('vault-export-password');
+  const passphrase = a.value;
+  const again = b.value;
+  const password = pw.value;
+  pw.value = '';
+  if (passphrase !== again) { _sayTransfer('The two passphrases are not the same. Nothing was exported.', { error: true }); return; }
+  _sayTransfer('Sealing your vault…');
+  const r = await _call('POST', '/api/vault/mine/export', { passphrase, password });
+  a.value = '';
+  b.value = '';
+  if (!r.ok) { _sayTransfer(r.sentence, { error: true }); return; }
+  const blob = new Blob([JSON.stringify(r.data, null, 2)], { type: 'application/json' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `pantheon-vault-${r.data.made}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
+  _sayTransfer(`Exported ${r.data.items} item${r.data.items === 1 ? '' : 's'}, sealed with your passphrase. Keep the passphrase somewhere other than the file.`);
+}
+
 /** Draw what the server holds. */
 export function draw(data) {
   if (data && Array.isArray(data.services)) _services = data.services;
+  const fromServer = $('vault-import-server');
+  if (fromServer) fromServer.hidden = !(data && data.server_bitwarden);
   _drawLock(data || {});
   const list = $('vault-items-list');
   if (!list) return;
@@ -282,7 +365,7 @@ export function draw(data) {
     }
     row.appendChild(_btn('Edit', 'vault-edit-btn', () => _startEdit(it)));
     row.appendChild(_btn('Remove', 'vault-remove-btn', async () => {
-      const r = await _call('DELETE', `/items/${encodeURIComponent(it.id)}`);
+      const r = await _call('DELETE', `/api/vault/mine/items/${encodeURIComponent(it.id)}`);
       if (!r.ok) { _say(r.sentence, { error: true }); return; }
       _say(`Removed “${it.label}”.`);
       await _refresh();
@@ -340,8 +423,8 @@ async function _save() {
   if (!_editing || totp) body.totp = totp;
   if (!_editing || notes) body.notes = notes;
   const r = _editing
-    ? await _call('PUT', `/items/${encodeURIComponent(_editing)}`, body)
-    : await _call('POST', '/items', body);
+    ? await _call('PUT', `/api/vault/mine/items/${encodeURIComponent(_editing)}`, body)
+    : await _call('POST', '/api/vault/mine/items', body);
   if (!r.ok) { _say(r.sentence, { error: true }); return; }
   _say(_editing ? `Saved “${r.data.label}”.`
     : `Kept “${r.data.label}”. Ask the agent to sign in with it by that name.`);
@@ -350,7 +433,7 @@ async function _save() {
 }
 
 async function _lock(body) {
-  const r = await _call('PUT', '/lock', body);
+  const r = await _call('PUT', '/api/vault/mine/lock', body);
   if (!r.ok) { _say(r.sentence, { error: true }); return; }
   draw(r.data);
   _say(body.locked === true ? 'Locked.' : body.locked === false ? 'Unlocked.' : 'Saved.');
@@ -394,7 +477,7 @@ function _pickAgents(ids) {
 }
 
 async function _refresh() {
-  const r = await _call('GET');
+  const r = await _call('GET', BASE);
   if (!r.ok) { _say(r.sentence, { error: true }); return; }
   draw(r.data);
 }
@@ -412,6 +495,9 @@ export async function open() {
       setTimeout(() => { s.type = 'password'; }, 8000);
       _say('A new password is in the field for eight seconds of view; set it on the service too.');
     });
+    on('vault-import', _import);
+    on('vault-import-server', _importServer);
+    on('vault-export', _export);
     on('vault-lock-now', () => _lock({ locked: true }));
     on('vault-unlock', () => {
       const pw = $('vault-unlock-password');
@@ -423,9 +509,10 @@ export async function open() {
     if (idle) idle.addEventListener('change', () => _lock({ idle_minutes: Number(idle.value) || 0 }));
   }
   _say('');
+  _sayTransfer('');
   await _loadAgents();
   _resetForm();
   await _refresh();
 }
 
-export default { open, draw, generatePassword };
+export default { open, draw, generatePassword, transferReport };

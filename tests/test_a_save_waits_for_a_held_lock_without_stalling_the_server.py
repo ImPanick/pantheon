@@ -18,8 +18,8 @@ held to a ceiling (`tests/test_route_handlers_keep_the_database_off_the_loop.py`
 Driven on the real app, out of process (importing `app` brings the whole
 application up — `test_a_held_database_lock_is_answered_in_a_second.py`'s
 shape): another connection holds the write lock for two seconds while a
-document is saved, a task edited and a mail account added, and a request that
-touches no database is timed beside them.
+document is saved, a task edited, a mail account added and a calendar event
+made, and a request that touches no database is timed beside them.
 """
 from __future__ import annotations
 
@@ -48,6 +48,12 @@ _PROBE = textwrap.dedent(
     with TestClient(app_module.app) as client:
         sign_in(app_module, client)
         doc = client.post("/api/document", json={"title": "Draft", "content": "one"}).json()
+        # FastAPI builds a router's routes the first time a request walks into
+        # it — on the loop, a few hundred milliseconds on a busy machine, once
+        # a process, no database. A path no route answers walks them all, so
+        # that cost is paid here, before the lock, and what is timed under it
+        # is the database wait alone.
+        client.get("/api/no-route-answers-this")
         db = SessionLocal()
         task_id = uuid.uuid4().hex
         db.add(ScheduledTask(id=task_id, owner=ADMIN, name="Probe", prompt="hi", task_type="llm"))
@@ -62,6 +68,10 @@ _PROBE = textwrap.dedent(
             "task_edit": lambda: client.put(f"/api/tasks/{task_id}", json={"name": "Probe, renamed"}),
             "mail_account": lambda: client.post("/api/email/accounts", json={
                 "name": "probe", "imap_host": "x", "imap_user": "x", "imap_password": "x", "smtp_host": "x"}),
+            # `B1223`, second pass (54 → 0): one of the handlers whose database
+            # work moved to `asyncio.to_thread` rather than to a plain `def`.
+            "calendar_event": lambda: client.post("/api/calendar/events", json={
+                "summary": "Probe", "dtstart": "2026-11-02T10:00:00"}),
         }
         res = {}
         def write(name, fn):
@@ -81,6 +91,8 @@ _PROBE = textwrap.dedent(
         out["writes"] = res; out["side_ms"] = side
         out["saved"] = client.get(f"/api/document/{doc['id']}").json().get("current_content")
         out["renamed"] = client.get(f"/api/tasks/{task_id}").json().get("name")
+        out["events"] = [e["summary"] for e in client.get(
+            "/api/calendar/events", params={"start": "2026-11-01", "end": "2026-11-03"}).json()["events"]]
     print("RESULT " + json.dumps(out))
     """
 )
@@ -110,7 +122,7 @@ def under_a_held_lock(tmp_path_factory) -> dict:
     return json.loads(line[len("RESULT "):])
 
 
-@pytest.mark.parametrize("write", ["document_save", "task_edit", "mail_account"])
+@pytest.mark.parametrize("write", ["document_save", "task_edit", "mail_account", "calendar_event"])
 def test_a_write_waits_its_turn_and_lands_instead_of_a_503(under_a_held_lock, write):
     got = under_a_held_lock["writes"][write]
     assert got["status"] == 200, got
@@ -122,6 +134,7 @@ def test_a_write_waits_its_turn_and_lands_instead_of_a_503(under_a_held_lock, wr
 def test_what_was_written_is_there(under_a_held_lock):
     assert under_a_held_lock["saved"] == "two"
     assert under_a_held_lock["renamed"] == "Probe, renamed"
+    assert under_a_held_lock["events"] == ["Probe"]
 
 
 def test_nobody_else_waits_while_they_do(under_a_held_lock):

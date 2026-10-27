@@ -36,6 +36,7 @@ what survives, and only a person applies it.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -475,7 +476,10 @@ async def draft_workflow(db, owner, description, tz=None) -> Drafted:
     if len(text) > DESCRIBE_MAX_CHARS:
         raise WorkflowRefused(400, DESCRIBE_TOO_LONG)
     tz = valid_timezone(tz.strip()) if isinstance(tz, str) and tz.strip() else None
-    tasks_by_id, _crew = store.owner_rows(db, owner)
+    # `B1223`: every database step here runs in a worker thread, the session
+    # handed to it in turn (one at a time, never two at once), so the event
+    # loop is free while the model is asked and while the rows are read.
+    tasks_by_id, _crew = await asyncio.to_thread(store.owner_rows, db, owner)
     tasks = [(t.id, t.name) for t in tasks_by_id.values()
              if (t.task_type or "llm") != WORKFLOW_TASK_TYPE]
     palette, described = drafting_palette(owner, text, tasks=tasks)
@@ -495,7 +499,7 @@ async def draft_workflow(db, owner, description, tz=None) -> Drafted:
             raise WorkflowRefused(422, _could_not_use(why.sentence))
         try:
             draft = normalise_draft(answer, tz=tz)
-            store.check_document(db, draft.graph, owner=owner, own_task_id=None)
+            await asyncio.to_thread(store.check_document, db, draft.graph, owner=owner, own_task_id=None)
             break
         except (DraftProblem, WorkflowRefused) as refused:
             sentence = str(refused.sentence or "").strip()
@@ -513,10 +517,13 @@ async def draft_workflow(db, owner, description, tz=None) -> Drafted:
                                              f"with the whole draft.")},
             ]
             answer, why = await ask(messages)
-    wf, trigger, notes = store.create_from_document(
-        db, owner=owner, name=draft.name or None, graph=draft.graph,
-        trigger_fields=draft.trigger_fields, origin=ORIGIN_DRAFTED, rows=(tasks_by_id, _crew))
-    destinations = destination_lines(store.stored_graph(wf), workflow_resources(owner))
+
+    def create():
+        wf, trigger, notes = store.create_from_document(
+            db, owner=owner, name=draft.name or None, graph=draft.graph,
+            trigger_fields=draft.trigger_fields, origin=ORIGIN_DRAFTED, rows=(tasks_by_id, _crew))
+        return wf, trigger, notes, destination_lines(store.stored_graph(wf), workflow_resources(owner))
+    wf, trigger, notes, destinations = await asyncio.to_thread(create)
     return Drafted(wf, trigger, notes + draft.notes, draft.missing, destinations)
 
 

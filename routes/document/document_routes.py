@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Document routes — CRUD for living documents with version history."""
 
+import asyncio
 import uuid
 import logging
 from datetime import datetime, timezone
@@ -873,42 +874,46 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             "cpp": ".cpp", "typescript": ".ts", "ruby": ".rb", "php": ".php",
             "text": ".txt", "xml": ".xml", "toml": ".toml", "ini": ".ini",
         }
-        db = SessionLocal()
-        try:
-            import io
-            import re
-            import zipfile
-            from fastapi import Response
-            docs = db.query(Document).filter(Document.id.in_(ids)).all()
-            buf = io.BytesIO()
-            used = set()
-            wrote = 0
-            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-                for doc in docs:
-                    try:
-                        _verify_doc_owner(db, doc, user)
-                    except HTTPException:
-                        continue   # skip docs the user doesn't own
-                    ext = _ext.get(doc.language or "text", ".txt")
-                    base = (doc.title or "document").strip() or "document"
-                    base = re.sub(r"[^\w\-. ]+", "", base)[:60].strip() or doc.id
-                    name = base if "." in base else base + ext
-                    i = 1
-                    while name in used:
-                        name = f"{base}-{i}" + ("" if "." in base else ext)
-                        i += 1
-                    used.add(name)
-                    zf.writestr(name, doc.current_content or "")
-                    wrote += 1
-            if not wrote:
-                raise HTTPException(404, "No documents found")
-            return Response(
-                content=buf.getvalue(),
-                media_type="application/zip",
-                headers={"Content-Disposition": 'attachment; filename="documents.zip"'},
-            )
-        finally:
-            db.close()
+
+        def _db_work():
+            db = SessionLocal()
+            try:
+                import io
+                import re
+                import zipfile
+                from fastapi import Response
+                docs = db.query(Document).filter(Document.id.in_(ids)).all()
+                buf = io.BytesIO()
+                used = set()
+                wrote = 0
+                with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for doc in docs:
+                        try:
+                            _verify_doc_owner(db, doc, user)
+                        except HTTPException:
+                            continue   # skip docs the user doesn't own
+                        ext = _ext.get(doc.language or "text", ".txt")
+                        base = (doc.title or "document").strip() or "document"
+                        base = re.sub(r"[^\w\-. ]+", "", base)[:60].strip() or doc.id
+                        name = base if "." in base else base + ext
+                        i = 1
+                        while name in used:
+                            name = f"{base}-{i}" + ("" if "." in base else ext)
+                            i += 1
+                        used.add(name)
+                        zf.writestr(name, doc.current_content or "")
+                        wrote += 1
+                if not wrote:
+                    raise HTTPException(404, "No documents found")
+                return Response(
+                    content=buf.getvalue(),
+                    media_type="application/zip",
+                    headers={"Content-Disposition": 'attachment; filename="documents.zip"'},
+                )
+            finally:
+                db.close()
+        # `B1223`: the documents are read and zipped off the event loop.
+        return await asyncio.to_thread(_db_work)
 
     # ---- PUT /api/document/{doc_id} — user manual edit ----
     # Coalesce window: if the last user version was saved within this many
@@ -1280,30 +1285,70 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         if not url or not model:
             raise HTTPException(500, "No endpoint configured for AI tidy")
 
-        db = SessionLocal()
-        try:
-            q = (
-                db.query(Document)
-                .outerjoin(DbSession, Document.session_id == DbSession.id)
-                .filter(Document.is_active == True)
-                .filter((Document.archived == False) | (Document.archived.is_(None)))
-            )
-            q = _owner_session_filter(q, user)
-            docs = q.all()
+        # `B1223`: the library is read, and the verdicts written, off the event
+        # loop, each in a session of its own — no session is held open across
+        # the model's answer (up to 30 s) as it was.
+        def _read_batch():
+            db = SessionLocal()
+            try:
+                q = (
+                    db.query(Document)
+                    .outerjoin(DbSession, Document.session_id == DbSession.id)
+                    .filter(Document.is_active == True)
+                    .filter((Document.archived == False) | (Document.archived.is_(None)))
+                )
+                q = _owner_session_filter(q, user)
+                docs = q.all()
+                # Only review docs that haven't been reviewed yet. `P23-08`
+                # (DOCS-M-3): never a mail draft — a model reading a short reply
+                # would call it junk, and this pass deletes what it calls junk.
+                to_review = [d for d in docs if not d.tidy_verdict and not is_mail_draft(d)]
+                # Build a batch prompt — review up to 30 at a time
+                batch = [(d.id, d.title, d.language, (d.current_content or "")[:300].strip())
+                         for d in to_review[:30]]
+                return batch, len(to_review)
+            finally:
+                db.close()
 
-            # Only review docs that haven't been reviewed yet. `P23-08`
-            # (DOCS-M-3): never a mail draft — a model reading a short reply
-            # would call it junk, and this pass deletes what it calls junk.
-            to_review = [d for d in docs if not d.tidy_verdict and not is_mail_draft(d)]
-            if not to_review:
+        def _write_verdicts(batch, verdicts):
+            db = SessionLocal()
+            try:
+                by_id = {d.id: d for d in db.query(Document).filter(Document.id.in_([b[0] for b in batch])).all()}
+                deleted = 0
+                reviewed = 0
+                for i, (doc_id, _t, _l, _p) in enumerate(batch):
+                    if i >= len(verdicts):
+                        break
+                    doc = by_id.get(doc_id)
+                    if doc is None:
+                        continue   # gone since it was read
+                    verdict = str(verdicts[i] or "").lower().strip()
+                    if verdict == "junk":
+                        doc.tidy_verdict = "junk"
+                        db.delete(doc)
+                        deleted += 1
+                    else:
+                        # `B1035`: a review is not an edit — the verdict is written
+                        # without moving `updated_at`, by the one writer both
+                        # tidies' verdicts share.
+                        write_tidy_verdict(db, doc, "keep")
+                    reviewed += 1
+                db.commit()
+                return deleted, reviewed
+            except Exception:
+                db.rollback()
+                raise
+            finally:
+                db.close()
+
+        try:
+            batch, to_review_count = await asyncio.to_thread(_read_batch)
+            if not batch:
                 return {"deleted": 0, "reviewed": 0, "message": "All documents already reviewed"}
 
-            # Build a batch prompt — review up to 30 at a time
-            batch = to_review[:30]
             doc_list = []
-            for i, doc in enumerate(batch):
-                preview = (doc.current_content or "")[:300].strip()
-                doc_list.append(f"[{i}] title=\"{doc.title}\" lang={doc.language or 'text'} content_preview=\"{preview}\"")
+            for i, (_id, title, language, preview) in enumerate(batch):
+                doc_list.append(f"[{i}] title=\"{title}\" lang={language or 'text'} content_preview=\"{preview}\"")
 
             prompt = (
                 "You are a document library cleaner. For each document below, decide if it is JUNK "
@@ -1332,38 +1377,18 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             import json as _json
             verdicts = _json.loads(match.group())
 
-            deleted = 0
-            reviewed = 0
-            for i, doc in enumerate(batch):
-                if i >= len(verdicts):
-                    break
-                verdict = str(verdicts[i] or "").lower().strip()
-                if verdict == "junk":
-                    doc.tidy_verdict = "junk"
-                    db.delete(doc)
-                    deleted += 1
-                else:
-                    # `B1035`: a review is not an edit — the verdict is written
-                    # without moving `updated_at`, by the one writer both
-                    # tidies' verdicts share.
-                    write_tidy_verdict(db, doc, "keep")
-                reviewed += 1
-
-            db.commit()
+            deleted, reviewed = await asyncio.to_thread(_write_verdicts, batch, verdicts)
             return {
                 "deleted": deleted,
                 "reviewed": reviewed,
-                "remaining": len(to_review) - len(batch),
+                "remaining": to_review_count - len(batch),
                 "message": f"Reviewed {reviewed}, removed {deleted} junk document{'s' if deleted != 1 else ''}",
             }
         except HTTPException:
             raise
         except Exception as e:
-            db.rollback()
             logger.error(f"AI tidy failed: {e}")
             raise HTTPException(500, f"AI tidy failed: {e}")
-        finally:
-            db.close()
 
     # ---- POST /api/document/{doc_id}/export-pdf/preview ----
     @router.post("/api/document/{doc_id}/export-pdf/preview")
@@ -1562,20 +1587,25 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             raise HTTPException(400, "instruction is required")
 
         user = get_current_user(request)
-        db = SessionLocal()
-        try:
-            doc = db.query(Document).filter(Document.id == doc_id).first()
-            if not doc:
-                raise HTTPException(404, "Document not found")
-            _verify_doc_owner(db, doc, user)
-            upload_id = find_source_upload_id(doc.current_content or "")
-            if not upload_id:
-                raise HTTPException(400, "Document is not linked to a source PDF")
-            pdf_path = _locate_current_user_upload(request, upload_id, user)
-            if not pdf_path:
-                raise HTTPException(404, "Source PDF not found")
-        finally:
-            db.close()
+
+        def _db_work():
+            db = SessionLocal()
+            try:
+                doc = db.query(Document).filter(Document.id == doc_id).first()
+                if not doc:
+                    raise HTTPException(404, "Document not found")
+                _verify_doc_owner(db, doc, user)
+                upload_id = find_source_upload_id(doc.current_content or "")
+                if not upload_id:
+                    raise HTTPException(400, "Document is not linked to a source PDF")
+                pdf_path = _locate_current_user_upload(request, upload_id, user)
+                if not pdf_path:
+                    raise HTTPException(404, "Source PDF not found")
+            finally:
+                db.close()
+            return pdf_path
+        # `B1223`: the document is read off the event loop.
+        pdf_path = await asyncio.to_thread(_db_work)
 
         # Resolve VL model (admin-configured or auto-detected vision-capable)
         settings = _load_vl_settings()

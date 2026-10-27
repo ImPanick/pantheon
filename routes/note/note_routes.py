@@ -402,7 +402,7 @@ async def dispatch_reminder(
         try:
             import httpx
             import json as _wjson
-            from src.integrations import integrations_for
+            from src.integrations import server_integrations_for
             # Built-in payload defaults for known presets so users don't have
             # to configure a template just to use a standard service.
             _PRESET_TEMPLATE_DEFAULTS = {
@@ -413,9 +413,10 @@ async def dispatch_reminder(
             if not intg_id:
                 webhook_error = "No webhook integration selected"
             else:
-                # `P27-02`: the reminder's owner's own or a shared one.
+                # `P27-02`: the reminder's owner's own or a shared one — one
+                # the server calls (`B1573`: never a member's own).
                 intg = next(
-                    (i for i in integrations_for(owner or None)
+                    (i for i in server_integrations_for(owner or None)
                      if i.get("id") == intg_id and i.get("base_url")),
                     None,
                 )
@@ -475,11 +476,12 @@ async def dispatch_reminder(
     ntfy_error = ""
     if channel == "ntfy":
         try:
-            from src.integrations import integrations_for
+            from src.integrations import server_integrations_for
             import httpx
-            # `P27-02`: the reminder's owner's own or a shared one.
+            # `P27-02`: the reminder's owner's own or a shared one — one the
+            # server calls (`B1573`: never a member's own).
             intg = next(
-                (i for i in integrations_for(owner or None)
+                (i for i in server_integrations_for(owner or None)
                  if i.get("preset") == "ntfy" and i.get("enabled", True) and i.get("base_url")),
                 None,
             )
@@ -853,16 +855,20 @@ def setup_note_routes(task_scheduler=None, upload_handler=None):
             if "llm_persona" in body:
                 _override["reminder_llm_persona"] = str(body["llm_persona"] or "")
         else:
-            db = SessionLocal()
-            try:
-                note = db.query(Note).filter(Note.id == note_id).first()
-                if not note:
-                    raise HTTPException(404, "Note not found")
-                if caller is not None and note.owner != caller:
-                    raise HTTPException(404, "Note not found")
-                title, note_body = _reminder_text_from_note(note)
-            finally:
-                db.close()
+            def _db_work():
+                nonlocal note_body, title
+                db = SessionLocal()
+                try:
+                    note = db.query(Note).filter(Note.id == note_id).first()
+                    if not note:
+                        raise HTTPException(404, "Note not found")
+                    if caller is not None and note.owner != caller:
+                        raise HTTPException(404, "Note not found")
+                    title, note_body = _reminder_text_from_note(note)
+                finally:
+                    db.close()
+            # `B1223`: the note is read off the event loop.
+            await asyncio.to_thread(_db_work)
 
         return await dispatch_reminder(
             title=title, note_body=note_body, note_id=note_id,

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Calendar routes — local SQLite-backed calendar CRUD."""
 
+import asyncio
 import logging
 import json
 import re
@@ -164,15 +165,17 @@ async def _push_caldav_event_after_commit(owner: str, uid: str, action: str):
     except Exception as e:
         logger.warning("CalDAV %s push failed for uid=%s: %s", action, uid, e)
         if action in {"create", "update"}:
-            db = SessionLocal()
-            try:
-                ev = _get_or_404_event(db, uid, owner)
-                ev.caldav_sync_pending = action
-                db.commit()
-            except Exception:
-                db.rollback()
-            finally:
-                db.close()
+            def _mark_pending():
+                db = SessionLocal()
+                try:
+                    ev = _get_or_404_event(db, uid, owner)
+                    ev.caldav_sync_pending = action
+                    db.commit()
+                except Exception:
+                    db.rollback()
+                finally:
+                    db.close()
+            await asyncio.to_thread(_mark_pending)   # `B1223`
 
 
 def _record_caldav_delete_tombstone(db, ev: CalendarEvent, owner: str) -> None:
@@ -1211,63 +1214,67 @@ def setup_calendar_routes(upload_handler=None) -> APIRouter:
     async def create_event(request: Request, data: EventCreate):
         owner = _require_user(request)
         _reserve_calendar_uploads(request, data.color, data.description, data.location)
-        db = SessionLocal()
-        try:
-            cal = None
-            if data.calendar_href:
-                cal = db.query(CalendarCal).filter(CalendarCal.id == data.calendar_href).first()
-                # Reject calendars that aren't owned by the caller. The
-                # previous `if cal and cal.owner and ...` check silently
-                # passed null-owner (legacy) rows, letting any authenticated
-                # user write events into them. Same null-owner gate as
-                # `_get_or_404_calendar`.
-                if cal and (cal.owner is None or cal.owner != owner):
-                    raise HTTPException(404, "Calendar not found")
-            if not cal:
-                cal = _ensure_default_calendar(db, owner)
+        def _db_work():
+            db = SessionLocal()
+            try:
+                cal = None
+                if data.calendar_href:
+                    cal = db.query(CalendarCal).filter(CalendarCal.id == data.calendar_href).first()
+                    # Reject calendars that aren't owned by the caller. The
+                    # previous `if cal and cal.owner and ...` check silently
+                    # passed null-owner (legacy) rows, letting any authenticated
+                    # user write events into them. Same null-owner gate as
+                    # `_get_or_404_calendar`.
+                    if cal and (cal.owner is None or cal.owner != owner):
+                        raise HTTPException(404, "Calendar not found")
+                if not cal:
+                    cal = _ensure_default_calendar(db, owner)
 
-            uid = str(uuid.uuid4())
-            # Use the tz-detecting parser so events posted with an offset
-            # (e.g. "2026-05-13T10:00:00+09:00" or "...Z") get stored as UTC
-            # and flagged for proper Z-suffix on read-back.
-            dtstart, _is_utc = _parse_dt_pair(data.dtstart)
-            if data.dtend:
-                dtend, _end_utc = _parse_dt_pair(data.dtend)
-                # If start was tz-aware but end was naive (or vice-versa),
-                # trust whichever flag is True — they should match.
-                _is_utc = _is_utc or _end_utc
-            elif data.all_day:
-                dtend = dtstart + timedelta(days=1)
-            else:
-                dtend = dtstart + timedelta(hours=1)
+                uid = str(uuid.uuid4())
+                # Use the tz-detecting parser so events posted with an offset
+                # (e.g. "2026-05-13T10:00:00+09:00" or "...Z") get stored as UTC
+                # and flagged for proper Z-suffix on read-back.
+                dtstart, _is_utc = _parse_dt_pair(data.dtstart)
+                if data.dtend:
+                    dtend, _end_utc = _parse_dt_pair(data.dtend)
+                    # If start was tz-aware but end was naive (or vice-versa),
+                    # trust whichever flag is True — they should match.
+                    _is_utc = _is_utc or _end_utc
+                elif data.all_day:
+                    dtend = dtstart + timedelta(days=1)
+                else:
+                    dtend = dtstart + timedelta(hours=1)
 
-            ev = CalendarEvent(
-                uid=uid,
-                calendar_id=cal.id,
-                summary=data.summary,
-                description=data.description,
-                location=data.location,
-                dtstart=dtstart,
-                dtend=dtend,
-                all_day=data.all_day,
-                is_utc=_is_utc and not data.all_day,
-                rrule=data.rrule or "",
-                color=data.color or None,
-                caldav_sync_pending="create" if cal.source == "caldav" else None,
-            )
-            db.add(ev)
-            db.commit()
-            if cal.source == "caldav":
-                await _push_caldav_event_after_commit(owner, uid, "create")
-            return {"ok": True, "uid": uid}
-        except HTTPException:
-            raise
-        except Exception as e:
-            db.rollback()
-            logger.error("Failed to create event: %s", e)
-            raise HTTPException(500, "Failed to create event")
-        finally:
-            db.close()
+                ev = CalendarEvent(
+                    uid=uid,
+                    calendar_id=cal.id,
+                    summary=data.summary,
+                    description=data.description,
+                    location=data.location,
+                    dtstart=dtstart,
+                    dtend=dtend,
+                    all_day=data.all_day,
+                    is_utc=_is_utc and not data.all_day,
+                    rrule=data.rrule or "",
+                    color=data.color or None,
+                    caldav_sync_pending="create" if cal.source == "caldav" else None,
+                )
+                db.add(ev)
+                db.commit()
+                return uid, cal.source == "caldav"
+            except HTTPException:
+                raise
+            except Exception as e:
+                db.rollback()
+                logger.error("Failed to create event: %s", e)
+                raise HTTPException(500, "Failed to create event")
+            finally:
+                db.close()
+        # `B1223`: the event is written off the event loop; the CalDAV push after it is the loop's.
+        uid, push = await asyncio.to_thread(_db_work)
+        if push:
+            await _push_caldav_event_after_commit(owner, uid, "create")
+        return {"ok": True, "uid": uid}
 
     @router.put("/events/{uid}")
     async def update_event(request: Request, uid: str, data: EventUpdate):
@@ -1277,49 +1284,52 @@ def setup_calendar_routes(upload_handler=None) -> APIRouter:
             base_uid = _resolve_base_uid(uid)
         except ValueError as e:
             raise HTTPException(400, str(e))
-        db = SessionLocal()
-        try:
-            ev = _get_or_404_event(db, base_uid, owner)
-            if data.summary is not None:
-                ev.summary = data.summary
-            if data.description is not None:
-                ev.description = data.description
-            if data.location is not None:
-                ev.location = data.location
-            if data.dtstart is not None:
-                ev.dtstart, _s_utc = _parse_dt_pair(data.dtstart)
-                # When the incoming payload carries tz info, mark the row as
-                # UTC-stored so the serializer adds Z. Don't flip the flag
-                # off if start arrives naive but end was UTC — only escalate.
-                if _s_utc:
-                    ev.is_utc = True
-            if data.dtend is not None:
-                ev.dtend, _e_utc = _parse_dt_pair(data.dtend)
-                if _e_utc:
-                    ev.is_utc = True
-            if data.all_day is not None:
-                ev.all_day = data.all_day
-                if data.all_day:
-                    ev.is_utc = False  # all-day stays date-only
-            if data.rrule is not None:
-                ev.rrule = data.rrule
-            if data.color is not None:
-                ev.color = data.color if data.color else None
-            is_caldav = ev.calendar and ev.calendar.source == "caldav"
-            if is_caldav:
-                ev.caldav_sync_pending = "update"
-            db.commit()
-            if is_caldav:
-                await _push_caldav_event_after_commit(owner, base_uid, "update")
-            return {"ok": True}
-        except HTTPException:
-            raise
-        except Exception as e:
-            db.rollback()
-            logger.error("Failed to update event: %s", e)
-            raise HTTPException(500, "Failed to update event")
-        finally:
-            db.close()
+        def _db_work():
+            db = SessionLocal()
+            try:
+                ev = _get_or_404_event(db, base_uid, owner)
+                if data.summary is not None:
+                    ev.summary = data.summary
+                if data.description is not None:
+                    ev.description = data.description
+                if data.location is not None:
+                    ev.location = data.location
+                if data.dtstart is not None:
+                    ev.dtstart, _s_utc = _parse_dt_pair(data.dtstart)
+                    # When the incoming payload carries tz info, mark the row as
+                    # UTC-stored so the serializer adds Z. Don't flip the flag
+                    # off if start arrives naive but end was UTC — only escalate.
+                    if _s_utc:
+                        ev.is_utc = True
+                if data.dtend is not None:
+                    ev.dtend, _e_utc = _parse_dt_pair(data.dtend)
+                    if _e_utc:
+                        ev.is_utc = True
+                if data.all_day is not None:
+                    ev.all_day = data.all_day
+                    if data.all_day:
+                        ev.is_utc = False  # all-day stays date-only
+                if data.rrule is not None:
+                    ev.rrule = data.rrule
+                if data.color is not None:
+                    ev.color = data.color if data.color else None
+                is_caldav = ev.calendar and ev.calendar.source == "caldav"
+                if is_caldav:
+                    ev.caldav_sync_pending = "update"
+                db.commit()
+                return bool(is_caldav)
+            except HTTPException:
+                raise
+            except Exception as e:
+                db.rollback()
+                logger.error("Failed to update event: %s", e)
+                raise HTTPException(500, "Failed to update event")
+            finally:
+                db.close()
+        # `B1223`: the event is written off the event loop; the CalDAV push after it is the loop's.
+        if await asyncio.to_thread(_db_work):
+            await _push_caldav_event_after_commit(owner, base_uid, "update")
+        return {"ok": True}
 
     @router.delete("/events/{uid}")
     async def delete_event(request: Request, uid: str, scope: str = "series"):
@@ -1328,40 +1338,42 @@ def setup_calendar_routes(upload_handler=None) -> APIRouter:
             base_uid = _resolve_base_uid(uid)
         except ValueError as e:
             raise HTTPException(400, str(e))
-        db = SessionLocal()
-        try:
-            ev = _get_or_404_event(db, base_uid, owner)
-            is_occurrence_delete = scope in {"occurrence", "instance"} and "::" in uid and bool(ev.rrule)
-            is_caldav = ev.calendar and ev.calendar.source == "caldav"
-            if is_occurrence_delete:
-                key = _occurrence_exdate_key(uid, ev)
-                if not key:
-                    raise HTTPException(400, "Invalid recurring occurrence uid")
-                exdates = _recurrence_exdates(ev)
-                if key not in exdates:
-                    exdates.append(key)
-                ev.recurrence_exdates = json.dumps(sorted(exdates))
+        def _db_work():
+            db = SessionLocal()
+            try:
+                ev = _get_or_404_event(db, base_uid, owner)
+                is_occurrence_delete = scope in {"occurrence", "instance"} and "::" in uid and bool(ev.rrule)
+                is_caldav = ev.calendar and ev.calendar.source == "caldav"
+                if is_occurrence_delete:
+                    key = _occurrence_exdate_key(uid, ev)
+                    if not key:
+                        raise HTTPException(400, "Invalid recurring occurrence uid")
+                    exdates = _recurrence_exdates(ev)
+                    if key not in exdates:
+                        exdates.append(key)
+                    ev.recurrence_exdates = json.dumps(sorted(exdates))
+                    if is_caldav:
+                        ev.caldav_sync_pending = "update"
+                    db.commit()
+                    return {"ok": True, "scope": "occurrence", "exdate": key}, ("update" if is_caldav else None)
                 if is_caldav:
-                    ev.caldav_sync_pending = "update"
+                    _record_caldav_delete_tombstone(db, ev, owner)
+                db.delete(ev)
                 db.commit()
-                if is_caldav:
-                    await _push_caldav_event_after_commit(owner, base_uid, "update")
-                return {"ok": True, "scope": "occurrence", "exdate": key}
-            if is_caldav:
-                _record_caldav_delete_tombstone(db, ev, owner)
-            db.delete(ev)
-            db.commit()
-            if is_caldav:
-                await _push_caldav_event_after_commit(owner, base_uid, "delete")
-            return {"ok": True}
-        except HTTPException:
-            raise
-        except Exception as e:
-            db.rollback()
-            logger.error("Failed to delete event: %s", e)
-            raise HTTPException(500, "Failed to delete event")
-        finally:
-            db.close()
+                return {"ok": True}, ("delete" if is_caldav else None)
+            except HTTPException:
+                raise
+            except Exception as e:
+                db.rollback()
+                logger.error("Failed to delete event: %s", e)
+                raise HTTPException(500, "Failed to delete event")
+            finally:
+                db.close()
+        # `B1223`: the event is changed off the event loop; the CalDAV push after it is the loop's.
+        answer, push = await asyncio.to_thread(_db_work)
+        if push:
+            await _push_caldav_event_after_commit(owner, base_uid, push)
+        return answer
 
     @router.post("/calendars")
     def create_calendar(request: Request, name: str = "Imported", color: str = "#5b8abf"):
@@ -1419,150 +1431,160 @@ def setup_calendar_routes(upload_handler=None) -> APIRouter:
         from icalendar import Calendar as iCal
 
         owner = _require_user(request)
-        db = SessionLocal()
         try:
             content = await read_upload_limited(
                 file, resolve_byte_limit("ics_max_bytes", owner), "ICS file")   # `B932`
-            try:
-                cal_data = iCal.from_ical(content)
-            except Exception as e:
-                raise HTTPException(400, f"Invalid ICS file: {e}")
-
-            # Sanitize display name — length cap + strip control chars
-            raw_name = calendar_name.strip() or (file.filename or "").replace(".ics", "").replace("_", " ").strip() or "Imported"
-            cal_display = "".join(c for c in raw_name if c.isprintable())[:120] or "Imported"
-
-            target_cal = db.query(CalendarCal).filter(
-                CalendarCal.name == cal_display,
-                CalendarCal.owner == owner,
-            ).first()
-            if not target_cal:
-                target_cal = CalendarCal(
-                    id=str(uuid.uuid4()),
-                    owner=owner,
-                    name=cal_display,
-                    color="#7c4dff",
-                    source="import",
-                )
-                db.add(target_cal)
-                db.commit()
-                db.refresh(target_cal)
-
-            imported = skipped = repaired = 0
-            for comp in cal_data.walk():
-                if comp.name != "VEVENT":
-                    continue
-                # Generate a fresh uid for each import. The old code reused
-                # the VEVENT uid from the file, which leaked across users:
-                # a uid present on ANY user's calendar caused this user's
-                # row to be silently skipped (and enabled enumeration).
-                # Using a fresh uuid scopes uniqueness per-row.
-                uid_val = str(uuid.uuid4())
-                dtstart = comp.get("dtstart")
-                if not dtstart:
-                    skipped += 1
-                    continue
-
-                # Dedup INSIDE this user's target calendar only — same
-                # source-uid + same dtstart in the same target = duplicate.
-                source_uid = str(comp.get("uid", "")) or None
-                if source_uid:
-                    src_dtstart = dtstart.dt
-                    # Normalize to the SAME naive form import_ics stores, so a
-                    # re-import of a tz-aware event matches the existing row.
-                    # The old code stripped tzinfo WITHOUT converting to UTC
-                    # (wall clock), while storage converts to UTC first, so
-                    # every re-import of a TZID event created a duplicate.
-                    naive_src = _ics_naive_dtstart(src_dtstart)
-                    existing = (
-                        db.query(CalendarEvent)
-                        .filter(
-                            CalendarEvent.calendar_id == target_cal.id,
-                            CalendarEvent.dtstart == naive_src,
-                            CalendarEvent.summary == str(comp.get("summary", "")),
-                        )
-                        .first()
-                    )
-                    if existing:
-                        # An import predating the clamp below may have stored
-                        # this same event with a non-positive duration, which
-                        # the list_events overlap filter hides. Re-importing
-                        # lands here and would skip without touching that row,
-                        # so the event would stay invisible. Backfill the clamp
-                        # onto the stored row before skipping it.
-                        fixed_end = _ensure_positive_duration(
-                            existing.dtstart, existing.dtend, bool(existing.all_day)
-                        )
-                        if fixed_end != existing.dtend:
-                            existing.dtend = fixed_end
-                            repaired += 1
-                        skipped += 1
-                        continue
-
-                dt_val = dtstart.dt
-                all_day = isinstance(dt_val, date) and not isinstance(dt_val, datetime)
-                # For timed events, preserve the source timezone by converting
-                # to UTC before stripping tzinfo (DB stores naive). We mark
-                # the row with is_utc=True so the serializer adds the Z
-                # suffix on output — without this, the frontend would parse
-                # the naive ISO as the user's CURRENT local, which is exactly
-                # the bug where imported events fire reminders at wrong times.
-                from datetime import timezone as _tz
-                row_is_utc = False
-                if all_day:
-                    start_dt = datetime(dt_val.year, dt_val.month, dt_val.day)
-                    dtend = comp.get("dtend")
-                    end_dt = datetime(dtend.dt.year, dtend.dt.month, dtend.dt.day) if dtend else start_dt + timedelta(days=1)
-                else:
-                    if hasattr(dt_val, 'tzinfo') and dt_val.tzinfo is not None:
-                        start_dt = dt_val.astimezone(_tz.utc).replace(tzinfo=None)
-                        row_is_utc = True
-                    else:
-                        start_dt = dt_val
-                    dtend = comp.get("dtend")
-                    if dtend:
-                        d_end = dtend.dt
-                        if hasattr(d_end, 'tzinfo') and d_end.tzinfo is not None:
-                            end_dt = d_end.astimezone(_tz.utc).replace(tzinfo=None)
-                        else:
-                            end_dt = d_end
-                    else:
-                        end_dt = start_dt + timedelta(hours=1)
-
-                end_dt = _ensure_positive_duration(start_dt, end_dt, all_day)
-
-                ev = CalendarEvent(
-                    uid=uid_val,
-                    calendar_id=target_cal.id,
-                    summary=str(comp.get("summary", "")),
-                    description=str(comp.get("description", "")),
-                    location=str(comp.get("location", "")),
-                    dtstart=start_dt,
-                    dtend=end_dt,
-                    all_day=all_day,
-                    is_utc=row_is_utc,
-                    rrule=(comp.get("rrule").to_ical().decode() if comp.get("rrule") else ""),
-                )
-                db.add(ev)
-                imported += 1
-
-            db.commit()
-            return {
-                "ok": True,
-                "imported": imported,
-                "skipped": skipped,
-                "repaired": repaired,
-                "calendar": cal_display,
-                "calendar_id": target_cal.id,
-            }
         except HTTPException:
             raise
         except Exception as e:
-            db.rollback()
             logger.error("Failed to import ICS: %s", e)
             raise HTTPException(500, "Failed to import ICS")
-        finally:
-            db.close()
+
+        def _db_work():
+            db = SessionLocal()
+            try:
+                try:
+                    cal_data = iCal.from_ical(content)
+                except Exception as e:
+                    raise HTTPException(400, f"Invalid ICS file: {e}")
+
+                # Sanitize display name — length cap + strip control chars
+                raw_name = calendar_name.strip() or (file.filename or "").replace(".ics", "").replace("_", " ").strip() or "Imported"
+                cal_display = "".join(c for c in raw_name if c.isprintable())[:120] or "Imported"
+
+                target_cal = db.query(CalendarCal).filter(
+                    CalendarCal.name == cal_display,
+                    CalendarCal.owner == owner,
+                ).first()
+                if not target_cal:
+                    target_cal = CalendarCal(
+                        id=str(uuid.uuid4()),
+                        owner=owner,
+                        name=cal_display,
+                        color="#7c4dff",
+                        source="import",
+                    )
+                    db.add(target_cal)
+                    db.commit()
+                    db.refresh(target_cal)
+
+                imported = skipped = repaired = 0
+                for comp in cal_data.walk():
+                    if comp.name != "VEVENT":
+                        continue
+                    # Generate a fresh uid for each import. The old code reused
+                    # the VEVENT uid from the file, which leaked across users:
+                    # a uid present on ANY user's calendar caused this user's
+                    # row to be silently skipped (and enabled enumeration).
+                    # Using a fresh uuid scopes uniqueness per-row.
+                    uid_val = str(uuid.uuid4())
+                    dtstart = comp.get("dtstart")
+                    if not dtstart:
+                        skipped += 1
+                        continue
+
+                    # Dedup INSIDE this user's target calendar only — same
+                    # source-uid + same dtstart in the same target = duplicate.
+                    source_uid = str(comp.get("uid", "")) or None
+                    if source_uid:
+                        src_dtstart = dtstart.dt
+                        # Normalize to the SAME naive form import_ics stores, so a
+                        # re-import of a tz-aware event matches the existing row.
+                        # The old code stripped tzinfo WITHOUT converting to UTC
+                        # (wall clock), while storage converts to UTC first, so
+                        # every re-import of a TZID event created a duplicate.
+                        naive_src = _ics_naive_dtstart(src_dtstart)
+                        existing = (
+                            db.query(CalendarEvent)
+                            .filter(
+                                CalendarEvent.calendar_id == target_cal.id,
+                                CalendarEvent.dtstart == naive_src,
+                                CalendarEvent.summary == str(comp.get("summary", "")),
+                            )
+                            .first()
+                        )
+                        if existing:
+                            # An import predating the clamp below may have stored
+                            # this same event with a non-positive duration, which
+                            # the list_events overlap filter hides. Re-importing
+                            # lands here and would skip without touching that row,
+                            # so the event would stay invisible. Backfill the clamp
+                            # onto the stored row before skipping it.
+                            fixed_end = _ensure_positive_duration(
+                                existing.dtstart, existing.dtend, bool(existing.all_day)
+                            )
+                            if fixed_end != existing.dtend:
+                                existing.dtend = fixed_end
+                                repaired += 1
+                            skipped += 1
+                            continue
+
+                    dt_val = dtstart.dt
+                    all_day = isinstance(dt_val, date) and not isinstance(dt_val, datetime)
+                    # For timed events, preserve the source timezone by converting
+                    # to UTC before stripping tzinfo (DB stores naive). We mark
+                    # the row with is_utc=True so the serializer adds the Z
+                    # suffix on output — without this, the frontend would parse
+                    # the naive ISO as the user's CURRENT local, which is exactly
+                    # the bug where imported events fire reminders at wrong times.
+                    from datetime import timezone as _tz
+                    row_is_utc = False
+                    if all_day:
+                        start_dt = datetime(dt_val.year, dt_val.month, dt_val.day)
+                        dtend = comp.get("dtend")
+                        end_dt = datetime(dtend.dt.year, dtend.dt.month, dtend.dt.day) if dtend else start_dt + timedelta(days=1)
+                    else:
+                        if hasattr(dt_val, 'tzinfo') and dt_val.tzinfo is not None:
+                            start_dt = dt_val.astimezone(_tz.utc).replace(tzinfo=None)
+                            row_is_utc = True
+                        else:
+                            start_dt = dt_val
+                        dtend = comp.get("dtend")
+                        if dtend:
+                            d_end = dtend.dt
+                            if hasattr(d_end, 'tzinfo') and d_end.tzinfo is not None:
+                                end_dt = d_end.astimezone(_tz.utc).replace(tzinfo=None)
+                            else:
+                                end_dt = d_end
+                        else:
+                            end_dt = start_dt + timedelta(hours=1)
+
+                    end_dt = _ensure_positive_duration(start_dt, end_dt, all_day)
+
+                    ev = CalendarEvent(
+                        uid=uid_val,
+                        calendar_id=target_cal.id,
+                        summary=str(comp.get("summary", "")),
+                        description=str(comp.get("description", "")),
+                        location=str(comp.get("location", "")),
+                        dtstart=start_dt,
+                        dtend=end_dt,
+                        all_day=all_day,
+                        is_utc=row_is_utc,
+                        rrule=(comp.get("rrule").to_ical().decode() if comp.get("rrule") else ""),
+                    )
+                    db.add(ev)
+                    imported += 1
+
+                db.commit()
+                return {
+                    "ok": True,
+                    "imported": imported,
+                    "skipped": skipped,
+                    "repaired": repaired,
+                    "calendar": cal_display,
+                    "calendar_id": target_cal.id,
+                }
+            except HTTPException:
+                raise
+            except Exception as e:
+                db.rollback()
+                logger.error("Failed to import ICS: %s", e)
+                raise HTTPException(500, "Failed to import ICS")
+            finally:
+                db.close()
+        # `B1223`: the events are written off the event loop.
+        return await asyncio.to_thread(_db_work)
 
     @router.get("/export/{cal_id}")
     def export_ics(request: Request, cal_id: str):

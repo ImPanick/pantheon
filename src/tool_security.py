@@ -200,7 +200,11 @@ NON_ADMIN_BLOCKED_REASONS: dict = {
     "manage_tokens": "mints API tokens, which are long-lived credentials",
 
     # ── Generic reach: one tool that can become any of the above ──
-    "api_call": "makes arbitrary outbound HTTP requests from the server",
+    "api_call": (
+        "makes arbitrary outbound HTTP requests from the server. Lifted for a "
+        "person whose tools run in their workstation, where it reaches only "
+        "their own connections and calls them from there (`B1573`)"
+    ),
     "app_api": (
         "calls this app's own HTTP API in-process. It carries its own "
         "blocklist (`src/tools/system.py`) because it can otherwise reach "

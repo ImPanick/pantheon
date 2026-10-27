@@ -13,9 +13,13 @@ workflow 8, mcp 7, history 6, …).
 A handler leaves the count by becoming a plain `def` — Starlette runs it in
 its thread pool — or by handing its database work to `asyncio.to_thread`. The
 ones a person meets first went first: chat send (the message write, the mode,
-the active document, a summoned agent), document save, task edit. What is left
-is listed by this file when it fails, and `MAX_ON_THE_LOOP` is lowered with
-each one moved — never raised (`Law 13`'s ratchet, in a test).
+the active document, a summoned agent), document save, task edit. **143 → 54
+on 2026-10-27 (`wave-x`), 54 → 0 the same day (`wave/z`)**: the rest keep
+`async` — they await an upload, a model, a CalDAV push, an MCP connection, the
+scheduler — and do their database steps in worker threads, in short sessions
+either side of the await rather than one held across it. The ceiling is 0: a
+new handler that opens a session on the event loop is listed by this file when
+it fails (`Law 13`'s ratchet, in a test).
 
 The behaviour is driven in
 `tests/test_a_save_waits_for_a_held_lock_without_stalling_the_server.py`.
@@ -29,9 +33,9 @@ import threading
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
-#: The ceiling. Lower it when a handler moves; a rise is a handler that put
-#: its database work back on the loop.
-MAX_ON_THE_LOOP = 54
+#: The ceiling. 0 since `wave/z`: a rise is a handler that put its database
+#: work back on the loop.
+MAX_ON_THE_LOOP = 0
 
 _METHODS = {"get", "post", "put", "delete", "patch", "api_route", "websocket", "head", "options"}
 _DB_CALLS = {"SessionLocal", "get_db_session"}

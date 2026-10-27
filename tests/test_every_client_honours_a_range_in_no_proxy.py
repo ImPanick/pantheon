@@ -224,8 +224,13 @@ def test_an_integrations_test_button_is_paced_and_reached_direct(proxy, lan, mon
     monkeypatch.setattr(auth_routes, "get_integration",
                         lambda i, person=None: {"id": i, "preset": preset, "base_url": base})
     monkeypatch.setattr(auth_routes, "_load_settings", lambda: {"reminder_ntfy_topic": "reminders"})
-    manager = SimpleNamespace(
+    manager = SimpleNamespace(is_configured=True,
         get_username_for_token=lambda token: "admin", is_admin=lambda user: True)
+    # `B1573`: whether the server may test a connection it calls is the tool
+    # policy's answer for the tester, read from the process's auth manager —
+    # the app's own, as `app.py` registers it.
+    import core.auth
+    monkeypatch.setattr(core.auth, "AuthManager", lambda: manager)
     router = auth_routes.setup_auth_routes(manager)
     endpoint = next(r.endpoint for r in router.routes
                     if r.path.endswith("/integrations/{integration_id}/test"))

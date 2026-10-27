@@ -137,7 +137,13 @@ WORKSPACE_TOOL = "get_workspace"
 #: workstation home for exactly the people the nine are lifted for.
 GIT_TOOL = "git"
 LOGIN_SHELL_TOOL = "shell_with_login"   # `P27-07`: runs where `git` runs
-LIFTED_TOOLS: FrozenSet[str] = WORKSTATION_TOOLS | {WORKSPACE_TOOL, GIT_TOOL, LOGIN_SHELL_TOOL}
+#: `B1573`. For a person the server makes no requests for, `api_call` reaches
+#: their own connections only and calls them from the workstation, by `curl`
+#: in their account (`integrations.execute_api_call`) — what their `bash`
+#: there already reaches. Never a shared one, never from this machine.
+API_CALL_TOOL = "api_call"
+LIFTED_TOOLS: FrozenSet[str] = WORKSTATION_TOOLS | {WORKSPACE_TOOL, GIT_TOOL, LOGIN_SHELL_TOOL,
+                                                    API_CALL_TOOL}
 
 
 def lifted_tools(owner: Optional[str]) -> FrozenSet[str]:

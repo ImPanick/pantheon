@@ -141,4 +141,59 @@ export function mountHfToken(host, { inputId = 'hf-token-input' } = {}) {
   return { refresh };
 }
 
-export default { mountHfToken, readHfToken, saveHfToken, describeHfToken };
+// ── The servers ──────────────────────────────────────────────────────────────
+//
+// The machines the Forge serves on, and the default one, have their own route
+// too: `GET`/`PUT /api/cookbook/servers` (the operator's). A save names the
+// revision of the list it was made from; one made from an older list — a Forge
+// left open in another tab — is refused with the list as it is now (409), and
+// the editor draws that instead of writing over it. The whole-state save keeps
+// the servers as they are on disk.
+//
+// The editor itself is the Forge's (`cookbook-hwfit.js` `mountServersEditor`:
+// each server's address, SSH port and key, Python environment, model folders,
+// download folder, colour and the default), mounted from here by both windows.
+
+const SERVERS_ROUTE = '/api/cookbook/servers';
+
+/** `{servers, defaultServer, rev, hostPlatform}`, or null. */
+export async function readServers() {
+  try {
+    const res = await fetch(SERVERS_ROUTE, { credentials: 'same-origin' });
+    return res.ok ? await res.json() : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/** `{ok, state}`, `{ok: false, conflict: true, error, current}` when the list
+ *  changed elsewhere since `rev`, or `{ok: false, error}`. */
+export async function saveServers(servers, defaultServer, rev) {
+  let res;
+  try {
+    res = await fetch(SERVERS_ROUTE, {
+      method: 'PUT',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ servers, defaultServer: defaultServer || '', rev }),
+    });
+  } catch (_) {
+    return { ok: false, error: "Pantheon's server did not answer. The servers were not saved." };
+  }
+  let body = {};
+  try { body = await res.json(); } catch (_) { /* keep the status */ }
+  const detail = body && typeof body.detail === 'string' ? body.detail : '';
+  if (res.status === 409 && body && body.current) return { ok: false, conflict: true, error: detail, current: body.current };
+  if (!res.ok) return { ok: false, error: detail || `Not saved (HTTP ${res.status}).` };
+  return { ok: true, state: body };
+}
+
+/** Draw the servers' one editor into `host`. `idPrefix` keeps each window's
+ *  ids its own. Answers the editor (`{ refresh }`). */
+export async function mountServers(host, { idPrefix = 'set-forge' } = {}) {
+  if (!host) return { refresh: async () => null };
+  const forge = await import('./cookbook-hwfit.js');
+  return forge.mountServersEditor(host, { idPrefix });
+}
+
+export default { mountHfToken, readHfToken, saveHfToken, describeHfToken, readServers, saveServers, mountServers };

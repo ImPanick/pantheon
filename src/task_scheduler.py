@@ -5009,9 +5009,11 @@ class TaskScheduler:
         # Auto-discover API integrations (Miniflux RSS, etc.).
         try:
             import httpx
-            from src.integrations import integrations_for
-            # `P27-02`: the task owner's own and the shared ones.
-            for integ in integrations_for(task.owner):
+            from src.integrations import server_integrations_for
+            # `P27-02`: the task owner's own and the shared ones — those the
+            # server calls (`B1573`: a member's own is called from their
+            # workstation by their agent, never by the server's brief).
+            for integ in server_integrations_for(task.owner):
                 if not integ.get("enabled"):
                     continue
                 preset = integ.get("preset", "")

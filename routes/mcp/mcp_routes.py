@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # routes/mcp_routes.py
 """MCP (Model Context Protocol) server management routes."""
+import asyncio
 import json
 import os
 import time
@@ -36,6 +37,27 @@ from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 logger = logging.getLogger(__name__)
 
 
+
+
+def _server_fields(row) -> dict:
+    """`B1223`. What the routes use of an `McpServer` row, read while its
+    session is open, so the row can be read in a worker thread and used on the
+    event loop."""
+    return {"name": row.name, "transport": row.transport, "command": row.command, "args": row.args,
+            "env": row.env, "url": row.url, "disabled_tools": row.disabled_tools,
+            "tool_overrides": row.tool_overrides}
+
+
+def _server_row(server_id: str) -> dict:
+    """One server's row, in a session of its own, or a 404 (`B1223`)."""
+    db = SessionLocal()
+    try:
+        row = db.query(McpServer).filter(McpServer.id == server_id).first()
+        if not row:
+            raise HTTPException(404, "Server not found")
+        return _server_fields(row)
+    finally:
+        db.close()
 
 def _mcp_oauth_base_dir() -> Path:
     """Directory that may contain OAuth files managed by Pantheon."""
@@ -334,23 +356,26 @@ def setup_mcp_routes(mcp_manager: McpManager):
                 logger.warning(f"Failed to write OAuth file: {e}")
 
         # Save to DB
-        db = SessionLocal()
-        try:
-            srv = McpServer(
-                id=server_id,
-                name=name,
-                transport=transport,
-                command=command,
-                args=json.dumps(parsed_args),
-                env=json.dumps(parsed_env),
-                url=url,
-                is_enabled=True,
-                oauth_config=json.dumps(parsed_oauth_config) if parsed_oauth_config else None,
-            )
-            db.add(srv)
-            db.commit()
-        finally:
-            db.close()
+        def _write():
+            db = SessionLocal()
+            try:
+                srv = McpServer(
+                    id=server_id,
+                    name=name,
+                    transport=transport,
+                    command=command,
+                    args=json.dumps(parsed_args),
+                    env=json.dumps(parsed_env),
+                    url=url,
+                    is_enabled=True,
+                    oauth_config=json.dumps(parsed_oauth_config) if parsed_oauth_config else None,
+                )
+                db.add(srv)
+                db.commit()
+            finally:
+                db.close()
+        # `B1223`: the server's row is written off the event loop; connecting it is the loop's.
+        await asyncio.to_thread(_write)
 
         # Check if OAuth token already exists — skip connection attempt if not
         needs_oauth = False
@@ -760,75 +785,81 @@ def setup_mcp_routes(mcp_manager: McpManager):
         """
         require_admin(request)
 
-        db = SessionLocal()
-        try:
-            srv = db.query(McpServer).filter(McpServer.id == server_id).first()
-            if not srv:
-                raise HTTPException(404, "Server not found")
+        def _write():
+            db = SessionLocal()
+            try:
+                srv = db.query(McpServer).filter(McpServer.id == server_id).first()
+                if not srv:
+                    raise HTTPException(404, "Server not found")
 
-            new_transport = srv.transport if transport is None else (transport or "").strip()
-            new_command = srv.command if command is None else (command or "").strip() or None
-            new_url = srv.url if url is None else (url or "").strip() or None
-            new_name = srv.name if name is None else (name or "").strip()
+                new_transport = srv.transport if transport is None else (transport or "").strip()
+                new_command = srv.command if command is None else (command or "").strip() or None
+                new_url = srv.url if url is None else (url or "").strip() or None
+                new_name = srv.name if name is None else (name or "").strip()
 
-            if not new_name:
-                raise HTTPException(400, "name cannot be empty")
-            if new_transport not in ("stdio", "sse", "http"):
-                raise HTTPException(400, "transport must be one of: stdio, sse, http")
-            # Validated against the MERGED row, not against what was sent.
-            # Switching transport without resending the field it needs is the
-            # edit that would otherwise save a row that cannot start.
-            if new_transport == "stdio" and not new_command:
-                raise HTTPException(400, "command is required for stdio transport")
-            if new_transport in ("sse", "http") and not new_url:
-                raise HTTPException(400, f"url is required for {new_transport.upper()} transport")
+                if not new_name:
+                    raise HTTPException(400, "name cannot be empty")
+                if new_transport not in ("stdio", "sse", "http"):
+                    raise HTTPException(400, "transport must be one of: stdio, sse, http")
+                # Validated against the MERGED row, not against what was sent.
+                # Switching transport without resending the field it needs is the
+                # edit that would otherwise save a row that cannot start.
+                if new_transport == "stdio" and not new_command:
+                    raise HTTPException(400, "command is required for stdio transport")
+                if new_transport in ("sse", "http") and not new_url:
+                    raise HTTPException(400, f"url is required for {new_transport.upper()} transport")
 
-            parsed_args = (
-                json.loads(srv.args) if args is None and srv.args
-                else [] if args is None
-                else _parsed_json_field(args, "args", list, '["-y", "pkg"]')
-            )
-            parsed_env = (
-                json.loads(srv.env) if env is None and srv.env
-                else {} if env is None
-                else _parsed_json_field(env, "env", dict, '{"API_KEY": "..."}')
-            )
+                parsed_args = (
+                    json.loads(srv.args) if args is None and srv.args
+                    else [] if args is None
+                    else _parsed_json_field(args, "args", list, '["-y", "pkg"]')
+                )
+                parsed_env = (
+                    json.loads(srv.env) if env is None and srv.env
+                    else {} if env is None
+                    else _parsed_json_field(env, "env", dict, '{"API_KEY": "..."}')
+                )
 
-            if oauth_config is None:
-                parsed_oauth_config = json.loads(srv.oauth_config) if srv.oauth_config else None
-            elif not oauth_config.strip():
-                parsed_oauth_config = None
-            else:
-                try:
-                    parsed_oauth_config = _sanitize_mcp_oauth_config(json.loads(oauth_config))
-                except json.JSONDecodeError:
-                    raise HTTPException(400, "oauth_config must be valid JSON")
-            _apply_mcp_oauth_env(parsed_env, parsed_oauth_config)
+                if oauth_config is None:
+                    parsed_oauth_config = json.loads(srv.oauth_config) if srv.oauth_config else None
+                elif not oauth_config.strip():
+                    parsed_oauth_config = None
+                else:
+                    try:
+                        parsed_oauth_config = _sanitize_mcp_oauth_config(json.loads(oauth_config))
+                    except json.JSONDecodeError:
+                        raise HTTPException(400, "oauth_config must be valid JSON")
+                _apply_mcp_oauth_env(parsed_env, parsed_oauth_config)
 
-            disabled_before = json.loads(srv.disabled_tools) if srv.disabled_tools else []
-            # `P8-48`, under `P8-35`'s ruling and for the same reason: an id is
-            # an identity, not a version. A tool the operator marked read-only
-            # (or marked as writing, against a server that claimed otherwise)
-            # keeps that mark when the command line under it changes, because
-            # the mark is about the tool and the edit is about how it is
-            # started. Kept rather than dropped for names the new command no
-            # longer offers — re-pointing back must not have lost the answer —
-            # and reported as `stale_tool_overrides`.
-            overrides_before = normalize_tool_overrides(srv.tool_overrides)
+                disabled_before = json.loads(srv.disabled_tools) if srv.disabled_tools else []
+                # `P8-48`, under `P8-35`'s ruling and for the same reason: an id is
+                # an identity, not a version. A tool the operator marked read-only
+                # (or marked as writing, against a server that claimed otherwise)
+                # keeps that mark when the command line under it changes, because
+                # the mark is about the tool and the edit is about how it is
+                # started. Kept rather than dropped for names the new command no
+                # longer offers — re-pointing back must not have lost the answer —
+                # and reported as `stale_tool_overrides`.
+                overrides_before = normalize_tool_overrides(srv.tool_overrides)
 
-            srv.name = new_name
-            srv.transport = new_transport
-            srv.command = new_command
-            srv.args = json.dumps(parsed_args)
-            srv.env = json.dumps(parsed_env)
-            srv.url = new_url
-            srv.oauth_config = json.dumps(parsed_oauth_config) if parsed_oauth_config else None
-            # srv.id, srv.disabled_tools and srv.tool_overrides are
-            # deliberately NOT touched.
-            db.commit()
-            was_enabled = bool(srv.is_enabled)
-        finally:
-            db.close()
+                srv.name = new_name
+                srv.transport = new_transport
+                srv.command = new_command
+                srv.args = json.dumps(parsed_args)
+                srv.env = json.dumps(parsed_env)
+                srv.url = new_url
+                srv.oauth_config = json.dumps(parsed_oauth_config) if parsed_oauth_config else None
+                # srv.id, srv.disabled_tools and srv.tool_overrides are
+                # deliberately NOT touched.
+                db.commit()
+                was_enabled = bool(srv.is_enabled)
+            finally:
+                db.close()
+            return (disabled_before, new_command, new_name, new_transport, new_url, overrides_before,
+                    parsed_args, parsed_env, was_enabled)
+        # `B1223`: the server's row is checked and written off the event loop; reconnecting it is the loop's.
+        (disabled_before, new_command, new_name, new_transport, new_url, overrides_before,
+         parsed_args, parsed_env, was_enabled) = await asyncio.to_thread(_write)
 
         # Re-launch so the operator sees the result of the edit now, not on the
         # next restart. A disabled server stays disabled and stays down: the
@@ -880,70 +911,69 @@ def setup_mcp_routes(mcp_manager: McpManager):
     async def reconnect_server(server_id: str, request: Request):
         """Reconnect to an MCP server."""
         require_admin(request)
-        db = SessionLocal()
-        try:
-            srv = db.query(McpServer).filter(McpServer.id == server_id).first()
-            if not srv:
-                raise HTTPException(404, "Server not found")
+        # `B1223`: the row is read off the event loop; the connection is the loop's.
+        srv = await asyncio.to_thread(_server_row, server_id)
 
-            await mcp_manager.disconnect_server(server_id)
+        await mcp_manager.disconnect_server(server_id)
 
-            args = json.loads(srv.args) if srv.args else []
-            env = json.loads(srv.env) if srv.env else {}
-            connected = await mcp_manager.connect_server(
-                server_id=server_id,
-                name=srv.name,
-                transport=srv.transport,
-                command=srv.command,
-                args=args,
-                env=env,
-                url=srv.url,
-            )
+        args = json.loads(srv["args"]) if srv["args"] else []
+        env = json.loads(srv["env"]) if srv["env"] else {}
+        connected = await mcp_manager.connect_server(
+            server_id=server_id,
+            name=srv["name"],
+            transport=srv["transport"],
+            command=srv["command"],
+            args=args,
+            env=env,
+            url=srv["url"],
+        )
 
-            status = mcp_manager.get_server_status(server_id)
-            return {
-                "connected": connected,
-                "status": status.get("status", "disconnected"),
-                "tool_count": status.get("tool_count", 0),
-                "error": status.get("error"),
-                "auth_url": status.get("auth_url"),
-                "needs_auth": status.get("status") == "needs_auth",
-            }
-        finally:
-            db.close()
+        status = mcp_manager.get_server_status(server_id)
+        return {
+            "connected": connected,
+            "status": status.get("status", "disconnected"),
+            "tool_count": status.get("tool_count", 0),
+            "error": status.get("error"),
+            "auth_url": status.get("auth_url"),
+            "needs_auth": status.get("status") == "needs_auth",
+        }
 
     @router.patch("/servers/{server_id}")
     async def toggle_server(server_id: str, request: Request, is_enabled: str = Form(...)):
         """Enable or disable an MCP server."""
         require_admin(request)
-        db = SessionLocal()
-        try:
-            srv = db.query(McpServer).filter(McpServer.id == server_id).first()
-            if not srv:
-                raise HTTPException(404, "Server not found")
+        enabled = request_flag(is_enabled)  # `B97`
 
-            enabled = request_flag(is_enabled)  # `B97`
-            srv.is_enabled = enabled
-            db.commit()
+        def _write():
+            db = SessionLocal()
+            try:
+                row = db.query(McpServer).filter(McpServer.id == server_id).first()
+                if not row:
+                    raise HTTPException(404, "Server not found")
+                row.is_enabled = enabled
+                db.commit()
+                return _server_fields(row)
+            finally:
+                db.close()
+        # `B1223`: the switch is written off the event loop; the connection is the loop's.
+        srv = await asyncio.to_thread(_write)
 
-            if enabled:
-                args = json.loads(srv.args) if srv.args else []
-                env = json.loads(srv.env) if srv.env else {}
-                await mcp_manager.connect_server(
-                    server_id=server_id,
-                    name=srv.name,
-                    transport=srv.transport,
-                    command=srv.command,
-                    args=args,
-                    env=env,
-                    url=srv.url,
-                )
-            else:
-                await mcp_manager.disconnect_server(server_id)
+        if enabled:
+            args = json.loads(srv["args"]) if srv["args"] else []
+            env = json.loads(srv["env"]) if srv["env"] else {}
+            await mcp_manager.connect_server(
+                server_id=server_id,
+                name=srv["name"],
+                transport=srv["transport"],
+                command=srv["command"],
+                args=args,
+                env=env,
+                url=srv["url"],
+            )
+        else:
+            await mcp_manager.disconnect_server(server_id)
 
-            return {"id": server_id, "is_enabled": enabled}
-        finally:
-            db.close()
+        return {"id": server_id, "is_enabled": enabled}
 
     @router.delete("/servers/{server_id}")
     async def delete_server(server_id: str, request: Request):
@@ -963,28 +993,30 @@ def setup_mcp_routes(mcp_manager: McpManager):
         `PATCH` takes as `{"overrides": {...}}` — and said in `message`.
         """
         require_admin(request)
-        db = SessionLocal()
-        try:
-            srv = db.query(McpServer).filter(McpServer.id == server_id).first()
-            if not srv:
-                raise HTTPException(404, "Server not found")
-            name = srv.name
-            dropped = dropped_disabled_tools(srv.disabled_tools)
-            overrides = dropped_tool_overrides(srv.tool_overrides)
+        # `B1223`: the row is read, and deleted, off the event loop; the
+        # disconnect between them is the loop's.
+        srv = await asyncio.to_thread(_server_row, server_id)
+        name = srv["name"]
+        dropped = dropped_disabled_tools(srv["disabled_tools"])
+        overrides = dropped_tool_overrides(srv["tool_overrides"])
 
-            await mcp_manager.disconnect_server(server_id)
+        await mcp_manager.disconnect_server(server_id)
 
-            db.delete(srv)
-            db.commit()
-            said = dropped_tool_choices_sentence(name, dropped, overrides)
-            return {
-                "status": "deleted",
-                "dropped_disabled_tools": dropped,
-                "dropped_tool_overrides": overrides,
-                "message": f"Removed '{name}'." + (f" {said}" if said else ""),
-            }
-        finally:
-            db.close()
+        def _delete():
+            db = SessionLocal()
+            try:
+                db.query(McpServer).filter(McpServer.id == server_id).delete()
+                db.commit()
+            finally:
+                db.close()
+        await asyncio.to_thread(_delete)
+        said = dropped_tool_choices_sentence(name, dropped, overrides)
+        return {
+            "status": "deleted",
+            "dropped_disabled_tools": dropped,
+            "dropped_tool_overrides": overrides,
+            "message": f"Removed '{name}'." + (f" {said}" if said else ""),
+        }
 
     @router.get("/tools")
     def list_tools(request: Request):
@@ -1073,15 +1105,19 @@ def setup_mcp_routes(mcp_manager: McpManager):
             requested if requested is not None else _TEST_CALL_DEFAULT_TIMEOUT
         )
 
-        db = SessionLocal()
-        try:
-            srv = db.query(McpServer).filter(McpServer.id == server_id).first()
-            if not srv:
-                raise HTTPException(404, "Server not found")
-            server_name = srv.name
-            disabled = set(json.loads(srv.disabled_tools) if srv.disabled_tools else [])
-        finally:
-            db.close()
+        def _read():
+            db = SessionLocal()
+            try:
+                srv = db.query(McpServer).filter(McpServer.id == server_id).first()
+                if not srv:
+                    raise HTTPException(404, "Server not found")
+                server_name = srv.name
+                disabled = set(json.loads(srv.disabled_tools) if srv.disabled_tools else [])
+            finally:
+                db.close()
+            return disabled, server_name
+        # `B1223`: the server's row is read off the event loop.
+        disabled, server_name = await asyncio.to_thread(_read)
 
         # Say which of the three things is wrong, rather than returning a tool
         # error for a server that was never up (`Law 15`).
@@ -1176,163 +1212,169 @@ def setup_mcp_routes(mcp_manager: McpManager):
         on a disabled tool leaves it disabled.
         """
         require_admin(request)
-        db = SessionLocal()
-        try:
-            srv = db.query(McpServer).filter(McpServer.id == server_id).first()
-            if not srv:
-                raise HTTPException(404, "Server not found")
+        # `B1223`: whether the server is there is read off the event loop (a
+        # missing one is a 404 before the body is read, as it was), then the
+        # change is written off it too.
+        await asyncio.to_thread(_server_row, server_id)
+        body = await request.json()
 
-            body = await request.json()
-            if not isinstance(body, dict):
-                raise HTTPException(
-                    400, 'body must be a JSON object, e.g. {"disabled": ["write_file"]}'
-                )
-
-            if "disabled" in body:
-                disabled = body.get("disabled", [])
-                if not isinstance(disabled, list):
-                    raise HTTPException(400, "disabled must be a list of tool names")
-                srv.disabled_tools = json.dumps(disabled) if disabled else None
-            else:
-                disabled = json.loads(srv.disabled_tools) if srv.disabled_tools else []
-
-            descriptions_before = {
-                n: e.get("description")
-                for n, e in normalize_tool_overrides(srv.tool_overrides).items()
-            }
-            if "overrides" in body:
-                sent = body.get("overrides")
-                if sent is None:
-                    sent = {}
-                if not isinstance(sent, dict):
+        def _db_work():
+            db = SessionLocal()
+            try:
+                srv = db.query(McpServer).filter(McpServer.id == server_id).first()
+                if not srv:
+                    raise HTTPException(404, "Server not found")
+                if not isinstance(body, dict):
                     raise HTTPException(
-                        400,
-                        'overrides must be an object keyed by tool name, '
-                        'e.g. {"query_rows": {"read_only": true}}',
+                        400, 'body must be a JSON object, e.g. {"disabled": ["write_file"]}'
                     )
-                # Merge rather than replace: a panel sends the one tool the
-                # person just answered, not the whole server. `null` / `{}`
-                # against a name is the erase, and `normalize_tool_overrides`
-                # drops empty entries so "no opinion" has one spelling.
-                #
-                # `P8-48` (re-cut): an entry now holds two answers, so the
-                # merge goes one level down — `{"read_only": true}` must not
-                # take the operator's wording with it, and `Server's answer`
-                # on the read-only buttons sends `{"read_only": null}`, which
-                # takes back that one key and nothing else. `null` or `{}` for
-                # the whole entry still takes back both, as it always did.
-                merged = normalize_tool_overrides(srv.tool_overrides)
-                for name, value in sent.items():
-                    if not isinstance(name, str) or not name.strip():
-                        raise HTTPException(400, "override keys must be tool names")
-                    if tool_override_name(name) is None:
-                        # Stored under any other key it would never match
-                        # the tool — the defect this replaced truncated long
-                        # names and then ignored the answer.
+
+                if "disabled" in body:
+                    disabled = body.get("disabled", [])
+                    if not isinstance(disabled, list):
+                        raise HTTPException(400, "disabled must be a list of tool names")
+                    srv.disabled_tools = json.dumps(disabled) if disabled else None
+                else:
+                    disabled = json.loads(srv.disabled_tools) if srv.disabled_tools else []
+
+                descriptions_before = {
+                    n: e.get("description")
+                    for n, e in normalize_tool_overrides(srv.tool_overrides).items()
+                }
+                if "overrides" in body:
+                    sent = body.get("overrides")
+                    if sent is None:
+                        sent = {}
+                    if not isinstance(sent, dict):
                         raise HTTPException(
                             400,
-                            f"'{_safe_token(name)}' cannot be stored as a tool name: "
-                            f"a name is at most {MCP_TOOL_OVERRIDE_NAME_MAX} characters, "
-                            "with no spaces at either end and no control characters.",
+                            'overrides must be an object keyed by tool name, '
+                            'e.g. {"query_rows": {"read_only": true}}',
                         )
-                    if value is None or value == {}:
-                        merged.pop(name, None)
-                        continue
-                    if not isinstance(value, dict):
-                        raise HTTPException(
-                            400,
-                            f"override for '{_safe_token(name)}' must be an object, "
-                            'e.g. {"read_only": true}',
-                        )
-                    unknown = [k for k in value if k not in ("read_only", "description")]
-                    if unknown:
-                        raise HTTPException(
-                            400,
-                            f"override for '{_safe_token(name)}' has no key "
-                            f"'{_safe_token(unknown[0])}'. The keys are read_only "
-                            "(true or false) and description (text), and null for "
-                            "either takes that answer back.",
-                        )
-                    entry = dict(merged.get(name, {}))
-                    if "read_only" in value:
-                        read_only = value["read_only"]
-                        if read_only is None:
-                            entry.pop("read_only", None)
-                        elif isinstance(read_only, bool):
-                            entry["read_only"] = read_only
-                        else:
+                    # Merge rather than replace: a panel sends the one tool the
+                    # person just answered, not the whole server. `null` / `{}`
+                    # against a name is the erase, and `normalize_tool_overrides`
+                    # drops empty entries so "no opinion" has one spelling.
+                    #
+                    # `P8-48` (re-cut): an entry now holds two answers, so the
+                    # merge goes one level down — `{"read_only": true}` must not
+                    # take the operator's wording with it, and `Server's answer`
+                    # on the read-only buttons sends `{"read_only": null}`, which
+                    # takes back that one key and nothing else. `null` or `{}` for
+                    # the whole entry still takes back both, as it always did.
+                    merged = normalize_tool_overrides(srv.tool_overrides)
+                    for name, value in sent.items():
+                        if not isinstance(name, str) or not name.strip():
+                            raise HTTPException(400, "override keys must be tool names")
+                        if tool_override_name(name) is None:
+                            # Stored under any other key it would never match
+                            # the tool — the defect this replaced truncated long
+                            # names and then ignored the answer.
                             raise HTTPException(
                                 400,
-                                f"read_only for '{_safe_token(name)}' must be true or false",
+                                f"'{_safe_token(name)}' cannot be stored as a tool name: "
+                                f"a name is at most {MCP_TOOL_OVERRIDE_NAME_MAX} characters, "
+                                "with no spaces at either end and no control characters.",
                             )
-                    if "description" in value:
-                        sent_text = value["description"]
-                        if sent_text is None:
-                            entry.pop("description", None)
-                        elif not isinstance(sent_text, str):
+                        if value is None or value == {}:
+                            merged.pop(name, None)
+                            continue
+                        if not isinstance(value, dict):
                             raise HTTPException(
                                 400,
-                                f"description for '{_safe_token(name)}' must be text, "
-                                "or null to go back to the server's own.",
+                                f"override for '{_safe_token(name)}' must be an object, "
+                                'e.g. {"read_only": true}',
                             )
+                        unknown = [k for k in value if k not in ("read_only", "description")]
+                        if unknown:
+                            raise HTTPException(
+                                400,
+                                f"override for '{_safe_token(name)}' has no key "
+                                f"'{_safe_token(unknown[0])}'. The keys are read_only "
+                                "(true or false) and description (text), and null for "
+                                "either takes that answer back.",
+                            )
+                        entry = dict(merged.get(name, {}))
+                        if "read_only" in value:
+                            read_only = value["read_only"]
+                            if read_only is None:
+                                entry.pop("read_only", None)
+                            elif isinstance(read_only, bool):
+                                entry["read_only"] = read_only
+                            else:
+                                raise HTTPException(
+                                    400,
+                                    f"read_only for '{_safe_token(name)}' must be true or false",
+                                )
+                        if "description" in value:
+                            sent_text = value["description"]
+                            if sent_text is None:
+                                entry.pop("description", None)
+                            elif not isinstance(sent_text, str):
+                                raise HTTPException(
+                                    400,
+                                    f"description for '{_safe_token(name)}' must be text, "
+                                    "or null to go back to the server's own.",
+                                )
+                            else:
+                                text = clean_tool_description(sent_text)
+                                if text is None:
+                                    raise HTTPException(
+                                        400,
+                                        f"description for '{_safe_token(name)}' is empty. "
+                                        "To go back to the server's own description, send null.",
+                                    )
+                                # Refused, not cut: storing less than was typed,
+                                # with a 200, is the silent kind of wrong.
+                                if len(text) > MCP_TOOL_DESCRIPTION_MAX:
+                                    raise HTTPException(
+                                        400,
+                                        f"description for '{_safe_token(name)}' is "
+                                        f"{len(text)} characters; the limit is "
+                                        f"{MCP_TOOL_DESCRIPTION_MAX}.",
+                                    )
+                                entry["description"] = text
+                        if entry:
+                            merged[name] = entry
                         else:
-                            text = clean_tool_description(sent_text)
-                            if text is None:
-                                raise HTTPException(
-                                    400,
-                                    f"description for '{_safe_token(name)}' is empty. "
-                                    "To go back to the server's own description, send null.",
-                                )
-                            # Refused, not cut: storing less than was typed,
-                            # with a 200, is the silent kind of wrong.
-                            if len(text) > MCP_TOOL_DESCRIPTION_MAX:
-                                raise HTTPException(
-                                    400,
-                                    f"description for '{_safe_token(name)}' is "
-                                    f"{len(text)} characters; the limit is "
-                                    f"{MCP_TOOL_DESCRIPTION_MAX}.",
-                                )
-                            entry["description"] = text
-                    if entry:
-                        merged[name] = entry
-                    else:
-                        merged.pop(name, None)
-                overrides = normalize_tool_overrides(merged)
-                srv.tool_overrides = json.dumps(overrides) if overrides else None
-            else:
-                overrides = normalize_tool_overrides(srv.tool_overrides)
+                            merged.pop(name, None)
+                    overrides = normalize_tool_overrides(merged)
+                    srv.tool_overrides = json.dumps(overrides) if overrides else None
+                else:
+                    overrides = normalize_tool_overrides(srv.tool_overrides)
 
-            db.commit()
+                db.commit()
 
-            # `P8-48` (re-cut). A description is text the model reads, and the
-            # prompt block and the tool index both cache on the manager's
-            # generation. Moved only when a description actually changed: a
-            # read-only answer alters nothing the model reads.
-            descriptions_after = {n: e.get("description") for n, e in overrides.items()}
-            if {n: d for n, d in descriptions_before.items() if d} != \
-                    {n: d for n, d in descriptions_after.items() if d}:
-                mcp_manager.tool_descriptions_changed()
+                # `P8-48` (re-cut). A description is text the model reads, and the
+                # prompt block and the tool index both cache on the manager's
+                # generation. Moved only when a description actually changed: a
+                # read-only answer alters nothing the model reads.
+                descriptions_after = {n: e.get("description") for n, e in overrides.items()}
+                if {n: d for n, d in descriptions_before.items() if d} != \
+                        {n: d for n, d in descriptions_after.items() if d}:
+                    mcp_manager.tool_descriptions_changed()
 
-            # Same honesty as `PUT`'s `stale_disabled_tools`: a name that no
-            # longer matches anything the server offers is kept (a typo today
-            # may be a tool tomorrow, and re-pointing the command back must not
-            # have lost the answer) and reported now rather than discovered
-            # later.
-            offered = {
-                t["name"] for t in mcp_manager.get_all_tools()
-                if t["server_id"] == server_id
-            }
-            unknown_tools = sorted(n for n in overrides if n not in offered) if offered else []
+                # Same honesty as `PUT`'s `stale_disabled_tools`: a name that no
+                # longer matches anything the server offers is kept (a typo today
+                # may be a tool tomorrow, and re-pointing the command back must not
+                # have lost the answer) and reported now rather than discovered
+                # later.
+                offered = {
+                    t["name"] for t in mcp_manager.get_all_tools()
+                    if t["server_id"] == server_id
+                }
+                unknown_tools = sorted(n for n in overrides if n not in offered) if offered else []
 
-            return {
-                "id": server_id,
-                "disabled_count": len(disabled),
-                "override_count": len(overrides),
-                "overrides": overrides,
-                "unknown_tools": unknown_tools,
-            }
-        finally:
-            db.close()
+                return {
+                    "id": server_id,
+                    "disabled_count": len(disabled),
+                    "override_count": len(overrides),
+                    "overrides": overrides,
+                    "unknown_tools": unknown_tools,
+                }
+            finally:
+                db.close()
+        return await asyncio.to_thread(_db_work)
 
     # ── OAuth flow for Google MCP servers ──────────────────────────
 

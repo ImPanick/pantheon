@@ -286,22 +286,26 @@ def setup_assistant_routes(task_scheduler) -> APIRouter:
     async def run_check_in_now(task_id: str, request: Request):
         """Trigger one of the assistant's check-ins immediately (manual test)."""
         owner = _owner(request)
-        db = SessionLocal()
-        try:
-            task = db.query(ScheduledTask).filter(
-                ScheduledTask.id == task_id,
-                ScheduledTask.owner == owner,
-            ).first()
-            if not task:
-                raise HTTPException(status_code=404, detail="Task not found")
-            crew = db.query(CrewMember).filter(
-                CrewMember.id == task.crew_member_id,
-                CrewMember.is_default_assistant == True,  # noqa: E712
-            ).first()
-            if not crew:
-                raise HTTPException(status_code=400, detail="Not an assistant task")
-        finally:
-            db.close()
+
+        def _db_work():
+            db = SessionLocal()
+            try:
+                task = db.query(ScheduledTask).filter(
+                    ScheduledTask.id == task_id,
+                    ScheduledTask.owner == owner,
+                ).first()
+                if not task:
+                    raise HTTPException(status_code=404, detail="Task not found")
+                crew = db.query(CrewMember).filter(
+                    CrewMember.id == task.crew_member_id,
+                    CrewMember.is_default_assistant == True,  # noqa: E712
+                ).first()
+                if not crew:
+                    raise HTTPException(status_code=400, detail="Not an assistant task")
+            finally:
+                db.close()
+        # `B1223`: the task is looked up off the event loop; the run it starts is the loop's.
+        await asyncio.to_thread(_db_work)
         # `B1061`. A person pressed *Run now* on their assistant's check-in:
         # person work, as the task route's buttons are (`B1047`) — it waits
         # only for a chat reply in progress, and the page it was pressed on

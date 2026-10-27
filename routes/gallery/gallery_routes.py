@@ -449,45 +449,61 @@ def setup_gallery_routes() -> APIRouter:
     async def gallery_replace(request: Request, image_id: str):
         """Replace an existing gallery image file with a new one."""
         user = get_current_user(request)
-        db = SessionLocal()
-        try:
-            img = db.query(GalleryImage).filter(GalleryImage.id == image_id).first()
-            if not img:
-                raise HTTPException(404, "Image not found")
-            if not user or img.owner != user:
-                raise HTTPException(403, "Not your image")
 
-            form = await request.form()
-            file = form.get("image")
-            if not file or not hasattr(file, 'read'):
-                raise HTTPException(400, "No image provided")
-
-            content = await read_upload_limited(
-                file, resolve_byte_limit("gallery_upload_max_bytes", user),
-                "Gallery replacement")
-            GALLERY_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-            img_path = _gallery_image_path(img.filename)
-            img_path.write_bytes(content)
-
-            # Refresh dimensions in case the editor resized the canvas.
-            # updated_at auto-bumps via TimestampMixin's onupdate hook.
+        # `B1223`: the image's row is read and written off the event loop, in
+        # two short sessions either side of the upload, rather than one held
+        # open on the loop while the upload arrives.
+        def _check():
+            db = SessionLocal()
             try:
-                from PIL import Image
-                from io import BytesIO
-                with Image.open(BytesIO(content)) as new_im:
-                    img.width = new_im.width
-                    img.height = new_im.height
-            except Exception:
-                pass
+                img = db.query(GalleryImage).filter(GalleryImage.id == image_id).first()
+                if not img:
+                    raise HTTPException(404, "Image not found")
+                if not user or img.owner != user:
+                    raise HTTPException(403, "Not your image")
+            finally:
+                db.close()
+        await asyncio.to_thread(_check)
+
+        form = await request.form()
+        file = form.get("image")
+        if not file or not hasattr(file, 'read'):
+            raise HTTPException(400, "No image provided")
+
+        content = await read_upload_limited(
+            file, resolve_byte_limit("gallery_upload_max_bytes", user),
+            "Gallery replacement")
+
+        def _write():
+            db = SessionLocal()
             try:
-                db.commit()
-            except Exception:
-                db.rollback()
-                logger.exception("gallery_replace: DB commit failed")
-                raise HTTPException(500, "Image update failed")
-            return {"ok": True, "width": img.width, "height": img.height}
-        finally:
-            db.close()
+                img = db.query(GalleryImage).filter(GalleryImage.id == image_id).first()
+                if not img or img.owner != user:
+                    raise HTTPException(404, "Image not found")
+                GALLERY_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+                img_path = _gallery_image_path(img.filename)
+                img_path.write_bytes(content)
+
+                # Refresh dimensions in case the editor resized the canvas.
+                # updated_at auto-bumps via TimestampMixin's onupdate hook.
+                try:
+                    from PIL import Image
+                    from io import BytesIO
+                    with Image.open(BytesIO(content)) as new_im:
+                        img.width = new_im.width
+                        img.height = new_im.height
+                except Exception:
+                    pass
+                try:
+                    db.commit()
+                except Exception:
+                    db.rollback()
+                    logger.exception("gallery_replace: DB commit failed")
+                    raise HTTPException(500, "Image update failed")
+                return {"ok": True, "width": img.width, "height": img.height}
+            finally:
+                db.close()
+        return await asyncio.to_thread(_write)
 
     # ---- POST /api/gallery/{image_id}/rename ----
     @router.post("/api/gallery/{image_id}/rename")
@@ -596,11 +612,15 @@ def setup_gallery_routes() -> APIRouter:
         b64 = base64.b64encode(image_bytes).decode()
 
         # Find image endpoint
-        db = SessionLocal()
-        try:
-            ep = _first_visible_image_endpoint(db, user)
-        finally:
-            db.close()
+        def _db_work():
+            db = SessionLocal()
+            try:
+                ep = _first_visible_image_endpoint(db, user)
+            finally:
+                db.close()
+            return ep
+        # `B1223`: the endpoint is looked up off the event loop.
+        ep = await asyncio.to_thread(_db_work)
 
         if not ep:
             raise HTTPException(400, "No image generation endpoint configured. Add one in Settings → Add Models.")
@@ -643,11 +663,15 @@ def setup_gallery_routes() -> APIRouter:
             "Image upload")
         b64 = base64.b64encode(image_bytes).decode()
 
-        db = SessionLocal()
-        try:
-            ep = _first_visible_image_endpoint(db, user)
-        finally:
-            db.close()
+        def _db_work():
+            db = SessionLocal()
+            try:
+                ep = _first_visible_image_endpoint(db, user)
+            finally:
+                db.close()
+            return ep
+        # `B1223`: the endpoint is looked up off the event loop.
+        ep = await asyncio.to_thread(_db_work)
 
         if not ep:
             raise HTTPException(400, "No image generation endpoint configured.")
@@ -992,44 +1016,48 @@ def setup_gallery_routes() -> APIRouter:
         ids = data.get("ids") or []
         if not ids:
             raise HTTPException(400, "No images specified")
-        db = SessionLocal()
-        try:
-            imgs = db.query(GalleryImage).filter(
-                GalleryImage.id.in_(ids),
-                GalleryImage.owner == user,
-            ).all()
-            if not imgs:
-                raise HTTPException(404, "No images found")
-            import io
-            import re
-            import zipfile
-            buf = io.BytesIO()
-            used = set()
-            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-                for img in imgs:
-                    src = _gallery_image_path(img.filename)
-                    if not src.exists():
-                        continue
-                    ext = src.suffix or ".png"
-                    base = (img.prompt or "").strip() or src.stem
-                    base = re.sub(r"[^\w\-. ]+", "", base)[:60].strip() or img.id
-                    name = f"{base}{ext}"
-                    i = 1
-                    while name in used:
-                        name = f"{base}-{i}{ext}"
-                        i += 1
-                    used.add(name)
-                    zf.write(src, arcname=name)
-            if not used:
-                raise HTTPException(404, "No image files found on disk")
-            from fastapi import Response
-            return Response(
-                content=buf.getvalue(),
-                media_type="application/zip",
-                headers={"Content-Disposition": 'attachment; filename="gallery-photos.zip"'},
-            )
-        finally:
-            db.close()
+
+        def _db_work():
+            db = SessionLocal()
+            try:
+                imgs = db.query(GalleryImage).filter(
+                    GalleryImage.id.in_(ids),
+                    GalleryImage.owner == user,
+                ).all()
+                if not imgs:
+                    raise HTTPException(404, "No images found")
+                import io
+                import re
+                import zipfile
+                buf = io.BytesIO()
+                used = set()
+                with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for img in imgs:
+                        src = _gallery_image_path(img.filename)
+                        if not src.exists():
+                            continue
+                        ext = src.suffix or ".png"
+                        base = (img.prompt or "").strip() or src.stem
+                        base = re.sub(r"[^\w\-. ]+", "", base)[:60].strip() or img.id
+                        name = f"{base}{ext}"
+                        i = 1
+                        while name in used:
+                            name = f"{base}-{i}{ext}"
+                            i += 1
+                        used.add(name)
+                        zf.write(src, arcname=name)
+                if not used:
+                    raise HTTPException(404, "No image files found on disk")
+                from fastapi import Response
+                return Response(
+                    content=buf.getvalue(),
+                    media_type="application/zip",
+                    headers={"Content-Disposition": 'attachment; filename="gallery-photos.zip"'},
+                )
+            finally:
+                db.close()
+        # `B1223`: the images are read and zipped off the event loop.
+        return await asyncio.to_thread(_db_work)
 
     # (`B1454`: `POST /api/gallery/clear-user-tags`, wiping every tag a person
     # typed, was a one-off cleanup for a past bug with no button — and a
@@ -1210,29 +1238,34 @@ def setup_gallery_routes() -> APIRouter:
                 raise HTTPException(400, f"Rejected endpoint URL: {reason}")
         chosen_model = (body.pop("_model", "") or "").strip()
         api_key = None
-        if not requested_base:
-            db = SessionLocal()
-            try:
-                ep = _first_visible_image_endpoint(db, user)
-                if not ep:
-                    raise HTTPException(400, "No image generation endpoint configured. Serve a diffusion model via Forge first.")
-                base = ep.base_url.rstrip("/")
-                api_key = ep.api_key
-            finally:
-                db.close()
-        else:
-            # Resolve the client-supplied base to a registered visible endpoint.
-            # Admins are not exempted — gallery proxy routes must use a DB row
-            # so the outbound URL never depends directly on request-body input.
-            db = SessionLocal()
-            try:
-                ep = _visible_image_endpoint_for_base(db, requested_base, user)
-                if not ep:
-                    raise HTTPException(403, "Choose a registered image endpoint")
-                base = ep.base_url.rstrip("/")
-                api_key = ep.api_key
-            finally:
-                db.close()
+
+        def _db_work():
+            nonlocal api_key, base
+            if not requested_base:
+                db = SessionLocal()
+                try:
+                    ep = _first_visible_image_endpoint(db, user)
+                    if not ep:
+                        raise HTTPException(400, "No image generation endpoint configured. Serve a diffusion model via Forge first.")
+                    base = ep.base_url.rstrip("/")
+                    api_key = ep.api_key
+                finally:
+                    db.close()
+            else:
+                # Resolve the client-supplied base to a registered visible endpoint.
+                # Admins are not exempted — gallery proxy routes must use a DB row
+                # so the outbound URL never depends directly on request-body input.
+                db = SessionLocal()
+                try:
+                    ep = _visible_image_endpoint_for_base(db, requested_base, user)
+                    if not ep:
+                        raise HTTPException(403, "Choose a registered image endpoint")
+                    base = ep.base_url.rstrip("/")
+                    api_key = ep.api_key
+                finally:
+                    db.close()
+        # `B1223`: the endpoint is looked up off the event loop.
+        await asyncio.to_thread(_db_work)
 
         if not base.endswith("/v1"):
             base += "/v1"
@@ -1477,29 +1510,34 @@ def setup_gallery_routes() -> APIRouter:
         model = (body.get("_model") or "").strip()
 
         api_key = None
-        if not requested_base:
-            db = SessionLocal()
-            try:
-                ep = _first_visible_image_endpoint(db, user)
-                if not ep:
-                    raise HTTPException(400, "No image generation endpoint configured.")
-                base = ep.base_url.rstrip("/")
-                api_key = ep.api_key
-            finally:
-                db.close()
-        else:
-            # Resolve the client-supplied base to a registered visible endpoint.
-            # Admins are not exempted — gallery proxy routes must use a DB row
-            # so the outbound URL never depends directly on request-body input.
-            db = SessionLocal()
-            try:
-                ep = _visible_image_endpoint_for_base(db, requested_base, user)
-                if not ep:
-                    raise HTTPException(403, "Choose a registered image endpoint")
-                base = ep.base_url.rstrip("/")
-                api_key = ep.api_key
-            finally:
-                db.close()
+
+        def _db_work():
+            nonlocal api_key, base
+            if not requested_base:
+                db = SessionLocal()
+                try:
+                    ep = _first_visible_image_endpoint(db, user)
+                    if not ep:
+                        raise HTTPException(400, "No image generation endpoint configured.")
+                    base = ep.base_url.rstrip("/")
+                    api_key = ep.api_key
+                finally:
+                    db.close()
+            else:
+                # Resolve the client-supplied base to a registered visible endpoint.
+                # Admins are not exempted — gallery proxy routes must use a DB row
+                # so the outbound URL never depends directly on request-body input.
+                db = SessionLocal()
+                try:
+                    ep = _visible_image_endpoint_for_base(db, requested_base, user)
+                    if not ep:
+                        raise HTTPException(403, "Choose a registered image endpoint")
+                    base = ep.base_url.rstrip("/")
+                    api_key = ep.api_key
+                finally:
+                    db.close()
+        # `B1223`: the endpoint is looked up off the event loop.
+        await asyncio.to_thread(_db_work)
 
         if not base.endswith("/v1"):
             base += "/v1"
@@ -2198,18 +2236,36 @@ def setup_gallery_routes() -> APIRouter:
         from pathlib import Path
 
         user = get_current_user(request)
-        db = SessionLocal()
-        try:
-            img = _get_or_404_image(db, image_id, user)
 
-            img_path = _gallery_image_path(img.filename)
-            if not img_path.exists():
-                raise HTTPException(404, "Image file not found")
+        # `B1223`: the image's row is read, and its tags written, off the event
+        # loop, in a short session each — none is held open across the
+        # vision model's answer (up to 60 s) as it was.
+        def _read():
+            db = SessionLocal()
+            try:
+                img = _get_or_404_image(db, image_id, user)
+                img_path = _gallery_image_path(img.filename)
+                if not img_path.exists():
+                    raise HTTPException(404, "Image file not found")
+                return img.filename, img_path.read_bytes()
+            finally:
+                db.close()
+
+        def _keep(tag_str):
+            db = SessionLocal()
+            try:
+                img = _get_or_404_image(db, image_id, user)
+                img.ai_tags = tag_str
+                db.commit()
+            finally:
+                db.close()
+
+        try:
+            filename, img_bytes = await asyncio.to_thread(_read)
 
             # Read and encode
-            img_bytes = img_path.read_bytes()
             b64 = base64.b64encode(img_bytes).decode()
-            ext = img.filename.rsplit(".", 1)[-1].lower()
+            ext = filename.rsplit(".", 1)[-1].lower()
             mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
                     "webp": "image/webp", "gif": "image/gif"}.get(ext, "image/jpeg")
 
@@ -2289,15 +2345,12 @@ def setup_gallery_routes() -> APIRouter:
             # Clean up tags
             tags = [t.strip().lower() for t in content.split(",") if t.strip()]
             tag_str = ", ".join(tags[:30])
-            img.ai_tags = tag_str
-            db.commit()
+            await asyncio.to_thread(_keep, tag_str)
             return {"ok": True, "ai_tags": tag_str}
         except HTTPException:
             raise
         except Exception:
             logger.exception("AI tagging failed")
             return {"error": "Auto-tagging failed"}
-        finally:
-            db.close()
 
     return router

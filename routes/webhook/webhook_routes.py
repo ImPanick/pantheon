@@ -158,14 +158,19 @@ def setup_webhook_routes(
     @router.post("/webhooks/{webhook_id}/test")
     async def test_webhook(request: Request, webhook_id: str):
         require_operator(request)
-        db = SessionLocal()
-        try:
-            wh = db.query(Webhook).filter(Webhook.id == webhook_id).first()
-            if not wh:
-                raise HTTPException(404, "Webhook not found")
-            url, secret = wh.url, wh.secret
-        finally:
-            db.close()
+
+        def _read():
+            db = SessionLocal()
+            try:
+                wh = db.query(Webhook).filter(Webhook.id == webhook_id).first()
+                if not wh:
+                    raise HTTPException(404, "Webhook not found")
+                url, secret = wh.url, wh.secret
+            finally:
+                db.close()
+            return secret, url
+        # `B1223`: the webhook is read off the event loop; its delivery is the loop's.
+        secret, url = await asyncio.to_thread(_read)
 
         await webhook_manager.deliver_test(webhook_id, url, secret)
         return {"status": "sent"}
@@ -343,11 +348,15 @@ def setup_webhook_routes(
 
         # --- Case 3: Fall back to first configured ModelEndpoint ---
         if not sess:
-            db = SessionLocal()
-            try:
-                ep = _select_api_chat_fallback_endpoint(db, token_owner)
-            finally:
-                db.close()
+            def _fallback():
+                db = SessionLocal()
+                try:
+                    ep = _select_api_chat_fallback_endpoint(db, token_owner)
+                finally:
+                    db.close()
+                return ep
+            # `B1223`: the fallback endpoint is read off the event loop.
+            ep = await asyncio.to_thread(_fallback)
 
             if not ep:
                 raise HTTPException(400,

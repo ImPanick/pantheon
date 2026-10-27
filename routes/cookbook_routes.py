@@ -634,6 +634,14 @@ def setup_cookbook_routes() -> APIRouter:
                 env["hfToken"] = disk_env["hfToken"]
             else:
                 env.pop("hfToken", None)
+            # `B1258`. The servers, the default one and the list's revision
+            # have their own door too (`PUT /api/cookbook/servers`): kept as
+            # they are on disk, so a stale tab's list never lands.
+            for key in ("servers", "defaultServer", "serversRev"):
+                if key in disk_env:
+                    env[key] = disk_env[key]
+                else:
+                    env.pop(key, None)
             env.pop("hfTokenMasked", None)
             env.pop("hfTokenConfigured", None)
             env.pop("hostPlatform", None)
@@ -3470,6 +3478,149 @@ def setup_cookbook_routes() -> APIRouter:
             _state_get_cache.update({"ts": 0.0, "mtime": 0.0, "value": None})
         return _hf_token_answer()
 
+    # ── `B1258` · the servers' own door ──
+    #
+    # The Servers card wrote `env.servers` through the whole-state save from
+    # whichever tab's `_envState` saved last, so a Forge open in another tab
+    # wrote its old list back over an edit made anywhere else, and its one
+    # editor had to live in the Forge. The list and the default server now
+    # have their own door, the operator's like the rest of the Forge's
+    # serving, with a revision: a save names the revision it was made from,
+    # and one made from an older list is refused with the list as it is now
+    # (409), never written over it. The whole-state save keeps them as they
+    # are on disk (`_state_for_storage`). Plain `def` (`B1223`).
+
+    SERVERS_MAX = 50
+    _SERVER_ENVS = ("none", "venv", "conda")
+    _SERVER_TEXT_MAX = 300
+
+    def _server_text(raw, what: str, limit: int = _SERVER_TEXT_MAX) -> str:
+        text = raw if isinstance(raw, str) else ("" if raw is None else str(raw))
+        text = text.strip()
+        if len(text) > limit or any(c in text for c in "\n\r\x00"):
+            raise HTTPException(400, f"A server's {what} is one line of at most {limit} characters. Nothing was saved.")
+        return text
+
+    def _clean_servers(raw) -> list:
+        """The list as it is kept: each entry checked, one local entry (no
+        host) at most, first — the shape the Forge draws."""
+        if not isinstance(raw, list):
+            raise HTTPException(400, "“servers” is a list of servers. Nothing was saved.")
+        if len(raw) > SERVERS_MAX:
+            raise HTTPException(400, f"At most {SERVERS_MAX} servers. Nothing was saved.")
+        out, local_seen = [], False
+        for item in raw:
+            if not isinstance(item, dict):
+                raise HTTPException(400, "Each server is an object. Nothing was saved.")
+            host = _server_text(item.get("host"), "address", 255)
+            if host.lower() in ("local", "localhost"):
+                host = ""
+            if host:
+                try:
+                    validate_remote_host(host)
+                except HTTPException:
+                    raise HTTPException(400, f"“{host[:60]}” is not a server address: it is host or user@host. "
+                                             "Nothing was saved.") from None
+            port = _server_text(item.get("port"), "SSH port", 5)
+            if port:
+                try:
+                    port = validate_ssh_port(port) or ""
+                except HTTPException:
+                    raise HTTPException(400, f"“{port}” is not an SSH port (1 to 65535). Nothing was saved.") from None
+            env = _server_text(item.get("env") or "none", "environment", 10).lower()
+            if env not in _SERVER_ENVS:
+                raise HTTPException(400, "A server's Python environment is none, venv or conda. Nothing was saved.")
+            color = _server_text(item.get("color"), "colour", 7)
+            if color and not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+                color = ""
+            dirs_raw = item.get("modelDirs") if isinstance(item.get("modelDirs"), list) else []
+            if len(dirs_raw) > 20:
+                raise HTTPException(400, "At most 20 model folders on one server. Nothing was saved.")
+            dirs = []
+            for d in dirs_raw:
+                d = _server_text(d, "model folder")
+                if d and d not in dirs:
+                    dirs.append(d)
+            if "~/.cache/huggingface/hub" not in dirs:
+                dirs.insert(0, "~/.cache/huggingface/hub")
+            download_dir = _server_text(item.get("downloadDir"), "download folder")
+            if download_dir and download_dir not in dirs:
+                download_dir = ""
+            platform = _server_text(item.get("platform"), "platform", 20).lower()
+            if platform and not re.fullmatch(r"[a-z-]+", platform):
+                platform = ""
+            entry = {"name": _server_text(item.get("name"), "name", 60), "host": host, "port": port, "env": env,
+                     "envPath": _server_text(item.get("envPath"), "environment path"), "color": color,
+                     "modelDirs": dirs, "downloadDir": download_dir, "platform": platform}
+            if not host:
+                if local_seen:
+                    continue   # one local entry: a second is the same machine twice
+                local_seen = True
+                out.insert(0, entry)
+            else:
+                out.append(entry)
+        return out
+
+    def _servers_answer(state=None) -> dict:
+        if state is None:
+            try:
+                state = (json.loads(_cookbook_state_path.read_text(encoding="utf-8"))
+                         if _cookbook_state_path.exists() else {})
+            except Exception:
+                state = {}
+        env = state.get("env") if isinstance(state, dict) and isinstance(state.get("env"), dict) else {}
+        servers = env.get("servers") if isinstance(env.get("servers"), list) else []
+        rev = env.get("serversRev")
+        return {"servers": servers, "defaultServer": env.get("defaultServer") or "",
+                "rev": rev if isinstance(rev, int) and not isinstance(rev, bool) else 0,
+                "hostPlatform": _client_host_platform()}
+
+    @router.get("/api/cookbook/servers")
+    def get_servers(request: Request):
+        """The machines the Forge serves on, the default one, and the list's revision."""
+        require_operator(request)
+        return _servers_answer()
+
+    @router.put("/api/cookbook/servers")
+    def set_servers(request: Request, body: dict = Body(...)):
+        """`{servers, defaultServer, rev}` — the whole list, made from revision
+        `rev`. A list made from an older revision is refused with the list as
+        it is now."""
+        from fastapi.responses import JSONResponse
+        require_operator(request)
+        if not isinstance(body, dict):
+            raise HTTPException(400, "Send {servers, defaultServer, rev}. Nothing was saved.")
+        servers = _clean_servers(body.get("servers"))
+        default = _server_text(body.get("defaultServer"), "default server", 600)
+        made_from = body.get("rev")
+        from core.atomic_io import atomic_write_json
+        # One lock for every read-modify-write of the file — the token's, this,
+        # and the whole-state save's — so none of them writes back what another
+        # just changed.
+        with _hf_token_lock:
+            try:
+                state = (json.loads(_cookbook_state_path.read_text(encoding="utf-8"))
+                         if _cookbook_state_path.exists() else {})
+            except Exception:
+                # Rebuildable (`check-config-writes`): as for the token's write.
+                logger.warning("cookbook state unreadable; the servers write starts it again")
+                state = {}
+            if not isinstance(state, dict):
+                state = {}
+            now = _servers_answer(state)
+            if isinstance(made_from, bool) or made_from != now["rev"]:   # `True == 1` is no revision
+                return JSONResponse({"detail": "The servers were changed in another window since this one read "
+                                               "them. This shows them as they are now; make your change again.",
+                                     "current": now}, status_code=409)
+            env = state.get("env") if isinstance(state.get("env"), dict) else {}
+            env["servers"] = servers
+            env["defaultServer"] = default
+            env["serversRev"] = now["rev"] + 1
+            state["env"] = env
+            atomic_write_json(_cookbook_state_path, state, indent=2)
+            _state_get_cache.update({"ts": 0.0, "mtime": 0.0, "value": None})
+            return _servers_answer(state)
+
     # ── Forge state persistence (cross-device sync) ──
 
     @router.get("/api/cookbook/state")
@@ -3529,22 +3680,15 @@ def setup_cookbook_routes() -> APIRouter:
                     on_disk = {}
             except Exception:
                 on_disk = {}
-            # Anti-wipe guard for env servers. The UI debounces a
-            # sync of whatever is in memory; if it fires before the state has
-            # hydrated from GET /state (a load-time race) or during a render
-            # glitch, `env.servers` would be empty and silently overwrite the
-            # saved servers on disk. Never let an empty/absent incoming
-            # env.servers clobber a populated on-disk one — preserve the disk
-            # values while still accepting the rest of the incoming env.
+            # Anti-wipe guard: a body with no env keeps the one on disk. The
+            # servers it used to guard are never this save's to write now
+            # (`B1258`: `_state_for_storage` keeps them as they are on disk).
             disk_env = on_disk.get("env") if isinstance(on_disk, dict) and isinstance(on_disk.get("env"), dict) else None
             if disk_env:
                 inc_env = data.get("env") if isinstance(data.get("env"), dict) else None
                 if inc_env is None:
                     data["env"] = disk_env
                     logger.warning("cookbook state POST: incoming body had no env; preserved on-disk env (anti-wipe guard)")
-                elif disk_env.get("servers") and not inc_env.get("servers"):
-                    inc_env["servers"] = disk_env["servers"]
-                    logger.warning("cookbook state POST: incoming env.servers empty; preserved on-disk servers (anti-wipe guard)")
 
             disk_tasks = on_disk.get("tasks") or [] if isinstance(on_disk, dict) else []
             incoming_tasks = data.get("tasks") if isinstance(data.get("tasks"), list) else []
@@ -3606,10 +3750,19 @@ def setup_cookbook_routes() -> APIRouter:
                             f"not in incoming body (race guard): "
                             f"{[t.get('sessionId') for t in preserved]}")
                 data["tasks"] = incoming_tasks + preserved
-            storage_state = _state_for_storage(data, on_disk)
-            if storage_state == on_disk:
-                return {"ok": True, "preserved": len(preserved), "unchanged": True}
-            atomic_write_json(str(_cookbook_state_path), storage_state, indent=2)
+            # `B1258`. Under the file's one lock, against the file as it is
+            # now: what the token's and the servers' doors keep is read here,
+            # not when this request began.
+            with _hf_token_lock:
+                try:
+                    fresh = (json.loads(_cookbook_state_path.read_text(encoding="utf-8"))
+                             if _cookbook_state_path.exists() else {})
+                except Exception:
+                    fresh = on_disk
+                storage_state = _state_for_storage(data, fresh)
+                if storage_state == fresh:
+                    return {"ok": True, "preserved": len(preserved), "unchanged": True}
+                atomic_write_json(str(_cookbook_state_path), storage_state, indent=2)
             try:
                 mtime = _cookbook_state_path.stat().st_mtime
                 _state_get_cache.update({

@@ -1838,6 +1838,45 @@ class DesignSystem(TimestampMixin, Base):
     tokens  = Column(Text, nullable=False, default="{}")
 
 
+class DesignShare(TimestampMixin, Base):
+    """`P26-09`. The studio's one sharing table: a design (`kind` "design",
+    `ref` its slug in the owner's `project`) or a design system (`kind`
+    "system", `ref` its id), shared by its owner with one other account as
+    viewer, commenter or editor. Read in one place, `src/design_access.py`;
+    a new table only, so `init_db`'s `create_all` is the whole migration."""
+    __tablename__ = "design_shares"
+
+    id      = Column(String, primary_key=True)
+    kind    = Column(String, nullable=False)
+    owner   = Column(String, nullable=False, index=True)
+    project = Column(Text, nullable=False, default="")
+    ref     = Column(String, nullable=False)
+    name    = Column(String, nullable=False, default="")
+    invitee = Column(String, nullable=False, index=True)
+    role    = Column(String, nullable=False, default="viewer")
+
+    __table_args__ = (
+        UniqueConstraint('kind', 'owner', 'project', 'ref', 'invitee', name='uq_design_shares_item_invitee'),
+    )
+
+
+class DesignNote(TimestampMixin, Base):
+    """`P26-09`. A note on a design or a design system, with its author — the
+    owner's, an editor's or a commenter's. A note is a note: it changes no
+    file. The design is named as a share names it (`kind`, `owner`, `project`,
+    `ref`); `selector` is the element it is about, when one was picked."""
+    __tablename__ = "design_notes"
+
+    id       = Column(String, primary_key=True)
+    kind     = Column(String, nullable=False)
+    owner    = Column(String, nullable=False, index=True)
+    project  = Column(Text, nullable=False, default="")
+    ref      = Column(String, nullable=False, index=True)
+    author   = Column(String, nullable=False)
+    text     = Column(Text, nullable=False)
+    selector = Column(Text, nullable=True)
+
+
 class AgentRunReport(Base):
     """`P24-06`. What one finished run of a hire left behind."""
     __tablename__ = "agent_run_reports"

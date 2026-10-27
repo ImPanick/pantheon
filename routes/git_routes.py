@@ -20,6 +20,7 @@ or `static/js/composerMenu.js`, its callers.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any, Dict
@@ -79,14 +80,18 @@ def setup_git_routes() -> APIRouter:
             body = await _body(request)
         except ValueError as e:
             return _refused(str(e), 413 if "16 KiB" in str(e) else 400)
-        db = SessionLocal()
-        try:
-            return G.change(db, get_current_user(request), body)
-        except G.GitRefused as r:
-            db.rollback()
-            return _refused(r.sentence, r.status)
-        finally:
-            db.close()
+
+        def _db_work():
+            db = SessionLocal()
+            try:
+                return G.change(db, get_current_user(request), body)
+            except G.GitRefused as r:
+                db.rollback()
+                return _refused(r.sentence, r.status)
+            finally:
+                db.close()
+        # `B1223`: its database work runs off the event loop.
+        return await asyncio.to_thread(_db_work)
 
     @router.get("/repos")
     async def my_repos(request: Request):

@@ -359,8 +359,11 @@ jobs:
       # at that quote. No route was reached by prose alone; two were reached by
       # code the old regex could not read (`/api/workspace/browse`, the design
       # preview).
+      # 27 -> 22 (`P27-10`): the vault card spells each `/api/vault/mine/…`
+      # path whole instead of joining it to a base, so the reader finds the
+      # callers it could not before.
       - name: check-unreachable
-        run: python3 .pantheon/check-unreachable.py --max-routes 27
+        run: python3 .pantheon/check-unreachable.py --max-routes 22
       # P0-31. A rename that finishes on one side of a join is invisible: the
       # writers move, the readers do not, and nothing raises. It happened four
       # times from one sweep — the API token prefix a person pastes into
