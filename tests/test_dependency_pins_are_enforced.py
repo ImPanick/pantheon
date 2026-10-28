@@ -498,7 +498,9 @@ def test_the_image_installs_no_python_package_that_no_requirements_file_declares
 # `Law 1`. Every comment line the two requirements files carried before they
 # were pinned, verbatim. This is the whole of it rather than a few sampled
 # phrases, because the prose IS the documentation: it is the only record of why
-# `mcp` is held below 2, why `httpx2` is test-client only, why `psycopg2-binary`
+# `mcp` moves a major line only with its servers, why `httpx2` is pinned (the
+# two paragraphs `B621` rewrote when the servers moved to 2.x, and which this
+# baseline now holds in their new words), why `psycopg2-binary`
 # rather than `psycopg2`, and — in the optional file — that PyMuPDF is AGPL-3.0.
 # A sweep that rewrites 37 lines is exactly the kind of change that quietly
 # takes a paragraph with it, and a sampled assertion is exactly the kind of test
@@ -521,12 +523,16 @@ _BASELINE_CORE_COMMENTS = """\
 # CalDAV sync (src/caldav_sync.py). Handles PROPFIND discovery + REPORT
 # fetch across Radicale, Nextcloud, Apple, Fastmail; we'd be reinventing
 # the protocol without it.
-# Built-in servers use the v1 low-level Server decorator API. MCP SDK v2 is a
-# breaking rewrite, so keep fresh installs on the maintained v1 line until the
-# servers are migrated together.
-# starlette.testclient prefers httpx2 since Starlette 1.2.0 and warns on every
-# TestClient import when only classic httpx is present. Runtime code keeps
-# using `httpx` above; this is test-client only.
+# MCP SDK. A major version of it is a migration, not a bump: Dependabot ignores
+# semver-major for `mcp` (`.github/dependabot.yml`), and
+# `tests/test_mcp_dependency_compatibility.py` holds this pin to one major line.
+# `B621`. 1.x -> 2.x was exactly that, and the ceiling that stood here (`<2`)
+# refused it "until the built-in servers move together". They moved together
+# The MCP SDK's HTTP transports run on httpx2 since mcp 2.x, and
+# `src/mcp_manager.py` builds the client a streamable-HTTP MCP session runs on
+# (`B621`); everything else at runtime uses `httpx` above. starlette.testclient
+# prefers it too, since Starlette 1.2.0, and warns on every TestClient import
+# when only classic httpx is present.
 # DATABASE_URL defaults to sqlite (core/database.py), but when pointed at an
 # external Postgres, SQLAlchemy's postgresql dialect imports psycopg2 inside
 # create_engine() and raises ModuleNotFoundError if missing. -binary avoids
