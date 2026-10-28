@@ -18,7 +18,10 @@ own `delivers`:
         "documents": [{"title": "...", "content": "..."}],
         "research": [{"id": "r1", "query": "...", "summary": "...", "sources": [{"title": "...", "url": "..."}]}],
         "memories": [{"text": "Ana started pottery in May", "category": "fact"}],
-        "chats": [{"title": "Trip to Lisbon", "messages": [{"role": "user", "content": "..."}]}]
+        "chats": [{"title": "Trip to Lisbon", "messages": [{"role": "user", "content": "..."}]}],
+        "screens": [{"screen": "Shop home — a [Basket] button at (1180, 40)"},
+                    {"after": "click at (1180, 40)", "screen": "Basket — 1 item, £12.00"}],
+        "models":  {"qwen3-8b": [{"match": "bakery", "reply": "..."}], "llama-3.1-8b": "..."}
       },
       "answers": ["deny"],
       "notebook": "- sorted: m0",
@@ -53,6 +56,17 @@ available* in every case, or from whatever the process had set) — and a
 case makes no loopback call: `resolve_contact` asks the world's mailbox for
 the mail history, and any request to the install's own address is refused
 in the world's words, so no case reads or writes a running install.
+
+`B1607`. A world has a screen and other models. `screens` is what the
+workstation's screen shows — the entry with no `after` before any action, and
+each entry's `screen` once an action whose words hold its `after` is done (a
+URL typed, "click at (1100, 600)") — kept until the next action changes it, so
+`computer` shows the page the agent is on; with no `screens` it answers by its
+shell rules as before. `models` is each model's replies, by words in the
+message (or one reply for any), and `list_models` lists them as it lists an
+endpoint's; `chat_with_model` answers from them, refuses a model the world
+does not have in the real tool's words, and without `models` is refused as
+any tool that would leave the install.
 """
 
 from __future__ import annotations
@@ -95,7 +109,14 @@ CHECK_KINDS = ("answer_contains", "answer_lacks", "document", "no_document", "ca
                "not_called", "drafts_at_most", "draft_to", "no_draft_to", "status",
                "file", "notebook_contains")
 WORLD_KEYS = ("emails", "web", "search", "shell", "documents", "notes", "calendar", "files", "accounts",
-              "research", "memories", "chats")
+              "research", "memories", "chats", "screens", "models")
+#: `B1607`. Where a world's `models` are listed — an endpoint no request
+#: reaches (the discard port, as the scripted model's): `chat_with_model` is
+#: the world's, and `list_models` reads the row, not the address.
+WORLD_MODELS_URL = "http://127.0.0.1:9/world-models/v1"
+WORLD_MODELS_ENDPOINT = "World models"
+#: What the screen shows when a world gives `screens` but no starting one.
+BLANK_SCREEN = "The workstation's browser, on an empty tab."
 
 
 class EvalRefused(ValueError):
@@ -143,6 +164,7 @@ def lint_evals(data: Any, manifest) -> List[Dict[str, Any]]:
         world = case.get("world") or {}
         _need(isinstance(world, dict) and not (set(world) - set(WORLD_KEYS)),
               f"Case “{cid}”'s world has keys nothing reads; a world has: {', '.join(WORLD_KEYS)}.")
+        _lint_screens_and_models(cid, world)
         for a in case.get("answers") or []:
             _need(a in ("approve_task", "deny"), f"Case “{cid}” answers “{a}”; an answer is approve_task or deny.")
         checks = case.get("checks") or []
@@ -160,6 +182,29 @@ def lint_evals(data: Any, manifest) -> List[Dict[str, Any]]:
                     _need(isinstance(call, list) and len(call) == 2 and isinstance(call[1], dict),
                           f"Case “{cid}” has a call that is not [tool, {{args}}].")
     return cases
+
+
+def _lint_screens_and_models(cid: str, world: Dict[str, Any]) -> None:
+    """`B1607`. A world's screen and models, each refused in a sentence."""
+    if "screens" in world:
+        screens = world["screens"]
+        _need(isinstance(screens, list) and all(
+            isinstance(r, dict) and isinstance(r.get("screen"), str) and r["screen"].strip()
+            and set(r) <= {"after", "screen"} and isinstance(r.get("after", ""), str) for r in screens),
+            f"Case “{cid}”'s screens are a list of {{\"screen\": what it shows}}, each but the first "
+            f"with \"after\": words in the action that brings it up.")
+        _need(sum(1 for r in screens if not r.get("after")) <= 1,
+              f"Case “{cid}” gives more than one screen with no “after”; only the starting screen has none.")
+    if "models" in world:
+        models = world["models"]
+        _need(isinstance(models, dict) and models and all(isinstance(k, str) and k.strip() for k in models),
+              f"Case “{cid}”'s models are a map of model name → its replies.")
+        for name, rules in models.items():
+            _need(isinstance(rules, str) or (isinstance(rules, list) and all(
+                isinstance(r, dict) and set(r) <= {"match", "reply", "error"}
+                and (isinstance(r.get("reply"), str) != isinstance(r.get("error"), str)) for r in rules)),
+                f"Case “{cid}”'s model “{name}” answers with one reply, or a list of "
+                f"{{\"match\": words in the message, \"reply\": its answer}} (or \"error\": why it failed).")
 
 
 def agent_dir(manifest) -> str:
@@ -192,6 +237,10 @@ class World:
     #: `B1602`. Every request a case made to the install's own address —
     #: refused, so none reached a running install; kept so a test can say so.
     loopback: List[str] = field(default_factory=list)
+    #: `B1607`. What the screen shows now (`screens`), and every message a
+    #: world model was asked, `(model, message)`.
+    screen: Optional[str] = None
+    asked: List[Tuple[str, str]] = field(default_factory=list)
 
     def _args(self, content: str) -> Dict[str, Any]:
         try:
@@ -262,6 +311,8 @@ class World:
     def _outside(self, tool: str, args: Dict[str, Any]) -> Dict[str, Any]:
         """`P24-27`. A tool that leaves the install and is not one of the
         world's own: deep research the world can start, or a refusal."""
+        if tool == "chat_with_model" and "models" in self.fixture:
+            return self._model(args)
         if tool == "trigger_research" and "research" in self.fixture:
             topic = str(args.get("topic") or args.get("query") or "").strip()
             self.research.append(topic)
@@ -270,6 +321,63 @@ class World:
                     "session_id": sid, "exit_code": 0}
         return {"error": f"This world has no {tool}: an evaluation runs inside the install, and "
                          f"nothing in an evaluation leaves it.", "exit_code": 1}
+
+    def _computer(self, content: str) -> Dict[str, Any]:
+        """`B1607`. One action on the world's screen: the action the real tool
+        would take (`computer_tools.parse_args`, refused in its words), then
+        the screen it leaves — the entry whose `after` is in what was done, or
+        the screen as it was. The picture is the screen's text: an evaluation
+        has no display, and a model reads it as it would read a screenshot."""
+        from src.agent_tools.computer_tools import SCREENSHOT, describe_action, parse_args
+        args, problem = parse_args(content)
+        if problem:
+            return {"error": problem, "exit_code": 1}
+        rules = self.fixture.get("screens") or []
+        if self.screen is None:
+            self.screen = next((r["screen"] for r in rules if not r.get("after")), BLANK_SCREEN)
+        what = describe_action(args)
+        if args["action"] != SCREENSHOT:
+            done = (what + "\n" + json.dumps(args, ensure_ascii=False)).lower()
+            hit = next((r for r in rules if r.get("after") and r["after"].lower() in done), None)
+            if hit is not None:
+                self.screen = hit["screen"]
+        did = "Took a screenshot." if args["action"] == SCREENSHOT else f"Did: {what}."
+        return {"output": f"{did} The screen shows: {self.screen}", "exit_code": 0,
+                "screenshot_caption": "Screen" if args["action"] == SCREENSHOT else f"Screen after {what}"}
+
+    def _model(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """`B1607`. `chat_with_model` from the world's `models`: the model by
+        name (exact, then in part, as `_resolve_model` matches), the first
+        reply whose `match` is in the message. A model the world lacks is
+        refused in the real tool's words."""
+        if "model" in args:
+            spec, message = str(args.get("model") or ""), str(args.get("message") or "")
+        else:
+            spec, _, message = str(args.get("text") or "").strip().partition("\n")
+        spec, message = spec.strip(), message.strip()
+        if not spec:
+            return {"error": "First line must be the model name"}
+        if not message:
+            return {"error": "No message provided (line 2+ is the message)"}
+        name = spec.rsplit("@", 1)[0].strip().lower()
+        models = self.fixture.get("models") or {}
+        key = next((k for k in models if k.lower() == name), None) or next(
+            (k for k in models if name and (name in k.lower() or k.lower() in name)), None)
+        if key is None:
+            return {"error": f"Model '{spec}' is not listed by any endpoint now. "
+                             f"Call list_models for the names that are."}
+        self.asked.append((key, message))
+        rules = models[key]
+        if isinstance(rules, str):
+            return {"model": key, "response": rules}
+        low = message.lower()
+        hit = next((r for r in rules if not r.get("match") or str(r["match"]).lower() in low), None)
+        if hit is None:
+            return {"error": f"Failed to get response from {spec}: it gave no answer to that in this world.",
+                    "untrusted_content": True}
+        if "error" in hit:
+            return {"error": f"Failed to get response from {spec}: {hit['error']}", "untrusted_content": True}
+        return {"model": key, "response": hit["reply"]}
 
     def _answer(self, tool: str, args: Dict[str, Any], content: str):
         mails = self.fixture.get("emails") or []
@@ -314,6 +422,8 @@ class World:
             url = str(args.get("url") or "")
             page = (self.fixture.get("web") or {}).get(url)
             return page if page is not None else {"error": f"{url} answered 404 in this world."}
+        if tool == "computer" and "screens" in self.fixture:
+            return self._computer(content)
         # A shell: the first rule whose `match` is in the command answers.
         cmd = str(args.get("command") or args.get("code") or args.get("action") or content or "")
         for rule in self.fixture.get("shell") or []:
@@ -587,8 +697,13 @@ def _seed(db, owner: str, world: Dict[str, Any], data_dir: str) -> Dict[str, str
         entries = mm.load_all_for_update()
         for item in world["memories"]:
             item = {"text": item} if isinstance(item, str) else item
-            entries.append(mm.add_entry(str(item["text"]), source="eval", owner=owner,
-                                        category=str(item.get("category") or "fact")))
+            entry = mm.add_entry(str(item["text"]), source="eval", owner=owner,
+                                 category=str(item.get("category") or "fact"))
+            # `P24-27`. A memory may name its id, as a document or a note may,
+            # so a script can edit or delete it and an answer can quote it.
+            if item.get("id"):
+                entry["id"] = str(item["id"])
+            entries.append(entry)
         mm.save(entries)
     if world.get("chats"):
         # `B1602`. The person's earlier chats, where the session tools and
@@ -601,6 +716,13 @@ def _seed(db, owner: str, world: Dict[str, Any], data_dir: str) -> Dict[str, str
             sm.create_session(sid, str(chat.get("title") or f"Chat {n}"), "", "", owner=owner)
             for msg in chat.get("messages") or []:
                 sm.add_message(sid, ChatMessage(str(msg.get("role") or "user"), str(msg.get("content") or "")))
+    if world.get("models"):
+        # `B1607`. The world's models, where `list_models` reads an endpoint's.
+        from core.database import ModelEndpoint
+        db.add(ModelEndpoint(id=str(uuid.uuid4()), name=WORLD_MODELS_ENDPOINT, is_enabled=True,
+                             base_url=WORLD_MODELS_URL, endpoint_kind="local",
+                             cached_models=json.dumps(list(world["models"]))))
+        db.commit()
     if world.get("files"):
         from src.tool_execution import projects_root
         root = projects_root(owner, create=True)
@@ -781,6 +903,12 @@ async def run_case(manifest, case: Dict[str, Any], *, factory, data_dir: str,
             if callable(fn) and getattr(mod, "__name__", "").startswith(("src.", "routes.", "core.")):
                 p.set(mod, fname, (lambda real: lambda o, *a, **k: o == EVAL_OWNER or real(o, *a, **k))(fn))
     p.set(agent_loop, "blocked_tools_for_owner", lambda o: set())
+    # `B1607`. The world is the workstation: `computer` is answered from its
+    # screens (or shell rules), so the loop offers it. It was withheld — no
+    # workstation is set up in a world — so every case's `computer` call was
+    # refused before the world could answer it, and Site Builder's sample
+    # said "screenshot taken" over a refusal.
+    p.set(agent_loop, "_computer_unavailable_reason", lambda owner, **kw: None)
     p.set(agent_loop, "get_mcp_manager", lambda: None)
     url, name = endpoint or SCRIPTED_URL, model or SCRIPTED_MODEL
     if endpoint is None:

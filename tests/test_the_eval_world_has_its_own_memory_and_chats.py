@@ -137,3 +137,21 @@ def test_a_call_to_the_installs_own_address_is_refused_in_the_worlds_words():
         p.undo()
     assert len(world.loopback) == 3
     assert httpx.AsyncClient.send.__name__ == "send", "the guard outlived its case"
+
+
+def test_a_memory_may_name_its_id(monkeypatch):
+    """`P24-27`. A seeded memory may name its id, as a document or a note
+    may: Memory Auditor's answer quotes the ids it flags, and a case that
+    tries to delete one names it — a random id could be neither."""
+    seen = _spy_on_pantheons_own_tools(monkeypatch)
+    m = get_agent(None, "gift-date-keeper")
+    case = {
+        "id": "a-named-memory",
+        "world": {"memories": [{"id": "ab12cd34", "text": "Ana's birthday is 12 November"}]},
+        "script": [{"call": [["manage_memory", {"action": "list"}]]},
+                   {"say": "**Coming up**\n- Ana\n\n**Reminders set**\n- none\n\n## Report\n- 1\n\n## Carry forward\n- nothing"}],
+        "checks": [{"called": "manage_memory"}],
+    }
+    asyncio.run(E.run_agent(m, cases=[case]))
+    listed = _out(next(out for t, out in seen if t == "manage_memory"))
+    assert "`ab12cd34`" in listed, listed

@@ -7,14 +7,10 @@
  ],
  "wrote": [
   "write_file",
-  "bash"
+  "bash",
+  "computer"
  ],
- "refused": [
-  {
-   "tool": "computer",
-   "reason": "Tool 'computer' is disabled by the current request policy."
-  }
- ],
+ "refused": [],
  "checks": [
   {
    "check": "the answer",
