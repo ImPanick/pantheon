@@ -542,26 +542,95 @@ def _in_ks_x_1001(ch: str) -> bool:
         return False
 
 
+def _is_hangul_syllable(ch: str) -> bool:
+    return "\uac00" <= ch <= "\ud7a3"
+
+
+def _is_ideograph(ch: str) -> bool:
+    return unicodedata.name(ch, "").startswith("CJK UNIFIED")
+
+
+def _is_kana(ch: str) -> bool:
+    """Hiragana or katakana, the prolonged-sound mark included."""
+    return "\u3041" <= ch <= "\u3096" or "\u30a1" <= ch <= "\u30fc"
+
+
+def _hanja_inside_words(decoded: str) -> int:
+    """`B1597`. Runs of ideographs with a Hangul syllable directly on **both**
+    sides. Korean writes Hanja as words — a run after a space or at the start,
+    a particle after it (`大韓民國은`, `國民에게`); a Chinese text read as a
+    Korean codec scatters single Hanja between syllables, because GB2312's
+    rows from 0xCA on are KS X 1001's Hanja rows and the rows before them its
+    syllable rows (`되쩌呵겨`)."""
+    count = 0
+    i = 0
+    while i < len(decoded):
+        if not _is_ideograph(decoded[i]):
+            i += 1
+            continue
+        j = i
+        while j < len(decoded) and _is_ideograph(decoded[j]):
+            j += 1
+        if i and j < len(decoded) and _is_hangul_syllable(decoded[i - 1]) \
+                and _is_hangul_syllable(decoded[j]):
+            count += 1
+        i = j
+    return count
+
+
 def _not_korean(decoded: str) -> int:
     """How much of a Hangul reading Korean writing does not do (`B402`,
     `B1514`, the block above): compatibility jamo outside
     `_JAMO_WRITTEN_ALONE` glued after a syllable or an ideograph, two or more;
-    and the syllables outside KS X 1001, when they are at least half of the
-    distinct syllables and at least two. ``0`` for anything that is not Hangul.
+    the syllables outside KS X 1001, when they are at least half of the
+    distinct syllables and at least two; and (`B1597`) Chinese's own marks —
+    full-width punctuation, not one space, and Hanja inside a word
+    (`_hanja_inside_words`), all three. ``0`` for anything that is not Hangul.
+
+    `B1597`'s three are asked together because each alone is something Korean
+    does: a headline glues `北` to its particle, a chat runs on without a
+    space, an old document carries a full-width comma. Chinese read as cp949
+    does all three at once — every one of the sweep's 30 cuts carried the
+    full-width comma, none a space, 27 a Hanja inside a word — and the
+    968 Korean cuts none of them. The one Korean found that does all three was
+    written to (`새누리黨은，國會에서法案을처리했다`, no space anywhere): it is
+    refused with `ENCODING_UNIDENTIFIED` rather than read, which is this
+    rule's cost, and a CJK frequency table is what would remove it.
     """
-    def _word(ch: str) -> bool:
-        return "\uac00" <= ch <= "\ud7a3" or unicodedata.name(ch, "").startswith("CJK UNIFIED")
     glued = sum(
         1 for i, ch in enumerate(decoded)
         if "\u3131" <= ch <= "\u318e" and ch not in _JAMO_WRITTEN_ALONE
-        and i and _word(decoded[i - 1])
+        and i and (_is_hangul_syllable(decoded[i - 1]) or _is_ideograph(decoded[i - 1]))
     )
-    syllables = {ch for ch in decoded if "\uac00" <= ch <= "\ud7a3"}
+    syllables = {ch for ch in decoded if _is_hangul_syllable(ch)}
     rare = sum(1 for ch in syllables if not _in_ks_x_1001(ch))
     evidence = glued if glued >= 2 else 0
     if rare >= 2 and rare * 2 >= len(syllables):
         evidence += rare
+    if syllables and any(0xFF01 <= ord(ch) <= 0xFF5E for ch in decoded) \
+            and not any(ch.isspace() for ch in decoded):
+        evidence += _hanja_inside_words(decoded)
     return evidence
+
+
+#: `B1596`. The Chinese and Japanese codecs, as `_canonical_codec` spells them.
+_CHINESE_CODECS = frozenset({"gb2312", "gbk", "gb18030", "hz", "big5", "big5hkscs", "cp950"})
+_JAPANESE_CODECS = frozenset({"euc_jp", "euc_jis_2004", "euc_jisx0213", "shift_jis",
+                              "shift_jis_2004", "shift_jisx0213", "cp932"})
+
+
+def _not_chinese(decoded: str) -> int:
+    """`B1596`. A Chinese reading that is Japanese: kana at least half of its
+    kana and ideographs together, four or more. GB2312 put hiragana and
+    katakana in the rows JIS X 0208 put them in, so EUC-JP read as GB18030
+    keeps every kana and turns only the kanji into other hanzi
+    (`ログインに己窃しました`) — neither `B402`'s signal nor `B1514`'s can see
+    it, since nothing in it is Hangul. Chinese writes kana only quoting
+    Japanese, between the hanzi that say what it means; text that is mostly
+    kana is Japanese text. The kana count, or ``0``."""
+    kana = sum(1 for ch in decoded if _is_kana(ch))
+    ideographs = sum(1 for ch in decoded if _is_ideograph(ch))
+    return kana if kana >= 4 and kana * 2 >= kana + ideographs else 0
 
 
 def _canonical_codec(name: str) -> str | None:
@@ -658,7 +727,8 @@ def _more_plausible_alternative(head: bytes, detected: str) -> str | None:
         return None
     symbols = _word_interior_symbols(baseline_text)
     not_korean = _not_korean(baseline_text)
-    if symbols == 0 and not_korean == 0:
+    not_chinese = _not_chinese(baseline_text) if canonical_detected in _CHINESE_CODECS else 0
+    if symbols == 0 and not_korean == 0 and not_chinese == 0:
         # Nothing about this reading says mojibake. Whatever else is true of it,
         # this rule has no evidence and does not get an opinion.
         return None
@@ -676,11 +746,14 @@ def _more_plausible_alternative(head: bytes, detected: str) -> str | None:
             continue
         if _not_korean(decoded):
             continue   # `B1514`: never trade one misreading for another
-        if not_korean:
-            # `B402`/`B1514`. A Korean answer that is not Korean, against a
-            # rival reading that is clean — not one replacement character —
-            # and no worse in either of `B280`'s measures. Both readings can be
-            # all letters, so "more letter-like" is not asked of it.
+        if not_chinese and name not in _JAPANESE_CODECS:
+            continue   # `B1596`: the evidence is that the text is Japanese
+        if not_korean or not_chinese:
+            # `B402`/`B1514`. A Korean answer that is not Korean — or (`B1596`)
+            # a Chinese one that is Japanese — against a rival reading that is
+            # clean, not one replacement character, and no worse in either of
+            # `B280`'s measures. Both readings can be all letters, so "more
+            # letter-like" is not asked of it.
             if (_replacement_ratio(decoded) == 0.0
                     and _word_interior_symbols(decoded) <= symbols
                     and _prose_plausibility(decoded) >= baseline):

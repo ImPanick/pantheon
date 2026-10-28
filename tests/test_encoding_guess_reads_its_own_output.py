@@ -509,3 +509,87 @@ def test_a_korean_reading_that_is_not_korean_and_has_no_rival_is_refused(monkeyp
     monkeypatch.setattr(dp, "_detect_encoding", lambda head: "johab")
     assert describe_text_encoding(body) == (None, dp.ENCODING_UNIDENTIFIED)
 
+
+
+# ── `B1596` / `B1597`: Japanese read as Chinese, Chinese read as Korean ─────
+#
+# Measured over the `B402` sweep (3,017 cuts, 24–160 bytes, nine CJK
+# encodings): 16 EUC-JP cuts were answered GB18030 and 30 GB2312/GBK/GB18030
+# cuts cp949. Now 0 and 3, nothing that was right is wrong, and no new
+# refusal (`src/document_processor.py`'s `_not_chinese`, `_hanja_inside_words`).
+
+LOGIN_JA = "ログインに失敗しました。パスワードが正しいかどうか確認してから、もう一度お試しください。"
+LOGIN_ZH = "登录失败，请确认您的密码是否正确，然后再试一次。"
+
+
+def _cuts(text, encoding):
+    for n in range(1, len(text) + 1):
+        body = text[:n].encode(encoding)
+        if len(body) >= dp._MIN_MULTIBYTE_SAMPLE:
+            yield text[:n], body
+
+
+def test_an_euc_jp_sentence_the_detector_ranks_gb18030_first_reads_as_japanese(tmp_path):
+    """`B1596`'s `Verify:`. GB2312 keeps hiragana and katakana in the rows
+    JIS X 0208 keeps them in, so the GB18030 reading keeps every kana and
+    swaps only the kanji — 失敗 → 己窃, 確認 → 澄千 — and nothing in it is
+    Hangul for `B402`'s or `B1514`'s signal to see. A Chinese reading that is
+    mostly kana is Japanese text."""
+    ranked_chinese = 0
+    for chunk, body in _cuts(LOGIN_JA, "euc_jp"):
+        if dp._canonical_codec(dp._detect_encoding(body)) == "gb18030":
+            ranked_chinese += 1
+            assert dp._not_chinese(body.decode("gb18030")) > 0
+        assert body.decode(sniff_text_encoding(body)) == chunk, chunk
+    assert ranked_chinese >= 10, "the detector no longer ranks GB18030 first — this measures nothing"
+    body = LOGIN_JA.encode("euc_jp")
+    assert decode_text_file(_write(tmp_path, "notes.txt", body)) == LOGIN_JA
+
+
+@pytest.mark.parametrize("encoding", ["gb2312", "gbk", "gb18030"])
+def test_a_gb2312_sentence_above_the_floor_reads_as_chinese(tmp_path, encoding):
+    """`B1597`'s `Verify:`. The cp949 reading is KS X 1001 syllables plus
+    Hanja — GB2312's rows from 0xCA on are KS X 1001's Hanja rows — so no jamo
+    is glued anywhere; what gives it away is Chinese's own writing: the
+    full-width comma, not one space, and single Hanja between syllables
+    (`되쩌呵겨`)."""
+    ranked_korean = 0
+    for chunk, body in _cuts(LOGIN_ZH, encoding):
+        if dp._canonical_codec(dp._detect_encoding(body)) in dp._KOREAN_CODECS:
+            ranked_korean += 1
+        assert body.decode(sniff_text_encoding(body)) == chunk, chunk
+    assert ranked_korean >= 5, "the detector no longer ranks cp949 first — this measures nothing"
+    assert decode_text_file(_write(tmp_path, "notes.txt", LOGIN_ZH.encode(encoding))) == LOGIN_ZH
+
+
+CHINESE_QUOTING_JAPANESE = [
+    ("gb2312", "こんにちは是你好的意思，ありがとう是谢谢的意思。"),
+    ("gb2312", "ありがとうございます是日语里谢谢的意思"),
+    ("gb18030", "日语五十音图：あいうえお、かきくけこ、さしすせそ。"),
+    ("gbk", "动漫《となりのトトロ》的中文名是龙猫"),
+]
+
+
+@pytest.mark.parametrize("encoding,text", CHINESE_QUOTING_JAPANESE)
+def test_chinese_that_quotes_japanese_stays_chinese(encoding, text):
+    """`Law 1` for `B1596`: Chinese writes kana when it quotes Japanese, among
+    the hanzi that say what it means — a share `_not_chinese` leaves alone."""
+    body = text.encode(encoding)
+    assert body.decode(sniff_text_encoding(body)) == text
+
+
+KOREAN_WITH_HANJA_AND_FULL_WIDTH = [
+    ("cp949", "大韓民國은 民主共和國이다，大韓民國의 主權은 國民에게 있다．"),
+    ("euc_kr", "새누리黨은 오늘，國會에서 法案을 처리했다．"),
+    ("euc_kr", "김大中前대통령은，北韓을 방문했다"),
+]
+
+
+@pytest.mark.parametrize("encoding,text", KOREAN_WITH_HANJA_AND_FULL_WIDTH)
+def test_korean_with_hanja_and_full_width_punctuation_stays_korean(encoding, text):
+    """`Law 1` for `B1597`, on the Korean nearest the signal: Hanja glued to
+    syllables and a full-width comma — with the spaces Korean writes between
+    words, which Chinese never does, so the three never meet."""
+    body = text.encode(encoding)
+    assert dp._not_korean(text) == 0
+    assert body.decode(sniff_text_encoding(body)) == text
