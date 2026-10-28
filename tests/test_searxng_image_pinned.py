@@ -149,3 +149,70 @@ def test_the_chroma_server_is_the_release_its_client_is_pinned_to():
                    if _split_image(ref)[0].endswith("chromadb/chroma")]
         assert servers == [client_version], (
             f"{path.name}: chroma server {servers} against chromadb-client=={client_version}")
+
+
+# ── `B1626`: the volume is mounted where the pinned server writes ──
+#
+# `chromadb/chroma` 1.x runs `chroma run /config.yaml`, and where it keeps its
+# index is that file's `persist_path` — not `/chroma/chroma`, the 0.x image's
+# path, which all three files mounted. So `chromadb-data` stayed empty, the
+# index lived in the container's writable layer, and every recreate (`docker
+# compose up -d --force-recreate chromadb`, a changed image, a changed block)
+# dropped every collection.
+#
+# Where a tag writes is a fact about that image, so it is read from the image
+# and written down here with where it was read; the files are then held to it
+# with no Docker daemon. 1.5.9, read 2026-10-28 from Docker Hub: the amd64
+# image's config is `Entrypoint ["dumb-init", "--", "chroma"]`,
+# `Cmd ["run", "/config.yaml"]`, and its 131-byte layer
+# `sha256:95ebd62f…41b29e` is that one file, `persist_path: "/data"` — a copy
+# of `rust/frontend/sample_configs/docker_single_node.yaml` at the `1.5.9`
+# tag. Chroma's v1.0.0 migration note says it in words: "The default data
+# location in the container has changed from `/chroma/chroma` to `/data`."
+# A pin moved to a tag this table does not hold fails until someone reads the
+# new tag the same way.
+CHROMA_PERSIST_PATH = {"1.5.9": "/data"}
+
+
+def _mounts(spec: dict) -> list[tuple[str, str]]:
+    """`(source, target)` for each of a service's volumes, short syntax
+    (`source:target[:mode]`) or long (`{source, target}`) — compose's two."""
+    out = []
+    for vol in spec.get("volumes") or []:
+        if isinstance(vol, dict):
+            out.append((str(vol.get("source") or ""), str(vol.get("target") or "")))
+        else:
+            parts = str(vol).split(":")
+            out.append((parts[0], parts[1]) if len(parts) > 1 else ("", parts[0]))
+    return out
+
+
+def _environment(spec: dict) -> dict:
+    env = spec.get("environment") or {}
+    if isinstance(env, list):
+        env = dict(item.split("=", 1) if "=" in item else (item, "") for item in env)
+    return env
+
+
+def test_chromas_volume_is_mounted_where_the_pinned_server_writes():
+    for path in COMPOSE_FILES:
+        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        chroma = [spec for spec in (doc.get("services") or {}).values()
+                  if isinstance(spec, dict)
+                  and _split_image(spec.get("image") or "")[0].endswith("chromadb/chroma")]
+        assert len(chroma) == 1, f"{path.name}: expected one chroma service, found {len(chroma)}"
+        spec = chroma[0]
+        tag = _split_image(spec["image"])[1]
+        assert tag in CHROMA_PERSIST_PATH, (
+            f"{path.name} pins chromadb/chroma:{tag}, and where that release keeps its index "
+            f"has not been read — find its `persist_path` (the image's command and the config "
+            f"file it names) and add it to CHROMA_PERSIST_PATH (`B1626`)")
+        # The server reads `CHROMA_`-prefixed variables over its config file,
+        # so a `CHROMA_PERSIST_PATH` set here would be where it writes instead.
+        writes = _environment(spec).get("CHROMA_PERSIST_PATH") or CHROMA_PERSIST_PATH[tag]
+        there = [source for source, target in _mounts(spec) if target.rstrip("/") == writes]
+        declared = doc.get("volumes") or {}
+        assert there and there[0] in declared, (
+            f"{path.name}: chromadb/chroma:{tag} keeps its index in {writes}, and the "
+            f"service mounts {_mounts(spec)} — the index is in the container's own layer and "
+            f"a recreate loses it (`B1626`). Mount the `chromadb-data` volume at {writes}.")

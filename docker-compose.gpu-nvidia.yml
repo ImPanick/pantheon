@@ -183,7 +183,13 @@ services:
     ports:
       - "${CHROMADB_BIND:-127.0.0.1}:8100:8000"
     volumes:
-      - chromadb-data:/chroma/chroma
+      # `B1626`: `/data` is where this image keeps its index. Its command is
+      # `run /config.yaml`, and that file says `persist_path: "/data"` (read
+      # from the 1.5.9 image's own layer; Chroma's 1.0 migration notes say the
+      # same). The mount was `/chroma/chroma`, the 0.x path, so this volume
+      # stayed empty and the index lived in the container's layer — kept
+      # across a restart, lost on every recreate. Re-check it with the pin.
+      - chromadb-data:/data
     environment:
       - ANONYMIZED_TELEMETRY=FALSE
     restart: unless-stopped
