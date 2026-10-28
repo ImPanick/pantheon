@@ -106,13 +106,19 @@ def test_the_per_model_routes_are_called():
     assert "method: 'DELETE'" in PANEL
 
 
-def test_every_embedding_route_now_has_a_frontend_caller():
+def test_every_embedding_route_now_has_a_frontend_caller(monkeypatch):
     """The row's own Verify, measured with the checker rather than asserted.
 
     Also the trap this cost: a NEW frontend file is invisible to
     `check-unreachable` until it is `git add`ed, because the scan is
-    `git ls-files`. The panel was fully wired and the inventory was unchanged."""
+    `git ls-files`. The panel was fully wired and the inventory was unchanged.
+
+    `B1633`: `app_routes()` starts with `import app`, so the app is imported
+    here first, through the helper that gives the process back — bare, it
+    left the app and its `McpManager` installed for every later file."""
     import importlib.util
+    from tests.helpers.fresh_import import import_app_in_this_test
+    import_app_in_this_test(monkeypatch)
     spec = importlib.util.spec_from_file_location(
         "cu", str(ROOT / ".pantheon" / "check-unreachable.py"))
     mod = importlib.util.module_from_spec(spec)

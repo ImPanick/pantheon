@@ -62,12 +62,20 @@ def test_the_documented_thresholds_match_the_code():
         assert phrase in INDEX, f"the panel's prose no longer says: {phrase}"
 
 
-def test_both_routes_are_actually_mounted():
+def test_both_routes_are_actually_mounted(monkeypatch):
     """Checked because a flat `app.routes` walk says they are not — this
     FastAPI wraps included routers, so the flat view misses them, and that
     false alarm has now cost two people time. The checker's own traversal is
-    the one that tells the truth."""
+    the one that tells the truth.
+
+    `B1633`: the traversal starts with `import app`, so the app is imported
+    here first, through the helper that gives the process back. Run bare it
+    left the app imported — and its `McpManager` installed — for every file
+    after this one, and `test_the_eval_world_answers_a_retrieval_index.py`'s
+    world without `rag` was answered by that manager."""
     import importlib.util
+    from tests.helpers.fresh_import import import_app_in_this_test
+    import_app_in_this_test(monkeypatch)
     spec = importlib.util.spec_from_file_location(
         "cu", str(ROOT / ".pantheon" / "check-unreachable.py"))
     mod = importlib.util.module_from_spec(spec)

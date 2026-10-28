@@ -522,6 +522,24 @@ def _isolation_sweep(finished_file):
         _isolation["seen"].add(where)
         _isolation["leaks"].setdefault(finished_file, []).append(
             f"{where} (a different mapped class than the one the session started with)")
+    # `B1633`. The app, left imported. Its body installs an `McpManager` and
+    # the other singletons `tests/helpers/fresh_import.APP_INSTALLS` names, so
+    # a file that imports it in process and does not give it back hands them
+    # to every file after it — `B1180` through a plain `import app`, `B1633`
+    # through a checker a test loaded (`check-unreachable.py`'s `app_routes()`
+    # imports the app), a door the AST guard in
+    # `test_importing_the_app_in_a_test_leaves_nothing_behind.py` cannot see.
+    app = sys.modules.get("app")
+    if (app is not None and "app" not in _isolation["seen"]
+            and os.path.abspath(getattr(app, "__file__", "") or "") == _APP_FILE):
+        _isolation["seen"].add("app")
+        _isolation["leaks"].setdefault(finished_file, []).append(
+            "app (imported in process and left in sys.modules, with the MCP manager "
+            "its body installs — import it through "
+            "tests/helpers/fresh_import.import_app_in_this_test, which gives both back)")
+
+
+_APP_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app.py")
 
 
 def pytest_runtest_logstart(nodeid, location):
