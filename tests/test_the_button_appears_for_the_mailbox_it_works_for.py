@@ -296,7 +296,8 @@ def test_the_authorize_route_refuses_a_half_configured_deployment(monkeypatch):
             r.endpoint for r in router.routes
             if r.path == "/api/email/oauth/{provider_id}/authorize"
         )
-        return await endpoint(
+        # `B1609`: a plain `def` now (it awaits nothing), so it is called, not awaited.
+        return endpoint(
             provider_id=provider_id, account_id="acct-1", request=None, owner="alice"
         )
 

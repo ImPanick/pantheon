@@ -465,11 +465,12 @@ async def test_scheduled_email_routes_are_owner_scoped(tmp_path, monkeypatch):
     cancel_scheduled = _route_endpoint(router, "/api/email/scheduled/{sid}", "DELETE")
 
     send_at = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
-    alice = await schedule_email(
+    # `B1609`: a plain `def` now (it awaits nothing), so it is called, not awaited.
+    alice = schedule_email(
         {"to": "a@example.com", "body": "alice body", "send_at": send_at},
         owner="alice",
     )
-    bob = await schedule_email(
+    bob = schedule_email(
         {"to": "b@example.com", "body": "bob body", "send_at": send_at},
         owner="bob",
     )

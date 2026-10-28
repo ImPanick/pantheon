@@ -48,7 +48,7 @@ def schedule(tmp_path, monkeypatch):
 async def test_positive_offset_stored_as_naive_utc(schedule):
     endpoint, stored = schedule
     local = datetime.now(timezone(timedelta(hours=2))) + timedelta(hours=1)
-    res = await endpoint(
+    res = endpoint(  # `B1609`: a plain `def` now
         {"to": "a@example.com", "body": "b", "send_at": local.isoformat()},
         owner="alice",
     )
@@ -66,7 +66,7 @@ async def test_positive_offset_stored_as_naive_utc(schedule):
 async def test_negative_offset_does_not_fire_early(schedule):
     endpoint, stored = schedule
     local = datetime.now(timezone(timedelta(hours=-5))) + timedelta(hours=3)
-    res = await endpoint(
+    res = endpoint(  # `B1609`: a plain `def` now
         {"to": "a@example.com", "body": "b", "send_at": local.isoformat()},
         owner="alice",
     )
@@ -82,7 +82,7 @@ async def test_z_suffix_stored_without_suffix(schedule):
     endpoint, stored = schedule
     utc = datetime.now(timezone.utc) + timedelta(hours=1)
     send_at = utc.replace(tzinfo=None).isoformat() + "Z"
-    res = await endpoint(
+    res = endpoint(  # `B1609`: a plain `def` now
         {"to": "a@example.com", "body": "b", "send_at": send_at},
         owner="alice",
     )
@@ -94,7 +94,7 @@ async def test_z_suffix_stored_without_suffix(schedule):
 async def test_naive_utc_send_at_unchanged(schedule):
     endpoint, stored = schedule
     naive = (datetime.utcnow() + timedelta(days=1)).isoformat()
-    res = await endpoint(
+    res = endpoint(  # `B1609`: a plain `def` now
         {"to": "a@example.com", "body": "b", "send_at": naive}, owner="alice"
     )
     assert res["success"] is True

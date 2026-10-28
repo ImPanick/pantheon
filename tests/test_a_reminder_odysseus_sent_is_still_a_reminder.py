@@ -175,7 +175,8 @@ async def test_clear_reminders_takes_odysseus_reminders_too(world):
         world["add_account"](srv.port)
         _fill(srv)
         _, clear = _routes(world)
-        await clear(account_id=ACCOUNT, permanent=False, owner=OWNER)
+        # `B1609`: a plain `def` now — its IMAP talk runs in a worker thread, as here.
+        await asyncio.to_thread(clear, account_id=ACCOUNT, permanent=False, owner=OWNER)
         stored = {int(u) for line in srv.box.log
                   for u in re.findall(r"UID STORE (\d+) \+FLAGS", line, re.I)}
     assert stored == {i for i, (_, _, reminder) in enumerate(_MAILBOX, start=1) if reminder}

@@ -7394,7 +7394,9 @@ async def stream_agent_loop(
             "[agent] keeping contextual path for low-signal turn in existing conversation latest=%r",
             _last_user[:80],
         )
-    _mcp_disabled_map = _load_mcp_disabled_map() if mcp_mgr else {}
+    # `B1609`: `load_disabled_map` opens its session as `_SessionLocal`, which
+    # the off-the-loop scan did not read as one; the read goes to a thread.
+    _mcp_disabled_map = (await asyncio.to_thread(_load_mcp_disabled_map)) if mcp_mgr else {}
     if _direct_low_signal:
         logger.info("[agent] direct low-signal reply path for latest=%r", _last_user[:80])
         direct_messages = (

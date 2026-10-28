@@ -185,7 +185,8 @@ async def test_the_authorize_redirect_is_built_from_the_record(acme, monkeypatch
     monkeypatch.setattr(
         "routes.email_routes._assert_owns_account", lambda *a, **k: None
     )
-    resp = await authorize(
+    # `B1609`: a plain `def` now (it awaits nothing), so it is called, not awaited.
+    resp = authorize(
         provider_id="acme", account_id="acct-1", request=None, owner="alice"
     )
     location = resp.headers["location"]
@@ -226,7 +227,7 @@ async def test_an_unknown_provider_is_refused_rather_than_guessed(monkeypatch):
     )
     for bad in ("acme", "github", "../google", ""):
         with pytest.raises(HTTPException) as caught:
-            await authorize(
+            authorize(  # `B1609`: a plain `def` now
                 provider_id=bad, account_id="acct-1", request=None, owner="alice"
             )
         assert caught.value.status_code == 404, bad

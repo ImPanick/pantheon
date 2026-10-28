@@ -226,7 +226,7 @@ def test_the_authorize_request_presents_a_challenge(configured, provider_id):
     import asyncio
     import urllib.parse
 
-    resp = asyncio.run(_endpoint("authorize")(
+    resp = (_endpoint("authorize")(  # `B1609`: a plain `def` now
         provider_id=provider_id, account_id="acct-1", request=None, owner="alice"))
     query = urllib.parse.parse_qs(urllib.parse.urlparse(resp.headers["location"]).query)
     assert query["code_challenge_method"] == ["S256"]
@@ -249,7 +249,7 @@ def test_the_exchange_sends_the_verifier(configured, provider_id, monkeypatch):
     import unittest.mock as mock
     import urllib.parse
 
-    resp = asyncio.run(_endpoint("authorize")(
+    resp = (_endpoint("authorize")(  # `B1609`: a plain `def` now
         provider_id=provider_id, account_id="acct-1", request=None, owner="alice"))
     query = urllib.parse.parse_qs(urllib.parse.urlparse(resp.headers["location"]).query)
     state = query["state"][0]
@@ -296,7 +296,7 @@ def test_two_flows_do_not_share_a_verifier(configured):
 
     seen = set()
     for _ in range(5):
-        resp = asyncio.run(_endpoint("authorize")(
+        resp = (_endpoint("authorize")(  # `B1609`: a plain `def` now
             provider_id="google", account_id="acct-1", request=None, owner="alice"))
         query = urllib.parse.parse_qs(urllib.parse.urlparse(resp.headers["location"]).query)
         seen.add(query["code_challenge"][0])

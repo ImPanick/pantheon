@@ -901,7 +901,8 @@ app.mount("/static", _RevalidatingStatic(directory=STATIC_DIR), name="static")
 
 # ========= GENERATED IMAGES =========
 @app.get("/api/generated-image/{filename}")
-async def serve_generated_image(filename: str, request: Request):
+# `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+def serve_generated_image(filename: str, request: Request):
     """Serve generated images from the data directory."""
     img_path = resolve_generated_image_path(filename)
     # SECURITY: filename is the only key, so anyone who knows / guesses a
