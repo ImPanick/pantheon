@@ -10,7 +10,9 @@ def test_chat_context_uses_cached_models_before_live_model_probe():
 
     assert "def _normalize_model_id_from_cache" in source
     assert "cached_models" in source
-    assert "norm = _normalize_model_id_from_cache(sess) or normalize_model_id" in source
+    # `B1598`: the cache comes first, and both run on a worker thread.
+    assert "return _normalize_model_id_from_cache(sess) or normalize_model_id(" in source
+    assert "norm = await asyncio.to_thread(_normalized)" in source
 
 
 def test_cached_model_match_keeps_basename_normalization():

@@ -55,16 +55,23 @@ def _spy_on_suggest(monkeypatch):
     the person's chat opening "Board minutes" just before it: another turn's
     prompt build, in its own context, so the process-wide pointer moves and
     nothing this run holds does."""
+    # The modules as the dispatcher will find them now (`tool_execution`
+    # imports `src.agent_tools` at call time): a test earlier in a run may
+    # have dropped them for a fresh import, and a spy on the copies this file
+    # imported would watch a dict nothing reads.
+    import importlib
+    tools_now = importlib.import_module("src.agent_tools")
+    documents_now = importlib.import_module("src.agent_tools.document_tools")
     landed = []
-    real = agent_tools.TOOL_HANDLERS["suggest_document"]
+    real = tools_now.TOOL_HANDLERS["suggest_document"]
 
     async def suggest(content, ctx):
-        D._active_document_id = "doc-open"
+        documents_now._active_document_id = "doc-open"
         out = await real(content, ctx)
         landed.append(out)
         return out
 
-    monkeypatch.setitem(agent_tools.TOOL_HANDLERS, "suggest_document", suggest)
+    monkeypatch.setitem(tools_now.TOOL_HANDLERS, "suggest_document", suggest)
     return landed
 
 

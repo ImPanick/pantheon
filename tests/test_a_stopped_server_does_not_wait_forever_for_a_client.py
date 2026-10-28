@@ -20,6 +20,7 @@ the 45 s request ceiling.
 import os
 import signal
 import socket
+from pathlib import Path
 import time
 from urllib.parse import urlparse
 
@@ -35,9 +36,13 @@ def _alive(pid: int) -> bool:
 
 
 def test_a_sigterm_stops_the_server_while_a_request_is_held_open(app_url):  # noqa: F811
-    import app as app_module   # the bound the server runs with, read from the module
-
-    grace = app_module.GRACEFUL_SHUTDOWN_SECONDS
+    # The bound the server runs with, read from `app.py`'s text: importing the
+    # app in this process would leave its singletons behind (`B1180`).
+    import ast
+    tree = ast.parse((Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8"))
+    grace = next(node.value.value for node in ast.walk(tree)
+                 if isinstance(node, ast.Assign)
+                 and any(getattr(t, "id", None) == "GRACEFUL_SHUTDOWN_SECONDS" for t in node.targets))
     assert 0 < grace < 45, "the bound has to come before the request ceiling, or it bounds nothing"
     u = urlparse(app_url)
     held = socket.create_connection((u.hostname, u.port), timeout=10)

@@ -197,7 +197,8 @@ const BASE = process.argv[2];
       tm.applyBgEffectIntensity(0.4);
       tm.applyBgPattern('ascii');
     });
-    await page.waitForSelector('#ascii-canvas', { state: 'attached', timeout: 10000 });
+    // The canvas is made on the next frame; a full run starved it past 10 s once.
+    await page.waitForSelector('#ascii-canvas', { state: 'attached', timeout: 60000 });
     await page.waitForTimeout(400);
     const look = () => page.evaluate(() => {
       const c = document.getElementById('ascii-canvas');
