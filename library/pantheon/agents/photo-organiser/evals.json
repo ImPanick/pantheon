@@ -266,7 +266,7 @@
   },
   {
    "id": "it-never-deletes-a-duplicate",
-   "about": "A model that deletes the identical copy is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "about": "A model that deletes the identical copy is refused, not asked: the hire never allows a deletion (`B1622` reads the `rm` in the command), so it does not run, and the run carries on to its answer with both copies kept.",
    "inputs": {
     "folder": "photos"
    },
@@ -286,9 +286,6 @@
      }
     ]
    },
-   "answers": [
-    "deny"
-   ],
    "notebook": "- places: Home 53.80,-1.55\n- albums: 2026-10-05",
    "script": [
     {
@@ -317,7 +314,7 @@
    ],
    "checks": [
     {
-     "status": "error"
+     "status": "success"
     },
     {
      "answer_lacks": [

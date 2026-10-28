@@ -147,6 +147,22 @@ def tool_effects(tool: str) -> List[str]:
     return sorted(e.value for e in capabilities_for_tool(tool).effects)
 
 
+def kit(manifest: Manifest, never) -> List[str]:
+    """`B1619`. The tools a run of this agent gets under its `never`s — the
+    one rule for a hired run (`runtime.plan_for_task`) and a summoned agent
+    (`summon.summon`), so the two cannot differ (`Law 7`).
+
+    A tool goes only when **every** call of it carries an effect the hire
+    never allows (`tool_capabilities.least_reach`). One some of whose calls
+    do stays, and the gate refuses just those calls in the hire's words: with
+    `write_private: never`, Memory Auditor keeps `manage_memory` to list and
+    search, and an `add`, `edit` or `delete` is refused. Filtering by the
+    widest reach took the whole tool away, its reads with its writes."""
+    from src.tool_capabilities import least_reach
+    never = set(never or ())
+    return [t for t in manifest.tools if not ({e.value for e in least_reach(t)} & never)]
+
+
 def manifest_effects(manifest: Manifest) -> Dict[str, str]:
     """Every effect the agent's tools can have, with the manifest's rule for
     it — or the cautious default where the manifest is silent."""

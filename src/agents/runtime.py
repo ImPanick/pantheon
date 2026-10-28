@@ -251,7 +251,6 @@ def plan_for_task(db, task, run_id: Optional[str] = None) -> Optional[RunPlan]:
     from src.agents import hires as H
     from src.agents.catalogue import get_agent
     from src.prompt_security import own_context_message
-    from src.tool_capabilities import capabilities_for_tool
 
     hire = H.hire_for_task(db, getattr(task, "id", None))
     if hire is None:
@@ -289,8 +288,7 @@ def plan_for_task(db, task, run_id: Optional[str] = None) -> Optional[RunPlan]:
     effects = H.effective_effects(manifest, H.hire_grants(hire))
     never = frozenset(e for e, r in effects.items() if r == "never")
     ask = frozenset(e for e, r in effects.items() if r == "ask")
-    tools = [t for t in manifest.tools
-             if not ({e.value for e in capabilities_for_tool(t).effects} & never)]
+    tools = H.kit(manifest, never)      # `B1619`: a tool goes only if every call of it is never
 
     msgs: List[dict] = []
     inputs = H.hire_inputs(hire)

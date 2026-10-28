@@ -91,7 +91,6 @@ def summon(owner: Optional[str], agent_id: str, *, mode: str = "agent", db=None)
     from src.agents.catalogue import get_agent
     from src.agents.runtime import _skill_messages
     from src.prompt_security import own_context_message
-    from src.tool_capabilities import capabilities_for_tool
 
     if mode != "agent":
         raise SummonRefused(AGENT_MODE_ONLY)
@@ -111,8 +110,7 @@ def summon(owner: Optional[str], agent_id: str, *, mode: str = "agent", db=None)
     effects = H.effective_effects(manifest, grants)
     never = frozenset(e for e, r in effects.items() if r == "never")
     ask = frozenset(e for e, r in effects.items() if r == "ask")
-    tools = [t for t in manifest.tools
-             if not ({e.value for e in capabilities_for_tool(t).effects} & never)]
+    tools = H.kit(manifest, never)      # `B1619`: the hired run's own rule
     msgs = [own_context_message(f"the agent you summoned: {manifest.name}", brief(manifest, owner))]
     lines: List[str] = []
     for skill in manifest.skills:

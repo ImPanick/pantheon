@@ -5985,6 +5985,46 @@ class PausedTurn:
     step_offset: int = 0
 
 
+#: `B1620`. The policy word on a call left unrun because a call before it in
+#: the same step asked a question.
+AFTER_A_QUESTION = "after_a_question"
+
+
+def _not_run_after_a_question(tool_name: str, asked: str) -> Dict[str, Any]:
+    """`B1620`. The answer for a call that came after one that asks, in the
+    same step.
+
+    A question — an approval card, or the model's own `ask_user` — is a turn
+    boundary, and nothing the model asked for after it runs before it is
+    answered: the call might depend on the answer, and a yes to one action is
+    not a yes to the next. That rule stands. What did not was its silence: in
+    a round of `list_served_models`, `list_models`, `list_cached_models` where
+    `list_models` asked, `list_cached_models` was neither run nor refused —
+    the person never saw it, and the run that resumed after the yes rebuilt
+    the round without it, so the model was not told either. Now it is refused
+    in this sentence, shown to the person in the step, kept on the record, and
+    handed to the model as that call's own result when the turn resumes."""
+    return {
+        "error": (f"'{tool_name}' was not run: it came after '{asked}' in the same step, and "
+                  f"'{asked}' waits for an answer. Nothing after a question runs before it is "
+                  f"answered; ask for '{tool_name}' again once it is."),
+        "exit_code": 1,
+        "blocked": True,
+        "policy": AFTER_A_QUESTION,
+    }
+
+
+def _unrun_records(later_blocks, asked: str) -> List[Dict[str, Any]]:
+    """`B1620`. Each later call's refusal, as the round's result records hold
+    a call's: tool, arguments, result and the text the model reads."""
+    out = []
+    for later in later_blocks:
+        result = _not_run_after_a_question(later.tool_type, asked)
+        out.append({"tool_name": later.tool_type, "content": later.content, "result": result,
+                    "text": format_tool_result(f"{later.tool_type}: BLOCKED", result)})
+    return out
+
+
 def _paused_turn(
     messages: List[Dict],
     *,
@@ -5998,12 +6038,15 @@ def _paused_turn(
     round_num: int,
     resumed_from=None,
     step_offset: int = 0,
+    unrun: Optional[list] = None,
 ) -> Optional[PausedTurn]:
     """The record a card keeps of the turn it stopped (`B1069`).
 
-    `calls` are the round's calls up to and including the gated one; the
-    three result lists hold the calls before it. `resumed_from` is the
-    `ExactToolApproval` this run itself resumed, if any.
+    `calls` are the round's calls up to and including the gated one — and,
+    `B1620`, the ones after it, whose refusals are `unrun` (records from
+    `_unrun_records`, in order); the three result lists hold the calls before
+    it. `resumed_from` is the `ExactToolApproval` this run itself resumed, if
+    any.
     """
     # The stand-ins this turn already replaced, and the one it replaced on
     # resuming. Only a run that put a turn back replaced anything: a card that
@@ -6025,6 +6068,8 @@ def _paused_turn(
                 "tool_result_texts": list(tool_result_texts),
                 "tool_result_records": list(tool_result_records),
                 "round_num": round_num,
+                # `B1620`: what the calls after the gated one were answered.
+                "unrun": list(unrun or ()),
             }),
             replaces=replaces,
             step_offset=max(int(step_offset or 0), 0),
@@ -6056,16 +6101,21 @@ def _resume_paused_turn(
     messages[:] = _without_stand_ins(messages, stand_ins)
     messages.extend(copy.deepcopy(list(turn.messages)))
     paused = copy.deepcopy(turn.paused_round)
+    # `B1620`. The calls after the gated one are answered with the sentence
+    # that said why they did not run, so every call the model made in the
+    # round has its answer and none disappears from what it is asked with.
+    unrun = list(paused.get("unrun") or ())
+    later_texts = [r["text"] for r in unrun]
     _append_tool_results(
         messages,
         paused["round_response"],
         paused["calls"],
-        paused["tool_results"] + [approved_text],
-        paused["tool_result_texts"] + [approved_text],
+        paused["tool_results"] + [approved_text] + later_texts,
+        paused["tool_result_texts"] + [approved_text] + later_texts,
         paused["used_native"],
         paused["round_num"],
         round_reasoning=paused["round_reasoning"],
-        tool_result_records=paused["tool_result_records"] + [approved_record],
+        tool_result_records=paused["tool_result_records"] + [approved_record] + unrun,
     )
     return True
 
@@ -11208,7 +11258,10 @@ async def stream_agent_loop(
                             round_response=round_response,
                             round_reasoning=round_reasoning,
                             used_native=used_native,
-                            calls=converted_calls[: i + 1],
+                            # `B1620`: every call of the round, the ones after
+                            # this card with the sentence that left them unrun.
+                            calls=converted_calls[: len(tool_blocks)],
+                            unrun=_unrun_records(tool_blocks[i + 1:], block.tool_type),
                             tool_results=tool_results,
                             tool_result_texts=tool_result_texts,
                             tool_result_records=tool_result_records,
@@ -11692,6 +11745,59 @@ async def stream_agent_loop(
                         yield f'data: {json.dumps({"delta": _terminal_summary})}\n\n'
                     _pan_notes_tool_completed = True
 
+            # `B1620`. The calls after a question in the same step do not run,
+            # and each says so: a `tool_blocked` of its own, as any refused
+            # call is drawn (`P4-20`), sent before the card — which stays the
+            # last thing the step shows — and kept on the record after this
+            # call's own, so a reload draws the step as the live one did.
+            _unrun_events: list = []
+            if _pending_ask_user_event:
+                for _later in tool_blocks[i + 1:]:
+                    _later_result = _not_run_after_a_question(_later.tool_type, block.tool_type)
+                    _later_full = (_later.content or "").strip()
+                    if _later.tool_type in ("create_document", "update_document", "edit_document",
+                                            "suggest_document"):
+                        _later_cmd = _later_full.split("\n")[0].strip()[:80]
+                    elif _later.tool_type == "computer":
+                        _later_cmd = _computer_command_line(_later.content)
+                    else:
+                        _later_cmd = _later_full
+                    _later_effects = _effect_fields(_later.tool_type, _later.content,
+                                                    _runs_in(_later.tool_type, owner))
+                    yield (
+                        "data: "
+                        + json.dumps({
+                            "type": "tool_blocked",
+                            "tool": _later.tool_type,
+                            "round": round_num,
+                            **_step_fields(_step_offset),
+                            "command": _later_cmd,
+                            "reason": _later_result["error"],
+                            "policy": AFTER_A_QUESTION,
+                            **_command_fields(_later_cmd, _later_full),
+                            **_later_effects,
+                        })
+                        + "\n\n"
+                    )
+                    _unrun_events.append({
+                        "round": round_num,
+                        **_step_fields(_step_offset),
+                        "model": _round_actual_model,
+                        "endpoint_id": _round_actual_endpoint_id,
+                        "endpoint_label": _round_actual_endpoint_label,
+                        "tool": _later.tool_type,
+                        "desc": f"{_later.tool_type}: BLOCKED",
+                        "command": _later_cmd,
+                        "status": tool_outcome(_later_result),
+                        **_command_fields(_later_cmd, _later_full),
+                        **_stream_fields(_later_result),
+                        "blocked": True,
+                        "policy": AFTER_A_QUESTION,
+                        "output": _later_result["error"],
+                        "exit_code": _later_result["exit_code"],
+                        **_later_effects,
+                    })
+
             # This must be the final UI event for ask_user: the frontend appends
             # the card below the now-settled tool node and cancels any between-
             # round spinner.  The turn ends after the current tool batch.
@@ -11828,6 +11934,7 @@ async def stream_agent_loop(
                 # message removes it as answered.
                 tool_event["ask_user"] = _pending_ask_user_event
             tool_events.append(tool_event)
+            tool_events.extend(_unrun_events)     # `B1620`
             if block.tool_type in _VERIFIER_EFFECTFUL_TOOLS:
                 _effectful_used = True
                 _effectful_ever = True

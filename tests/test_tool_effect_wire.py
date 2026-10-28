@@ -224,10 +224,13 @@ def _approved_run(monkeypatch, *, tool_name, content, results=None):
 
 
 def test_shell_and_ui_side_effect_no_longer_produce_the_same_card(monkeypatch):
+    # `B1622`: this was `rm -rf /tmp/scratch`, which is now what it says —
+    # `destructive`, the serious band — so the shell's own rank is shown with a
+    # command that deletes nothing.
     shell = _first(
         _run(
             monkeypatch,
-            ["```bash\nrm -rf /tmp/scratch\n```"],
+            ["```bash\nls -la /tmp/scratch\n```"],
             relevant_tools={"bash"},
         ),
         "tool_start",
@@ -302,9 +305,11 @@ def test_post_approval_replay_pair_carries_the_effect(monkeypatch):
     assert output["approved"] is True
     assert EFFECT_KEYS <= set(start)
     assert EFFECT_KEYS <= set(output)
-    assert start["effect"] == output["effect"] == "execute_code"
-    assert start["effect_band"] == output["effect_band"] == "notable"
-    assert start["effect_label"] == "Runs code on this machine"
+    # `B1622`: an `rm -rf` is ranked by the deletion it is, on the approved
+    # pair as on the card that asked — it was `execute_code`, "Runs code".
+    assert start["effect"] == output["effect"] == "destructive"
+    assert start["effect_band"] == output["effect_band"] == "serious"
+    assert start["effect_label"] == "Can permanently delete or overwrite"
 
 
 def test_post_approval_replay_ranks_a_destructive_action_above_a_read(monkeypatch):
@@ -562,9 +567,10 @@ def test_the_persisted_approved_tool_event_carries_the_effect(monkeypatch):
         "the replay block builds its own event; a fix to the main path does "
         "not reach it"
     )
-    assert saved[0]["effect"] == "execute_code"
-    assert saved[0]["effect_band"] == "notable"
-    assert saved[0]["effect_label"] == "Runs code on this machine"
+    # `B1622`: the approved `rm -rf` is saved as the deletion it is.
+    assert saved[0]["effect"] == "destructive"
+    assert saved[0]["effect_band"] == "serious"
+    assert saved[0]["effect_label"] == "Can permanently delete or overwrite"
 
 
 def test_the_persisted_approval_card_reloads_dressed(monkeypatch):

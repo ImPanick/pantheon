@@ -96,9 +96,14 @@ def _turn(monkeypatch, reply, tool, owner=MAY):
 
 
 # ── the words, and only the words ────────────────────────────────────────────
+#
+# `B1622`: the shell's command here was `rm -rf /tmp/scratch`, which now reads
+# as the deletion it is (`destructive`, "Can permanently delete or overwrite")
+# and outranks where it runs on the card; this file is about where, so its
+# command deletes nothing.
 
 @pytest.mark.parametrize("tool,content,label", [
-    ("bash", "rm -rf /tmp/scratch", THERE),
+    ("bash", "ls -la /tmp/scratch", THERE),
     ("python", "print(1)", THERE),
     ("read_file", "/home/x/notes.txt", "Reads from your workstation"),
     ("write_file", "notes.txt\nhello", "Writes files in your workstation"),
@@ -131,7 +136,7 @@ def test_only_the_exact_place_changes_the_words(where):
 # ── the live card, through the loop ──────────────────────────────────────────
 
 @pytest.mark.parametrize("tool,reply,label", [
-    ("bash", "```bash\nrm -rf /tmp/scratch\n```", THERE),
+    ("bash", "```bash\nls -la /tmp/scratch\n```", THERE),
     ("python", "```python\nprint(1)\n```", THERE),
     ("read_file", "```read_file\nnotes.txt\n```", "Reads from your workstation"),
 ])
@@ -166,7 +171,7 @@ def test_where_it_runs_here_the_phrase_is_the_one_it_always_was(monkeypatch, wor
         workstation["workstation_route_tools"] = False
     else:
         owner = MAY_NOT
-    events = _turn(monkeypatch, "```bash\nrm -rf /tmp/scratch\n```", "bash", owner=owner)
+    events = _turn(monkeypatch, "```bash\nls -la /tmp/scratch\n```", "bash", owner=owner)
     assert _first(events, "tool_start")["effect_label"] == HERE
 
 
@@ -175,7 +180,7 @@ def test_where_it_runs_here_the_phrase_is_the_one_it_always_was(monkeypatch, wor
 def test_the_approval_card_says_where_and_what_tripped_says_it_too(monkeypatch, workstation):
     """`_gated_run` drives the gate for `alice` with untrusted content seen, so
     the card is the one `PendingToolApproval.public_payload()` really mints."""
-    events = _gated_run(monkeypatch, "```bash\nrm -rf /tmp/scratch\n```", tool="bash")
+    events = _gated_run(monkeypatch, "```bash\nls -la /tmp/scratch\n```", tool="bash")
     [saved] = _persisted(events)
     card = saved["ask_user"]
     assert card["effect_label"] == THERE
@@ -188,12 +193,12 @@ def test_the_approval_card_says_where_and_what_tripped_says_it_too(monkeypatch, 
 def test_the_seal_does_not_include_where(workstation):
     """One action, minted twice in two stores — one phrased for the workstation
     and one not. Same digest, and each grant matches the same binding."""
-    caps = capabilities_for_action("bash", "rm -rf /tmp/scratch")
+    caps = capabilities_for_action("bash", "ls -la /tmp/scratch")
 
     def mint(runs_in):
         store = ToolApprovalStore()
         pending = store.create(owner=MAY, session_id="s-1", origin_run_id="run-1",
-                               tool_name="bash", content="rm -rf /tmp/scratch", workspace=None,
+                               tool_name="bash", content="ls -la /tmp/scratch", workspace=None,
                                external_untrusted_context_seen=True, capabilities=caps,
                                runs_in=runs_in)
         return store, pending
@@ -210,7 +215,7 @@ def test_the_seal_does_not_include_where(workstation):
                               session_id="s-1")
         assert grant is not None
         assert grant.matches(owner=MAY, session_id="s-1", tool_name="bash",
-                             content="rm -rf /tmp/scratch", workspace=None)
+                             content="ls -la /tmp/scratch", workspace=None)
 
 
 def test_the_approved_replay_says_where_it_ran(monkeypatch, workstation):

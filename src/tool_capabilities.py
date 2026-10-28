@@ -8,6 +8,7 @@ run-local integrity gates before dispatch.
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import uuid
@@ -1181,6 +1182,79 @@ def _replies_in_numbers(tool_name: str, content: Any) -> bool:
         return False
 
 
+def least_reach(tool_name: Any) -> frozenset[ToolEffect]:
+    """`B1619`. The effects **every** call of this tool carries, whatever its
+    action or command — the tool's registration for a tool that does one
+    thing, and what all its actions share for one that does several.
+
+    A hire's `never` used to drop a tool from the run's kit when its widest
+    reach held the effect, so `write_private: never` on Memory Auditor took
+    `manage_memory` away whole and its reads went with its writes. A tool is
+    dropped now only when this set holds a `never` — when no call of it could
+    run — and every other call is answered by the gate one call at a time
+    (`ToolRunSecurityContext._hire_decision_for`, which classifies the call by
+    `capabilities_for_action`). An action a table does not name keeps the
+    tool's whole registration there, so it is refused, never let through.
+    """
+    base = capabilities_for_tool(tool_name)
+    if not base.known or not isinstance(tool_name, str):
+        return base.effects
+    bare = tool_name[len("mcp__email__"):] if tool_name.startswith("mcp__email__") else tool_name
+    reaches = [base.effects]
+    if bare in _ACTION_CAPABILITIES:
+        reaches += [c.effects for c in _ACTION_CAPABILITIES[bare].values()]
+    if bare in _OBSERVE_ONLY_ACTIONS:
+        reaches.append(_OBSERVE_ONLY_CAPABILITIES.effects)
+    if _PRIVATE_ACTION_READS.get(bare):
+        reaches.append(frozenset({ToolEffect.READ_PRIVATE}))
+    return frozenset.intersection(*reaches)
+
+
+# ── `B1622` · a shell's deletion is a deletion ──────────────────────────────
+#
+# `bash` is registered `execute_code` and nothing else, and no table looked
+# inside the command, so `_is_destructive_call('bash', 'rm -rf x')` was False:
+# a hire's `destructive: ask`/`never` on a shell (Disk Janitor, File Converter,
+# Photo Organiser…) did nothing, and Auto's one exception (`B1341`) let a shell
+# `rm -rf` through. A command tool's call now carries `destructive` when
+# `src/shell_reading.py` reads a deletion or an overwrite in it — or cannot
+# read it, so a command whose effect is hidden is never called safe. That
+# module names the adversary and where it stops; this only ever *adds* the
+# effect, so every gate asks more for it and never less. The tool-level
+# registration is untouched: a card for `ls` says what it said.
+_COMMAND_TOOLS = frozenset({"bash", "shell_with_login", "python"})
+
+
+def _command_text(tool_name: str, content: Any) -> str | None:
+    """The command or code a call runs, read as its executor reads it."""
+    if tool_name == "shell_with_login":
+        from src.agent_tools.login_shell_tools import parse_args
+        args, problem = parse_args(content)
+        # A call the tool refuses runs nothing.
+        return None if problem else str(args.get("command") or "")
+    if isinstance(content, Mapping):
+        content = content.get("command") or content.get("cmd") or content.get("code") or ""
+    return content if isinstance(content, str) else None
+
+
+@functools.lru_cache(maxsize=512)
+def _command_reading(tool_name: str, text: str) -> str | None:
+    from src.shell_reading import python_destroys, shell_destroys
+    return python_destroys(text) if tool_name == "python" else shell_destroys(text)
+
+
+def command_destroys(tool_name: Any, content: Any) -> str | None:
+    """`B1622`. Why this command call carries `destructive` — what it deletes,
+    or why it cannot be read — or `None`. `None` for every other tool, and for
+    a call with no command (the tool-level question)."""
+    if tool_name not in _COMMAND_TOOLS:
+        return None
+    text = _command_text(tool_name, content)
+    if not text or not text.strip():
+        return None
+    return _command_reading(tool_name, text)
+
+
 def _is_destructive_call(tool_name: Any, content: Any) -> bool:
     """Does this exact call carry `DESTRUCTIVE`, arguments included?
 
@@ -1189,7 +1263,9 @@ def _is_destructive_call(tool_name: Any, content: Any) -> bool:
     `capabilities_for_action` rather than the tool-level registration, because
     `_ACTION_DESTRUCTIVE` makes destructiveness a property of the action for
     nine multiplexed tools — `manage_memory action=delete` is destructive and
-    `action=add` is not, and a tool-level check would miss every one of them.
+    `action=add` is not, and a tool-level check would miss every one of them —
+    and `B1622` makes it a property of the command for a shell: `bash rm -rf`
+    is destructive and `bash ls` is not.
 
     Fails **closed** on an unreadable call: a call whose classification cannot
     be resolved is treated as destructive, so Auto asks. That is the safe
@@ -1224,6 +1300,17 @@ def capabilities_for_action(tool_name: Any, content: Any) -> ToolCapabilities:
     if escalation is not None:
         return ToolCapabilities(
             frozenset(base.effects | escalation.grants),
+            base.result_integrity,
+            known=base.known,
+        )
+
+    # `B1622`. A shell's or Python's call: destructive when its command says
+    # so, or cannot be read; otherwise exactly the tool's registration.
+    if tool_name in _COMMAND_TOOLS:
+        if command_destroys(tool_name, content) is None:
+            return base
+        return ToolCapabilities(
+            frozenset(base.effects | {ToolEffect.DESTRUCTIVE}),
             base.result_integrity,
             known=base.known,
         )
@@ -2324,11 +2411,16 @@ class ToolRunSecurityContext:
         capabilities = capabilities_for_action(tool_name, content)
         effects = {effect.value for effect in capabilities.effects}
         never = effects & set(self.hire_never_effects)
+        # `B1622`. A command's deletion is named, so the person reads what in
+        # it is destructive rather than only that something is.
+        why = command_destroys(tool_name, content)
+        because = f" ({why})" if why else ""
         if never:
             return ToolGateDecision(
                 False,
                 (f"This agent's hire never allows {', '.join(sorted(never))}, so "
-                 f"'{tool_name}' was not run. Change the hire's effects in Agents to allow it."),
+                 f"'{tool_name}' was not run{because if 'destructive' in never else ''}. "
+                 f"Change the hire's effects in Agents to allow it."),
                 tripped_effects=tuple(describe_effects(
                     frozenset(e for e in capabilities.effects if e.value in never)).get("effects", ())),
                 classification=TOOL_CLASSIFICATION_UNAVAILABLE,
@@ -2339,7 +2431,7 @@ class ToolRunSecurityContext:
             return ToolGateDecision(
                 False,
                 (f"This agent's hire asks before {', '.join(sorted(ask)) or 'an action it cannot classify'}: "
-                 f"'{tool_name}' waits for your yes."),
+                 f"'{tool_name}' waits for your yes{because if 'destructive' in ask else ''}."),
                 tripped_effects=tuple(describe_effects(tripped).get("effects", ())),
                 classification=(TOOL_CLASSIFICATION_RECOGNISED if capabilities.known
                                 else TOOL_CLASSIFICATION_UNRECOGNISED),
