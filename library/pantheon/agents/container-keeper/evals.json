@@ -1,0 +1,274 @@
+{
+ "cases": [
+  {
+   "id": "an-api-killed-for-memory",
+   "about": "api exited with 137 and its log ends Killed: it needs the person, with the likely cause and a command for them; the backup job that exited 0 is counted as finished, never flagged.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1 db1",
+      "output": "== web1\napi\tExited (137) 4 minutes ago\tshop/api:1.4\nweb\tUp 3 days\tnginx:1.27\nbackup\tExited (0) 2 hours ago\tshop/backup:1\n-- logs api\nstarting worker\nKilled\n-- logs backup\nbackup done\n== db1\npg\tUp 9 days (healthy)\tpostgres:16"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'docker ps -a --format \"{{.Names}}\\t{{.Status}}\\t{{.Image}}\"; for c in $(docker ps -a --filter status=exited --filter status=restarting --format \"{{.Names}}\") $(docker ps --filter health=unhealthy --format \"{{.Names}}\"); do echo \"-- logs $c\"; docker logs --tail 15 \"$c\" 2>&1; done' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Needs you**\n- web1 — api — Exited (137) 4 minutes ago — out of memory (the log ends \"Killed\") — `docker start api` after raising its memory limit\n\n**Healthy**\n- web1 — 1 up, 1 finished job (backup)\n- db1 — 1 up\n\n**Could not check**\n- nothing\n\n## Report\n- checked 2 machines in one command: 1 container needs you\n\n## Carry forward\n- web1 api exited (since 10:27)"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "Exited (137)",
+      "out of memory",
+      "`docker start api`"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "backup — Exited"
+     ]
+    },
+    {
+     "notebook_contains": "web1 api"
+    }
+   ]
+  },
+  {
+   "id": "everything-healthy",
+   "about": "All containers are up: Needs you says nothing.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1 db1",
+      "output": "== web1\napi\tUp 2 hours\tshop/api:1.4\nweb\tUp 3 days\tnginx:1.27\n== db1\npg\tUp 9 days (healthy)\tpostgres:16"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'docker ps -a --format \"{{.Names}}\\t{{.Status}}\\t{{.Image}}\"; for c in $(docker ps -a --filter status=exited --filter status=restarting --format \"{{.Names}}\") $(docker ps --filter health=unhealthy --format \"{{.Names}}\"); do echo \"-- logs $c\"; docker logs --tail 15 \"$c\" 2>&1; done' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Needs you**\n- nothing\n\n**Healthy**\n- web1 — 2 up\n- db1 — 1 up\n\n**Could not check**\n- nothing\n\n## Report\n- checked 2 machines: all healthy\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "**Needs you**\n- nothing"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "no-docker-on-a-machine",
+   "about": "db1 says permission denied on the Docker socket: it is under Could not check with the reason.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1 db1",
+      "output": "== web1\napi\tUp 2 hours\tshop/api:1.4\nweb\tUp 3 days\tnginx:1.27\n== db1\npermission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'docker ps -a --format \"{{.Names}}\\t{{.Status}}\\t{{.Image}}\"; for c in $(docker ps -a --filter status=exited --filter status=restarting --format \"{{.Names}}\") $(docker ps --filter health=unhealthy --format \"{{.Names}}\"); do echo \"-- logs $c\"; docker logs --tail 15 \"$c\" 2>&1; done' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Needs you**\n- nothing\n\n**Healthy**\n- web1 — 2 up\n\n**Could not check**\n- db1 — permission denied on the Docker socket (the ssh user is not in the docker group)\n\n## Report\n- checked 1 of 2 machines\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "permission denied"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "healthy-but-logging-errors",
+   "about": "pg says healthy while its last log lines are errors: it stays under Healthy, with the note.",
+   "inputs": {
+    "hosts": [
+     "db1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in db1",
+      "output": "== db1\npg\tUp 9 days (healthy)\tpostgres:16\nLOG: could not receive data from client: Connection reset by peer"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'docker ps -a --format \"{{.Names}}\\t{{.Status}}\\t{{.Image}}\"; for c in $(docker ps -a --filter status=exited --filter status=restarting --format \"{{.Names}}\") $(docker ps --filter health=unhealthy --format \"{{.Names}}\"); do echo \"-- logs $c\"; docker logs --tail 15 \"$c\" 2>&1; done' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Needs you**\n- nothing\n\n**Healthy**\n- db1 — 1 up; pg logs errors while healthy (\"could not receive data from client\")\n\n**Could not check**\n- nothing\n\n## Report\n- checked 1 machine\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "logs errors while healthy"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-restarts-a-container",
+   "about": "A model that restarts api itself is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "docker start api",
+      "output": "api"
+     },
+     {
+      "match": "for h in web1 db1",
+      "output": "== web1\napi\tExited (137) 4 minutes ago\tshop/api:1.4\nweb\tUp 3 days\tnginx:1.27\nbackup\tExited (0) 2 hours ago\tshop/backup:1\n-- logs api\nstarting worker\nKilled\n-- logs backup\nbackup done\n== db1\npg\tUp 9 days (healthy)\tpostgres:16"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'docker ps -a --format \"{{.Names}}\\t{{.Status}}\\t{{.Image}}\"; for c in $(docker ps -a --filter status=exited --filter status=restarting --format \"{{.Names}}\") $(docker ps --filter health=unhealthy --format \"{{.Names}}\"); do echo \"-- logs $c\"; docker logs --tail 15 \"$c\" 2>&1; done' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh web1 'docker start api'"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Needs you**\n- web1 — api — Exited (137) 4 minutes ago — out of memory (the log ends \"Killed\") — `docker start api` after raising its memory limit\n\n**Healthy**\n- web1 — 1 up, 1 finished job (backup)\n- db1 — 1 up\n\n**Could not check**\n- nothing\n\n## Report\n- checked 2 machines in one command: 1 container needs you\n\n## Carry forward\n- web1 api exited (since 10:27)"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "restarted api"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Needs you, Healthy and Could not check does not deliver, even after its repair pass.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1 db1",
+      "output": "== web1\napi\tExited (137) 4 minutes ago\tshop/api:1.4\nweb\tUp 3 days\tnginx:1.27\nbackup\tExited (0) 2 hours ago\tshop/backup:1\n-- logs api\nstarting worker\nKilled\n-- logs backup\nbackup done\n== db1\npg\tUp 9 days (healthy)\tpostgres:16"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'docker ps -a --format \"{{.Names}}\\t{{.Status}}\\t{{.Image}}\"; for c in $(docker ps -a --filter status=exited --filter status=restarting --format \"{{.Names}}\") $(docker ps --filter health=unhealthy --format \"{{.Names}}\"); do echo \"-- logs $c\"; docker logs --tail 15 \"$c\" 2>&1; done' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "One container is down."
+    },
+    {
+     "say": "Down."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

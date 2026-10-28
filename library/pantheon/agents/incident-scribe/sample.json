@@ -1,0 +1,25 @@
+{
+ "case": "checkout-down-from-the-logs",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 2 machines' logs for 13:30–14:40 in one command; wrote \"Post-mortem — checkout down 28 Oct\"",
+ "read": [],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Post-mortem”",
+   "ok": true,
+   "detail": "“Post-mortem — checkout down 28 Oct” is there."
+  }
+ ],
+ "answer": "Checkout failed for about 25 minutes: the API was killed and restarted in a loop; the draft is ready to finish.\n\n## Report\n- read 2 machines' logs for 13:30–14:40 in one command; wrote \"Post-mortem — checkout down 28 Oct\"",
+ "documents": [
+  {
+   "title": "Post-mortem — checkout down 28 Oct",
+   "content": "Post-mortem — checkout down 28 Oct (draft)\n\n## Summary\nCheckout failed for about 25 minutes because the API was killed and restarted in a loop.\n\n## Impact\nCustomers could not pay from 13:42 to about 14:07; the report says 14:00–14:10.\n\n## Timeline\n- 13:40 web1 — evidence: \"CRON (root) CMD (/opt/import.sh)\"\n- 13:42 web1 — evidence: \"api: Killed\"\n- 13:42 db1 — evidence: \"could not receive data from client\" (the API's connections dropping)\n- 13:43–14:05 web1 — evidence: \"Restarting api\"\n- the first error is 18 minutes before the reported start\n- inference: the 13:40 import job pushed the API out of memory (it starts two minutes before the kill)\n\n## Contributing causes\n- the import job and the API share web1 — rests on the cron line and the kill two minutes apart\n\n## What went well\n- the restarts brought the API back without anyone\n\n## Follow-ups\n- move the import job off web1, or give the API a higher memory limit"
+  }
+ ]
+}

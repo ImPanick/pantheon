@@ -1,0 +1,18 @@
+{
+ "case": "one-certificate-expires-in-six-days",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- checked 3 names in one command: 1 expiring, 1 did not answer, 1 fine",
+ "read": [],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Expiring soon, Did not answer, Fine."
+  }
+ ],
+ "answer": "**Expiring soon**\n- shop.example — certificate — 6 days (3 Nov 2026), urgent — Let's Encrypt R11\n\n**Did not answer**\n- old.example — the name does not resolve\n\n**Fine**\n- bakery.example — certificate 14 Jan 2027 (renewed); domain 2 Mar 2027\n- shop.example — domain 1 Jun 2027\n\n## Report\n- checked 3 names in one command: 1 expiring, 1 did not answer, 1 fine\n\n## Carry forward\n- shop.example cert 2026-11-03 domain 2027-06-01\n- bakery.example cert 2027-01-14 domain 2027-03-02"
+}

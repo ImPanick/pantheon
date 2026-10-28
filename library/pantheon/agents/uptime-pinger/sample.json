@@ -1,0 +1,18 @@
+{
+ "case": "one-down-one-back",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- checked 3 targets in one command: 1 down, 1 back",
+ "read": [],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Down, Back, Up."
+  }
+ ],
+ "answer": "**Down**\n- https://shop.example/ — answers 502 — down since 10:15\n\n**Back**\n- db1:5432 — back after 30 minutes\n\n**Up**\n- https://bakery.example/ (slow: 3.4 s)\n\n## Report\n- checked 3 targets in one command: 1 down, 1 back\n\n## Carry forward\n- https://shop.example/ down since 10:15\n- db1:5432 up\n- https://bakery.example/ up"
+}

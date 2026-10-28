@@ -1,0 +1,18 @@
+{
+ "case": "an-nginx-change-on-web1",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- compared 4 files on 3 machines in one command: 1 drifted",
+ "read": [],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Drifted, Matches, Could not check."
+  }
+ ],
+ "answer": "**Drifted**\n- web1 — /etc/nginx/nginx.conf — `-worker_connections 1024;` / `+worker_connections 4096;` (since 26 Oct)\n\n**Matches**\n- db1 — 2 files\n\n**Could not check**\n- nas — ssh: connection timed out\n\n## Report\n- compared 4 files on 3 machines in one command: 1 drifted\n\n## Carry forward\n- web1 /etc/nginx/nginx.conf (since 26 Oct)"
+}

@@ -1,0 +1,18 @@
+{
+ "case": "security-first-and-a-staggered-plan",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- checked 3 machines in one command; installed nothing",
+ "read": [],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Security updates, Other updates, Reboot plan."
+  }
+ ],
+ "answer": "**Security updates**\n- web1 — openssh-server, openssl (waiting since 21 Oct)\n- web2 — openssh-server, openssl\n- db1 — none\n\n**Other updates**\n- web1 — 10; needs a reboot (new kernel)\n- web2 — 10; needs a reboot (new kernel)\n- db1 — 3; no reboot; postgres:16 built 2 Aug, nearly three months old\n\n**Reboot plan**\n1. Tue — web1 (security, waiting longest)\n2. Wed — web2 (serves with web1, so not the same day)\n3. Thu — db1, at your quiet hour\n\n## Report\n- checked 3 machines in one command; installed nothing\n\n## Carry forward\n- web1 openssh-server, openssl (since 21 Oct)\n- web2 openssh-server, openssl (since 28 Oct)"
+}

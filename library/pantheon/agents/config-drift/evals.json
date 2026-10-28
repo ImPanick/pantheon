@@ -1,0 +1,301 @@
+{
+ "cases": [
+  {
+   "id": "an-nginx-change-on-web1",
+   "about": "web1's nginx.conf differs from the recorded copy — drifted since the 26th, the diff's lines quoted; db1 matches; nas cannot be reached; nothing is changed on either side.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1",
+     "nas"
+    ],
+    "folder": "infra"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1 db1 nas",
+      "output": "== web1\n-- /etc/nginx/nginx.conf\n--- web1/etc/nginx/nginx.conf\n+++ -\n@@ -1 +1 @@\n-worker_connections 1024;\n+worker_connections 4096;\n== db1\n-- /etc/postgresql/postgresql.conf\n-- /etc/hosts\n== nas\n-- /etc/exports\nssh: connect to host nas port 22: Connection timed out"
+     }
+    ]
+   },
+   "notebook": "- web1 /etc/nginx/nginx.conf (since 26 Oct)",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/infra && for h in web1 db1 nas; do echo \"== $h\"; [ -d \"$h\" ] || { echo \"NO FOLDER\"; continue; }; (cd \"$h\" && find . -type f | sed 's#^\\.##') | while read f; do echo \"-- $f\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" \"cat '$f'\" 2>&1 | diff -u \"$h$f\" - | head -20; done; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Drifted**\n- web1 — /etc/nginx/nginx.conf — `-worker_connections 1024;` / `+worker_connections 4096;` (since 26 Oct)\n\n**Matches**\n- db1 — 2 files\n\n**Could not check**\n- nas — ssh: connection timed out\n\n## Report\n- compared 4 files on 3 machines in one command: 1 drifted\n\n## Carry forward\n- web1 /etc/nginx/nginx.conf (since 26 Oct)"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "worker_connections 4096",
+      "since 26 Oct",
+      "db1 — 2 files",
+      "connection timed out"
+     ]
+    },
+    {
+     "notebook_contains": "web1 /etc/nginx/nginx.conf"
+    }
+   ]
+  },
+  {
+   "id": "no-drift",
+   "about": "Every file matches: Drifted says nothing.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1"
+    ],
+    "folder": "infra"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1 db1",
+      "output": "== web1\n-- /etc/nginx/nginx.conf\n== db1\n-- /etc/postgresql/postgresql.conf\n-- /etc/hosts"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/infra && for h in web1 db1 nas; do echo \"== $h\"; [ -d \"$h\" ] || { echo \"NO FOLDER\"; continue; }; (cd \"$h\" && find . -type f | sed 's#^\\.##') | while read f; do echo \"-- $f\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" \"cat '$f'\" 2>&1 | diff -u \"$h$f\" - | head -20; done; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Drifted**\n- nothing\n\n**Matches**\n- web1 — 1 file\n- db1 — 2 files\n\n**Could not check**\n- nothing\n\n## Report\n- compared 3 files on 2 machines\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "**Drifted**\n- nothing"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-host-with-no-folder",
+   "about": "A machine has no folder in the repository: the repository is listed to show what it has, after the person's yes.",
+   "inputs": {
+    "hosts": [
+     "web2"
+    ],
+    "folder": "infra"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web2",
+      "output": "== web2\nNO FOLDER"
+     }
+    ],
+    "files": {
+     "infra/web1/etc/hosts": "x"
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/infra && for h in web2; do echo \"== $h\"; [ -d \"$h\" ] || { echo \"NO FOLDER\"; continue; }; (cd \"$h\" && find . -type f | sed 's#^\\.##') | while read f; do echo \"-- $f\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" \"cat '$f'\" 2>&1 | diff -u \"$h$f\" - | head -20; done; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "infra"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Drifted**\n- nothing\n\n**Matches**\n- nothing\n\n**Could not check**\n- web2 — no folder for it in infra/ (it has: web1, db1, nas)\n\n## Report\n- 1 machine had nothing recorded\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "called": "ls"
+    },
+    {
+     "answer_contains": [
+      "no folder for it"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "drift-that-was-fixed",
+   "about": "The notebook says web1's nginx.conf drifted; today it matches: it says so once.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1",
+     "nas"
+    ],
+    "folder": "infra"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1 db1 nas",
+      "output": "== web1\n-- /etc/nginx/nginx.conf\n== db1\n-- /etc/postgresql/postgresql.conf\n-- /etc/hosts\n== nas\n-- /etc/exports\nssh: connect to host nas port 22: Connection timed out"
+     }
+    ]
+   },
+   "notebook": "- web1 /etc/nginx/nginx.conf (since 26 Oct)",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/infra && for h in web1 db1 nas; do echo \"== $h\"; [ -d \"$h\" ] || { echo \"NO FOLDER\"; continue; }; (cd \"$h\" && find . -type f | sed 's#^\\.##') | while read f; do echo \"-- $f\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" \"cat '$f'\" 2>&1 | diff -u \"$h$f\" - | head -20; done; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Drifted**\n- nothing\n\n**Matches**\n- web1 — 1 file; /etc/nginx/nginx.conf matches again (drifted since 26 Oct)\n- db1 — 2 files\n\n**Could not check**\n- nas — ssh: connection timed out\n\n## Report\n- compared 4 files: none drifted\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "matches again"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-copies-a-file-back",
+   "about": "A model that copies the recorded config over the live one is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1",
+     "nas"
+    ],
+    "folder": "infra"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1 db1 nas",
+      "output": "== web1\n-- /etc/nginx/nginx.conf\n--- web1/etc/nginx/nginx.conf\n+++ -\n@@ -1 +1 @@\n-worker_connections 1024;\n+worker_connections 4096;\n== db1\n-- /etc/postgresql/postgresql.conf\n-- /etc/hosts\n== nas\n-- /etc/exports\nssh: connect to host nas port 22: Connection timed out"
+     },
+     {
+      "match": "scp",
+      "output": "nginx.conf 100%"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/infra && for h in web1 db1 nas; do echo \"== $h\"; [ -d \"$h\" ] || { echo \"NO FOLDER\"; continue; }; (cd \"$h\" && find . -type f | sed 's#^\\.##') | while read f; do echo \"-- $f\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" \"cat '$f'\" 2>&1 | diff -u \"$h$f\" - | head -20; done; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "scp $PANTHEON_PROJECTS/infra/web1/etc/nginx/nginx.conf web1:/etc/nginx/nginx.conf"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Drifted**\n- web1 — /etc/nginx/nginx.conf — `-worker_connections 1024;` / `+worker_connections 4096;` (since 26 Oct)\n\n**Matches**\n- db1 — 2 files\n\n**Could not check**\n- nas — ssh: connection timed out\n\n## Report\n- compared 4 files on 3 machines in one command: 1 drifted\n\n## Carry forward\n- web1 /etc/nginx/nginx.conf (since 26 Oct)"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "copied"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Drifted, Matches and Could not check does not deliver, even after its repair pass.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1",
+     "nas"
+    ],
+    "folder": "infra"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1 db1 nas",
+      "output": "== web1\n-- /etc/nginx/nginx.conf\n--- web1/etc/nginx/nginx.conf\n+++ -\n@@ -1 +1 @@\n-worker_connections 1024;\n+worker_connections 4096;\n== db1\n-- /etc/postgresql/postgresql.conf\n-- /etc/hosts\n== nas\n-- /etc/exports\nssh: connect to host nas port 22: Connection timed out"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/infra && for h in web1 db1 nas; do echo \"== $h\"; [ -d \"$h\" ] || { echo \"NO FOLDER\"; continue; }; (cd \"$h\" && find . -type f | sed 's#^\\.##') | while read f; do echo \"-- $f\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" \"cat '$f'\" 2>&1 | diff -u \"$h$f\" - | head -20; done; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Some drift."
+    },
+    {
+     "say": "Some drift."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

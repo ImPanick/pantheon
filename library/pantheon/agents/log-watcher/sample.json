@@ -1,0 +1,18 @@
+{
+ "case": "a-new-kind-of-timeout",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 1 hour of 2 services on 1 machine in one command: 1 new kind",
+ "read": [],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with New, Known, Could not read."
+  }
+ ],
+ "answer": "**New**\n- web1 — api — 14 — \"timeout after 3000 ms calling payments at 10.0.0.4\"\n\n**Known**\n- \"retrying connection to ADDR\" — 4 — first seen 20 Oct\n\n**Could not read**\n- nothing\n\n## Report\n- read 1 hour of 2 services on 1 machine in one command: 1 new kind\n\n## Carry forward\n- timeout after N ms calling payments at ADDR | first seen 28 Oct\n- retrying connection to ADDR | first seen 20 Oct"
+}

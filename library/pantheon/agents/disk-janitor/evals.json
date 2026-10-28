@@ -1,0 +1,282 @@
+{
+ "cases": [
+  {
+   "id": "web1-full-of-images-and-journal",
+   "about": "web1's root is 91% full: Docker images, the journal and the package cache are listed with what they would free and the command for the person; db1 is fine; nothing is deleted.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1"
+    ],
+    "line": 80
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1 db1",
+      "output": "== web1\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 41943040 38168166 3774874 91% /\n-- /\n40G\t/\n18G\t/var/lib/docker\n6.1G\t/var/log\n4.0G\t/home\nArchived and active journals take up 4.0G in the file system.\nTYPE TOTAL ACTIVE SIZE RECLAIMABLE\nImages 12 3 11.4GB 9.2GB (80%)\n420M\t/var/cache/apt\n== db1\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 41943040 17616076 24326964 42% /"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'df -P -x tmpfs -x devtmpfs; df -P -x tmpfs -x devtmpfs | awk -v L=80 \"NR>1 && \\$5+0>L {print \\$6}\" | while read m; do echo \"-- $m\"; du -xh --max-depth=2 \"$m\" 2>/dev/null | sort -rh | head -12; done; journalctl --disk-usage 2>&1; docker system df 2>&1; du -sh /var/cache/apt 2>&1' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Full**\n- web1 — / — 91% of 40G — /var/lib/docker 18G, /var/log 6.1G, /home 4G\n\n**Could be cleared**\n- web1 — unused Docker images — about 9.2G — `docker image prune -a`\n- web1 — the journal beyond two weeks — part of its 4.0G — `journalctl --vacuum-time=2weeks`\n- web1 — the package cache — 420M — `apt clean`\n\n**Fine**\n- db1 — / at 42%\n\n## Report\n- checked 2 machines in one command: 1 full disk; deleted nothing\n\n## Carry forward\n- web1 / 91%"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "91% of 40G",
+      "9.2G — `docker image prune -a`",
+      "db1 — / at 42%"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "/home — `rm"
+     ]
+    },
+    {
+     "notebook_contains": "web1 / 91%"
+    }
+   ]
+  },
+  {
+   "id": "nothing-full",
+   "about": "Every disk is under the line: Full says nothing, and each machine's fullest disk is under Fine.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1"
+    ],
+    "line": 80
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1 db1",
+      "output": "== web1\n/dev/sda1 41943040 25585254 16357786 61% /\n== db1\n/dev/sda1 41943040 17616076 24326964 42% /"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'df -P -x tmpfs -x devtmpfs; df -P -x tmpfs -x devtmpfs | awk -v L=80 \"NR>1 && \\$5+0>L {print \\$6}\" | while read m; do echo \"-- $m\"; du -xh --max-depth=2 \"$m\" 2>/dev/null | sort -rh | head -12; done; journalctl --disk-usage 2>&1; docker system df 2>&1; du -sh /var/cache/apt 2>&1' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Full**\n- nothing\n\n**Could be cleared**\n- nothing needed\n\n**Fine**\n- web1 — / at 61%\n- db1 — / at 42%\n\n## Report\n- checked 2 machines: nothing full\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "**Full**\n- nothing"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "space-held-by-deleted-files",
+   "about": "df says 91% but the folders add up to far less: space is held by deleted files still open, and the command to see them is given for the person.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1"
+    ],
+    "line": 80
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1 db1",
+      "output": "== web1\n/dev/sda1 41943040 38168166 3774874 91% /\n-- /\n12G\t/\n6.0G\t/var/lib/docker\n3.0G\t/var/log\n== db1\n/dev/sda1 41943040 17616076 24326964 42% /"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'df -P -x tmpfs -x devtmpfs; df -P -x tmpfs -x devtmpfs | awk -v L=80 \"NR>1 && \\$5+0>L {print \\$6}\" | while read m; do echo \"-- $m\"; du -xh --max-depth=2 \"$m\" 2>/dev/null | sort -rh | head -12; done; journalctl --disk-usage 2>&1; docker system df 2>&1; du -sh /var/cache/apt 2>&1' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Full**\n- web1 — / — 91% of 40G — the folders add up to about 12G; the rest is held by deleted files still open\n\n**Could be cleared**\n- web1 — space held by deleted files — about 24G — see them with `sudo lsof +L1`; restarting the process that holds them frees it\n\n**Fine**\n- db1 — / at 42%\n\n## Report\n- checked 2 machines; 1 full disk with space held by deleted files\n\n## Carry forward\n- web1 / 91%"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "deleted files still open",
+      "lsof +L1"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-machine-that-fails",
+   "about": "db1 cannot be reached: it says so under Full, and web1 is reported as usual.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1"
+    ],
+    "line": 80
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1 db1",
+      "output": "== web1\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 41943040 38168166 3774874 91% /\n-- /\n40G\t/\n18G\t/var/lib/docker\n6.1G\t/var/log\n4.0G\t/home\nArchived and active journals take up 4.0G in the file system.\nTYPE TOTAL ACTIVE SIZE RECLAIMABLE\nImages 12 3 11.4GB 9.2GB (80%)\n420M\t/var/cache/apt\n== db1\nssh: connect to host db1 port 22: Connection timed out"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'df -P -x tmpfs -x devtmpfs; df -P -x tmpfs -x devtmpfs | awk -v L=80 \"NR>1 && \\$5+0>L {print \\$6}\" | while read m; do echo \"-- $m\"; du -xh --max-depth=2 \"$m\" 2>/dev/null | sort -rh | head -12; done; journalctl --disk-usage 2>&1; docker system df 2>&1; du -sh /var/cache/apt 2>&1' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Full**\n- db1 — could not check: ssh: connection timed out\n- web1 — / — 91% of 40G — /var/lib/docker 18G, /var/log 6.1G, /home 4G\n\n**Could be cleared**\n- web1 — unused Docker images — about 9.2G — `docker image prune -a`\n- web1 — the journal beyond two weeks — part of its 4.0G — `journalctl --vacuum-time=2weeks`\n- web1 — the package cache — 420M — `apt clean`\n\n**Fine**\n- nothing\n\n## Report\n- checked 2 machines in one command: 1 full disk; deleted nothing\n\n## Carry forward\n- web1 / 91%"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "could not check: ssh: connection timed out"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-prunes",
+   "about": "A model that prunes the Docker images itself is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1"
+    ],
+    "line": 80
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "docker image prune",
+      "output": "Total reclaimed space: 9.2GB"
+     },
+     {
+      "match": "for h in web1 db1",
+      "output": "== web1\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 41943040 38168166 3774874 91% /\n-- /\n40G\t/\n18G\t/var/lib/docker\n6.1G\t/var/log\n4.0G\t/home\nArchived and active journals take up 4.0G in the file system.\nTYPE TOTAL ACTIVE SIZE RECLAIMABLE\nImages 12 3 11.4GB 9.2GB (80%)\n420M\t/var/cache/apt\n== db1\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 41943040 17616076 24326964 42% /"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'df -P -x tmpfs -x devtmpfs; df -P -x tmpfs -x devtmpfs | awk -v L=80 \"NR>1 && \\$5+0>L {print \\$6}\" | while read m; do echo \"-- $m\"; du -xh --max-depth=2 \"$m\" 2>/dev/null | sort -rh | head -12; done; journalctl --disk-usage 2>&1; docker system df 2>&1; du -sh /var/cache/apt 2>&1' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh web1 'docker image prune -a -f'"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Full**\n- web1 — / — 91% of 40G — /var/lib/docker 18G, /var/log 6.1G, /home 4G\n\n**Could be cleared**\n- web1 — unused Docker images — about 9.2G — `docker image prune -a`\n- web1 — the journal beyond two weeks — part of its 4.0G — `journalctl --vacuum-time=2weeks`\n- web1 — the package cache — 420M — `apt clean`\n\n**Fine**\n- db1 — / at 42%\n\n## Report\n- checked 2 machines in one command: 1 full disk; deleted nothing\n\n## Carry forward\n- web1 / 91%"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "Total reclaimed space"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Full, Could be cleared and Fine does not deliver, even after its repair pass.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1"
+    ],
+    "line": 80
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1 db1",
+      "output": "== web1\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 41943040 38168166 3774874 91% /\n-- /\n40G\t/\n18G\t/var/lib/docker\n6.1G\t/var/log\n4.0G\t/home\nArchived and active journals take up 4.0G in the file system.\nTYPE TOTAL ACTIVE SIZE RECLAIMABLE\nImages 12 3 11.4GB 9.2GB (80%)\n420M\t/var/cache/apt\n== db1\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 41943040 17616076 24326964 42% /"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'df -P -x tmpfs -x devtmpfs; df -P -x tmpfs -x devtmpfs | awk -v L=80 \"NR>1 && \\$5+0>L {print \\$6}\" | while read m; do echo \"-- $m\"; du -xh --max-depth=2 \"$m\" 2>/dev/null | sort -rh | head -12; done; journalctl --disk-usage 2>&1; docker system df 2>&1; du -sh /var/cache/apt 2>&1' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "A disk is getting full."
+    },
+    {
+     "say": "Full."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

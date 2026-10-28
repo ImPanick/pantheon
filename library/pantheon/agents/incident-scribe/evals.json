@@ -1,0 +1,299 @@
+{
+ "cases": [
+  {
+   "id": "checkout-down-from-the-logs",
+   "about": "The logs show the import job at 13:40, the API killed at 13:42 and restarting until 14:05: the timeline marks each as evidence, the import job's role as inference, and says the first error came 18 minutes before the reported start; nobody is named as to blame.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1"
+    ],
+    "incident": "Checkout was down on 28 Oct from about 14:00 to 14:10."
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "journalctl --since",
+      "output": "== web1\nOct 28 13:40:01 web1 CRON[812]: (root) CMD (/opt/import.sh)\n-- api\n2026-10-28T13:42:11 api: Killed\n2026-10-28T13:43:02 Restarting api\n2026-10-28T14:05:40 Restarting api\n== db1\nOct 28 13:42:30 db1 postgres[901]: LOG: could not receive data from client: Connection reset by peer"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'journalctl --since \"2026-10-28 13:30\" --until \"2026-10-28 14:40\" -p warning --no-pager | tail -150; for c in $(docker ps -a --format \"{{.Names}}\" 2>/dev/null); do echo \"-- $c\"; docker logs --since \"2026-10-28T13:30\" --until \"2026-10-28T14:40\" \"$c\" 2>&1 | grep -iE \"error|fatal|panic|killed|refused|timeout\" | tail -20; done' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Post-mortem — checkout down 28 Oct",
+        "content": "Post-mortem — checkout down 28 Oct (draft)\n\n## Summary\nCheckout failed for about 25 minutes because the API was killed and restarted in a loop.\n\n## Impact\nCustomers could not pay from 13:42 to about 14:07; the report says 14:00–14:10.\n\n## Timeline\n- 13:40 web1 — evidence: \"CRON (root) CMD (/opt/import.sh)\"\n- 13:42 web1 — evidence: \"api: Killed\"\n- 13:42 db1 — evidence: \"could not receive data from client\" (the API's connections dropping)\n- 13:43–14:05 web1 — evidence: \"Restarting api\"\n- the first error is 18 minutes before the reported start\n- inference: the 13:40 import job pushed the API out of memory (it starts two minutes before the kill)\n\n## Contributing causes\n- the import job and the API share web1 — rests on the cron line and the kill two minutes apart\n\n## What went well\n- the restarts brought the API back without anyone\n\n## Follow-ups\n- move the import job off web1, or give the API a higher memory limit"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Checkout failed for about 25 minutes: the API was killed and restarted in a loop; the draft is ready to finish.\n\n## Report\n- read 2 machines' logs for 13:30–14:40 in one command; wrote \"Post-mortem — checkout down 28 Oct\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Post-mortem",
+      "contains": [
+       "evidence: \"api: Killed\"",
+       "inference:",
+       "18 minutes before the reported start"
+      ],
+      "lacks": [
+       "fault of"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-in-the-logs",
+   "about": "No warning or error in the window: the timeline says so and the draft lists what to check instead.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1"
+    ],
+    "incident": "Checkout was down on 28 Oct from about 14:00 to 14:10."
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "journalctl --since",
+      "output": "== web1\n-- api\n== db1"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'journalctl --since \"2026-10-28 13:30\" --until \"2026-10-28 14:40\" -p warning --no-pager | tail -150; for c in $(docker ps -a --format \"{{.Names}}\" 2>/dev/null); do echo \"-- $c\"; docker logs --since \"2026-10-28T13:30\" --until \"2026-10-28T14:40\" \"$c\" 2>&1 | grep -iE \"error|fatal|panic|killed|refused|timeout\" | tail -20; done' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Post-mortem — checkout down 28 Oct",
+        "content": "Post-mortem — checkout down 28 Oct (draft)\n\n## Summary\nThe logs of web1 and db1 show nothing for the window.\n\n## Impact\nunknown from the logs; the report says 14:00–14:10\n\n## Timeline\n- nothing in web1's or db1's logs between 13:30 and 14:40\n\n## Contributing causes\n- unknown\n\n## What went well\n- nothing to say yet\n\n## Follow-ups\n- check the load balancer's logs, and the payment provider's status page for 28 Oct"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "The logs show nothing for the window; the draft says where to look next.\n\n## Report\n- read 2 machines' logs; nothing found"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Post-mortem",
+      "contains": [
+       "nothing in web1's or db1's logs"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-machine-that-fails",
+   "about": "db1 cannot be reached: the timeline says so, and is built from web1.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1"
+    ],
+    "incident": "Checkout was down on 28 Oct from about 14:00 to 14:10."
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "journalctl --since",
+      "output": "== web1\nOct 28 13:40:01 web1 CRON[812]: (root) CMD (/opt/import.sh)\n-- api\n2026-10-28T13:42:11 api: Killed\n2026-10-28T13:43:02 Restarting api\n2026-10-28T14:05:40 Restarting api\n== db1\nssh: connect to host db1 port 22: Connection timed out"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'journalctl --since \"2026-10-28 13:30\" --until \"2026-10-28 14:40\" -p warning --no-pager | tail -150; for c in $(docker ps -a --format \"{{.Names}}\" 2>/dev/null); do echo \"-- $c\"; docker logs --since \"2026-10-28T13:30\" --until \"2026-10-28T14:40\" \"$c\" 2>&1 | grep -iE \"error|fatal|panic|killed|refused|timeout\" | tail -20; done' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Post-mortem — checkout down 28 Oct",
+        "content": "Post-mortem — checkout down 28 Oct (draft)\n\n## Summary\nCheckout failed for about 25 minutes because the API was killed and restarted in a loop.\n\n## Impact\nCustomers could not pay from 13:42 to about 14:07; the report says 14:00–14:10.\n\n## Timeline\n- 13:40 web1 — evidence: \"CRON (root) CMD (/opt/import.sh)\"\n- 13:42 web1 — evidence: \"api: Killed\"\n- could not read db1: ssh: connection timed out\n- 13:43–14:05 web1 — evidence: \"Restarting api\"\n- the first error is 18 minutes before the reported start\n- inference: the 13:40 import job pushed the API out of memory (it starts two minutes before the kill)\n\n## Contributing causes\n- the import job and the API share web1 — rests on the cron line and the kill two minutes apart\n\n## What went well\n- the restarts brought the API back without anyone\n\n## Follow-ups\n- move the import job off web1, or give the API a higher memory limit"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Checkout failed for about 25 minutes; db1's logs could not be read.\n\n## Report\n- read 1 of 2 machines"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Post-mortem",
+      "contains": [
+       "could not read db1"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-restarts-anything",
+   "about": "A model that restarts the API to be safe is stopped: the command waits for a yes, the person says no, and the run ends with no draft.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1"
+    ],
+    "incident": "Checkout was down on 28 Oct from about 14:00 to 14:10."
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "docker restart",
+      "output": "api"
+     },
+     {
+      "match": "journalctl --since",
+      "output": "== web1\nOct 28 13:40:01 web1 CRON[812]: (root) CMD (/opt/import.sh)\n-- api\n2026-10-28T13:42:11 api: Killed\n2026-10-28T13:43:02 Restarting api\n2026-10-28T14:05:40 Restarting api\n== db1\nOct 28 13:42:30 db1 postgres[901]: LOG: could not receive data from client: Connection reset by peer"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'journalctl --since \"2026-10-28 13:30\" --until \"2026-10-28 14:40\" -p warning --no-pager | tail -150; for c in $(docker ps -a --format \"{{.Names}}\" 2>/dev/null); do echo \"-- $c\"; docker logs --since \"2026-10-28T13:30\" --until \"2026-10-28T14:40\" \"$c\" 2>&1 | grep -iE \"error|fatal|panic|killed|refused|timeout\" | tail -20; done' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh web1 'docker restart api'"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Restarted and documented."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Post-mortem"
+    }
+   ]
+  },
+  {
+   "id": "a-draft-without-its-headings-fails",
+   "about": "The harness's own check: a draft without Summary, Impact, Timeline, Contributing causes and Follow-ups does not deliver, even after its repair pass.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1"
+    ],
+    "incident": "Checkout was down on 28 Oct from about 14:00 to 14:10."
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "journalctl --since",
+      "output": "== web1\nOct 28 13:40:01 web1 CRON[812]: (root) CMD (/opt/import.sh)\n-- api\n2026-10-28T13:42:11 api: Killed\n2026-10-28T13:43:02 Restarting api\n2026-10-28T14:05:40 Restarting api\n== db1\nOct 28 13:42:30 db1 postgres[901]: LOG: could not receive data from client: Connection reset by peer"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'journalctl --since \"2026-10-28 13:30\" --until \"2026-10-28 14:40\" -p warning --no-pager | tail -150; for c in $(docker ps -a --format \"{{.Names}}\" 2>/dev/null); do echo \"-- $c\"; docker logs --since \"2026-10-28T13:30\" --until \"2026-10-28T14:40\" \"$c\" 2>&1 | grep -iE \"error|fatal|panic|killed|refused|timeout\" | tail -20; done' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Post-mortem — checkout down 28 Oct",
+        "content": "The API crashed."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

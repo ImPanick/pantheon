@@ -124,6 +124,9 @@ AT_THE_BAR = frozenset({
     # screens; the scheduled ones in one command, so a run waits for nobody.
     "browser-runner", "desktop-app-driver", "environment-setter", "file-converter", "file-fetcher",
     "form-filler", "screenshot-reporter",
+    # DevOps & Infrastructure, the whole section: each looks in one command.
+    "certificate-watch", "config-drift", "container-keeper", "disk-janitor", "incident-scribe",
+    "log-watcher", "update-planner", "uptime-pinger",
 })
 
 SECTIONS = ("Steps", "Judgement calls", "Edge cases", "Deliverable", "Example")

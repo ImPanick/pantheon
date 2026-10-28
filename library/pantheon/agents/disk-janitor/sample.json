@@ -1,0 +1,18 @@
+{
+ "case": "web1-full-of-images-and-journal",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- checked 2 machines in one command: 1 full disk; deleted nothing",
+ "read": [],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Full, Could be cleared, Fine."
+  }
+ ],
+ "answer": "**Full**\n- web1 — / — 91% of 40G — /var/lib/docker 18G, /var/log 6.1G, /home 4G\n\n**Could be cleared**\n- web1 — unused Docker images — about 9.2G — `docker image prune -a`\n- web1 — the journal beyond two weeks — part of its 4.0G — `journalctl --vacuum-time=2weeks`\n- web1 — the package cache — 420M — `apt clean`\n\n**Fine**\n- db1 — / at 42%\n\n## Report\n- checked 2 machines in one command: 1 full disk; deleted nothing\n\n## Carry forward\n- web1 / 91%"
+}

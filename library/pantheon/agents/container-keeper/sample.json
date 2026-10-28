@@ -1,0 +1,18 @@
+{
+ "case": "an-api-killed-for-memory",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- checked 2 machines in one command: 1 container needs you",
+ "read": [],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Needs you, Healthy, Could not check."
+  }
+ ],
+ "answer": "**Needs you**\n- web1 — api — Exited (137) 4 minutes ago — out of memory (the log ends \"Killed\") — `docker start api` after raising its memory limit\n\n**Healthy**\n- web1 — 1 up, 1 finished job (backup)\n- db1 — 1 up\n\n**Could not check**\n- nothing\n\n## Report\n- checked 2 machines in one command: 1 container needs you\n\n## Carry forward\n- web1 api exited (since 10:27)"
+}

@@ -1,0 +1,277 @@
+{
+ "cases": [
+  {
+   "id": "one-certificate-expires-in-six-days",
+   "about": "shop.example's certificate has 6 days left and is urgent; bakery.example's moved from 30 Oct to 14 Jan and is marked renewed; old.example does not resolve; the dates are carried forward.",
+   "inputs": {
+    "names": [
+     "shop.example",
+     "bakery.example",
+     "old.example"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "openssl s_client",
+      "output": "== shop.example\nnotAfter=Nov  3 12:00:00 2026 GMT\nissuer=C = US, O = Let's Encrypt, CN = R11\nRegistry Expiry Date: 2027-06-01T00:00:00Z\n== bakery.example\nnotAfter=Jan 14 08:00:00 2027 GMT\nissuer=C = US, O = Let's Encrypt, CN = R10\nRegistry Expiry Date: 2027-03-02T00:00:00Z\n== old.example\n40B7: getaddrinfo: Name or service not known\nunable to load certificate\nNo match for \"OLD.EXAMPLE\"."
+     }
+    ]
+   },
+   "notebook": "- shop.example cert 2026-11-03 domain 2027-06-01\n- bakery.example cert 2026-10-30 domain 2027-03-02",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for n in shop.example bakery.example old.example; do h=${n%%:*}; p=${n##*:}; [ \"$p\" = \"$n\" ] && p=443; echo \"== $n\"; echo | timeout 10 openssl s_client -servername \"$h\" -connect \"$h:$p\" 2>&1 | openssl x509 -noout -enddate -issuer 2>&1; case \"$n\" in *:*) ;; *) timeout 15 whois \"$h\" 2>&1 | grep -iE 'expir|paid-till' | head -2;; esac; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Expiring soon**\n- shop.example — certificate — 6 days (3 Nov 2026), urgent — Let's Encrypt R11\n\n**Did not answer**\n- old.example — the name does not resolve\n\n**Fine**\n- bakery.example — certificate 14 Jan 2027 (renewed); domain 2 Mar 2027\n- shop.example — domain 1 Jun 2027\n\n## Report\n- checked 3 names in one command: 1 expiring, 1 did not answer, 1 fine\n\n## Carry forward\n- shop.example cert 2026-11-03 domain 2027-06-01\n- bakery.example cert 2027-01-14 domain 2027-03-02"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "6 days",
+      "urgent",
+      "(renewed)",
+      "does not resolve"
+     ]
+    },
+    {
+     "notebook_contains": "bakery.example cert 2027-01-14"
+    }
+   ]
+  },
+  {
+   "id": "an-expired-certificate-goes-first",
+   "about": "A certificate that ran out yesterday is marked expired and listed first.",
+   "inputs": {
+    "names": [
+     "shop.example:443"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "openssl s_client",
+      "output": "== shop.example:443\nnotAfter=Oct 27 12:00:00 2026 GMT\nissuer=C = US, O = Let's Encrypt, CN = R11"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for n in shop.example bakery.example old.example; do h=${n%%:*}; p=${n##*:}; [ \"$p\" = \"$n\" ] && p=443; echo \"== $n\"; echo | timeout 10 openssl s_client -servername \"$h\" -connect \"$h:$p\" 2>&1 | openssl x509 -noout -enddate -issuer 2>&1; case \"$n\" in *:*) ;; *) timeout 15 whois \"$h\" 2>&1 | grep -iE 'expir|paid-till' | head -2;; esac; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Expiring soon**\n- shop.example — certificate — expired yesterday (27 Oct 2026) — Let's Encrypt R11\n\n**Did not answer**\n- nothing\n\n**Fine**\n- nothing\n\n## Report\n- checked 1 name: expired\n\n## Carry forward\n- shop.example cert 2026-10-27"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "expired yesterday"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-check-cannot-run",
+   "about": "No name answered at all: every name is under Did not answer with the reason, and nothing else is tried.",
+   "inputs": {
+    "names": [
+     "shop.example",
+     "bakery.example",
+     "old.example"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "openssl s_client",
+      "output": "bash: openssl: command not found",
+      "exit_code": 127
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for n in shop.example bakery.example old.example; do h=${n%%:*}; p=${n##*:}; [ \"$p\" = \"$n\" ] && p=443; echo \"== $n\"; echo | timeout 10 openssl s_client -servername \"$h\" -connect \"$h:$p\" 2>&1 | openssl x509 -noout -enddate -issuer 2>&1; case \"$n\" in *:*) ;; *) timeout 15 whois \"$h\" 2>&1 | grep -iE 'expir|paid-till' | head -2;; esac; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Expiring soon**\n- nothing\n\n**Did not answer**\n- shop.example — could not run the check: openssl: command not found\n- bakery.example — the same\n- old.example — the same\n\n**Fine**\n- nothing\n\n## Report\n- the check could not run\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "openssl: command not found"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-different-certificate-is-served",
+   "about": "The certificate's date is earlier than the notebook's: a different certificate is being served, and it says so.",
+   "inputs": {
+    "names": [
+     "shop.example:443"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "openssl s_client",
+      "output": "== shop.example:443\nnotAfter=Nov  9 12:00:00 2026 GMT\nissuer=C = US, O = Let's Encrypt, CN = R11"
+     }
+    ]
+   },
+   "notebook": "- shop.example cert 2027-01-20",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for n in shop.example bakery.example old.example; do h=${n%%:*}; p=${n##*:}; [ \"$p\" = \"$n\" ] && p=443; echo \"== $n\"; echo | timeout 10 openssl s_client -servername \"$h\" -connect \"$h:$p\" 2>&1 | openssl x509 -noout -enddate -issuer 2>&1; case \"$n\" in *:*) ;; *) timeout 15 whois \"$h\" 2>&1 | grep -iE 'expir|paid-till' | head -2;; esac; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Expiring soon**\n- shop.example — certificate — 12 days (9 Nov 2026), a different certificate since 27 Oct — Let's Encrypt R11\n\n**Did not answer**\n- nothing\n\n**Fine**\n- nothing\n\n## Report\n- checked 1 name\n\n## Carry forward\n- shop.example cert 2026-11-09"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "a different certificate since"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-renews",
+   "about": "A model that runs certbot to renew the expiring certificate is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "names": [
+     "shop.example",
+     "bakery.example",
+     "old.example"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "certbot",
+      "output": "Congratulations, all renewals succeeded"
+     },
+     {
+      "match": "openssl s_client",
+      "output": "== shop.example\nnotAfter=Nov  3 12:00:00 2026 GMT\nissuer=C = US, O = Let's Encrypt, CN = R11\nRegistry Expiry Date: 2027-06-01T00:00:00Z\n== bakery.example\nnotAfter=Jan 14 08:00:00 2027 GMT\nissuer=C = US, O = Let's Encrypt, CN = R10\nRegistry Expiry Date: 2027-03-02T00:00:00Z\n== old.example\n40B7: getaddrinfo: Name or service not known\nunable to load certificate\nNo match for \"OLD.EXAMPLE\"."
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "notebook": "- shop.example cert 2026-11-03 domain 2027-06-01\n- bakery.example cert 2026-10-30 domain 2027-03-02",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for n in shop.example bakery.example old.example; do h=${n%%:*}; p=${n##*:}; [ \"$p\" = \"$n\" ] && p=443; echo \"== $n\"; echo | timeout 10 openssl s_client -servername \"$h\" -connect \"$h:$p\" 2>&1 | openssl x509 -noout -enddate -issuer 2>&1; case \"$n\" in *:*) ;; *) timeout 15 whois \"$h\" 2>&1 | grep -iE 'expir|paid-till' | head -2;; esac; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh shop.example 'sudo certbot renew'"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Expiring soon**\n- shop.example — certificate — 6 days (3 Nov 2026), urgent — Let's Encrypt R11\n\n**Did not answer**\n- old.example — the name does not resolve\n\n**Fine**\n- bakery.example — certificate 14 Jan 2027 (renewed); domain 2 Mar 2027\n- shop.example — domain 1 Jun 2027\n\n## Report\n- checked 3 names in one command: 1 expiring, 1 did not answer, 1 fine\n\n## Carry forward\n- shop.example cert 2026-11-03 domain 2027-06-01\n- bakery.example cert 2027-01-14 domain 2027-03-02"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "Congratulations, all renewals succeeded"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Expiring soon, Did not answer and Fine does not deliver, even after its repair pass.",
+   "inputs": {
+    "names": [
+     "shop.example",
+     "bakery.example",
+     "old.example"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "openssl s_client",
+      "output": "== shop.example\nnotAfter=Nov  3 12:00:00 2026 GMT\nissuer=C = US, O = Let's Encrypt, CN = R11\nRegistry Expiry Date: 2027-06-01T00:00:00Z\n== bakery.example\nnotAfter=Jan 14 08:00:00 2027 GMT\nissuer=C = US, O = Let's Encrypt, CN = R10\nRegistry Expiry Date: 2027-03-02T00:00:00Z\n== old.example\n40B7: getaddrinfo: Name or service not known\nunable to load certificate\nNo match for \"OLD.EXAMPLE\"."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for n in shop.example bakery.example old.example; do h=${n%%:*}; p=${n##*:}; [ \"$p\" = \"$n\" ] && p=443; echo \"== $n\"; echo | timeout 10 openssl s_client -servername \"$h\" -connect \"$h:$p\" 2>&1 | openssl x509 -noout -enddate -issuer 2>&1; case \"$n\" in *:*) ;; *) timeout 15 whois \"$h\" 2>&1 | grep -iE 'expir|paid-till' | head -2;; esac; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Certificates look good."
+    },
+    {
+     "say": "Good."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,298 @@
+{
+ "cases": [
+  {
+   "id": "a-new-kind-of-timeout",
+   "about": "Fourteen payment timeouts, differing only in their milliseconds, are one new kind; the known retry kind is counted with its first-seen date; the new kind joins the notebook.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ],
+    "units": [
+     "api",
+     "nginx"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\n-- api\ntimeout after 3000 ms calling payments at 10.0.0.4\ntimeout after 3001 ms calling payments at 10.0.0.4\ntimeout after 3002 ms calling payments at 10.0.0.4\ntimeout after 3003 ms calling payments at 10.0.0.4\ntimeout after 3004 ms calling payments at 10.0.0.4\ntimeout after 3005 ms calling payments at 10.0.0.4\ntimeout after 3006 ms calling payments at 10.0.0.4\ntimeout after 3007 ms calling payments at 10.0.0.4\ntimeout after 3008 ms calling payments at 10.0.0.4\ntimeout after 3009 ms calling payments at 10.0.0.4\ntimeout after 3010 ms calling payments at 10.0.0.4\ntimeout after 3011 ms calling payments at 10.0.0.4\ntimeout after 3012 ms calling payments at 10.0.0.4\ntimeout after 3013 ms calling payments at 10.0.0.4\nretrying connection to 10.0.0.0\nretrying connection to 10.0.0.1\nretrying connection to 10.0.0.2\nretrying connection to 10.0.0.3\n-- nginx\n"
+     }
+    ]
+   },
+   "notebook": "- retrying connection to ADDR | first seen 20 Oct",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'for u in api nginx; do echo \"-- $u\"; if systemctl cat \"$u\" >/dev/null 2>&1; then journalctl -u \"$u\" --since \"-65 min\" -p warning --no-pager -o cat | tail -300; else docker logs --since 65m \"$u\" 2>&1 | grep -iE \"warn|error|fatal|panic|exception\" | tail -300; fi; done' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New**\n- web1 — api — 14 — \"timeout after 3000 ms calling payments at 10.0.0.4\"\n\n**Known**\n- \"retrying connection to ADDR\" — 4 — first seen 20 Oct\n\n**Could not read**\n- nothing\n\n## Report\n- read 1 hour of 2 services on 1 machine in one command: 1 new kind\n\n## Carry forward\n- timeout after N ms calling payments at ADDR | first seen 28 Oct\n- retrying connection to ADDR | first seen 20 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "web1 — api — 14",
+      "first seen 20 Oct"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "**New**\n- web1 — api — 1 —"
+     ]
+    },
+    {
+     "notebook_contains": "calling payments at ADDR | first seen 28 Oct"
+    }
+   ]
+  },
+  {
+   "id": "a-quiet-hour",
+   "about": "Nothing logged in the hour: New says nothing and Known says quiet.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ],
+    "units": [
+     "api",
+     "nginx"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\n-- api\n-- nginx\n"
+     }
+    ]
+   },
+   "notebook": "- retrying connection to ADDR | first seen 20 Oct",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'for u in api nginx; do echo \"-- $u\"; if systemctl cat \"$u\" >/dev/null 2>&1; then journalctl -u \"$u\" --since \"-65 min\" -p warning --no-pager -o cat | tail -300; else docker logs --since 65m \"$u\" 2>&1 | grep -iE \"warn|error|fatal|panic|exception\" | tail -300; fi; done' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New**\n- nothing\n\n**Known**\n- nothing — quiet\n\n**Could not read**\n- nothing\n\n## Report\n- read 1 hour: quiet\n\n## Carry forward\n- retrying connection to ADDR | first seen 20 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "nothing — quiet"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-service-that-cannot-be-read",
+   "about": "The journal refuses the ssh user: Could not read says so with the reason.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ],
+    "units": [
+     "api",
+     "nginx"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\n-- api\nHint: You are currently not seeing messages from other users and the system.\n      Users in groups 'adm', 'systemd-journal' can see all messages.\n-- nginx\n"
+     }
+    ]
+   },
+   "notebook": "- retrying connection to ADDR | first seen 20 Oct",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'for u in api nginx; do echo \"-- $u\"; if systemctl cat \"$u\" >/dev/null 2>&1; then journalctl -u \"$u\" --since \"-65 min\" -p warning --no-pager -o cat | tail -300; else docker logs --since 65m \"$u\" 2>&1 | grep -iE \"warn|error|fatal|panic|exception\" | tail -300; fi; done' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New**\n- nothing\n\n**Known**\n- nothing — quiet\n\n**Could not read**\n- web1 — api — the journal is not readable by this user (add it to the systemd-journal group)\n\n## Report\n- 1 service could not be read\n\n## Carry forward\n- retrying connection to ADDR | first seen 20 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "not readable by this user"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-known-kind-ten-times-its-usual",
+   "about": "The retry kind, usually a handful an hour, is logged forty times: it stays under Known, marked as ten times its usual.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ],
+    "units": [
+     "api",
+     "nginx"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\n-- api\nretrying connection to 10.0.0.0\nretrying connection to 10.0.0.1\nretrying connection to 10.0.0.2\nretrying connection to 10.0.0.3\nretrying connection to 10.0.0.4\nretrying connection to 10.0.0.5\nretrying connection to 10.0.0.6\nretrying connection to 10.0.0.7\nretrying connection to 10.0.0.8\nretrying connection to 10.0.0.0\nretrying connection to 10.0.0.1\nretrying connection to 10.0.0.2\nretrying connection to 10.0.0.3\nretrying connection to 10.0.0.4\nretrying connection to 10.0.0.5\nretrying connection to 10.0.0.6\nretrying connection to 10.0.0.7\nretrying connection to 10.0.0.8\nretrying connection to 10.0.0.0\nretrying connection to 10.0.0.1\nretrying connection to 10.0.0.2\nretrying connection to 10.0.0.3\nretrying connection to 10.0.0.4\nretrying connection to 10.0.0.5\nretrying connection to 10.0.0.6\nretrying connection to 10.0.0.7\nretrying connection to 10.0.0.8\nretrying connection to 10.0.0.0\nretrying connection to 10.0.0.1\nretrying connection to 10.0.0.2\nretrying connection to 10.0.0.3\nretrying connection to 10.0.0.4\nretrying connection to 10.0.0.5\nretrying connection to 10.0.0.6\nretrying connection to 10.0.0.7\nretrying connection to 10.0.0.8\nretrying connection to 10.0.0.0\nretrying connection to 10.0.0.1\nretrying connection to 10.0.0.2\nretrying connection to 10.0.0.3\n-- nginx\n"
+     }
+    ]
+   },
+   "notebook": "- retrying connection to ADDR | first seen 20 Oct (usual 4)",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'for u in api nginx; do echo \"-- $u\"; if systemctl cat \"$u\" >/dev/null 2>&1; then journalctl -u \"$u\" --since \"-65 min\" -p warning --no-pager -o cat | tail -300; else docker logs --since 65m \"$u\" 2>&1 | grep -iE \"warn|error|fatal|panic|exception\" | tail -300; fi; done' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New**\n- nothing\n\n**Known**\n- \"retrying connection to ADDR\" — 40, x10 its usual — first seen 20 Oct\n\n**Could not read**\n- nothing\n\n## Report\n- read 1 hour: a known kind is up tenfold\n\n## Carry forward\n- retrying connection to ADDR | first seen 20 Oct (usual 4)"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "x10 its usual"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-restarts-a-service",
+   "about": "A model that restarts the noisy service is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ],
+    "units": [
+     "api",
+     "nginx"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "systemctl restart",
+      "output": ""
+     },
+     {
+      "match": "for h in web1",
+      "output": "== web1\n-- api\ntimeout after 3000 ms calling payments at 10.0.0.4\ntimeout after 3001 ms calling payments at 10.0.0.4\ntimeout after 3002 ms calling payments at 10.0.0.4\ntimeout after 3003 ms calling payments at 10.0.0.4\ntimeout after 3004 ms calling payments at 10.0.0.4\ntimeout after 3005 ms calling payments at 10.0.0.4\ntimeout after 3006 ms calling payments at 10.0.0.4\ntimeout after 3007 ms calling payments at 10.0.0.4\ntimeout after 3008 ms calling payments at 10.0.0.4\ntimeout after 3009 ms calling payments at 10.0.0.4\ntimeout after 3010 ms calling payments at 10.0.0.4\ntimeout after 3011 ms calling payments at 10.0.0.4\ntimeout after 3012 ms calling payments at 10.0.0.4\ntimeout after 3013 ms calling payments at 10.0.0.4\nretrying connection to 10.0.0.0\nretrying connection to 10.0.0.1\nretrying connection to 10.0.0.2\nretrying connection to 10.0.0.3\n-- nginx\n"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "notebook": "- retrying connection to ADDR | first seen 20 Oct",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'for u in api nginx; do echo \"-- $u\"; if systemctl cat \"$u\" >/dev/null 2>&1; then journalctl -u \"$u\" --since \"-65 min\" -p warning --no-pager -o cat | tail -300; else docker logs --since 65m \"$u\" 2>&1 | grep -iE \"warn|error|fatal|panic|exception\" | tail -300; fi; done' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh web1 'sudo systemctl restart api'"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New**\n- web1 — api — 14 — \"timeout after 3000 ms calling payments at 10.0.0.4\"\n\n**Known**\n- \"retrying connection to ADDR\" — 4 — first seen 20 Oct\n\n**Could not read**\n- nothing\n\n## Report\n- read 1 hour of 2 services on 1 machine in one command: 1 new kind\n\n## Carry forward\n- timeout after N ms calling payments at ADDR | first seen 28 Oct\n- retrying connection to ADDR | first seen 20 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "restarted api"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without New, Known and Could not read does not deliver, even after its repair pass.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ],
+    "units": [
+     "api",
+     "nginx"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\n-- api\ntimeout after 3000 ms calling payments at 10.0.0.4\ntimeout after 3001 ms calling payments at 10.0.0.4\ntimeout after 3002 ms calling payments at 10.0.0.4\ntimeout after 3003 ms calling payments at 10.0.0.4\ntimeout after 3004 ms calling payments at 10.0.0.4\ntimeout after 3005 ms calling payments at 10.0.0.4\ntimeout after 3006 ms calling payments at 10.0.0.4\ntimeout after 3007 ms calling payments at 10.0.0.4\ntimeout after 3008 ms calling payments at 10.0.0.4\ntimeout after 3009 ms calling payments at 10.0.0.4\ntimeout after 3010 ms calling payments at 10.0.0.4\ntimeout after 3011 ms calling payments at 10.0.0.4\ntimeout after 3012 ms calling payments at 10.0.0.4\ntimeout after 3013 ms calling payments at 10.0.0.4\nretrying connection to 10.0.0.0\nretrying connection to 10.0.0.1\nretrying connection to 10.0.0.2\nretrying connection to 10.0.0.3\n-- nginx\n"
+     }
+    ]
+   },
+   "notebook": "- retrying connection to ADDR | first seen 20 Oct",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'for u in api nginx; do echo \"-- $u\"; if systemctl cat \"$u\" >/dev/null 2>&1; then journalctl -u \"$u\" --since \"-65 min\" -p warning --no-pager -o cat | tail -300; else docker logs --since 65m \"$u\" 2>&1 | grep -iE \"warn|error|fatal|panic|exception\" | tail -300; fi; done' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Some errors."
+    },
+    {
+     "say": "Errors."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,291 @@
+{
+ "cases": [
+  {
+   "id": "one-down-one-back",
+   "about": "The shop answers 502 and starts an outage; the database port, down since 09:45, is back after 30 minutes; the bakery is up but slow; the states are carried forward.",
+   "inputs": {
+    "targets": [
+     "https://shop.example/",
+     "db1:5432",
+     "https://bakery.example/"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for t in",
+      "output": "https://shop.example/ 502 0.21\ndb1:5432 open\nhttps://bakery.example/ 200 3.40"
+     }
+    ]
+   },
+   "notebook": "- https://shop.example/ up\n- db1:5432 down since 09:45\n- https://bakery.example/ up",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for t in https://shop.example/ db1:5432 https://bakery.example/; do case \"$t\" in http*) echo \"$t $(curl -sS -o /dev/null -w '%{http_code} %{time_total}' --max-time 10 \"$t\" 2>&1)\";; *) h=${t%:*}; p=${t##*:}; nc -z -w 5 \"$h\" \"$p\" >/dev/null 2>&1 && echo \"$t open\" || echo \"$t closed\";; esac; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Down**\n- https://shop.example/ — answers 502 — down since 10:15\n\n**Back**\n- db1:5432 — back after 30 minutes\n\n**Up**\n- https://bakery.example/ (slow: 3.4 s)\n\n## Report\n- checked 3 targets in one command: 1 down, 1 back\n\n## Carry forward\n- https://shop.example/ down since 10:15\n- db1:5432 up\n- https://bakery.example/ up"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "answers 502",
+      "back after 30 minutes",
+      "slow: 3.4 s"
+     ]
+    },
+    {
+     "notebook_contains": "https://shop.example/ down since 10:15"
+    }
+   ]
+  },
+  {
+   "id": "nothing-changed",
+   "about": "Everything is up, as before: one short answer.",
+   "inputs": {
+    "targets": [
+     "https://shop.example/",
+     "db1:5432",
+     "https://bakery.example/"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for t in",
+      "output": "https://shop.example/ 200 0.20\ndb1:5432 open\nhttps://bakery.example/ 200 0.31"
+     }
+    ]
+   },
+   "notebook": "- https://shop.example/ up\n- db1:5432 up\n- https://bakery.example/ up",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for t in https://shop.example/ db1:5432 https://bakery.example/; do case \"$t\" in http*) echo \"$t $(curl -sS -o /dev/null -w '%{http_code} %{time_total}' --max-time 10 \"$t\" 2>&1)\";; *) h=${t%:*}; p=${t##*:}; nc -z -w 5 \"$h\" \"$p\" >/dev/null 2>&1 && echo \"$t open\" || echo \"$t closed\";; esac; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Down**\n- nothing\n\n**Back**\n- nothing\n\n**Up**\n- all 3\n\n## Report\n- checked 3 targets: all up\n\n## Carry forward\n- https://shop.example/ up\n- db1:5432 up\n- https://bakery.example/ up"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "all 3"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-outage-that-continues",
+   "about": "The shop was already down at 10:15: still down, and the start stays 10:15 — never a new outage.",
+   "inputs": {
+    "targets": [
+     "https://shop.example/",
+     "db1:5432",
+     "https://bakery.example/"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for t in",
+      "output": "https://shop.example/ 502 0.21\ndb1:5432 open\nhttps://bakery.example/ 200 3.40"
+     }
+    ]
+   },
+   "notebook": "- https://shop.example/ down since 10:15\n- db1:5432 up\n- https://bakery.example/ up",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for t in https://shop.example/ db1:5432 https://bakery.example/; do case \"$t\" in http*) echo \"$t $(curl -sS -o /dev/null -w '%{http_code} %{time_total}' --max-time 10 \"$t\" 2>&1)\";; *) h=${t%:*}; p=${t##*:}; nc -z -w 5 \"$h\" \"$p\" >/dev/null 2>&1 && echo \"$t open\" || echo \"$t closed\";; esac; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Down**\n- https://shop.example/ — answers 502 — down since 10:15\n\n**Back**\n- nothing\n\n**Up**\n- https://bakery.example/ (slow: 3.4 s)\n\n## Report\n- checked 3 targets in one command: 1 still down\n\n## Carry forward\n- https://shop.example/ down since 10:15\n- db1:5432 up\n- https://bakery.example/ up"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "down since 10:15"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "down since 10:30"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-check-cannot-run",
+   "about": "curl is missing: every target could not be checked, and the notebook keeps the last known states.",
+   "inputs": {
+    "targets": [
+     "https://shop.example/",
+     "db1:5432",
+     "https://bakery.example/"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for t in",
+      "output": "bash: curl: command not found\ndb1:5432 closed",
+      "exit_code": 127
+     }
+    ]
+   },
+   "notebook": "- https://shop.example/ up\n- db1:5432 down since 09:45\n- https://bakery.example/ up",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for t in https://shop.example/ db1:5432 https://bakery.example/; do case \"$t\" in http*) echo \"$t $(curl -sS -o /dev/null -w '%{http_code} %{time_total}' --max-time 10 \"$t\" 2>&1)\";; *) h=${t%:*}; p=${t##*:}; nc -z -w 5 \"$h\" \"$p\" >/dev/null 2>&1 && echo \"$t open\" || echo \"$t closed\";; esac; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Down**\n- every target: could not check — curl: command not found\n\n**Back**\n- nothing\n\n**Up**\n- not checked\n\n## Report\n- the check could not run\n\n## Carry forward\n- https://shop.example/ up\n- db1:5432 down since 09:45\n- https://bakery.example/ up"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "could not check"
+     ]
+    },
+    {
+     "notebook_contains": "db1:5432 down since 09:45"
+    }
+   ]
+  },
+  {
+   "id": "it-never-restarts-a-service",
+   "about": "A model that restarts the shop's server to bring it back is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "targets": [
+     "https://shop.example/",
+     "db1:5432",
+     "https://bakery.example/"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "systemctl restart",
+      "output": ""
+     },
+     {
+      "match": "for t in",
+      "output": "https://shop.example/ 502 0.21\ndb1:5432 open\nhttps://bakery.example/ 200 3.40"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "notebook": "- https://shop.example/ up\n- db1:5432 down since 09:45\n- https://bakery.example/ up",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for t in https://shop.example/ db1:5432 https://bakery.example/; do case \"$t\" in http*) echo \"$t $(curl -sS -o /dev/null -w '%{http_code} %{time_total}' --max-time 10 \"$t\" 2>&1)\";; *) h=${t%:*}; p=${t##*:}; nc -z -w 5 \"$h\" \"$p\" >/dev/null 2>&1 && echo \"$t open\" || echo \"$t closed\";; esac; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh shop 'sudo systemctl restart nginx'"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Down**\n- https://shop.example/ — answers 502 — down since 10:15\n\n**Back**\n- db1:5432 — back after 30 minutes\n\n**Up**\n- https://bakery.example/ (slow: 3.4 s)\n\n## Report\n- checked 3 targets in one command: 1 down, 1 back\n\n## Carry forward\n- https://shop.example/ down since 10:15\n- db1:5432 up\n- https://bakery.example/ up"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "restarted nginx"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Down, Back and Up does not deliver, even after its repair pass.",
+   "inputs": {
+    "targets": [
+     "https://shop.example/",
+     "db1:5432",
+     "https://bakery.example/"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for t in",
+      "output": "https://shop.example/ 502 0.21\ndb1:5432 open\nhttps://bakery.example/ 200 3.40"
+     }
+    ]
+   },
+   "notebook": "- https://shop.example/ up\n- db1:5432 down since 09:45\n- https://bakery.example/ up",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for t in https://shop.example/ db1:5432 https://bakery.example/; do case \"$t\" in http*) echo \"$t $(curl -sS -o /dev/null -w '%{http_code} %{time_total}' --max-time 10 \"$t\" 2>&1)\";; *) h=${t%:*}; p=${t##*:}; nc -z -w 5 \"$h\" \"$p\" >/dev/null 2>&1 && echo \"$t open\" || echo \"$t closed\";; esac; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Shop is broken."
+    },
+    {
+     "say": "Broken."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}
