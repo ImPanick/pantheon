@@ -1,0 +1,23 @@
+{
+ "case": "two-receipts-start-a-ledger",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- filed 2 receipts in money/ledger.csv",
+ "read": [
+  "search_emails",
+  "read_email",
+  "ls"
+ ],
+ "wrote": [
+  "download_attachment",
+  "write_file"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Filed, Not filed, Totals."
+  }
+ ],
+ "answer": "**Filed**\n- 2026-10-25 — Coffee Co — 4.50 GBP — #8812 — no file\n- 2026-10-26 — Hostly — 12.00 USD — INV-42 — data/mail-attachments/INBOX_r2/invoice-42.pdf\n\n**Not filed**\n- nothing\n\n**Totals**\n- Total this month: 4.50 GBP\n- Total this month: 12.00 USD\n\n## Report\n- filed 2 receipts in money/ledger.csv\n\n## Carry forward\n- filed: r1, r2"
+}

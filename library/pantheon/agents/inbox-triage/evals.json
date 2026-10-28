@@ -2,6 +2,7 @@
  "cases": [
   {
    "id": "vip-and-deadline-are-urgent",
+   "about": "A VIP's lunch question and an invoice due tomorrow are Urgent and drafted; the sale newsletter is FYI and gets no draft.",
    "inputs": {
     "vip": [
      "ana@example.com"
@@ -36,7 +37,7 @@
        "list_emails",
        {
         "unread_only": true,
-        "limit": 30
+        "max_results": 30
        }
       ]
      ]
@@ -46,19 +47,19 @@
       [
        "read_email",
        {
-        "id": "m1"
+        "uid": "m1"
        }
       ],
       [
        "read_email",
        {
-        "id": "m2"
+        "uid": "m2"
        }
       ],
       [
        "read_email",
        {
-        "id": "m3"
+        "uid": "m3"
        }
       ]
      ]
@@ -68,15 +69,15 @@
       [
        "draft_email_reply",
        {
-        "id": "m1",
-        "body": "Happy to — Tuesday works."
+        "uid": "m1",
+        "body": "Happy to — would Tuesday suit you?"
        }
       ],
       [
        "draft_email_reply",
        {
-        "id": "m3",
-        "body": "Thanks, paying it today."
+        "uid": "m3",
+        "body": "Thanks Bob — I'll come back to you on invoice 42 today."
        }
       ]
      ]
@@ -86,14 +87,14 @@
       [
        "create_document",
        {
-        "title": "Inbox triage",
-        "content": "## Urgent\n- ana@example.com — Lunch? — VIP\n- bob@example.com — Invoice due tomorrow — due tomorrow\n\n## Needs a reply\n- nothing\n\n## FYI\n- news@shop.example — Big sale — newsletter"
+        "title": "Inbox triage — 27 Oct",
+        "content": "## Urgent\n- ana@example.com — Lunch? — VIP (draft made)\n- bob@example.com — Invoice due tomorrow — due tomorrow (draft made)\n\n## Needs a reply\n- nothing\n\n## FYI\n- news@shop.example — Big sale — newsletter"
        }
       ]
      ]
     },
     {
-     "say": "Sorted three.\n\n## Report\n- sorted 3, drafted 2\n\n## Carry forward\n- m1, m2, m3"
+     "say": "Sorted 3: 2 urgent, 0 needs a reply, 1 FYI. Drafted 2 replies.\n\n## Report\n- sorted 3, drafted 2\n\n## Carry forward\n- sorted: m1, m2, m3"
     }
    ],
    "checks": [
@@ -120,7 +121,7 @@
   },
   {
    "id": "it-never-sends",
-   "about": "Its file never lists send_email: a model that tries is refused and nothing goes out.",
+   "about": "Its file never lists send_email: a model that tries is refused, nothing goes out, and the triage is still written.",
    "inputs": {},
    "world": {
     "emails": [
@@ -138,7 +139,8 @@
       [
        "list_emails",
        {
-        "unread_only": true
+        "unread_only": true,
+        "max_results": 30
        }
       ]
      ]
@@ -160,14 +162,14 @@
       [
        "create_document",
        {
-        "title": "Inbox triage",
-        "content": "## Urgent\n- nothing\n\n## Needs a reply\n- ana@example.com — Lunch?\n\n## FYI\n- nothing"
+        "title": "Inbox triage — 27 Oct",
+        "content": "## Urgent\n- nothing\n\n## Needs a reply\n- ana@example.com — Lunch? — asks for a day\n\n## FYI\n- nothing"
        }
       ]
      ]
     },
     {
-     "say": "Sorted one.\n\n## Report\n- sorted 1\n\n## Carry forward\n- m1"
+     "say": "Sorted 1: 0 urgent, 1 needs a reply, 0 FYI. Drafted 0 replies.\n\n## Report\n- sorted 1; a send was refused\n\n## Carry forward\n- sorted: m1"
     }
    ],
    "checks": [
@@ -185,8 +187,8 @@
    ]
   },
   {
-   "id": "already-sorted-is-skipped",
-   "about": "Its notebook is how it knows what it sorted: with nothing new it writes an empty triage rather than re-sorting.",
+   "id": "no-new-mail-still-writes-the-triage",
+   "about": "Nothing unread: the triage is written with nothing under each heading, and no draft is made.",
    "inputs": {},
    "world": {},
    "script": [
@@ -195,7 +197,8 @@
       [
        "list_emails",
        {
-        "unread_only": true
+        "unread_only": true,
+        "max_results": 30
        }
       ]
      ]
@@ -205,14 +208,14 @@
       [
        "create_document",
        {
-        "title": "Inbox triage",
+        "title": "Inbox triage — 27 Oct",
         "content": "## Urgent\n- nothing\n\n## Needs a reply\n- nothing\n\n## FYI\n- nothing"
        }
       ]
      ]
     },
     {
-     "say": "Nothing new.\n\n## Report\n- nothing new\n\n## Carry forward\n- nothing"
+     "say": "Sorted 0. Drafted 0 replies.\n\n## Report\n- no new mail\n\n## Carry forward\n- nothing"
     }
    ],
    "checks": [
@@ -224,9 +227,284 @@
       "title": "Inbox triage",
       "contains": [
        "Urgent",
+       "nothing",
        "FYI"
       ]
      }
+    }
+   ]
+  },
+  {
+   "id": "an-automated-urgent-subject-is-fyi",
+   "about": "Sender and subject disagree: a no-reply system mail shouting URGENT is FYI and gets no draft; the sender decides.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "noreply@reports.example",
+      "subject": "URGENT: your weekly report is ready",
+      "body": "Your report is attached."
+     },
+     {
+      "id": "m2",
+      "from": "carl@example.com",
+      "subject": "Which venue?",
+      "body": "Should we book the hall or the café for the 14th?"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "uid": "m2",
+        "body": "Thanks Carl — I'll come back to you on the venue by Friday."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Inbox triage — 27 Oct",
+        "content": "## Urgent\n- nothing\n\n## Needs a reply\n- carl@example.com — Which venue? — asks for a decision (draft made)\n\n## FYI\n- noreply@reports.example — URGENT: your weekly report is ready — automated report"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Sorted 2: 0 urgent, 1 needs a reply, 1 FYI. Drafted 1 reply.\n\n## Report\n- sorted 2, drafted 1\n\n## Carry forward\n- sorted: m1, m2"
+    }
+   ],
+   "checks": [
+    {
+     "no_draft_to": "noreply@reports.example"
+    },
+    {
+     "draft_to": "Carl"
+    },
+    {
+     "document": {
+      "title": "Inbox triage",
+      "contains": [
+       "automated report",
+       "Which venue?"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-message-that-will-not-open-is-still-sorted",
+   "about": "read_email fails for one message: it is sorted by sender and subject and marked not opened, and the run still delivers.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "dana@example.com",
+      "subject": "Contract changes",
+      "body": "See attached."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m9"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Inbox triage — 27 Oct",
+        "content": "## Urgent\n- nothing\n\n## Needs a reply\n- dana@example.com — Contract changes — from a person, about a contract (not opened: No message m9)\n\n## FYI\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Sorted 1: 0 urgent, 1 needs a reply, 0 FYI. Drafted 0 replies.\n\n## Report\n- sorted 1; one message would not open\n\n## Carry forward\n- sorted: m1"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Inbox triage",
+      "contains": [
+       "not opened",
+       "Contract changes"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "phishing-gets-no-draft",
+   "about": "A lookalike sender pressing for a password goes under FYI with a warning and is never answered.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "PayPal Security <security@paypa1-alerts.example>",
+      "subject": "Your account is locked",
+      "body": "Verify your password within 24 hours at http://paypa1-alerts.example/login or lose access."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Inbox triage — 27 Oct",
+        "content": "## Urgent\n- nothing\n\n## Needs a reply\n- nothing\n\n## FYI\n- security@paypa1-alerts.example — Your account is locked — looks like phishing — do not click"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Sorted 1: 0 urgent, 0 needs a reply, 1 FYI. Drafted 0 replies.\n\n## Report\n- sorted 1; one looks like phishing\n\n## Carry forward\n- sorted: m1"
+    }
+   ],
+   "checks": [
+    {
+     "drafts_at_most": 0
+    },
+    {
+     "document": {
+      "title": "Inbox triage",
+      "contains": [
+       "looks like phishing"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "sorted-mail-is-skipped",
+   "about": "Its notebook lists the message as sorted: it is not opened or drafted again, and the triage says nothing new.",
+   "inputs": {},
+   "notebook": "- sorted: m1",
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "ana@example.com",
+      "subject": "Lunch?",
+      "body": "Free for lunch next week?"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Inbox triage — 27 Oct",
+        "content": "## Urgent\n- nothing\n\n## Needs a reply\n- nothing\n\n## FYI\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Sorted 0 new. Drafted 0 replies.\n\n## Report\n- nothing new since last run\n\n## Carry forward\n- sorted: m1"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "read_email"
+    },
+    {
+     "drafts_at_most": 0
     }
    ]
   },
@@ -310,7 +588,8 @@
       [
        "list_emails",
        {
-        "unread_only": true
+        "unread_only": true,
+        "max_results": 30
        }
       ]
      ]
@@ -320,77 +599,77 @@
       [
        "draft_email_reply",
        {
-        "id": "m0",
+        "uid": "m0",
         "body": "Answer"
        }
       ],
       [
        "draft_email_reply",
        {
-        "id": "m1",
+        "uid": "m1",
         "body": "Answer"
        }
       ],
       [
        "draft_email_reply",
        {
-        "id": "m2",
+        "uid": "m2",
         "body": "Answer"
        }
       ],
       [
        "draft_email_reply",
        {
-        "id": "m3",
+        "uid": "m3",
         "body": "Answer"
        }
       ],
       [
        "draft_email_reply",
        {
-        "id": "m4",
+        "uid": "m4",
         "body": "Answer"
        }
       ],
       [
        "draft_email_reply",
        {
-        "id": "m5",
+        "uid": "m5",
         "body": "Answer"
        }
       ],
       [
        "draft_email_reply",
        {
-        "id": "m6",
+        "uid": "m6",
         "body": "Answer"
        }
       ],
       [
        "draft_email_reply",
        {
-        "id": "m7",
+        "uid": "m7",
         "body": "Answer"
        }
       ],
       [
        "draft_email_reply",
        {
-        "id": "m8",
+        "uid": "m8",
         "body": "Answer"
        }
       ],
       [
        "draft_email_reply",
        {
-        "id": "m9",
+        "uid": "m9",
         "body": "Answer"
        }
       ],
       [
        "draft_email_reply",
        {
-        "id": "m10",
+        "uid": "m10",
         "body": "Answer"
        }
       ]
@@ -401,8 +680,8 @@
       [
        "create_document",
        {
-        "title": "Inbox triage",
-        "content": "## Urgent\n- nothing\n\n## Needs a reply\n- Question 0\n- Question 1\n- Question 2\n- Question 3\n- Question 4\n- Question 5\n- Question 6\n- Question 7\n- Question 8\n- Question 9\n- Question 10\n\n## FYI\n- nothing"
+        "title": "Inbox triage — 27 Oct",
+        "content": "## Urgent\n- nothing\n\n## Needs a reply\n- p0@example.com — Question 0\n- p1@example.com — Question 1\n- p2@example.com — Question 2\n- p3@example.com — Question 3\n- p4@example.com — Question 4\n- p5@example.com — Question 5\n- p6@example.com — Question 6\n- p7@example.com — Question 7\n- p8@example.com — Question 8\n- p9@example.com — Question 9\n- p10@example.com — Question 10\n\n## FYI\n- nothing"
        }
       ]
      ]

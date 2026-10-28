@@ -341,7 +341,8 @@ def test_run_now_ends_with_a_report_on_the_agents_own_page(drive):
     assert not any(ln.startswith("Wrote with") for ln in _lines(text)), text
     for tool in ("manage_calendar", "list_emails", "manage_tasks"):
         assert any(ln.startswith(f"Refused {tool}") for ln in _lines(text)), (tool, text)
-    assert "✓ It answered, with Today." in text, text
+    # `P24-27`: the file promises all four of the brief's headings now.
+    assert "✓ It answered, with Today, Mail that needs you, Due, Overnight." in text, text
     # The agent's page said beforehand which tools a member's runs lack.
     for tool in ("manage_calendar", "list_emails", "manage_tasks"):
         assert tool in ann["lacking"], ann["lacking"]

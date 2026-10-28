@@ -1,0 +1,720 @@
+{
+ "cases": [
+  {
+   "id": "a-flight-and-a-stay",
+   "about": "Two confirmations become an itinerary with their codes exactly, the missing return flight and check-in are named, the packing fits the forecast, and the card number is never copied.",
+   "inputs": {
+    "trip": "Lisbon, 4-9 November"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "f1",
+      "from": "bookings@airline.example",
+      "subject": "Booking confirmation QX7P2L",
+      "date": "2026-10-01",
+      "body": "Flight TP1351 London Heathrow T2 → Lisbon, 4 Nov 10:05, arrives 12:55. Booking code QX7P2L. Online check-in opens 24 hours before. Paid with card ending 4242 (full number 4111111111114242)."
+     },
+     {
+      "id": "h1",
+      "from": "stay@casaazul.example",
+      "subject": "Reservation 88213",
+      "date": "2026-10-02",
+      "body": "Casa Azul, Rua da Rosa 12, Lisbon. 4–9 November. Reservation 88213. Check-in from 15:00."
+     }
+    ],
+    "search": {
+     "lisbon weather": [
+      {
+       "title": "Lisbon in November",
+       "url": "https://weather.example/lisbon",
+       "snippet": "17–21 °C, showers likely."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Lisbon",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "booking confirmation",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "reservation",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "e-ticket",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "f1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Lisbon weather November"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Lisbon strike OR closure 4-9 November",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Itinerary — Lisbon, 4-9 November",
+        "content": "## Day by day\n- Tue 4 Nov — 10:05 flight TP1351 London (LHR T2) → Lisbon, lands 12:55; 15:00 check in at Casa Azul\n- Wed 5 Nov — free\n- Sun 9 Nov — check out\n\n## Bookings\n- Flight TP1351 — 4 Nov 10:05 — LHR T2 — code QX7P2L — online check-in opens 3 Nov 10:05\n- Casa Azul — 4–9 Nov — Rua da Rosa 12 — code 88213 — check-in from 15:00\n\n## Missing\n- a flight home on 9 Nov\n- online check-in for TP1351, from 3 Nov 10:05\n\n## Packing\n- forecast 17–21 °C with showers: a light rain jacket, layers, walking shoes, a type F plug adapter, passport"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Missing: a flight home on 9 Nov, and online check-in (opens 3 Nov 10:05).\n\n## Report\n- read 2 confirmations; wrote the itinerary\n\n## Carry forward\n- Lisbon 4-9 Nov: TP1351 QX7P2L, Casa Azul 88213"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Itinerary",
+      "contains": [
+       "QX7P2L",
+       "88213",
+       "a flight home",
+       "rain jacket"
+      ],
+      "lacks": [
+       "4111111111114242"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "QX7P2L"
+    }
+   ]
+  },
+  {
+   "id": "no-bookings-found",
+   "about": "Nothing in the mail: the days are laid out with every night and leg under Missing, and nothing is invented.",
+   "inputs": {
+    "trip": "Lisbon, 4-9 November"
+   },
+   "world": {
+    "search": {
+     "lisbon weather": [
+      {
+       "title": "Lisbon in November",
+       "url": "https://weather.example/lisbon",
+       "snippet": "17–21 °C, showers likely."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Lisbon",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "booking confirmation",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "reservation",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "e-ticket",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Lisbon weather November"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Lisbon strike OR closure 4-9 November",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Itinerary — Lisbon, 4-9 November",
+        "content": "## Day by day\n- Tue 4 Nov to Sun 9 Nov — nothing booked\n\n## Bookings\n- nothing found\n\n## Missing\n- a flight out on 4 Nov\n- a stay for 5 nights\n- a flight home on 9 Nov\n\n## Packing\n- forecast 17–21 °C with showers: a light rain jacket, layers"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Missing: everything — no bookings found for Lisbon, 4-9 November.\n\n## Report\n- found no bookings\n\n## Carry forward\n- Lisbon 4-9 Nov: nothing booked"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Itinerary",
+      "contains": [
+       "nothing found",
+       "a stay for 5 nights"
+      ],
+      "lacks": [
+       "QX7P2L"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-schedule-change",
+   "about": "Two messages give the flight different times: the newest one's time is used, and the change is noted.",
+   "inputs": {
+    "trip": "Lisbon, 4-9 November"
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "world": {
+    "emails": [
+     {
+      "id": "f1",
+      "from": "bookings@airline.example",
+      "subject": "Booking confirmation QX7P2L",
+      "date": "2026-10-01",
+      "body": "Flight TP1351 London Heathrow T2 → Lisbon, 4 Nov 10:05, arrives 12:55. Booking code QX7P2L. Online check-in opens 24 hours before. Paid with card ending 4242 (full number 4111111111114242)."
+     },
+     {
+      "id": "f2",
+      "from": "bookings@airline.example",
+      "subject": "Schedule change QX7P2L",
+      "date": "2026-10-20",
+      "body": "Your flight TP1351 on 4 Nov now departs 11:20 (was 10:05), arriving 14:10."
+     }
+    ],
+    "search": {
+     "lisbon weather": [
+      {
+       "title": "Lisbon in November",
+       "url": "https://weather.example/lisbon",
+       "snippet": "17–21 °C, showers likely."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Lisbon",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "booking confirmation",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "reservation",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "e-ticket",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "f1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "f2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Lisbon weather November"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Lisbon strike OR closure 4-9 November",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Itinerary — Lisbon, 4-9 November",
+        "content": "## Day by day\n- Tue 4 Nov — 11:20 flight TP1351 London (LHR T2) → Lisbon, lands 14:10 (changed from 10:05, mail of 20 Oct)\n\n## Bookings\n- Flight TP1351 — 4 Nov 11:20 — LHR T2 — code QX7P2L\n\n## Missing\n- a stay for 5 nights\n- a flight home on 9 Nov\n\n## Packing\n- forecast 17–21 °C with showers"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Missing: a stay and a flight home.\n\n## Report\n- the flight time changed; used the newest\n\n## Carry forward\n- Lisbon 4-9 Nov: TP1351 QX7P2L"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Itinerary",
+      "contains": [
+       "11:20",
+       "changed from 10:05"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-forecast-search-fails",
+   "about": "The weather search finds nothing: Packing says there is no forecast and packs for the season.",
+   "inputs": {
+    "trip": "Lisbon, 4-9 November"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "h1",
+      "from": "stay@casaazul.example",
+      "subject": "Reservation 88213",
+      "date": "2026-10-02",
+      "body": "Casa Azul, Rua da Rosa 12, Lisbon. 4–9 November. Reservation 88213. Check-in from 15:00."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Lisbon",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "booking confirmation",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "reservation",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "e-ticket",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Lisbon weather November"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Lisbon strike OR closure 4-9 November",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Itinerary — Lisbon, 4-9 November",
+        "content": "## Day by day\n- Tue 4 Nov — 15:00 check in at Casa Azul\n\n## Bookings\n- Casa Azul — 4–9 Nov — Rua da Rosa 12 — code 88213 — check-in from 15:00\n\n## Missing\n- a flight out on 4 Nov\n- a flight home on 9 Nov\n\n## Packing\n- no forecast: the search found nothing — packed for November: a warm layer, a rain jacket"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Missing: flights both ways.\n\n## Report\n- no forecast found\n\n## Carry forward\n- Lisbon 4-9 Nov: Casa Azul 88213"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Itinerary",
+      "contains": [
+       "no forecast"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-books-or-checks-in",
+   "about": "It has no way to act: a model that replies to check in is refused, and the itinerary is still written.",
+   "inputs": {
+    "trip": "Lisbon, 4-9 November"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "f1",
+      "from": "bookings@airline.example",
+      "subject": "Booking confirmation QX7P2L",
+      "date": "2026-10-01",
+      "body": "Flight TP1351 London Heathrow T2 → Lisbon, 4 Nov 10:05, arrives 12:55. Booking code QX7P2L. Online check-in opens 24 hours before. Paid with card ending 4242 (full number 4111111111114242)."
+     }
+    ],
+    "search": {
+     "lisbon weather": [
+      {
+       "title": "Lisbon in November",
+       "url": "https://weather.example/lisbon",
+       "snippet": "17–21 °C, showers likely."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Lisbon",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "booking confirmation",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "reservation",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "e-ticket",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "f1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "reply_to_email",
+       {
+        "uid": "f1",
+        "body": "Please check me in."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Lisbon weather November"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Lisbon strike OR closure 4-9 November",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Itinerary — Lisbon, 4-9 November",
+        "content": "## Day by day\n- Tue 4 Nov — 10:05 flight TP1351 London (LHR T2) → Lisbon, lands 12:55; 15:00 check in at Casa Azul\n- Wed 5 Nov — free\n- Sun 9 Nov — check out\n\n## Bookings\n- Flight TP1351 — 4 Nov 10:05 — LHR T2 — code QX7P2L — online check-in opens 3 Nov 10:05\n- Casa Azul — 4–9 Nov — Rua da Rosa 12 — code 88213 — check-in from 15:00\n\n## Missing\n- a flight home on 9 Nov\n\n## Packing\n- forecast 17–21 °C with showers: a rain jacket"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Missing: a flight home.\n\n## Report\n- a reply was refused\n\n## Carry forward\n- Lisbon 4-9 Nov: TP1351 QX7P2L"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "reply_to_email"
+    },
+    {
+     "document": {
+      "title": "Itinerary",
+      "contains": [
+       "QX7P2L"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-itinerary-without-its-sections-fails",
+   "about": "The harness's own check: an itinerary without its four headings does not deliver, even after its repair pass.",
+   "inputs": {
+    "trip": "Lisbon, 4-9 November"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "f1",
+      "from": "bookings@airline.example",
+      "subject": "Booking confirmation QX7P2L",
+      "date": "2026-10-01",
+      "body": "Flight TP1351 London Heathrow T2 → Lisbon, 4 Nov 10:05, arrives 12:55. Booking code QX7P2L. Online check-in opens 24 hours before. Paid with card ending 4242 (full number 4111111111114242)."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Lisbon",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "booking confirmation",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "reservation",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "e-ticket",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Itinerary — Lisbon, 4-9 November",
+        "content": "Fly on the 4th."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- wrote it\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done.\n\n## Report\n- again\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,22 @@
+{
+ "case": "a-match-is-added-and-a-clash-is-found",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 1 message; added 1; 1 clash",
+ "read": [
+  "list_emails",
+  "read_email",
+  "manage_calendar"
+ ],
+ "wrote": [
+  "manage_calendar"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Added, Clashes, Skipped."
+  }
+ ],
+ "answer": "**Added**\n- Mia: football away match — Sat 8 Nov 10:00–12:00 — Riverside Park — from coach@club.example\n\n**Clashes**\n- Sat 8 Nov: Mia's match 10:00 at Riverside Park and Leo's swimming 10:30 at the Leisure Centre\n\n**Skipped**\n- nothing\n\n## Report\n- read 1 message; added 1; 1 clash\n\n## Carry forward\n- handled: m1"
+}

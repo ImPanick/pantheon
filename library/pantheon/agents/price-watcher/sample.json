@@ -1,0 +1,18 @@
+{
+ "case": "a-drop-below-the-price",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 3 product pages",
+ "read": [
+  "web_fetch"
+ ],
+ "wrote": [],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Below your price, Changed, No change, Could not read."
+  }
+ ],
+ "answer": "**Below your price**\n- Trail running shoes, size 9 — 79.00 GBP — your price 80.00 — https://shop.example/trail-9\n\n**Changed**\n- Espresso machine — 249.00 → 229.00 GBP — https://shop.example/espresso\n\n**No change**\n- Desk lamp — 35.00 GBP\n\n**Could not read**\n- nothing\n\n## Report\n- read 3 product pages\n\n## Carry forward\n- https://shop.example/trail-9 79.00\n- https://shop.example/espresso 229.00\n- https://shop.example/lamp 35.00"
+}

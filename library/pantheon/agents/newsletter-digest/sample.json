@@ -1,0 +1,21 @@
+{
+ "case": "a-week-of-two-newsletters",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 2 newsletters; wrote the digest",
+ "read": [
+  "search_emails",
+  "read_email"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Newsletter digest”",
+   "ok": true,
+   "detail": "“Newsletter digest — 2 Nov” is there."
+  }
+ ],
+ "answer": "Read 2 issues: 1 featured, 1 skipped.\n\n## Report\n- read 2 newsletters; wrote the digest\n\n## Carry forward\n- digested: m1, m2"
+}

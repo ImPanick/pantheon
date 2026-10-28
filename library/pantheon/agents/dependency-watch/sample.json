@@ -1,0 +1,21 @@
+{
+ "case": "a-minor-upgrade-is-tried-on-a-branch-and-kept",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- found 2 outdated, tried 1 on dependency-watch/2026-10-27, committed; did not push",
+ "read": [
+  "read_file"
+ ],
+ "wrote": [
+  "bash",
+  "edit_file"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Outdated, Vulnerable, Tried."
+  }
+ ],
+ "answer": "**Outdated**\n- requests — 2.31.0 → 2.32.3 — minor\n- flask — 2.3.3 → 3.0.3 — major — not tried\n\n**Vulnerable**\n- nothing\n\n**Tried**\n- branch dependency-watch/2026-10-27\n- requests 2.31.0 → 2.32.3 — 12 passed — kept, committed\n\n## Report\n- found 2 outdated, tried 1 on dependency-watch/2026-10-27, committed; did not push\n\n## Carry forward\n- flask 3.x is waiting (major)"
+}

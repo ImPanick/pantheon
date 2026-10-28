@@ -1,0 +1,20 @@
+{
+ "case": "a-finished-report-is-summarised",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the report r1 and summarised it",
+ "read": [
+  "manage_research"
+ ],
+ "wrote": [
+  "manage_research"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Status, Summary, Sources."
+  }
+ ],
+ "answer": "**Status**\n- ready — \"Do heat pumps work in cold climates?\" — in Library → Deep Research\n\n**Summary**\n- Yes: modern cold-climate heat pumps keep heating down to about -25 C.\n- Efficiency falls in the cold: a COP near 2 at -15 C.\n- Norway and Finland have the highest uptake.\n- Sources disagree on running costs versus gas.\n- The report gives no figure for installation cost.\n\n**Sources**\n- Cold climate field trial: https://energy.example/field-trial\n- Nordic uptake figures: https://stats.example/nordic-heat-pumps\n\n## Report\n- read the report r1 and summarised it\n\n## Carry forward\n- summarised r1 for \"Do heat pumps work in cold climates?\" on 27 Oct"
+}

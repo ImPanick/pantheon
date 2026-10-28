@@ -1,0 +1,382 @@
+{
+ "cases": [
+  {
+   "id": "a-letter-with-three-mistakes",
+   "about": "Three real mistakes become three suggestions with the exact words, the change and why; the deliberate fragment is left alone; the letter itself is untouched.",
+   "inputs": {
+    "document": "Q3 letter to members"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Q3 letter to members",
+      "content": "Teh annual meeting is on 4 November. All members who's dues are paid may vote. Short and sweet. We will review the color scheme and the colour of the banner."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Q3 letter to members"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Proofreading — Q3 letter to members",
+        "content": "Proofreading — Q3 letter to members\n\n## Suggestions\n1. \"Teh annual meeting\" → \"The annual meeting\" — spelling\n2. \"members who's dues\" → \"members whose dues\" — wrong word\n3. \"the colour of the banner\" → \"the color of the banner\" — the document uses both\n\n## Left alone\n- \"Short and sweet.\" — a deliberate fragment, kept"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 suggestions: 1 spelling, 1 wrong word, 1 consistency.\n\n## Report\n- read \"Q3 letter to members\" and wrote its Proofreading document"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Proofreading — Q3 letter to members",
+      "contains": [
+       "Teh annual meeting",
+       "whose dues",
+       "Short and sweet"
+      ]
+     }
+    },
+    {
+     "document": {
+      "title": "Q3 letter to members",
+      "contains": [
+       "Teh annual meeting"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-changes-the-letter",
+   "about": "Its table says destructive: never and it has no editing tool: a model that deletes the letter to replace it is refused, and the letter survives.",
+   "inputs": {
+    "document": "Q3 letter to members"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Q3 letter to members",
+      "content": "Teh annual meeting is on 4 November. All members who's dues are paid may vote. Short and sweet. We will review the color scheme and the colour of the banner."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Proofreading — Q3 letter to members",
+        "content": "Proofreading — Q3 letter to members\n\n## Suggestions\n1. \"Teh annual meeting\" → \"The annual meeting\" — spelling\n2. \"members who's dues\" → \"members whose dues\" — wrong word\n3. \"the colour of the banner\" → \"the color of the banner\" — the document uses both\n\n## Left alone\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 suggestions.\n\n## Report\n- a delete was refused; wrote the Proofreading document"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Q3 letter to members",
+      "contains": [
+       "Teh annual meeting"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "no-document-by-that-title",
+   "about": "Nothing has that title: the Proofreading document says so and names the closest titles, and nothing is invented.",
+   "inputs": {
+    "document": "Annual report"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Q3 letter to members",
+      "content": "Teh annual meeting is on 4 November. All members who's dues are paid may vote. Short and sweet. We will review the color scheme and the colour of the banner."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Annual report"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Proofreading — Annual report",
+        "content": "Proofreading — Annual report\n\n## Suggestions\n- nothing — no document titled Annual report was found\n\n## Left alone\n- closest titles: Q3 letter to members"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 suggestions: no document titled Annual report.\n\n## Report\n- found no document titled Annual report"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Proofreading — Annual report",
+      "contains": [
+       "no document titled"
+      ]
+     }
+    },
+    {
+     "answer_lacks": [
+      "Teh"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-clean-document-has-nothing-to-fix",
+   "about": "A document with no mistakes: Suggestions says nothing, and choices are still listed.",
+   "inputs": {
+    "document": "Packing list"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d2",
+      "title": "Packing list",
+      "content": "Passport, charger, two shirts and a good book."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Packing list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Proofreading — Packing list",
+        "content": "Proofreading — Packing list\n\n## Suggestions\n- nothing — no mistakes found\n\n## Left alone\n- no Oxford comma before \"and\", kept"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 suggestions.\n\n## Report\n- read \"Packing list\": no mistakes"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Proofreading — Packing list",
+      "contains": [
+       "no mistakes found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-read-that-fails-is-said",
+   "about": "The read refuses: the Proofreading document says it could not read the letter, and suggests nothing.",
+   "inputs": {
+    "document": "Q3 letter to members"
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Q3 letter to members"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Proofreading — Q3 letter to members",
+        "content": "Proofreading — Q3 letter to members\n\n## Suggestions\n- could not read Q3 letter to members: Document 'd1' not found\n\n## Left alone\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 suggestions: the letter could not be read.\n\n## Report\n- the read failed"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Proofreading",
+      "contains": [
+       "could not read"
+      ]
+     }
+    },
+    {
+     "answer_lacks": [
+      "whose"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-proofreading-with-no-document-fails",
+   "about": "The harness's own check: a run that lists suggestions in its answer and writes no Proofreading document does not deliver.",
+   "inputs": {
+    "document": "Q3 letter to members"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Q3 letter to members",
+      "content": "Teh annual meeting is on 4 November. All members who's dues are paid may vote. Short and sweet. We will review the color scheme and the colour of the banner."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Q3 letter to members"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1. \"Teh annual meeting\" → \"The annual meeting\" — spelling\n2. \"members who's dues\" → \"members whose dues\" — wrong word\n3. \"the colour of the banner\" → \"the color of the banner\" — the document uses both\n\n## Report\n- suggested in the answer"
+    },
+    {
+     "say": "1. \"Teh annual meeting\" → \"The annual meeting\" — spelling\n2. \"members who's dues\" → \"members whose dues\" — wrong word\n3. \"the colour of the banner\" → \"the color of the banner\" — the document uses both\n\n## Report\n- again"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Proofreading"
+    }
+   ]
+  }
+ ]
+}

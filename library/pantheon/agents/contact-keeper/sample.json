@@ -1,0 +1,23 @@
+{
+ "case": "a-new-correspondent-is-added-after-a-yes",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 1 message; added 1 contact",
+ "read": [
+  "list_emails",
+  "manage_contact",
+  "read_email",
+  "resolve_contact"
+ ],
+ "wrote": [
+  "manage_contact"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Added, Updated, Maybe the same person."
+  }
+ ],
+ "answer": "**Added**\n- Ana Ruiz-López — ana@acme.example — Head of Finance, Acme Ltd, +34 600 111 222\n\n**Updated**\n- nothing\n\n**Maybe the same person**\n- nothing\n\n## Report\n- read 1 message; added 1 contact\n\n## Carry forward\n- read: m1"
+}

@@ -1,12 +1,13 @@
 {
  "case": "a-one-page-bakery",
  "from": "its evaluation, with a scripted model",
- "summary": "- wrote 1 file, curl 200",
- "read": [],
+ "summary": "- wrote 2 files, served on 8080, curl 200",
+ "read": [
+  "ls"
+ ],
  "wrote": [
-  "bash",
   "write_file",
-  "computer"
+  "bash"
  ],
  "refused": [
   {
@@ -18,8 +19,8 @@
   {
    "check": "the answer",
    "ok": true,
-   "detail": "It answered, with http."
+   "detail": "It answered, with Address, Files, Checked, http."
   }
  ],
- "answer": "It answers at http://localhost:8080/ (curl: 200). Files: bakery/index.html.\n\n## Report\n- wrote 1 file, curl 200\n\n## Carry forward\n- bakery served on 8080"
+ "answer": "**Address**\n- http://localhost:8080/\n\n**Files**\n- bakery/index.html — opening hours and contact\n- bakery/style.css — shared styles\n\n**Checked**\n- curl http://localhost:8080/ → 200\n- screenshot taken\n\n## Report\n- wrote 2 files, served on 8080, curl 200\n\n## Carry forward\n- bakery/ on 8080; no phone number in the brief"
 }

@@ -1,0 +1,647 @@
+{
+ "cases": [
+  {
+   "id": "a-monthly-and-a-yearly-renewal",
+   "about": "A subscription due in three days goes under This week; last year's domain renewal is due again in the next 30 days; amounts are as written.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "b1",
+      "from": "billing@streamflix.example",
+      "subject": "Your subscription renews on 30 Oct",
+      "date": "2026-09-30",
+      "body": "Your monthly subscription of £9.99 renews on 30 October."
+     },
+     {
+      "id": "b2",
+      "from": "renewals@registrar.example",
+      "subject": "example.org renewed",
+      "date": "2025-11-12",
+      "body": "We renewed example.org for one year: $14.00."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "renew",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "subscription",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "your plan",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "b1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "b2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "renew"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "due"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "subscription"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Due in the next 30 days — 27 Oct",
+        "content": "## This week\n- 30 Oct — StreamFlix — monthly subscription — £9.99 — mail of 30 Sep\n\n## Next 30 days\n- 12 Nov — example.org — yearly renewal — $14.00 — mail of 12 Nov 2025 (a year on)\n\n## Check these\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 found: 1 this week, 1 in the next 30 days, 0 to check.\n\n## Report\n- searched mail and notes\n\n## Carry forward\n- StreamFlix monthly, next 30 Nov; example.org yearly, next 12 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Due in the next 30 days",
+      "contains": [
+       "StreamFlix",
+       "£9.99",
+       "example.org",
+       "$14.00"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "example.org yearly"
+    }
+   ]
+  },
+  {
+   "id": "mail-and-notes-disagree",
+   "about": "A note and the insurer's mail give different renewal dates: the item goes under Check these with both, never one picked.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "b3",
+      "from": "renewals@insure.example",
+      "subject": "Your car insurance renews 15 Dec",
+      "date": "2026-10-20",
+      "body": "Your policy renews on 15 December: £420."
+     }
+    ],
+    "notes": [
+     {
+      "id": "cccc0001",
+      "title": "Car insurance renews",
+      "content": "1 December",
+      "due": "2026-12-01T09:00:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "renew",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "subscription",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "your plan",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "b3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "renew"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "due"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "subscription"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Due in the next 30 days — 27 Oct",
+        "content": "## This week\n- nothing\n\n## Next 30 days\n- nothing\n\n## Check these\n- Car insurance — note says 1 Dec, insurer's mail says 15 Dec — £420"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 found: 1 to check.\n\n## Report\n- mail and a note disagree on one date\n\n## Carry forward\n- car insurance yearly, 1 or 15 Dec"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Due in the next 30 days",
+      "contains": [
+       "1 Dec",
+       "15 Dec"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-due",
+   "about": "Nothing found anywhere: each heading says nothing, and nothing is invented.",
+   "inputs": {},
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "renew",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "subscription",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "your plan",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "renew"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "due"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "subscription"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Due in the next 30 days — 27 Oct",
+        "content": "## This week\n- nothing\n\n## Next 30 days\n- nothing\n\n## Check these\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 found.\n\n## Report\n- found no bills or renewals\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Due in the next 30 days",
+      "contains": [
+       "This week",
+       "nothing"
+      ]
+     }
+    },
+    {
+     "not_called": "read_email"
+    }
+   ]
+  },
+  {
+   "id": "an-amount-that-is-not-stated",
+   "about": "A renewal notice with no amount is listed as amount not stated, never guessed.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "b4",
+      "from": "members@gym.example",
+      "subject": "Your membership renews soon",
+      "date": "2026-10-25",
+      "body": "Your membership renews on 2 November."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "renew",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "subscription",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "your plan",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "b4"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "renew"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "due"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "subscription"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Due in the next 30 days — 27 Oct",
+        "content": "## This week\n- 2 Nov — Gym — membership — amount not stated — mail of 25 Oct\n\n## Next 30 days\n- nothing\n\n## Check these\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 found: 1 this week.\n\n## Report\n- searched mail and notes\n\n## Carry forward\n- gym membership, next 2 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Due in the next 30 days",
+      "contains": [
+       "amount not stated"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-pays-or-cancels",
+   "about": "It has no way to act on a bill: a model that replies to cancel is refused, and the list is still written.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "b1",
+      "from": "billing@streamflix.example",
+      "subject": "Your subscription renews on 30 Oct",
+      "date": "2026-09-30",
+      "body": "Your monthly subscription of £9.99 renews on 30 October."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "renew",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "subscription",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "your plan",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "b1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "reply_to_email",
+       {
+        "uid": "b1",
+        "body": "Please cancel."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "renew"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "due"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "subscription"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Due in the next 30 days — 27 Oct",
+        "content": "## This week\n- 30 Oct — StreamFlix — monthly subscription — £9.99 — mail of 30 Sep\n\n## Next 30 days\n- nothing\n\n## Check these\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 found: 1 this week.\n\n## Report\n- a reply was refused\n\n## Carry forward\n- StreamFlix monthly, next 30 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "reply_to_email"
+    },
+    {
+     "document": {
+      "title": "Due in the next 30 days",
+      "contains": [
+       "StreamFlix"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-list-without-its-sections-fails",
+   "about": "The harness's own check: a list without its three headings does not deliver, even after its repair pass.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "b1",
+      "from": "billing@streamflix.example",
+      "subject": "Your subscription renews on 30 Oct",
+      "date": "2026-09-30",
+      "body": "Your monthly subscription of £9.99 renews on 30 October."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "renew",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "subscription",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "your plan",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Due in the next 30 days — 27 Oct",
+        "content": "StreamFlix 30 Oct"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- wrote it\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done.\n\n## Report\n- again\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

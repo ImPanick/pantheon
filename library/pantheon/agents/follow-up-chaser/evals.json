@@ -1,0 +1,505 @@
+{
+ "cases": [
+  {
+   "id": "an-unanswered-question-gets-a-nudge",
+   "about": "A request sent six days ago with no reply: one short nudge is drafted to the same person, in the same thread, and never sent.",
+   "inputs": {
+    "wait_days": 4
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "s1",
+      "from": "me@example.com",
+      "to": "ana@example.com",
+      "subject": "Q3 figures",
+      "date": "2026-10-21",
+      "body": "Hi Ana, could you send me the Q3 figures when you have them?"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "folder": "Sent",
+        "max_results": 50
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "s1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Q3 figures",
+        "folders": [
+         "INBOX"
+        ]
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "ana@example.com",
+        "subject": "Re: Q3 figures",
+        "body": "Hi Ana, just checking you saw my note last Tuesday about the Q3 figures — could you send them when you have a moment?"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Waiting**\n- ana@example.com — Q3 figures — 6 days — nudge drafted\n\n**Not chased**\n- nothing\n\n## Report\n- checked 1 sent message, drafted 1 nudge\n\n## Carry forward\n- nudged 27 Oct: \"Q3 figures\" to ana@example.com"
+    }
+   ],
+   "checks": [
+    {
+     "draft_to": "ana@example.com"
+    },
+    {
+     "answer_contains": [
+      "Waiting",
+      "Q3 figures"
+     ]
+    },
+    {
+     "not_called": "send_email"
+    },
+    {
+     "notebook_contains": "Q3 figures"
+    }
+   ]
+  },
+  {
+   "id": "an-answered-thread-is-left-alone",
+   "about": "Bob replied after the person wrote: it is answered, listed under Not chased, and gets no nudge.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "s1",
+      "from": "me@example.com",
+      "to": "bob@example.com",
+      "subject": "Venue for the 14th",
+      "date": "2026-10-20",
+      "body": "Bob, can we book the hall for the 14th?"
+     },
+     {
+      "id": "m2",
+      "from": "bob@example.com",
+      "subject": "Re: Venue for the 14th",
+      "date": "2026-10-22",
+      "body": "Booked!"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "folder": "Sent",
+        "max_results": 50
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "s1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Venue for the 14th",
+        "folders": [
+         "INBOX"
+        ]
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Waiting**\n- nothing\n\n**Not chased**\n- bob@example.com — Venue for the 14th — answered on 22 Oct\n\n## Report\n- checked 1 sent message, all answered\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "no_draft_to": "bob@example.com"
+    },
+    {
+     "answer_contains": [
+      "answered"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "nothing-sent-nothing-waiting",
+   "about": "No sent mail in the window: Waiting says nothing and no draft is made.",
+   "inputs": {},
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "folder": "Sent",
+        "max_results": 50
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Waiting**\n- nothing\n\n**Not chased**\n- nothing\n\n## Report\n- checked 0 sent messages\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "drafts_at_most": 0
+    },
+    {
+     "answer_contains": [
+      "Waiting",
+      "nothing"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-thank-you-is-not-chased",
+   "about": "A message that asked nothing is not chased, however long it has gone unanswered.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "s1",
+      "from": "me@example.com",
+      "to": "team@example.com",
+      "subject": "Thanks for today!",
+      "date": "2026-10-15",
+      "body": "Great session, thanks everyone."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "folder": "Sent",
+        "max_results": 50
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "s1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Waiting**\n- nothing\n\n**Not chased**\n- team@example.com — Thanks for today! — no question\n\n## Report\n- checked 1 sent message\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "drafts_at_most": 0
+    },
+    {
+     "answer_contains": [
+      "no question"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-from-a-colleague-counts",
+   "about": "Sources disagree about who owes a reply: Ana's colleague answered on the same subject, so it is treated as answered and said so.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "s1",
+      "from": "me@example.com",
+      "to": "ana@acme.example",
+      "subject": "Q3 figures",
+      "date": "2026-10-21",
+      "body": "Hi Ana, could you send me the Q3 figures when you have them?"
+     },
+     {
+      "id": "m2",
+      "from": "carl@acme.example",
+      "subject": "Re: Q3 figures",
+      "date": "2026-10-23",
+      "body": "Ana is away this week — the Q3 figures are attached."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "folder": "Sent",
+        "max_results": 50
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "s1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Q3 figures",
+        "folders": [
+         "INBOX"
+        ]
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Waiting**\n- nothing\n\n**Not chased**\n- ana@acme.example — Q3 figures — answered by someone else (carl@acme.example, 23 Oct)\n\n## Report\n- checked 1 sent message; answered by a colleague\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "no_draft_to": "ana@acme.example"
+    },
+    {
+     "answer_contains": [
+      "answered by someone else"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-message-that-will-not-open-gets-no-draft",
+   "about": "read_email fails: it cannot tell what was asked, so it drafts nothing and lists the thread as could not check.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "s1",
+      "from": "me@example.com",
+      "to": "ana@example.com",
+      "subject": "Q3 figures",
+      "date": "2026-10-21",
+      "body": "Hi Ana, could you send me the Q3 figures when you have them?"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "folder": "Sent",
+        "max_results": 50
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "s9"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Waiting**\n- nothing\n\n**Not chased**\n- ana@example.com — Q3 figures — could not check: No message s9\n\n## Report\n- checked 1 sent message; 1 would not open\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "drafts_at_most": 0
+    },
+    {
+     "answer_contains": [
+      "could not check"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-sends",
+   "about": "Its file has no way to send: a model that tries is refused, and the nudge stays a draft.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "s1",
+      "from": "me@example.com",
+      "to": "ana@example.com",
+      "subject": "Q3 figures",
+      "date": "2026-10-21",
+      "body": "Hi Ana, could you send me the Q3 figures when you have them?"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "folder": "Sent",
+        "max_results": 50
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "s1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Q3 figures",
+        "folders": [
+         "INBOX"
+        ]
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "send_email",
+       {
+        "to": "ana@example.com",
+        "subject": "Re: Q3 figures",
+        "body": "Any news?"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "ana@example.com",
+        "subject": "Re: Q3 figures",
+        "body": "Hi Ana, just checking you saw my note about the Q3 figures."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Waiting**\n- ana@example.com — Q3 figures — 6 days — nudge drafted\n\n**Not chased**\n- nothing\n\n## Report\n- drafted 1 nudge; a send was refused\n\n## Carry forward\n- nudged 27 Oct: \"Q3 figures\""
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "send_email"
+    },
+    {
+     "draft_to": "ana@example.com"
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-sections-fails",
+   "about": "The harness's own check: a run that answers without Waiting and Not chased does not deliver, even after its repair pass.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "s1",
+      "from": "me@example.com",
+      "to": "ana@example.com",
+      "subject": "Q3 figures",
+      "date": "2026-10-21",
+      "body": "Hi Ana, could you send me the Q3 figures when you have them?"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "folder": "Sent",
+        "max_results": 50
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Drafted a nudge to Ana."
+    },
+    {
+     "say": "Drafted a nudge to Ana, as I said."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

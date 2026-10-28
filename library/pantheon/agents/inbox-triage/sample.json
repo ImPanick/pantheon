@@ -15,7 +15,7 @@
   {
    "check": "a document titled “Inbox triage”",
    "ok": true,
-   "detail": "“Inbox triage” is there."
+   "detail": "“Inbox triage — 27 Oct” is there."
   },
   {
    "check": "at most 10 drafts",
@@ -23,5 +23,5 @@
    "detail": "It made 2 drafts."
   }
  ],
- "answer": "Sorted three.\n\n## Report\n- sorted 3, drafted 2\n\n## Carry forward\n- m1, m2, m3"
+ "answer": "Sorted 3: 2 urgent, 0 needs a reply, 1 FYI. Drafted 2 replies.\n\n## Report\n- sorted 3, drafted 2\n\n## Carry forward\n- sorted: m1, m2, m3"
 }

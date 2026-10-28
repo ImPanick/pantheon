@@ -68,13 +68,21 @@ def _task(db, hire_id, n=0):
     return db.query(ScheduledTask).get(H.task_ids_of(db, hire_id)[n])
 
 
+#: `P24-27`. Morning Brief's file now promises all four of its headings, and
+#: the contract checks each — "Today: done." alone no longer delivers.
+BRIEF = "Today: done. Mail that needs you: nothing. Due: nothing. Overnight: nothing."
+#: `P24-27`, the same for Notes Gardener's three headings and Topic Watcher's two.
+TIDY = "Changed: nothing. Stale: nothing. Needs you: nothing."
+WATCH = "New since last run: nothing. Checked: x."
+
+
 def test_a_run_is_told_its_runbook_and_offered_exactly_its_tools(world):
     factory, sched, seen = world
     db = factory()
     h, m = _hire(db, "morning-brief", inputs={"at": "06:00"})
-    seen["answer"] = "Today: done."
+    seen["answer"] = BRIEF
     run_id, answer = _run(sched, db, _task(db, h.id))
-    assert answer.startswith("Today: done.")
+    assert answer.startswith(BRIEF)
     prompt = seen["system_prompt"]
     assert prompt.startswith("You are Morning Brief, an agent alice summoned in Pantheon")
     assert m.runbook in prompt and "## Report" in prompt and "## Carry forward" in prompt
@@ -91,12 +99,13 @@ def test_effects_the_file_is_silent_on_ask_and_a_never_takes_the_tool_away(world
     factory, sched, seen = world
     db = factory()
     h, m = _hire(db, "notes-gardener")
-    seen["answer"] = "Changed: nothing."
+    seen["answer"] = TIDY
     _run(sched, db, _task(db, h.id))
     assert seen["slot"]["agent"]["ask_effects"] == ["destructive"]
     assert seen["slot"]["agent"]["never_effects"] == []
     h2, _ = _hire(db, "topic-watcher", inputs={"topics": ["solar"]},
                   grants={"network_egress": "never"})
+    seen["answer"] = WATCH
     _run(sched, db, _task(db, h2.id))
     assert seen["slot"]["allowed_tools"] == ["web_search"], "web_fetch reaches out; the hire said never"
     assert seen["slot"]["agent"]["never_effects"] == ["network_egress"]
@@ -108,7 +117,7 @@ def test_the_run_keeps_a_report_and_its_carry_forward_is_the_next_runs_notebook(
     h, _ = _hire(db, "topic-watcher", inputs={"topics": ["solar", "wind"]})
     task = _task(db, h.id)
     sched._record_run_step = lambda run_id, **step: sched._state_for(run_id)["steps"].append(step)
-    seen["answer"] = ("Solar: a new panel record.\n\n## Report\n- searched two topics\n\n"
+    seen["answer"] = (f"{WATCH} Solar: a new panel record.\n\n## Report\n- searched two topics\n\n"
                       "## Carry forward\n- https://example.org/panel")
 
     async def loop_with_steps(endpoint_url, model, task, session_id, **kw):
@@ -128,7 +137,7 @@ def test_the_run_keeps_a_report_and_its_carry_forward_is_the_next_runs_notebook(
     assert report["read"] == ["web_search", "web_fetch"] and report["wrote"] == []
     assert report["refused"] == [{"tool": "send_email", "reason": "not one of its tools"}]
     assert db.query(AgentHire).get(h.id).notebook == "- https://example.org/panel"
-    seen["answer"] = "Nothing new.\n\n## Carry forward\nnothing"
+    seen["answer"] = f"{WATCH}\n\n## Carry forward\nnothing"
     _run(sched, db, task)
     notebook = [c for c in seen["context_msgs"] if "your notebook" in c["content"]]
     assert notebook and "https://example.org/panel" in notebook[0]["content"]
@@ -198,9 +207,10 @@ def test_the_loop_is_handed_the_hires_policy(world, monkeypatch):
     with pytest.raises(AgentDidNotDeliver):         # it said nothing, so it delivered nothing
         _run(sched, db, _task(db, h.id))
     policy = captured["tool_policy"]
-    assert policy.allowed_tools == frozenset({"manage_notes", "manage_documents"})
+    # `P24-27`: its runbook never used documents, so its kit is notes alone.
+    assert policy.allowed_tools == frozenset({"manage_notes"})
     assert policy.ask_effects == frozenset({"destructive"}) and policy.never_effects == frozenset()
-    assert policy.sealed is True, "notes and documents only: no way out (`D-2026-10-24-01`)"
+    assert policy.sealed is True, "notes only: no way out (`D-2026-10-24-01`)"
     import os
     from src.tool_execution import projects_root
     assert captured["workspace"] == os.path.realpath(projects_root("alice")), "`B1434`: it works in the projects folder"
@@ -387,10 +397,11 @@ def test_the_run_carries_sealed_into_its_gate(world):
     factory, sched, seen = world
     db = factory()
     h, _ = _hire(db, "morning-brief", inputs={"at": "06:00"})
-    seen["answer"] = "Today: nothing."
+    seen["answer"] = BRIEF
     _run(sched, db, _task(db, h.id))
     assert seen["slot"]["agent"]["sealed"] is True
     h2, _ = _hire(db, "topic-watcher", inputs={"topics": ["x"]})
+    seen["answer"] = WATCH
     _run(sched, db, _task(db, h2.id))
     assert seen["slot"]["agent"]["sealed"] is False
 

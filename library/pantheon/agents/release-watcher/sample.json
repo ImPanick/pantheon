@@ -1,0 +1,18 @@
+{
+ "case": "a-new-release-since-last-time",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 2 release pages: 1 new release, 1 unchanged",
+ "read": [
+  "web_fetch"
+ ],
+ "wrote": [],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with New releases, No change, Could not read."
+  }
+ ],
+ "answer": "**New releases**\n- Pantheon — 2.4.0 (was 2.3.1) — 24 Oct — removes the old /api/v1 routes (breaking); fixes CVE-2026-1234 in uploads; adds agent teams — https://releases.example/pantheon\n\n**No change**\n- Forge — 0.9.2 — https://releases.example/forge\n\n**Could not read**\n- nothing\n\n## Report\n- read 2 release pages: 1 new release, 1 unchanged\n\n## Carry forward\n- https://releases.example/pantheon 2.4.0\n- https://releases.example/forge 0.9.2"
+}

@@ -1,7 +1,7 @@
 {
  "case": "two-topics-with-news",
  "from": "its evaluation, with a scripted model",
- "summary": "- searched 2 topics",
+ "summary": "- searched 2 topics, fetched 2 pages",
  "read": [
   "web_search",
   "web_fetch"
@@ -12,8 +12,8 @@
   {
    "check": "the answer",
    "ok": true,
-   "detail": "It answered."
+   "detail": "It answered, with New since last run, Checked."
   }
  ],
- "answer": "## solar\n- A 30% perovskite cell — news.example https://news.example/perovskite\n\n## wind\n- A 1 GW offshore farm opened — news.example https://news.example/offshore\n\n## Report\n- searched 2 topics\n\n## Carry forward\n- https://news.example/perovskite\n- https://news.example/offshore"
+ "answer": "**New since last run**\n### solar\n- A lab reports a 30% efficient perovskite cell — News Example — https://news.example/perovskite\n### wind\n- A 1 GW offshore wind farm began generating on Monday — News Example — https://news.example/offshore\n\n**Checked**\n- solar: 1 search, 1 result, 1 new\n- wind: 1 search, 1 result, 1 new\n\n## Report\n- searched 2 topics, fetched 2 pages\n\n## Carry forward\n- https://news.example/perovskite\n- https://news.example/offshore"
 }

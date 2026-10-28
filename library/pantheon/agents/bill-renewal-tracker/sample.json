@@ -1,0 +1,22 @@
+{
+ "case": "a-monthly-and-a-yearly-renewal",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- searched mail and notes",
+ "read": [
+  "search_emails",
+  "read_email",
+  "manage_notes"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Due in the next 30 days”",
+   "ok": true,
+   "detail": "“Due in the next 30 days — 27 Oct” is there."
+  }
+ ],
+ "answer": "2 found: 1 this week, 1 in the next 30 days, 0 to check.\n\n## Report\n- searched mail and notes\n\n## Carry forward\n- StreamFlix monthly, next 30 Nov; example.org yearly, next 12 Nov"
+}

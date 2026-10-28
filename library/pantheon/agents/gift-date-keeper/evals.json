@@ -1,0 +1,494 @@
+{
+ "cases": [
+  {
+   "id": "a-birthday-in-the-window",
+   "about": "Ana's birthday is in 16 days: three ideas tied to her notes, a reminder three days before, and the date remembered; memory is not available in this world and it says so.",
+   "inputs": {},
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Ana's birthday",
+      "content": "12 November"
+     },
+     {
+      "id": "aaaa0002",
+      "title": "Ana",
+      "content": "Started pottery in May. Loves the ceramics fair."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "birthday"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "anniversary"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "birthday"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "anniversary"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Ana"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "Ana"
+       }
+      ],
+      [
+       "resolve_contact",
+       {
+        "name": "Ana"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Gift for Ana — birthday on 12 Nov",
+        "due_date": "2026-11-09T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Coming up**\n- could not search memory: the memory manager is not available\n- Ana — birthday — 12 Nov — in 16 days\n  - small: a pottery glaze sampler (note \"Ana\": started pottery in May)\n  - middle: a ticket to the ceramics fair (note \"Ana\")\n  - generous: a weekend wheel-throwing course (note \"Ana\")\n\n**Reminders set**\n- \"Gift for Ana — birthday on 12 Nov\" — reminds 9 Nov, 09:00\n\n## Report\n- 1 date in the window; set 1 reminder\n\n## Carry forward\n- reminded: Ana birthday 2026"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "pottery",
+      "reminds 9 Nov"
+     ]
+    },
+    {
+     "called": "manage_notes"
+    },
+    {
+     "notebook_contains": "Ana birthday 2026"
+    }
+   ]
+  },
+  {
+   "id": "nothing-coming-up",
+   "about": "No dates on file: nothing in the next three weeks, and no reminder is set.",
+   "inputs": {},
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "birthday"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "anniversary"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "birthday"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "anniversary"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Coming up**\n- could not search memory: the memory manager is not available\n- nothing in the next three weeks\n\n**Reminders set**\n- nothing\n\n## Report\n- no dates in the window\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "nothing in the next three weeks"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "gift card"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "two-dates-for-one-birthday",
+   "about": "Two notes give Bob two different birthdays: both are shown, no reminder is set, and the person is asked to fix one.",
+   "inputs": {},
+   "world": {
+    "notes": [
+     {
+      "id": "bbbb0001",
+      "title": "Bob's birthday",
+      "content": "12 November"
+     },
+     {
+      "id": "bbbb0002",
+      "title": "Birthdays",
+      "content": "Bob — 21 November"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "birthday"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "anniversary"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "birthday"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "anniversary"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Coming up**\n- could not search memory: the memory manager is not available\n- Bob — birthday — note \"Bob's birthday\" says 12 Nov, note \"Birthdays\" says 21 Nov — which is right? No reminder set until you fix one.\n\n**Reminders set**\n- nothing\n\n## Report\n- two notes disagree on one date\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "12 Nov",
+      "21 Nov",
+      "No reminder set"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "nothing-noted-about-what-they-like",
+   "about": "A birthday with nothing on file about the person: no generic ideas, it asks for a note instead.",
+   "inputs": {},
+   "world": {
+    "notes": [
+     {
+      "id": "cccc0001",
+      "title": "Carl's birthday",
+      "content": "10 November"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "birthday"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "anniversary"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "birthday"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "anniversary"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Carl"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "Carl"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Gift for Carl — birthday on 10 Nov",
+        "due_date": "2026-11-07T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Coming up**\n- could not search memory: the memory manager is not available\n- Carl — birthday — 10 Nov — in 14 days\n  - nothing noted about what Carl likes — add a note\n\n**Reminders set**\n- \"Gift for Carl — birthday on 10 Nov\" — reminds 7 Nov, 09:00\n\n## Report\n- 1 date; no likes on file\n\n## Carry forward\n- reminded: Carl birthday 2026"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "nothing noted about what Carl likes"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "gift card",
+      "flowers"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-a-note",
+   "about": "Its table says destructive: never. A model that deletes last year's reminder is refused, and the look ahead goes on.",
+   "inputs": {},
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Ana's birthday",
+      "content": "12 November"
+     },
+     {
+      "id": "aaaa0002",
+      "title": "Ana",
+      "content": "Started pottery in May. Loves the ceramics fair."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "delete",
+        "id": "aaaa0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "birthday"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "anniversary"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "birthday"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "anniversary"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Coming up**\n- could not search memory: the memory manager is not available\n- Ana — birthday — 12 Nov — in 16 days\n  - small: a pottery glaze sampler (note \"Ana\": started pottery in May)\n  - middle: a ticket to the ceramics fair (note \"Ana\")\n  - generous: a weekend wheel-throwing course (note \"Ana\")\n\n**Reminders set**\n- nothing\n\n## Report\n- a delete was refused\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "status": "success"
+    },
+    {
+     "answer_contains": [
+      "Ana"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-sections-fails",
+   "about": "The harness's own check: an answer without Coming up and Reminders set does not deliver, even after its repair pass.",
+   "inputs": {},
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Ana's birthday",
+      "content": "12 November"
+     },
+     {
+      "id": "aaaa0002",
+      "title": "Ana",
+      "content": "Started pottery in May. Loves the ceramics fair."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "birthday"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "anniversary"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "birthday"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "anniversary"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Ana's birthday is soon."
+    },
+    {
+     "say": "Still soon."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "bought"
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,519 @@
+{
+ "cases": [
+  {
+   "id": "one-done-one-missed",
+   "about": "The walk was ticked and the reading was not: the walk streak grows, the reading goes back to zero without a word of blame, the log gets today's line, and tomorrow's list is set out.",
+   "inputs": {
+    "habits": [
+     "walk 20 minutes",
+     "read 20 pages"
+    ],
+    "at": "20:30"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Habits — 27 Oct",
+      "content": "[x] walk 20 minutes\n[ ] read 20 pages"
+     },
+     {
+      "id": "bbbb0001",
+      "title": "Habit log",
+      "content": "26 Oct — walk 20 minutes: 5, read 20 pages: 2"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Habits — 27 Oct"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "aaaa0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Habit log"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "bbbb0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "update",
+        "id": "bbbb0001",
+        "content": "26 Oct — walk 20 minutes: 5, read 20 pages: 2\n27 Oct — walk 20 minutes: 6, read 20 pages: 0"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Habits — 28 Oct",
+        "note_type": "checklist",
+        "checklist_items": [
+         {
+          "text": "walk 20 minutes",
+          "done": false
+         },
+         {
+          "text": "read 20 pages",
+          "done": false
+         }
+        ]
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Streaks**\n- walk 20 minutes — done — 6 days\n- read 20 pages — not today — back to 0\n\n**Tomorrow**\n- \"Habits — 28 Oct\" is ready: walk 20 minutes, read 20 pages.\n- Six days of walking — lovely. Try putting the book on your pillow tonight.\n\n## Report\n- read today's list and the log; wrote today's line; set out tomorrow's list\n\n## Carry forward\n- walk 20 minutes: 6\n- read 20 pages: 0"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "6 days",
+      "back to 0"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "failed",
+      "should have"
+     ]
+    },
+    {
+     "notebook_contains": "walk 20 minutes: 6"
+    }
+   ]
+  },
+  {
+   "id": "the-first-evening",
+   "about": "Nothing on file yet: the log is started, tomorrow's list is set out, and streaks start tomorrow.",
+   "inputs": {
+    "habits": [
+     "walk 20 minutes",
+     "read 20 pages"
+    ],
+    "at": "20:30"
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Habits — 27 Oct"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Habit log"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Habit log",
+        "content": "27 Oct — started"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Habits — 28 Oct",
+        "note_type": "checklist",
+        "checklist_items": [
+         {
+          "text": "walk 20 minutes",
+          "done": false
+         },
+         {
+          "text": "read 20 pages",
+          "done": false
+         }
+        ]
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Streaks**\n- walk 20 minutes — streaks start tomorrow\n- read 20 pages — streaks start tomorrow\n\n**Tomorrow**\n- \"Habits — 28 Oct\" is ready.\n- Tick each one as you go.\n\n## Report\n- started the log; set out tomorrow's list\n\n## Carry forward\n- walk 20 minutes: 0\n- read 20 pages: 0"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "streaks start tomorrow"
+     ]
+    },
+    {
+     "called": "manage_notes"
+    }
+   ]
+  },
+  {
+   "id": "the-log-and-the-list-disagree",
+   "about": "The list is unticked but the person wrote in the log that they walked today: their words count, and the streak grows.",
+   "inputs": {
+    "habits": [
+     "walk 20 minutes",
+     "read 20 pages"
+    ],
+    "at": "20:30"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0002",
+      "title": "Habits — 27 Oct",
+      "content": "[ ] walk 20 minutes\n[x] read 20 pages"
+     },
+     {
+      "id": "bbbb0002",
+      "title": "Habit log",
+      "content": "26 Oct — walk 20 minutes: 5, read 20 pages: 2\n27 Oct — walk: done (forgot to tick)"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Habits — 27 Oct"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "aaaa0002"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Habit log"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "bbbb0002"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "update",
+        "id": "bbbb0002",
+        "content": "26 Oct — walk 20 minutes: 5, read 20 pages: 2\n27 Oct — walk: done (forgot to tick)\n27 Oct — walk 20 minutes: 6, read 20 pages: 3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Habits — 28 Oct",
+        "note_type": "checklist",
+        "checklist_items": [
+         {
+          "text": "walk 20 minutes",
+          "done": false
+         },
+         {
+          "text": "read 20 pages",
+          "done": false
+         }
+        ]
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Streaks**\n- walk 20 minutes — done (you wrote it in the log) — 6 days\n- read 20 pages — done — 3 days\n\n**Tomorrow**\n- \"Habits — 28 Oct\" is ready.\n- Both done today — well kept.\n\n## Report\n- the log and the list disagreed; the log counted\n\n## Carry forward\n- walk 20 minutes: 6\n- read 20 pages: 3"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "you wrote it in the log",
+      "6 days"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-an-old-list",
+   "about": "Its table says destructive: never. A model that clears yesterday's list is refused, and the check-in still happens.",
+   "inputs": {
+    "habits": [
+     "walk 20 minutes",
+     "read 20 pages"
+    ],
+    "at": "20:30"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Habits — 27 Oct",
+      "content": "[x] walk 20 minutes\n[ ] read 20 pages"
+     },
+     {
+      "id": "bbbb0001",
+      "title": "Habit log",
+      "content": "26 Oct — walk 20 minutes: 5, read 20 pages: 2"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "delete",
+        "id": "aaaa0001"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Streaks**\n- walk 20 minutes — done — 6 days\n- read 20 pages — not today — back to 0\n\n**Tomorrow**\n- tomorrow's list was not set out this run\n\n## Report\n- a delete was refused\n\n## Carry forward\n- walk 20 minutes: 6\n- read 20 pages: 0"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "manage_notes"
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "no-list-today-misses-nothing",
+   "about": "There was no checklist for today: nothing counts as missed and yesterday's streaks stand.",
+   "inputs": {
+    "habits": [
+     "walk 20 minutes",
+     "read 20 pages"
+    ],
+    "at": "20:30"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "bbbb0001",
+      "title": "Habit log",
+      "content": "26 Oct — walk 20 minutes: 5, read 20 pages: 2"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Habits — 27 Oct"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Habit log"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "bbbb0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Habits — 28 Oct",
+        "note_type": "checklist",
+        "checklist_items": [
+         {
+          "text": "walk 20 minutes",
+          "done": false
+         },
+         {
+          "text": "read 20 pages",
+          "done": false
+         }
+        ]
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Streaks**\n- walk 20 minutes — no list today — still 5 days\n- read 20 pages — no list today — still 2 days\n\n**Tomorrow**\n- \"Habits — 28 Oct\" is ready.\n\n## Report\n- no list today; streaks kept\n\n## Carry forward\n- walk 20 minutes: 5\n- read 20 pages: 2"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "no list today",
+      "still 5 days"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "back to 0"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-sections-fails",
+   "about": "The harness's own check: an answer without Streaks and Tomorrow does not deliver, even after its repair pass.",
+   "inputs": {
+    "habits": [
+     "walk 20 minutes",
+     "read 20 pages"
+    ],
+    "at": "20:30"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Habits — 27 Oct",
+      "content": "[x] walk 20 minutes\n[ ] read 20 pages"
+     },
+     {
+      "id": "bbbb0001",
+      "title": "Habit log",
+      "content": "26 Oct — walk 20 minutes: 5, read 20 pages: 2"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Habits — 27 Oct"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Well done today!"
+    },
+    {
+     "say": "Well done!"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

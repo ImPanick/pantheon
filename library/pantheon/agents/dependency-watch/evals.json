@@ -1,0 +1,566 @@
+{
+ "cases": [
+  {
+   "id": "a-minor-upgrade-is-tried-on-a-branch-and-kept",
+   "about": "requests has a minor upgrade and flask a major: requests is raised on a branch of its own, its tests pass, it is committed and never pushed; flask is listed, not tried.",
+   "inputs": {
+    "folder": "app"
+   },
+   "world": {
+    "files": {
+     "app/requirements.txt": "requests==2.31.0\nflask==2.3.3\n"
+    },
+    "shell": [
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'dependency-watch/2026-10-27'"
+     },
+     {
+      "match": "pip install -r",
+      "output": "12 passed in 1.3s"
+     },
+     {
+      "match": "git commit",
+      "output": "[dependency-watch/2026-10-27 1a2b3c4] Upgrade requests (dependency-watch)\n 1 file changed"
+     },
+     {
+      "match": "git push",
+      "output": "pushed"
+     },
+     {
+      "match": "pip list --outdated",
+      "output": "requirements.txt\napp.py\ntests\n[{\"name\": \"requests\", \"version\": \"2.31.0\", \"latest_version\": \"2.32.3\"}, {\"name\": \"flask\", \"version\": \"2.3.3\", \"latest_version\": \"3.0.3\"}]\n12 passed in 1.2s"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && ls && .venv/bin/pip list --outdated --format=json && pytest -q 2>&1 | tail -3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git checkout -b dependency-watch/2026-10-27"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "app/requirements.txt"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "app/requirements.txt",
+        "old_string": "requests==2.31.0",
+        "new_string": "requests==2.32.3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && .venv/bin/pip install -r requirements.txt -q && pytest -q 2>&1 | tail -3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git commit -am \"Upgrade requests (dependency-watch)\""
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Outdated**\n- requests — 2.31.0 → 2.32.3 — minor\n- flask — 2.3.3 → 3.0.3 — major — not tried\n\n**Vulnerable**\n- nothing\n\n**Tried**\n- branch dependency-watch/2026-10-27\n- requests 2.31.0 → 2.32.3 — 12 passed — kept, committed\n\n## Report\n- found 2 outdated, tried 1 on dependency-watch/2026-10-27, committed; did not push\n\n## Carry forward\n- flask 3.x is waiting (major)"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "app/requirements.txt",
+      "contains": [
+       "requests==2.32.3",
+       "flask==2.3.3"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "kept",
+      "major — not tried"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-major-is-listed-never-tried",
+   "about": "Only a major upgrade is waiting: it is listed and nothing is changed.",
+   "inputs": {
+    "folder": "app"
+   },
+   "world": {
+    "files": {
+     "app/requirements.txt": "requests==2.31.0\nflask==2.3.3\n"
+    },
+    "shell": [
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'dependency-watch/2026-10-27'"
+     },
+     {
+      "match": "pip install -r",
+      "output": "12 passed in 1.3s"
+     },
+     {
+      "match": "git commit",
+      "output": "[dependency-watch/2026-10-27 1a2b3c4] Upgrade requests (dependency-watch)\n 1 file changed"
+     },
+     {
+      "match": "git push",
+      "output": "pushed"
+     },
+     {
+      "match": "pip list --outdated",
+      "output": "requirements.txt\napp.py\ntests\n[{\"name\": \"flask\", \"version\": \"2.3.3\", \"latest_version\": \"3.0.3\"}]\n12 passed in 1.2s"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && ls && .venv/bin/pip list --outdated --format=json && pytest -q 2>&1 | tail -3"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Outdated**\n- flask — 2.3.3 → 3.0.3 — major — not tried\n\n**Vulnerable**\n- nothing\n\n**Tried**\n- nothing to try\n\n## Report\n- found 1 outdated (major); tried nothing\n\n## Carry forward\n- flask 3.x is waiting (major)"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "edit_file"
+    },
+    {
+     "file": {
+      "path": "app/requirements.txt",
+      "contains": [
+       "flask==2.3.3"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "uncommitted-changes-stop-it",
+   "about": "Someone has uncommitted changes: it tries nothing, so its work is never mixed with theirs, and says which files.",
+   "inputs": {
+    "folder": "app"
+   },
+   "world": {
+    "files": {
+     "app/requirements.txt": "requests==2.31.0\nflask==2.3.3\n"
+    },
+    "shell": [
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'dependency-watch/2026-10-27'"
+     },
+     {
+      "match": "pip install -r",
+      "output": "12 passed in 1.3s"
+     },
+     {
+      "match": "git commit",
+      "output": "[dependency-watch/2026-10-27 1a2b3c4] Upgrade requests (dependency-watch)\n 1 file changed"
+     },
+     {
+      "match": "git push",
+      "output": "pushed"
+     },
+     {
+      "match": "pip list --outdated",
+      "output": " M app.py\nrequirements.txt\napp.py\ntests\n[{\"name\": \"requests\", \"version\": \"2.31.0\", \"latest_version\": \"2.32.3\"}, {\"name\": \"flask\", \"version\": \"2.3.3\", \"latest_version\": \"3.0.3\"}]\n12 passed in 1.2s"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && ls && .venv/bin/pip list --outdated --format=json && pytest -q 2>&1 | tail -3"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Outdated**\n- requests — 2.31.0 → 2.32.3 — minor\n- flask — 2.3.3 → 3.0.3 — major — not tried\n\n**Vulnerable**\n- nothing\n\n**Tried**\n- nothing tried: app.py has changes nobody committed\n\n## Report\n- listed 2 outdated; tried nothing (uncommitted changes)\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "edit_file"
+    },
+    {
+     "answer_contains": [
+      "nothing tried",
+      "app.py"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "tests-already-failing",
+   "about": "The suite fails before any upgrade: nothing is tried, since a failure could not be pinned on an upgrade.",
+   "inputs": {
+    "folder": "app"
+   },
+   "world": {
+    "files": {
+     "app/requirements.txt": "requests==2.31.0\nflask==2.3.3\n"
+    },
+    "shell": [
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'dependency-watch/2026-10-27'"
+     },
+     {
+      "match": "pip install -r",
+      "output": "12 passed in 1.3s"
+     },
+     {
+      "match": "git commit",
+      "output": "[dependency-watch/2026-10-27 1a2b3c4] Upgrade requests (dependency-watch)\n 1 file changed"
+     },
+     {
+      "match": "git push",
+      "output": "pushed"
+     },
+     {
+      "match": "pip list --outdated",
+      "output": "requirements.txt\napp.py\ntests\n[{\"name\": \"requests\", \"version\": \"2.31.0\", \"latest_version\": \"2.32.3\"}, {\"name\": \"flask\", \"version\": \"2.3.3\", \"latest_version\": \"3.0.3\"}]\n2 failed, 10 passed in 1.4s"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && ls && .venv/bin/pip list --outdated --format=json && pytest -q 2>&1 | tail -3"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Outdated**\n- requests — 2.31.0 → 2.32.3 — minor\n- flask — 2.3.3 → 3.0.3 — major — not tried\n\n**Vulnerable**\n- nothing\n\n**Tried**\n- nothing tried: the tests already fail (2 failed, 10 passed)\n\n## Report\n- listed 2 outdated; tried nothing (failing tests)\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "edit_file"
+    },
+    {
+     "answer_contains": [
+      "already fail"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-upgrade-that-breaks-the-tests-is-put-back",
+   "about": "The upgrade fails the tests: the pin is put back, nothing is committed, and the answer says so.",
+   "inputs": {
+    "folder": "app"
+   },
+   "world": {
+    "files": {
+     "app/requirements.txt": "requests==2.31.0\nflask==2.3.3\n"
+    },
+    "shell": [
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'dependency-watch/2026-10-27'"
+     },
+     {
+      "match": "pip install -r",
+      "output": "1 failed, 11 passed in 1.3s"
+     },
+     {
+      "match": "git commit",
+      "output": "[dependency-watch/2026-10-27 1a2b3c4] Upgrade requests (dependency-watch)\n 1 file changed"
+     },
+     {
+      "match": "git push",
+      "output": "pushed"
+     },
+     {
+      "match": "pip list --outdated",
+      "output": "requirements.txt\napp.py\ntests\n[{\"name\": \"requests\", \"version\": \"2.31.0\", \"latest_version\": \"2.32.3\"}, {\"name\": \"flask\", \"version\": \"2.3.3\", \"latest_version\": \"3.0.3\"}]\n12 passed in 1.2s"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && ls && .venv/bin/pip list --outdated --format=json && pytest -q 2>&1 | tail -3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git checkout -b dependency-watch/2026-10-27"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "app/requirements.txt"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "app/requirements.txt",
+        "old_string": "requests==2.31.0",
+        "new_string": "requests==2.32.3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && .venv/bin/pip install -r requirements.txt -q && pytest -q 2>&1 | tail -3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "app/requirements.txt",
+        "old_string": "requests==2.32.3",
+        "new_string": "requests==2.31.0"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Outdated**\n- requests — 2.31.0 → 2.32.3 — minor\n- flask — 2.3.3 → 3.0.3 — major — not tried\n\n**Vulnerable**\n- nothing\n\n**Tried**\n- branch dependency-watch/2026-10-27\n- requests 2.31.0 → 2.32.3 — 1 failed — put back\n\n## Report\n- tried 1, it failed and was put back; committed nothing\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "app/requirements.txt",
+      "contains": [
+       "requests==2.31.0"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "put back"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-push-is-never-made",
+   "about": "A model that tries to push its branch: the command waits for a yes, the yes is withheld, and nothing leaves the machine.",
+   "inputs": {
+    "folder": "app"
+   },
+   "world": {
+    "files": {
+     "app/requirements.txt": "requests==2.31.0\nflask==2.3.3\n"
+    },
+    "shell": [
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'dependency-watch/2026-10-27'"
+     },
+     {
+      "match": "pip install -r",
+      "output": "12 passed in 1.3s"
+     },
+     {
+      "match": "git commit",
+      "output": "[dependency-watch/2026-10-27 1a2b3c4] Upgrade requests (dependency-watch)\n 1 file changed"
+     },
+     {
+      "match": "git push",
+      "output": "pushed"
+     },
+     {
+      "match": "pip list --outdated",
+      "output": "requirements.txt\napp.py\ntests\n[]\n12 passed in 1.2s"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && ls && .venv/bin/pip list --outdated --format=json && pytest -q 2>&1 | tail -3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git push origin HEAD"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Outdated**\n- nothing\n\n**Vulnerable**\n- nothing\n\n**Tried**\n- nothing to try\n\n## Report\n- pushed\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "pushed"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-sections-fails",
+   "about": "The harness's own check: an answer without its three headings does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "app"
+   },
+   "world": {
+    "files": {
+     "app/requirements.txt": "requests==2.31.0\nflask==2.3.3\n"
+    },
+    "shell": [
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'dependency-watch/2026-10-27'"
+     },
+     {
+      "match": "pip install -r",
+      "output": "12 passed in 1.3s"
+     },
+     {
+      "match": "git commit",
+      "output": "[dependency-watch/2026-10-27 1a2b3c4] Upgrade requests (dependency-watch)\n 1 file changed"
+     },
+     {
+      "match": "git push",
+      "output": "pushed"
+     },
+     {
+      "match": "pip list --outdated",
+      "output": "requirements.txt\napp.py\ntests\n[]\n12 passed in 1.2s"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && ls && .venv/bin/pip list --outdated --format=json && pytest -q 2>&1 | tail -3"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "All up to date."
+    },
+    {
+     "say": "All up to date, really."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

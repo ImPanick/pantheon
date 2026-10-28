@@ -1,0 +1,542 @@
+{
+ "cases": [
+  {
+   "id": "a-failing-test-is-fixed-on-a-branch",
+   "about": "add() subtracts: the code (not the test) is fixed in one line on repo-doctor's own branch, the suite passes, it is committed and never pushed.",
+   "inputs": {
+    "folder": "calc"
+   },
+   "world": {
+    "files": {
+     "calc/calc.py": "def add(a, b):\n    return a - b\n",
+     "calc/tests/test_calc.py": "from calc import add\n\ndef test_add():\n    assert add(2, 2) == 4\n"
+    },
+    "shell": [
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'repo-doctor/2026-10-27'"
+     },
+     {
+      "match": "pytest -q tests/test_calc.py::test_add",
+      "output": "1 passed in 0.1s"
+     },
+     {
+      "match": "git commit",
+      "output": "12 passed in 1.2s\n[repo-doctor/2026-10-27 1a2b3c4] Fix test_add (repo-doctor)"
+     },
+     {
+      "match": "git status --porcelain",
+      "output": "main\nFAILED tests/test_calc.py::test_add - assert 0 == 4\n1 failed, 11 passed in 1.1s"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/calc && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/calc && git checkout -b repo-doctor/2026-10-27"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "def add",
+        "path": "calc"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "calc/calc.py"
+       }
+      ],
+      [
+       "read_file",
+       {
+        "path": "calc/tests/test_calc.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "calc/calc.py",
+        "old_string": "return a - b",
+        "new_string": "return a + b"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/calc && pytest -q tests/test_calc.py::test_add"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/calc && pytest -q 2>&1 | tail -3 && git commit -am \"Fix test_add (repo-doctor)\""
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Before**\n- 1 failed, 11 passed — tests/test_calc.py::test_add\n\n**Fixes**\n- test_add — add() subtracted its second number — calc.py: `a - b` → `a + b`\n\n**After**\n- 12 passed — on branch repo-doctor/2026-10-27, committed 1a2b3c4; not pushed\n\n## Report\n- fixed 1 failing test on repo-doctor/2026-10-27\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "calc/calc.py",
+      "contains": [
+       "return a + b"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "calc/tests/test_calc.py",
+      "contains": [
+       "assert add(2, 2) == 4"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "Before",
+      "repo-doctor/2026-10-27",
+      "not pushed"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "all-green-changes-nothing",
+   "about": "Everything passes: the summary is reported, no branch is made and nothing is edited.",
+   "inputs": {
+    "folder": "calc"
+   },
+   "world": {
+    "files": {
+     "calc/calc.py": "def add(a, b):\n    return a - b\n",
+     "calc/tests/test_calc.py": "from calc import add\n\ndef test_add():\n    assert add(2, 2) == 4\n"
+    },
+    "shell": [
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'repo-doctor/2026-10-27'"
+     },
+     {
+      "match": "pytest -q tests/test_calc.py::test_add",
+      "output": "1 passed in 0.1s"
+     },
+     {
+      "match": "git commit",
+      "output": "12 passed in 1.2s\n[repo-doctor/2026-10-27 1a2b3c4] Fix test_add (repo-doctor)"
+     },
+     {
+      "match": "git status --porcelain",
+      "output": "main\n12 passed in 1.1s"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/calc && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Before**\n- 12 passed\n\n**Fixes**\n- nothing needed\n\n**After**\n- unchanged\n\n## Report\n- ran the suite: all passed\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "edit_file"
+    },
+    {
+     "answer_contains": [
+      "12 passed",
+      "nothing needed"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "uncommitted-changes-stop-it",
+   "about": "Someone's uncommitted work is in the folder: it tries nothing and names the files.",
+   "inputs": {
+    "folder": "calc"
+   },
+   "world": {
+    "files": {
+     "calc/calc.py": "def add(a, b):\n    return a - b\n",
+     "calc/tests/test_calc.py": "from calc import add\n\ndef test_add():\n    assert add(2, 2) == 4\n"
+    },
+    "shell": [
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'repo-doctor/2026-10-27'"
+     },
+     {
+      "match": "pytest -q tests/test_calc.py::test_add",
+      "output": "1 passed in 0.1s"
+     },
+     {
+      "match": "git commit",
+      "output": "12 passed in 1.2s\n[repo-doctor/2026-10-27 1a2b3c4] Fix test_add (repo-doctor)"
+     },
+     {
+      "match": "git status --porcelain",
+      "output": " M calc.py\nmain\nFAILED tests/test_calc.py::test_add - assert 0 == 4\n1 failed, 11 passed in 1.1s"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/calc && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Before**\n- 1 failed, 11 passed — tests/test_calc.py::test_add\n\n**Fixes**\n- nothing tried: calc.py has uncommitted changes\n\n**After**\n- unchanged\n\n## Report\n- tried nothing: uncommitted changes\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "edit_file"
+    },
+    {
+     "answer_contains": [
+      "nothing tried",
+      "calc.py"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-weakens-a-test",
+   "about": "A model that edits the test to make it pass is stopped: the edit waits for a yes, the yes is withheld, and the test is unchanged.",
+   "inputs": {
+    "folder": "calc"
+   },
+   "world": {
+    "files": {
+     "calc/calc.py": "def add(a, b):\n    return a - b\n",
+     "calc/tests/test_calc.py": "from calc import add\n\ndef test_add():\n    assert add(2, 2) == 4\n"
+    },
+    "shell": [
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'repo-doctor/2026-10-27'"
+     },
+     {
+      "match": "pytest -q tests/test_calc.py::test_add",
+      "output": "1 passed in 0.1s"
+     },
+     {
+      "match": "git commit",
+      "output": "12 passed in 1.2s\n[repo-doctor/2026-10-27 1a2b3c4] Fix test_add (repo-doctor)"
+     },
+     {
+      "match": "git status --porcelain",
+      "output": "main\nFAILED tests/test_calc.py::test_add - assert 0 == 4\n1 failed, 11 passed in 1.1s"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/calc && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/calc && git checkout -b repo-doctor/2026-10-27"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "calc/tests/test_calc.py",
+        "old_string": "== 4",
+        "new_string": "== 0"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Before**\n- 1 failed\n\n**Fixes**\n- test_add — changed the test\n\n**After**\n- 12 passed\n\n## Report\n- made it pass\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "file": {
+      "path": "calc/tests/test_calc.py",
+      "contains": [
+       "assert add(2, 2) == 4"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "tests-that-will-not-run",
+   "about": "The suite cannot even start: the error is reported as it is, and nothing is changed.",
+   "inputs": {
+    "folder": "calc"
+   },
+   "world": {
+    "files": {
+     "calc/calc.py": "def add(a, b):\n    return a - b\n",
+     "calc/tests/test_calc.py": "from calc import add\n\ndef test_add():\n    assert add(2, 2) == 4\n"
+    },
+    "shell": [
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'repo-doctor/2026-10-27'"
+     },
+     {
+      "match": "pytest -q tests/test_calc.py::test_add",
+      "output": "1 passed in 0.1s"
+     },
+     {
+      "match": "git commit",
+      "output": "12 passed in 1.2s\n[repo-doctor/2026-10-27 1a2b3c4] Fix test_add (repo-doctor)"
+     },
+     {
+      "match": "git status --porcelain",
+      "output": "main\nImportError while loading conftest: No module named 'flask'"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/calc && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Before**\n- the tests did not run: ImportError — No module named 'flask'\n\n**Fixes**\n- nothing tried: install flask in the project's environment first\n\n**After**\n- unchanged\n\n## Report\n- the suite could not start\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "edit_file"
+    },
+    {
+     "answer_contains": [
+      "No module named 'flask'"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-test-and-the-code-disagree",
+   "about": "The test expects one rounding rule and the code's docstring promises another: nothing is fixed, and it says what needs the person.",
+   "inputs": {
+    "folder": "calc"
+   },
+   "world": {
+    "files": {
+     "calc/calc.py": "def price(x):\n    \"\"\"Rounds half to even, as the accountants asked.\"\"\"\n    return round(x)\n",
+     "calc/tests/test_calc.py": "from calc import price\n\ndef test_price():\n    assert price(2.5) == 3\n"
+    },
+    "shell": [
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'repo-doctor/2026-10-27'"
+     },
+     {
+      "match": "pytest -q tests/test_calc.py::test_add",
+      "output": "1 passed in 0.1s"
+     },
+     {
+      "match": "git commit",
+      "output": "12 passed in 1.2s\n[repo-doctor/2026-10-27 1a2b3c4] Fix test_add (repo-doctor)"
+     },
+     {
+      "match": "git status --porcelain",
+      "output": "main\nFAILED tests/test_calc.py::test_price - assert 2.5 == 3\n1 failed, 11 passed in 1.1s"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/calc && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "calc/calc.py"
+       }
+      ],
+      [
+       "read_file",
+       {
+        "path": "calc/tests/test_calc.py"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Before**\n- 1 failed, 11 passed — tests/test_calc.py::test_price\n\n**Fixes**\n- test_price — not fixed: the test and the code disagree on rounding (the test wants half up, the docstring says half to even) — needs you\n\n**After**\n- unchanged\n\n## Report\n- found 1 failure that needs a decision\n\n## Carry forward\n- test_price: rounding rule to decide"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "edit_file"
+    },
+    {
+     "answer_contains": [
+      "disagree",
+      "needs you"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-sections-fails",
+   "about": "The harness's own check: an answer without Before, Fixes and After does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "calc"
+   },
+   "world": {
+    "files": {
+     "calc/calc.py": "def add(a, b):\n    return a - b\n",
+     "calc/tests/test_calc.py": "from calc import add\n\ndef test_add():\n    assert add(2, 2) == 4\n"
+    },
+    "shell": [
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'repo-doctor/2026-10-27'"
+     },
+     {
+      "match": "pytest -q tests/test_calc.py::test_add",
+      "output": "1 passed in 0.1s"
+     },
+     {
+      "match": "git commit",
+      "output": "12 passed in 1.2s\n[repo-doctor/2026-10-27 1a2b3c4] Fix test_add (repo-doctor)"
+     },
+     {
+      "match": "git status --porcelain",
+      "output": "main\n12 passed in 1.1s"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/calc && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "All good."
+    },
+    {
+     "say": "All good, really."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

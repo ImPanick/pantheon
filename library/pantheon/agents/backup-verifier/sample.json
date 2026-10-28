@@ -1,0 +1,18 @@
+{
+ "case": "a-fresh-backup-reads-back",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- listed 2 backups; checked the newest; one file read back",
+ "read": [],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Verdict, Newest backup, Read back."
+  }
+ ],
+ "answer": "**Verdict**\n- OK\n\n**Newest backup**\n- nightly-2026-10-27.tar.gz — 50 MB — 1 hour old (line: 26 hours)\n\n**Read back**\n- etc/hosts — first line: \"127.0.0.1 localhost\"\n\n## Report\n- listed 2 backups; checked the newest; one file read back\n\n## Carry forward\n- nightly-2026-10-27.tar.gz 52428800 bytes 2026-10-27"
+}

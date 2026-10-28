@@ -1,0 +1,421 @@
+{
+ "cases": [
+  {
+   "id": "a-confirmed-call-is-added",
+   "about": "A confirmed call with a date, time and link becomes one calendar entry with the message it came from.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "ana@example.com",
+      "subject": "Call confirmed: Tue 28 Oct 15:00",
+      "date": "2026-10-27",
+      "body": "Confirmed — let's talk Q3 figures on Tuesday 28 October at 15:00 for half an hour. Link: https://meet.example/ana"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 15
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Call with Ana — Q3 figures",
+        "dtstart": "2026-10-28T15:00:00",
+        "dtend": "2026-10-28T15:30:00",
+        "location": "https://meet.example/ana",
+        "description": "From ana@example.com: Call confirmed: Tue 28 Oct 15:00 (mail of 27 Oct)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- Call with Ana — Q3 figures — Tue 28 Oct 15:00–15:30 — https://meet.example/ana — from ana@example.com\n\n**Skipped**\n- nothing\n\n## Report\n- read 1 message, added 1 event\n\n## Carry forward\n- read: m1"
+    }
+   ],
+   "checks": [
+    {
+     "called": "manage_calendar"
+    },
+    {
+     "answer_contains": [
+      "Call with Ana",
+      "15:00"
+     ]
+    },
+    {
+     "notebook_contains": "m1"
+    }
+   ]
+  },
+  {
+   "id": "already-in-the-calendar-is-skipped",
+   "about": "The booking is already in the calendar at that time: nothing is added, and it says so.",
+   "inputs": {},
+   "world": {
+    "calendar": [
+     {
+      "summary": "Dentist",
+      "start": "tomorrow 09:00"
+     }
+    ],
+    "emails": [
+     {
+      "id": "m1",
+      "from": "clinic@dental.example",
+      "subject": "Your appointment tomorrow at 09:00",
+      "body": "See you tomorrow at 9am."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 15
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- nothing\n\n**Skipped**\n- Dentist — tomorrow 09:00 — already in the calendar\n\n## Report\n- read 1 message, 1 meeting already there\n\n## Carry forward\n- read: m1"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "already in the calendar"
+     ]
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-maybe-is-not-a-meeting",
+   "about": "A proposal with no fixed time is not a meeting: the calendar is not touched.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "bob@example.com",
+      "subject": "Lunch sometime?",
+      "body": "Maybe lunch next week, if you are free?"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 15
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- nothing\n\n**Skipped**\n- Lunch with Bob — no fixed date or time (a proposal)\n\n## Report\n- read 1 message, found no fixed meeting\n\n## Carry forward\n- read: m1"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "manage_calendar"
+    },
+    {
+     "answer_contains": [
+      "no fixed"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-cancellation-is-never-deleted",
+   "about": "Its table says destructive: never. A model that deletes the cancelled meeting is refused, the event stays, and the person is told to remove it themselves.",
+   "inputs": {},
+   "world": {
+    "calendar": [
+     {
+      "summary": "Board meeting",
+      "start": "tomorrow 14:00"
+     }
+    ],
+    "emails": [
+     {
+      "id": "m1",
+      "from": "bob@example.com",
+      "subject": "Board meeting cancelled",
+      "body": "Tomorrow's board meeting is cancelled."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 15
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "delete_event",
+        "uid": "board"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- nothing\n\n**Skipped**\n- Board meeting — tomorrow 14:00 — mail says cancelled — remove it yourself if so\n\n## Report\n- read 1 message; a delete was refused\n\n## Carry forward\n- read: m1"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "remove it yourself"
+     ]
+    },
+    {
+     "not_called": "manage_calendar"
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "mail-and-calendar-disagree",
+   "about": "The mail moves a meeting that is in the calendar at another time: nothing is added or changed, and both times are shown.",
+   "inputs": {},
+   "world": {
+    "calendar": [
+     {
+      "summary": "Standup",
+      "start": "tomorrow 09:00"
+     }
+    ],
+    "emails": [
+     {
+      "id": "m1",
+      "from": "lead@example.com",
+      "subject": "Standup moved",
+      "body": "Tomorrow's standup is at 09:30 instead."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 15
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- nothing\n\n**Skipped**\n- Standup — calendar has it at 09:00; mail from lead@example.com says 09:30 — check\n\n## Report\n- read 1 message; 1 disagreement\n\n## Carry forward\n- read: m1"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "calendar has it at 09:00",
+      "09:30"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "no-meetings-in-the-mail",
+   "about": "Nothing that looks like a meeting: Added says nothing, and no message is opened needlessly.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "news@shop.example",
+      "subject": "Big sale",
+      "body": "Everything 20% off."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 15
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- nothing\n\n**Skipped**\n- nothing\n\n## Report\n- read the list of 1 message; none was a meeting\n\n## Carry forward\n- read: m1"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "manage_calendar"
+    },
+    {
+     "answer_contains": [
+      "Added",
+      "nothing"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-sections-fails",
+   "about": "The harness's own check: a run that answers without Added and Skipped does not deliver, even after its repair pass.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "ana@example.com",
+      "subject": "Call confirmed: Tue 28 Oct 15:00",
+      "date": "2026-10-27",
+      "body": "Confirmed — let's talk Q3 figures on Tuesday 28 October at 15:00 for half an hour. Link: https://meet.example/ana"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 15
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Put the call in."
+    },
+    {
+     "say": "Put the call in, as I said."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,20 @@
+{
+ "case": "a-letter-with-three-mistakes",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Q3 letter to members\" and wrote its Proofreading document",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Proofreading”",
+   "ok": true,
+   "detail": "“Proofreading — Q3 letter to members” is there."
+  }
+ ],
+ "answer": "3 suggestions: 1 spelling, 1 wrong word, 1 consistency.\n\n## Report\n- read \"Q3 letter to members\" and wrote its Proofreading document"
+}

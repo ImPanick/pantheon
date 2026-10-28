@@ -1,0 +1,20 @@
+{
+ "case": "a-duplicate-is-merged-and-the-delete-asks",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 2 notes, merged 1 pair",
+ "read": [
+  "manage_notes"
+ ],
+ "wrote": [
+  "manage_notes"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Changed, Stale, Needs you."
+  }
+ ],
+ "answer": "**Changed**\n- merged \"boiler service\" into \"Boiler service\" — added: \"Engineer: Heat Ltd, 555-0101\"\n- deleted \"boiler service\" (you said yes)\n\n**Stale**\n- nothing\n\n**Needs you**\n- nothing\n\n## Report\n- read 2 notes, merged 1 pair\n\n## Carry forward\n- nothing"
+}
