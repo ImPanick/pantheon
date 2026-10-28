@@ -29,3 +29,20 @@ def shared_auth_manager():
     if shared is not None and type(shared) is factory:
         return shared
     return factory()
+
+
+def first_admin():
+    """The install's first admin — the account setup made — or `None` before
+    setup (or when the user database cannot be read).
+
+    `B1639`. The owner a record from before per-account ownership is given:
+    `integrations.migrate_to_accounts` (`P27-02`) gives a connection nobody
+    named one to this account, and a Knowledge-index folder listed before its
+    owner was recorded is re-read under it. One answer, asked in one place."""
+    try:
+        users = shared_auth_manager().list_users()
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("No admin list to name an owner from (%s)", exc)
+        return None
+    return next((u["username"] for u in users if u.get("is_admin")), None)

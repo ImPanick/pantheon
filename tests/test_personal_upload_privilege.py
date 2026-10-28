@@ -38,8 +38,11 @@ class _FakePersonalDocs:
     def __init__(self):
         self.added = []
 
-    def add_directory(self, directory, index=False):
+    # `B1639`: the upload names whose folder it is, as the real manager's
+    # `add_directory` has always taken (`owner`), so a refill reads it as theirs.
+    def add_directory(self, directory, index=False, owner=None):
         self.added.append((directory, index))
+        self.owner = owner
 
 
 class _FakeRAG:

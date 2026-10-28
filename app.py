@@ -1803,6 +1803,16 @@ async def _startup_event():
 
     _startup_tasks.append(asyncio.create_task(_hold_workstation_backend()))
 
+    # `B1639`. The Knowledge index refills itself as memories, chat search and
+    # the tool index do: when it comes back empty (a lost ChromaDB volume),
+    # every listed folder is read into it again, on its own thread and behind
+    # the embedder's download gate (`personal_docs.start_refill`).
+    try:
+        from src.personal_docs import start_refill
+        start_refill(personal_docs_mgr)
+    except Exception as e:  # noqa: BLE001 — each folder can still be added again by hand
+        logger.warning("The Knowledge index refill did not start: %s", e)
+
     # `P9-15c`. Chat search by meaning: the index builds its embedding lanes,
     # catches up on old chats and embeds each new message on its own worker
     # thread, so starting it costs this function nothing. With no embedding

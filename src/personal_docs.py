@@ -625,6 +625,13 @@ class PersonalDocsManager:
         # indexed three documents, two of them this manager's JSON.
         self.directories_file = _state_file(personal_dir, "indexed_directories.json")
         self._excluded_file = _state_file(personal_dir, "excluded_files.json")
+        # `B1639`. Who each listed folder's chunks belong to, so an index that
+        # comes back empty is refilled under the owner it was built for — the
+        # chat's search by meaning asks for its person's chunks only. Beside
+        # the list, not inside it: an older build reads the list as it always
+        # did (`_string_list`) and keeps every folder.
+        self._owners_file = os.path.join(personal_dir, ".indexed_directory_owners.json")
+        self.directory_owners: Dict[str, str] = {}
         self.load_directories()
         self._load_excluded()
 
@@ -687,6 +694,17 @@ class PersonalDocsManager:
         except Exception as e:
             logger.error(f"Error loading directories: {e}")
             self.indexed_directories = []
+        self.directory_owners = {}
+        try:
+            if os.path.exists(self._owners_file):
+                with open(self._owners_file, 'r', encoding="utf-8") as f:
+                    owners = json.load(f)
+                if not isinstance(owners, dict):
+                    raise ValueError("folder owners must be a mapping")
+                self.directory_owners = {d: o for d, o in owners.items()
+                                         if isinstance(d, str) and isinstance(o, str) and o}
+        except Exception as e:
+            logger.error(f"Error loading folder owners: {e}")
 
     def save_directories(self):
         """Save the list of indexed directories to persistent storage."""
@@ -696,6 +714,14 @@ class PersonalDocsManager:
             logger.info(f"Saved {len(self.indexed_directories)} indexed directories")
         except Exception as e:
             logger.error(f"Error saving directories: {e}")
+        # `B1639`: only the folders still listed keep an owner.
+        listed = set(self.indexed_directories)
+        self.directory_owners = {d: o for d, o in self.directory_owners.items() if d in listed}
+        try:
+            with open(self._owners_file, 'w', encoding="utf-8") as f:
+                json.dump(self.directory_owners, f, indent=2, sort_keys=True)
+        except Exception as e:
+            logger.error(f"Error saving folder owners: {e}")
 
     def _load_excluded(self):
         """Load the set of excluded file paths from persistent storage."""
@@ -747,6 +773,8 @@ class PersonalDocsManager:
 
         if directory not in self.indexed_directories:
             self.indexed_directories.append(directory)
+            if owner:
+                self.directory_owners[directory] = owner   # `B1639`
             self.save_directories()
             logger.info(f"Added directory to tracking: {directory}")
             
@@ -763,6 +791,11 @@ class PersonalDocsManager:
             # Refresh the local index to include the new directory
             self.refresh_index()
         else:
+            if owner and directory not in self.directory_owners:
+                # `B1639`: a folder listed before its owner was recorded,
+                # added again by the person whose chunks it now holds.
+                self.directory_owners[directory] = owner
+                self.save_directories()
             logger.info(f"Directory already indexed: {directory}")
 
     def remove_directory(self, directory: str):
@@ -818,6 +851,8 @@ class PersonalDocsManager:
                 rewritten_dirs.append(rewritten)
         if changed_dirs:
             self.indexed_directories = rewritten_dirs
+            # `B1639`: a renamed folder keeps its owner.
+            self.directory_owners = {rewrite(d): o for d, o in self.directory_owners.items()}
             self.save_directories()
 
         changed_excluded = False
@@ -836,6 +871,79 @@ class PersonalDocsManager:
     def get_indexed_directories(self):
         """Get the list of all indexed directories."""
         return self.indexed_directories.copy()
+
+    def rename_owner(self, old_owner: str, new_owner: str) -> int:
+        """`B1639`. A renamed account's folders stay its own: the owner each
+        listed folder is refilled under follows the rename, as the chunks'
+        own `owner` does (`VectorRAG.rename_owner`). Answers how many moved."""
+        moved = [d for d, o in self.directory_owners.items() if o == old_owner]
+        for d in moved:
+            self.directory_owners[d] = new_owner
+        if moved:
+            self.save_directories()
+        return len(moved)
+
+    def directory_owner(self, directory: str) -> Optional[str]:
+        """`B1639`. The account a listed folder's chunks belong to: the one
+        recorded when it was added, or — for a folder listed before owners
+        were recorded — the install's first admin, the rule `P27-02` gave every
+        record from before per-account ownership. `None` before setup."""
+        directory = os.path.abspath(directory)
+        if self.directory_owners.get(directory):
+            return self.directory_owners[directory]
+        from src.auth_manager_access import first_admin
+        return first_admin()
+
+    def refill_vector_index(self, rag=None) -> Dict[str, Any]:
+        """`B1639`. Re-read every listed folder into the search by meaning when
+        its index came back empty.
+
+        Memories, chat search and the tool index refill themselves at start;
+        the Knowledge index was embedded only when a folder was added, so after
+        ChromaDB's volume was lost (`B1626`'s one-time recreate, or any other
+        way) a folder still listed answered nothing by meaning until someone
+        added it again. Called once at start, on its own thread
+        (`start_refill`). The index is asked for through `get_rag_manager()`,
+        whose lanes are built behind the embedder's own download gate
+        (`ensure_fastembed_download_permitted`, `Law 16`), so a refill never
+        fetches a model: with no model there is no index, and nothing is read.
+
+        Each folder is read under its owner (`directory_owner`), without the
+        files a person took out of the index (`exclude_file`), and only while
+        it is still listed. Answers what it did, with the sentence it logged.
+        """
+        out: Dict[str, Any] = {"refilled": [], "chunks": 0, "missing": [], "sentence": ""}
+        folders = self.get_indexed_directories()
+        if not folders:
+            return out
+        if rag is None:
+            from src.rag_singleton import get_rag_manager
+            rag = get_rag_manager()
+        if rag is None or not getattr(rag, "healthy", False):
+            from src.rag_singleton import rag_unavailable_reason
+            out["sentence"] = (f"The Knowledge index's {len(folders)} folder(s) were not re-read: "
+                               + (rag_unavailable_reason(retry=False) or "the document index is not up."))
+            logger.info(out["sentence"])
+            return out
+        held = rag.document_count()
+        if held:
+            return out
+        for directory in folders:
+            if directory not in self.indexed_directories:
+                continue    # removed while the others were read
+            if not os.path.isdir(directory):
+                out["missing"].append(directory)
+                continue
+            result = rag.index_personal_documents(directory, owner=self.directory_owner(directory),
+                                                  excluded=set(self.excluded_files))
+            out["refilled"].append(directory)
+            out["chunks"] += int(result.get("indexed_count") or 0)
+        out["sentence"] = (f"The Knowledge index came back empty; re-read {len(out['refilled'])} listed "
+                           f"folder(s) into it ({out['chunks']} chunks)"
+                           + (f"; {len(out['missing'])} folder(s) are not there any more: "
+                              + ", ".join(out["missing"]) if out["missing"] else "") + ".")
+        logger.info(out["sentence"])
+        return out
 
     def refresh_index(self):
         """Refresh the document index including all tracked directories.
@@ -942,3 +1050,21 @@ class PersonalDocsManager:
             'files_over_budget': getattr(budget, 'dropped', 0),
         }
         
+
+
+def start_refill(manager: "PersonalDocsManager") -> threading.Thread:
+    """`B1639`. Start `refill_vector_index` on its own thread and return it.
+
+    `app.py`'s start calls this and does not wait: reading a folder walks,
+    extracts and embeds every file in it — minutes on a real folder — and
+    none of that may hold the event loop or the start (`#5558`). A daemon
+    thread, as the chat index's worker is, so a stop never waits on it; the
+    index it writes is a cache a later start refills again."""
+    def run():
+        try:
+            manager.refill_vector_index()
+        except Exception as e:  # noqa: BLE001 — a refill that fails is said, never fatal
+            logger.warning("The Knowledge index was not re-read: %s", e)
+    worker = threading.Thread(target=run, name="knowledge-index-refill", daemon=True)
+    worker.start()
+    return worker

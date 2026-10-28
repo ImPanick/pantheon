@@ -500,6 +500,14 @@ class VectorRAG:
             self._healthy = False
             return False
 
+    def document_count(self) -> int:
+        """How many chunks the index holds — the fullest lane's count, as
+        `get_stats` reports it; 0 when it is not up. `B1639`: 0 with folders
+        listed is an index that came back empty."""
+        if not self.healthy:
+            return 0
+        return lane_count(self._lanes)
+
     def get_stats(self) -> Dict[str, Any]:
         if not self.healthy:
             return {"error": "Collection not initialized"}
@@ -521,10 +529,16 @@ class VectorRAG:
     # ------------------------------------------------------------------
 
     def index_personal_documents(
-        self, directory: str, file_extensions: Optional[set] = None, owner: Optional[str] = None
+        self, directory: str, file_extensions: Optional[set] = None, owner: Optional[str] = None,
+        excluded: Optional[Set[str]] = None,
     ) -> Dict[str, Any]:
+        """Embed every indexable file under ``directory``. ``excluded`` is the
+        absolute paths a person removed from the index (`exclude_file`):
+        `B1639`'s refill re-reads a listed folder, and a file someone took out
+        of the index stays out."""
         if file_extensions is None:
             file_extensions = DEFAULT_FILE_EXTENSIONS
+        excluded = excluded or set()
 
         indexed = 0
         failed = 0
@@ -537,6 +551,8 @@ class VectorRAG:
             # a plain UTF-8 `open()`, which is why it could not take the Office
             # formats and why the two lists diverged in the first place.
             for fpath, ext, content, reason in walk_index_candidates(directory, file_extensions):
+                if os.path.abspath(fpath) in excluded:
+                    continue
                 if reason:
                     skipped.append({'path': fpath, 'reason': reason})
                     continue

@@ -472,14 +472,11 @@ def mask_for(integration: Dict[str, Any], person: Optional[str]) -> Dict[str, An
 
 
 def _first_admin() -> Optional[str]:
-    """The install's first admin — the account setup made — or `None`."""
-    try:
-        from src.auth_manager_access import shared_auth_manager
-        users = shared_auth_manager().list_users()
-    except Exception as exc:
-        log.warning("No admin list for the integrations' owner (%s)", exc)
-        return None
-    return next((u["username"] for u in users if u.get("is_admin")), None)
+    """The install's first admin — the account setup made — or `None`.
+    `B1639`: asked of `auth_manager_access.first_admin`, the one answer the
+    Knowledge index's refill asks too."""
+    from src.auth_manager_access import first_admin
+    return first_admin()
 
 
 def migrate_to_accounts(admins: Optional[List[str]] = None) -> int:

@@ -54,13 +54,25 @@ class RAGManager:
         directory: str,
         file_extensions: Optional[set] = None,
         owner: Optional[str] = None,
+        excluded: Optional[set] = None,
     ) -> Dict[str, Any]:
-        """Index documents - delegates to VectorRAG."""
+        """Index documents - delegates to VectorRAG. `excluded` (`B1639`) is
+        passed on only when given, so the call is the one it always was."""
+        extra = {"excluded": excluded} if excluded else {}
         return self.vector_rag.index_personal_documents(
             directory,
             file_extensions=file_extensions,
             owner=owner,
+            **extra,
         )
+
+    def document_count(self) -> int:
+        """How many chunks the index holds - delegates to VectorRAG (`B1639`)."""
+        return self.vector_rag.document_count()
+
+    @property
+    def healthy(self) -> bool:
+        return self.vector_rag.healthy
     
     def retrieve(self, query: str, k: int = 5) -> List[str]:
         """Retrieve relevant chunks - delegates to VectorRAG."""

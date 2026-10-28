@@ -177,6 +177,10 @@ def rename_personal_upload_owner(
         rename_directory = getattr(personal_docs_manager, "rename_directory", None)
         if callable(rename_directory):
             rename_directory(old_dir, new_dir, path_map=path_map)
+        # `B1639`: the folders recorded as theirs, refilled under the new name.
+        rename_folders_owner = getattr(personal_docs_manager, "rename_owner", None)
+        if callable(rename_folders_owner):
+            rename_folders_owner(old_owner, new_owner)
 
     rag_result = None
     if rag_manager is not None:
@@ -328,7 +332,9 @@ def setup_personal_routes(personal_docs_manager, rag_manager, rag_available):
                         # directory. Kept inside the offloaded call: it triggers
                         # refresh_index(), which re-extracts text across tracked
                         # directories.
-                        personal_docs_manager.add_directory(directory, index=False)
+                        # `B1639`: with its owner, so an index that comes
+                        # back empty is refilled under the same one.
+                        personal_docs_manager.add_directory(directory, index=False, owner=owner)
                         # `B75`. One click builds two indexes over this
                         # directory. They used to read two hand-maintained
                         # extension lists that agreed on four of sixteen, so a
@@ -544,7 +550,7 @@ def setup_personal_routes(personal_docs_manager, rag_manager, rag_available):
             # while another job is mid-write over the same state.
             if uploaded_files and hasattr(personal_docs_manager, "add_directory"):
                 await run_in_threadpool(
-                    personal_docs_manager.add_directory, upload_dir, index=False
+                    personal_docs_manager.add_directory, upload_dir, index=False, owner=user
                 )
 
         return {
