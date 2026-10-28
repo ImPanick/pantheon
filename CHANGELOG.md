@@ -245,6 +245,16 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **31 shipped agents have new runbooks** (version 1.1.0; Server Health 1.2.0): decided judgement
+  calls, edge cases, the deliverable's exact headings, and evaluation cases. An agent someone has
+  already summoned pauses until its person chooses *Update*, as any new version does (`P24-27`).
+  Several now use different tools: Follow-up Chaser lists sent mail, Evening Wrap reads notes,
+  Gift & Date Keeper, Habit Coach and Home Maintenance remind with due notes instead of tasks,
+  and Unsubscribe Sweeper takes the senders as an input.
+- **A hire's per-action *never* is refused in a sentence on an unattended run,** instead of
+  parking the run on an approval card nothing would answer (`P24-27`).
+- **`POST /api/email/accounts` answers a refusal with HTTP 400** (404 for an account that is gone),
+  not 200 with `ok: false` (`B1593`).
 - **Quiet text is a shade between the muted and full foreground, not a faded one** — 558 more
   rules lost their `opacity` (`B1577`), and the sign-in page follows the same ladder (`B1575`).
 - **Static CSS is served compressed once per version,** with its comments emptied; the ETag and
@@ -427,6 +437,12 @@ the next one is cut.
 
 ### Fixed
 
+- **The agent's research tool lists, reads and deletes only the reports of the person it runs
+  for** — it could reach everyone's (`B1601`).
+- **The agent's question can always be answered** — a tool window covering it steps aside until
+  it is (`B1586`); short Big5 and EUC-JP text is no longer read as Korean (`B402`, `B1514`);
+  Compare's model picker works from a keyboard (`B1589`); Enter opens a sidebar chat once
+  (`B1592`); caches stay out of the Docker build context at any depth (`B1587`).
 - **A run's report no longer lists a tool the agent was refused as one it used** (`P24-00`); the
   + menu and its Git page fit a phone, and choosing Browser closes the menu (`P25-00`); every
   chat menu, folder header and Library card works from a keyboard (`B1576`); a memory tidy says

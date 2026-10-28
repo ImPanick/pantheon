@@ -275,6 +275,10 @@ Re-measured 2026-10-27, after the twelfth wave: **76 filed, 252 closed**, open *
 
 **Direction as of 2026-10-27, after the twelfth wave: the open count is falling.**
 
+Re-measured 2026-10-28, after the thirteenth wave: **76 filed, 214 closed**, open **189 → 51** — falling, by two in one wave. Eleven rows closed; nine filed, one closed in it — `B1601`, the agent's research tool reading and deleting every person's reports, a cross-account defect that would have been a gate, found by the agent audit and fixed before the wave was pushed. The window moved on, so its start reads 189. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1565`–`B1604`) block.
+
+**Direction as of 2026-10-28, after the thirteenth wave: the open count is falling.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
