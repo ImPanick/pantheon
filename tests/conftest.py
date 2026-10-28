@@ -305,6 +305,19 @@ def _reset_run_context():
         _clear()
 
 
+@_pytest.fixture(autouse=True)
+def _close_reused_clients():
+    """`B1608`. `paced_http` keeps one client per setting for a lookup made
+    every round; a client made while a test had `httpx.Client` patched (a
+    `MockTransport` fixture) would answer every later test from that mock.
+    Each test ends with none kept."""
+    yield
+    import sys as _sys
+    _ph = _sys.modules.get("src.paced_http")
+    if _ph is not None and hasattr(_ph, "close_reused"):
+        _ph.close_reused()
+
+
 # `B18`. The pre-import above defuses the six stubs that exist today; this
 # stops the seventh from being silent. A stub installed at module scope lands
 # during COLLECTION, before the first test runs, so by the time anything fails
