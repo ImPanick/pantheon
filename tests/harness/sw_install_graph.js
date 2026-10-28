@@ -12,8 +12,12 @@
 //                                        `assetsOf`, plus the `cache` mode each
 //                                        fetch asked for (`B85`)
 //   {"op":"install","fail":[url,...]}    ... with those URLs answering 404
+//   ... "flaky":{url:n}                  `B1612`: the first n fetches of url
+//                                        reject as a dropped connection does
+//   ... "busy":{url:n}                   ... or answer 503, n times, then work
 //   {"op":"walk","files":{url:src},"seeds":[url,...]}
-//                                        drive the walk over a synthetic tree
+//                                        drive the walk over a synthetic tree;
+//                                        `warned` is what the worker logged
 //   {"op":"imports","url":...,"source":...}   call importsOf directly
 //   {"op":"assets","url":...,"source":...}    call assetsOf directly (`B86`)
 //   {"op":"navigate","urls":[url,...]}   install, then take the network away
@@ -77,10 +81,10 @@ function diskBody(url) {
 
 // A 404 still has a body — so a walk that stopped checking `res.ok` would cache
 // the error page here, exactly as it would in a browser.
-function makeResponse(body, ok = true, redirected = false) {
+function makeResponse(body, ok = true, redirected = false, status = null) {
   return {
     ok,
-    status: ok ? 200 : 404,
+    status: status || (ok ? 200 : 404),
     // `B122`. `fetch` follows redirects by default and reports the hop here.
     // A worker that stores such a response under the URL it asked for caches
     // somebody else's document under this key, so the flag has to exist on
@@ -92,7 +96,7 @@ function makeResponse(body, ok = true, redirected = false) {
     _used: false,
     clone() {
       if (this._used) throw new TypeError('Response body is already used');
-      return makeResponse(body, ok, redirected);
+      return makeResponse(body, ok, redirected, status);
     },
     async text() {
       if (this._used) throw new TypeError('Response body is already used');
@@ -125,6 +129,9 @@ function run(cmd) {
   let readsAfterInstall = 0;
   const serve = cmd.serve || {};
   const opaque = new Set(cmd.opaqueRedirects || []);
+  // `B1612`. Failures that pass: how many more times each URL fails.
+  const flaky = Object.assign({}, cmd.flaky || {});
+  const busy = Object.assign({}, cmd.busy || {});
 
   // `B120`. A real Cache is keyed on the resolved URL, so `cache.put('/')` and
   // `cache.match(request)` for `http://localhost/` are the same entry. The
@@ -141,8 +148,10 @@ function run(cmd) {
     },
   };
 
+  // `B1612`. What the worker said in its console, so a give-up is read back.
+  const warned = [];
   const context = {
-    console,
+    console: { ...console, warn: (...args) => warned.push(args.map(String).join(' ')) },
     URL,
     setTimeout,
     // What `Response.error()` gives a page: a network error, status 0.
@@ -164,6 +173,8 @@ function run(cmd) {
       // resolve with a 404, and a handler that only checked `res.ok` would
       // pass a stub that faked one.
       if (offline) throw new TypeError('Failed to fetch');
+      if (flaky[key] > 0) { flaky[key] -= 1; throw new TypeError('Failed to fetch'); }
+      if (busy[key] > 0) { busy[key] -= 1; return makeResponse('busy', false, false, 503); }
       if (installDone && opaque.has(key)) {
         const r = makeResponse('', false);
         r.status = 0;
@@ -206,6 +217,7 @@ function run(cmd) {
       fetched: fetched.slice().sort(),
       modes: Object.fromEntries(modes),
       seen: [...seen].sort(),
+      warned,
     }));
   }
 
