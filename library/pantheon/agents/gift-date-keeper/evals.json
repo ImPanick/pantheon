@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "a-birthday-in-the-window",
-   "about": "Ana's birthday is in 16 days: three ideas tied to her notes, a reminder three days before, and the date remembered; memory is not available in this world and it says so.",
+   "about": "Ana's birthday is in 16 days: three ideas tied to what the notes and memory hold about her, a reminder three days before, and the date remembered.",
    "inputs": {},
    "world": {
     "notes": [
@@ -15,6 +15,12 @@
       "id": "aaaa0002",
       "title": "Ana",
       "content": "Started pottery in May. Loves the ceramics fair."
+     }
+    ],
+    "memories": [
+     {
+      "text": "Ana said she would love to try a wheel-throwing class one day",
+      "category": "fact"
      }
     ]
    },
@@ -92,18 +98,19 @@
      ]
     },
     {
-     "say": "**Coming up**\n- could not search memory: the memory manager is not available\n- Ana — birthday — 12 Nov — in 16 days\n  - small: a pottery glaze sampler (note \"Ana\": started pottery in May)\n  - middle: a ticket to the ceramics fair (note \"Ana\")\n  - generous: a weekend wheel-throwing course (note \"Ana\")\n\n**Reminders set**\n- \"Gift for Ana — birthday on 12 Nov\" — reminds 9 Nov, 09:00\n\n## Report\n- 1 date in the window; set 1 reminder\n\n## Carry forward\n- reminded: Ana birthday 2026"
+     "say": "**Coming up**\n- Ana — birthday — 12 Nov — in 16 days\n  - small: a pottery glaze sampler (note \"Ana\": started pottery in May)\n  - middle: a ticket to the ceramics fair (note \"Ana\": loves the ceramics fair)\n  - generous: a weekend wheel-throwing course (memory: she would love to try a wheel-throwing class)\n\n**Reminders set**\n- \"Gift for Ana — birthday on 12 Nov\" — reminds 9 Nov, 09:00\n\n## Report\n- searched notes and memory; 1 date in the window; set 1 reminder\n\n## Carry forward\n- reminded: Ana birthday 2026"
     }
    ],
    "checks": [
     {
      "answer_contains": [
       "pottery",
+      "wheel-throwing",
       "reminds 9 Nov"
      ]
     },
     {
-     "called": "manage_notes"
+     "called": "manage_memory"
     },
     {
      "notebook_contains": "Ana birthday 2026"
@@ -153,7 +160,7 @@
      ]
     },
     {
-     "say": "**Coming up**\n- could not search memory: the memory manager is not available\n- nothing in the next three weeks\n\n**Reminders set**\n- nothing\n\n## Report\n- no dates in the window\n\n## Carry forward\n- nothing"
+     "say": "**Coming up**\n- nothing in the next three weeks\n\n**Reminders set**\n- nothing\n\n## Report\n- no dates in the window\n\n## Carry forward\n- nothing"
     }
    ],
    "checks": [
@@ -225,7 +232,7 @@
      ]
     },
     {
-     "say": "**Coming up**\n- could not search memory: the memory manager is not available\n- Bob — birthday — note \"Bob's birthday\" says 12 Nov, note \"Birthdays\" says 21 Nov — which is right? No reminder set until you fix one.\n\n**Reminders set**\n- nothing\n\n## Report\n- two notes disagree on one date\n\n## Carry forward\n- nothing"
+     "say": "**Coming up**\n- Bob — birthday — note \"Bob's birthday\" says 12 Nov, note \"Birthdays\" says 21 Nov — which is right? No reminder set until you fix one.\n\n**Reminders set**\n- nothing\n\n## Report\n- two notes disagree on one date\n\n## Carry forward\n- nothing"
     }
    ],
    "checks": [
@@ -319,7 +326,7 @@
      ]
     },
     {
-     "say": "**Coming up**\n- could not search memory: the memory manager is not available\n- Carl — birthday — 10 Nov — in 14 days\n  - nothing noted about what Carl likes — add a note\n\n**Reminders set**\n- \"Gift for Carl — birthday on 10 Nov\" — reminds 7 Nov, 09:00\n\n## Report\n- 1 date; no likes on file\n\n## Carry forward\n- reminded: Carl birthday 2026"
+     "say": "**Coming up**\n- Carl — birthday — 10 Nov — in 14 days\n  - nothing noted about what Carl likes — add a note\n\n**Reminders set**\n- \"Gift for Carl — birthday on 10 Nov\" — reminds 7 Nov, 09:00\n\n## Report\n- 1 date; no likes on file\n\n## Carry forward\n- reminded: Carl birthday 2026"
     }
    ],
    "checks": [
@@ -403,7 +410,7 @@
      ]
     },
     {
-     "say": "**Coming up**\n- could not search memory: the memory manager is not available\n- Ana — birthday — 12 Nov — in 16 days\n  - small: a pottery glaze sampler (note \"Ana\": started pottery in May)\n  - middle: a ticket to the ceramics fair (note \"Ana\")\n  - generous: a weekend wheel-throwing course (note \"Ana\")\n\n**Reminders set**\n- nothing\n\n## Report\n- a delete was refused\n\n## Carry forward\n- nothing"
+     "say": "**Coming up**\n- Ana — birthday — 12 Nov — in 16 days\n  - small: a pottery glaze sampler (note \"Ana\": started pottery in May)\n  - middle: a ticket to the ceramics fair (note \"Ana\": loves the ceramics fair)\n  - generous: a term of evening pottery classes (note \"Ana\": started pottery in May)\n\n**Reminders set**\n- nothing\n\n## Report\n- a delete was refused\n\n## Carry forward\n- nothing"
     }
    ],
    "checks": [

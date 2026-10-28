@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "a-week-from-the-pantry-and-the-rules",
-   "about": "The pantry's spinach is used first, Tuesday is a night out as the rules say, and the list leaves out what the pantry has; memory is not available in this world and it says so.",
+   "about": "The pantry's spinach is used first, Tuesday is a night out as the rules say, memory's dislike changes Thursday, and the list leaves out what the pantry has.",
    "inputs": {
     "people": 2,
     "rules": "Out on Tuesdays. No pork."
@@ -13,6 +13,12 @@
       "id": "aaaa0001",
       "title": "Pantry",
       "content": "red lentils, basmati rice, cumin, tinned tomatoes, spinach (use soon)"
+     }
+    ],
+    "memories": [
+     {
+      "text": "Sam won't eat mushrooms",
+      "category": "preference"
      }
     ]
    },
@@ -73,13 +79,13 @@
        "create_document",
        {
         "title": "Meals this week — 3 Nov",
-        "content": "## Dinners\n- Monday — spinach and lentil dal — 25 min\n- Tuesday — out\n- Wednesday — salmon tray bake — 30 min\n- Thursday — mushroom risotto — 30 min\n- Friday — bean chilli — 30 min\n- Saturday — homemade pizza — 45 min\n- Sunday — slow-roast chicken — 2 hours\n\n## Shopping\n- Fruit and veg: 2 onions, garlic, 250 g mushrooms\n- Meat and fish: 2 salmon fillets, 1 chicken\n- Dairy: mozzarella\n\n## From the pantry\n- red lentils, basmati rice, cumin, tinned tomatoes, spinach"
+        "content": "## Dinners\n- (memory: Sam won't eat mushrooms — none planned)\n- Monday — spinach and lentil dal — 25 min\n- Tuesday — out\n- Wednesday — salmon tray bake — 30 min\n- Thursday — chickpea curry — 30 min\n- Friday — bean chilli — 30 min\n- Saturday — homemade pizza — 45 min\n- Sunday — slow-roast chicken — 2 hours\n\n## Shopping\n- Fruit and veg: 2 onions, garlic, coriander\n- Meat and fish: 2 salmon fillets, 1 chicken\n- Dairy: mozzarella, yoghurt\n- Cupboard: 2 tins chickpeas\n\n## From the pantry\n- red lentils, basmati rice, cumin, tinned tomatoes, spinach"
        }
       ]
      ]
     },
     {
-     "say": "\"Meals this week — 3 Nov\" is ready: 6 dinners and a night out. (could not search memory: the memory manager is not available)\n\n## Report\n- planned 7 nights for 2 people from the pantry note\n\n## Carry forward\n- dishes: spinach dal, salmon tray bake, mushroom risotto, bean chilli, pizza, roast chicken"
+     "say": "\"Meals this week — 3 Nov\" is ready: 6 dinners and a night out.\n\n## Report\n- planned 7 nights for 2 people from the pantry note and memory\n\n## Carry forward\n- dishes: spinach dal, salmon tray bake, chickpea curry, bean chilli, pizza, roast chicken"
     }
    ],
    "checks": [
@@ -88,16 +94,19 @@
       "title": "Meals this week",
       "contains": [
        "spinach",
-       "Tuesday — out"
+       "Tuesday — out",
+       "Sam won't eat mushrooms"
       ],
       "lacks": [
        "pork",
-       "bacon"
+       "bacon",
+       "risotto",
+       "250 g mushrooms"
       ]
      }
     },
     {
-     "notebook_contains": "risotto"
+     "notebook_contains": "chickpea curry"
     }
    ]
   },

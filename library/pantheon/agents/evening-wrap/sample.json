@@ -1,7 +1,7 @@
 {
  "case": "an-ordinary-day",
  "from": "its evaluation, with a scripted model",
- "summary": "- read the calendar, 1 note and tasks; chats unavailable",
+ "summary": "- read the calendar, 1 note and tasks; 1 chat today",
  "read": [
   "list_sessions",
   "manage_calendar",
@@ -17,5 +17,5 @@
    "detail": "It answered, with Done, Moved, Tomorrow."
   }
  ],
- "answer": "**Done**\n- could not read chats: the session list is not available\n- 10:00 Design review — happened\n\n**Moved**\n- Send the Q3 report (due today)\n\n**Tomorrow**\n- 08:30 Standup — video call (an early start); then nothing else booked\n\n## Report\n- read the calendar, 1 note and tasks; chats unavailable\n\n## Carry forward\n- nothing"
+ "answer": "**Done**\n- 10:00 Design review — happened\n- Venue shortlist for the offsite — chat\n\n**Moved**\n- Send the Q3 report (due today)\n\n**Tomorrow**\n- 08:30 Standup — video call (an early start); then nothing else booked\n\n## Report\n- read the calendar, 1 note and tasks; 1 chat today\n\n## Carry forward\n- nothing"
 }

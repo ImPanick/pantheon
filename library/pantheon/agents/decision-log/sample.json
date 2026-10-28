@@ -1,7 +1,7 @@
 {
  "case": "a-decision-and-a-discussion-in-the-weeks-notes",
  "from": "its evaluation, with a scripted model",
- "summary": "- chats could not be read; read 1 document; wrote \"Decision log — week of 27 Oct\"",
+ "summary": "- searched chats 3 times; read 1 document; wrote \"Decision log — week of 27 Oct\"",
  "read": [
   "list_sessions",
   "search_chats",
@@ -18,11 +18,11 @@
    "detail": "“Decision log — week of 27 Oct” is there."
   }
  ],
- "answer": "1 decision, 1 discussed and left open.\n\n## Report\n- chats could not be read; read 1 document; wrote \"Decision log — week of 27 Oct\"\n\n## Carry forward\n- 28 Oct: use Postgres for the new app",
+ "answer": "2 decisions, 1 discussed and left open.\n\n## Report\n- searched chats 3 times; read 1 document; wrote \"Decision log — week of 27 Oct\"\n\n## Carry forward\n- 28 Oct: use Postgres for the new app\n- 28 Oct: ship the beta on 14 Nov",
  "documents": [
   {
    "title": "Decision log — week of 27 Oct",
-   "content": "Decision log — week of 27 Oct\n\n## Decisions\n- Use Postgres for the new app — the team knows it — Ana — 28 Oct — \"Platform meeting notes\"\n\n## Discussed\n- Moving to Kubernetes: raised, to revisit in December — \"Platform meeting notes\"\n\n## Checked\n- chats: could not read chats: the session manager is not available\n- documents: 2 updated this week, 1 read"
+   "content": "Decision log — week of 27 Oct\n\n## Decisions\n- Use Postgres for the new app — the team knows it — Ana — 28 Oct — \"Platform meeting notes\"\n- Ship the beta on 14 Nov — the release notes are done — you — 28 Oct — chat \"Launch date\"\n\n## Discussed\n- Moving to Kubernetes: raised, to revisit in December — \"Platform meeting notes\"\n\n## Checked\n- chats: \"Launch date\" this week, besides this run's own; \"agreed\" found it\n- documents: 2 updated this week, 1 read"
   }
  ]
 }

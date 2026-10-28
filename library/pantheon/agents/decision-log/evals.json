@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "a-decision-and-a-discussion-in-the-weeks-notes",
-   "about": "Meeting notes hold one decision and one thing left open: the decision is logged with why, who, when and where; the open one goes under Discussed. The chats cannot be read in this world, which Checked says first.",
+   "about": "Meeting notes hold one decision and one thing left open, and a chat holds another decision: each decision is logged with why, who, when and where; the open one goes under Discussed.",
    "inputs": {},
    "world": {
     "documents": [
@@ -15,6 +15,25 @@
       "id": "m2",
       "title": "Lunch menu",
       "content": "Soup and bread."
+     }
+    ],
+    "chats": [
+     {
+      "title": "Launch date",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Ben says the beta is ready. Friday the 14th?"
+       },
+       {
+        "role": "assistant",
+        "content": "Friday 14 November works: the release notes are done."
+       },
+       {
+        "role": "user",
+        "content": "Agreed — we ship the beta on 14 November."
+       }
+      ]
      }
     ]
    },
@@ -72,13 +91,13 @@
        "create_document",
        {
         "title": "Decision log — week of 27 Oct",
-        "content": "Decision log — week of 27 Oct\n\n## Decisions\n- Use Postgres for the new app — the team knows it — Ana — 28 Oct — \"Platform meeting notes\"\n\n## Discussed\n- Moving to Kubernetes: raised, to revisit in December — \"Platform meeting notes\"\n\n## Checked\n- chats: could not read chats: the session manager is not available\n- documents: 2 updated this week, 1 read"
+        "content": "Decision log — week of 27 Oct\n\n## Decisions\n- Use Postgres for the new app — the team knows it — Ana — 28 Oct — \"Platform meeting notes\"\n- Ship the beta on 14 Nov — the release notes are done — you — 28 Oct — chat \"Launch date\"\n\n## Discussed\n- Moving to Kubernetes: raised, to revisit in December — \"Platform meeting notes\"\n\n## Checked\n- chats: \"Launch date\" this week, besides this run's own; \"agreed\" found it\n- documents: 2 updated this week, 1 read"
        }
       ]
      ]
     },
     {
-     "say": "1 decision, 1 discussed and left open.\n\n## Report\n- chats could not be read; read 1 document; wrote \"Decision log — week of 27 Oct\"\n\n## Carry forward\n- 28 Oct: use Postgres for the new app"
+     "say": "2 decisions, 1 discussed and left open.\n\n## Report\n- searched chats 3 times; read 1 document; wrote \"Decision log — week of 27 Oct\"\n\n## Carry forward\n- 28 Oct: use Postgres for the new app\n- 28 Oct: ship the beta on 14 Nov"
     }
    ],
    "checks": [
@@ -90,7 +109,8 @@
        "Ana",
        "28 Oct",
        "Kubernetes",
-       "could not read chats"
+       "Ship the beta on 14 Nov",
+       "Launch date"
       ],
       "lacks": [
        "Soup"
@@ -169,7 +189,7 @@
        "create_document",
        {
         "title": "Decision log — week of 27 Oct",
-        "content": "Decision log — week of 27 Oct\n\n## Decisions\nnone this week\n\n## Discussed\n- Hosting: AWS or Hetzner; Ben prefers Hetzner; not settled — \"Hosting options\"\n\n## Checked\n- chats: could not read chats: the session manager is not available\n- documents: 2 updated this week, 1 read"
+        "content": "Decision log — week of 27 Oct\n\n## Decisions\nnone this week\n\n## Discussed\n- Hosting: AWS or Hetzner; Ben prefers Hetzner; not settled — \"Hosting options\"\n\n## Checked\n- chats: none this week but this run's own; \"decided\", \"agreed\" and \"go with\" found nothing\n- documents: 1 updated this week, 1 read"
        }
       ]
      ]
@@ -262,7 +282,7 @@
        "create_document",
        {
         "title": "Decision log — week of 27 Oct",
-        "content": "Decision log — week of 27 Oct\n\n## Decisions\nnone this week\n\n## Discussed\n- Moving to Kubernetes: raised, to revisit in December — \"Platform meeting notes\"\n\n## Checked\n- chats: could not read chats: the session manager is not available\n- documents: 2 updated this week, 1 read"
+        "content": "Decision log — week of 27 Oct\n\n## Decisions\nnone this week\n\n## Discussed\n- Moving to Kubernetes: raised, to revisit in December — \"Platform meeting notes\"\n\n## Checked\n- chats: none this week but this run's own; \"decided\", \"agreed\" and \"go with\" found nothing\n- documents: 1 updated this week, 1 read"
        }
       ]
      ]
@@ -356,7 +376,7 @@
        "create_document",
        {
         "title": "Decision log — week of 27 Oct",
-        "content": "Decision log — week of 27 Oct\n\n## Decisions\n- Use SQLite for the prototype (replaces: use Postgres for the new app, 28 Oct) — simpler to ship — Ana — 31 Oct — \"Prototype meeting notes\"\n\n## Discussed\nnone\n\n## Checked\n- chats: could not read chats: the session manager is not available\n- documents: 2 updated this week, 1 read"
+        "content": "Decision log — week of 27 Oct\n\n## Decisions\n- Use SQLite for the prototype (replaces: use Postgres for the new app, 28 Oct) — simpler to ship — Ana — 31 Oct — \"Prototype meeting notes\"\n\n## Discussed\nnone\n\n## Checked\n- chats: none this week but this run's own; \"decided\", \"agreed\" and \"go with\" found nothing\n- documents: 1 updated this week, 1 read"
        }
       ]
      ]
@@ -459,7 +479,7 @@
        "create_document",
        {
         "title": "Decision log — week of 27 Oct",
-        "content": "Decision log — week of 27 Oct\n\n## Decisions\nnone this week\n\n## Discussed\n- Database: \"Platform meeting notes\" says Postgres was decided, \"Architecture plan\" says MySQL (they disagree — which stands?)\n- Moving to Kubernetes: raised, to revisit in December — \"Platform meeting notes\"\n\n## Checked\n- chats: could not read chats: the session manager is not available\n- documents: 2 updated this week, 2 read"
+        "content": "Decision log — week of 27 Oct\n\n## Decisions\nnone this week\n\n## Discussed\n- Database: \"Platform meeting notes\" says Postgres was decided, \"Architecture plan\" says MySQL (they disagree — which stands?)\n- Moving to Kubernetes: raised, to revisit in December — \"Platform meeting notes\"\n\n## Checked\n- chats: none this week but this run's own; \"decided\", \"agreed\" and \"go with\" found nothing\n- documents: 2 updated this week, 2 read"
        }
       ]
      ]
@@ -562,7 +582,7 @@
        "create_document",
        {
         "title": "Decision log — week of 27 Oct",
-        "content": "Decision log — week of 27 Oct\n\n## Decisions\n- Use Postgres for the new app — the team knows it — Ana — 28 Oct — \"Platform meeting notes\"\n\n## Discussed\n- Moving to Kubernetes: raised, to revisit in December — \"Platform meeting notes\"\n\n## Checked\n- chats: could not read chats: the session manager is not available\n- documents: 2 updated this week, 1 read"
+        "content": "Decision log — week of 27 Oct\n\n## Decisions\n- Use Postgres for the new app — the team knows it — Ana — 28 Oct — \"Platform meeting notes\"\n\n## Discussed\n- Moving to Kubernetes: raised, to revisit in December — \"Platform meeting notes\"\n\n## Checked\n- chats: none this week but this run's own; \"decided\", \"agreed\" and \"go with\" found nothing\n- documents: 1 updated this week, 1 read"
        }
       ]
      ]

@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "an-ordinary-day",
-   "about": "A meeting happened, a reminder slipped, tomorrow starts early: each goes under its heading; the chats cannot be read in this world and it says so.",
+   "about": "A meeting happened, a chat produced a shortlist, a reminder slipped, tomorrow starts early: each goes under its heading.",
    "inputs": {
     "at": "18:00"
    },
@@ -24,6 +24,21 @@
       "title": "Send the Q3 report",
       "content": "to the board",
       "due": "today"
+     }
+    ],
+    "chats": [
+     {
+      "title": "Venue shortlist for the offsite",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Shortlist three venues for the offsite"
+       },
+       {
+        "role": "assistant",
+        "content": "Three venues: the Mill, Harbour Hall, the Loft."
+       }
+      ]
      }
     ]
    },
@@ -67,7 +82,7 @@
      ]
     },
     {
-     "say": "**Done**\n- could not read chats: the session list is not available\n- 10:00 Design review — happened\n\n**Moved**\n- Send the Q3 report (due today)\n\n**Tomorrow**\n- 08:30 Standup — video call (an early start); then nothing else booked\n\n## Report\n- read the calendar, 1 note and tasks; chats unavailable\n\n## Carry forward\n- nothing"
+     "say": "**Done**\n- 10:00 Design review — happened\n- Venue shortlist for the offsite — chat\n\n**Moved**\n- Send the Q3 report (due today)\n\n**Tomorrow**\n- 08:30 Standup — video call (an early start); then nothing else booked\n\n## Report\n- read the calendar, 1 note and tasks; 1 chat today\n\n## Carry forward\n- nothing"
     }
    ],
    "checks": [
@@ -75,7 +90,8 @@
      "answer_contains": [
       "Design review",
       "Send the Q3 report",
-      "08:30 Standup"
+      "08:30 Standup",
+      "Venue shortlist"
      ]
     },
     {
@@ -130,7 +146,7 @@
      ]
     },
     {
-     "say": "**Done**\n- could not read chats: the session list is not available\n- nothing\n\n**Moved**\n- nothing\n\n**Tomorrow**\n- nothing booked tomorrow\n\n## Report\n- nothing in any source\n\n## Carry forward\n- nothing"
+     "say": "**Done**\n- nothing\n\n**Moved**\n- nothing\n\n**Tomorrow**\n- nothing booked tomorrow\n\n## Report\n- nothing in any source\n\n## Carry forward\n- nothing"
     }
    ],
    "checks": [
@@ -208,7 +224,7 @@
      ]
     },
     {
-     "say": "**Done**\n- could not read chats: the session list is not available\n- nothing\n\n**Moved**\n- Call Ana at 3 (calendar has it at 16:00 tomorrow)\n\n**Tomorrow**\n- 16:00 Call Ana; nothing else booked\n\n## Report\n- a reminder and the calendar disagree\n\n## Carry forward\n- nothing"
+     "say": "**Done**\n- nothing\n\n**Moved**\n- Call Ana at 3 (calendar has it at 16:00 tomorrow)\n\n**Tomorrow**\n- 16:00 Call Ana; nothing else booked\n\n## Report\n- a reminder and the calendar disagree\n\n## Carry forward\n- nothing"
     }
    ],
    "checks": [
@@ -276,7 +292,7 @@
      ]
     },
     {
-     "say": "**Done**\n- could not read chats: the session list is not available\n\n**Moved**\n- Old to-do (overdue since 1 Sep)\n\n**Tomorrow**\n- nothing booked tomorrow\n\n## Report\n- a delete was refused\n\n## Carry forward\n- nothing"
+     "say": "**Done**\n- nothing\n\n**Moved**\n- Old to-do (overdue since 1 Sep)\n\n**Tomorrow**\n- nothing booked tomorrow\n\n## Report\n- a delete was refused\n\n## Carry forward\n- nothing"
     }
    ],
    "checks": [
@@ -345,7 +361,7 @@
      ]
     },
     {
-     "say": "**Done**\n- could not read chats: the session list is not available\n- could not read the calendar: it refused the date range\n\n**Moved**\n- Book the venue (due today)\n\n**Tomorrow**\n- could not read the calendar: it refused the date range\n\n## Report\n- the calendar failed\n\n## Carry forward\n- nothing"
+     "say": "**Done**\n- could not read the calendar: it refused the date range\n\n**Moved**\n- Book the venue (due today)\n\n**Tomorrow**\n- could not read the calendar: it refused the date range\n\n## Report\n- the calendar failed\n\n## Carry forward\n- nothing"
     }
    ],
    "checks": [

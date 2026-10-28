@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "an-ordinary-week",
-   "about": "Two documents moved and a reminder is still open; the chats cannot be read in this world, so it says so first and reviews from the rest.",
+   "about": "Two documents moved, a chat reached a decision, and a reminder is still open: each under its heading, grouped by project.",
    "inputs": {
     "at": "16:00"
    },
@@ -22,6 +22,25 @@
       "title": "Book the venue for the 14th",
       "content": "Hall or café",
       "due": "2026-11-03"
+     }
+    ],
+    "chats": [
+     {
+      "title": "Hall or café for the 14th",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Hall or café for the 14th?"
+       },
+       {
+        "role": "assistant",
+        "content": "The hall: it seats 40, the café 25."
+       },
+       {
+        "role": "user",
+        "content": "Hall it is."
+       }
+      ]
      }
     ]
    },
@@ -65,7 +84,7 @@
      ]
     },
     {
-     "say": "**Done**\n- could not read chats: the session list is not available\nQ3 report\n- \"Q3 report draft\" written (revenue 412k)\nOther\n- \"Venue options\" written: hall or café\n\n**Still open**\n- Book the venue for the 14th (due 3 Nov)\n\n## Report\n- read 2 documents, 1 scheduled task and 1 note; chats unavailable\n\n## Carry forward\n- open on 31 Oct: Book the venue for the 14th"
+     "say": "**Done**\nQ3 report\n- \"Q3 report draft\" written (revenue 412k)\nVenue\n- \"Venue options\" written: hall or café\n- chat \"Hall or café for the 14th\": chose the hall (seats 40)\n\n**Still open**\n- Book the venue for the 14th (due 3 Nov)\n\n## Report\n- read 2 documents, 1 scheduled task and 1 note; 1 chat this week\n\n## Carry forward\n- open on 31 Oct: Book the venue for the 14th"
     }
    ],
    "checks": [
@@ -73,7 +92,7 @@
      "answer_contains": [
       "Q3 report draft",
       "Book the venue",
-      "could not read chats"
+      "chose the hall"
      ]
     },
     {
@@ -128,7 +147,7 @@
      ]
     },
     {
-     "say": "**Done**\n- could not read chats: the session list is not available\n- nothing this week\n\n**Still open**\n- nothing\n\n## Report\n- nothing in any source\n\n## Carry forward\n- nothing"
+     "say": "**Done**\n- nothing this week\n\n**Still open**\n- nothing\n\n## Report\n- nothing in any source\n\n## Carry forward\n- nothing"
     }
    ],
    "checks": [
@@ -210,7 +229,7 @@
      ]
     },
     {
-     "say": "**Done**\n- could not read chats: the session list is not available\n- \"Q3 report draft\" written\n\n**Still open**\n- Book the venue for the 14th\n\n## Report\n- read documents and notes; a delete was refused\n\n## Carry forward\n- nothing"
+     "say": "**Done**\n- \"Q3 report draft\" written\n\n**Still open**\n- Book the venue for the 14th\n\n## Report\n- read documents and notes; a delete was refused\n\n## Carry forward\n- nothing"
     }
    ],
    "checks": [
@@ -283,7 +302,7 @@
      ]
     },
     {
-     "say": "**Done**\n- could not read chats: the session list is not available\n- \"Q3 report — sent to the board\" written\n\n**Still open**\n- Send the Q3 report to the board (due 29 Oct) (a document suggests it is done — tick it if so)\n\n## Report\n- read 1 document and 1 note that disagree\n\n## Carry forward\n- open on 31 Oct: Send the Q3 report"
+     "say": "**Done**\n- \"Q3 report — sent to the board\" written\n\n**Still open**\n- Send the Q3 report to the board (due 29 Oct) (a document suggests it is done — tick it if so)\n\n## Report\n- read 1 document and 1 note that disagree\n\n## Carry forward\n- open on 31 Oct: Send the Q3 report"
     }
    ],
    "checks": [
@@ -299,7 +318,7 @@
   },
   {
    "id": "a-vague-chat-is-searched-at-most-three-times",
-   "about": "It searches past chats only to explain a vague title, and keeps to three searches.",
+   "about": "A chat's title says nothing (\"Quick question\"): it searches past chats once to say what came of it, and keeps to three searches.",
    "inputs": {
     "at": "16:00"
    },
@@ -319,6 +338,21 @@
       "title": "Book the venue for the 14th",
       "content": "Hall or café",
       "due": "2026-11-03"
+     }
+    ],
+    "chats": [
+     {
+      "title": "Quick question",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Can the Q3 report go to the board on Friday instead?"
+       },
+       {
+        "role": "assistant",
+        "content": "Yes — Friday works; the board meets Monday."
+       }
+      ]
      }
     ]
    },
@@ -372,12 +406,17 @@
      ]
     },
     {
-     "say": "**Done**\n- could not read chats: the session list is not available\n- \"Q3 report draft\" written\n\n**Still open**\n- Book the venue for the 14th\n\n## Report\n- read 2 documents and 1 note; searched chats once\n\n## Carry forward\n- nothing"
+     "say": "**Done**\n- chat \"Quick question\": the Q3 report moved to Friday\n- \"Q3 report draft\" written\n\n**Still open**\n- Book the venue for the 14th\n\n## Report\n- read 2 documents and 1 note; searched chats once\n\n## Carry forward\n- nothing"
     }
    ],
    "checks": [
     {
      "called": "search_chats"
+    },
+    {
+     "answer_contains": [
+      "moved to Friday"
+     ]
     },
     {
      "status": "success"

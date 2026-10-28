@@ -1,7 +1,7 @@
 {
  "case": "an-ordinary-week",
  "from": "its evaluation, with a scripted model",
- "summary": "- read 2 documents, 1 scheduled task and 1 note; chats unavailable",
+ "summary": "- read 2 documents, 1 scheduled task and 1 note; 1 chat this week",
  "read": [
   "list_sessions",
   "manage_documents",
@@ -17,5 +17,5 @@
    "detail": "It answered, with Done, Still open."
   }
  ],
- "answer": "**Done**\n- could not read chats: the session list is not available\nQ3 report\n- \"Q3 report draft\" written (revenue 412k)\nOther\n- \"Venue options\" written: hall or café\n\n**Still open**\n- Book the venue for the 14th (due 3 Nov)\n\n## Report\n- read 2 documents, 1 scheduled task and 1 note; chats unavailable\n\n## Carry forward\n- open on 31 Oct: Book the venue for the 14th"
+ "answer": "**Done**\nQ3 report\n- \"Q3 report draft\" written (revenue 412k)\nVenue\n- \"Venue options\" written: hall or café\n- chat \"Hall or café for the 14th\": chose the hall (seats 40)\n\n**Still open**\n- Book the venue for the 14th (due 3 Nov)\n\n## Report\n- read 2 documents, 1 scheduled task and 1 note; 1 chat this week\n\n## Carry forward\n- open on 31 Oct: Book the venue for the 14th"
 }

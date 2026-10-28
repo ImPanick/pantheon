@@ -184,8 +184,8 @@
    ]
   },
   {
-   "id": "a-source-that-refuses-means-hold",
-   "about": "Memory cannot be searched in this world and the notes have no answer: with nothing to quote, the question is held, saying why.",
+   "id": "nothing-to-quote-means-hold",
+   "about": "Neither memory nor the notes have the answer: with nothing to quote, the question is held, saying why — never answered from the model's own knowledge.",
    "inputs": {
     "back_on": "3 November"
    },
@@ -245,13 +245,13 @@
        "create_document",
        {
         "title": "While you were away — 27 Oct",
-        "content": "## Drafted\n- nothing\n\n## Held\n- eve@example.com — Wi-Fi password? — could not look it up: memory is not available and no note has it"
+        "content": "## Drafted\n- nothing\n\n## Held\n- eve@example.com — Wi-Fi password? — could not look it up: no note or memory has it"
        }
       ]
      ]
     },
     {
-     "say": "1 new message: 0 drafted, 1 held.\n\n## Report\n- read 1 message, held 1; memory unavailable\n\n## Carry forward\n- handled: m3"
+     "say": "1 new message: 0 drafted, 1 held.\n\n## Report\n- read 1 message, held 1; nothing on file to quote\n\n## Carry forward\n- handled: m3"
     }
    ],
    "checks": [
