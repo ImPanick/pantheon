@@ -481,6 +481,9 @@ the next one is cut.
 
 ### Fixed
 
+- **A hired agent's shell finds its projects folder on an install with no workstation** — the
+  path was set only inside the workstation (`B1640`); a re-read upload keeps the name it was
+  uploaded under (`B1641`).
 - **A folder, branch, address or commit message a hire gives an agent reaches its shell as one
   quoted word** — a folder with a space works, and one named with `$(…)` runs nothing (`B1634`);
   a page handed to a browser or an auditor is always read as an address (`B1636`); Screenshot

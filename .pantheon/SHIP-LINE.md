@@ -299,6 +299,10 @@ Re-measured 2026-10-28, after the eighteenth wave: **74 filed, 104 closed**, ope
 
 **Direction as of 2026-10-28, after the eighteenth wave: the open count is falling, and what is left is mostly decisions.**
 
+Re-measured 2026-10-28, after the nineteenth wave: **71 filed, 91 closed**, open **66 → 46** — the wave closed three and filed four, so *open* rose by one; over the window it falls. The window moved on, so its start reads 66. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1606`–`B1645`) block.
+
+**Direction as of 2026-10-28, after the nineteenth wave: level in the wave, falling over the window; what is left is mostly decisions.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
