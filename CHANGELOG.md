@@ -108,6 +108,10 @@ the next one is cut.
 
 ### Added
 
+- **`read_chat`:** an agent reads one of its person's own chats in order, a page at a time
+  (`B1621`).
+- **`needs.programs` in an agent file:** a hire is refused, naming what to install, when the
+  person's workstation lacks a program the agent needs (`B1623`).
 - **`download_attachment` can file into the person's projects folder** (`destination`,
   `filename`), confined to it and never overwriting (`B1600`).
 - **Share a design by name** as viewer, commenter or editor, with notes that carry their author
@@ -247,6 +251,14 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **`mcp` 2.3.0** (with `mcp-types` 2.3.0) replaces 1.30.0: the built-in MCP servers, the manager
+  and the OAuth sign-in moved together. Reinstall the requirements; a third-party MCP server you
+  run is unaffected (`B621`).
+- **A shell command that deletes or overwrites counts as destructive** — `rm`, an overwriting
+  `mv`, a forced push, `reset --hard`, a dropped table — and so does one whose effect cannot be
+  read; an agent's or a chat's *ask* or *never* on destructive actions now covers them (`B1622`).
+- **The compose files pin `chromadb/chroma:1.5.9` and `binwiederhier/ntfy:v2.34.0`** instead of
+  `latest` (`B445`).
 - **The remaining 69 shipped agents have new runbooks** (1.1.0) — every agent now has decided
   judgement calls, edge cases and evaluation cases — and summoned ones pause until *Update*.
   Several shell agents now do their work in one command; Chart Maker writes SVG; Restore Drill
@@ -456,6 +468,9 @@ the next one is cut.
 
 ### Fixed
 
+- **Every tool call in a round is answered after one of them asks for approval** — the others
+  were dropped without a word (`B1620`); a hire's *never* refuses only the calls that carry it
+  (`B1619`); a streamed turn's token counts are written off the event loop (`B1618`).
 - **The service worker retries a failed precache** and names a file it never could fetch
   (`B1612`); a local model endpoint is asked for its context window over one kept connection
   (`B1608`); the mail routes no longer hold the event loop (`B1609`).

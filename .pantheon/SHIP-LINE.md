@@ -287,6 +287,10 @@ Re-measured 2026-10-28, after the fifteenth wave: **82 filed, 166 closed**, open
 
 **Direction as of 2026-10-28, after the fifteenth wave: the open count rose by three in the wave; over the window it is falling.**
 
+Re-measured 2026-10-28, after the sixteenth wave: **84 filed, 144 closed**, open **111 → 51** — falling, by three in one wave. Eleven rows closed and eight filed. One of the eight is worth naming against the line: `B1626`, chroma's volume mounted where chroma 1.x does not write, so a recreated container starts with an empty vector index. It is tracked, not a gate: memories, documents and chats live in Pantheon's own database, the lanes back-fill from it, and retrieval falls back to the in-process index while they do — a rebuild costs time, not data. The window moved on, so its start reads 111. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1594`–`B1633`) block.
+
+**Direction as of 2026-10-28, after the sixteenth wave: the open count is falling.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
