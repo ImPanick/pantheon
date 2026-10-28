@@ -127,6 +127,7 @@ from src.agent_tools import (
     MAX_AGENT_ROUNDS,
 )
 from src.active_plan import ActivePlan, bind_active_plan   # `B1415`
+from src.agent_tools.document_tools import bind_turn_document, new_turn_document  # `B1599`
 from src.agent_tools.computer_tools import (
     ACTIONS as _COMPUTER_ACTIONS,
     command_line as _computer_command_line,
@@ -6926,6 +6927,35 @@ def agent_run_limits(endpoint_url: str, max_rounds: int, max_tool_calls: int) ->
     }
 
 
+async def _document_to_seal(holder, active_document, owner):
+    """`B1599`. The document an approval card for `edit_document`,
+    `suggest_document` or `update_document` seals: the editor's document while
+    it is the one this turn has in hand (as before), else the one the turn
+    took up — a hired run's, the document it read — read in a worker thread,
+    owner-scoped. `None` when the turn holds none, which refuses as before."""
+    held = getattr(holder, "id", None)
+    if not held or (active_document is not None and getattr(active_document, "id", None) == held):
+        return active_document
+
+    def _load():
+        from src.database import SessionLocal, Document
+        from src.agent_tools.document_tools import _get_owned_document
+        db = SessionLocal()
+        try:
+            doc = _get_owned_document(db, Document, held, owner, active_only=True)
+            if doc is not None:
+                db.expunge(doc)
+            return doc
+        finally:
+            db.close()
+
+    try:
+        return await asyncio.to_thread(_load)
+    except Exception:
+        logger.warning("Could not read the held document %s to seal an approval", held, exc_info=True)
+        return None
+
+
 async def stream_agent_loop(
     endpoint_url: str,
     model: str,
@@ -7068,8 +7098,11 @@ async def stream_agent_loop(
     # inherited, never global, and never what a new chat starts at — and
     # `mode_for` lowers it to Manual approve for a bearer token (`B70`) and for
     # a person whose `can_auto_approve` an admin has since taken away.
-    _approval_mode = approval_mode_for(
-        session_id, owner, delegated_credential=bool(delegated_credential),
+    # `B1598`: the chat's mode and the person's privileges are database
+    # reads — in a worker thread, as every read below is, so the loop a skill
+    # test or a chat runs on is not held by them.
+    _approval_mode = await asyncio.to_thread(
+        approval_mode_for, session_id, owner, delegated_credential=bool(delegated_credential),
     )
     _auto_approved = _approval_mode is ApprovalMode.AUTO
     if _auto_approved:
@@ -8336,7 +8369,8 @@ async def stream_agent_loop(
                 _prompt_tool_names(_relevant_tools, disabled_tools, _needs_admin),
                 disabled_tools,
             )["offered"])
-            _record_run_config(suite=_record, session_id=session_id, owner=owner)
+            await asyncio.to_thread(  # `B1598`: an event row's write
+                _record_run_config, suite=_record, session_id=session_id, owner=owner)
         except Exception as _exc:
             logger.debug("[tool-suite] receipt skipped: %s", _exc)
 
@@ -8651,6 +8685,11 @@ async def stream_agent_loop(
     # owner's transcript ticked six with none, and the verifier, gated on
     # `_effectful_used` alone, waved that turn through.
     _plan_holder = ActivePlan(approved_plan)
+    # `B1599`. The document this turn has in hand — the one open in the
+    # editor for it, else the one it reads — so a document tool that names
+    # none acts on this turn's document, never on whichever one another turn
+    # last left in the process-wide pointer.
+    _doc_holder = new_turn_document(getattr(_prompt_active_document, "id", None))
     # `B1281`. Set when a round is refused for a tool's picture: every request
     # after it, this turn, carries the pictures in words.
     _pictures_refused = False
@@ -8967,7 +9006,8 @@ async def stream_agent_loop(
     # the approved-action replay, because an approved card for a raise runs
     # first; resolved with the same helpers `agent_run_limits` uses, and settled
     # onto the loop's own lift below, where the loop has always resolved it.
-    _preview_limits = agent_run_limits(endpoint_url, max_rounds, max_tool_calls)
+    _preview_limits = await asyncio.to_thread(  # `B1598`: settings and the endpoint row
+        agent_run_limits, endpoint_url, max_rounds, max_tool_calls)
     _run_limits = RunLimits(
         round_limit=_preview_limits["round_limit"],
         round_limit_source=_preview_limits["round_limit_source"],
@@ -9075,6 +9115,7 @@ async def stream_agent_loop(
             bind_run_limits(_run_limits)
             bind_tool_call_started_by(workload)  # `B1061`
             bind_active_plan(_plan_holder)       # `B1415`
+            bind_turn_document(_doc_holder)      # `B1599`
             try:
                 return await execute_tool_block(
                     approved_block,
@@ -9378,7 +9419,7 @@ async def stream_agent_loop(
     try:
         from src.runtime_limits import set_local_mode, unlimited as _cyber_unlimited
         # `B929`: the product's one answer to "is this local".
-        set_local_mode(is_local_endpoint(endpoint_url))
+        set_local_mode(await asyncio.to_thread(is_local_endpoint, endpoint_url))  # `B1598`
     except Exception:
         def _cyber_unlimited():
             return False
@@ -9400,7 +9441,8 @@ async def stream_agent_loop(
     # `P4-23`. The meter reads the same two caps the loop enforces, after the
     # lift, and the counter the budget check reads — never a second copy of any
     # of them, which is the only way a progress bar cannot lie about a stop.
-    _max_rounds_source = _round_limit_source(_configured_max_rounds, max_rounds, endpoint_url)
+    _max_rounds_source = await asyncio.to_thread(  # `B1598`: the endpoint row
+        _round_limit_source, _configured_max_rounds, max_rounds, endpoint_url)
     # `P7-12`. The holder adopts the lift the loop just resolved; a raise an
     # approved card granted at the top of the run stays on top of it. From here
     # on `max_rounds` / `max_tool_calls` are the holder's, re-read whenever a
@@ -10283,10 +10325,12 @@ async def stream_agent_loop(
                         _requested_temperature if "temperature" in (explicit_params or ())
                         else 0.3,
                         model, explicit_params)
+                    _synth_max_tokens = await asyncio.to_thread(  # `B1598`: the endpoint row
+                        candidate_max_tokens, _preset_max_tokens, endpoint_url)
                     _raw = await llm_call_async(
                         url=endpoint_url, model=model, messages=_synth_messages,
                         headers=headers, temperature=_synth_temperature,
-                        max_tokens=candidate_max_tokens(_preset_max_tokens, endpoint_url),
+                        max_tokens=_synth_max_tokens,
                         max_tokens_floor=_preset_max_tokens,   # `B1029`
                         timeout=60,
                     )
@@ -11064,7 +11108,9 @@ async def stream_agent_loop(
                 )
             elif not security_decision.allowed:
                 approval_document = (
-                    active_document
+                    # `B1599`: the document this turn has in hand — a hired
+                    # run's is the one it read, never the person's editor's.
+                    await _document_to_seal(_doc_holder, active_document, owner)
                     if block.tool_type
                     in {"edit_document", "suggest_document", "update_document"}
                     else None
@@ -11208,6 +11254,7 @@ async def stream_agent_loop(
                     bind_run_limits(_run_limits)
                     bind_tool_call_started_by(workload)  # `B1061`
                     bind_active_plan(_plan_holder)       # `B1415`
+                    bind_turn_document(_doc_holder)      # `B1599`
                     try:
                         return await execute_tool_block(
                             block,
@@ -11680,7 +11727,9 @@ async def stream_agent_loop(
             _rsid = result.get("research_session_id")
             if _rsid:
                 _anchor = f"\n\n[Open in Deep Research](#research-{_rsid})\n"
-                yield 'data: ' + json.dumps({"delta": _anchor}) + '\n\n'
+                # `B1603`: marked as the loop's link, not the model's words —
+                # a chat draws it; a task's answer leaves it out.
+                yield 'data: ' + json.dumps({"delta": _anchor, "link": "research"}) + '\n\n'
 
             # Same pattern for notes: when manage_notes creates a note
             # and returns note_id, drop a `[View note](#note-<id>)` link
@@ -11694,7 +11743,13 @@ async def stream_agent_loop(
                 _label = f"View note: {_title}" if _title else "View note"
                 _anchor = f"\n\n[{_label}](#note-{_nid})\n"
                 full_response = (full_response.rstrip() + _anchor).strip()
-                yield 'data: ' + json.dumps({"delta": _anchor}) + '\n\n'
+                # `B1603`. A sibling of `B1435`: the link is the loop's, for a
+                # chat to click, and a task's run summed it into its answer —
+                # a hired Gift & Date Keeper's report began "[View note: Gift
+                # for Ana …](#note-…)" before a word of its own. Marked, so a
+                # reader that keeps only the model's words (`task_scheduler`)
+                # can leave it out; a chat renders it as before.
+                yield 'data: ' + json.dumps({"delta": _anchor, "link": "note"}) + '\n\n'
 
             # Save for history persistence
             tool_event = {
@@ -12047,7 +12102,8 @@ async def stream_agent_loop(
     if not _is_teacher_run and not guide_only and not _awaiting_user:
         try:
             from src.teacher_escalation import note_turn_outcome
-            note_turn_outcome(
+            await asyncio.to_thread(  # `B1598`: it records the turn's outcome
+                note_turn_outcome,
                 tool_results=tool_events,
                 agent_reply=full_response,
                 session_id=session_id,

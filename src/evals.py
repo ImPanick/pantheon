@@ -42,6 +42,7 @@ because it is quiet. `P4-26`'s drift reporting is what makes this knowable at
 all, and a suite that skipped half its cases says so in the headline rather than
 in a field nobody reads.
 """
+import asyncio
 import json
 import logging
 import re
@@ -250,7 +251,10 @@ async def run_suite(name: str, *, model: Optional[str] = None,
         expect = case.get("expect") or {}
         entry: Dict[str, Any] = {"run_id": run_id, "label": case.get("label") or run_id}
 
-        plan = rerun_plan(run_id)
+        # `B1598`: the run's history, its receipts and their diff are database
+        # reads — worker threads', since `POST /api/diagnostics/evals/run`
+        # awaits this suite on the event loop.
+        plan = await asyncio.to_thread(rerun_plan, run_id)
         entry["drift"] = plan.get("drift") or []
         if entry["drift"]:
             result["drift_cases"] += 1
@@ -265,7 +269,8 @@ async def run_suite(name: str, *, model: Optional[str] = None,
         new_run = run.get("run_id")
         tool_failures = 0
         if new_run:
-            tool_failures = (receipt(new_run).get("totals") or {}).get("tool_failures", 0)
+            tool_failures = ((await asyncio.to_thread(receipt, new_run)).get("totals") or {}).get(
+                "tool_failures", 0)
 
         scored = score_case(run.get("output"), expect,
                             error=run.get("error"), tool_failures=tool_failures)
@@ -286,7 +291,7 @@ async def run_suite(name: str, *, model: Optional[str] = None,
         if not scored["passed"] and new_run:
             try:
                 from src.receipt_diff import diff_receipts, INFLICTED
-                d = diff_receipts(run_id, new_run)
+                d = await asyncio.to_thread(diff_receipts, run_id, new_run)
                 entry["why"] = d.get("headline")
                 entry["changed"] = [x for x in d.get("differences", [])
                                     if x["kind"] == INFLICTED]

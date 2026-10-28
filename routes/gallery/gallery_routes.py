@@ -336,7 +336,10 @@ async def _fetch_result_image_b64(url: str) -> Optional[str]:
     import httpx
     from src.url_safety import check_outbound_url
 
-    ok, reason = check_outbound_url(
+    # `B1598`: the check resolves the host and reads the person's networks
+    # from the database — a worker thread's work, not the event loop's.
+    ok, reason = await asyncio.to_thread(
+        check_outbound_url,
         url,
         block_private=env_flag("IMAGE_BLOCK_PRIVATE_IPS", False),
     )
@@ -1230,7 +1233,8 @@ def setup_gallery_routes() -> APIRouter:
         # outbound request (mirrors routes/embedding_routes.py).
         if requested_base:
             from src.url_safety import check_outbound_url
-            ok, reason = check_outbound_url(
+            ok, reason = await asyncio.to_thread(  # `B1598`: off the event loop
+                check_outbound_url,
                 requested_base,
                 block_private=env_flag("IMAGE_BLOCK_PRIVATE_IPS", False),
             )
@@ -1501,7 +1505,8 @@ def setup_gallery_routes() -> APIRouter:
         # metadata range and non-HTTP(S) schemes are always rejected.
         if requested_base:
             from src.url_safety import check_outbound_url
-            ok, reason = check_outbound_url(
+            ok, reason = await asyncio.to_thread(  # `B1598`: off the event loop
+                check_outbound_url,
                 requested_base,
                 block_private=env_flag("IMAGE_BLOCK_PRIVATE_IPS", False),
             )

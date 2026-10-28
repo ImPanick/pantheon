@@ -67,6 +67,28 @@ skill import's link check; and the contacts router, whose ten handlers were
 `async def` awaiting nothing and are plain `def` now. **51 → 25.** The rest
 are async helpers (CalDAV, the agent workshop, replay, evals, the skill
 tests, the workflow assist) whose own database steps need the same split.
+
+**`B1598` — the 25, split.** Each helper hands its database step to a worker
+thread and keeps its await on the loop: the workflow assistant's endpoint
+(`workflow_assist._complete`, behind the agent workshop's interview and draft,
+design extraction, the task parser and the workflow example writer, and the
+*Why did this fail?* model name); the outbound check (`check_outbound_url` →
+`person_networks.for_run`) in the integration call, the gallery's image
+fetches and the reminder's webhook and ntfy sends, with the reminder's
+synthesis endpoint and mail accounts; CalDAV's event loads, account reads,
+address check and result write (`caldav_writeback._writeback_account`); the
+chat's context build (model-id normalisation, the window, compaction's
+utility endpoint), its foreground policy and candidates, the approval-card
+mark and the post-reply jobs' endpoints; service health's inputs; replay's
+plan and rows and the eval suite's receipts; the memory audit's faded sweep
+and endpoint; the skill audit's and the skill tests' models; and the agent
+loop's own reads — approval mode, run limits, the local-endpoint question,
+the synthesis ceiling, the run-config and turn-outcome rows and the
+teacher's endpoint. **25 → 1.** Left: `chat_endpoint` → `run_post_response_tasks`
+→ `accumulate_token_usage`, a branch that handler never takes (it passes no
+metrics); the stream's own call runs inside its generator, which this scan
+does not follow, and moving the counters off the loop changes when a turn's
+figures land, so it is a row of its own.
 """
 from __future__ import annotations
 
@@ -108,8 +130,8 @@ def _calls_the_database_itself(fn) -> bool:
 
 
 #: `B1580`. The ceiling through helpers: 51 after `B1580`, from 107; 25 after
-#: `B1588`.
-MAX_THROUGH_A_HELPER = 25
+#: `B1588`; 1 after `B1598`.
+MAX_THROUGH_A_HELPER = 1
 
 #: Where a helper a handler calls can live.
 _SCOPE = ("routes", "src", "core", "services", "companion", "integrations")
@@ -535,3 +557,124 @@ def test_a_model_call_reads_and_writes_the_database_off_the_loop(tmp_path, monke
     assert rows == 2, f"one run-config row per door, written before the call returned; got {rows}"
     assert [payload.get("temperature") for _url, payload in wire.sent] == [0.2, 0.2], (
         "the local profile was not applied — the endpoint read that moved decided nothing")
+
+
+def test_the_helpers_b1598_split_reach_no_session_on_the_loop():
+    """`B1598`. The async helpers the 25 handlers awaited reach no database
+    session on the event loop — their reads and writes are handed to threads —
+    and the scan is not blind there: the sync parts they hand off still do."""
+    trees = _every_tree()
+    split = [("src.workflow_assist", "ask_for_json"), ("src.caldav_writeback", "writeback_event"),
+             ("src.caldav_sync", "sync_caldav_direction"), ("src.service_health", "collect_service_health"),
+             ("src.replay", "replay"), ("src.evals", "run_suite"), ("src.integrations", "execute_api_call"),
+             ("src.teacher_escalation", "evaluate_turn_llm"), ("src.context_compactor", "maybe_compact"),
+             ("routes.chat_helpers", "build_chat_context"), ("routes.chat_helpers", "auto_name_session"),
+             ("routes.note.note_routes", "dispatch_reminder"), ("src.agent_loop", "stream_agent_loop"),
+             ("services.memory.skill_improve", "improve_from_lint")]
+    on_loop = [f"{m}.{f}" for m, f in split if reaches_a_session(m, f, trees)]
+    assert on_loop == [], f"these open a database session on the event loop: {on_loop}"
+    for m, f in [("src.workflow_assist", "_endpoint"), ("src.caldav_writeback", "_writeback_account"),
+                 ("src.service_health", "_gather_inputs"), ("src.replay", "rerun_plan")]:
+        assert reaches_a_session(m, f, trees), f"{m}.{f} — the scan no longer sees the work it moved"
+
+
+def test_the_workflow_assistant_reads_its_endpoint_off_the_loop(tmp_path, monkeypatch):
+    """Driven: `ask_for_json` — the door the agent workshop, design extraction,
+    the task parser and the workflow example writer share — over a real SQLite
+    endpoint table, the model call stood in for. Its session opens on a worker
+    thread, and the answer is the one the endpoint row decides."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    import src.llm_core as llm_core
+    from core.database import Base, ModelEndpoint
+    from src import workflow_assist
+
+    engine = create_engine(f"sqlite:///{tmp_path}/assist.db", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=engine, tables=[ModelEndpoint.__table__])
+    maker = sessionmaker(bind=engine)
+    db = maker()
+    db.add(ModelEndpoint(id="ep1", name="Box", base_url="http://models.lan:8091/v1",
+                         endpoint_kind="local", is_enabled=True, model_type="chat",
+                         cached_models='["util-model"]'))
+    db.commit()
+    db.close()
+    import src.endpoint_resolver as resolver
+    # The settings name the endpoint; everything after that is the real
+    # resolver over the real table.
+    monkeypatch.setattr(resolver, "_configured_entry",
+                        lambda prefix, owner=None, has_fallback=False: ("ep1", "util-model"))
+    asked = []
+
+    async def model(url=None, model=None, messages=None, **kw):
+        asked.append((url, model))
+        return '{"ok": true}'
+
+    monkeypatch.setattr(llm_core, "llm_call_async", model)
+    opened = _sessions_by_thread(monkeypatch, maker)
+    # The resolver holds its own binding of the session factory.
+    monkeypatch.setattr(resolver, "SessionLocal", __import__("core.database").database.SessionLocal)
+
+    async def drive():
+        return threading.get_ident(), await workflow_assist.ask_for_json(
+            "alice", [{"role": "user", "content": "x"}], max_tokens=10)
+
+    loop_thread, (found, problem) = asyncio.run(drive())
+    engine.dispose()
+    assert asked == [("http://models.lan:8091/v1/chat/completions", "util-model")], (asked, problem)
+    assert found == {"ok": True} and problem is None
+    assert opened and loop_thread not in opened, "the endpoint was read on the event loop"
+
+
+def test_a_caldav_push_reads_and_writes_its_rows_off_the_loop(tmp_path, monkeypatch):
+    """Driven: `writeback_event` with two CalDAV accounts (so the calendar's
+    row is read to choose one), the network push stood in for, and the real
+    result write — every session on a worker thread, the event's pending flag
+    cleared when it returns."""
+    import datetime as dt
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    import src.caldav_sync as caldav_sync
+    import src.caldav_writeback as wb
+    from core.database import Base, CalendarCal, CalendarDeletedEvent, CalendarEvent
+
+    engine = create_engine(f"sqlite:///{tmp_path}/cal.db", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=engine, tables=[CalendarCal.__table__, CalendarEvent.__table__,
+                                                  CalendarDeletedEvent.__table__])
+    maker = sessionmaker(bind=engine)
+    db = maker()
+    db.add(CalendarCal(id="cal1", owner="alice", name="Work", source="caldav", account_id="acc2"))
+    start = dt.datetime(2026, 11, 3, 9, 0)
+    db.add(CalendarEvent(uid="ev1", calendar_id="cal1", summary="Standup", dtstart=start,
+                         dtend=start + dt.timedelta(minutes=15), caldav_sync_pending="update"))
+    db.commit()
+    db.close()
+    accounts = [{"id": "acc1", "url": "https://one.example/dav", "username": "a", "password": "x"},
+                {"id": "acc2", "url": "https://two.example/dav", "username": "b", "password": "y"}]
+    monkeypatch.setattr(caldav_sync, "_load_caldav_accounts", lambda owner: accounts)
+    monkeypatch.setattr(caldav_sync, "validate_caldav_url", lambda url: url)
+    monkeypatch.setattr("src.secret_storage.decrypt", lambda value: value)
+    pushed = []
+
+    def push(cal, ev, delete, url, user, pw, owner, acc_id):
+        pushed.append((url, acc_id))
+        return {"ok": True, "remote_href": "/two/ev1.ics"}
+
+    monkeypatch.setattr(wb, "_writeback_blocking", push)
+    opened = _sessions_by_thread(monkeypatch, maker)
+
+    async def drive():
+        return threading.get_ident(), await wb.writeback_event("alice", "caldav", "cal1", {"uid": "ev1"})
+
+    loop_thread, out = asyncio.run(drive())
+    assert out.get("ok") and pushed == [("https://two.example/dav", "acc2")], (out, pushed)
+    assert opened and loop_thread not in opened, "a session was opened on the event loop"
+    db = maker()
+    try:
+        ev = db.query(CalendarEvent).filter(CalendarEvent.uid == "ev1").one()
+        assert ev.caldav_sync_pending is None and ev.remote_href == "/two/ev1.ics"
+    finally:
+        db.close()
+        engine.dispose()

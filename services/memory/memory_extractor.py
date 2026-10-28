@@ -11,6 +11,7 @@ Periodically audits all memories via LLM to consolidate duplicates,
 rewrite vague entries, and remove junk.
 """
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -1262,7 +1263,10 @@ async def audit_memories(
         # No LLM is involved: this is arithmetic over dates, so it still works
         # on the run where the model is down and the tidy half returns an
         # error.
-        faded = _sweep_faded(memory_manager, owner, memory_vector)
+        # `B1598`. In a worker thread: it rewrites the store and records each
+        # archive as an event row, and `POST /api/memory/audit` awaits this on
+        # the event loop.
+        faded = await asyncio.to_thread(_sweep_faded, memory_manager, owner, memory_vector)
 
         owned = memory_manager.load(owner=owner)
         # `P13-09`. The audit reads the LIVE set only. What a previous pass

@@ -2534,7 +2534,8 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
 
         if not task:
             task = _skill_test_task(match)
-        url, model, headers = _resolve_skill_test_model(user, body)
+        # `B1598`: endpoint rows and the server's model list — in a worker thread.
+        url, model, headers = await _asyncio.to_thread(_resolve_skill_test_model, user, body)
 
         # `B879`. This used to assign the skill's one job slot and deny the
         # previous run's approval on the way past — so testing a skill twice
@@ -2721,7 +2722,8 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
 
         if not task:
             task = _skill_test_task(match)
-        url, model, headers = _resolve_skill_test_model(user, body)
+        # `B1598`: endpoint rows and the server's model list — in a worker thread.
+        url, model, headers = await _asyncio.to_thread(_resolve_skill_test_model, user, body)
 
         key = (user or "", name)
         import secrets as _secrets
@@ -2992,7 +2994,8 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
 
         # Worker model (Default, normalized) + optional teacher — shared resolver.
         try:
-            url, model, headers, teacher = _resolve_audit_models(owner=user)
+            # `B1598`: endpoint rows and a model list — in a worker thread.
+            url, model, headers, teacher = await _asyncio.to_thread(_resolve_audit_models, user)
         except ValueError as e:
             raise HTTPException(400, str(e))
 

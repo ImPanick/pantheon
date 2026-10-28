@@ -17,5 +17,11 @@
    "detail": "“Unsubscribe list — November 2026” is there."
   }
  ],
- "answer": "1 never opened, 0 unsubscribed, 1 kept.\n\n## Report\n- scanned the inbox, sorted 2 senders\n\n## Carry forward\n- never opened in November: deals@shop.example"
+ "answer": "1 never opened, 0 unsubscribed, 1 kept.\n\n## Report\n- scanned the inbox, sorted 2 senders\n\n## Carry forward\n- never opened in November: deals@shop.example",
+ "documents": [
+  {
+   "title": "Unsubscribe list — November 2026",
+   "content": "## Never opened\n- Shop Deals — deals@shop.example — 3 messages — mailto:unsub@shop.example\n\n## Unsubscribed\n- nothing\n\n## Kept\n- Energy Weekly — news@energyweekly.example — opened 2 of 2"
+  }
+ ]
 }

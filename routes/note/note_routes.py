@@ -214,9 +214,14 @@ async def dispatch_reminder(
             from src.endpoint_resolver import resolve_endpoint
             from src.llm_core import llm_call_async
             from src.reminder_personas import synthesis_system_prompt
-            url, model, headers = resolve_endpoint("utility", owner=owner or None)
-            if not url:
-                url, model, headers = resolve_endpoint("default", owner=owner or None)
+            def _endpoint():
+                found = resolve_endpoint("utility", owner=owner or None)
+                if not found[0]:
+                    found = resolve_endpoint("default", owner=owner or None)
+                return found
+
+            # `B1598`: the endpoint rows, read in a worker thread.
+            url, model, headers = await asyncio.to_thread(_endpoint)
             if url and model:
                 persona_id = (settings.get("reminder_llm_persona") or "").strip()
                 sys_prompt = synthesis_system_prompt(persona_id)
@@ -312,28 +317,35 @@ async def dispatch_reminder(
             # account to send reminders from (when they have several
             # configured in Integrations). Falls back to the default
             # account when no explicit choice is saved.
-            _acc_id = (settings.get("reminder_email_account_id") or "").strip() or None
-            cfg = _get_email_config(account_id=_acc_id, owner=owner or "")
-            if not _smtp_ready(cfg):
-                try:
-                    from core.database import SessionLocal as _SL, EmailAccount as _EA
-                    from sqlalchemy import and_, or_
-                    db = _SL()
+            def _send_config():
+                # `B1598`. The account rows are read here, in a worker thread:
+                # this runs inside `POST /api/notes/fire-reminder`, an async
+                # route, and opened its sessions on the event loop.
+                _acc_id = (settings.get("reminder_email_account_id") or "").strip() or None
+                cfg = _get_email_config(account_id=_acc_id, owner=owner or "")
+                if not _smtp_ready(cfg):
                     try:
-                        q = db.query(_EA).filter(_EA.enabled == True)  # noqa: E712
-                        if owner:
-                            unowned = or_(_EA.owner == None, _EA.owner == "")  # noqa: E711
-                            same_mailbox = or_(_EA.imap_user == owner, _EA.from_address == owner)
-                            q = q.filter(or_(_EA.owner == owner, and_(unowned, same_mailbox)))
-                        for row in q.order_by(_EA.is_default.desc(), _EA.created_at.asc()).all():
-                            trial = _get_email_config(account_id=row.id, owner=owner or "")
-                            if _smtp_ready(trial):
-                                cfg = trial
-                                break
-                    finally:
-                        db.close()
-                except Exception as _fallback_error:
-                    logger.debug(f"Reminder SMTP fallback lookup failed: {_fallback_error}")
+                        from core.database import SessionLocal as _SL, EmailAccount as _EA
+                        from sqlalchemy import and_, or_
+                        db = _SL()
+                        try:
+                            q = db.query(_EA).filter(_EA.enabled == True)  # noqa: E712
+                            if owner:
+                                unowned = or_(_EA.owner == None, _EA.owner == "")  # noqa: E711
+                                same_mailbox = or_(_EA.imap_user == owner, _EA.from_address == owner)
+                                q = q.filter(or_(_EA.owner == owner, and_(unowned, same_mailbox)))
+                            for row in q.order_by(_EA.is_default.desc(), _EA.created_at.asc()).all():
+                                trial = _get_email_config(account_id=row.id, owner=owner or "")
+                                if _smtp_ready(trial):
+                                    cfg = trial
+                                    break
+                        finally:
+                            db.close()
+                    except Exception as _fallback_error:
+                        logger.debug(f"Reminder SMTP fallback lookup failed: {_fallback_error}")
+                return cfg
+
+            cfg = await asyncio.to_thread(_send_config)
             from_addr = (cfg.get("from_address") or cfg.get("smtp_user") or "").strip()
             recipient = (settings.get("reminder_email_to") or "").strip() or from_addr
             # Loud diagnostic so we can see WHY a reminder didn't send (the
@@ -455,7 +467,9 @@ async def dispatch_reminder(
                         import os as _os
                         from src.url_safety import check_outbound_url as _chk
                         _block = env_flag("REMINDER_WEBHOOK_BLOCK_PRIVATE_IPS", False)
-                        _ok, _reason = _chk(url, block_private=_block)
+                        # `B1598`: resolves the host and reads the person's
+                        # networks — in a worker thread, off the event loop.
+                        _ok, _reason = await asyncio.to_thread(_chk, url, block_private=_block)
                         if not _ok:
                             webhook_error = f"Webhook URL rejected: {_reason}"
                         else:
@@ -502,7 +516,8 @@ async def dispatch_reminder(
                 import os as _os
                 from src.url_safety import check_outbound_url as _chk
                 _block = env_flag("REMINDER_WEBHOOK_BLOCK_PRIVATE_IPS", False)
-                _ok, _reason = _chk(f"{base}/{topic}", block_private=_block)
+                _ok, _reason = await asyncio.to_thread(  # `B1598`: off the loop
+                    _chk, f"{base}/{topic}", block_private=_block)
                 if not _ok:
                     ntfy_error = f"ntfy URL rejected: {_reason}"
                 else:

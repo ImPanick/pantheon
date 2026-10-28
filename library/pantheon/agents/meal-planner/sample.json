@@ -17,5 +17,11 @@
    "detail": "“Meals this week — 3 Nov” is there."
   }
  ],
- "answer": "\"Meals this week — 3 Nov\" is ready: 6 dinners and a night out. (could not search memory: the memory manager is not available)\n\n## Report\n- planned 7 nights for 2 people from the pantry note\n\n## Carry forward\n- dishes: spinach dal, salmon tray bake, mushroom risotto, bean chilli, pizza, roast chicken"
+ "answer": "\"Meals this week — 3 Nov\" is ready: 6 dinners and a night out. (could not search memory: the memory manager is not available)\n\n## Report\n- planned 7 nights for 2 people from the pantry note\n\n## Carry forward\n- dishes: spinach dal, salmon tray bake, mushroom risotto, bean chilli, pizza, roast chicken",
+ "documents": [
+  {
+   "title": "Meals this week — 3 Nov",
+   "content": "## Dinners\n- Monday — spinach and lentil dal — 25 min\n- Tuesday — out\n- Wednesday — salmon tray bake — 30 min\n- Thursday — mushroom risotto — 30 min\n- Friday — bean chilli — 30 min\n- Saturday — homemade pizza — 45 min\n- Sunday — slow-roast chicken — 2 hours\n\n## Shopping\n- Fruit and veg: 2 onions, garlic, 250 g mushrooms\n- Meat and fish: 2 salmon fillets, 1 chicken\n- Dairy: mozzarella\n\n## From the pantry\n- red lentils, basmati rice, cumin, tinned tomatoes, spinach"
+  }
+ ]
 }

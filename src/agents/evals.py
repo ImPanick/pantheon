@@ -16,7 +16,9 @@ own `delivers`:
         "search":  {"solar": [{"title": "...", "url": "...", "snippet": "..."}]},
         "shell":   [{"match": "df -P", "output": "...", "exit_code": 0}],
         "documents": [{"title": "...", "content": "..."}],
-        "research": [{"id": "r1", "query": "...", "summary": "...", "sources": [{"title": "...", "url": "..."}]}]
+        "research": [{"id": "r1", "query": "...", "summary": "...", "sources": [{"title": "...", "url": "..."}]}],
+        "memories": [{"text": "Ana started pottery in May", "category": "fact"}],
+        "chats": [{"title": "Trip to Lisbon", "messages": [{"role": "user", "content": "..."}]}]
       },
       "answers": ["deny"],
       "notebook": "- sorted: m0",
@@ -44,6 +46,13 @@ asked, and without it `trigger_research` is refused like any other tool that
 would leave the install (`P24-27`). A case's `notebook` is what the hire's last
 run carried forward, so "new since last time" can be measured; its `trigger`
 is the webhook payload or app event that started the run.
+
+`B1602`. A world has its own memory and its own chats — `manage_memory`,
+`list_sessions` and `search_chats` answer from them (they answered *not
+available* in every case, or from whatever the process had set) — and a
+case makes no loopback call: `resolve_contact` asks the world's mailbox for
+the mail history, and any request to the install's own address is refused
+in the world's words, so no case reads or writes a running install.
 """
 
 from __future__ import annotations
@@ -86,7 +95,7 @@ CHECK_KINDS = ("answer_contains", "answer_lacks", "document", "no_document", "ca
                "not_called", "drafts_at_most", "draft_to", "no_draft_to", "status",
                "file", "notebook_contains")
 WORLD_KEYS = ("emails", "web", "search", "shell", "documents", "notes", "calendar", "files", "accounts",
-              "research")
+              "research", "memories", "chats")
 
 
 class EvalRefused(ValueError):
@@ -180,6 +189,9 @@ class World:
     drafts: List[Dict[str, Any]] = field(default_factory=list)
     sent: List[Dict[str, Any]] = field(default_factory=list)
     research: List[str] = field(default_factory=list)
+    #: `B1602`. Every request a case made to the install's own address —
+    #: refused, so none reached a running install; kept so a test can say so.
+    loopback: List[str] = field(default_factory=list)
 
     def _args(self, content: str) -> Dict[str, Any]:
         try:
@@ -201,6 +213,51 @@ class World:
         out = self._answer(tool, args, content)
         text = out if isinstance(out, str) else json.dumps(out, indent=1)
         return f"{tool}: {text[:200]}", {"output": text, "exit_code": 0}
+
+    def _file_attachment(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """`B1600`. An attachment saved into a folder: the world's message
+        holds it (`"attachments": [{"filename", "content"}]`), and it is saved
+        where the real tool saves it — the world person's projects folder, by
+        the same rule (`tool_execution.save_into_projects`), so a `file`
+        check finds it and a destination outside is refused in its words."""
+        from src.tool_execution import save_into_projects
+        uid = str(args.get("uid") or args.get("id") or "")
+        msg = next((m for m in self.fixture.get("emails") or [] if str(m.get("id")) == uid), None)
+        try:
+            index = int(args.get("index") or 0)
+        except (TypeError, ValueError):
+            index = -1
+        files = (msg or {}).get("attachments") or []
+        if msg is None or not 0 <= index < len(files):
+            return {"error": f"Attachment index {args.get('index')} not found"}
+        att = files[index]
+        try:
+            path = save_into_projects(EVAL_OWNER, str(args["destination"]).strip(),
+                                      str(args.get("filename") or "").strip() or str(att.get("filename") or ""),
+                                      str(att.get("content") or "").encode("utf-8"))
+        except (ValueError, FileExistsError) as exc:
+            return {"error": str(exc)}
+        return {"path": path, "filename": att.get("filename"), "saved_as": os.path.basename(path)}
+
+    def mail_contacts(self, name: str) -> List[Dict[str, str]]:
+        """`B1602`. The mail history `resolve_contact` searches, from the
+        world's mailbox — the mail route's own rule: each From, To or Cc entry
+        whose text holds the name gives its address, at most ten."""
+        q = str(name or "").strip().lower()
+        out: List[Dict[str, str]] = []
+        seen = set()
+        for m in self.fixture.get("emails") or []:
+            for key in ("from", "to", "cc"):
+                for part in str(m.get(key) or "").split(","):
+                    part = part.strip()
+                    if not q or q not in part.lower():
+                        continue
+                    hit = re.search(r"<([^>]+)>", part)
+                    addr = (hit.group(1) if hit else part).strip().lower()
+                    if "@" in addr and addr not in seen:
+                        seen.add(addr)
+                        out.append({"email": addr, "name": part.split("<")[0].strip().strip('"') or addr})
+        return out[:10]
 
     def _outside(self, tool: str, args: Dict[str, Any]) -> Dict[str, Any]:
         """`P24-27`. A tool that leaves the install and is not one of the
@@ -238,6 +295,8 @@ class World:
             return {"senders": [{"from": m.get("from"), "unsubscribe": m.get("unsubscribe")}
                                 for m in mails if m.get("unsubscribe")]}
         if tool == "download_attachment":
+            if str(args.get("destination") or "").strip():
+                return self._file_attachment(args)
             return {"saved": args.get("filename") or "attachment"}
         if tool in DRAFT_TOOLS:
             self.drafts.append({"tool": tool, **args})
@@ -364,6 +423,27 @@ def isolated(root: Optional[str] = None):
                 p.set(mod, "DATA_DIR", data)
         except Exception:
             continue
+    # `B1602`. The world's own memory and chats. `manage_memory` and the
+    # session tools ask `ai_interaction`'s managers, which only the app's boot
+    # sets: a case answered "Memory manager not available" — or, in a process
+    # where something had set them, read and wrote that memory file and that
+    # session cache. Made after the swap, so they read the world's database
+    # and folder; the process's own are put back after.
+    import core.models as core_models
+    import src.ai_interaction as ai
+    from core.session_manager import SessionManager
+    from src.memory import MemoryManager
+    world_sessions = SessionManager()
+    p.set(ai, "_memory_manager", MemoryManager(data))
+    p.set(ai, "_memory_vector", None)
+    p.set(ai, "_session_manager", world_sessions)
+    p.set(core_models, "_SESSION_MANAGER_INSTANCE", world_sessions)
+    # The address book's one-minute cache is the process's: a copy read from
+    # the install would answer a case's `resolve_contact`, and the world's
+    # would answer the install's for a minute after.
+    contacts_mod = sys.modules.get("routes.contacts.contacts_routes")
+    if contacts_mod is not None:
+        p.set(contacts_mod, "_contact_cache", {"contacts": [], "fetched_at": None})
     # No person is in the world, so a background run waits for nobody; the
     # variable is the install's again afterwards.
     old_gate = os.environ.get("BACKGROUND_TASK_FOREGROUND_GATE")
@@ -380,6 +460,9 @@ def isolated(root: Optional[str] = None):
         # it is given the install's back, so nothing outlives the world.
         _swap(factory, old_session, data, old_data, False)
         _swap_paths(data, old_data, False)
+        if contacts_mod is None and "routes.contacts.contacts_routes" in sys.modules:
+            # First imported in the world: its cache holds the world's book.
+            sys.modules["routes.contacts.contacts_routes"]._contact_cache = {"contacts": [], "fetched_at": None}
         engine.dispose()
         if made_here:
             import shutil
@@ -438,6 +521,11 @@ class CaseResult:
     calls: List[str]
     report: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    #: `B1602`. Requests the case made to the install's own address, refused.
+    loopback: List[str] = field(default_factory=list)
+    #: `B1604`. The documents the run wrote, `{title, content}` — what a
+    #: document agent delivers, which its short answer only names.
+    documents: List[Dict[str, str]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {"agent": self.agent, "case": self.case, "passed": self.passed, "status": self.status,
@@ -456,14 +544,18 @@ def _when(text: str):
     return datetime.fromisoformat(str(text))
 
 
-def _seed(db, owner: str, world: Dict[str, Any], data_dir: str) -> None:
+def _seed(db, owner: str, world: Dict[str, Any], data_dir: str) -> Dict[str, str]:
+    """Put the world's own stores in place. Answers the documents it seeded,
+    id → text, so what a run wrote can be told from what it was given."""
     from datetime import timedelta
     from core.database import CalendarCal, CalendarEvent, Document, Note
+    seeded: Dict[str, str] = {}
     for d in world.get("documents") or []:
         # `P24-27`. A document (and a note, below) may name its id, so a
         # script can open, change or delete it.
-        db.add(Document(id=str(d.get("id") or uuid.uuid4()), owner=owner, title=d["title"],
-                        current_content=d.get("content", "")))
+        did = str(d.get("id") or uuid.uuid4())
+        seeded[did] = d.get("content", "")
+        db.add(Document(id=did, owner=owner, title=d["title"], current_content=d.get("content", "")))
     for n in world.get("notes") or []:
         db.add(Note(id=str(n.get("id") or uuid.uuid4()), owner=owner, title=n.get("title", ""), content=n.get("content", ""),
                     due_date=n.get("due")))
@@ -488,6 +580,27 @@ def _seed(db, owner: str, world: Dict[str, Any], data_dir: str) -> None:
                     "sources": r.get("sources") or [], "completed_at": r.get("completed_at", n)}
             with open(os.path.join(constants.DEEP_RESEARCH_DIR, f"{rid}.json"), "w", encoding="utf-8") as fh:
                 json.dump(body, fh)
+    if world.get("memories"):
+        # `B1602`. What the person's memory holds, where `manage_memory` reads it.
+        import src.ai_interaction as ai
+        mm = ai._memory_manager
+        entries = mm.load_all_for_update()
+        for item in world["memories"]:
+            item = {"text": item} if isinstance(item, str) else item
+            entries.append(mm.add_entry(str(item["text"]), source="eval", owner=owner,
+                                        category=str(item.get("category") or "fact")))
+        mm.save(entries)
+    if world.get("chats"):
+        # `B1602`. The person's earlier chats, where the session tools and
+        # `search_chats` read them.
+        import src.ai_interaction as ai
+        from core.models import ChatMessage
+        sm = ai._session_manager
+        for n, chat in enumerate(world["chats"], start=1):
+            sid = str(chat.get("id") or uuid.uuid4())
+            sm.create_session(sid, str(chat.get("title") or f"Chat {n}"), "", "", owner=owner)
+            for msg in chat.get("messages") or []:
+                sm.add_message(sid, ChatMessage(str(msg.get("role") or "user"), str(msg.get("content") or "")))
     if world.get("files"):
         from src.tool_execution import projects_root
         root = projects_root(owner, create=True)
@@ -497,6 +610,17 @@ def _seed(db, owner: str, world: Dict[str, Any], data_dir: str) -> None:
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 with open(path, "w", encoding="utf-8") as fh:
                     fh.write(text)
+    return seeded
+
+
+def written_documents(db, owner: str, seeded: Dict[str, str]) -> List[Dict[str, str]]:
+    """`B1604`. The documents a run wrote — made, or changed from what the
+    world gave it — title and text, in the order they were made."""
+    from core.database import Document
+    rows = db.query(Document).filter(Document.owner == owner, Document.is_active == True).all()  # noqa: E712
+    rows.sort(key=lambda d: (d.created_at is None, d.created_at, d.title or ""))
+    return [{"title": d.title or "", "content": d.current_content or ""} for d in rows
+            if d.id not in seeded or (d.current_content or "") != seeded[d.id]]
 
 
 def _check(kind: str, want: Any, *, db, owner, answer, status, world: World, notebook: str,
@@ -565,6 +689,50 @@ def _check(kind: str, want: Any, *, db, owner, answer, status, world: World, not
     return {"check": kind, "ok": False, "detail": "Pantheon cannot run this check."}
 
 
+def _is_loopback(url, base) -> bool:
+    """Whether `url` is the install's own address (`internal_api_base`), on
+    any of the names loopback goes by."""
+    import httpx
+    try:
+        u, b = httpx.URL(str(url)), httpx.URL(base)
+    except Exception:
+        return False
+    local = {"127.0.0.1", "localhost", "::1", "0.0.0.0", b.host}
+    return u.host in local and (u.port or 80) == (b.port or 80)
+
+
+def _refuse_loopback(p: "_Patches", world: World) -> None:
+    """`B1602`. A case runs inside the install, not against it: a request to
+    the install's own address — a tool that asks Pantheon's server over HTTP —
+    would read or write whatever install is running on the machine. Every one
+    is refused in the world's words and kept on `world.loopback`."""
+    import httpx
+    from src.constants import internal_api_base
+    base = internal_api_base()
+
+    def refusal(request):
+        world.loopback.append(str(request.url))
+        return httpx.ConnectError(
+            f"This world has no Pantheon server to call ({request.url.path}): an evaluation runs "
+            f"inside the install, and nothing in an evaluation calls it over the network.",
+            request=request)
+
+    real_async, real_sync = httpx.AsyncClient.send, httpx.Client.send
+
+    async def send_async(self, request, *a, **kw):
+        if _is_loopback(request.url, base):
+            raise refusal(request)
+        return await real_async(self, request, *a, **kw)
+
+    def send_sync(self, request, *a, **kw):
+        if _is_loopback(request.url, base):
+            raise refusal(request)
+        return real_sync(self, request, *a, **kw)
+
+    p.set(httpx.AsyncClient, "send", send_async)
+    p.set(httpx.Client, "send", send_sync)
+
+
 async def run_case(manifest, case: Dict[str, Any], *, factory, data_dir: str,
                    endpoint: Optional[str] = None, model: Optional[str] = None) -> CaseResult:
     """One case, in a world `isolated()` already made. With no `endpoint` the
@@ -593,6 +761,17 @@ async def run_case(manifest, case: Dict[str, Any], *, factory, data_dir: str,
         return await real_impl(block, *a, **kw)
 
     p.set(tool_execution, "_execute_tool_block_impl", far_end)
+    # `B1602`. `resolve_contact` searched the mail history by calling the
+    # install's own mail route over loopback — whatever install was running on
+    # the machine, its mailbox. The world's mailbox answers instead, as it
+    # answers every other mail tool.
+    import src.tools.contacts as contacts_tools
+
+    async def world_mail_history(name, owner=None):
+        return world.mail_contacts(name), None
+
+    p.set(contacts_tools, "mail_history", world_mail_history)
+    _refuse_loopback(p, world)
     # The world's one person is its admin: a case measures the agent, not
     # the privileges of whoever hires it (the hire form names what a run
     # will lack, `P24-13`).
@@ -622,7 +801,7 @@ async def run_case(manifest, case: Dict[str, Any], *, factory, data_dir: str,
         if not db.query(ModelEndpoint).filter(ModelEndpoint.base_url == url).first():
             db.add(ModelEndpoint(id=str(uuid.uuid4()), name="Evaluation", is_enabled=True, base_url=url,
                                  endpoint_kind="local", cached_models=json.dumps([name])))
-        _seed(db, owner, case.get("world") or {}, data_dir)
+        seeded = _seed(db, owner, case.get("world") or {}, data_dir)
         hire = H.make_hire(db, owner=owner, manifest=manifest, inputs=case.get("inputs") or {})
         # `P24-27`. What the last run carried forward, so a case can measure
         # "new since last time" — read by the run as its notebook always is.
@@ -682,6 +861,7 @@ async def run_case(manifest, case: Dict[str, Any], *, factory, data_dir: str,
             kind, want = next(iter(c.items()))
             own.append(_check(kind, want, db=db, owner=owner, answer=answer, status=status, world=world,
                               notebook=notebook, project_root=proot))
+        documents = written_documents(db, owner, seeded)
         db.close()
         # A case that expects the run to fail (`{"status": "error"}`) is the
         # harness checking itself: its contract misses are what it expects.
@@ -691,7 +871,8 @@ async def run_case(manifest, case: Dict[str, Any], *, factory, data_dir: str,
             expects_failure or all(c["ok"] for c in contract))
         return CaseResult(manifest.id, case["id"], passed, status, checks,
                           (time.monotonic() - started) / 60, [c["tool"] for c in world.calls], report,
-                          None if run is None else run.error)
+                          None if run is None else run.error, loopback=list(world.loopback),
+                          documents=documents)
     finally:
         p.undo()
 
@@ -727,6 +908,18 @@ def proof_row(manifest, model: str, results: List[CaseResult]) -> Dict[str, Any]
             "pass_rate": round(sum(r.passed for r in results) / max(1, len(results)), 3),
             "median_minutes": round(mins[len(mins) // 2], 2),
             "failures": failures, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+
+
+def sample_report(result: CaseResult) -> Dict[str, Any]:
+    """`P24-17`. What `sample.json` holds: a case's report — and, `B1604`, the
+    documents the run wrote, since a document agent's answer only names the
+    document it delivers. The key is there only when the run wrote one."""
+    r0 = result.report or {}
+    sample = {"case": result.case, "from": "its evaluation, with a scripted model",
+              **{k: r0.get(k) for k in ("summary", "read", "wrote", "refused", "checks", "answer")}}
+    if result.documents:
+        sample["documents"] = [dict(d) for d in result.documents]
+    return sample
 
 
 def main(argv=None) -> int:
@@ -767,9 +960,7 @@ def main(argv=None) -> int:
                     print(f"      ✗ {c['check']}: {c['detail']}")
             bad += not r.passed
         if args.sample and results and results[0].report:
-            r0 = results[0].report
-            sample = {"case": results[0].case, "from": "its evaluation, with a scripted model",
-                      **{k: r0.get(k) for k in ("summary", "read", "wrote", "refused", "checks", "answer")}}
+            sample = sample_report(results[0])
             with open(os.path.join(agent_dir(m), "sample.json"), "w", encoding="utf-8") as fh:
                 json.dump(sample, fh, indent=1, ensure_ascii=False)
                 fh.write("\n")

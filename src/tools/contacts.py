@@ -7,16 +7,53 @@ Holds the resolve_contact and manage_contact (CardDAV CRUD) tools.
 ``_INTERNAL_BASE`` still lives in tool_implementations.py and is pulled
 back function-locally where needed.
 """
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
 from src.tools._common import _internal_headers, _parse_tool_args
 from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 
 
-async def do_resolve_contact(content: str, owner: Optional[str] = None) -> Dict:
-    """Look up a contact by name. Searches: CardDAV -> email history -> memory."""
+async def mail_history(name: str, owner: Optional[str] = None) -> Tuple[List[Dict], Optional[str]]:
+    """`resolve_contact`'s second source: the person's mail history, asked of
+    the mail route. Answers `(contacts, None)` — each `{"email", "name"}` —
+    or `([], sentence)` saying why the history was not searched.
+
+    `B1602`. Its own function so the agents' evaluation world can answer it
+    from the case's mailbox, as it answers every other mail tool: asked of
+    the route, it was a loopback call from inside a case to whatever install
+    was running on the machine — its mailbox, not the world's."""
     import httpx
     from src.tool_implementations import _INTERNAL_BASE  # shared constant, still lives in the facade
+    async with httpx.AsyncClient(timeout=30,
+                                 mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
+        # `B1182`. As the call's person: `_internal_headers(owner)` carries the
+        # internal token and names them (`B1179`), so `require_owner` answers
+        # from their own mailbox. With no headers at all the middleware
+        # answered 401, the `200` check below dropped it, and an admin's
+        # assistant never resolved a name from their mail history.
+        #
+        # `B1528`. Only a 200 that carries no `error` is a search: the route
+        # answers `{"contacts": [], "error": ...}` when the mail server cannot
+        # be reached, and that empty list is not "nobody by that name".
+        try:
+            resp = await client.get(f"{_INTERNAL_BASE}/api/email/resolve-contact",
+                                    params={"name": name},
+                                    headers=_internal_headers(owner))
+            body = resp.json() if resp.status_code == 200 else {}
+            if resp.status_code != 200:
+                return [], (f"The mail history was not searched: the mail route answered "
+                            f"HTTP {resp.status_code}.")
+            if not isinstance(body, dict) or body.get("error"):
+                why = str((body or {}).get("error") or "the mail route said nothing").strip()
+                return [], f"The mail history was not searched: {why.rstrip('.')}."
+            return [c for c in (body.get("contacts") or []) if isinstance(c, dict)], None
+        except Exception as e:
+            return [], (f"The mail history was not searched: the mail route could not be asked "
+                        f"({type(e).__name__}).")
+
+
+async def do_resolve_contact(content: str, owner: Optional[str] = None) -> Dict:
+    """Look up a contact by name. Searches: CardDAV -> email history -> memory."""
     try:
         args = _parse_tool_args(content)
     except ValueError:
@@ -68,40 +105,14 @@ async def do_resolve_contact(content: str, owner: Optional[str] = None) -> Dict:
     except Exception as e:
         not_searched.append(f"The address book could not be read ({type(e).__name__}).")
 
-    async with httpx.AsyncClient(timeout=30,
-                                 mounts=paced_http.direct_mounts(_INTERNAL_BASE)) as client:
-        # 2. Email history (sent/received)
-        #
-        # `B1182`. As the call's person: `_internal_headers(owner)` carries the
-        # internal token and names them (`B1179`), so `require_owner` answers
-        # from their own mailbox. With no headers at all the middleware
-        # answered 401, the `200` check below dropped it, and an admin's
-        # assistant never resolved a name from their mail history.
-        #
-        # `B1528`. Only a 200 that carries no `error` is a search: the route
-        # answers `{"contacts": [], "error": ...}` when the mail server cannot
-        # be reached, and that empty list is not "nobody by that name".
-        try:
-            resp = await client.get(f"{_INTERNAL_BASE}/api/email/resolve-contact",
-                                    params={"name": name},
-                                    headers=_internal_headers(owner))
-            body = resp.json() if resp.status_code == 200 else {}
-            if resp.status_code != 200:
-                not_searched.append(
-                    f"The mail history was not searched: the mail route answered "
-                    f"HTTP {resp.status_code}.")
-            elif not isinstance(body, dict) or body.get("error"):
-                why = str((body or {}).get("error") or "the mail route said nothing").strip()
-                not_searched.append(f"The mail history was not searched: {why.rstrip('.')}.")
-            else:
-                for c in (body.get("contacts") or []):
-                    email = (c.get("email") or "").strip().lower()
-                    if email and email not in contacts:
-                        contacts[email] = {"name": c.get("name") or email, "source": "email history"}
-        except Exception as e:
-            not_searched.append(
-                f"The mail history was not searched: the mail route could not be asked "
-                f"({type(e).__name__}).")
+    # 2. Email history (sent/received)
+    found, why_not = await mail_history(name, owner)
+    if why_not:
+        not_searched.append(why_not)
+    for c in found:
+        email = (c.get("email") or "").strip().lower()
+        if email and email not in contacts:
+            contacts[email] = {"name": c.get("name") or email, "source": "email history"}
 
     if not contacts:
         if not_searched:

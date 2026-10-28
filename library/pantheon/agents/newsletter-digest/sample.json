@@ -17,5 +17,11 @@
    "detail": "“Newsletter digest — 2 Nov” is there."
   }
  ],
- "answer": "Read 2 issues: 1 featured, 1 skipped.\n\n## Report\n- read 2 newsletters; wrote the digest\n\n## Carry forward\n- digested: m1, m2"
+ "answer": "Read 2 issues: 1 featured, 1 skipped.\n\n## Report\n- read 2 newsletters; wrote the digest\n\n## Carry forward\n- digested: m1, m2",
+ "documents": [
+  {
+   "title": "Newsletter digest — 2 Nov",
+   "content": "## Worth reading\n- EU agrees battery passport rules for 2027 — Energy Weekly — https://energyweekly.example/battery-passport\n\n## By newsletter\n### Energy Weekly — Issue 212\nThe EU agreed battery passport rules for 2027.\n- https://energyweekly.example/battery-passport\n\n## Skipped\n- Shop Deals — \"Black Friday early access\" — promotions only"
+  }
+ ]
 }

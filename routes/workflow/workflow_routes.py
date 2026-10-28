@@ -883,7 +883,9 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             raise WorkflowRefused(503, workflow_assist.NO_MODEL_TO_EXPLAIN) from None
         except ValueError:
             raise WorkflowRefused(422, workflow_assist.EXPLAIN_UNREADABLE) from None
-        return {"why": explained.why, "model": workflow_assist.model_name(owner),
+        # `B1598`: the model's name is an endpoint-row read, made off the loop.
+        model = await asyncio.to_thread(workflow_assist.model_name, owner)
+        return {"why": explained.why, "model": model,
                 "changed_since_run": changed, "proposal": explained.proposal,
                 "left_out": explained.left_out}
 

@@ -36,7 +36,8 @@ def test_auto_compaction_utility_endpoint_keeps_chat_owner():
 
     assert "owner=user" in helper_src
     assert "owner: Optional[str] = None" in compact_src
-    assert 'resolve_endpoint("utility", owner=owner)' in compact_src
+    # `B1598`: the same call, made in a worker thread.
+    assert 'asyncio.to_thread(resolve_endpoint, "utility", owner=owner)' in compact_src
 
 
 def test_background_session_sort_uses_owner_task_endpoint():

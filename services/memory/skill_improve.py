@@ -27,6 +27,7 @@ whether, where and how loudly a skill is used.
 
 from __future__ import annotations
 
+import asyncio
 import enum
 from dataclasses import dataclass, field
 from typing import Optional
@@ -166,7 +167,9 @@ async def improve_from_lint(sm, name: str, owner: Optional[str], *, models=None)
 
     if models is None:
         try:
-            url, model_id, headers, _teacher = _routes._resolve_audit_models(owner)
+            # `B1598`: endpoint rows and a model list — in a worker thread,
+            # since `POST /api/skills/{name}/improve` awaits this on the loop.
+            url, model_id, headers, _teacher = await asyncio.to_thread(_routes._resolve_audit_models, owner)
         except Exception as e:
             return ImproveResult(ImproveOutcome.NO_MODEL, name, findings, before, why=str(e))
     else:

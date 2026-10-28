@@ -2084,10 +2084,23 @@ async def _shutdown_event():
     logger.info("Application shutdown complete")
 
 
+#: `B1595`. How long a stopping server waits for the connections it holds
+#: before it closes them. With no bound, uvicorn waits for every connection to
+#: close on its own: a client that keeps a keep-alive connection busy — one the
+#: server accepted at the moment it was told to stop, so its sweep of open
+#: connections missed it — kept a SIGTERM'd server answering for as long as the
+#: client kept asking (measured: 300 answers over 84 s, then the test gave up),
+#: and a request whose body never finishes holds it until the 45 s request
+#: ceiling. Docker's own stop allows ten seconds before SIGKILL; this is the
+#: same allowance for the native install, after which the server stops.
+GRACEFUL_SHUTDOWN_SECONDS = 10
+
+
 if __name__ == "__main__":
     import uvicorn
 
     bind_host = os.getenv("APP_BIND", "127.0.0.1")
     bind_port = int(os.getenv("APP_PORT", "7000"))
 
-    uvicorn.run(app, host=bind_host, port=bind_port, log_level="info")
+    uvicorn.run(app, host=bind_host, port=bind_port, log_level="info",
+                timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS)

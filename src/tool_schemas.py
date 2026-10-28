@@ -1892,6 +1892,10 @@ FUNCTION_TOOL_SCHEMAS = [
                     "index": {"type": "integer", "description": "Attachment index (from read_email's attachments list)"},
                     "folder": {"type": "string", "description": "IMAP folder (default: INBOX)", "default": "INBOX"},
                     "account": {"type": "string", "description": "Which email account to use (name, email, or id). Omit to use the default account. Use list_email_accounts to discover available accounts."},
+                    # `B1600`. Where to file it — confined to the person's
+                    # projects folder, and never over a file already there.
+                    "destination": {"type": "string", "description": "A folder inside your projects folder to save it into, e.g. 'invoices/2026' (made if missing). Omit to save it to the mail attachments area."},
+                    "filename": {"type": "string", "description": "The name to save it under in the destination. Omit to keep the sender's name. A file already there is never overwritten."},
                 },
                 "required": ["uid", "index"]
             }

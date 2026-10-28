@@ -485,7 +485,9 @@ async def collect_service_health(rag_manager: Any = None,
     """
     from datetime import datetime, timezone
 
-    inputs = _gather_inputs()
+    # `B1598`: settings, the shared connections, the mail accounts and the
+    # endpoint rows — read in a worker thread, as every probe below is.
+    inputs = await asyncio.to_thread(_gather_inputs)
     settings = inputs["settings"]
 
     # ChromaDB is in-process and synchronous (just reads flags).

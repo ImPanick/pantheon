@@ -515,7 +515,9 @@ async def evaluate_turn_llm(
     from src.llm_core import llm_call_async
 
     # Resolve utility model (falls back to default model, then student_endpoint_url)
-    url, model, headers = resolve_endpoint(
+    # — in a worker thread (`B1598`): this runs at the end of every agent turn.
+    url, model, headers = await asyncio.to_thread(
+        resolve_endpoint,
         "utility",
         fallback_url=student_endpoint_url,
         owner=owner

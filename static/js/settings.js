@@ -2582,7 +2582,14 @@ var _UI_KEY_TOOL = Object.fromEntries(Object.entries(TOOL_VISIBILITY)
 
 // A switch an admin flips applies on their own page at once (`SET-M-12`); the
 // rows above follow it while Settings is open.
-onToolVisibilityApplied(function() { if (modalEl) syncAppearanceCheckboxes(); });
+//
+// `B1595`. So does who is looking. `syncAdminVisibility` ran once, when Settings
+// opened, and a Settings opened before the person's status had answered — a
+// loaded server takes seconds over `/api/auth/status` — drew an admin's and an
+// operator's panels as a member's and kept them hidden until it was opened
+// again: the Forge tab never appeared to the admin who had opened it. The
+// status arrives through the applier, so the panels follow it here.
+onToolVisibilityApplied(function() { if (modalEl) { syncAppearanceCheckboxes(); syncAdminVisibility(); } });
 
 function _syncToolSwitchWhy(chk, key) {
   var tool = _UI_KEY_TOOL[key];

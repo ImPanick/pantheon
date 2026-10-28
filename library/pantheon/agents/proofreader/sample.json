@@ -16,5 +16,11 @@
    "detail": "“Proofreading — Q3 letter to members” is there."
   }
  ],
- "answer": "3 suggestions: 1 spelling, 1 wrong word, 1 consistency.\n\n## Report\n- read \"Q3 letter to members\" and wrote its Proofreading document"
+ "answer": "3 suggestions: 1 spelling, 1 wrong word, 1 consistency.\n\n## Report\n- read \"Q3 letter to members\" and wrote its Proofreading document",
+ "documents": [
+  {
+   "title": "Proofreading — Q3 letter to members",
+   "content": "Proofreading — Q3 letter to members\n\n## Suggestions\n1. \"Teh annual meeting\" → \"The annual meeting\" — spelling\n2. \"members who's dues\" → \"members whose dues\" — wrong word\n3. \"the colour of the banner\" → \"the color of the banner\" — the document uses both\n\n## Left alone\n- \"Short and sweet.\" — a deliberate fragment, kept"
+  }
+ ]
 }

@@ -418,6 +418,43 @@ def projects_root(owner: Optional[str] = None, create: bool = True) -> str:
     return root
 
 
+def save_into_projects(owner: Optional[str], destination: str, name: str,
+                       payload: bytes) -> str:
+    """`B1600`. Save `payload` as `name` in `destination`, a folder inside
+    this person's projects folder, and answer the path. Raises `ValueError`
+    with a sentence when the folder is not inside it — `..`, an absolute path
+    elsewhere, a symlink out, a sensitive or install path, all refused by the
+    one confinement the file tools use (`_resolve_tool_path_in_workspace`) —
+    and `FileExistsError` when a file of that name is already there: a save
+    never overwrites. The name is made storable (`file_names.stored_name`), so
+    a sender's `../../x` is a file called `x`, never a path.
+
+    **The adversary (`Law 17`)** is whoever wrote the mail: the attachment's
+    name is theirs, and so may be the folder a model was steered to name."""
+    from src.file_names import stored_name
+    root = projects_root(owner, create=True)
+    try:
+        folder = _resolve_tool_path_in_workspace(root, destination or ".")
+    except ValueError as exc:
+        raise ValueError(f"“{destination}” is not a folder inside your projects folder "
+                         f"({exc}).") from None
+    if os.path.exists(folder) and not os.path.isdir(folder):
+        raise ValueError(f"“{destination}” is a file in your projects folder, not a folder.")
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, stored_name(name, "attachment"))
+    # Asked again of the final path: the name is a file inside the folder, and
+    # a folder that is a symlink out was refused above.
+    _resolve_tool_path_in_workspace(root, path)
+    try:
+        with open(path, "xb") as fh:
+            fh.write(payload)
+    except FileExistsError:
+        rel = os.path.relpath(path, root)
+        raise FileExistsError(f"{rel} is already in your projects folder; nothing was saved. "
+                              f"Save it under another name.") from None
+    return path
+
+
 def vet_workspace(raw: str) -> Optional[str]:
     """Validate a requested workspace path at bind time.
 

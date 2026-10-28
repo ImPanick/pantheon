@@ -251,6 +251,49 @@ def _persist_writeback_result(owner: str, calendar_id: str, uid: str, result: di
         db.close()
 
 
+def _writeback_account(owner: str, calendar_id: str):
+    """The CalDAV account that owns `calendar_id` for `owner`, as
+    `(url, username, password, account_id)` with the address checked — or a
+    `{"skipped"| "ok"/"error"}` answer when there is nothing to push to.
+    Database reads and a DNS lookup: called in a worker thread (`B1598`)."""
+    from src.caldav_sync import _load_caldav_accounts
+    from src.secret_storage import decrypt
+    from core.database import CalendarCal, SessionLocal
+
+    accounts = _load_caldav_accounts(owner)
+    if not accounts:
+        return {"skipped": "caldav not configured"}
+
+    # Find which account owns this calendar.
+    acc = None
+    if len(accounts) > 1:
+        db = SessionLocal()
+        try:
+            cal_row = db.query(CalendarCal).filter(CalendarCal.id == calendar_id).first()
+            cal_account_id = cal_row.account_id if cal_row else None
+        finally:
+            db.close()
+        if cal_account_id:
+            acc = next((a for a in accounts if a.get("id") == cal_account_id), None)
+    # Fall back to first account (covers single-account and legacy rows with
+    # no account_id stamped).
+    if acc is None:
+        acc = accounts[0]
+
+    url = (acc.get("url") or "").strip()
+    user = (acc.get("username") or "").strip()
+    pw = decrypt(acc.get("password") or "")
+    if not (url and user and pw):
+        return {"skipped": "caldav account credentials incomplete"}
+    from src.caldav_sync import validate_caldav_url
+    try:
+        url = validate_caldav_url(url)
+    except ValueError as e:
+        logger.warning("CalDAV write-back URL rejected: %s", e)
+        return {"ok": False, "error": str(e)[:200]}
+    return url, user, pw, acc.get("id") or ""
+
+
 async def writeback_event(owner: str, calendar_source: str, calendar_id: str,
                           ev: dict, *, delete: bool = False) -> dict:
     """Best-effort push of a local change to the remote CalDAV server.
@@ -258,55 +301,30 @@ async def writeback_event(owner: str, calendar_source: str, calendar_id: str,
     No-ops (``{"skipped": ...}``) when the calendar isn't CalDAV-backed or no
     credentials are configured. Never raises — a remote failure is logged and
     returned, the local DB remaining the source of truth.
+
+    `B1598`. Its account reads, the address check and the result's write are
+    made in worker threads, as the push itself always was: the calendar's
+    create, update, delete and sync routes are `async def`, and they ran on
+    the event loop.
     """
     if calendar_source != "caldav":
         return {"skipped": "not a caldav calendar"}
     try:
-        from src.caldav_sync import _load_caldav_accounts
-        from src.secret_storage import decrypt
-        from core.database import CalendarCal, SessionLocal
-
-        accounts = _load_caldav_accounts(owner)
-        if not accounts:
-            return {"skipped": "caldav not configured"}
-
-        # Find which account owns this calendar.
-        acc = None
-        if len(accounts) > 1:
-            db = SessionLocal()
-            try:
-                cal_row = db.query(CalendarCal).filter(CalendarCal.id == calendar_id).first()
-                cal_account_id = cal_row.account_id if cal_row else None
-            finally:
-                db.close()
-            if cal_account_id:
-                acc = next((a for a in accounts if a.get("id") == cal_account_id), None)
-        # Fall back to first account (covers single-account and legacy rows with
-        # no account_id stamped).
-        if acc is None:
-            acc = accounts[0]
-
-        url = (acc.get("url") or "").strip()
-        user = (acc.get("username") or "").strip()
-        pw = decrypt(acc.get("password") or "")
-        if not (url and user and pw):
-            return {"skipped": "caldav account credentials incomplete"}
-        from src.caldav_sync import validate_caldav_url
-        try:
-            url = validate_caldav_url(url)
-        except ValueError as e:
-            logger.warning("CalDAV write-back URL rejected: %s", e)
-            return {"ok": False, "error": str(e)[:200]}
-        acc_id = acc.get("id") or ""
+        target = await asyncio.to_thread(_writeback_account, owner, calendar_id)
+        if isinstance(target, dict):
+            return target
+        url, user, pw, acc_id = target
         result = await asyncio.to_thread(
             _writeback_blocking, calendar_id, ev, delete, url, user, pw, owner, acc_id
         )
-        _persist_writeback_result(owner, calendar_id, (ev or {}).get("uid", ""), result, delete=delete)
+        await asyncio.to_thread(_persist_writeback_result, owner, calendar_id,
+                                (ev or {}).get("uid", ""), result, delete=delete)
         if not result.get("ok"):
             logger.warning("CalDAV write-back did not apply: %s", result.get("error") or result)
         return result
     except Exception as e:
         logger.exception("CalDAV write-back raised")
         result = {"ok": False, "error": str(e)[:200]}
-        _persist_writeback_result(owner, calendar_id, (ev or {}).get("uid", ""), result, delete=delete)
+        await asyncio.to_thread(_persist_writeback_result, owner, calendar_id,
+                                (ev or {}).get("uid", ""), result, delete=delete)
         return result

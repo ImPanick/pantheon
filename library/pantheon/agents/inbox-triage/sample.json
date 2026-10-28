@@ -23,5 +23,11 @@
    "detail": "It made 2 drafts."
   }
  ],
- "answer": "Sorted 3: 2 urgent, 0 needs a reply, 1 FYI. Drafted 2 replies.\n\n## Report\n- sorted 3, drafted 2\n\n## Carry forward\n- sorted: m1, m2, m3"
+ "answer": "Sorted 3: 2 urgent, 0 needs a reply, 1 FYI. Drafted 2 replies.\n\n## Report\n- sorted 3, drafted 2\n\n## Carry forward\n- sorted: m1, m2, m3",
+ "documents": [
+  {
+   "title": "Inbox triage — 27 Oct",
+   "content": "## Urgent\n- ana@example.com — Lunch? — VIP (draft made)\n- bob@example.com — Invoice due tomorrow — due tomorrow (draft made)\n\n## Needs a reply\n- nothing\n\n## FYI\n- news@shop.example — Big sale — newsletter"
+  }
+ ]
 }

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import asyncio
 import ipaddress
 import json
 import os
@@ -1147,8 +1148,12 @@ async def execute_api_call(
         resolved_ips[:] = ips
         return ips
 
-    ok, reason = check_outbound_url(
-        url, block_private=block_private, resolver=_recording_resolver
+    # `B1598`. In a worker thread: the check resolves the host (a blocking
+    # DNS lookup) and reads the person's own networks from the database, and
+    # its callers — the integration test route, a workflow step, the agent's
+    # `api_call` — are all on the event loop.
+    ok, reason = await asyncio.to_thread(
+        check_outbound_url, url, block_private=block_private, resolver=_recording_resolver
     )
     if not ok:
         return {"error": f"URL rejected: {reason}", "exit_code": 1}
