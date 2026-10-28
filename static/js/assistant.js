@@ -124,7 +124,7 @@ function _esc(s) {
 const TOOL_GROUPS = {
   'Email': ['list_emails', 'read_email', 'send_email', 'reply_to_email', 'archive_email', 'delete_email', 'mark_email_read'],
   'Calendar & Notes': ['manage_calendar', 'manage_notes', 'manage_tasks'],
-  'Knowledge': ['web_search', 'read_file', 'manage_memory', 'manage_rag', 'search_chats'],
+  'Knowledge': ['web_search', 'read_file', 'manage_memory', 'manage_rag', 'search_chats', 'read_chat'],
   'Code': ['bash', 'python', 'write_file'],
   'Documents': ['create_document', 'edit_document', 'update_document', 'suggest_document'],
   'AI & Models': ['chat_with_model', 'ask_teacher', 'pipeline', 'list_models', 'generate_image'],

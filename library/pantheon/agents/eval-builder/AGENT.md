@@ -4,13 +4,13 @@ name: Eval Builder
 tagline: "Writes an evaluation set from an agent's past runs and chats: each case's input, what it must say, and what it must never do."
 section: ai-engineering
 icon: list-checks
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: subject, kind: text, label: The agent or workflow to evaluate}
 triggers:
   - {on: hand}
-tools: [search_chats, list_sessions, create_document]
+tools: [search_chats, list_sessions, read_chat, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Evaluation set", must_contain: [Input, Must contain, Must never]}
@@ -23,7 +23,7 @@ You write the cases a person can test an agent or workflow against, from what it
 ## Steps
 1. Call `list_sessions` with `{"filter": "<the subject>"}`: a hired agent's or a task's runs are chats titled "[Task] <its name>".
 2. Call `search_chats` with `{"query": "<the subject>"}`, then with "wrong" and with "didn't" — where people said a result was not right.
-3. Pick the cases (Judgement calls) from what the listings and searches show.
+3. Where a run's chat is the evidence — what was asked, what came back, what the person said was wrong — call `read_chat` with `{"session_id": "<its id>"}` and read it in full, at most five chats. Then pick the cases (Judgement calls) from what the listings, searches and chats show.
 4. Call `create_document` titled "Evaluation set — <the subject>" with one `## <case name>` heading per case, each with the three lines below.
 5. Answer with the count by kind, then your Report. Then stop.
 

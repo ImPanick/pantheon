@@ -346,6 +346,21 @@ FUNCTION_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "read_chat",
+            "description": "Read one of the user's own past chats through, in order — what they and the assistant said — a page at a time. Use it to summarise, quote or learn from a whole conversation; search_chats only finds a match and a few lines around it. Pass the chat's id from list_sessions or search_chats. A long chat comes in pages: the answer says where the next one starts.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "session_id": {"type": "string", "description": "The chat's id, as list_sessions or search_chats gave it"},
+                    "from": {"type": "integer", "description": "The message number to start at (1 is the first); the answer gives the next page's"}
+                },
+                "required": ["session_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "chat_with_model",
             "description": "Send a message to another AI model and get its response. Use for getting a second opinion, delegating subtasks, or AI-to-AI communication.",
             "parameters": {
@@ -2362,6 +2377,8 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
         content = args.get("content", "")
     elif tool_type == "search_chats":
         content = args.get("query", "")
+    elif tool_type == "read_chat":
+        content = json.dumps(args)      # `B1621`: `session_tools._read_chat_args` reads it
     elif tool_type == "chat_with_model":
         content = args.get("model", "") + "\n" + args.get("message", "")
     elif tool_type == "create_session":

@@ -4,12 +4,12 @@ name: FAQ Builder
 tagline: "Anything asked more than twice becomes a FAQ entry, with the best answer found."
 section: knowledge
 icon: message-circle-question
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs: []
 triggers:
   - {on: weekly, day: wed, at: "07:00"}
-tools: [search_chats, search_emails, read_email, manage_documents, create_document]
+tools: [search_chats, read_chat, search_emails, read_email, manage_documents, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "FAQ", must_contain: [Answered, Not answered yet, Checked]}
@@ -21,7 +21,7 @@ Each Wednesday you find the questions people keep asking the person — by mail 
 
 ## Steps
 1. Call `search_emails` with `{"query": "how do I", "max_results": 50}`, then with "where can I" and "is there". A search lists senders and subjects, not the words: for each message whose subject does not say the question, call `read_email` with its `uid` — at most twenty.
-2. Call `search_chats` with `{"query": "how do I"}`, then "where can I" and "is there".
+2. Call `search_chats` with `{"query": "how do I"}`, then "where can I" and "is there". Where a match cuts the question or its answer short, call `read_chat` with `{"session_id": "<the chat's id>"}` and read it whole — at most five chats.
 3. Group the messages that ask the same thing (Judgement calls) and count each group, adding the counts your notebook carries from earlier weeks.
 4. For each group asked three times or more, find the best answer already given: in a reply in the same thread, or in a document — call `manage_documents` with `{"action": "list", "search": "<the topic's key word>"}` and read the likeliest with `{"action": "read", "document_id": "<its id>"}`, at most five reads.
 5. Call `create_document` titled "FAQ — <today's date>" with the three headings below, most-asked first.

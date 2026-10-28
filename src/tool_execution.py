@@ -1547,7 +1547,7 @@ async def _execute_tool_block_impl(
         desc = f"{tool}: {first_line}" if first_line else tool
         result = await _document_tool_dispatch(tool, content, session_id, owner) \
             or {"error": f"{tool}: execution failed", "exit_code": 1}
-    elif tool in ("create_session", "list_sessions", "send_to_session", "manage_session"):
+    elif tool in ("create_session", "list_sessions", "send_to_session", "manage_session", "read_chat"):
         # Migrated to the agent_tools registry (#3629): dispatched through
         # TOOL_HANDLERS with the owner/session ctx these tools need. The impls
         # live in src/agent_tools/session_tools.py.

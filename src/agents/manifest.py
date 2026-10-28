@@ -516,10 +516,60 @@ def _check_delivers(raw: list) -> Tuple[Dict[str, Any], ...]:
     return tuple(out)
 
 
-def _check_needs(raw: dict) -> Dict[str, Any]:
+#: `B1623`. A program as a shell finds it (`ffmpeg`, `exiftool`, `pg_ctlcluster`).
+_PROGRAM_RE = re.compile(r"^[a-z0-9][a-z0-9._+-]{0,63}$")
+PROGRAMS_MAX = 12
+
+
+def _check_programs(raw: Any, inputs: Tuple[Dict[str, Any], ...]) -> List[Dict[str, Any]]:
+    """`B1623`. The programs the runbook runs where the person's tools run,
+    each `{name, install?, when?}`: `install` is the line the person runs once
+    to get it, `when` the inputs it is needed for (`{engine: postgres}` — a
+    restore of a postgres dump needs a postgres server, a sqlite one does not).
+    A bare name is `{name: <it>}`."""
+    _need(isinstance(raw, list) and bool(raw),
+          "“needs.programs” is a list of the programs the runbook runs, like [ffmpeg].")
+    _need(len(raw) <= PROGRAMS_MAX, f"“needs.programs” names more than {PROGRAMS_MAX} programs.")
+    declared = {i["key"]: i for i in inputs}
+    out: List[Dict[str, Any]] = []
+    for n, item in enumerate(raw, start=1):
+        item = {"name": item} if isinstance(item, str) else item
+        _need(isinstance(item, dict),
+              f"Program {n} in “needs.programs” is a name, or a map like {{name: ffmpeg, install: \"…\"}}.")
+        name = str(item.get("name") or "")
+        _need(bool(_PROGRAM_RE.match(name)),
+              f"Program {n}'s name “{name}” is not a program's name as a shell finds it, like ffmpeg.")
+        extra = set(item) - {"name", "install", "when"}
+        _need(not extra, f"Program “{name}” has a field nothing reads: {', '.join(sorted(extra))}.")
+        entry: Dict[str, Any] = {"name": name}
+        install = item.get("install")
+        if install not in (None, ""):
+            _need(isinstance(install, str) and len(install.strip()) <= 200,
+                  f"Program “{name}”'s install is not a line of at most 200 characters.")
+            entry["install"] = install.strip()
+        when = item.get("when")
+        if when not in (None, ""):
+            _need(isinstance(when, dict) and bool(when),
+                  f"Program “{name}”'s when is a map of an input to its value, like {{engine: postgres}}.")
+            for key, value in when.items():
+                spec = declared.get(key)
+                _need(spec is not None, f"Program “{name}” is needed when “{key}” is {value}, and the "
+                                        f"agent asks for no “{key}”.")
+                if spec["kind"] == "choice":
+                    _need(value in (spec.get("choices") or []),
+                          f"Program “{name}” is needed when “{key}” is “{value}”, which is not one of "
+                          f"its choices.")
+            entry["when"] = dict(when)
+        out.append(entry)
+    return out
+
+
+def _check_needs(raw: dict, inputs: Tuple[Dict[str, Any], ...] = ()) -> Dict[str, Any]:
     out: Dict[str, Any] = {"connectors": [], "min_context": 0, "native_tools": "preferred"}
     for k, v in raw.items():
-        if k == "connectors":
+        if k == "programs":
+            out[k] = _check_programs(v, inputs)
+        elif k == "connectors":
             _need(isinstance(v, list) and all(isinstance(x, str) and x for x in v),
                   "“needs.connectors” is not a list of names.")
             out[k] = list(v)
@@ -561,7 +611,7 @@ def lint(fm: Dict[str, Any], runbook: str, *, source: str = "shipped", path: str
     skills = tuple(str(s) for s in _list(fm, "skills"))
     _need(all(re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", s) for s in skills),
           "“skills” names skills by their lower-case names.")
-    needs = _check_needs(_map(fm, "needs"))
+    needs = _check_needs(_map(fm, "needs"), inputs)
     delivers = _check_delivers(_list(fm, "delivers"))
     effects = _check_effects(_map(fm, "effects"))
     budget = _check_budget(_map(fm, "budget"))

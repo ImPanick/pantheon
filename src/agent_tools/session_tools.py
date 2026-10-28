@@ -3,7 +3,8 @@
 
 Owns create_session, list_sessions, send_to_session and manage_session, moved
 out of src.ai_interaction as part of the tool -> registry migration (#3629), and
-their handler classes registered in TOOL_HANDLERS.
+their handler classes registered in TOOL_HANDLERS — and `read_chat` (`B1621`),
+one of the person's own chats read through.
 
 The session manager is a runtime-set singleton in src.ai_interaction, so each
 function fetches it via get_session_manager() (imported here); _resolve_model and
@@ -494,6 +495,134 @@ async def manage_session(content: str, session_id: Optional[str] = None, owner: 
 
 
 # ---------------------------------------------------------------------------
+# `B1621` · read_chat — one of the person's own chats, in full, a page at a time
+# ---------------------------------------------------------------------------
+#
+# `search_chats` hands back a match and 180 characters either side of it, and
+# `list_sessions` the titles; nothing read a chat through. So Decision Log,
+# Weekly Review, FAQ Builder, Dataset Curator and Eval Builder — whose jobs are
+# to summarise what was said — summarised snippets. `read_chat` reads one chat,
+# its messages in order, bounded: a page of at most `READ_CHAT_MAX_CHARS`, each
+# message cut at `READ_CHAT_MESSAGE_MAX_CHARS` with how much was left out
+# said, and where the next page starts.
+#
+# **Owner-scoped, and only that** (the adversary, `Law 17`, is a chat that is
+# not the caller's: another person's, asked for by id — a model guessing, or
+# an id a page planted). The chat is read only when its row's owner **is** the
+# caller: not `owner IS NULL` too, as `search_chats` reads the pre-auth rows
+# (which is why that one is an admin's), and not when the call names no owner
+# — a call that cannot say whose chats it may read reads none. A chat that is
+# someone else's is answered exactly as one that does not exist, so the answer
+# does not tell anyone it is there.
+
+#: How much of a chat one call hands the model: a long conversation in two or
+#: three calls, never a year of one in a single context.
+READ_CHAT_MAX_CHARS = 24_000
+#: A message longer than this is cut, and the cut is said.
+READ_CHAT_MESSAGE_MAX_CHARS = 6_000
+#: What a chat's reader reads: what the person and the assistant said.
+READ_CHAT_ROLES = ("user", "assistant")
+
+NOT_YOUR_CHAT = ("There is no chat with that id among yours. Call list_sessions or search_chats "
+                 "and pass the id they give.")
+NO_OWNER = ("Reading a chat needs to know whose chats it may read, and this call does not say, "
+            "so nothing was read.")
+
+
+def _read_chat_args(content) -> tuple:
+    """`(chat id, first message number)` from `{"session_id", "from"}` or the
+    fenced form (line 1 the id, line 2 where to start). A link the other chat
+    tools print (`[title](#session-<id>)`) is read as its id."""
+    raw = content if isinstance(content, dict) else None
+    text = "" if raw is not None else str(content or "").strip()
+    if raw is None and text.startswith("{"):
+        try:
+            raw = json.loads(text)
+        except ValueError:
+            raw = None
+    if isinstance(raw, dict):
+        sid = raw.get("session_id") or raw.get("chat_id") or raw.get("id") or ""
+        start = raw.get("from") or raw.get("start") or 1
+    else:
+        lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+        sid = lines[0] if lines else ""
+        start = lines[1] if len(lines) > 1 else 1
+    sid = str(sid).strip()
+    if "#session-" in sid:
+        sid = sid.split("#session-", 1)[1].split(")", 1)[0]
+    sid = sid.strip("`'\" ")
+    try:
+        start = max(1, int(start))
+    except (TypeError, ValueError):
+        start = 1
+    return sid, start
+
+
+def _read_chat_page(owner: str, target: str, start: int) -> Dict:
+    from core.database import ChatMessage as DbChatMessage, Session as DbSession, SessionLocal
+
+    db = SessionLocal()
+    try:
+        row = (db.query(DbSession)
+               .filter(DbSession.id == target, DbSession.owner == owner).first())
+        if row is None:
+            return {"error": NOT_YOUR_CHAT, "exit_code": 1}
+        query = (db.query(DbChatMessage)
+                 .filter(DbChatMessage.session_id == target, DbChatMessage.role.in_(READ_CHAT_ROLES))
+                 .order_by(DbChatMessage.timestamp.asc(), DbChatMessage.id.asc()))
+        total = query.count()
+        name = row.name or "Untitled"
+        if total == 0:
+            return {"results": f"The chat “{name}” (id: `{target}`) has no messages yet.",
+                    "session_id": target, "messages": 0}
+        if start > total:
+            return {"results": f"The chat “{name}” (id: `{target}`) has {total} messages; there is "
+                               f"no message {start}. Start from 1.",
+                    "session_id": target, "messages": total}
+        lines, used, shown = [], 0, 0
+        for n, msg in enumerate(query.offset(start - 1).all(), start=start):
+            body = msg.content or ""
+            if len(body) > READ_CHAT_MESSAGE_MAX_CHARS:
+                body = (body[:READ_CHAT_MESSAGE_MAX_CHARS]
+                        + f" … [{len(msg.content) - READ_CHAT_MESSAGE_MAX_CHARS:,} more characters of "
+                          f"this message are not shown]")
+            when = msg.timestamp.strftime("%Y-%m-%d %H:%M") if msg.timestamp else "undated"
+            entry = f"[{n}] {msg.role} ({when}):\n{body}"
+            if shown and used + len(entry) > READ_CHAT_MAX_CHARS:
+                break
+            lines.append(entry)
+            used += len(entry)
+            shown += 1
+        last = start + shown - 1
+        head = (f"The chat “{name}” (id: `{target}`) — messages {start} to {last} of {total}, "
+                f"oldest first:")
+        tail = ("That is the end of the chat." if last >= total else
+                f"Messages {last + 1} to {total} are not shown: call read_chat with "
+                f'{{"session_id": "{target}", "from": {last + 1}}} for them.')
+        return {"results": "\n\n".join([head, *lines, tail]), "session_id": target,
+                "messages": total, "shown": [start, last]}
+    finally:
+        db.close()
+
+
+async def read_chat(content, session_id: Optional[str] = None, owner: Optional[str] = None) -> Dict:
+    """`B1621`. One of the caller's own chats, read through, a page at a time."""
+    if not owner:
+        return {"error": NO_OWNER, "exit_code": 1}
+    target, start = _read_chat_args(content)
+    if not target:
+        return {"error": "Which chat? Pass its id — list_sessions and search_chats give it.",
+                "exit_code": 1}
+    if target.lower() == "current" and session_id:
+        target = session_id
+    try:
+        return await asyncio.to_thread(_read_chat_page, owner, target, start)
+    except Exception as e:  # noqa: BLE001 — a read that fails says so, in a sentence
+        logger.error("read_chat failed: %s", e)
+        return {"error": f"The chat could not be read: {e}", "exit_code": 1}
+
+
+# ---------------------------------------------------------------------------
 # Handler classes registered in TOOL_HANDLERS
 # ---------------------------------------------------------------------------
 
@@ -515,3 +644,8 @@ class SendToSessionTool:
 class ManageSessionTool:
     async def execute(self, content: str, ctx: dict) -> Dict:
         return await manage_session(content, ctx.get("session_id"), owner=ctx.get("owner"))
+
+
+class ReadChatTool:
+    async def execute(self, content: str, ctx: dict) -> Dict:
+        return await read_chat(content, ctx.get("session_id"), owner=ctx.get("owner"))

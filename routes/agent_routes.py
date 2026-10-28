@@ -72,6 +72,20 @@ def _refused(sentence: str, status: int = 400) -> JSONResponse:
     return JSONResponse({"detail": sentence}, status_code=status)
 
 
+async def _lacks_programs(manifest, owner: Optional[str], raw_inputs: Any) -> Optional[str]:
+    """`B1623`. The sentence refusing a hire whose agent runs a program the
+    place this person's tools run does not have, or `None` — also when it
+    cannot be asked, or the inputs do not check (the hire then says why in
+    its own words)."""
+    from src.agents.needs import missing_programs, missing_sentence
+    try:
+        inputs = H.check_inputs(manifest, raw_inputs)
+    except H.HireRefused:
+        return None
+    missing, where = await missing_programs(manifest, owner, inputs)
+    return missing_sentence(manifest, missing, where) if missing else None
+
+
 async def _body(request: Request) -> Dict[str, Any]:
     try:
         declared = int(request.headers.get("content-length") or 0)
@@ -363,6 +377,32 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
         except H.HireRefused as r:
             return _refused(r.sentence, r.status)
 
+        def _members():
+            """`B1623`. The members this would hire, with the values each
+            would be hired with — the ones `H.hire_team` writes."""
+            from core.database import AgentHire
+            from src.agents.teams import get_team, member_values
+            agents, _ = catalogue(user)
+            by_id = {m.id: m for m in agents}
+            team = get_team(user, team_id, by_id.keys())
+            if team is None:
+                return []
+            db = SessionLocal()
+            try:
+                already = {h.agent_id for h in db.query(AgentHire).filter(AgentHire.owner == user).all()}
+            finally:
+                db.close()
+            values = body.get("inputs") if isinstance(body.get("inputs"), dict) else {}
+            return [(by_id[mid], member_values(team, by_id, mid, values))
+                    for mid in team.members if mid in by_id and mid not in already]
+
+        # `B1623`: each member about to be hired is asked what a hire of it
+        # alone is asked, before any is written.
+        for member, values in await asyncio.to_thread(_members):
+            lacks = await _lacks_programs(member, user, values)
+            if lacks:
+                return _refused(lacks, 409)
+
         def _db_work():
             from src.agents.teams import get_team
             agents, _ = catalogue(user)
@@ -404,6 +444,9 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
         m = get_agent(user, agent_id)
         if m is None:
             return _refused(NO_SUCH_AGENT, 404)
+        lacks = await _lacks_programs(m, user, body.get("inputs"))     # `B1623`
+        if lacks:
+            return _refused(lacks, 409)
 
         def _db_work():
             db = SessionLocal()
@@ -464,6 +507,9 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
         m = get_agent(user, agent_id)
         if m is None:
             return _refused(NO_SUCH_AGENT, 404)
+        lacks = await _lacks_programs(m, user, body.get("inputs"))     # `B1623`
+        if lacks:
+            return _refused(lacks, 409)
 
         def _db_work():
             db = SessionLocal()

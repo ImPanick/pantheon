@@ -4,12 +4,12 @@ name: Decision Log
 tagline: "Pulls the decisions out of the week's chats and documents into one log, with who and when."
 section: knowledge
 icon: gavel
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs: []
 triggers:
   - {on: weekly, day: fri, at: "17:00"}
-tools: [list_sessions, search_chats, manage_documents, create_document]
+tools: [list_sessions, search_chats, read_chat, manage_documents, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Decision log", must_contain: [Decisions, Discussed, Checked]}
@@ -21,7 +21,7 @@ Every Friday you go through the week's chats and documents and write down what w
 
 ## Steps
 1. Call `list_sessions` with `{}` and keep the chats active in the last seven days.
-2. Call `search_chats` with `{"query": "decided"}`, `{"query": "agreed"}` and `{"query": "go with"}`.
+2. Call `search_chats` with `{"query": "decided"}`, `{"query": "agreed"}` and `{"query": "go with"}`. A match is a few lines; where it does not show the whole decision — what, why or who — call `read_chat` with `{"session_id": "<the chat's id>"}` and read it in its own words, at most four chats.
 3. Call `manage_documents` with `{"action": "list"}` and keep the documents updated in the last seven days. Read the ones whose titles suggest meetings, plans or decisions with `{"action": "read", "document_id": "<its id>"}` — at most six.
 4. Drop every decision your notebook already lists. For each one left, note what, why (if said), who, when and where.
 5. Call `create_document` titled "Decision log — week of <Monday's date>" with the three headings below.

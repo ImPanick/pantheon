@@ -4,7 +4,7 @@ name: Video Clipper
 tagline: Cuts short clips from a long video at the moments you name.
 section: creative
 icon: scissors
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: video, kind: text, label: "The video file, inside your projects folder"}
@@ -12,7 +12,7 @@ inputs:
 triggers:
   - {on: hand}
 tools: [bash]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [], min_context: 16000, native_tools: preferred, programs: [{name: ffmpeg, install: "sudo apt-get install -y ffmpeg"}, {name: ffprobe, install: "sudo apt-get install -y ffmpeg"}]}
 delivers:
   - {kind: answer, must_contain: [Video, Clips, Could not cut]}
 effects: {execute_code: allow}

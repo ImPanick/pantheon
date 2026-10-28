@@ -4,14 +4,14 @@ name: Photo Organiser
 tagline: "Sorts new photos into albums by date and place, moving them only after your yes and never deleting anything."
 section: creative
 icon: images
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The photo folder, inside your projects folder"}
 triggers:
   - {on: weekly, day: sun, at: "03:00"}
 tools: [bash]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [], min_context: 16000, native_tools: preferred, programs: [{name: exiftool, install: "sudo apt-get install -y libimage-exiftool-perl"}]}
 delivers:
   - {kind: answer, must_contain: [Moved, Left where they were, Identical]}
 effects: {execute_code: allow, destructive: never}

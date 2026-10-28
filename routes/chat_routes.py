@@ -2454,7 +2454,7 @@ def setup_chat_routes(
                 "bash", "host_shell", "python", "computer", "shell_with_login",
                 # `P16-20`: a network check is the same drift one tool wider.
                 "network",
-                "search_chats", "manage_skills", "manage_memory",
+                "search_chats", "read_chat", "manage_skills", "manage_memory",
                 "read_file", "write_file", "edit_file",
                 "create_document", "edit_document", "update_document",
                 "send_email", "reply_to_email",
@@ -2479,6 +2479,7 @@ def setup_chat_routes(
             _withholds.deny({
                 "manage_memory",      # persistent memory store
                 "search_chats",       # past chat history
+                "read_chat",          # a past chat, read through (`B1621`)
                 "manage_skills",      # skill presets tied to user
                 "create_session",
                 "list_sessions",
@@ -2603,7 +2604,8 @@ def setup_chat_routes(
             # in a mode whose own comment says to disable everything.
             if chat_mode == 'chat':
                 _withholds.deny({"bash", "python", "read_file", "write_file", "web_search",
-                                 "web_fetch", "search_chats", "manage_tasks"}, WITHHELD_BY_POLICY)
+                                 "web_fetch", "search_chats", "read_chat", "manage_tasks"},
+                                WITHHELD_BY_POLICY)
 
         # Plan mode: investigate read-only, propose a plan, don't mutate. Block
         # every tool not on the read-only allowlist. (stream_agent_loop enforces

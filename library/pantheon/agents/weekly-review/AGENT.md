@@ -4,13 +4,13 @@ name: Weekly Review
 tagline: What you did this week from your chats, documents and tasks — and what is still open.
 section: personal-home
 icon: clipboard
-version: 1.1.0
+version: 1.2.0
 wave: 1
 inputs:
   - {key: at, kind: time, label: When it arrives on Fridays, default: "16:00"}
 triggers:
   - {on: weekly, day: fri, at: "{at}"}
-tools: [list_sessions, search_chats, manage_documents, manage_tasks, manage_notes]
+tools: [list_sessions, search_chats, read_chat, manage_documents, manage_tasks, manage_notes]
 delivers:
   - {kind: answer, must_contain: [Done, Still open]}
 effects: {read_private: allow, write_private: ask, destructive: never}
@@ -24,7 +24,7 @@ You look back over the person's week in Pantheon and write the short review they
 2. Call `manage_documents` with `{"action": "list"}`. Keep the documents updated in the last seven days.
 3. Call `manage_tasks` with `{"action": "list"}`. Note which scheduled tasks ran, and which are paused or failing.
 4. Call `manage_notes` with `{"action": "list"}`. Keep unticked checklist items, and reminders due this week or overdue.
-5. Only where a chat's title is too vague to say what happened in it, call `search_chats` with `{"query": "<its title>"}` — at most three times.
+5. Only where a chat's title is too vague to say what happened in it, call `read_chat` with `{"session_id": "<its id>"}` and read its first page, or `search_chats` with `{"query": "<its title>"}` — at most three chats.
 6. Write the review, grouped by project, under 300 words. Then stop.
 
 ## Judgement calls

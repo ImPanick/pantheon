@@ -2057,6 +2057,7 @@ const TOOL_META = {
   write_file:        { name: 'Write File',       desc: 'Write/create files',              cat: 'Code',       ctx: '~150' },
   web_search:        { name: 'Web Search',       desc: 'Search the web via SearXNG',      cat: 'Search',     ctx: '~300' },
   search_chats:      { name: 'Search Chats',     desc: 'Search chat history',           cat: 'Search',     ctx: '~150' },
+  read_chat:         { name: 'Read Chat',        desc: 'Read one of your chats through',  cat: 'Chats',      ctx: '~150' },  // `B1621`
   create_document:   { name: 'Create Document',  desc: 'Create new documents',            cat: 'Documents',  ctx: '~200' },
   update_document:   { name: 'Update Document',  desc: 'Modify existing documents',       cat: 'Documents',  ctx: '~200' },
   edit_document:     { name: 'Edit Document',    desc: 'Find & replace in documents',     cat: 'Documents',  ctx: '~200' },

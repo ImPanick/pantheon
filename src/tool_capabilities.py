@@ -137,6 +137,9 @@ _register(
         "search_chats",
         "search_emails",
         "list_sessions",
+        # `B1621`. One of the person's own chats, read through: their words
+        # and the assistant's, which may quote a page or a mail, so data.
+        "read_chat",
         "tail_serve_output",
         "vault_get",
         "vault_search",

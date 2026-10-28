@@ -131,6 +131,7 @@ _COMMON_TOOL_NAMES = {
     "reply_to_email",
     "resolve_contact",
     "search_chats",
+    "read_chat",          # `B1621`
     "search_hf_models",
     "send_email",
     "send_to_session",
