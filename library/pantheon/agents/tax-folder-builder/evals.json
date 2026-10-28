@@ -1,0 +1,1011 @@
+{
+ "cases": [
+  {
+   "id": "a-year-gathered-into-its-folder",
+   "about": "A P60, an interest statement and a donation receipt for 2025 are saved into their kinds' folders; last year's P60 and a pension newsletter are not filed; the pension statement is listed as missing; the checklist says it is not tax advice.",
+   "inputs": {
+    "year": 2025,
+    "folder": "tax-2025"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "t1",
+      "from": "payroll@acme.example",
+      "subject": "Your P60 for 2025",
+      "date": "2026-05-20",
+      "body": "Your P60 for the tax year 2025 is attached.",
+      "attachments": [
+       {
+        "filename": "p60-2025.pdf",
+        "content": "P60 2025 Acme Ltd: pay 41,200.00, tax 6,140.00"
+       }
+      ]
+     },
+     {
+      "id": "t0",
+      "from": "payroll@acme.example",
+      "subject": "Your P60 for 2024",
+      "date": "2025-05-21",
+      "body": "Your P60 for the tax year 2024 is attached.",
+      "attachments": [
+       {
+        "filename": "p60-2024.pdf",
+        "content": "P60 2024 Acme Ltd"
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "from": "statements@northbank.example",
+      "subject": "Annual interest statement 2025",
+      "date": "2026-01-08",
+      "body": "Interest paid in 2025: 212.40. Statement attached.",
+      "attachments": [
+       {
+        "filename": "interest-2025.pdf",
+        "content": "Northbank interest 2025: 212.40"
+       }
+      ]
+     },
+     {
+      "id": "t3",
+      "from": "thanks@shelter.example",
+      "subject": "Your donation receipt",
+      "date": "2025-12-02",
+      "body": "Thank you for your donation of 50.00 in 2025.",
+      "attachments": [
+       {
+        "filename": "donation-2025.pdf",
+        "content": "Shelter donation receipt 2025: 50.00"
+       }
+      ]
+     },
+     {
+      "id": "t4",
+      "from": "news@steadypensions.example",
+      "subject": "Your pension newsletter",
+      "date": "2025-11-10",
+      "body": "Pension news for members. No statement this time."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "tax-2025"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "P60",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "W-2",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "1099",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "payslip",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "interest",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "dividend",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "pension",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "donation",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "insurance",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "t1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "t2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "t3"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "t4"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "download_attachment",
+       {
+        "uid": "t1",
+        "index": 0,
+        "destination": "tax-2025/income",
+        "filename": "p60-2025.pdf"
+       }
+      ],
+      [
+       "download_attachment",
+       {
+        "uid": "t2",
+        "index": 0,
+        "destination": "tax-2025/interest",
+        "filename": "interest-2025.pdf"
+       }
+      ],
+      [
+       "download_attachment",
+       {
+        "uid": "t3",
+        "index": 0,
+        "destination": "tax-2025/donations",
+        "filename": "donation-2025.pdf"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Tax checklist — 2025",
+        "content": "Tax checklist — 2025\nThis is organisation, not tax advice.\n\n## Found\n- income — Acme Ltd — P60 for 2025 — tax-2025/income/p60-2025.pdf\n- interest — Northbank — interest statement for 2025 — tax-2025/interest/interest-2025.pdf\n- donations — Shelter — donation receipt for 2025 — tax-2025/donations/donation-2025.pdf\n\n## Missing\n- a pension statement (mail from Steady Pensions shows a pension, but only a newsletter came)\n\n## Check\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 statements saved into tax-2025; 1 usually needed is missing. This is organisation, not tax advice.\n\n## Report\n- searched mail 9 times, read 4 messages, saved 3 attachments; wrote \"Tax checklist — 2025\""
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "tax-2025/income/p60-2025.pdf",
+      "contains": [
+       "41,200.00"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "tax-2025/donations/donation-2025.pdf",
+      "contains": [
+       "50.00"
+      ]
+     }
+    },
+    {
+     "document": {
+      "title": "Tax checklist — 2025",
+      "contains": [
+       "not tax advice",
+       "pension statement"
+      ],
+      "lacks": [
+       "p60-2024",
+       "you owe"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-found",
+   "about": "No statements in the mail: nothing is saved, Found says so and Missing lists what is usually needed.",
+   "inputs": {
+    "year": 2025,
+    "folder": "tax-2025"
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "tax-2025"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "P60",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "W-2",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "1099",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "payslip",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "interest",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "dividend",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "pension",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "donation",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "insurance",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Tax checklist — 2025",
+        "content": "Tax checklist — 2025\nThis is organisation, not tax advice.\n\n## Found\n- nothing in the mail\n\n## Missing\n- income statements (P60, W-2 or 1099)\n- a bank interest statement\n- pension statements, donation receipts and insurance, if you have them\n\n## Check\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 statements saved; nothing found in the mail. This is organisation, not tax advice.\n\n## Report\n- searched mail 9 times; found nothing; wrote \"Tax checklist — 2025\""
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "download_attachment"
+    },
+    {
+     "document": {
+      "title": "Tax checklist",
+      "contains": [
+       "nothing in the mail",
+       "a bank interest statement"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "two-statements-disagree",
+   "about": "Two P60s from Acme for 2025 give different totals: both are saved, the second under a dated name, and Check asks which is right.",
+   "inputs": {
+    "year": 2025,
+    "folder": "tax-2025"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "t1",
+      "from": "payroll@acme.example",
+      "subject": "Your P60 for 2025",
+      "date": "2026-05-20",
+      "body": "Your P60 for the tax year 2025 is attached.",
+      "attachments": [
+       {
+        "filename": "p60-2025.pdf",
+        "content": "P60 2025 Acme Ltd: pay 41,200.00, tax 6,140.00"
+       }
+      ]
+     },
+     {
+      "id": "t5",
+      "from": "payroll@acme.example",
+      "subject": "Corrected P60 for 2025",
+      "date": "2026-06-02",
+      "body": "A corrected P60 is attached.",
+      "attachments": [
+       {
+        "filename": "p60-2025.pdf",
+        "content": "P60 2025 Acme Ltd (corrected): pay 41,850.00"
+       }
+      ]
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "tax-2025"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "P60",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "W-2",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "1099",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "payslip",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "interest",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "dividend",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "pension",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "donation",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "insurance",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "t1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "t5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "download_attachment",
+       {
+        "uid": "t1",
+        "index": 0,
+        "destination": "tax-2025/income",
+        "filename": "p60-2025.pdf"
+       }
+      ],
+      [
+       "download_attachment",
+       {
+        "uid": "t5",
+        "index": 0,
+        "destination": "tax-2025/income",
+        "filename": "2026-06-02-p60-2025.pdf"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Tax checklist — 2025",
+        "content": "Tax checklist — 2025\nThis is organisation, not tax advice.\n\n## Found\n- income — Acme Ltd — P60 for 2025 — tax-2025/income/p60-2025.pdf\n- income — Acme Ltd — corrected P60 for 2025 — tax-2025/income/2026-06-02-p60-2025.pdf\n\n## Missing\n- a bank interest statement\n\n## Check\n- two P60s from Acme Ltd disagree: pay 41,200.00 and pay 41,850.00 — which is right?"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 statements saved; 1 disagreement to check. This is organisation, not tax advice.\n\n## Report\n- read 2 messages, saved 2 attachments; wrote \"Tax checklist — 2025\""
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "tax-2025/income/2026-06-02-p60-2025.pdf",
+      "contains": [
+       "41,850.00"
+      ]
+     }
+    },
+    {
+     "document": {
+      "title": "Tax checklist",
+      "contains": [
+       "disagree",
+       "which is right?"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-copy-already-there-is-never-overwritten",
+   "about": "The P60 is already in the folder: the tool refuses to save over it, the file is as it was, and Check says so.",
+   "inputs": {
+    "year": 2025,
+    "folder": "tax-2025"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "t1",
+      "from": "payroll@acme.example",
+      "subject": "Your P60 for 2025",
+      "date": "2026-05-20",
+      "body": "Your P60 for the tax year 2025 is attached.",
+      "attachments": [
+       {
+        "filename": "p60-2025.pdf",
+        "content": "P60 2025 Acme Ltd: pay 41,200.00, tax 6,140.00"
+       }
+      ]
+     }
+    ],
+    "files": {
+     "tax-2025/income/p60-2025.pdf": "P60 2025 — kept from last week"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "tax-2025"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "tax-2025/income"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "P60",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "W-2",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "1099",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "payslip",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "interest",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "dividend",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "pension",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "donation",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "insurance",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "t1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "download_attachment",
+       {
+        "uid": "t1",
+        "index": 0,
+        "destination": "tax-2025/income",
+        "filename": "p60-2025.pdf"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Tax checklist — 2025",
+        "content": "Tax checklist — 2025\nThis is organisation, not tax advice.\n\n## Found\n- income — Acme Ltd — P60 for 2025 — tax-2025/income/p60-2025.pdf (already there)\n\n## Missing\n- a bank interest statement\n\n## Check\n- could not save p60-2025.pdf: it is already in your projects folder; the copy there was kept"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 new statements saved; 1 already there. This is organisation, not tax advice.\n\n## Report\n- read 1 message; the save was refused because the file is already there"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "tax-2025/income/p60-2025.pdf",
+      "contains": [
+       "kept from last week"
+      ],
+      "lacks": [
+       "41,200.00"
+      ]
+     }
+    },
+    {
+     "document": {
+      "title": "Tax checklist",
+      "contains": [
+       "already in your projects folder"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-download-that-fails-is-listed",
+   "about": "A statement says it is attached and is not: the download fails, Check says why, and the checklist still goes out.",
+   "inputs": {
+    "year": 2025,
+    "folder": "tax-2025"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "t6",
+      "from": "statements@northbank.example",
+      "subject": "Annual interest statement 2025",
+      "date": "2026-01-08",
+      "body": "Your statement is attached."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "tax-2025"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "P60",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "W-2",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "1099",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "payslip",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "interest",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "dividend",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "pension",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "donation",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "insurance",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "t6"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "download_attachment",
+       {
+        "uid": "t6",
+        "index": 0,
+        "destination": "tax-2025/interest",
+        "filename": "interest-2025.pdf"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Tax checklist — 2025",
+        "content": "Tax checklist — 2025\nThis is organisation, not tax advice.\n\n## Found\n- nothing saved\n\n## Missing\n- income statements (P60, W-2 or 1099)\n\n## Check\n- could not save the Northbank interest statement: Attachment index 0 not found — ask Northbank for it"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 statements saved; 1 could not be. This is organisation, not tax advice.\n\n## Report\n- read 1 message; its attachment was not there"
+    }
+   ],
+   "checks": [
+    {
+     "called": "download_attachment"
+    },
+    {
+     "document": {
+      "title": "Tax checklist",
+      "contains": [
+       "Attachment index 0 not found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-checklist-without-its-headings-fails",
+   "about": "The harness's own check: a checklist without its line and its headings does not deliver, even after its repair pass.",
+   "inputs": {
+    "year": 2025,
+    "folder": "tax-2025"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "t1",
+      "from": "payroll@acme.example",
+      "subject": "Your P60 for 2025",
+      "date": "2026-05-20",
+      "body": "Your P60 for the tax year 2025 is attached.",
+      "attachments": [
+       {
+        "filename": "p60-2025.pdf",
+        "content": "P60 2025 Acme Ltd: pay 41,200.00, tax 6,140.00"
+       }
+      ]
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "tax-2025"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "P60",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "W-2",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "1099",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "payslip",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "interest",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "dividend",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "pension",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "donation",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "insurance",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Tax checklist — 2025",
+        "content": "P60 found."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

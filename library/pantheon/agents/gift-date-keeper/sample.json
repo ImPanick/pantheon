@@ -4,10 +4,10 @@
  "summary": "- searched notes and memory; 1 date in the window; set 1 reminder",
  "read": [
   "manage_notes",
+  "manage_memory",
   "resolve_contact"
  ],
  "wrote": [
-  "manage_memory",
   "manage_notes"
  ],
  "refused": [],

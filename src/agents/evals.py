@@ -107,7 +107,7 @@ OUTSIDE_EFFECTS = frozenset({"network_egress", "brokered_network_read", "externa
 
 CHECK_KINDS = ("answer_contains", "answer_lacks", "document", "no_document", "called",
                "not_called", "drafts_at_most", "draft_to", "no_draft_to", "status",
-               "file", "notebook_contains")
+               "file", "notebook_contains", "memory")
 WORLD_KEYS = ("emails", "web", "search", "shell", "documents", "notes", "calendar", "files", "accounts",
               "research", "memories", "chats", "screens", "models")
 #: `B1607`. Where a world's `models` are listed — an endpoint no request
@@ -745,6 +745,12 @@ def written_documents(db, owner: str, seeded: Dict[str, str]) -> List[Dict[str, 
             if d.id not in seeded or (d.current_content or "") != seeded[d.id]]
 
 
+def _said(detail: str) -> str:
+    """A check's detail as a sentence. `str.capitalize` lowercased the words
+    it quoted — "It has no postgres" of a check for "Postgres"."""
+    return detail[:1].upper() + detail[1:] + "."
+
+
 def _check(kind: str, want: Any, *, db, owner, answer, status, world: World, notebook: str,
            project_root: str) -> Dict[str, Any]:
     from core.database import Document
@@ -775,7 +781,7 @@ def _check(kind: str, want: Any, *, db, owner, answer, status, world: World, not
         bad = [w for w in want.get("lacks", []) if w.lower() in text.lower()]
         ok = not miss and not bad
         detail = "; ".join(filter(None, [miss and f"it has no {', '.join(miss)}", bad and f"it says {', '.join(bad)}"]))
-        return {"check": f"the document “{title}”", "ok": ok, "detail": (detail.capitalize() + ".") if detail else "It is right."}
+        return {"check": f"the document “{title}”", "ok": ok, "detail": _said(detail) if detail else "It is right."}
     if kind == "called":
         return {"check": f"it called {want}", "ok": want in called,
                 "detail": "It did." if want in called else f"It called only: {', '.join(called) or 'nothing'}."}
@@ -804,7 +810,21 @@ def _check(kind: str, want: Any, *, db, owner, answer, status, world: World, not
         detail = "; ".join(filter(None, [miss and f"it has no {', '.join(miss)}", bad and f"it says {', '.join(bad)}"]))
         return {"check": f"the file {want['path']}", "ok": exists and not miss and not bad,
                 "detail": "It is right." if exists and not detail else
-                ("It is not there." if not exists else detail.capitalize() + ".")}
+                ("It is not there." if not exists else _said(detail))}
+    if kind == "memory":
+        # `P24-27`. The world's memory as the run left it: what it must still
+        # hold, and what it must not — a delete or an edit the gate refused
+        # reads differently from one that ran.
+        import src.ai_interaction as ai
+        texts = [str(m.get("text") or "") for m in ai._memory_manager.load(owner=owner)] \
+            if ai._memory_manager else []
+        hay = "\n".join(texts).lower()
+        miss = [w for w in want.get("contains", []) if w.lower() not in hay]
+        bad = [w for w in want.get("lacks", []) if w.lower() in hay]
+        detail = "; ".join(filter(None, [miss and f"it has no {', '.join(miss)}",
+                                         bad and f"it holds {', '.join(bad)}"]))
+        return {"check": "the memory", "ok": not miss and not bad,
+                "detail": _said(detail) if detail else f"It holds {len(texts)} memories, as it should."}
     if kind == "notebook_contains":
         return {"check": f"its notebook keeps {want}", "ok": want.lower() in (notebook or "").lower(),
                 "detail": "It does." if want.lower() in (notebook or "").lower() else "It does not."}

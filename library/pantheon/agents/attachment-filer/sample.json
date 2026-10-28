@@ -1,0 +1,22 @@
+{
+ "case": "two-attachments-filed-by-their-rules",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 3 new messages; saved 2 attachments with your yes; left 1",
+ "read": [
+  "list_emails",
+  "read_email",
+  "ls"
+ ],
+ "wrote": [
+  "download_attachment"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Filed, Not filed."
+  }
+ ],
+ "answer": "**Filed**\n- invoices/invoice-42.pdf — billing@hostly.example — rule \"hostly -> invoices\"\n- school/term-dates.pdf — office@school.example — rule \"school -> school\"\n\n**Not filed**\n- dan@example.com — holiday.jpg — no rule matched\n\n## Report\n- read 3 new messages; saved 2 attachments with your yes; left 1\n\n## Carry forward\n- handled: m1, m2, m3"
+}

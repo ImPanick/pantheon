@@ -155,3 +155,25 @@ def test_a_memory_may_name_its_id(monkeypatch):
     asyncio.run(E.run_agent(m, cases=[case]))
     listed = _out(next(out for t, out in seen if t == "manage_memory"))
     assert "`ab12cd34`" in listed, listed
+
+
+def test_a_case_can_check_what_the_memory_holds_after_the_run():
+    """`P24-27`. Memory Auditor's *never* is "never edit or delete a memory":
+    a case could check a document, a file or the notebook after the run, and
+    not the memory — a delete the gate refused and one that ran read the
+    same. A `memory` check reads the world's memory as the run left it."""
+    m = get_agent(None, "gift-date-keeper")
+    case = {
+        "id": "a-memory-is-added",
+        "world": {"memories": [{"id": "ab12cd34", "text": "Ana's birthday is 12 November"}]},
+        "script": [{"call": [["manage_memory", {"action": "add", "text": "Ben's birthday is 3 May"}]]},
+                   {"say": "**Coming up**\n- nothing\n\n**Reminders set**\n- none\n\n## Report\n- 1\n\n"
+                           "## Carry forward\n- nothing"}],
+        "checks": [{"memory": {"contains": ["Ana's birthday", "Ben's birthday"], "lacks": ["Carl"]}},
+                   {"memory": {"lacks": ["Ben's birthday"]}}],
+    }
+    assert E.lint_evals({"cases": [case]}, m)
+    (r,) = asyncio.run(E.run_agent(m, cases=[case]))
+    held, gone = [c for c in r.checks if c["check"].startswith("the memory")]
+    assert held["ok"], held
+    assert not gone["ok"] and "Ben's birthday" in gone["detail"], gone

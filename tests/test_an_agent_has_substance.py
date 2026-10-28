@@ -105,6 +105,9 @@ AT_THE_BAR = frozenset({
     "applicant-screener", "compliance-checker", "contract-reviewer", "job-post-writer",
     "notice-date-keeper", "onboarding-buddy", "policy-answerer",
     "competitor-prices", "listing-writer",
+    # Third slice (2026-10-28, `wave-ag`). The three the world now answers:
+    # Memory Auditor (`B1602`), Attachment Filer and Tax Folder Builder (`B1600`).
+    "memory-auditor", "attachment-filer", "tax-folder-builder",
 })
 
 SECTIONS = ("Steps", "Judgement calls", "Edge cases", "Deliverable", "Example")
@@ -143,7 +146,8 @@ def _negative(check: dict) -> bool:
     """A check of what must never happen: a never-kind, or a document or file
     that must lack something."""
     kind, want = next(iter(check.items()))
-    return kind in NEGATIVE_CHECKS or (kind in ("document", "file") and isinstance(want, dict) and bool(want.get("lacks")))
+    return kind in NEGATIVE_CHECKS or (kind in ("document", "file", "memory") and isinstance(want, dict)
+                                       and bool(want.get("lacks")))
 
 
 def _named(body: str):

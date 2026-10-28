@@ -344,9 +344,13 @@ def _effect_bucket(tool: str, detail: str = "") -> str:
     """`read` or `wrote`, by what this call did — `manage_calendar` listing
     events reads, creating one writes — and by the tool's whole reach when the
     call's arguments are not on the step (`capabilities_for_action`)."""
-    from src.tool_capabilities import capabilities_for_action, capabilities_for_tool
+    from src.tool_capabilities import _LINE_ACTION_TOOLS, capabilities_for_action, capabilities_for_tool
     caps = capabilities_for_tool(tool)
-    if isinstance(detail, str) and detail.lstrip().startswith("{"):
+    # `P24-27`. A tool whose action is the first line (`search\nAna` — memory,
+    # sessions, network) reaches the step log in that form, not as JSON: read
+    # as the gate reads it, a memory search is a read, not a write.
+    if isinstance(detail, str) and (detail.lstrip().startswith("{")
+                                    or (tool in _LINE_ACTION_TOOLS and detail.strip())):
         try:
             caps = capabilities_for_action(tool, detail)
         except Exception:

@@ -1,0 +1,18 @@
+{
+ "case": "four-kinds-are-flagged",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 7 memories and searched \"tea\" and \"Leeds\"; flagged 6; changed nothing",
+ "read": [
+  "manage_memory"
+ ],
+ "wrote": [],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Conflicts, Out of date, Duplicates, Unsure."
+  }
+ ],
+ "answer": "**Conflicts**\n- `a1b2c3d4` \"Lives in Leeds\" vs `e5f6a7b8` \"Moved to Bristol in 2025\" — two home towns\n\n**Out of date**\n- `c9d0e1f2` \"Dentist appointment on 3 March 2026\" — 3 March 2026 has passed\n\n**Duplicates**\n- `11aa22bb` \"Prefers tea\" and `33cc44dd` \"Drinks tea, never coffee\" — keep `33cc44dd`\n\n**Unsure**\n- `55ee66ff` \"Probably vegetarian\" — \"probably\"\n\n## Report\n- read 7 memories and searched \"tea\" and \"Leeds\"; flagged 6; changed nothing\n\n## Carry forward\n- Oct 2026: conflict a1b2c3d4/e5f6a7b8; out of date c9d0e1f2; duplicate 11aa22bb/33cc44dd; unsure 55ee66ff"
+}

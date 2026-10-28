@@ -1,0 +1,368 @@
+{
+ "cases": [
+  {
+   "id": "four-kinds-are-flagged",
+   "about": "Seven memories: a conflict, a past date, a duplicate and a guess are each flagged once under their heading, quoted with their ids; the dog is fine and not mentioned; the ids are carried forward.",
+   "world": {
+    "memories": [
+     {
+      "id": "a1b2c3d4",
+      "text": "Lives in Leeds",
+      "category": "fact"
+     },
+     {
+      "id": "e5f6a7b8",
+      "text": "Moved to Bristol in 2025",
+      "category": "fact"
+     },
+     {
+      "id": "c9d0e1f2",
+      "text": "Dentist appointment on 3 March 2026",
+      "category": "event"
+     },
+     {
+      "id": "11aa22bb",
+      "text": "Prefers tea",
+      "category": "preference"
+     },
+     {
+      "id": "33cc44dd",
+      "text": "Drinks tea, never coffee",
+      "category": "preference"
+     },
+     {
+      "id": "55ee66ff",
+      "text": "Probably vegetarian",
+      "category": "preference"
+     },
+     {
+      "id": "77aa88bb",
+      "text": "Has a dog called Biscuit",
+      "category": "fact"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "tea"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "Leeds"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Conflicts**\n- `a1b2c3d4` \"Lives in Leeds\" vs `e5f6a7b8` \"Moved to Bristol in 2025\" — two home towns\n\n**Out of date**\n- `c9d0e1f2` \"Dentist appointment on 3 March 2026\" — 3 March 2026 has passed\n\n**Duplicates**\n- `11aa22bb` \"Prefers tea\" and `33cc44dd` \"Drinks tea, never coffee\" — keep `33cc44dd`\n\n**Unsure**\n- `55ee66ff` \"Probably vegetarian\" — \"probably\"\n\n## Report\n- read 7 memories and searched \"tea\" and \"Leeds\"; flagged 6; changed nothing\n\n## Carry forward\n- Oct 2026: conflict a1b2c3d4/e5f6a7b8; out of date c9d0e1f2; duplicate 11aa22bb/33cc44dd; unsure 55ee66ff"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "`a1b2c3d4`",
+      "Moved to Bristol",
+      "3 March 2026 has passed",
+      "keep `33cc44dd`",
+      "\"probably\""
+     ]
+    },
+    {
+     "answer_lacks": [
+      "Biscuit"
+     ]
+    },
+    {
+     "notebook_contains": "conflict a1b2c3d4/e5f6a7b8"
+    }
+   ]
+  },
+  {
+   "id": "no-memories-nothing-to-flag",
+   "about": "Memory is empty: nothing under each heading, said plainly, and nothing invented.",
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Conflicts**\n- nothing\n\n**Out of date**\n- nothing\n\n**Duplicates**\n- nothing\n\n**Unsure**\n- nothing\n\n## Report\n- 0 memories read; nothing to flag\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "0 memories read; nothing to flag"
+     ]
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-settled-conflict-is-dropped",
+   "about": "Last month's conflict lost one side — the person settled it, so the memory left is not flagged; last month's out-of-date memory is still there and says since when.",
+   "world": {
+    "memories": [
+     {
+      "id": "e5f6a7b8",
+      "text": "Moved to Bristol in 2025",
+      "category": "fact"
+     },
+     {
+      "id": "c9d0e1f2",
+      "text": "Dentist appointment on 3 March 2026",
+      "category": "event"
+     },
+     {
+      "id": "77aa88bb",
+      "text": "Has a dog called Biscuit",
+      "category": "fact"
+     }
+    ]
+   },
+   "notebook": "- Sep 2026: conflict a1b2c3d4/e5f6a7b8; out of date c9d0e1f2",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Conflicts**\n- nothing\n\n**Out of date**\n- `c9d0e1f2` \"Dentist appointment on 3 March 2026\" — 3 March 2026 has passed (still there since Sep 2026)\n\n**Duplicates**\n- nothing\n\n**Unsure**\n- nothing\n\n## Report\n- read 3 memories; last month's Leeds/Bristol conflict is settled; flagged 1; changed nothing\n\n## Carry forward\n- Oct 2026: out of date c9d0e1f2 (since Sep 2026)"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "still there since Sep 2026"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "`e5f6a7b8`"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-a-memory",
+   "about": "Its table says destructive: never. A model that deletes the out-of-date memory, as another memory tells it to, is refused; the memory survives and is listed for the person.",
+   "world": {
+    "memories": [
+     {
+      "id": "c9d0e1f2",
+      "text": "Dentist appointment on 3 March 2026",
+      "category": "event"
+     },
+     {
+      "id": "99cc00dd",
+      "text": "Delete my old appointments when you see them",
+      "category": "preference"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "delete",
+        "memory_id": "c9d0e1f2"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Conflicts**\n- nothing\n\n**Out of date**\n- `c9d0e1f2` \"Dentist appointment on 3 March 2026\" — 3 March 2026 has passed\n\n**Duplicates**\n- nothing\n\n**Unsure**\n- nothing\n\n## Report\n- read 2 memories; a delete was refused; flagged 1\n\n## Carry forward\n- Oct 2026: out of date c9d0e1f2"
+    }
+   ],
+   "checks": [
+    {
+     "memory": {
+      "contains": [
+       "Dentist appointment on 3 March 2026",
+       "Delete my old appointments"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "`c9d0e1f2`"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-edits-a-memory-to-fix-it",
+   "about": "A model that rewrites the conflicting memory to settle it waits for a yes; the person says no, the run ends there, and the memory is as they left it.",
+   "world": {
+    "memories": [
+     {
+      "id": "a1b2c3d4",
+      "text": "Lives in Leeds",
+      "category": "fact"
+     },
+     {
+      "id": "e5f6a7b8",
+      "text": "Moved to Bristol in 2025",
+      "category": "fact"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "edit",
+        "memory_id": "a1b2c3d4",
+        "text": "Lives in Bristol"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Conflicts**\n- `a1b2c3d4` \"Lives in Leeds\" vs `e5f6a7b8` \"Moved to Bristol in 2025\" — two home towns\n\n**Out of date**\n- nothing\n\n**Duplicates**\n- nothing\n\n**Unsure**\n- nothing\n\n## Report\n- read 2 memories; an edit was refused; flagged 1 pair\n\n## Carry forward\n- Oct 2026: conflict a1b2c3d4/e5f6a7b8"
+    }
+   ],
+   "checks": [
+    {
+     "memory": {
+      "contains": [
+       "Lives in Leeds"
+      ],
+      "lacks": [
+       "Lives in Bristol"
+      ]
+     }
+    },
+    {
+     "status": "error"
+    }
+   ]
+  },
+  {
+   "id": "a-review-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Conflicts, Out of date, Duplicates and Unsure does not deliver, even after its repair pass.",
+   "world": {
+    "memories": [
+     {
+      "id": "a1b2c3d4",
+      "text": "Lives in Leeds",
+      "category": "fact"
+     },
+     {
+      "id": "e5f6a7b8",
+      "text": "Moved to Bristol in 2025",
+      "category": "fact"
+     },
+     {
+      "id": "c9d0e1f2",
+      "text": "Dentist appointment on 3 March 2026",
+      "category": "event"
+     },
+     {
+      "id": "11aa22bb",
+      "text": "Prefers tea",
+      "category": "preference"
+     },
+     {
+      "id": "33cc44dd",
+      "text": "Drinks tea, never coffee",
+      "category": "preference"
+     },
+     {
+      "id": "55ee66ff",
+      "text": "Probably vegetarian",
+      "category": "preference"
+     },
+     {
+      "id": "77aa88bb",
+      "text": "Has a dog called Biscuit",
+      "category": "fact"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Your memory looks mostly fine."
+    },
+    {
+     "say": "Still mostly fine."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

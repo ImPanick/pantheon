@@ -3,10 +3,10 @@
  "from": "its evaluation, with a scripted model",
  "summary": "- planned 7 nights for 2 people from the pantry note and memory",
  "read": [
+  "manage_memory",
   "manage_notes"
  ],
  "wrote": [
-  "manage_memory",
   "create_document"
  ],
  "refused": [],

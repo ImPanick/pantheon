@@ -5,10 +5,10 @@
  "read": [
   "list_emails",
   "read_email",
-  "manage_notes"
+  "manage_notes",
+  "manage_memory"
  ],
  "wrote": [
-  "manage_memory",
   "draft_email_reply",
   "create_document"
  ],

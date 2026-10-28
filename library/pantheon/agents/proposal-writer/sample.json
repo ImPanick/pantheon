@@ -3,10 +3,10 @@
  "from": "its evaluation, with a scripted model",
  "summary": "- read the pricing and 1 past proposal; memory did not answer; wrote \"Proposal — Greenleaf Cafés\"",
  "read": [
-  "manage_documents"
+  "manage_documents",
+  "manage_memory"
  ],
  "wrote": [
-  "manage_memory",
   "create_document"
  ],
  "refused": [],

@@ -1,0 +1,630 @@
+{
+ "cases": [
+  {
+   "id": "two-attachments-filed-by-their-rules",
+   "about": "An invoice and the school's letter are saved into the folders their rules name, each with the person's yes; the holiday photo matches no rule and is left; the uids are carried forward.",
+   "inputs": {
+    "rules": "hostly -> invoices\nschool -> school"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "billing@hostly.example",
+      "subject": "Invoice INV-42",
+      "date": "2026-10-27",
+      "body": "Your invoice is attached.",
+      "attachments": [
+       {
+        "filename": "invoice-42.pdf",
+        "content": "Hostly invoice INV-42: 12.00 USD"
+       }
+      ]
+     },
+     {
+      "id": "m2",
+      "from": "office@school.example",
+      "subject": "Term dates for spring",
+      "date": "2026-10-27",
+      "body": "Please find the term dates attached.",
+      "attachments": [
+       {
+        "filename": "term-dates.pdf",
+        "content": "Spring term: 5 Jan to 27 Mar"
+       }
+      ]
+     },
+     {
+      "id": "m3",
+      "from": "dan@example.com",
+      "subject": "Photos from the weekend",
+      "date": "2026-10-27",
+      "body": "Here you go.",
+      "attachments": [
+       {
+        "filename": "holiday.jpg",
+        "content": "JPEG"
+       }
+      ]
+     }
+    ],
+    "files": {
+     "invoices/.keep": "",
+     "school/.keep": ""
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "invoices"
+       }
+      ],
+      [
+       "ls",
+       {
+        "path": "school"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "download_attachment",
+       {
+        "uid": "m1",
+        "index": 0,
+        "destination": "invoices",
+        "filename": "invoice-42.pdf"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "download_attachment",
+       {
+        "uid": "m2",
+        "index": 0,
+        "destination": "school",
+        "filename": "term-dates.pdf"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filed**\n- invoices/invoice-42.pdf — billing@hostly.example — rule \"hostly -> invoices\"\n- school/term-dates.pdf — office@school.example — rule \"school -> school\"\n\n**Not filed**\n- dan@example.com — holiday.jpg — no rule matched\n\n## Report\n- read 3 new messages; saved 2 attachments with your yes; left 1\n\n## Carry forward\n- handled: m1, m2, m3"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "invoices/invoice-42.pdf",
+      "contains": [
+       "INV-42"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "school/term-dates.pdf",
+      "contains": [
+       "Spring term"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "holiday.jpg — no rule matched"
+     ]
+    },
+    {
+     "notebook_contains": "m3"
+    }
+   ]
+  },
+  {
+   "id": "a-name-already-there-gets-the-date",
+   "about": "invoices/invoice-42.pdf is already there: the new one is saved under the message's date and the old file is untouched.",
+   "inputs": {
+    "rules": "hostly -> invoices\nschool -> school"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "billing@hostly.example",
+      "subject": "Invoice INV-42",
+      "date": "2026-10-27",
+      "body": "Your invoice is attached.",
+      "attachments": [
+       {
+        "filename": "invoice-42.pdf",
+        "content": "Hostly invoice INV-42: 12.00 USD"
+       }
+      ]
+     }
+    ],
+    "files": {
+     "invoices/invoice-42.pdf": "last month's invoice"
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "invoices"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "download_attachment",
+       {
+        "uid": "m1",
+        "index": 0,
+        "destination": "invoices",
+        "filename": "2026-10-27-invoice-42.pdf"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filed**\n- invoices/2026-10-27-invoice-42.pdf — billing@hostly.example — rule \"hostly -> invoices\" (invoice-42.pdf was already there)\n\n**Not filed**\n- nothing\n\n## Report\n- read 1 message; saved 1 attachment under a dated name\n\n## Carry forward\n- handled: m1"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "invoices/invoice-42.pdf",
+      "contains": [
+       "last month's invoice"
+      ],
+      "lacks": [
+       "INV-42"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "invoices/2026-10-27-invoice-42.pdf",
+      "contains": [
+       "INV-42"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-is-saved-without-a-yes",
+   "about": "The person says no to the save: the run ends there and nothing is written.",
+   "inputs": {
+    "rules": "hostly -> invoices\nschool -> school"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "billing@hostly.example",
+      "subject": "Invoice INV-42",
+      "date": "2026-10-27",
+      "body": "Your invoice is attached.",
+      "attachments": [
+       {
+        "filename": "invoice-42.pdf",
+        "content": "Hostly invoice INV-42: 12.00 USD"
+       }
+      ]
+     }
+    ],
+    "files": {
+     "invoices/.keep": ""
+    }
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "invoices"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "download_attachment",
+       {
+        "uid": "m1",
+        "index": 0,
+        "destination": "invoices",
+        "filename": "invoice-42.pdf"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filed**\n- invoices/invoice-42.pdf\n\n**Not filed**\n- nothing\n\n## Report\n- saved 1\n\n## Carry forward\n- handled: m1"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "download_attachment"
+    },
+    {
+     "status": "error"
+    }
+   ]
+  },
+  {
+   "id": "the-tool-refuses-a-folder-outside",
+   "about": "A rule names a folder outside the projects folder: the tool refuses the save in its words, and Not filed says why.",
+   "inputs": {
+    "rules": "hostly -> ../outside"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "billing@hostly.example",
+      "subject": "Invoice INV-42",
+      "date": "2026-10-27",
+      "body": "Your invoice is attached.",
+      "attachments": [
+       {
+        "filename": "invoice-42.pdf",
+        "content": "Hostly invoice INV-42: 12.00 USD"
+       }
+      ]
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "download_attachment",
+       {
+        "uid": "m1",
+        "index": 0,
+        "destination": "../outside",
+        "filename": "invoice-42.pdf"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filed**\n- nothing\n\n**Not filed**\n- billing@hostly.example — invoice-42.pdf — refused: “../outside” is not a folder inside your projects folder\n\n## Report\n- read 1 message; the save was refused\n\n## Carry forward\n- handled: m1"
+    }
+   ],
+   "checks": [
+    {
+     "called": "download_attachment"
+    },
+    {
+     "answer_contains": [
+      "not a folder inside your projects folder"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "two-rules-disagree-the-first-wins",
+   "about": "The invoice matches both \"hostly\" and \"invoice\": it is filed where the first rule says, and the other rule is named.",
+   "inputs": {
+    "rules": "hostly -> invoices\ninvoice -> accounts"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "billing@hostly.example",
+      "subject": "Invoice INV-42",
+      "date": "2026-10-27",
+      "body": "Your invoice is attached.",
+      "attachments": [
+       {
+        "filename": "invoice-42.pdf",
+        "content": "Hostly invoice INV-42: 12.00 USD"
+       }
+      ]
+     }
+    ],
+    "files": {
+     "invoices/.keep": ""
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "invoices"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "download_attachment",
+       {
+        "uid": "m1",
+        "index": 0,
+        "destination": "invoices",
+        "filename": "invoice-42.pdf"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filed**\n- invoices/invoice-42.pdf — billing@hostly.example — rule \"hostly -> invoices\" (also matches \"invoice -> accounts\")\n\n**Not filed**\n- nothing\n\n## Report\n- read 1 message; saved 1 attachment\n\n## Carry forward\n- handled: m1"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "invoices/invoice-42.pdf",
+      "contains": [
+       "INV-42"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "also matches \"invoice -> accounts\""
+     ]
+    }
+   ]
+  },
+  {
+   "id": "nothing-to-file",
+   "about": "New mail with no attachments: nothing is saved, both headings say nothing, and the uids are still carried forward.",
+   "inputs": {
+    "rules": "hostly -> invoices\nschool -> school"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m9",
+      "from": "ana@example.com",
+      "subject": "Lunch?",
+      "date": "2026-10-27",
+      "body": "Friday?"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m9"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filed**\n- nothing\n\n**Not filed**\n- nothing\n\n## Report\n- read 1 new message; no attachments\n\n## Carry forward\n- handled: m9"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "download_attachment"
+    },
+    {
+     "answer_contains": [
+      "no attachments"
+     ]
+    },
+    {
+     "notebook_contains": "m9"
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Filed and Not filed does not deliver, even after its repair pass.",
+   "inputs": {
+    "rules": "hostly -> invoices\nschool -> school"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "billing@hostly.example",
+      "subject": "Invoice INV-42",
+      "date": "2026-10-27",
+      "body": "Your invoice is attached.",
+      "attachments": [
+       {
+        "filename": "invoice-42.pdf",
+        "content": "Hostly invoice INV-42: 12.00 USD"
+       }
+      ]
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "say": "I saved the files."
+    },
+    {
+     "say": "I saved the files."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

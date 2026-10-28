@@ -1,0 +1,29 @@
+{
+ "case": "a-year-gathered-into-its-folder",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- searched mail 9 times, read 4 messages, saved 3 attachments; wrote \"Tax checklist — 2025\"",
+ "read": [
+  "ls",
+  "search_emails",
+  "read_email"
+ ],
+ "wrote": [
+  "download_attachment",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Tax checklist”",
+   "ok": true,
+   "detail": "“Tax checklist — 2025” is there."
+  }
+ ],
+ "answer": "3 statements saved into tax-2025; 1 usually needed is missing. This is organisation, not tax advice.\n\n## Report\n- searched mail 9 times, read 4 messages, saved 3 attachments; wrote \"Tax checklist — 2025\"",
+ "documents": [
+  {
+   "title": "Tax checklist — 2025",
+   "content": "Tax checklist — 2025\nThis is organisation, not tax advice.\n\n## Found\n- income — Acme Ltd — P60 for 2025 — tax-2025/income/p60-2025.pdf\n- interest — Northbank — interest statement for 2025 — tax-2025/interest/interest-2025.pdf\n- donations — Shelter — donation receipt for 2025 — tax-2025/donations/donation-2025.pdf\n\n## Missing\n- a pension statement (mail from Steady Pensions shows a pension, but only a newsletter came)\n\n## Check\n- nothing"
+  }
+ ]
+}
