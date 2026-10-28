@@ -18,5 +18,11 @@
    "detail": "“Itinerary — Lisbon, 4-9 November” is there."
   }
  ],
- "answer": "Missing: a flight home on 9 Nov, and online check-in (opens 3 Nov 10:05).\n\n## Report\n- read 2 confirmations; wrote the itinerary\n\n## Carry forward\n- Lisbon 4-9 Nov: TP1351 QX7P2L, Casa Azul 88213"
+ "answer": "Missing: a flight home on 9 Nov, and online check-in (opens 3 Nov 10:05).\n\n## Report\n- read 2 confirmations; wrote the itinerary\n\n## Carry forward\n- Lisbon 4-9 Nov: TP1351 QX7P2L, Casa Azul 88213",
+ "documents": [
+  {
+   "title": "Itinerary — Lisbon, 4-9 November",
+   "content": "## Day by day\n- Tue 4 Nov — 10:05 flight TP1351 London (LHR T2) → Lisbon, lands 12:55; 15:00 check in at Casa Azul\n- Wed 5 Nov — free\n- Sun 9 Nov — check out\n\n## Bookings\n- Flight TP1351 — 4 Nov 10:05 — LHR T2 — code QX7P2L — online check-in opens 3 Nov 10:05\n- Casa Azul — 4–9 Nov — Rua da Rosa 12 — code 88213 — check-in from 15:00\n\n## Missing\n- a flight home on 9 Nov\n- online check-in for TP1351, from 3 Nov 10:05\n\n## Packing\n- forecast 17–21 °C with showers: a light rain jacket, layers, walking shoes, a type F plug adapter, passport"
+  }
+ ]
 }

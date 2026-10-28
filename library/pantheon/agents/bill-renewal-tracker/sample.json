@@ -18,5 +18,11 @@
    "detail": "“Due in the next 30 days — 27 Oct” is there."
   }
  ],
- "answer": "2 found: 1 this week, 1 in the next 30 days, 0 to check.\n\n## Report\n- searched mail and notes\n\n## Carry forward\n- StreamFlix monthly, next 30 Nov; example.org yearly, next 12 Nov"
+ "answer": "2 found: 1 this week, 1 in the next 30 days, 0 to check.\n\n## Report\n- searched mail and notes\n\n## Carry forward\n- StreamFlix monthly, next 30 Nov; example.org yearly, next 12 Nov",
+ "documents": [
+  {
+   "title": "Due in the next 30 days — 27 Oct",
+   "content": "## This week\n- 30 Oct — StreamFlix — monthly subscription — £9.99 — mail of 30 Sep\n\n## Next 30 days\n- 12 Nov — example.org — yearly renewal — $14.00 — mail of 12 Nov 2025 (a year on)\n\n## Check these\n- nothing"
+  }
+ ]
 }

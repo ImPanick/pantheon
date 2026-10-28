@@ -667,6 +667,12 @@ function _renderAgent(a) {
     if ((a.sample.read || []).length) sd.appendChild(_el('p', 'agents-small', `Read with: ${a.sample.read.join(', ')}`));
     if ((a.sample.wrote || []).length) sd.appendChild(_el('p', 'agents-small', `Wrote with: ${a.sample.wrote.join(', ')}`));
     sd.appendChild(_el('pre', 'agents-pre', a.sample.answer || ''));
+    // `B1604`. A document agent's answer only names what it delivers; the
+    // document it wrote is the sample of its work, so it is shown too.
+    (a.sample.documents || []).forEach((d) => {
+      sd.appendChild(_el('p', 'agents-small agents-sample-doc', `The document it wrote: “${d.title || 'Untitled'}”`));
+      sd.appendChild(_el('pre', 'agents-pre', d.content || ''));
+    });
     page.appendChild(sd);
   }
 

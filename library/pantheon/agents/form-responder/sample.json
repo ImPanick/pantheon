@@ -20,5 +20,11 @@
    "detail": "It made 1 draft."
   }
  ],
- "answer": "Filed \"Form — Ana Ruiz — 27 Oct 2026\" and drafted a reply to ana@example.com.\n\n## Report\n- filed 1 submission, drafted 1 reply"
+ "answer": "Filed \"Form — Ana Ruiz — 27 Oct 2026\" and drafted a reply to ana@example.com.\n\n## Report\n- filed 1 submission, drafted 1 reply",
+ "documents": [
+  {
+   "title": "Form — Ana Ruiz — 27 Oct 2026",
+   "content": "Form — Ana Ruiz — 27 Oct 2026\n\n## Summary\n- Ana Ruiz wants three cakes for Saturday, delivered to Leeds.\n- She asks whether you deliver to Leeds.\n- Needs you: confirm delivery and the price.\n\n## Fields\n- name: Ana Ruiz\n- email: ana@example.com\n- message: Do you deliver to Leeds? I'd like 3 cakes for Saturday.\n\n## Reply\n- drafted to ana@example.com"
+  }
+ ]
 }

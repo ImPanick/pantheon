@@ -524,6 +524,23 @@ def test_a_card_says_what_was_measured_and_the_page_shows_a_sample(sandbox):
     assert out["sample"] == "## solar\n- <b>A record</b>", "a report is drawn as letters"
 
 
+def test_a_document_agents_sample_shows_the_document_it_wrote(sandbox):
+    """`B1604`. Its answer only names the document; the sample shows the
+    document itself, as letters."""
+    out = _hall(sandbox, """
+        hall.agents[2].sample = { from: 'its evaluation, with a scripted model', read: [], wrote: ['create_document'],
+                                  answer: '3 suggestions.',
+                                  documents: [{ title: 'Proofreading — Q3', content: '## Suggestions\\n1. <i>Teh</i>' }] };
+        await mod.openAgents(); await settle(30);
+        await press(q('.agents-card').find((c) => c.dataset.agent === 'topic-watcher'));
+        const sd = q('.agents-sample')[0];
+        out({ pres: sd.querySelectorAll('.agents-pre').map((n) => n.textContent),
+              said: sd.querySelectorAll('.agents-sample-doc').map((n) => n.textContent) });
+    """)
+    assert out["pres"] == ["3 suggestions.", "## Suggestions\n1. <i>Teh</i>"]
+    assert out["said"] == ["The document it wrote: “Proofreading — Q3”"]
+
+
 # ── `P24-20` · the workshop ─────────────────────────────────────────────────
 
 def test_new_agent_drafts_checks_and_saves_and_the_hall_says_yours(sandbox):

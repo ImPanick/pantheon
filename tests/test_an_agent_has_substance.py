@@ -249,11 +249,13 @@ def test_each_agent_at_the_bar_delivers_through_the_harness(agent):
     assert not failed, failed
     with open(os.path.join(E.agent_dir(m), "sample.json"), encoding="utf-8") as fh:
         sample = json.load(fh)
-    report = next(r.report for r in results if r.case == sample["case"])
+    result = next(r for r in results if r.case == sample["case"])
     # A note or event the run made is linked by its fresh id; the rest is the
-    # same run, word for word.
-    same = lambda d: _ids.sub("<id>", json.dumps({k: d.get(k) for k in ("answer", "read", "wrote", "checks")}))
-    assert same(sample) == same(report), \
+    # same run, word for word — and, `B1604`, the documents it wrote are the
+    # ones the sample carries.
+    keys = ("answer", "read", "wrote", "checks", "documents")
+    same = lambda d: _ids.sub("<id>", json.dumps({k: d.get(k) or None for k in keys}, ensure_ascii=False))
+    assert same(sample) == same(E.sample_report(result)), \
         "sample.json is not what its case reports today: python -m src.agents.evals <agent> --sample"
 
 

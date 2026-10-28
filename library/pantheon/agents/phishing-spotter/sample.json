@@ -17,5 +17,11 @@
    "detail": "It answered, with Suspicious, Unsure, Fine."
   }
  ],
- "answer": "**Suspicious**\n- PayPal Security <security@paypa1-alerts.example> — Your account is locked — lookalike domain \"paypa1-alerts.example\"; asks for your password within 24 hours\n\n**Unsure**\n- nothing\n\n**Fine**\n- ana@example.com — Lunch next week?\n\n## Report\n- checked 2: 1 suspicious, 1 fine\n\n## Carry forward\n- checked: m1, m2"
+ "answer": "**Suspicious**\n- PayPal Security <security@paypa1-alerts.example> — Your account is locked — lookalike domain \"paypa1-alerts.example\"; asks for your password within 24 hours\n\n**Unsure**\n- nothing\n\n**Fine**\n- ana@example.com — Lunch next week?\n\n## Report\n- checked 2: 1 suspicious, 1 fine\n\n## Carry forward\n- checked: m1, m2",
+ "documents": [
+  {
+   "title": "Suspicious mail — 27 Oct",
+   "content": "## Suspicious\n- PayPal Security <security@paypa1-alerts.example> — Your account is locked — lookalike domain \"paypa1-alerts.example\"; asks for your password within 24 hours\n\n## Unsure\n- nothing"
+  }
+ ]
 }
