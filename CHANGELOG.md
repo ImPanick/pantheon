@@ -108,6 +108,8 @@ the next one is cut.
 
 ### Added
 
+- **`download_attachment` can file into the person's projects folder** (`destination`,
+  `filename`), confined to it and never overwriting (`B1600`).
 - **Share a design by name** as viewer, commenter or editor, with notes that carry their author
   and *Shared with me* for the invited person (`P26-09`); **Build it** puts a design on a
   `design/<slug>` branch with a brief, previewed before anything is merged, and merges only on
@@ -245,6 +247,15 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **73 more shipped agents have new runbooks** (version 1.1.0) with evaluation cases; summoned
+  ones pause until their person chooses *Update*. Seven that kept to-dos as scheduled AI tasks
+  now keep them as notes with due dates, and Web Performance no longer downloads Lighthouse on
+  every run (`P24-27`).
+- **A server stopping waits at most ten seconds for open connections** (`timeout_graceful_shutdown`),
+  as `docker stop` allows (`B1595`).
+- **Text in a GB or EUC-JP encoding is read as itself** where it was guessed as Korean (`B1596`,
+  `B1597`); a Korean sentence written with full-width punctuation, no spaces and Hanja inside its
+  words is refused as unidentifiable rather than misread.
 - **31 shipped agents have new runbooks** (version 1.1.0; Server Health 1.2.0): decided judgement
   calls, edge cases, the deliverable's exact headings, and evaluation cases. An agent someone has
   already summoned pauses until its person chooses *Update*, as any new version does (`P24-27`).
@@ -437,6 +448,9 @@ the next one is cut.
 
 ### Fixed
 
+- **A hired agent's suggestions and edits land on the document it read** (`B1599`); a run's answer
+  no longer starts with the note link a chat shows (`B1603`); Settings opened before the sign-in
+  status answered shows an admin's panels when it does (`B1595`).
 - **The agent's research tool lists, reads and deletes only the reports of the person it runs
   for** — it could reach everyone's (`B1601`).
 - **The agent's question can always be answered** — a tool window covering it steps aside until
