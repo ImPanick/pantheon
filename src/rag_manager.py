@@ -55,10 +55,14 @@ class RAGManager:
         file_extensions: Optional[set] = None,
         owner: Optional[str] = None,
         excluded: Optional[set] = None,
+        names: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
-        """Index documents - delegates to VectorRAG. `excluded` (`B1639`) is
-        passed on only when given, so the call is the one it always was."""
+        """Index documents - delegates to VectorRAG. `excluded` (`B1639`) and
+        `names` (`B1641`) are passed on only when given, so the call is the one
+        it always was."""
         extra = {"excluded": excluded} if excluded else {}
+        if names:
+            extra["names"] = names
         return self.vector_rag.index_personal_documents(
             directory,
             file_extensions=file_extensions,

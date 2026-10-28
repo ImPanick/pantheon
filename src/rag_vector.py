@@ -530,15 +530,20 @@ class VectorRAG:
 
     def index_personal_documents(
         self, directory: str, file_extensions: Optional[set] = None, owner: Optional[str] = None,
-        excluded: Optional[Set[str]] = None,
+        excluded: Optional[Set[str]] = None, names: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         """Embed every indexable file under ``directory``. ``excluded`` is the
         absolute paths a person removed from the index (`exclude_file`):
         `B1639`'s refill re-reads a listed folder, and a file someone took out
-        of the index stays out."""
+        of the index stays out. ``names`` (`B1641`) is the name each upload
+        was given, by absolute path (`PersonalDocsManager.file_names`): such a
+        file's chunks carry that name as ``filename`` and its stored basename
+        as ``stored_filename``, as the upload route wrote them (`P21-03`); every
+        other file is named by its basename, as before."""
         if file_extensions is None:
             file_extensions = DEFAULT_FILE_EXTENSIONS
         excluded = excluded or set()
+        names = names or {}
 
         indexed = 0
         failed = 0
@@ -563,6 +568,10 @@ class VectorRAG:
                         'directory': os.path.dirname(fpath),
                         'type': ext,
                     }
+                    given = names.get(os.path.abspath(fpath))
+                    if given:
+                        meta['filename'] = given
+                        meta['stored_filename'] = os.path.basename(fpath)
                     if owner:
                         meta['owner'] = owner
 

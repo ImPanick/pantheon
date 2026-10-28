@@ -463,6 +463,7 @@ def setup_personal_routes(personal_docs_manager, rag_manager, rag_available):
         total_indexed = 0
         total_failed = 0
         uploaded_files = []
+        named: Dict[str, str] = {}   # `B1641`: stored path -> the name it was uploaded under
 
         # Chunking, embedding and the tracking update are blocking work over the
         # same vector/tracking state add_directory mutates (#5634). Take the
@@ -542,6 +543,7 @@ def setup_personal_routes(personal_docs_manager, rag_manager, rag_available):
                     total_failed += failed
                     if uploaded_name:
                         uploaded_files.append(uploaded_name)
+                        named[file_path] = uploaded_name
                 except Exception as e:
                     logger.error(f"Failed to upload/index {upload.filename}: {e}")
                     total_failed += 1
@@ -552,6 +554,13 @@ def setup_personal_routes(personal_docs_manager, rag_manager, rag_available):
                 await run_in_threadpool(
                     personal_docs_manager.add_directory, upload_dir, index=False, owner=user
                 )
+            # `B1641`. The name each file was uploaded under, which its chunks
+            # carry as `filename`, kept beside the folder's owner: a refill
+            # (`B1639`) reads the stored file, whose own name is the storable
+            # form, and gives its chunks this one again.
+            name_files = getattr(personal_docs_manager, "name_files", None)
+            if named and callable(name_files):
+                await run_in_threadpool(name_files, named)
 
         return {
             "success": True,

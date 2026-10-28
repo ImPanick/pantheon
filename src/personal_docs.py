@@ -577,6 +577,7 @@ class PersonalDocsManager:
     _index = None
     _skipped: List[Dict[str, str]] = []
     _rag_manager = None  # `B1532`'s property reads it; same reason as above
+    file_names: Dict[str, str] = {}  # `B1641`; read-only here, replaced, never changed in place
 
     @property
     def rag_manager(self):
@@ -632,8 +633,19 @@ class PersonalDocsManager:
         # did (`_string_list`) and keeps every folder.
         self._owners_file = os.path.join(personal_dir, ".indexed_directory_owners.json")
         self.directory_owners: Dict[str, str] = {}
+        # `B1641`. The name each upload was given by the person who uploaded
+        # it (`P21-03`), by the path it is stored at. The upload's chunks carry
+        # that name as `filename`; a refill reads the stored file, whose
+        # basename is the storable form (`file_names.stored_name`: `Q3: plan?.md`
+        # is `Q3_ plan_.md`, a second `notes.md` is `notes (2).md`), so without
+        # this a refilled upload answered under a name nobody gave it. Beside
+        # the owners, for the same reason they are kept: a lost index is the
+        # only other place the name was.
+        self._names_file = os.path.join(personal_dir, ".indexed_file_names.json")
+        self.file_names: Dict[str, str] = {}
         self.load_directories()
         self._load_excluded()
+        self._load_names()
 
     # `B491`. The two readers every caller already uses — `personal_routes`'
     # listing and reload count, the RAG MCP server's list, `retrieve` — read
@@ -745,6 +757,44 @@ class PersonalDocsManager:
         except Exception as e:
             logger.error(f"Error saving excluded files: {e}")
 
+    def _load_names(self):
+        """`B1641`. The names uploads were given, by stored path."""
+        self.file_names = {}
+        try:
+            if os.path.exists(self._names_file):
+                with open(self._names_file, 'r', encoding="utf-8") as f:
+                    names = json.load(f)
+                if not isinstance(names, dict):
+                    raise ValueError("file names must be a mapping")
+                self.file_names = {p: n for p, n in names.items()
+                                   if isinstance(p, str) and isinstance(n, str) and n}
+        except Exception as e:
+            logger.error(f"Error loading uploaded file names: {e}")
+
+    def _save_names(self):
+        try:
+            with open(self._names_file, 'w', encoding="utf-8") as f:
+                json.dump(self.file_names, f, indent=2, sort_keys=True, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"Error saving uploaded file names: {e}")
+
+    def name_files(self, names: Dict[str, str]) -> None:
+        """`B1641`. Record the name each file was uploaded under, by the path
+        it is stored at, so a refill gives its chunks that name again. A record
+        whose file is gone (deleted from the index and the disk) is dropped
+        here, so the record holds what is still there."""
+        merged = dict(self.file_names)
+        for path, name in (names or {}).items():
+            if isinstance(path, str) and isinstance(name, str) and name:
+                merged[os.path.abspath(path)] = name
+        self.file_names = {p: n for p, n in merged.items() if os.path.isfile(p)}
+        self._save_names()
+
+    def names_under(self, directory: str) -> Dict[str, str]:
+        """`B1641`. The recorded upload names of the files under `directory`."""
+        directory = os.path.abspath(directory)
+        return {p: n for p, n in self.file_names.items() if p.startswith(directory + os.sep)}
+
     def exclude_file(self, filepath: str):
         """Exclude a file from the listing. Persists across restarts."""
         self.excluded_files.add(os.path.abspath(filepath))
@@ -807,7 +857,13 @@ class PersonalDocsManager:
             self.indexed_directories.remove(directory)
             self.save_directories()
             logger.info(f"Removed directory from tracking: {directory}")
-            
+            if self.names_under(directory):
+                # `B1641`: a folder no longer listed is never refilled, so
+                # the names of the uploads in it are not kept for one.
+                gone = self.names_under(directory)
+                self.file_names = {p: n for p, n in self.file_names.items() if p not in gone}
+                self._save_names()
+
             # Refresh the index to exclude the removed directory
             self.refresh_index()
             
@@ -864,6 +920,13 @@ class PersonalDocsManager:
         if changed_excluded:
             self.excluded_files = rewritten_excluded
             self._save_excluded()
+
+        # `B1641`: an upload moved with its account keeps the name it was
+        # uploaded under.
+        renamed = {rewrite(p): n for p, n in self.file_names.items()}
+        if renamed != self.file_names:
+            self.file_names = renamed
+            self._save_names()
 
         if changed_dirs or changed_excluded:
             self.refresh_index()
@@ -934,8 +997,11 @@ class PersonalDocsManager:
             if not os.path.isdir(directory):
                 out["missing"].append(directory)
                 continue
+            # `B1641`: an upload's chunks under the name it was uploaded under.
+            named = self.names_under(directory)
             result = rag.index_personal_documents(directory, owner=self.directory_owner(directory),
-                                                  excluded=set(self.excluded_files))
+                                                  excluded=set(self.excluded_files),
+                                                  **({"names": named} if named else {}))
             out["refilled"].append(directory)
             out["chunks"] += int(result.get("indexed_count") or 0)
         out["sentence"] = (f"The Knowledge index came back empty; re-read {len(out['refilled'])} listed "
