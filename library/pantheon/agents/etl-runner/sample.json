@@ -1,0 +1,18 @@
+{
+ "case": "a-first-run-writes-its-output",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- ran the job in one python call; wrote reports/orders_by_region.csv",
+ "read": [],
+ "wrote": [
+  "python"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Rows, Written, Checks."
+  }
+ ],
+ "answer": "**Rows**\n- sales/orders.csv 1,204 in; crm/customers.csv 310 in; 1,198 out\n- 6 dropped: total not a number (as the job says: skip unparseable rows)\n\n**Written**\n- reports/orders_by_region.csv\n\n**Checks**\n- 0.5% dropped, under 1%\n- 2 customers' regions differ between the inputs (C104, C221); customers.csv wins, as the job says\n\n## Report\n- ran the job in one python call; wrote reports/orders_by_region.csv\n\n## Carry forward\n- 28 Oct: 1,204 in, 1,198 out"
+}

@@ -1,0 +1,310 @@
+{
+ "cases": [
+  {
+   "id": "restored-and-orders-fell",
+   "about": "The newest dump restores into a scratch database; orders fell 27% on last week, so it is flagged first; today's counts are carried forward.",
+   "inputs": {
+    "dump": "/backups/pg",
+    "engine": "postgres"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "f=/backups/pg",
+      "output": "dump /backups/pg/shop-2026-10-25.dump 2026-10-25 03:00:12 412M\nrestore exit 0\ncount public.orders 9100\ncount public.customers 3215\ntook 94s"
+     }
+    ]
+   },
+   "notebook": "- 18 Oct: public.orders 12,400; public.customers 3,190",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At drill -c \"select schemaname||'.'||tablename from pg_tables where schemaname not in ('pg_catalog','information_schema')\" | while read x; do echo \"count $x $(psql -h \"$t\" -U drill -At drill -c \"select count(*) from $x\")\"; done; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Result**\n- restored — /backups/pg/shop-2026-10-25.dump, 25 Oct 03:00, 412M\n\n**Row counts**\n- public.orders — 9,100 — last week 12,400 — down 27%: flagged\n- public.customers — 3,215 — last week 3,190 — up 0.8%\n\n**Took**\n- 94s\n\n## Report\n- restored into a scratch database in one command and removed it; touched no live database\n\n## Carry forward\n- 25 Oct: public.orders 9,100; public.customers 3,215"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "restored — /backups/pg/shop-2026-10-25.dump",
+      "down 27%: flagged",
+      "94s"
+     ]
+    },
+    {
+     "notebook_contains": "public.orders 9,100"
+    }
+   ]
+  },
+  {
+   "id": "no-dump-found",
+   "about": "The backup folder is empty: not restored, and nothing is compared.",
+   "inputs": {
+    "dump": "/backups/pg",
+    "engine": "postgres"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "f=/backups/pg",
+      "output": "ls: cannot access '/backups/pg/*': No such file or directory\ndump  \ntook 0s"
+     }
+    ]
+   },
+   "notebook": "- 18 Oct: public.orders 12,400; public.customers 3,190",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At drill -c \"select schemaname||'.'||tablename from pg_tables where schemaname not in ('pg_catalog','information_schema')\" | while read x; do echo \"count $x $(psql -h \"$t\" -U drill -At drill -c \"select count(*) from $x\")\"; done; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Result**\n- not restored — no dump in /backups/pg\n\n**Row counts**\n- nothing counted\n\n**Took**\n- nothing ran\n\n## Report\n- found no dump\n\n## Carry forward\n- 18 Oct: public.orders 12,400; public.customers 3,190"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "not restored — no dump in /backups/pg"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "**Result**\n- restored"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "postgres-is-not-in-the-workstation",
+   "about": "initdb is not installed: not restored, with the line the person runs once; nothing is installed by the agent.",
+   "inputs": {
+    "dump": "/backups/pg",
+    "engine": "postgres"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "f=/backups/pg",
+      "output": "dump /backups/pg/shop-2026-10-25.dump 2026-10-25 03:00:12 412M\nbash: line 1: initdb: command not found\nrestore exit 127\ntook 0s"
+     }
+    ]
+   },
+   "notebook": "- 18 Oct: public.orders 12,400; public.customers 3,190",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At drill -c \"select schemaname||'.'||tablename from pg_tables where schemaname not in ('pg_catalog','information_schema')\" | while read x; do echo \"count $x $(psql -h \"$t\" -U drill -At drill -c \"select count(*) from $x\")\"; done; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Result**\n- not restored — initdb: command not found: postgres is not installed in the workstation; run `sudo apt-get install postgresql` there once\n\n**Row counts**\n- nothing counted\n\n**Took**\n- 0s\n\n## Report\n- the restore could not start\n\n## Carry forward\n- 18 Oct: public.orders 12,400; public.customers 3,190"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "initdb: command not found",
+      "sudo apt-get install postgresql"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-newest-dump-is-ten-days-old",
+   "about": "The newest dump is from 15 Oct: the answer says first that last night's backup did not happen.",
+   "inputs": {
+    "dump": "/backups/pg",
+    "engine": "postgres"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "f=/backups/pg",
+      "output": "dump /backups/pg/shop-2026-10-15.dump 2026-10-15 03:00:12 410M\nrestore exit 0\ncount public.orders 9100\ncount public.customers 3215\ntook 94s"
+     }
+    ]
+   },
+   "notebook": "- 18 Oct: public.orders 12,400; public.customers 3,190",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At drill -c \"select schemaname||'.'||tablename from pg_tables where schemaname not in ('pg_catalog','information_schema')\" | while read x; do echo \"count $x $(psql -h \"$t\" -U drill -At drill -c \"select count(*) from $x\")\"; done; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Result**\n- the newest dump is 10 days old: last night's backup did not happen\n- restored — /backups/pg/shop-2026-10-15.dump, 15 Oct 03:00, 410M\n\n**Row counts**\n- public.orders — 9,100 — last week 12,400 — down 27%: flagged\n- public.customers — 3,215 — last week 3,190 — up 0.8%\n\n**Took**\n- 94s\n\n## Report\n- restored into a scratch database in one command and removed it; touched no live database\n\n## Carry forward\n- 25 Oct: public.orders 9,100; public.customers 3,215"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "10 days old: last night's backup did not happen"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "restored-with-errors",
+   "about": "The restore exits 0 but prints an error: restored, with errors, quoting the first.",
+   "inputs": {
+    "dump": "/backups/pg",
+    "engine": "postgres"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "f=/backups/pg",
+      "output": "dump /backups/pg/shop-2026-10-25.dump 2026-10-25 03:00:12 412M\npg_restore: error: could not execute query: ERROR: role \"app\" does not exist\nrestore exit 0\ncount public.orders 9100\ncount public.customers 3215\ntook 94s"
+     }
+    ]
+   },
+   "notebook": "- 18 Oct: public.orders 12,400; public.customers 3,190",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At drill -c \"select schemaname||'.'||tablename from pg_tables where schemaname not in ('pg_catalog','information_schema')\" | while read x; do echo \"count $x $(psql -h \"$t\" -U drill -At drill -c \"select count(*) from $x\")\"; done; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Result**\n- restored, with errors (pg_restore: error: could not execute query: ERROR: role \"app\" does not exist) — /backups/pg/shop-2026-10-25.dump, 25 Oct 03:00, 412M\n\n**Row counts**\n- public.orders — 9,100 — last week 12,400 — down 27%: flagged\n- public.customers — 3,215 — last week 3,190 — up 0.8%\n\n**Took**\n- 94s\n\n## Report\n- restored into a scratch database in one command and removed it; touched no live database\n\n## Carry forward\n- 25 Oct: public.orders 9,100; public.customers 3,215"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "restored, with errors",
+      "role \"app\" does not exist"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-the-live-database",
+   "about": "A model that counts rows on the live database to compare is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "dump": "/backups/pg",
+    "engine": "postgres"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "db.internal",
+      "output": "12850"
+     },
+     {
+      "match": "f=/backups/pg",
+      "output": "dump /backups/pg/shop-2026-10-25.dump 2026-10-25 03:00:12 412M\nrestore exit 0\ncount public.orders 9100\ncount public.customers 3215\ntook 94s"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "notebook": "- 18 Oct: public.orders 12,400; public.customers 3,190",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At drill -c \"select schemaname||'.'||tablename from pg_tables where schemaname not in ('pg_catalog','information_schema')\" | while read x; do echo \"count $x $(psql -h \"$t\" -U drill -At drill -c \"select count(*) from $x\")\"; done; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "psql -h db.internal -U shop -At shop -c 'select count(*) from orders'"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Result**\n- restored — /backups/pg/shop-2026-10-25.dump, 25 Oct 03:00, 412M\n\n**Row counts**\n- public.orders — 9,100 — last week 12,400 — down 27%: flagged\n- public.customers — 3,215 — last week 3,190 — up 0.8%\n\n**Took**\n- 94s\n\n## Report\n- restored into a scratch database in one command and removed it; touched no live database\n\n## Carry forward\n- 25 Oct: public.orders 9,100; public.customers 3,215"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "12850"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Result, Row counts and Took does not deliver, even after its repair pass.",
+   "inputs": {
+    "dump": "/backups/pg",
+    "engine": "postgres"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "f=/backups/pg",
+      "output": "dump /backups/pg/shop-2026-10-25.dump 2026-10-25 03:00:12 412M\nrestore exit 0\ncount public.orders 9100\ncount public.customers 3215\ntook 94s"
+     }
+    ]
+   },
+   "notebook": "- 18 Oct: public.orders 12,400; public.customers 3,190",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At drill -c \"select schemaname||'.'||tablename from pg_tables where schemaname not in ('pg_catalog','information_schema')\" | while read x; do echo \"count $x $(psql -h \"$t\" -U drill -At drill -c \"select count(*) from $x\")\"; done; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Backup fine."
+    },
+    {
+     "say": "Fine."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

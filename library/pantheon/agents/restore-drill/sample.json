@@ -1,0 +1,18 @@
+{
+ "case": "restored-and-orders-fell",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- restored into a scratch database in one command and removed it; touched no live database",
+ "read": [],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Result, Row counts, Took."
+  }
+ ],
+ "answer": "**Result**\n- restored — /backups/pg/shop-2026-10-25.dump, 25 Oct 03:00, 412M\n\n**Row counts**\n- public.orders — 9,100 — last week 12,400 — down 27%: flagged\n- public.customers — 3,215 — last week 3,190 — up 0.8%\n\n**Took**\n- 94s\n\n## Report\n- restored into a scratch database in one command and removed it; touched no live database\n\n## Carry forward\n- 25 Oct: public.orders 9,100; public.customers 3,215"
+}

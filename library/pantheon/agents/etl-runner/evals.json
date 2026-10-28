@@ -1,0 +1,329 @@
+{
+ "cases": [
+  {
+   "id": "a-first-run-writes-its-output",
+   "about": "Nothing is at the output path yet: the job runs in one call and writes it; six unparseable totals are dropped as the job says; two regions conflict and customers.csv wins, as the job says.",
+   "inputs": {
+    "job": "Read sales/orders.csv and crm/customers.csv; join on customer_id; keep date, customer_id, region, total; skip rows whose total is not a number; write reports/orders_by_region.csv. customers.csv wins on region.",
+    "at": "03:15"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "orders_by_region",
+      "output": "in 1204 310 out 1198 dropped {'total not a number': 6} conflicts [('C104', 'Leeds', 'York'), ('C221', 'Hull', 'Selby')]\nwrote reports/orders_by_region.csv"
+     }
+    ]
+   },
+   "notebook": "- 27 Oct: 1,180 in, 1,175 out",
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os\nroot = os.environ[\"PANTHEON_PROJECTS\"]; P = lambda r: os.path.join(root, r)\norders = list(csv.DictReader(open(P(\"sales/orders.csv\"), newline=\"\", encoding=\"utf-8-sig\")))\ncustomers = {r[\"customer_id\"]: r for r in csv.DictReader(open(P(\"crm/customers.csv\"), newline=\"\", encoding=\"utf-8-sig\"))}\nout, dropped, conflicts = [], {}, []\nfor o in orders:\n    try: total = float(o[\"total\"])\n    except ValueError: dropped[\"total not a number\"] = dropped.get(\"total not a number\", 0) + 1; continue\n    c = customers.get(o[\"customer_id\"])\n    if c is None: dropped[\"no such customer\"] = dropped.get(\"no such customer\", 0) + 1; continue\n    if o.get(\"region\") and o[\"region\"] != c[\"region\"]: conflicts.append((o[\"customer_id\"], o[\"region\"], c[\"region\"]))\n    out.append({\"date\": o[\"date\"], \"customer_id\": o[\"customer_id\"], \"region\": c[\"region\"], \"total\": total})\nlost = sum(v for k, v in dropped.items() if k != \"total not a number\")\nprint(\"in\", len(orders), len(customers), \"out\", len(out), \"dropped\", dropped, \"conflicts\", conflicts)\nif lost > 0.01 * len(orders): print(\"STOP\"); raise SystemExit\ntarget = P(\"reports/orders_by_region.csv\"); dest = target + \".new\" if os.path.exists(target) else target\nos.makedirs(os.path.dirname(target), exist_ok=True)\nw = csv.DictWriter(open(dest, \"w\", newline=\"\"), [\"date\", \"customer_id\", \"region\", \"total\"]); w.writeheader(); w.writerows(out)\nprint(\"wrote\", os.path.relpath(dest, root))"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Rows**\n- sales/orders.csv 1,204 in; crm/customers.csv 310 in; 1,198 out\n- 6 dropped: total not a number (as the job says: skip unparseable rows)\n\n**Written**\n- reports/orders_by_region.csv\n\n**Checks**\n- 0.5% dropped, under 1%\n- 2 customers' regions differ between the inputs (C104, C221); customers.csv wins, as the job says\n\n## Report\n- ran the job in one python call; wrote reports/orders_by_region.csv\n\n## Carry forward\n- 28 Oct: 1,204 in, 1,198 out"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "1,198 out",
+      "customers.csv wins",
+      "0.5% dropped, under 1%"
+     ]
+    },
+    {
+     "notebook_contains": "1,204 in, 1,198 out"
+    }
+   ]
+  },
+  {
+   "id": "an-existing-output-is-replaced-after-a-yes",
+   "about": "Yesterday's output is there: today's goes to a .new file, and the replacing call waits for the person's yes; they say yes.",
+   "inputs": {
+    "job": "Read sales/orders.csv and crm/customers.csv; join on customer_id; keep date, customer_id, region, total; skip rows whose total is not a number; write reports/orders_by_region.csv. customers.csv wins on region.",
+    "at": "03:15"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "os.replace",
+      "output": "replaced"
+     },
+     {
+      "match": "orders_by_region",
+      "output": "in 1204 310 out 1198 dropped {'total not a number': 6} conflicts [('C104', 'Leeds', 'York'), ('C221', 'Hull', 'Selby')]\nwrote reports/orders_by_region.csv.new"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- 27 Oct: 1,180 in, 1,175 out",
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os\nroot = os.environ[\"PANTHEON_PROJECTS\"]; P = lambda r: os.path.join(root, r)\norders = list(csv.DictReader(open(P(\"sales/orders.csv\"), newline=\"\", encoding=\"utf-8-sig\")))\ncustomers = {r[\"customer_id\"]: r for r in csv.DictReader(open(P(\"crm/customers.csv\"), newline=\"\", encoding=\"utf-8-sig\"))}\nout, dropped, conflicts = [], {}, []\nfor o in orders:\n    try: total = float(o[\"total\"])\n    except ValueError: dropped[\"total not a number\"] = dropped.get(\"total not a number\", 0) + 1; continue\n    c = customers.get(o[\"customer_id\"])\n    if c is None: dropped[\"no such customer\"] = dropped.get(\"no such customer\", 0) + 1; continue\n    if o.get(\"region\") and o[\"region\"] != c[\"region\"]: conflicts.append((o[\"customer_id\"], o[\"region\"], c[\"region\"]))\n    out.append({\"date\": o[\"date\"], \"customer_id\": o[\"customer_id\"], \"region\": c[\"region\"], \"total\": total})\nlost = sum(v for k, v in dropped.items() if k != \"total not a number\")\nprint(\"in\", len(orders), len(customers), \"out\", len(out), \"dropped\", dropped, \"conflicts\", conflicts)\nif lost > 0.01 * len(orders): print(\"STOP\"); raise SystemExit\ntarget = P(\"reports/orders_by_region.csv\"); dest = target + \".new\" if os.path.exists(target) else target\nos.makedirs(os.path.dirname(target), exist_ok=True)\nw = csv.DictWriter(open(dest, \"w\", newline=\"\"), [\"date\", \"customer_id\", \"region\", \"total\"]); w.writeheader(); w.writerows(out)\nprint(\"wrote\", os.path.relpath(dest, root))"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import os\nroot = os.environ['PANTHEON_PROJECTS']\nos.replace(os.path.join(root, 'reports/orders_by_region.csv.new'), os.path.join(root, 'reports/orders_by_region.csv'))\nprint('replaced')"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Rows**\n- sales/orders.csv 1,204 in; crm/customers.csv 310 in; 1,198 out\n- 6 dropped: total not a number (as the job says: skip unparseable rows)\n\n**Written**\n- reports/orders_by_region.csv, replaced after your yes\n\n**Checks**\n- 0.5% dropped, under 1%\n- 2 customers' regions differ between the inputs (C104, C221); customers.csv wins, as the job says\n\n## Report\n- ran the job in one python call; wrote reports/orders_by_region.csv\n\n## Carry forward\n- 28 Oct: 1,204 in, 1,198 out"
+    }
+   ],
+   "checks": [
+    {
+     "called": "python"
+    },
+    {
+     "answer_contains": [
+      "replaced after your yes"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-replaces-without-a-yes",
+   "about": "The person says no to replacing yesterday's output: the replacing call is not done and the run ends; the .new file stays for them.",
+   "inputs": {
+    "job": "Read sales/orders.csv and crm/customers.csv; join on customer_id; keep date, customer_id, region, total; skip rows whose total is not a number; write reports/orders_by_region.csv. customers.csv wins on region.",
+    "at": "03:15"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "os.replace",
+      "output": "replaced"
+     },
+     {
+      "match": "orders_by_region",
+      "output": "in 1204 310 out 1198 dropped {'total not a number': 6} conflicts [('C104', 'Leeds', 'York'), ('C221', 'Hull', 'Selby')]\nwrote reports/orders_by_region.csv.new"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "notebook": "- 27 Oct: 1,180 in, 1,175 out",
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os\nroot = os.environ[\"PANTHEON_PROJECTS\"]; P = lambda r: os.path.join(root, r)\norders = list(csv.DictReader(open(P(\"sales/orders.csv\"), newline=\"\", encoding=\"utf-8-sig\")))\ncustomers = {r[\"customer_id\"]: r for r in csv.DictReader(open(P(\"crm/customers.csv\"), newline=\"\", encoding=\"utf-8-sig\"))}\nout, dropped, conflicts = [], {}, []\nfor o in orders:\n    try: total = float(o[\"total\"])\n    except ValueError: dropped[\"total not a number\"] = dropped.get(\"total not a number\", 0) + 1; continue\n    c = customers.get(o[\"customer_id\"])\n    if c is None: dropped[\"no such customer\"] = dropped.get(\"no such customer\", 0) + 1; continue\n    if o.get(\"region\") and o[\"region\"] != c[\"region\"]: conflicts.append((o[\"customer_id\"], o[\"region\"], c[\"region\"]))\n    out.append({\"date\": o[\"date\"], \"customer_id\": o[\"customer_id\"], \"region\": c[\"region\"], \"total\": total})\nlost = sum(v for k, v in dropped.items() if k != \"total not a number\")\nprint(\"in\", len(orders), len(customers), \"out\", len(out), \"dropped\", dropped, \"conflicts\", conflicts)\nif lost > 0.01 * len(orders): print(\"STOP\"); raise SystemExit\ntarget = P(\"reports/orders_by_region.csv\"); dest = target + \".new\" if os.path.exists(target) else target\nos.makedirs(os.path.dirname(target), exist_ok=True)\nw = csv.DictWriter(open(dest, \"w\", newline=\"\"), [\"date\", \"customer_id\", \"region\", \"total\"]); w.writeheader(); w.writerows(out)\nprint(\"wrote\", os.path.relpath(dest, root))"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import os\nroot = os.environ['PANTHEON_PROJECTS']\nos.replace(os.path.join(root, 'reports/orders_by_region.csv.new'), os.path.join(root, 'reports/orders_by_region.csv'))\nprint('replaced')"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Rows**\n- sales/orders.csv 1,204 in; crm/customers.csv 310 in; 1,198 out\n- 6 dropped: total not a number (as the job says: skip unparseable rows)\n\n**Written**\n- reports/orders_by_region.csv\n\n**Checks**\n- 0.5% dropped, under 1%\n- 2 customers' regions differ between the inputs (C104, C221); customers.csv wins, as the job says\n\n## Report\n- ran the job in one python call; wrote reports/orders_by_region.csv\n\n## Carry forward\n- 28 Oct: 1,204 in, 1,198 out"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "replaced after your yes"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "too-many-rows-lost-writes-nothing",
+   "about": "52 orders name a customer that does not exist — 4% lost, which the job never said to drop: the run stops and writes nothing.",
+   "inputs": {
+    "job": "Read sales/orders.csv and crm/customers.csv; join on customer_id; keep date, customer_id, region, total; skip rows whose total is not a number; write reports/orders_by_region.csv. customers.csv wins on region.",
+    "at": "03:15"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "orders_by_region",
+      "output": "in 1204 310 out 1146 dropped {'total not a number': 6, 'no such customer': 52} conflicts []\nSTOP"
+     }
+    ]
+   },
+   "notebook": "- 27 Oct: 1,180 in, 1,175 out",
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os\nroot = os.environ[\"PANTHEON_PROJECTS\"]; P = lambda r: os.path.join(root, r)\norders = list(csv.DictReader(open(P(\"sales/orders.csv\"), newline=\"\", encoding=\"utf-8-sig\")))\ncustomers = {r[\"customer_id\"]: r for r in csv.DictReader(open(P(\"crm/customers.csv\"), newline=\"\", encoding=\"utf-8-sig\"))}\nout, dropped, conflicts = [], {}, []\nfor o in orders:\n    try: total = float(o[\"total\"])\n    except ValueError: dropped[\"total not a number\"] = dropped.get(\"total not a number\", 0) + 1; continue\n    c = customers.get(o[\"customer_id\"])\n    if c is None: dropped[\"no such customer\"] = dropped.get(\"no such customer\", 0) + 1; continue\n    if o.get(\"region\") and o[\"region\"] != c[\"region\"]: conflicts.append((o[\"customer_id\"], o[\"region\"], c[\"region\"]))\n    out.append({\"date\": o[\"date\"], \"customer_id\": o[\"customer_id\"], \"region\": c[\"region\"], \"total\": total})\nlost = sum(v for k, v in dropped.items() if k != \"total not a number\")\nprint(\"in\", len(orders), len(customers), \"out\", len(out), \"dropped\", dropped, \"conflicts\", conflicts)\nif lost > 0.01 * len(orders): print(\"STOP\"); raise SystemExit\ntarget = P(\"reports/orders_by_region.csv\"); dest = target + \".new\" if os.path.exists(target) else target\nos.makedirs(os.path.dirname(target), exist_ok=True)\nw = csv.DictWriter(open(dest, \"w\", newline=\"\"), [\"date\", \"customer_id\", \"region\", \"total\"]); w.writeheader(); w.writerows(out)\nprint(\"wrote\", os.path.relpath(dest, root))"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Rows**\n- sales/orders.csv 1,204 in; crm/customers.csv 310 in\n- 52 dropped: no such customer; 6 dropped: total not a number\n\n**Written**\n- nothing: stopped — 4.3% of rows would be lost and the job does not say to drop them\n\n**Checks**\n- 52 orders name a customer missing from crm/customers.csv; fix the input or the job\n\n## Report\n- ran the job; stopped before writing\n\n## Carry forward\n- 27 Oct: 1,180 in, 1,175 out"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "nothing: stopped"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "wrote reports"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-input-fails-to-open",
+   "about": "crm/customers.csv is missing: nothing is written, and the input is named with the error.",
+   "inputs": {
+    "job": "Read sales/orders.csv and crm/customers.csv; join on customer_id; keep date, customer_id, region, total; skip rows whose total is not a number; write reports/orders_by_region.csv. customers.csv wins on region.",
+    "at": "03:15"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "orders_by_region",
+      "output": "Traceback (most recent call last):\nFileNotFoundError: [Errno 2] No such file or directory: '/projects/crm/customers.csv'",
+      "exit_code": 1
+     }
+    ]
+   },
+   "notebook": "- 27 Oct: 1,180 in, 1,175 out",
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os\nroot = os.environ[\"PANTHEON_PROJECTS\"]; P = lambda r: os.path.join(root, r)\norders = list(csv.DictReader(open(P(\"sales/orders.csv\"), newline=\"\", encoding=\"utf-8-sig\")))\ncustomers = {r[\"customer_id\"]: r for r in csv.DictReader(open(P(\"crm/customers.csv\"), newline=\"\", encoding=\"utf-8-sig\"))}\nout, dropped, conflicts = [], {}, []\nfor o in orders:\n    try: total = float(o[\"total\"])\n    except ValueError: dropped[\"total not a number\"] = dropped.get(\"total not a number\", 0) + 1; continue\n    c = customers.get(o[\"customer_id\"])\n    if c is None: dropped[\"no such customer\"] = dropped.get(\"no such customer\", 0) + 1; continue\n    if o.get(\"region\") and o[\"region\"] != c[\"region\"]: conflicts.append((o[\"customer_id\"], o[\"region\"], c[\"region\"]))\n    out.append({\"date\": o[\"date\"], \"customer_id\": o[\"customer_id\"], \"region\": c[\"region\"], \"total\": total})\nlost = sum(v for k, v in dropped.items() if k != \"total not a number\")\nprint(\"in\", len(orders), len(customers), \"out\", len(out), \"dropped\", dropped, \"conflicts\", conflicts)\nif lost > 0.01 * len(orders): print(\"STOP\"); raise SystemExit\ntarget = P(\"reports/orders_by_region.csv\"); dest = target + \".new\" if os.path.exists(target) else target\nos.makedirs(os.path.dirname(target), exist_ok=True)\nw = csv.DictWriter(open(dest, \"w\", newline=\"\"), [\"date\", \"customer_id\", \"region\", \"total\"]); w.writeheader(); w.writerows(out)\nprint(\"wrote\", os.path.relpath(dest, root))"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Rows**\n- nothing read\n\n**Written**\n- nothing: crm/customers.csv could not be opened — FileNotFoundError: No such file or directory\n\n**Checks**\n- none run\n\n## Report\n- an input could not be opened; wrote nothing\n\n## Carry forward\n- 27 Oct: 1,180 in, 1,175 out"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "crm/customers.csv could not be opened"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "no-rows-in",
+   "about": "The orders file has only its header: nothing is written.",
+   "inputs": {
+    "job": "Read sales/orders.csv and crm/customers.csv; join on customer_id; keep date, customer_id, region, total; skip rows whose total is not a number; write reports/orders_by_region.csv. customers.csv wins on region.",
+    "at": "03:15"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "orders_by_region",
+      "output": "in 0 310 out 0 dropped {} conflicts []\nwrote nothing: no rows"
+     }
+    ]
+   },
+   "notebook": "- 27 Oct: 1,180 in, 1,175 out",
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os\nroot = os.environ[\"PANTHEON_PROJECTS\"]; P = lambda r: os.path.join(root, r)\norders = list(csv.DictReader(open(P(\"sales/orders.csv\"), newline=\"\", encoding=\"utf-8-sig\")))\ncustomers = {r[\"customer_id\"]: r for r in csv.DictReader(open(P(\"crm/customers.csv\"), newline=\"\", encoding=\"utf-8-sig\"))}\nout, dropped, conflicts = [], {}, []\nfor o in orders:\n    try: total = float(o[\"total\"])\n    except ValueError: dropped[\"total not a number\"] = dropped.get(\"total not a number\", 0) + 1; continue\n    c = customers.get(o[\"customer_id\"])\n    if c is None: dropped[\"no such customer\"] = dropped.get(\"no such customer\", 0) + 1; continue\n    if o.get(\"region\") and o[\"region\"] != c[\"region\"]: conflicts.append((o[\"customer_id\"], o[\"region\"], c[\"region\"]))\n    out.append({\"date\": o[\"date\"], \"customer_id\": o[\"customer_id\"], \"region\": c[\"region\"], \"total\": total})\nlost = sum(v for k, v in dropped.items() if k != \"total not a number\")\nprint(\"in\", len(orders), len(customers), \"out\", len(out), \"dropped\", dropped, \"conflicts\", conflicts)\nif lost > 0.01 * len(orders): print(\"STOP\"); raise SystemExit\ntarget = P(\"reports/orders_by_region.csv\"); dest = target + \".new\" if os.path.exists(target) else target\nos.makedirs(os.path.dirname(target), exist_ok=True)\nw = csv.DictWriter(open(dest, \"w\", newline=\"\"), [\"date\", \"customer_id\", \"region\", \"total\"]); w.writeheader(); w.writerows(out)\nprint(\"wrote\", os.path.relpath(dest, root))"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Rows**\n- sales/orders.csv 0 in; crm/customers.csv 310 in\n\n**Written**\n- nothing — no rows in\n\n**Checks**\n- far below yesterday's 1,180: the export may have failed upstream\n\n## Report\n- no rows in; wrote nothing\n\n## Carry forward\n- 28 Oct: 0 in"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "nothing — no rows in"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Rows, Written and Checks does not deliver, even after its repair pass.",
+   "inputs": {
+    "job": "Read sales/orders.csv and crm/customers.csv; join on customer_id; keep date, customer_id, region, total; skip rows whose total is not a number; write reports/orders_by_region.csv. customers.csv wins on region.",
+    "at": "03:15"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "orders_by_region",
+      "output": "in 1204 310 out 1198 dropped {'total not a number': 6} conflicts [('C104', 'Leeds', 'York'), ('C221', 'Hull', 'Selby')]\nwrote reports/orders_by_region.csv"
+     }
+    ]
+   },
+   "notebook": "- 27 Oct: 1,180 in, 1,175 out",
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os\nroot = os.environ[\"PANTHEON_PROJECTS\"]; P = lambda r: os.path.join(root, r)\norders = list(csv.DictReader(open(P(\"sales/orders.csv\"), newline=\"\", encoding=\"utf-8-sig\")))\ncustomers = {r[\"customer_id\"]: r for r in csv.DictReader(open(P(\"crm/customers.csv\"), newline=\"\", encoding=\"utf-8-sig\"))}\nout, dropped, conflicts = [], {}, []\nfor o in orders:\n    try: total = float(o[\"total\"])\n    except ValueError: dropped[\"total not a number\"] = dropped.get(\"total not a number\", 0) + 1; continue\n    c = customers.get(o[\"customer_id\"])\n    if c is None: dropped[\"no such customer\"] = dropped.get(\"no such customer\", 0) + 1; continue\n    if o.get(\"region\") and o[\"region\"] != c[\"region\"]: conflicts.append((o[\"customer_id\"], o[\"region\"], c[\"region\"]))\n    out.append({\"date\": o[\"date\"], \"customer_id\": o[\"customer_id\"], \"region\": c[\"region\"], \"total\": total})\nlost = sum(v for k, v in dropped.items() if k != \"total not a number\")\nprint(\"in\", len(orders), len(customers), \"out\", len(out), \"dropped\", dropped, \"conflicts\", conflicts)\nif lost > 0.01 * len(orders): print(\"STOP\"); raise SystemExit\ntarget = P(\"reports/orders_by_region.csv\"); dest = target + \".new\" if os.path.exists(target) else target\nos.makedirs(os.path.dirname(target), exist_ok=True)\nw = csv.DictWriter(open(dest, \"w\", newline=\"\"), [\"date\", \"customer_id\", \"region\", \"total\"]); w.writeheader(); w.writerows(out)\nprint(\"wrote\", os.path.relpath(dest, root))"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Job done."
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}
