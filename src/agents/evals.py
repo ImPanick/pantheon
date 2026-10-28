@@ -257,6 +257,15 @@ def load_evals(manifest) -> List[Dict[str, Any]]:
 
 # ── The world ───────────────────────────────────────────────────────────────
 
+def _world_text(out: Any) -> str:
+    """`B1624`. A world's answer as the model reads it, in the world's own
+    characters. `json.dumps` escapes everything outside ASCII by default, so a
+    mail subject's *—* reached the model as `\\u2014` and a name's *é* as
+    `\\u00e9` — text no real tool hands it, in a case meant to measure the
+    model on what a real run reads."""
+    return json.dumps(out, indent=1, ensure_ascii=False)
+
+
 @dataclass
 class World:
     """A case's outside world, and the record of every tool the run called."""
@@ -296,11 +305,11 @@ class World:
                 # answers (`forge_route`): the tool's own words, the world's models.
                 return None
             out = self._outside(tool, self._args(content))
-            text = json.dumps(out, indent=1)
+            text = _world_text(out)
             return f"{tool}: {text[:200]}", {"output": text, "exit_code": 0}
         args = self._args(content)
         out = self._answer(tool, args, content)
-        text = out if isinstance(out, str) else json.dumps(out, indent=1)
+        text = out if isinstance(out, str) else _world_text(out)
         return f"{tool}: {text[:200]}", {"output": text, "exit_code": 0}
 
     def _file_attachment(self, args: Dict[str, Any]) -> Dict[str, Any]:

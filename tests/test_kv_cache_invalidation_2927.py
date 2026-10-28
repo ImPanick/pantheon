@@ -325,7 +325,8 @@ async def test_run_post_response_tasks_does_not_fire_extraction_concurrently(mon
     session_manager = SimpleNamespace(save_sessions=lambda: None)
     monkeypatch.setattr(chat_helpers, "needs_auto_name", lambda name: False)
 
-    chat_helpers.run_post_response_tasks(
+    # `B1618`: awaited now — its token counting runs in a worker thread.
+    await chat_helpers.run_post_response_tasks(
         sess, session_manager, "sess-Y", "hello", "hi there", None,
         {"auto_memory": True, "auto_skills": True}, memory_manager=MagicMock(), memory_vector=MagicMock(),
         webhook_manager=None,

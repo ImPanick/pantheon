@@ -101,6 +101,11 @@ def test_stream_failure_status_uses_exact_http_statuses(status, expected):
     assert chat_routes._stream_failure_status(chunk) == expected
 
 
+async def _no_post_response(*args, **kwargs):
+    """`B1618`. The route awaits its post-reply jobs now; nothing to do here."""
+    return None
+
+
 def _chat_stream_endpoint(
     monkeypatch,
     mode,
@@ -225,14 +230,15 @@ def _chat_stream_endpoint(
             "save_assistant_response",
             lambda *args, **kwargs: captured.setdefault("saved", []).append((args, kwargs)),
         )
-        monkeypatch.setattr(
-            chat_routes,
-            "run_post_response_tasks",
-            lambda *args, **kwargs: captured.setdefault("post_processed", []).append((args, kwargs)),
-        )
+        # `B1618`: `run_post_response_tasks` is awaited now (its token
+        # counting is off the loop), so its stand-in is a coroutine.
+        async def post_processed(*args, **kwargs):
+            captured.setdefault("post_processed", []).append((args, kwargs))
+
+        monkeypatch.setattr(chat_routes, "run_post_response_tasks", post_processed)
     else:
         monkeypatch.setattr(chat_routes, "save_assistant_response", lambda *args, **kwargs: None)
-        monkeypatch.setattr(chat_routes, "run_post_response_tasks", lambda *args, **kwargs: None)
+        monkeypatch.setattr(chat_routes, "run_post_response_tasks", _no_post_response)
     # `B743`: deliberately the route's one binding, and not `patch_estimator`.
     # This helper is shared by ~25 files that were written against it, and some
     # count their expectations from another module's binding AFTER calling it
@@ -1197,7 +1203,7 @@ def _chat_endpoint(
     monkeypatch.setattr(chat_routes, "_enforce_chat_privileges", lambda *args, **kwargs: None)
     monkeypatch.setattr(chat_routes, "build_chat_context", fake_build_context)
     monkeypatch.setattr(chat_routes, "clean_thinking_for_save", lambda reply, metadata: (reply, metadata))
-    monkeypatch.setattr(chat_routes, "run_post_response_tasks", lambda *args, **kwargs: None)
+    monkeypatch.setattr(chat_routes, "run_post_response_tasks", _no_post_response)   # `B1618`
 
     import core.database as database
 

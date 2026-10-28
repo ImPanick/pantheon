@@ -303,16 +303,30 @@ def test_the_terminal_paths_tag_their_rounds_as_errors():
     Both `accumulate_token_usage` calls in `chat_routes.py` are terminal paths;
     each is followed by `_stream_set(session, status="error")`. Stripping the
     tag broke nothing until this test existed.
+
+    `B1618`: each is handed to a worker thread now
+    (`asyncio.to_thread(accumulate_token_usage, …)`), so a line holding
+    `accumulate_token_usage(` found none and the test went vacuous. The calls
+    are found as calls (`Law 20`): the function called, or handed to a thread.
     """
+    import ast
     from pathlib import Path
     src = (Path(__file__).resolve().parent.parent / "routes" /
            "chat_routes.py").read_text(encoding="utf-8")
-    calls = [ln.strip() for ln in src.splitlines()
-             if "accumulate_token_usage(" in ln and "import" not in ln]
-    assert calls, "no call sites found — the test would be vacuous"
+
+    def counts(call):
+        f = call.func
+        if isinstance(f, ast.Name) and f.id == "accumulate_token_usage":
+            return True
+        return (isinstance(f, ast.Attribute) and f.attr == "to_thread" and call.args
+                and isinstance(call.args[0], ast.Name) and call.args[0].id == "accumulate_token_usage")
+
+    calls = [c for c in ast.walk(ast.parse(src)) if isinstance(c, ast.Call) and counts(c)]
+    assert len(calls) == 2, "the two terminal paths' calls are not where they were"
     for call in calls:
-        assert 'outcome="error"' in call, (
-            f"a terminal path records its round as a success: {call}")
+        outcome = next((k.value for k in call.keywords if k.arg == "outcome"), None)
+        assert isinstance(outcome, ast.Constant) and outcome.value == "error", (
+            f"a terminal path records its round as a success: line {call.lineno}")
 
 
 def test_the_first_write_in_a_process_prunes(monkeypatch):

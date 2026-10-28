@@ -109,6 +109,12 @@ sessions); the rest hand the account check, the send configuration, the
 chat's route, the context readers, the MCP map and the workflow palette and
 resources to worker threads. **39 → 1**, the residual above; the own-body
 count is back at 0.
+
+**`B1618` — the residual.** `run_post_response_tasks` is awaited now and
+hands `accumulate_token_usage` to a worker thread, and the stream's two
+terminal paths do the same, inside the generator this scan does not follow.
+Awaited, not fired: the counters are in the session's row before the turn's
+last frame. **1 → 0.**
 """
 from __future__ import annotations
 
@@ -178,8 +184,8 @@ def _calls_the_database_itself(fn, names=frozenset(_DB_CALLS)) -> bool:
 
 #: `B1580`. The ceiling through helpers: 51 after `B1580`, from 107; 25 after
 #: `B1588`; 1 after `B1598`; 39 when `B1609` taught the scan aliases, and 1
-#: again after its fixes.
-MAX_THROUGH_A_HELPER = 1
+#: again after its fixes; 0 after `B1618`.
+MAX_THROUGH_A_HELPER = 0
 
 #: Where a helper a handler calls can live.
 _SCOPE = ("routes", "src", "core", "services", "companion", "integrations")

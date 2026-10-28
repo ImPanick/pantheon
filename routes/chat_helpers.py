@@ -1604,7 +1604,7 @@ async def _run_extraction_jobs_sequentially(session_id: str, jobs: list, max_wai
             logger.warning("[bg-extract] %s extraction job failed for session %s", name, session_id, exc_info=True)
 
 
-def run_post_response_tasks(
+async def run_post_response_tasks(
     sess,
     session_manager,
     session_id: str,
@@ -1639,6 +1639,14 @@ def run_post_response_tasks(
     extraction calls themselves are still async — queuing them through
     ``_queue_background_extraction`` keeps them from overlapping the *next*
     turn's request too.
+
+    `B1618`. Awaited, because the turn's token counts are written here, and
+    in a worker thread: `accumulate_token_usage` opens a database session, and
+    this runs on the event loop — inside `chat_stream`'s generator for every
+    turn with metrics, the off-the-loop helper ratchet's last residual. Awaited
+    rather than fired, so the counters are in the session's row before the
+    turn's last frame is sent, and a read of the session right after the turn
+    finds them, as it did when the write blocked the loop.
     """
     _extraction_jobs: list = []
 
@@ -1709,9 +1717,9 @@ def run_post_response_tasks(
     if _extraction_jobs:
         _spawn_bg(_run_extraction_jobs_sequentially(session_id, _extraction_jobs))
 
-    # Token accumulation
+    # Token accumulation — off the loop, and finished before this returns (`B1618`).
     if last_metrics:
-        accumulate_token_usage(session_id, last_metrics)
+        await asyncio.to_thread(accumulate_token_usage, session_id, last_metrics)
 
     # Webhook
     if webhook_manager and not compare_mode:

@@ -1787,7 +1787,7 @@ def setup_chat_routes(
         session_manager.save_sessions()
 
         # Background tasks (memory, webhook, auto-name)
-        run_post_response_tasks(
+        await run_post_response_tasks(
             sess, session_manager, session, message, reply, None,
             ctx.uprefs, memory_manager, memory_vector, webhook_manager,
             character_name=ctx.preset.character_name,
@@ -3349,7 +3349,8 @@ def setup_chat_routes(
                                     character_name=ctx.preset.character_name,
                                     incognito=incognito,
                                 )
-                                accumulate_token_usage(session, _terminal_metrics, outcome="error")
+                                # `B1618`: the counters are written off the loop.
+                                await asyncio.to_thread(accumulate_token_usage, session, _terminal_metrics, outcome="error")
                                 _chat_terminal_saved = True
                                 _stream_set(session, status="error")
                                 if _saved_id:
@@ -3478,7 +3479,7 @@ def setup_chat_routes(
                                 )
                                 if _saved_id:
                                     yield f'data: {json.dumps({"type": "message_saved", "id": _saved_id})}\n\n'
-                                run_post_response_tasks(
+                                await run_post_response_tasks(   # `B1618`: awaited, its counting off the loop
                                     sess, session_manager, session, message, full_response,
                                     _metrics_to_save, ctx.uprefs, memory_manager, memory_vector, webhook_manager,
                                     incognito=incognito, compare_mode=compare_mode,
@@ -3784,7 +3785,7 @@ def setup_chat_routes(
                                         # `B1032`: the saved record, so a student's
                                         # run before a teacher that failed is
                                         # counted too (`earlier_runs`).
-                                        accumulate_token_usage(session, _terminal_record, outcome="error")
+                                        await asyncio.to_thread(accumulate_token_usage, session, _terminal_record, outcome="error")
                                         _stream_set(session, status="error")
                                         if _saved_id:
                                             yield f'data: {json.dumps({"type": "message_saved", "id": _saved_id})}\n\n'
@@ -3881,7 +3882,7 @@ def setup_chat_routes(
                                 )
                                 if _saved_id:
                                     yield f'data: {json.dumps({"type": "message_saved", "id": _saved_id})}\n\n'
-                                run_post_response_tasks(
+                                await run_post_response_tasks(   # `B1618`: awaited, its counting off the loop
                                     sess, session_manager, session, message, _response_to_save,
                                     _metrics_to_save, ctx.uprefs, memory_manager, memory_vector, webhook_manager,
                                     incognito=incognito, compare_mode=compare_mode,
