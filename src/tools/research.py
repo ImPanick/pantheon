@@ -47,13 +47,26 @@ async def do_manage_research(content: str, owner: Optional[str] = None) -> Dict:
         except Exception:
             return None
 
+    # `B1601`. A report is its owner's, as the Library's routes hold it
+    # (`research_routes`: another person's report, or a legacy one with no
+    # `owner`, is not there). This tool is the same door by another name, and
+    # globbed every report and read or unlinked any id it was handed — so a
+    # member's agent listed, read and deleted everyone's research.
+    if not owner:
+        return {"error": "Research is kept per person, and this call names no person to "
+                         "read it for, so nothing was listed, read or deleted."}
+
+    def _owned(p):
+        d = _load(p) if p.exists() else None
+        return d if isinstance(d, dict) and d.get("owner") == owner else None
+
     if action in ("read", "open", "view", "get"):
         if not rid:
             return {"error": "Provide the research id (from action='list')."}
         p = data_dir / f"{rid}.json"
-        if not p.exists():
+        d = _owned(p)
+        if d is None:
             return {"error": f"Research '{rid}' not found."}
-        d = _load(p) or {}
         summary = d.get("result") or d.get("raw_report") or d.get("summary") or d.get("report") or "(no report body)"
         srcs = d.get("sources", []) or []
         out = f"# {d.get('query', '(untitled)')}\n\n{summary}"
@@ -67,7 +80,7 @@ async def do_manage_research(content: str, owner: Optional[str] = None) -> Dict:
         if not rid:
             return {"error": "Provide the research id to delete (from action='list')."}
         p = data_dir / f"{rid}.json"
-        if p.exists():
+        if _owned(p) is not None:
             try:
                 p.unlink()
             except Exception as e:
@@ -80,7 +93,7 @@ async def do_manage_research(content: str, owner: Optional[str] = None) -> Dict:
     items = []
     if data_dir.exists():
         for p in data_dir.glob("*.json"):
-            d = _load(p)
+            d = _owned(p)
             if not d:
                 continue
             q = d.get("query", "")

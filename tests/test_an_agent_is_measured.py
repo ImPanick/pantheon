@@ -151,7 +151,9 @@ def test_every_path_in_the_install_data_folder_is_the_worlds():
             assert path.startswith(data + os.sep), path
         os.makedirs(research.DEEP_RESEARCH_DIR, exist_ok=True)
         with open(os.path.join(research.DEEP_RESEARCH_DIR, "r1.json"), "w", encoding="utf-8") as fh:
-            json.dump({"query": "heat pumps", "summary": "They work in the cold.", "sources": []}, fh)
+            # `B1601`: a report is read only by its owner.
+            json.dump({"query": "heat pumps", "summary": "They work in the cold.", "sources": [],
+                       "owner": E.EVAL_OWNER}, fh)
         out = asyncio.run(research.do_manage_research('{"action": "read", "id": "r1"}', owner=E.EVAL_OWNER))
         assert "They work in the cold." in out["output"]
     assert (constants.DEEP_RESEARCH_DIR, research.DEEP_RESEARCH_DIR, constants.CONTACTS_FILE) == before
