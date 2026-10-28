@@ -1,0 +1,19 @@
+{
+ "case": "a-weather-server-built-and-tested",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- wrote 3 files and ran the test once (mcp 1.9.4): both tools answered",
+ "read": [],
+ "wrote": [
+  "write_file",
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Built, Tested, To register."
+  }
+ ],
+ "answer": "**Built**\n- mcp-weather/server.py — tools: get_forecast(place), list_places()\n- mcp-weather/test_server.py, mcp-weather/README.md\n\n**Tested**\n- get_forecast(\"Leeds\") → {\"today\": \"rain, 11°C\"}\n- list_places() → [\"Leeds\", \"York\"]\n\n**To register**\n- Settings → MCP → Add: command `python3 /projects/mcp-weather/server.py`\n\n## Report\n- wrote 3 files and ran the test once (mcp 1.9.4): both tools answered"
+}

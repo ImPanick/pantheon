@@ -249,6 +249,10 @@ def test_a_budget_hit_parks_the_hire_so_its_trigger_stops_asking(world):
     db = factory()
     h, _ = _hire(db, "model-steward")          # runs_per_day: 1
     task = _task(db, h.id)
+    # `P24-27`. Model Steward's answer is checked for its three headings now;
+    # the first run delivers, so the second meets the budget, not the contract.
+    seen["answer"] = ("**Serving**\n- nothing\n\n**Downloaded, not served**\n- nothing\n\n"
+                      "**Newer releases**\n- none found")
     _run(sched, db, task)
     db.query(TaskRun).update({"status": "success"})
     db.commit()

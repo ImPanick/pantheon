@@ -110,6 +110,9 @@ AT_THE_BAR = frozenset({
     "memory-auditor", "attachment-filer", "tax-folder-builder",
     # The three a browser or other models blocked (`B1607`).
     "ux-auditor", "conversion-auditor", "ai-visibility-check",
+    # AI Engineering, the whole section, on the world's models, Forge, hub and index.
+    "model-steward", "benchmark-runner", "dataset-curator", "eval-builder", "mcp-builder",
+    "prompt-tuner", "rag-builder",
 })
 
 SECTIONS = ("Steps", "Judgement calls", "Edge cases", "Deliverable", "Example")

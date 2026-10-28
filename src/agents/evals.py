@@ -109,7 +109,10 @@ CHECK_KINDS = ("answer_contains", "answer_lacks", "document", "no_document", "ca
                "not_called", "drafts_at_most", "draft_to", "no_draft_to", "status",
                "file", "notebook_contains", "memory")
 WORLD_KEYS = ("emails", "web", "search", "shell", "documents", "notes", "calendar", "files", "accounts",
-              "research", "memories", "chats", "screens", "models", "served", "cached", "hub")
+              "research", "memories", "chats", "screens", "models", "served", "cached", "hub", "rag")
+#: `P24-27`. A script's word for the world's projects folder — its full path,
+#: which a model reads off `ls` and a script cannot know before the world is made.
+WORLD_PROJECTS = "$WORLD_PROJECTS"
 #: `P24-27`. The install's Forge routes a world answers from `served`, `cached`
 #: and `hub` — where `list_served_models`, `list_cached_models` and
 #: `search_hf_models` ask — so each tool says them in its own words.
@@ -201,6 +204,13 @@ def _lint_screens_and_models(cid: str, world: Dict[str, Any]) -> None:
         _need(isinstance(world["cached"], list) and all(
             isinstance(r, dict) and isinstance(r.get("repo_id"), str) and r["repo_id"].strip() for r in world["cached"]),
             f"Case “{cid}”'s cached is a list of models on disk, each {{\"repo_id\", \"size\", \"host\"}}.")
+    if "rag" in world:
+        _need(isinstance(world["rag"], dict) and all(
+            isinstance(v, list) and all(isinstance(r, dict) and isinstance(r.get("file"), str)
+                                        and isinstance(r.get("text"), str) for r in v)
+            for v in world["rag"].values()),
+            f"Case “{cid}”'s rag is a map of words in a search → the passages the index finds, each "
+            f"{{\"file\", \"text\", \"similarity\"}}.")
     if "hub" in world:
         _need(isinstance(world["hub"], dict) and all(
             isinstance(v, list) and all(isinstance(r, dict) and isinstance(r.get("repo_id"), str) for r in v)
@@ -262,6 +272,11 @@ class World:
     #: world model was asked, `(model, message)`.
     screen: Optional[str] = None
     asked: List[Tuple[str, str]] = field(default_factory=list)
+    #: `P24-27`. The folders this run indexed (`manage_rag`).
+    _rag_docs: Any = None
+
+    def __post_init__(self):
+        self._rag_docs = _WorldFolders()
 
     def _args(self, content: str) -> Dict[str, Any]:
         try:
@@ -346,6 +361,29 @@ class World:
                     "session_id": sid, "exit_code": 0}
         return {"error": f"This world has no {tool}: an evaluation runs inside the install, and "
                          f"nothing in an evaluation leaves it.", "exit_code": 1}
+
+    async def rag(self, content: str) -> Tuple[str, Dict[str, Any]]:
+        """`P24-27`. `manage_rag`, answered by the RAG server's own
+        `call_tool` with the world's index standing in for the embedding one:
+        a folder is indexed only if it is there (a chunk per file), and a
+        search finds the passages the world's `rag` gives for its words."""
+        import mcp_servers.rag_server as rag_server
+        import src.tool_execution as tool_execution
+        text = (content or "").strip()
+        try:
+            args = json.loads(text) if text.startswith("{") else tool_execution._parse_manage_rag(text)
+        except ValueError:
+            args = {}
+        index = _WorldIndex(self.fixture.get("rag") or {})
+        saved = (rag_server._rag_manager, rag_server._personal_docs_manager, rag_server._initialized)
+        rag_server._rag_manager, rag_server._personal_docs_manager = index, self._rag_docs
+        rag_server._initialized = True
+        try:
+            parts = await rag_server.call_tool("manage_rag", args if isinstance(args, dict) else {})
+        finally:
+            rag_server._rag_manager, rag_server._personal_docs_manager, rag_server._initialized = saved
+        out = "\n".join(getattr(p, "text", "") for p in parts)
+        return f"manage_rag: {out[:200]}", {"output": out, "exit_code": 0}
 
     def forge_route(self, path: str, params: Dict[str, str]) -> Optional[Dict[str, Any]]:
         """`P24-27`. What the install's Forge route at `path` answers in this
@@ -478,6 +516,50 @@ class World:
             if rule.get("match", "") in cmd:
                 return {"output": rule.get("output", ""), "exit_code": rule.get("exit_code", 0)}
         return {"output": "", "error": "This world has no machine that answers that command.", "exit_code": 127}
+
+
+class _WorldFolders:
+    """`P24-27`. The folders a run indexed, as the RAG server's personal-docs
+    manager keeps them."""
+
+    def __init__(self):
+        self.index: List[Dict[str, str]] = []
+        self.dirs: List[str] = []
+
+    def get_indexed_directories(self) -> List[str]:
+        return list(self.dirs)
+
+    def add_directory(self, directory: str, index: bool = True) -> None:
+        if directory not in self.dirs:
+            self.dirs.append(directory)
+            for base, _sub, names in os.walk(directory):
+                self.index.extend({"name": os.path.join(base, n)} for n in sorted(names))
+
+    def remove_directory(self, directory: str) -> None:
+        self.dirs = [d for d in self.dirs if d != directory]
+
+
+class _WorldIndex:
+    """`P24-27`. The world's retrieval index: a chunk per file indexed, and
+    the passages `rag` gives for the words of a search."""
+
+    def __init__(self, passages: Dict[str, List[Dict[str, Any]]]):
+        self.passages = passages
+
+    def index_personal_documents(self, directory: str) -> Dict[str, int]:
+        return {"indexed_count": sum(len(names) for _b, _s, names in os.walk(directory))}
+
+    def add_document(self, text: str, metadata: Dict[str, Any]) -> bool:
+        return True
+
+    def remove_directory(self, directory: str) -> None:
+        return None
+
+    def search(self, query: str, k: int = 5, owner=None) -> List[Dict[str, Any]]:
+        low = str(query or "").lower()
+        hit = next((v for key, v in self.passages.items() if key.lower() in low), [])
+        return [{"metadata": {"filename": p["file"]}, "document": p["text"], "similarity": p.get("similarity")}
+                for p in hit][:k]
 
 
 def _reaches_outside(tool: str) -> bool:
@@ -629,15 +711,20 @@ def isolated(root: Optional[str] = None):
 
 # ── The model ───────────────────────────────────────────────────────────────
 
-def scripted_model(script: List[Dict[str, Any]]):
+def scripted_model(script: List[Dict[str, Any]], projects: str = ""):
     """The agent loop's model call, answered round by round from `script`;
-    past its end it says only "Done." — a model that stopped."""
+    past its end it says only "Done." — a model that stopped. A call's
+    `$WORLD_PROJECTS` is the world's projects folder (`projects`)."""
     rounds = iter(script)
+
+    def args_of(a):
+        text = json.dumps(a)
+        return text.replace(WORLD_PROJECTS, projects) if projects else text
 
     async def model(candidates, messages, **kwargs):
         step = next(rounds, {"say": "Done."})
         if "call" in step:
-            calls = [{"name": n, "arguments": json.dumps(a)} for n, a in step["call"]]
+            calls = [{"name": n, "arguments": args_of(a)} for n, a in step["call"]]
             yield "data: " + json.dumps({"type": "tool_calls", "calls": calls}) + "\n\n"
         else:
             yield "data: " + json.dumps({"delta": step["say"]}) + "\n\n"
@@ -954,8 +1041,12 @@ async def run_case(manifest, case: Dict[str, Any], *, factory, data_dir: str,
 
     async def far_end(block, *a, **kw):
         tool = getattr(block, "tool_type", "")
-        out = world.answer(tool, getattr(block, "content", ""))
         bare = tool[len("mcp__email__"):] if tool.startswith("mcp__email__") else tool
+        if bare == "manage_rag" and "rag" in world.fixture:
+            # `P24-27`. The RAG server, with the world's index (`World.rag`).
+            world.calls.append({"tool": bare, "ran": True})
+            return await world.rag(getattr(block, "content", ""))
+        out = world.answer(tool, getattr(block, "content", ""))
         world.calls.append({"tool": bare, "ran": True})
         if out is not None:
             return out
@@ -996,7 +1087,9 @@ async def run_case(manifest, case: Dict[str, Any], *, factory, data_dir: str,
     p.set(agent_loop, "get_mcp_manager", lambda: None)
     url, name = endpoint or SCRIPTED_URL, model or SCRIPTED_MODEL
     if endpoint is None:
-        p.set(agent_loop, "stream_llm_with_fallback", scripted_model(case.get("script") or []))
+        from src.tool_execution import projects_root
+        p.set(agent_loop, "stream_llm_with_fallback",
+              scripted_model(case.get("script") or [], projects_root(owner, create=True)))
         p.set(agent_loop, "_agent_route_tool_mode",
               lambda url, model, owner=None, headers=None: (True, False, False))
         import src.task_endpoint as task_endpoint

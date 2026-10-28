@@ -1,0 +1,21 @@
+{
+ "case": "a-newer-release-is-found",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 3 listings and 1 hub search, each after your yes; downloaded and served nothing",
+ "read": [
+  "list_served_models",
+  "list_models",
+  "list_cached_models",
+  "search_hf_models"
+ ],
+ "wrote": [],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Serving, Downloaded, not served, Newer releases."
+  }
+ ],
+ "answer": "**Serving**\n- Qwen/Qwen3-8B — Forge on gpu1 — ready\n- qwen3-8b — endpoint \"World models\" (an endpoint, not the Forge)\n\n**Downloaded, not served**\n- meta-llama/Llama-3.1-8B-Instruct — gpu1 — 16.1GB\n\n**Newer releases**\n- Qwen/Qwen3-8B-2510 — would replace Qwen/Qwen3-8B — same publisher and size, newer (new)\n\n## Report\n- 3 listings and 1 hub search, each after your yes; downloaded and served nothing\n\n## Carry forward\n- hub seen: Qwen/Qwen3-8B-2510"
+}

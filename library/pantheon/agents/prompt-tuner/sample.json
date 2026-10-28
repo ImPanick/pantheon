@@ -1,0 +1,28 @@
+{
+ "case": "a-change-that-raises-the-score-is-kept",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 2 documents, 6 asks to qwen3-8b; wrote \"Tuned runbook — Inbox triage runbook\"",
+ "read": [
+  "manage_documents",
+  "chat_with_model"
+ ],
+ "wrote": [
+  "manage_documents",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Tuned runbook”",
+   "ok": true,
+   "detail": "“Tuned runbook — Inbox triage runbook” is there."
+  }
+ ],
+ "answer": "2 of 3 before, 3 of 3 after; 1 change kept.\n\n## Report\n- read 2 documents, 6 asks to qwen3-8b; wrote \"Tuned runbook — Inbox triage runbook\"\n\n## Carry forward\n- Inbox triage runbook: + outage rule, 3 of 3",
+ "documents": [
+  {
+   "title": "Tuned runbook — Inbox triage runbook",
+   "content": "Tuned runbook — Inbox triage runbook\n\n## Scores\n- as it was: 2 of 3 (failed: \"The server is down\")\n- + \"A message about an outage is Urgent\": 3 of 3 — kept\n\n## Kept changes\n- \"A message about an outage is Urgent\" — fixed \"The server is down\"\n\n## New runbook\nSort each message into Urgent, Later or Ignore. A message about an outage is Urgent."
+  }
+ ]
+}

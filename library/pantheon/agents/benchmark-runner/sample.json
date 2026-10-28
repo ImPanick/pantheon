@@ -1,0 +1,26 @@
+{
+ "case": "three-models-scored-beside-last-week",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 9 asks, 6 answered; wrote \"Benchmark — 1 Nov 2026\"",
+ "read": [
+  "chat_with_model"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Benchmark”",
+   "ok": true,
+   "detail": "“Benchmark — 1 Nov 2026” is there."
+  }
+ ],
+ "answer": "qwen3-8b 3 of 3; llama-3.1-8b 1 of 3; mistral-7b could not be asked.\n\n## Report\n- 9 asks, 6 answered; wrote \"Benchmark — 1 Nov 2026\"\n\n## Carry forward\n- qwen3-8b 3 of 3; llama-3.1-8b 1 of 3",
+ "documents": [
+  {
+   "title": "Benchmark — 1 Nov 2026",
+   "content": "Benchmark — 1 Nov 2026\n\n## Scores\n| model | right | last week | change |\n|---|---|---|---|\n| qwen3-8b | 3 of 3 | 2 of 3 | up 1 |\n| llama-3.1-8b | 1 of 3 | 1 of 3 | same |\n\n## Missed by every model\n- none\n\n## Could not ask\n- mistral-7b: the endpoint timed out"
+  }
+ ]
+}

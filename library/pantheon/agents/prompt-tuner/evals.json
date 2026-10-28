@@ -1,0 +1,851 @@
+{
+ "cases": [
+  {
+   "id": "a-change-that-raises-the-score-is-kept",
+   "about": "The runbook passes 2 of 3 cases on qwen3-8b; one added rule makes the outage case pass with no other breaking, so it is kept; the original documents are untouched; each step after the first had the person's yes.",
+   "inputs": {
+    "runbook": "Inbox triage runbook",
+    "evals": "Inbox triage evals",
+    "model": "qwen3-8b"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Inbox triage runbook",
+      "content": "Sort each message into Urgent, Later or Ignore."
+     },
+     {
+      "id": "d2",
+      "title": "Inbox triage evals",
+      "content": "Case 1 — input: \"Invoice overdue, pay today\" — must: Urgent — never: Ignore\nCase 2 — input: \"The server is down\" — must: Urgent — never: Later\nCase 3 — input: \"Weekly newsletter\" — must: Ignore — never: Urgent"
+     }
+    ],
+    "models": {
+     "qwen3-8b": [
+      {
+       "match": "outage is urgent",
+       "reply": "Urgent."
+      },
+      {
+       "match": "invoice overdue",
+       "reply": "Urgent: the invoice."
+      },
+      {
+       "match": "server is down",
+       "reply": "Later."
+      },
+      {
+       "match": "newsletter",
+       "reply": "Ignore."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "chat_with_model",
+       {
+        "model": "qwen3-8b",
+        "message": "Sort each message into Urgent, Later or Ignore.\n\n---\nThe task: Invoice overdue, pay today"
+       }
+      ],
+      [
+       "chat_with_model",
+       {
+        "model": "qwen3-8b",
+        "message": "Sort each message into Urgent, Later or Ignore.\n\n---\nThe task: The server is down"
+       }
+      ],
+      [
+       "chat_with_model",
+       {
+        "model": "qwen3-8b",
+        "message": "Sort each message into Urgent, Later or Ignore.\n\n---\nThe task: Weekly newsletter"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "chat_with_model",
+       {
+        "model": "qwen3-8b",
+        "message": "Sort each message into Urgent, Later or Ignore. A message about an outage is Urgent.\n\n---\nThe task: Invoice overdue, pay today"
+       }
+      ],
+      [
+       "chat_with_model",
+       {
+        "model": "qwen3-8b",
+        "message": "Sort each message into Urgent, Later or Ignore. A message about an outage is Urgent.\n\n---\nThe task: The server is down"
+       }
+      ],
+      [
+       "chat_with_model",
+       {
+        "model": "qwen3-8b",
+        "message": "Sort each message into Urgent, Later or Ignore. A message about an outage is Urgent.\n\n---\nThe task: Weekly newsletter"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Tuned runbook — Inbox triage runbook",
+        "content": "Tuned runbook — Inbox triage runbook\n\n## Scores\n- as it was: 2 of 3 (failed: \"The server is down\")\n- + \"A message about an outage is Urgent\": 3 of 3 — kept\n\n## Kept changes\n- \"A message about an outage is Urgent\" — fixed \"The server is down\"\n\n## New runbook\nSort each message into Urgent, Later or Ignore. A message about an outage is Urgent."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 of 3 before, 3 of 3 after; 1 change kept.\n\n## Report\n- read 2 documents, 6 asks to qwen3-8b; wrote \"Tuned runbook — Inbox triage runbook\"\n\n## Carry forward\n- Inbox triage runbook: + outage rule, 3 of 3"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Tuned runbook",
+      "contains": [
+       "2 of 3",
+       "3 of 3 — kept",
+       "A message about an outage is Urgent"
+      ]
+     }
+    },
+    {
+     "document": {
+      "title": "Inbox triage runbook",
+      "contains": [
+       "Sort each message into Urgent, Later or Ignore."
+      ],
+      "lacks": [
+       "outage"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "3 of 3"
+    }
+   ]
+  },
+  {
+   "id": "no-change-helps",
+   "about": "The one change tried does not raise the score: none is kept, and the new runbook is the original.",
+   "inputs": {
+    "runbook": "Inbox triage runbook",
+    "evals": "Inbox triage evals",
+    "model": "qwen3-8b"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Inbox triage runbook",
+      "content": "Sort each message into Urgent, Later or Ignore."
+     },
+     {
+      "id": "d2",
+      "title": "Inbox triage evals",
+      "content": "Case 1 — input: \"Invoice overdue, pay today\" — must: Urgent — never: Ignore\nCase 2 — input: \"The server is down\" — must: Urgent — never: Later\nCase 3 — input: \"Weekly newsletter\" — must: Ignore — never: Urgent"
+     }
+    ],
+    "models": {
+     "qwen3-8b": [
+      {
+       "match": "outage is urgent",
+       "reply": "Urgent."
+      },
+      {
+       "match": "invoice overdue",
+       "reply": "Urgent: the invoice."
+      },
+      {
+       "match": "server is down",
+       "reply": "Later."
+      },
+      {
+       "match": "newsletter",
+       "reply": "Ignore."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "chat_with_model",
+       {
+        "model": "qwen3-8b",
+        "message": "Sort each message into Urgent, Later or Ignore.\n\n---\nThe task: Invoice overdue, pay today"
+       }
+      ],
+      [
+       "chat_with_model",
+       {
+        "model": "qwen3-8b",
+        "message": "Sort each message into Urgent, Later or Ignore.\n\n---\nThe task: The server is down"
+       }
+      ],
+      [
+       "chat_with_model",
+       {
+        "model": "qwen3-8b",
+        "message": "Sort each message into Urgent, Later or Ignore.\n\n---\nThe task: Weekly newsletter"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "chat_with_model",
+       {
+        "model": "qwen3-8b",
+        "message": "Sort each message into Urgent, Later or Ignore. Be brief.\n\n---\nThe task: Invoice overdue, pay today"
+       }
+      ],
+      [
+       "chat_with_model",
+       {
+        "model": "qwen3-8b",
+        "message": "Sort each message into Urgent, Later or Ignore. Be brief.\n\n---\nThe task: The server is down"
+       }
+      ],
+      [
+       "chat_with_model",
+       {
+        "model": "qwen3-8b",
+        "message": "Sort each message into Urgent, Later or Ignore. Be brief.\n\n---\nThe task: Weekly newsletter"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Tuned runbook — Inbox triage runbook",
+        "content": "Tuned runbook — Inbox triage runbook\n\n## Scores\n- as it was: 2 of 3 (failed: \"The server is down\")\n- + \"Be brief.\": 2 of 3 — not kept\n\n## Kept changes\n- none — no change raised the score\n\n## New runbook\nSort each message into Urgent, Later or Ignore."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 of 3 before and after; no change kept.\n\n## Report\n- read 2 documents, 6 asks\n\n## Carry forward\n- Inbox triage runbook: 2 of 3, no change kept"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Tuned runbook",
+      "contains": [
+       "none — no change raised the score"
+      ],
+      "lacks": [
+       "— kept"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-model-fails",
+   "about": "The model times out: Scores says it could not score, and no change is kept.",
+   "inputs": {
+    "runbook": "Inbox triage runbook",
+    "evals": "Inbox triage evals",
+    "model": "qwen3-8b"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Inbox triage runbook",
+      "content": "Sort each message into Urgent, Later or Ignore."
+     },
+     {
+      "id": "d2",
+      "title": "Inbox triage evals",
+      "content": "Case 1 — input: \"Invoice overdue, pay today\" — must: Urgent — never: Ignore\nCase 2 — input: \"The server is down\" — must: Urgent — never: Later\nCase 3 — input: \"Weekly newsletter\" — must: Ignore — never: Urgent"
+     }
+    ],
+    "models": {
+     "qwen3-8b": [
+      {
+       "error": "the endpoint timed out"
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "chat_with_model",
+       {
+        "model": "qwen3-8b",
+        "message": "Sort each message into Urgent, Later or Ignore.\n\n---\nThe task: Invoice overdue, pay today"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Tuned runbook — Inbox triage runbook",
+        "content": "Tuned runbook — Inbox triage runbook\n\n## Scores\n- could not score: the endpoint timed out\n\n## Kept changes\n- none — no change raised the score\n\n## New runbook\nSort each message into Urgent, Later or Ignore."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Could not score: the model timed out.\n\n## Report\n- read 2 documents; 1 ask failed\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Tuned runbook",
+      "contains": [
+       "could not score: the endpoint timed out"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-case-that-contradicts-itself-is-skipped",
+   "about": "A case must say Urgent and must never say Urgent: it is skipped and named, and the rest are scored.",
+   "inputs": {
+    "runbook": "Inbox triage runbook",
+    "evals": "Inbox triage evals",
+    "model": "qwen3-8b"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Inbox triage runbook",
+      "content": "Sort each message into Urgent, Later or Ignore."
+     },
+     {
+      "id": "d2",
+      "title": "Inbox triage evals",
+      "content": "Case 1 — input: \"Rent reminder\" — must: Urgent — never: Urgent\nCase 3 — input: \"Weekly newsletter\" — must: Ignore — never: Urgent"
+     }
+    ],
+    "models": {
+     "qwen3-8b": [
+      {
+       "match": "outage is urgent",
+       "reply": "Urgent."
+      },
+      {
+       "match": "invoice overdue",
+       "reply": "Urgent: the invoice."
+      },
+      {
+       "match": "server is down",
+       "reply": "Later."
+      },
+      {
+       "match": "newsletter",
+       "reply": "Ignore."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "chat_with_model",
+       {
+        "model": "qwen3-8b",
+        "message": "Sort each message into Urgent, Later or Ignore.\n\n---\nThe task: Weekly newsletter"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Tuned runbook — Inbox triage runbook",
+        "content": "Tuned runbook — Inbox triage runbook\n\n## Scores\n- skipped \"Rent reminder\": its must and its never both name Urgent\n- as it was: 1 of 1\n\n## Kept changes\n- none — no change raised the score\n\n## New runbook\nSort each message into Urgent, Later or Ignore."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 of 1; 1 case skipped.\n\n## Report\n- read 2 documents, 1 ask\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Tuned runbook",
+      "contains": [
+       "its must and its never both name Urgent"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-the-original",
+   "about": "Its table says destructive: never. A model that deletes the original runbook once tuned is refused; the original survives beside the candidate.",
+   "inputs": {
+    "runbook": "Inbox triage runbook",
+    "evals": "Inbox triage evals",
+    "model": "qwen3-8b"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Inbox triage runbook",
+      "content": "Sort each message into Urgent, Later or Ignore."
+     },
+     {
+      "id": "d2",
+      "title": "Inbox triage evals",
+      "content": "Case 1 — input: \"Invoice overdue, pay today\" — must: Urgent — never: Ignore\nCase 2 — input: \"The server is down\" — must: Urgent — never: Later\nCase 3 — input: \"Weekly newsletter\" — must: Ignore — never: Urgent"
+     }
+    ],
+    "models": {
+     "qwen3-8b": [
+      {
+       "match": "outage is urgent",
+       "reply": "Urgent."
+      },
+      {
+       "match": "invoice overdue",
+       "reply": "Urgent: the invoice."
+      },
+      {
+       "match": "server is down",
+       "reply": "Later."
+      },
+      {
+       "match": "newsletter",
+       "reply": "Ignore."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "chat_with_model",
+       {
+        "model": "qwen3-8b",
+        "message": "Sort each message into Urgent, Later or Ignore.\n\n---\nThe task: Invoice overdue, pay today"
+       }
+      ],
+      [
+       "chat_with_model",
+       {
+        "model": "qwen3-8b",
+        "message": "Sort each message into Urgent, Later or Ignore.\n\n---\nThe task: The server is down"
+       }
+      ],
+      [
+       "chat_with_model",
+       {
+        "model": "qwen3-8b",
+        "message": "Sort each message into Urgent, Later or Ignore.\n\n---\nThe task: Weekly newsletter"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "chat_with_model",
+       {
+        "model": "qwen3-8b",
+        "message": "Sort each message into Urgent, Later or Ignore. A message about an outage is Urgent.\n\n---\nThe task: Invoice overdue, pay today"
+       }
+      ],
+      [
+       "chat_with_model",
+       {
+        "model": "qwen3-8b",
+        "message": "Sort each message into Urgent, Later or Ignore. A message about an outage is Urgent.\n\n---\nThe task: The server is down"
+       }
+      ],
+      [
+       "chat_with_model",
+       {
+        "model": "qwen3-8b",
+        "message": "Sort each message into Urgent, Later or Ignore. A message about an outage is Urgent.\n\n---\nThe task: Weekly newsletter"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Tuned runbook — Inbox triage runbook",
+        "content": "Tuned runbook — Inbox triage runbook\n\n## Scores\n- as it was: 2 of 3 (failed: \"The server is down\")\n- + \"A message about an outage is Urgent\": 3 of 3 — kept\n\n## Kept changes\n- \"A message about an outage is Urgent\" — fixed \"The server is down\"\n\n## New runbook\nSort each message into Urgent, Later or Ignore. A message about an outage is Urgent."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 of 3 before, 3 of 3 after; 1 change kept.\n\n## Report\n- a delete was refused\n\n## Carry forward\n- Inbox triage runbook: + outage rule, 3 of 3"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Inbox triage runbook",
+      "contains": [
+       "Sort each message into Urgent, Later or Ignore."
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-candidate-without-its-headings-fails",
+   "about": "The harness's own check: a document without Scores, Kept changes and New runbook does not deliver, even after its repair pass.",
+   "inputs": {
+    "runbook": "Inbox triage runbook",
+    "evals": "Inbox triage evals",
+    "model": "qwen3-8b"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Inbox triage runbook",
+      "content": "Sort each message into Urgent, Later or Ignore."
+     },
+     {
+      "id": "d2",
+      "title": "Inbox triage evals",
+      "content": "Case 1 — input: \"Invoice overdue, pay today\" — must: Urgent — never: Ignore\nCase 2 — input: \"The server is down\" — must: Urgent — never: Later\nCase 3 — input: \"Weekly newsletter\" — must: Ignore — never: Urgent"
+     }
+    ],
+    "models": {
+     "qwen3-8b": [
+      {
+       "match": "outage is urgent",
+       "reply": "Urgent."
+      },
+      {
+       "match": "invoice overdue",
+       "reply": "Urgent: the invoice."
+      },
+      {
+       "match": "server is down",
+       "reply": "Later."
+      },
+      {
+       "match": "newsletter",
+       "reply": "Ignore."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Tuned runbook — Inbox triage runbook",
+        "content": "Sort each message into Urgent, Later or Ignore. A message about an outage is Urgent."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

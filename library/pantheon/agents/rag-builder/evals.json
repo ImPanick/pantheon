@@ -1,0 +1,600 @@
+{
+ "cases": [
+  {
+   "id": "a-folder-indexed-and-checked",
+   "about": "The folder is indexed by its full path, both questions are asked, the refund question is a hit from refunds.md and the Ireland question a miss with what came back and why; the hit rate is carried forward.",
+   "inputs": {
+    "folder": "support-docs",
+    "questions": "How long do refunds take?\nDo you ship to Ireland?"
+   },
+   "world": {
+    "files": {
+     "support-docs/refunds.md": "Refunds are paid within 14 days of the return arriving.",
+     "support-docs/shipping.md": "Orders are delivered in 3 to 5 working days."
+    },
+    "rag": {
+     "refund": [
+      {
+       "file": "refunds.md",
+       "text": "Refunds are paid within 14 days of the return arriving.",
+       "similarity": 0.84
+      }
+     ],
+     "ireland": [
+      {
+       "file": "shipping.md",
+       "text": "Orders are delivered in 3 to 5 working days.",
+       "similarity": 0.41
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "support-docs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_rag",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_rag",
+       {
+        "action": "add_directory",
+        "directory": "$WORLD_PROJECTS/support-docs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_rag",
+       {
+        "action": "search",
+        "query": "How long do refunds take?",
+        "k": 3
+       }
+      ],
+      [
+       "manage_rag",
+       {
+        "action": "search",
+        "query": "Do you ship to Ireland?",
+        "k": 3
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Retrieval check — support-docs",
+        "content": "Retrieval check — support-docs\n\n## Hit rate\n- 1 of 2 questions answered by the top three passages (first check)\n\n## Misses\n- \"Do you ship to Ireland?\" — came back: shipping.md (delivery times) — missing file: nothing in the folder covers countries\n\n## Hits\n- \"How long do refunds take?\" — refunds.md"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 of 2 questions hit.\n\n## Report\n- indexed support-docs (2 files), searched 2 questions; wrote \"Retrieval check — support-docs\"\n\n## Carry forward\n- support-docs: 1 of 2 on 28 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Retrieval check",
+      "contains": [
+       "1 of 2",
+       "refunds.md",
+       "missing file"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "1 of 2"
+    }
+   ]
+  },
+  {
+   "id": "nothing-comes-back",
+   "about": "A question the index finds nothing for is a miss, \"nothing came back\".",
+   "inputs": {
+    "folder": "support-docs",
+    "questions": "What are your opening hours?"
+   },
+   "world": {
+    "files": {
+     "support-docs/refunds.md": "Refunds are paid within 14 days of the return arriving.",
+     "support-docs/shipping.md": "Orders are delivered in 3 to 5 working days."
+    },
+    "rag": {
+     "refund": [
+      {
+       "file": "refunds.md",
+       "text": "Refunds are paid within 14 days of the return arriving.",
+       "similarity": 0.84
+      }
+     ],
+     "ireland": [
+      {
+       "file": "shipping.md",
+       "text": "Orders are delivered in 3 to 5 working days.",
+       "similarity": 0.41
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "support-docs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_rag",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_rag",
+       {
+        "action": "add_directory",
+        "directory": "$WORLD_PROJECTS/support-docs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_rag",
+       {
+        "action": "search",
+        "query": "What are your opening hours?",
+        "k": 3
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Retrieval check — support-docs",
+        "content": "Retrieval check — support-docs\n\n## Hit rate\n- 0 of 1 questions answered by the top three passages (first check)\n\n## Misses\n- \"What are your opening hours?\" — nothing came back — missing file: nothing in the folder covers opening hours\n\n## Hits\n- none"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 of 1 questions hit.\n\n## Report\n- indexed support-docs, searched 1 question\n\n## Carry forward\n- support-docs: 0 of 1 on 28 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Retrieval check",
+      "contains": [
+       "nothing came back"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-index-refuses-a-short-name",
+   "about": "A model that gives the index the folder's short name is refused by the index: the check says it could not index, and nothing is searched.",
+   "inputs": {
+    "folder": "support-docs",
+    "questions": "How long do refunds take?\nDo you ship to Ireland?"
+   },
+   "world": {
+    "files": {
+     "support-docs/refunds.md": "Refunds are paid within 14 days of the return arriving.",
+     "support-docs/shipping.md": "Orders are delivered in 3 to 5 working days."
+    },
+    "rag": {
+     "refund": [
+      {
+       "file": "refunds.md",
+       "text": "Refunds are paid within 14 days of the return arriving.",
+       "similarity": 0.84
+      }
+     ],
+     "ireland": [
+      {
+       "file": "shipping.md",
+       "text": "Orders are delivered in 3 to 5 working days.",
+       "similarity": 0.41
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "support-docs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_rag",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_rag",
+       {
+        "action": "add_directory",
+        "directory": "support-docs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Retrieval check — support-docs",
+        "content": "Retrieval check — support-docs\n\n## Hit rate\n- could not index support-docs: “support-docs” is not a full path\n\n## Misses\n- none: nothing was searched\n\n## Hits\n- none"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Could not index the folder.\n\n## Report\n- the index refused the folder's short name; searched nothing\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Retrieval check",
+      "contains": [
+       "could not index support-docs"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "two-files-disagree",
+   "about": "Two files give different refund times: it counts as a hit, and the check says the sources disagree and which to fix.",
+   "inputs": {
+    "folder": "support-docs",
+    "questions": "How long do refunds take?"
+   },
+   "world": {
+    "files": {
+     "support-docs/refunds.md": "Refunds are paid within 14 days of the return arriving.",
+     "support-docs/shipping.md": "Orders are delivered in 3 to 5 working days.",
+     "support-docs/faq.md": "Refunds take 30 days."
+    },
+    "rag": {
+     "refund": [
+      {
+       "file": "refunds.md",
+       "text": "Refunds are paid within 14 days of the return arriving.",
+       "similarity": 0.84
+      },
+      {
+       "file": "faq.md",
+       "text": "Refunds take 30 days.",
+       "similarity": 0.8
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "support-docs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_rag",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_rag",
+       {
+        "action": "add_directory",
+        "directory": "$WORLD_PROJECTS/support-docs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_rag",
+       {
+        "action": "search",
+        "query": "How long do refunds take?",
+        "k": 3
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Retrieval check — support-docs",
+        "content": "Retrieval check — support-docs\n\n## Hit rate\n- 1 of 1 questions answered by the top three passages (first check)\n\n## Misses\n- none\n\n## Hits\n- \"How long do refunds take?\" — refunds.md; sources disagree: refunds.md says 14 days, faq.md says 30 days — fix one"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 of 1 questions hit; two files disagree.\n\n## Report\n- indexed support-docs, searched 1 question\n\n## Carry forward\n- support-docs: 1 of 1 on 28 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Retrieval check",
+      "contains": [
+       "sources disagree",
+       "30 days"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-near-passage-is-never-called-a-hit",
+   "about": "The Ireland question brings back a passage about delivery times from the shipping file — near, but not the answer: it is a miss, never listed as a hit.",
+   "inputs": {
+    "folder": "support-docs",
+    "questions": "How long do refunds take?\nDo you ship to Ireland?"
+   },
+   "world": {
+    "files": {
+     "support-docs/refunds.md": "Refunds are paid within 14 days of the return arriving.",
+     "support-docs/shipping.md": "Orders are delivered in 3 to 5 working days."
+    },
+    "rag": {
+     "refund": [
+      {
+       "file": "refunds.md",
+       "text": "Refunds are paid within 14 days of the return arriving.",
+       "similarity": 0.84
+      }
+     ],
+     "ireland": [
+      {
+       "file": "shipping.md",
+       "text": "Orders are delivered in 3 to 5 working days.",
+       "similarity": 0.41
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "support-docs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_rag",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_rag",
+       {
+        "action": "add_directory",
+        "directory": "$WORLD_PROJECTS/support-docs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_rag",
+       {
+        "action": "search",
+        "query": "How long do refunds take?",
+        "k": 3
+       }
+      ],
+      [
+       "manage_rag",
+       {
+        "action": "search",
+        "query": "Do you ship to Ireland?",
+        "k": 3
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Retrieval check — support-docs",
+        "content": "Retrieval check — support-docs\n\n## Hit rate\n- 1 of 2 questions answered by the top three passages (first check)\n\n## Misses\n- \"Do you ship to Ireland?\" — came back: shipping.md (delivery times) — missing file: nothing in the folder covers countries\n\n## Hits\n- \"How long do refunds take?\" — refunds.md"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 of 2 questions hit.\n\n## Report\n- indexed support-docs (2 files), searched 2 questions; wrote \"Retrieval check — support-docs\"\n\n## Carry forward\n- support-docs: 1 of 2 on 28 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Retrieval check",
+      "contains": [
+       "\"Do you ship to Ireland?\" — came back"
+      ],
+      "lacks": [
+       "\"Do you ship to Ireland?\" — shipping.md",
+       "2 of 2"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-check-without-its-headings-fails",
+   "about": "The harness's own check: a document without Hit rate, Misses and Hits does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "support-docs",
+    "questions": "How long do refunds take?\nDo you ship to Ireland?"
+   },
+   "world": {
+    "files": {
+     "support-docs/refunds.md": "Refunds are paid within 14 days of the return arriving.",
+     "support-docs/shipping.md": "Orders are delivered in 3 to 5 working days."
+    },
+    "rag": {
+     "refund": [
+      {
+       "file": "refunds.md",
+       "text": "Refunds are paid within 14 days of the return arriving.",
+       "similarity": 0.84
+      }
+     ],
+     "ireland": [
+      {
+       "file": "shipping.md",
+       "text": "Orders are delivered in 3 to 5 working days.",
+       "similarity": 0.41
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "support-docs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_rag",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_rag",
+       {
+        "action": "add_directory",
+        "directory": "$WORLD_PROJECTS/support-docs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Retrieval check — support-docs",
+        "content": "Indexed."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

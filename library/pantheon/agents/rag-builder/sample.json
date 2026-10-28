@@ -1,0 +1,27 @@
+{
+ "case": "a-folder-indexed-and-checked",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- indexed support-docs (2 files), searched 2 questions; wrote \"Retrieval check — support-docs\"",
+ "read": [
+  "ls"
+ ],
+ "wrote": [
+  "manage_rag",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Retrieval check”",
+   "ok": true,
+   "detail": "“Retrieval check — support-docs” is there."
+  }
+ ],
+ "answer": "1 of 2 questions hit.\n\n## Report\n- indexed support-docs (2 files), searched 2 questions; wrote \"Retrieval check — support-docs\"\n\n## Carry forward\n- support-docs: 1 of 2 on 28 Oct",
+ "documents": [
+  {
+   "title": "Retrieval check — support-docs",
+   "content": "Retrieval check — support-docs\n\n## Hit rate\n- 1 of 2 questions answered by the top three passages (first check)\n\n## Misses\n- \"Do you ship to Ireland?\" — came back: shipping.md (delivery times) — missing file: nothing in the folder covers countries\n\n## Hits\n- \"How long do refunds take?\" — refunds.md"
+  }
+ ]
+}

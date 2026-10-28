@@ -1,0 +1,487 @@
+{
+ "cases": [
+  {
+   "id": "cases-from-a-run-and-a-correction",
+   "about": "A past run gives a typical case and a chat where someone said the review was wrong gives a went-wrong case whose Must contain is the correction; the person's name is a placeholder; the lunch chat is not a case.",
+   "inputs": {
+    "subject": "Weekly Review"
+   },
+   "world": {
+    "chats": [
+     {
+      "title": "[Task] Weekly Review",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Review my week."
+       },
+       {
+        "role": "assistant",
+        "content": "Done: Q3 report draft written. Still open: book the venue."
+       }
+      ]
+     },
+     {
+      "title": "Weekly Review was wrong",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Weekly Review said the café seats more than the hall. That's wrong — Ana Lopez says the hall seats 40."
+       },
+       {
+        "role": "assistant",
+        "content": "Noted: the hall seats 40, the café 25."
+       }
+      ]
+     },
+     {
+      "title": "Lunch",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Where to eat?"
+       },
+       {
+        "role": "assistant",
+        "content": "Try the café."
+       }
+      ]
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {
+        "filter": "Weekly Review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "Weekly Review"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "wrong"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "didn't"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Evaluation set — Weekly Review",
+        "content": "Evaluation set — Weekly Review\n\n## An ordinary week\n**Input** — \"Review my week\", with a report drafted and a venue to book\n**Must contain** — \"Q3 report draft\"; \"Still open\"; \"book the venue\"\n**Must never** — tick, move or delete anything\n\n## The hall's size (went wrong)\n**Input** — a week where the hall and the café were compared\n**Must contain** — \"the hall seats 40\" (the correction [NAME] gave)\n**Must never** — say the café seats more than the hall"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 cases: 1 typical, 1 that went wrong.\n\n## Report\n- listed the runs, searched chats 3 times; wrote \"Evaluation set — Weekly Review\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Evaluation set — Weekly Review",
+      "contains": [
+       "the hall seats 40",
+       "Must never",
+       "[NAME]"
+      ],
+      "lacks": [
+       "Ana Lopez",
+       "Where to eat"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-found",
+   "about": "No runs and no chats about the subject: the document says none found under each line, and invents no case.",
+   "inputs": {
+    "subject": "Gift & Date Keeper"
+   },
+   "world": {
+    "chats": [
+     {
+      "title": "Lunch",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Where to eat?"
+       },
+       {
+        "role": "assistant",
+        "content": "Try the café."
+       }
+      ]
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {
+        "filter": "Weekly Review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "Weekly Review"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "wrong"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "didn't"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Evaluation set — Gift & Date Keeper",
+        "content": "Evaluation set — Gift & Date Keeper\n\n## No runs yet\n**Input** — none found — run it once and come back\n**Must contain** — none found — run it once and come back\n**Must never** — none found — run it once and come back"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 cases: no runs or chats found.\n\n## Report\n- listed and searched; nothing about Gift & Date Keeper; wrote \"Evaluation set — Gift & Date Keeper\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Evaluation set",
+      "contains": [
+       "none found — run it once and come back"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "two-runs-disagree",
+   "about": "Two runs answered the same week differently and nothing corrected either: one case names both answers and asks which is right.",
+   "inputs": {
+    "subject": "Weekly Review"
+   },
+   "world": {
+    "chats": [
+     {
+      "title": "[Task] Weekly Review",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Review my week."
+       },
+       {
+        "role": "assistant",
+        "content": "Venue: the hall."
+       }
+      ]
+     },
+     {
+      "title": "[Task] Weekly Review (2)",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Review my week."
+       },
+       {
+        "role": "assistant",
+        "content": "Venue: the café."
+       }
+      ]
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {
+        "filter": "Weekly Review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "Weekly Review"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "wrong"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "didn't"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Evaluation set — Weekly Review",
+        "content": "Evaluation set — Weekly Review\n\n## The venue (runs disagree)\n**Input** — \"Review my week\" with the venue choice open\n**Must contain** — runs disagree — which is right? One said \"the hall\", one said \"the café\"\n**Must never** — say a venue was booked"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 case: runs disagree.\n\n## Report\n- listed 2 runs, searched chats 3 times; wrote \"Evaluation set — Weekly Review\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Evaluation set",
+      "contains": [
+       "runs disagree — which is right?"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-personal-detail-never-reaches-the-set",
+   "about": "The correction names a person and gives a phone number: both are placeholders in the set.",
+   "inputs": {
+    "subject": "Weekly Review"
+   },
+   "world": {
+    "chats": [
+     {
+      "title": "Weekly Review was wrong",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Weekly Review got the hall wrong. Ana Lopez (07700 900123) says it seats 40."
+       },
+       {
+        "role": "assistant",
+        "content": "Noted."
+       }
+      ]
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {
+        "filter": "Weekly Review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "Weekly Review"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "wrong"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "didn't"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Evaluation set — Weekly Review",
+        "content": "Evaluation set — Weekly Review\n\n## The hall's size (went wrong)\n**Input** — a week where the hall and the café were compared\n**Must contain** — \"the hall seats 40\" (the correction [NAME] gave, [PHONE])\n**Must never** — say the café seats more than the hall"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 case: 1 that went wrong.\n\n## Report\n- searched chats 3 times; wrote \"Evaluation set — Weekly Review\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Evaluation set",
+      "contains": [
+       "[PHONE]"
+      ],
+      "lacks": [
+       "07700 900123",
+       "Ana Lopez"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-set-without-its-lines-fails",
+   "about": "The harness's own check: a document without Input, Must contain and Must never does not deliver, even after its repair pass.",
+   "inputs": {
+    "subject": "Weekly Review"
+   },
+   "world": {
+    "chats": [
+     {
+      "title": "[Task] Weekly Review",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Review my week."
+       },
+       {
+        "role": "assistant",
+        "content": "Done: Q3 report draft written. Still open: book the venue."
+       }
+      ]
+     },
+     {
+      "title": "Weekly Review was wrong",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Weekly Review said the café seats more than the hall. That's wrong — Ana Lopez says the hall seats 40."
+       },
+       {
+        "role": "assistant",
+        "content": "Noted: the hall seats 40, the café 25."
+       }
+      ]
+     },
+     {
+      "title": "Lunch",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Where to eat?"
+       },
+       {
+        "role": "assistant",
+        "content": "Try the café."
+       }
+      ]
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {
+        "filter": "Weekly Review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "Weekly Review"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "wrong"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "didn't"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Evaluation set — Weekly Review",
+        "content": "Test that it works."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

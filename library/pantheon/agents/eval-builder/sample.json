@@ -1,0 +1,27 @@
+{
+ "case": "cases-from-a-run-and-a-correction",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- listed the runs, searched chats 3 times; wrote \"Evaluation set — Weekly Review\"",
+ "read": [
+  "list_sessions",
+  "search_chats"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Evaluation set”",
+   "ok": true,
+   "detail": "“Evaluation set — Weekly Review” is there."
+  }
+ ],
+ "answer": "2 cases: 1 typical, 1 that went wrong.\n\n## Report\n- listed the runs, searched chats 3 times; wrote \"Evaluation set — Weekly Review\"",
+ "documents": [
+  {
+   "title": "Evaluation set — Weekly Review",
+   "content": "Evaluation set — Weekly Review\n\n## An ordinary week\n**Input** — \"Review my week\", with a report drafted and a venue to book\n**Must contain** — \"Q3 report draft\"; \"Still open\"; \"book the venue\"\n**Must never** — tick, move or delete anything\n\n## The hall's size (went wrong)\n**Input** — a week where the hall and the café were compared\n**Must contain** — \"the hall seats 40\" (the correction [NAME] gave)\n**Must never** — say the café seats more than the hall"
+  }
+ ]
+}

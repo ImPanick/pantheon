@@ -1,0 +1,21 @@
+{
+ "case": "two-refund-exchanges-become-a-dataset",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- searched chats for \"refund\", \"returns\" and \"money back\"; wrote datasets/refunds.jsonl",
+ "read": [
+  "search_chats",
+  "ls"
+ ],
+ "wrote": [
+  "write_file"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Kept, Left out, Labels."
+  }
+ ],
+ "answer": "**Kept**\n- 2 exchanges in datasets/refunds.jsonl\n\n**Left out**\n- nothing\n\n**Labels**\n- question 2; good 1, not good 1\n\n## Report\n- searched chats for \"refund\", \"returns\" and \"money back\"; wrote datasets/refunds.jsonl"
+}

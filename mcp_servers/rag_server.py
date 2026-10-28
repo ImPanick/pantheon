@@ -133,6 +133,14 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         directory = _dir.strip() if isinstance(_dir, str) else ""
         if not directory:
             return [TextContent(type="text", text="Error: add_directory needs a directory path")]
+        # `P24-27`. A relative folder was resolved against this server's own
+        # working directory — Pantheon's install — so an agent's "docs"
+        # indexed Pantheon's own documentation into the person's index. A
+        # folder is named in full; `ls` prints it on its first line.
+        if not os.path.isabs(os.path.expanduser(directory)):
+            return [TextContent(type="text", text=(
+                f"Error: “{directory}” is not a full path, so nothing was indexed. Give the folder's "
+                f"full path — `ls` prints it on its first line."))]
         # Store an absolute path so indexed `source` metadata is absolute and
         # remove_directory (which abspath-normalizes) can match it later (#1660).
         directory = os.path.abspath(os.path.expanduser(directory))

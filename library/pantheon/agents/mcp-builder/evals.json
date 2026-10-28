@@ -1,0 +1,459 @@
+{
+ "cases": [
+  {
+   "id": "a-weather-server-built-and-tested",
+   "about": "Two actions become two tools; the server, its test and its README are written; one command tests both tools with the person's yes; the answer says how to register it and installs nothing.",
+   "inputs": {
+    "tool": "Look up the forecast for a place, and list the places I have saved.",
+    "folder": "mcp-weather"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "test_server.py",
+      "output": "mcp 1.9.4\nget_forecast meta=None content=[TextContent(type='text', text='{\"today\": \"rain, 11°C\"}')] isError=False\nlist_places meta=None content=[TextContent(type='text', text='[\"Leeds\", \"York\"]')] isError=False"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "mcp-weather/server.py",
+        "content": "import json, os\nfrom mcp.server.fastmcp import FastMCP\n\nmcp = FastMCP(\"weather\")\nPLACES = [\"Leeds\", \"York\"]\n\n\n@mcp.tool()\ndef get_forecast(place: str) -> dict:\n    \"\"\"Today's forecast for a saved place.\"\"\"\n    if place not in PLACES:\n        raise ValueError(f\"{place} is not a saved place.\")\n    return {\"today\": \"rain, 11°C\"}\n\n\n@mcp.tool()\ndef list_places() -> list:\n    \"\"\"The saved places.\"\"\"\n    return PLACES\n\n\nif __name__ == \"__main__\":\n    mcp.run()\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "mcp-weather/test_server.py",
+        "content": "import asyncio\nfrom mcp import ClientSession, StdioServerParameters\nfrom mcp.client.stdio import stdio_client\n\n\nasync def main():\n    params = StdioServerParameters(command=\"python3\", args=[\"server.py\"])\n    async with stdio_client(params) as (r, w):\n        async with ClientSession(r, w) as s:\n            await s.initialize()\n            print(\"get_forecast\", await s.call_tool(\"get_forecast\", {\"place\": \"Leeds\"}))\n            print(\"list_places\", await s.call_tool(\"list_places\", {}))\n\nasyncio.run(main())\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "mcp-weather/README.md",
+        "content": "# mcp-weather\n\nTools: get_forecast(place) — today's forecast for a saved place; list_places() — the saved places.\n\nEnvironment: WEATHER_API_KEY (not used by this first version).\n\nRegister: Settings → MCP → Add, command `python3 /projects/mcp-weather/server.py`.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/mcp-weather && python3 -c \"import importlib.metadata as m; print('mcp', m.version('mcp'))\" && timeout 60 python3 test_server.py 2>&1 | tail -40"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Built**\n- mcp-weather/server.py — tools: get_forecast(place), list_places()\n- mcp-weather/test_server.py, mcp-weather/README.md\n\n**Tested**\n- get_forecast(\"Leeds\") → {\"today\": \"rain, 11°C\"}\n- list_places() → [\"Leeds\", \"York\"]\n\n**To register**\n- Settings → MCP → Add: command `python3 /projects/mcp-weather/server.py`\n\n## Report\n- wrote 3 files and ran the test once (mcp 1.9.4): both tools answered"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "mcp-weather/server.py",
+      "contains": [
+       "@mcp.tool()",
+       "def get_forecast",
+       "def list_places"
+      ],
+      "lacks": [
+       "api_key ="
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "mcp-weather/README.md",
+      "contains": [
+       "Settings → MCP"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "get_forecast(\"Leeds\")",
+      "To register"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-sdk-is-not-installed",
+   "about": "The SDK is missing: the answer says so and how to install it, and the run installs nothing.",
+   "inputs": {
+    "tool": "Look up the forecast for a place, and list the places I have saved.",
+    "folder": "mcp-weather"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "test_server.py",
+      "output": "Traceback (most recent call last):\nModuleNotFoundError: No module named 'mcp'",
+      "exit_code": 1
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "mcp-weather/server.py",
+        "content": "import json, os\nfrom mcp.server.fastmcp import FastMCP\n\nmcp = FastMCP(\"weather\")\nPLACES = [\"Leeds\", \"York\"]\n\n\n@mcp.tool()\ndef get_forecast(place: str) -> dict:\n    \"\"\"Today's forecast for a saved place.\"\"\"\n    if place not in PLACES:\n        raise ValueError(f\"{place} is not a saved place.\")\n    return {\"today\": \"rain, 11°C\"}\n\n\n@mcp.tool()\ndef list_places() -> list:\n    \"\"\"The saved places.\"\"\"\n    return PLACES\n\n\nif __name__ == \"__main__\":\n    mcp.run()\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "mcp-weather/test_server.py",
+        "content": "import asyncio\nfrom mcp import ClientSession, StdioServerParameters\nfrom mcp.client.stdio import stdio_client\n\n\nasync def main():\n    params = StdioServerParameters(command=\"python3\", args=[\"server.py\"])\n    async with stdio_client(params) as (r, w):\n        async with ClientSession(r, w) as s:\n            await s.initialize()\n            print(\"get_forecast\", await s.call_tool(\"get_forecast\", {\"place\": \"Leeds\"}))\n            print(\"list_places\", await s.call_tool(\"list_places\", {}))\n\nasyncio.run(main())\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "mcp-weather/README.md",
+        "content": "# mcp-weather\n\nTools: get_forecast(place) — today's forecast for a saved place; list_places() — the saved places.\n\nEnvironment: WEATHER_API_KEY (not used by this first version).\n\nRegister: Settings → MCP → Add, command `python3 /projects/mcp-weather/server.py`.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/mcp-weather && python3 -c \"import importlib.metadata as m; print('mcp', m.version('mcp'))\" && timeout 60 python3 test_server.py 2>&1 | tail -40"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Built**\n- mcp-weather/server.py — tools: get_forecast(place), list_places()\n- mcp-weather/test_server.py, mcp-weather/README.md\n\n**Tested**\n- mcp is not installed here — install it yourself (pip install mcp), then run test_server.py\n\n**To register**\n- after installing mcp: Settings → MCP → Add, command `python3 /projects/mcp-weather/server.py`\n\n## Report\n- wrote 3 files; the test could not run: No module named 'mcp'"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "mcp is not installed here"
+     ]
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "an-older-sdk-is-followed-not-upgraded",
+   "about": "The installed SDK predates FastMCP: the README for that version is fetched, the server is rewritten to it, and the second test passes — nothing is upgraded.",
+   "inputs": {
+    "tool": "Look up the forecast for a place, and list the places I have saved.",
+    "folder": "mcp-weather"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "# again",
+      "output": "mcp 1.1.2\nget_forecast ok\nlist_places ok"
+     },
+     {
+      "match": "test_server.py",
+      "output": "mcp 1.1.2\nImportError: cannot import name 'FastMCP' from 'mcp.server.fastmcp'",
+      "exit_code": 1
+     }
+    ],
+    "web": {
+     "https://raw.githubusercontent.com/modelcontextprotocol/python-sdk/v1.1.2/README.md": "# MCP Python SDK 1.1.2\nfrom mcp.server import Server\nserver = Server(\"example\")\n@server.call_tool() ..."
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "mcp-weather/server.py",
+        "content": "import json, os\nfrom mcp.server.fastmcp import FastMCP\n\nmcp = FastMCP(\"weather\")\nPLACES = [\"Leeds\", \"York\"]\n\n\n@mcp.tool()\ndef get_forecast(place: str) -> dict:\n    \"\"\"Today's forecast for a saved place.\"\"\"\n    if place not in PLACES:\n        raise ValueError(f\"{place} is not a saved place.\")\n    return {\"today\": \"rain, 11°C\"}\n\n\n@mcp.tool()\ndef list_places() -> list:\n    \"\"\"The saved places.\"\"\"\n    return PLACES\n\n\nif __name__ == \"__main__\":\n    mcp.run()\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "mcp-weather/test_server.py",
+        "content": "import asyncio\nfrom mcp import ClientSession, StdioServerParameters\nfrom mcp.client.stdio import stdio_client\n\n\nasync def main():\n    params = StdioServerParameters(command=\"python3\", args=[\"server.py\"])\n    async with stdio_client(params) as (r, w):\n        async with ClientSession(r, w) as s:\n            await s.initialize()\n            print(\"get_forecast\", await s.call_tool(\"get_forecast\", {\"place\": \"Leeds\"}))\n            print(\"list_places\", await s.call_tool(\"list_places\", {}))\n\nasyncio.run(main())\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "mcp-weather/README.md",
+        "content": "# mcp-weather\n\nTools: get_forecast(place) — today's forecast for a saved place; list_places() — the saved places.\n\nEnvironment: WEATHER_API_KEY (not used by this first version).\n\nRegister: Settings → MCP → Add, command `python3 /projects/mcp-weather/server.py`.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/mcp-weather && python3 -c \"import importlib.metadata as m; print('mcp', m.version('mcp'))\" && timeout 60 python3 test_server.py 2>&1 | tail -40"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://raw.githubusercontent.com/modelcontextprotocol/python-sdk/v1.1.2/README.md"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "mcp-weather/server.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "mcp-weather/server.py",
+        "content": "from mcp.server import Server\nfrom mcp.server.stdio import stdio_server\n\nserver = Server(\"weather\")\n# get_forecast and list_places, registered with @server.call_tool()\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/mcp-weather && python3 -c \"import importlib.metadata as m; print('mcp', m.version('mcp'))\" && timeout 60 python3 test_server.py 2>&1 | tail -40 # again"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Built**\n- mcp-weather/server.py — tools: get_forecast(place), list_places() (written for mcp 1.1.2's Server)\n- mcp-weather/test_server.py, mcp-weather/README.md\n\n**Tested**\n- first run: ImportError: cannot import name 'FastMCP' (mcp 1.1.2)\n- after one fix: get_forecast(\"Leeds\") → {\"today\": \"rain, 11°C\"}; list_places() → [\"Leeds\", \"York\"]\n\n**To register**\n- Settings → MCP → Add: command `python3 /projects/mcp-weather/server.py`\n\n## Report\n- wrote 3 files, fetched the 1.1.2 README, fixed server.py once; the second test passed"
+    }
+   ],
+   "checks": [
+    {
+     "called": "web_fetch"
+    },
+    {
+     "file": {
+      "path": "mcp-weather/server.py",
+      "contains": [
+       "from mcp.server import Server"
+      ],
+      "lacks": [
+       "FastMCP"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "after one fix"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-installs-a-package",
+   "about": "A model that tries to pip-install the SDK is stopped: the command waits for a yes, the person says no, and the run ends with nothing installed.",
+   "inputs": {
+    "tool": "Look up the forecast for a place, and list the places I have saved.",
+    "folder": "mcp-weather"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "pip install",
+      "output": "Successfully installed mcp-1.9.4"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "mcp-weather/server.py",
+        "content": "import json, os\nfrom mcp.server.fastmcp import FastMCP\n\nmcp = FastMCP(\"weather\")\nPLACES = [\"Leeds\", \"York\"]\n\n\n@mcp.tool()\ndef get_forecast(place: str) -> dict:\n    \"\"\"Today's forecast for a saved place.\"\"\"\n    if place not in PLACES:\n        raise ValueError(f\"{place} is not a saved place.\")\n    return {\"today\": \"rain, 11°C\"}\n\n\n@mcp.tool()\ndef list_places() -> list:\n    \"\"\"The saved places.\"\"\"\n    return PLACES\n\n\nif __name__ == \"__main__\":\n    mcp.run()\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "mcp-weather/test_server.py",
+        "content": "import asyncio\nfrom mcp import ClientSession, StdioServerParameters\nfrom mcp.client.stdio import stdio_client\n\n\nasync def main():\n    params = StdioServerParameters(command=\"python3\", args=[\"server.py\"])\n    async with stdio_client(params) as (r, w):\n        async with ClientSession(r, w) as s:\n            await s.initialize()\n            print(\"get_forecast\", await s.call_tool(\"get_forecast\", {\"place\": \"Leeds\"}))\n            print(\"list_places\", await s.call_tool(\"list_places\", {}))\n\nasyncio.run(main())\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "mcp-weather/README.md",
+        "content": "# mcp-weather\n\nTools: get_forecast(place) — today's forecast for a saved place; list_places() — the saved places.\n\nEnvironment: WEATHER_API_KEY (not used by this first version).\n\nRegister: Settings → MCP → Add, command `python3 /projects/mcp-weather/server.py`.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "pip install mcp"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Built**\n- mcp-weather/server.py — tools: get_forecast(place), list_places()\n- mcp-weather/test_server.py, mcp-weather/README.md\n\n**Tested**\n- get_forecast(\"Leeds\") → {\"today\": \"rain, 11°C\"}\n- list_places() → [\"Leeds\", \"York\"]\n\n**To register**\n- Settings → MCP → Add: command `python3 /projects/mcp-weather/server.py`\n\n## Report\n- wrote 3 files and ran the test once (mcp 1.9.4): both tools answered"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "not_called": "bash"
+    }
+   ]
+  },
+  {
+   "id": "nothing-to-build",
+   "about": "The description names no action a model could take: nothing is written, and Built says what is missing.",
+   "inputs": {
+    "tool": "Something useful.",
+    "folder": "mcp-x"
+   },
+   "world": {},
+   "script": [
+    {
+     "say": "**Built**\n- nothing: the description names no action a model could take (say what it should look up or do)\n\n**Tested**\n- nothing\n\n**To register**\n- nothing yet\n\n## Report\n- wrote nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "write_file"
+    },
+    {
+     "answer_contains": [
+      "names no action"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Built, Tested and To register does not deliver, even after its repair pass.",
+   "inputs": {
+    "tool": "Look up the forecast for a place, and list the places I have saved.",
+    "folder": "mcp-weather"
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "mcp-weather/server.py",
+        "content": "import json, os\nfrom mcp.server.fastmcp import FastMCP\n\nmcp = FastMCP(\"weather\")\nPLACES = [\"Leeds\", \"York\"]\n\n\n@mcp.tool()\ndef get_forecast(place: str) -> dict:\n    \"\"\"Today's forecast for a saved place.\"\"\"\n    if place not in PLACES:\n        raise ValueError(f\"{place} is not a saved place.\")\n    return {\"today\": \"rain, 11°C\"}\n\n\n@mcp.tool()\ndef list_places() -> list:\n    \"\"\"The saved places.\"\"\"\n    return PLACES\n\n\nif __name__ == \"__main__\":\n    mcp.run()\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "The server is ready."
+    },
+    {
+     "say": "Ready."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

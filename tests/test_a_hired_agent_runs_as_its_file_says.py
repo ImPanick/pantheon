@@ -169,6 +169,10 @@ def test_a_hire_stops_at_its_runs_per_day(world):
     db = factory()
     h, m = _hire(db, "model-steward")          # runs_per_day: 1
     task = _task(db, h.id)
+    # `P24-27`. Model Steward's answer is checked for its three headings now;
+    # the first run delivers, so the second meets the budget, not the contract.
+    seen["answer"] = ("**Serving**\n- nothing\n\n**Downloaded, not served**\n- nothing\n\n"
+                      "**Newer releases**\n- none found")
     _run(sched, db, task)
     db.query(TaskRun).update({"status": "success"})
     db.commit()

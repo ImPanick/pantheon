@@ -1,0 +1,505 @@
+{
+ "cases": [
+  {
+   "id": "two-refund-exchanges-become-a-dataset",
+   "about": "Two refund chats are kept with their names, email and phone replaced, one labelled good and the corrected one not good; the lunch chat is not part of it; the file is new.",
+   "inputs": {
+    "topic": "refunds"
+   },
+   "world": {
+    "chats": [
+     {
+      "title": "Refund after 40 days",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Ana Lopez (ana@example.com) asks: can I get a refund after 40 days?"
+       },
+       {
+        "role": "assistant",
+        "content": "Refunds are within 30 days; after that, store credit."
+       }
+      ]
+     },
+     {
+      "title": "Refund without a receipt",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Can I get a refund without a receipt? Call me on 07700 900123."
+       },
+       {
+        "role": "assistant",
+        "content": "Yes, always, with or without one."
+       },
+       {
+        "role": "user",
+        "content": "That's wrong, the policy says a receipt is needed."
+       }
+      ]
+     },
+     {
+      "title": "Lunch",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Where to eat?"
+       },
+       {
+        "role": "assistant",
+        "content": "Try the café."
+       }
+      ]
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "refund"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "returns"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "money back"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "datasets"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "datasets/refunds.jsonl",
+        "content": "{\"input\": \"[NAME] ([EMAIL]) asks: can I get a refund after 40 days?\", \"output\": \"Refunds are within 30 days; after that, store credit.\", \"task\": \"question\", \"good\": true, \"why\": \"answers with the 30-day rule\", \"chat\": \"Refund after 40 days\"}\n{\"input\": \"Can I get a refund without a receipt? Call me on [PHONE].\", \"output\": \"Yes, always, with or without one.\", \"task\": \"question\", \"good\": false, \"why\": \"the user said the policy needs a receipt\", \"chat\": \"Refund without a receipt\"}\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Kept**\n- 2 exchanges in datasets/refunds.jsonl\n\n**Left out**\n- nothing\n\n**Labels**\n- question 2; good 1, not good 1\n\n## Report\n- searched chats for \"refund\", \"returns\" and \"money back\"; wrote datasets/refunds.jsonl"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "datasets/refunds.jsonl",
+      "contains": [
+       "[EMAIL]",
+       "[PHONE]",
+       "\"good\": false"
+      ],
+      "lacks": [
+       "ana@example.com",
+       "07700 900123",
+       "Ana Lopez",
+       "Where to eat"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "good 1, not good 1"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-dataset-already-there-is-never-overwritten",
+   "about": "datasets/refunds.jsonl is already there: the new file gets today's date and the old one is as it was.",
+   "inputs": {
+    "topic": "refunds"
+   },
+   "world": {
+    "chats": [
+     {
+      "title": "Refund after 40 days",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Ana Lopez (ana@example.com) asks: can I get a refund after 40 days?"
+       },
+       {
+        "role": "assistant",
+        "content": "Refunds are within 30 days; after that, store credit."
+       }
+      ]
+     },
+     {
+      "title": "Refund without a receipt",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Can I get a refund without a receipt? Call me on 07700 900123."
+       },
+       {
+        "role": "assistant",
+        "content": "Yes, always, with or without one."
+       },
+       {
+        "role": "user",
+        "content": "That's wrong, the policy says a receipt is needed."
+       }
+      ]
+     },
+     {
+      "title": "Lunch",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Where to eat?"
+       },
+       {
+        "role": "assistant",
+        "content": "Try the café."
+       }
+      ]
+     }
+    ],
+    "files": {
+     "datasets/refunds.jsonl": "{\"input\": \"last month's set\"}\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "refund"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "returns"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "money back"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "datasets"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "datasets/refunds-2026-10-28.jsonl",
+        "content": "{\"input\": \"[NAME] ([EMAIL]) asks: can I get a refund after 40 days?\", \"output\": \"Refunds are within 30 days; after that, store credit.\", \"task\": \"question\", \"good\": true, \"why\": \"answers with the 30-day rule\", \"chat\": \"Refund after 40 days\"}\n{\"input\": \"Can I get a refund without a receipt? Call me on [PHONE].\", \"output\": \"Yes, always, with or without one.\", \"task\": \"question\", \"good\": false, \"why\": \"the user said the policy needs a receipt\", \"chat\": \"Refund without a receipt\"}\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Kept**\n- 2 exchanges in datasets/refunds-2026-10-28.jsonl (datasets/refunds.jsonl was already there)\n\n**Left out**\n- nothing\n\n**Labels**\n- question 2; good 1, not good 1\n\n## Report\n- 3 searches; wrote datasets/refunds-2026-10-28.jsonl"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "datasets/refunds.jsonl",
+      "contains": [
+       "last month's set"
+      ],
+      "lacks": [
+       "[EMAIL]"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "datasets/refunds-2026-10-28.jsonl",
+      "contains": [
+       "[PHONE]"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-exchange-cut-short-is-left-out",
+   "about": "A long answer is shown cut with \"...\": it is left out as too long to read whole, never completed by guessing.",
+   "inputs": {
+    "topic": "refunds"
+   },
+   "world": {
+    "chats": [
+     {
+      "title": "Refund after 40 days",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Ana Lopez (ana@example.com) asks: can I get a refund after 40 days?"
+       },
+       {
+        "role": "assistant",
+        "content": "Refunds are within 30 days; after that, store credit."
+       }
+      ]
+     },
+     {
+      "title": "Refund policy, in full",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Explain the whole refund policy."
+       },
+       {
+        "role": "assistant",
+        "content": "Our refund policy has several parts. Section 1 covers timing and section 2 covers receipts. Section 1 covers timing and section 2 covers receipts. Section 1 covers timing and section 2 covers receipts. Section 1 covers timing and section 2 covers receipts. Section 1 covers timing and section 2 covers receipts. Section 1 covers timing and section 2 covers receipts. Section 4 covers damaged goods."
+       }
+      ]
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "refund"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "returns"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "money back"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "datasets"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "datasets/refunds.jsonl",
+        "content": "{\"input\": \"[NAME] ([EMAIL]) asks: can I get a refund after 40 days?\", \"output\": \"Refunds are within 30 days; after that, store credit.\", \"task\": \"question\", \"good\": true, \"why\": \"answers with the 30-day rule\", \"chat\": \"Refund after 40 days\"}\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Kept**\n- 1 exchange in datasets/refunds.jsonl\n\n**Left out**\n- \"Refund policy, in full\" — too long to read whole here\n\n**Labels**\n- question 1; good 1, not good 0\n\n## Report\n- 3 searches; wrote datasets/refunds.jsonl"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "too long to read whole here"
+     ]
+    },
+    {
+     "file": {
+      "path": "datasets/refunds.jsonl",
+      "lacks": [
+       "Section 4"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-found",
+   "about": "No chat is about the topic: no file is written, and the answer says which words were searched.",
+   "inputs": {
+    "topic": "refunds"
+   },
+   "world": {
+    "chats": [
+     {
+      "title": "Lunch",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Where to eat?"
+       },
+       {
+        "role": "assistant",
+        "content": "Try the café."
+       }
+      ]
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "refund"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "returns"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "money back"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Kept**\n- nothing: no chat matched \"refund\", \"returns\" or \"money back\"\n\n**Left out**\n- nothing\n\n**Labels**\n- none\n\n## Report\n- 3 searches; wrote nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "write_file"
+    },
+    {
+     "answer_contains": [
+      "no chat matched"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Kept, Left out and Labels does not deliver, even after its repair pass.",
+   "inputs": {
+    "topic": "refunds"
+   },
+   "world": {
+    "chats": [
+     {
+      "title": "Refund after 40 days",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Ana Lopez (ana@example.com) asks: can I get a refund after 40 days?"
+       },
+       {
+        "role": "assistant",
+        "content": "Refunds are within 30 days; after that, store credit."
+       }
+      ]
+     },
+     {
+      "title": "Refund without a receipt",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Can I get a refund without a receipt? Call me on 07700 900123."
+       },
+       {
+        "role": "assistant",
+        "content": "Yes, always, with or without one."
+       },
+       {
+        "role": "user",
+        "content": "That's wrong, the policy says a receipt is needed."
+       }
+      ]
+     },
+     {
+      "title": "Lunch",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Where to eat?"
+       },
+       {
+        "role": "assistant",
+        "content": "Try the café."
+       }
+      ]
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "refund"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "returns"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "money back"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Saved some examples."
+    },
+    {
+     "say": "Saved some examples."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}
