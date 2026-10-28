@@ -1,0 +1,25 @@
+{
+ "case": "broken-links-by-page",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- crawled 14 pages and 120 links; wrote \"Broken links — 29 Oct 2026\"",
+ "read": [],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Broken links”",
+   "ok": true,
+   "detail": "“Broken links — 29 Oct 2026” is there."
+  }
+ ],
+ "answer": "2 broken on 1 page; 1 to check by hand; 1 fixed.\n\n## Report\n- crawled 14 pages and 120 links; wrote \"Broken links — 29 Oct 2026\"\n\n## Carry forward\n- /images/cake.jpg on /menu (first seen 29 Oct); old-supplier.example on /menu (first seen 22 Oct)",
+ "documents": [
+  {
+   "title": "Broken links — 29 Oct 2026",
+   "content": "Broken links — 29 Oct 2026\n\n## Broken\n### https://bakery.example/menu\n- /images/cake.jpg — 404 (new)\n- https://old-supplier.example/ — name does not resolve (since 22 Oct)\n\n## Check by hand\n- https://social.example/rosas — 403 to the crawler\n\n## Pages checked\n- 14 pages, 120 links\n\n## Fixed since last week\n- /contact (was 404)"
+  }
+ ]
+}

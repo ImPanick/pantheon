@@ -1,0 +1,25 @@
+{
+ "case": "a-failing-path-and-a-fixed-one",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- walked 3 paths in 6 actions, each with your yes; wrote \"Browser QA — 28 Oct 2026\"",
+ "read": [],
+ "wrote": [
+  "computer",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Browser QA”",
+   "ok": true,
+   "detail": "“Browser QA — 28 Oct 2026” is there."
+  }
+ ],
+ "answer": "1 failed, 2 passed, 1 fixed.\n\n## Report\n- walked 3 paths in 6 actions, each with your yes; wrote \"Browser QA — 28 Oct 2026\"\n\n## Carry forward\n- failing: Add a mug to the basket (since 27 Oct)",
+ "documents": [
+  {
+   "title": "Browser QA — 28 Oct 2026",
+   "content": "Browser QA — 28 Oct 2026\n\n## Failed\n- Add a mug to the basket — step 1, click \"Add\" — the basket still shows 0; no message (still failing since 27 Oct)\n\n## Passed\n- Find the opening hours — in the footer\n- Search for \"mug\"\n\n## Fixed since last run\n- Search for \"mug\"\n\nPhone layouts were not checked (the screen is 1280×800)."
+  }
+ ]
+}

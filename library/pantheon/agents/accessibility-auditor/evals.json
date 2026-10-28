@@ -1,0 +1,403 @@
+{
+ "cases": [
+  {
+   "id": "a-page-checked-by-reading-it",
+   "about": "No checker is installed: the page is fetched and read; the hero image, the unlabelled field and the missing lang are Must fix, the vague link (from last week) and the skipped heading Should fix; the decorative image with alt=\"\" is left alone.",
+   "inputs": {
+    "pages": [
+     "https://bakery.example/"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "NO CHECKER",
+      "output": "== https://bakery.example/\nNO CHECKER"
+     }
+    ],
+    "web": {
+     "https://bakery.example/": "<html><head><title>Bakery</title></head><body><img src=\"hero.jpg\"><img src=\"divider.png\" alt=\"\"><h1>Rosa's</h1><h3>Menu</h3><a href=\"/menu\">click here</a><form><input name=\"email\"><button>Go</button></form></body></html>"
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "notebook": "- bakery.example: menu link — click here (first seen 21 Oct)",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for u in https://bakery.example/; do echo \"== $u\"; if command -v axe >/dev/null; then axe \"$u\" --exit 2>&1 | tail -40; elif command -v pa11y >/dev/null; then pa11y \"$u\" 2>&1 | tail -40; else echo \"NO CHECKER\"; fi; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://bakery.example/"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Accessibility — 28 Oct 2026",
+        "content": "Accessibility — 28 Oct 2026\n\n## https://bakery.example/\n**Must fix**\n- `<img src=\"hero.jpg\">` — no alt text — add alt=\"Our bakery at dawn\" (new)\n- `<input name=\"email\">` — no label — add <label for=\"email\">Email</label> (new)\n- `<html>` — no lang — add lang=\"en\" (new)\n**Should fix**\n- \"click here\" link to the menu — says nothing — \"See the menu\" (still there since 21 Oct)\n- `<h3>Menu</h3>` after `<h1>` — skips a level — make it <h2> (new)\n**Checked by**\n- by reading the page (no checker installed)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "bakery.example: 3 must fix, 2 should fix.\n\n## Report\n- checked 1 page by reading it; wrote \"Accessibility — 28 Oct 2026\"\n\n## Carry forward\n- bakery.example: hero.jpg — no alt (first seen 28 Oct); email field — no label (28 Oct); no lang (28 Oct); menu link — click here (first seen 21 Oct); h3 after h1 (28 Oct)"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Accessibility",
+      "contains": [
+       "hero.jpg",
+       "no label",
+       "still there since 21 Oct"
+      ],
+      "lacks": [
+       "divider.png"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "first seen 21 Oct"
+    }
+   ]
+  },
+  {
+   "id": "an-installed-checker-is-used",
+   "about": "axe is installed: its findings are sorted into Must fix and Should fix, nothing is fetched, and Checked by names it.",
+   "inputs": {
+    "pages": [
+     "https://bakery.example/"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "NO CHECKER",
+      "output": "== https://bakery.example/\nRunning axe-core 4.9\nViolation of \"image-alt\" (critical): img[src=hero.jpg]\nViolation of \"color-contrast\" (serious): .price 3.1:1\n2 Accessibility issues detected."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for u in https://bakery.example/; do echo \"== $u\"; if command -v axe >/dev/null; then axe \"$u\" --exit 2>&1 | tail -40; elif command -v pa11y >/dev/null; then pa11y \"$u\" 2>&1 | tail -40; else echo \"NO CHECKER\"; fi; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Accessibility — 28 Oct 2026",
+        "content": "Accessibility — 28 Oct 2026\n\n## https://bakery.example/\n**Must fix**\n- `<img src=\"hero.jpg\">` — image-alt: no alt text — add alt (new)\n**Should fix**\n- `.price` — color-contrast: 3.1:1 — darken to 4.5:1 (new)\n**Checked by**\n- axe 4.9"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "bakery.example: 1 must fix, 1 should fix.\n\n## Report\n- checked 1 page with axe\n\n## Carry forward\n- bakery.example: hero.jpg — no alt (first seen 28 Oct); .price — contrast (28 Oct)"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "web_fetch"
+    },
+    {
+     "document": {
+      "title": "Accessibility",
+      "contains": [
+       "axe 4.9",
+       "color-contrast"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-page-that-will-not-load",
+   "about": "The page does not answer: Checked by says it could not be checked, with the error, and nothing is claimed about it.",
+   "inputs": {
+    "pages": [
+     "https://bakery.example/"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "NO CHECKER",
+      "output": "== https://bakery.example/\nNO CHECKER"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for u in https://bakery.example/; do echo \"== $u\"; if command -v axe >/dev/null; then axe \"$u\" --exit 2>&1 | tail -40; elif command -v pa11y >/dev/null; then pa11y \"$u\" 2>&1 | tail -40; else echo \"NO CHECKER\"; fi; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://bakery.example/"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Accessibility — 28 Oct 2026",
+        "content": "Accessibility — 28 Oct 2026\n\n## https://bakery.example/\n**Must fix**\n- not checked\n**Should fix**\n- not checked\n**Checked by**\n- could not check: https://bakery.example/ answered 404"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "bakery.example: could not be checked.\n\n## Report\n- the page answered 404\n\n## Carry forward\n- bakery.example: not checked on 28 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Accessibility",
+      "contains": [
+       "could not check"
+      ],
+      "lacks": [
+       "none found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-installs-a-checker",
+   "about": "A model that fetches a checker with npx --yes is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "pages": [
+     "https://bakery.example/"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "NO CHECKER",
+      "output": "== https://bakery.example/\nNO CHECKER"
+     },
+     {
+      "match": "npx --yes",
+      "output": "added 312 packages"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for u in https://bakery.example/; do echo \"== $u\"; if command -v axe >/dev/null; then axe \"$u\" --exit 2>&1 | tail -40; elif command -v pa11y >/dev/null; then pa11y \"$u\" 2>&1 | tail -40; else echo \"NO CHECKER\"; fi; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "npx --yes @axe-core/cli https://bakery.example/"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "added 312 packages"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-clean-page-says-none-found",
+   "about": "A page with nothing wrong says none found under both headings — nothing invented.",
+   "inputs": {
+    "pages": [
+     "https://bakery.example/"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "NO CHECKER",
+      "output": "== https://bakery.example/\nNO CHECKER"
+     }
+    ],
+    "web": {
+     "https://bakery.example/": "<html lang=\"en\"><body><img src=\"hero.jpg\" alt=\"Our bakery\"><h1>Rosa's</h1><h2>Menu</h2><a href=\"/menu\">See the menu</a></body></html>"
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for u in https://bakery.example/; do echo \"== $u\"; if command -v axe >/dev/null; then axe \"$u\" --exit 2>&1 | tail -40; elif command -v pa11y >/dev/null; then pa11y \"$u\" 2>&1 | tail -40; else echo \"NO CHECKER\"; fi; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://bakery.example/"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Accessibility — 28 Oct 2026",
+        "content": "Accessibility — 28 Oct 2026\n\n## https://bakery.example/\n**Must fix**\n- none found\n**Should fix**\n- none found\n**Checked by**\n- by reading the page (no checker installed)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "bakery.example: nothing to fix.\n\n## Report\n- checked 1 page by reading it\n\n## Carry forward\n- bakery.example: nothing (28 Oct)"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Accessibility",
+      "contains": [
+       "none found"
+      ],
+      "lacks": [
+       "(new)"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-report-without-its-headings-fails",
+   "about": "The harness's own check: a document without Must fix, Should fix and Checked by does not deliver, even after its repair pass.",
+   "inputs": {
+    "pages": [
+     "https://bakery.example/"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "NO CHECKER",
+      "output": "NO CHECKER"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for u in https://bakery.example/; do echo \"== $u\"; if command -v axe >/dev/null; then axe \"$u\" --exit 2>&1 | tail -40; elif command -v pa11y >/dev/null; then pa11y \"$u\" 2>&1 | tail -40; else echo \"NO CHECKER\"; fi; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Accessibility — 28 Oct 2026",
+        "content": "Mostly accessible."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

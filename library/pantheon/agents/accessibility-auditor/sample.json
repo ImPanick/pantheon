@@ -1,0 +1,27 @@
+{
+ "case": "a-page-checked-by-reading-it",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- checked 1 page by reading it; wrote \"Accessibility — 28 Oct 2026\"",
+ "read": [
+  "web_fetch"
+ ],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Accessibility”",
+   "ok": true,
+   "detail": "“Accessibility — 28 Oct 2026” is there."
+  }
+ ],
+ "answer": "bakery.example: 3 must fix, 2 should fix.\n\n## Report\n- checked 1 page by reading it; wrote \"Accessibility — 28 Oct 2026\"\n\n## Carry forward\n- bakery.example: hero.jpg — no alt (first seen 28 Oct); email field — no label (28 Oct); no lang (28 Oct); menu link — click here (first seen 21 Oct); h3 after h1 (28 Oct)",
+ "documents": [
+  {
+   "title": "Accessibility — 28 Oct 2026",
+   "content": "Accessibility — 28 Oct 2026\n\n## https://bakery.example/\n**Must fix**\n- `<img src=\"hero.jpg\">` — no alt text — add alt=\"Our bakery at dawn\" (new)\n- `<input name=\"email\">` — no label — add <label for=\"email\">Email</label> (new)\n- `<html>` — no lang — add lang=\"en\" (new)\n**Should fix**\n- \"click here\" link to the menu — says nothing — \"See the menu\" (still there since 21 Oct)\n- `<h3>Menu</h3>` after `<h1>` — skips a level — make it <h2> (new)\n**Checked by**\n- by reading the page (no checker installed)"
+  }
+ ]
+}

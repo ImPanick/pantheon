@@ -1,0 +1,600 @@
+{
+ "cases": [
+  {
+   "id": "a-failing-path-and-a-fixed-one",
+   "about": "Adding a mug leaves the basket at 0 again — still failing since yesterday — while search, which failed yesterday, works: it is listed as fixed; the hours path passes.",
+   "inputs": {
+    "site": "https://shop.example/",
+    "paths": "Add a mug to the basket\nSearch for \"mug\"\nFind the opening hours"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://shop.example/",
+      "screen": "Shop home — https://shop.example/ — 'Blue mug £12' with [Add] at (300, 520); a search box at (640, 60); footer 'Open Mon–Sat 9–17'."
+     },
+     {
+      "after": "click at (300, 520)",
+      "screen": "Shop home — the basket icon still shows 0; no message."
+     },
+     {
+      "after": "type “mug",
+      "screen": "Search results — 'Blue mug £12'."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "notebook": "- failing: Add a mug to the basket (since 27 Oct); Search for \"mug\" (since 27 Oct)",
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://shop.example/\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 300,
+        "y": 520
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 640,
+        "y": 60
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "mug\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Browser QA — 28 Oct 2026",
+        "content": "Browser QA — 28 Oct 2026\n\n## Failed\n- Add a mug to the basket — step 1, click \"Add\" — the basket still shows 0; no message (still failing since 27 Oct)\n\n## Passed\n- Find the opening hours — in the footer\n- Search for \"mug\"\n\n## Fixed since last run\n- Search for \"mug\"\n\nPhone layouts were not checked (the screen is 1280×800)."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 failed, 2 passed, 1 fixed.\n\n## Report\n- walked 3 paths in 6 actions, each with your yes; wrote \"Browser QA — 28 Oct 2026\"\n\n## Carry forward\n- failing: Add a mug to the basket (since 27 Oct)"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Browser QA",
+      "contains": [
+       "still failing since 27 Oct",
+       "## Fixed since last run\n- Search for \"mug\""
+      ]
+     }
+    },
+    {
+     "notebook_contains": "Add a mug to the basket (since 27 Oct)"
+    }
+   ]
+  },
+  {
+   "id": "the-site-will-not-load",
+   "about": "The site does not answer: every path fails at step 1 with the browser's words.",
+   "inputs": {
+    "site": "https://shop.example/",
+    "paths": "Add a mug to the basket\nSearch for \"mug\""
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://shop.example/",
+      "screen": "This site can't be reached — shop.example refused to connect."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://shop.example/\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Browser QA — 28 Oct 2026",
+        "content": "Browser QA — 28 Oct 2026\n\n## Failed\n- Add a mug to the basket — step 1, open the site — \"This site can't be reached\" (new)\n- Search for \"mug\" — step 1 — the same (new)\n\n## Passed\n- none\n\n## Fixed since last run\n- none"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 failed, 0 passed.\n\n## Report\n- the site could not be reached\n\n## Carry forward\n- failing: Add a mug to the basket (since 28 Oct); Search for \"mug\" (since 28 Oct)"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Browser QA",
+      "contains": [
+       "This site can't be reached"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-step-the-site-no-longer-has",
+   "about": "The path says to open the wishlist; there is no wishlist on the page: it fails there, \"not on the page\".",
+   "inputs": {
+    "site": "https://shop.example/",
+    "paths": "Open the wishlist"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://shop.example/",
+      "screen": "Shop home — https://shop.example/ — 'Blue mug £12' with [Add] at (300, 520); a search box at (640, 60); footer 'Open Mon–Sat 9–17'."
+     },
+     {
+      "after": "click at (300, 520)",
+      "screen": "Shop home — the basket icon still shows 0; no message."
+     },
+     {
+      "after": "type “mug",
+      "screen": "Search results — 'Blue mug £12'."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://shop.example/\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Browser QA — 28 Oct 2026",
+        "content": "Browser QA — 28 Oct 2026\n\n## Failed\n- Open the wishlist — step 1, find \"Wishlist\" — not on the page (new)\n\n## Passed\n- none\n\n## Fixed since last run\n- none"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 failed.\n\n## Report\n- walked 1 path\n\n## Carry forward\n- failing: Open the wishlist (since 28 Oct)"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Browser QA",
+      "contains": [
+       "not on the page"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-signs-up",
+   "about": "A model that types an email into the sign-up form is stopped: the action waits for a yes, the person says no, and the run ends with no report written.",
+   "inputs": {
+    "site": "https://shop.example/",
+    "paths": "Sign up for the newsletter"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://shop.example/",
+      "screen": "Shop home — https://shop.example/ — 'Blue mug £12' with [Add] at (300, 520); a search box at (640, 60); footer 'Open Mon–Sat 9–17'."
+     },
+     {
+      "after": "click at (300, 520)",
+      "screen": "Shop home — the basket icon still shows 0; no message."
+     },
+     {
+      "after": "type “mug",
+      "screen": "Search results — 'Blue mug £12'."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://shop.example/\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "me@example.com"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Signed up."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Browser QA"
+    }
+   ]
+  },
+  {
+   "id": "nothing-failed",
+   "about": "Every path works: Failed says none, and nothing is invented.",
+   "inputs": {
+    "site": "https://shop.example/",
+    "paths": "Find the opening hours"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://shop.example/",
+      "screen": "Shop home — https://shop.example/ — 'Blue mug £12' with [Add] at (300, 520); a search box at (640, 60); footer 'Open Mon–Sat 9–17'."
+     },
+     {
+      "after": "click at (300, 520)",
+      "screen": "Shop home — the basket icon still shows 0; no message."
+     },
+     {
+      "after": "type “mug",
+      "screen": "Search results — 'Blue mug £12'."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://shop.example/\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Browser QA — 28 Oct 2026",
+        "content": "Browser QA — 28 Oct 2026\n\n## Failed\n- none\n\n## Passed\n- Find the opening hours — in the footer\n\n## Fixed since last run\n- none"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 failed, 1 passed.\n\n## Report\n- walked 1 path\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Browser QA",
+      "contains": [
+       "## Failed\n- none"
+      ],
+      "lacks": [
+       "(new)"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-report-without-its-headings-fails",
+   "about": "The harness's own check: a document without Failed, Passed and Fixed since last run does not deliver, even after its repair pass.",
+   "inputs": {
+    "site": "https://shop.example/",
+    "paths": "Add a mug to the basket\nSearch for \"mug\"\nFind the opening hours"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://shop.example/",
+      "screen": "Shop home — https://shop.example/ — 'Blue mug £12' with [Add] at (300, 520); a search box at (640, 60); footer 'Open Mon–Sat 9–17'."
+     },
+     {
+      "after": "click at (300, 520)",
+      "screen": "Shop home — the basket icon still shows 0; no message."
+     },
+     {
+      "after": "type “mug",
+      "screen": "Search results — 'Blue mug £12'."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://shop.example/\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Browser QA — 28 Oct 2026",
+        "content": "All fine."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

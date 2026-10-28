@@ -1,0 +1,23 @@
+{
+ "case": "two-tests-added-and-a-finding",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read cart.py and its tests; added 2 tests, kept 1 out as a finding",
+ "read": [
+  "read_file",
+  "grep"
+ ],
+ "wrote": [
+  "bash",
+  "write_file",
+  "edit_file"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Added, Found, Tests, branch."
+  }
+ ],
+ "answer": "**Added**\n- test_total_of_empty_basket_is_zero — total([]) is 0\n- test_total_rejects_a_negative_price — a negative price raises ValueError\n\n**Found**\n- test_total_rounds_to_pence — cart.py:5 — the docstring promises pence; total([0.1, 0.2]) is 0.30000000000000004, not 0.3\n\n**Tests**\n- before: 1 passed; after: 3 passed — on branch test-writer/2026-10-28, committed 3b4c5d6; not pushed\n\n## Report\n- read cart.py and its tests; added 2 tests, kept 1 out as a finding\n\n## Carry forward\n- covered: cart.py (28 Oct)"
+}

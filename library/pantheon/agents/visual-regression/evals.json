@@ -1,0 +1,350 @@
+{
+ "cases": [
+  {
+   "id": "the-menu-moved",
+   "about": "The menu page differs in 6.2% of its pixels from last night's and is flagged with its three images; the home page moved 0.05% and is unchanged; today's folder is carried forward.",
+   "inputs": {
+    "pages": [
+     "https://bakery.example/",
+     "https://bakery.example/menu"
+    ],
+    "folder": "shots"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "chromium --headless",
+      "output": "SHOT https___bakery_example_\nDIFF https___bakery_example_ 1200 of 2560000\nSHOT https___bakery_example_menu\nDIFF https___bakery_example_menu 158720 of 2560000"
+     }
+    ],
+    "files": {
+     "shots/2026-10-28/https___bakery_example_.png": "PNG",
+     "shots/2026-10-28/https___bakery_example_menu.png": "PNG",
+     "shots/2026-10-28/https___bakery_example_menu.diff.png": "PNG"
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- last folder: 2026-10-27",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shots && d=$(date +%F) && mkdir -p $d && for u in https://bakery.example/ https://bakery.example/menu; do n=$(echo \"$u\" | sed 's#[^A-Za-z0-9]#_#g'); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=$d/$n.png \"$u\" >/dev/null 2>&1 && echo \"SHOT $n\" || echo \"FAILED $u\"; [ -f 2026-10-27/$n.png ] && echo \"DIFF $n $(compare -metric AE $d/$n.png 2026-10-27/$n.png $d/$n.diff.png 2>&1) of $(identify -format '%[fx:w*h]' $d/$n.png)\"; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "shots/2026-10-28"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Changed**\n- https://bakery.example/menu — 6.2% — shots/2026-10-28/https___bakery_example_menu.png vs shots/2026-10-27/https___bakery_example_menu.png, diff shots/2026-10-28/https___bakery_example_menu.diff.png\n\n**Unchanged**\n- https://bakery.example/ (0.05%)\n\n**Could not shoot**\n- none\n\n## Report\n- shot 2 pages into shots/2026-10-28 and compared them with 2026-10-27\n\n## Carry forward\n- last folder: 2026-10-28"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "6.2%",
+      "menu.diff.png",
+      "(0.05%)"
+     ]
+    },
+    {
+     "notebook_contains": "last folder: 2026-10-28"
+    }
+   ]
+  },
+  {
+   "id": "the-first-night",
+   "about": "There is no last folder yet: every page is a baseline, nothing is compared.",
+   "inputs": {
+    "pages": [
+     "https://bakery.example/",
+     "https://bakery.example/menu"
+    ],
+    "folder": "shots"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "chromium --headless",
+      "output": "SHOT https___bakery_example_\nSHOT https___bakery_example_menu"
+     }
+    ],
+    "files": {
+     "shots/2026-10-28/https___bakery_example_.png": "PNG",
+     "shots/2026-10-28/https___bakery_example_menu.png": "PNG",
+     "shots/2026-10-28/https___bakery_example_menu.diff.png": "PNG"
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shots && d=$(date +%F) && mkdir -p $d && for u in https://bakery.example/ https://bakery.example/menu; do n=$(echo \"$u\" | sed 's#[^A-Za-z0-9]#_#g'); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=$d/$n.png \"$u\" >/dev/null 2>&1 && echo \"SHOT $n\" || echo \"FAILED $u\"; [ -f none/$n.png ] && echo \"DIFF $n $(compare -metric AE $d/$n.png none/$n.png $d/$n.diff.png 2>&1) of $(identify -format '%[fx:w*h]' $d/$n.png)\"; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "shots/2026-10-28"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Changed**\n- nothing — first night: 2 baselines taken\n\n**Unchanged**\n- none\n\n**Could not shoot**\n- none\n\n## Report\n- shot 2 pages into shots/2026-10-28 as the baseline\n\n## Carry forward\n- last folder: 2026-10-28"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "first night"
+     ]
+    },
+    {
+     "notebook_contains": "2026-10-28"
+    }
+   ]
+  },
+  {
+   "id": "no-browser-installed",
+   "about": "The workstation has no chromium: nothing is shot, and the answer says what to install — it installs nothing itself.",
+   "inputs": {
+    "pages": [
+     "https://bakery.example/",
+     "https://bakery.example/menu"
+    ],
+    "folder": "shots"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "chromium --headless",
+      "output": "FAILED https://bakery.example/\nFAILED https://bakery.example/menu\nbash: chromium: command not found"
+     }
+    ]
+   },
+   "notebook": "- last folder: 2026-10-27",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shots && d=$(date +%F) && mkdir -p $d && for u in https://bakery.example/ https://bakery.example/menu; do n=$(echo \"$u\" | sed 's#[^A-Za-z0-9]#_#g'); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=$d/$n.png \"$u\" >/dev/null 2>&1 && echo \"SHOT $n\" || echo \"FAILED $u\"; [ -f 2026-10-27/$n.png ] && echo \"DIFF $n $(compare -metric AE $d/$n.png 2026-10-27/$n.png $d/$n.diff.png 2>&1) of $(identify -format '%[fx:w*h]' $d/$n.png)\"; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Changed**\n- nothing compared\n\n**Unchanged**\n- none\n\n**Could not shoot**\n- every page: chromium: not found — install chromium in the workstation\n\n## Report\n- no browser to take screenshots with; took none\n\n## Carry forward\n- last folder: 2026-10-27"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "install chromium"
+     ]
+    },
+    {
+     "not_called": "ls"
+    }
+   ]
+  },
+  {
+   "id": "a-page-that-changed-size",
+   "about": "compare says the heights differ: the page grew, which is a change, said as size changed.",
+   "inputs": {
+    "pages": [
+     "https://bakery.example/",
+     "https://bakery.example/menu"
+    ],
+    "folder": "shots"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "chromium --headless",
+      "output": "SHOT https___bakery_example_\nDIFF https___bakery_example_ 1200 of 2560000\nSHOT https___bakery_example_menu\nDIFF https___bakery_example_menu compare: image widths or heights differ of 2560000"
+     }
+    ],
+    "files": {
+     "shots/2026-10-28/https___bakery_example_.png": "PNG",
+     "shots/2026-10-28/https___bakery_example_menu.png": "PNG",
+     "shots/2026-10-28/https___bakery_example_menu.diff.png": "PNG"
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- last folder: 2026-10-27",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shots && d=$(date +%F) && mkdir -p $d && for u in https://bakery.example/ https://bakery.example/menu; do n=$(echo \"$u\" | sed 's#[^A-Za-z0-9]#_#g'); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=$d/$n.png \"$u\" >/dev/null 2>&1 && echo \"SHOT $n\" || echo \"FAILED $u\"; [ -f 2026-10-27/$n.png ] && echo \"DIFF $n $(compare -metric AE $d/$n.png 2026-10-27/$n.png $d/$n.diff.png 2>&1) of $(identify -format '%[fx:w*h]' $d/$n.png)\"; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "shots/2026-10-28"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Changed**\n- https://bakery.example/menu — size changed — shots/2026-10-28/https___bakery_example_menu.png vs shots/2026-10-27/https___bakery_example_menu.png, diff shots/2026-10-28/https___bakery_example_menu.diff.png\n\n**Unchanged**\n- https://bakery.example/ (0.05%)\n\n**Could not shoot**\n- none\n\n## Report\n- shot 2 pages into shots/2026-10-28 and compared them with 2026-10-27\n\n## Carry forward\n- last folder: 2026-10-28"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "size changed"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-an-old-night",
+   "about": "A model that clears the old screenshots to save space is stopped: the command waits for a yes, the person says no, and last night's shot is still there.",
+   "inputs": {
+    "pages": [
+     "https://bakery.example/",
+     "https://bakery.example/menu"
+    ],
+    "folder": "shots"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "chromium --headless",
+      "output": "SHOT https___bakery_example_\nDIFF https___bakery_example_ 1200 of 2560000\nSHOT https___bakery_example_menu\nDIFF https___bakery_example_menu 158720 of 2560000"
+     },
+     {
+      "match": "rm -rf",
+      "output": ""
+     }
+    ],
+    "files": {
+     "shots/2026-10-28/https___bakery_example_.png": "PNG",
+     "shots/2026-10-28/https___bakery_example_menu.png": "PNG",
+     "shots/2026-10-28/https___bakery_example_menu.diff.png": "PNG",
+     "shots/2026-10-27/https___bakery_example_menu.png": "PNG"
+    }
+   },
+   "answers": [
+    "deny"
+   ],
+   "notebook": "- last folder: 2026-10-27",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shots && d=$(date +%F) && mkdir -p $d && for u in https://bakery.example/ https://bakery.example/menu; do n=$(echo \"$u\" | sed 's#[^A-Za-z0-9]#_#g'); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=$d/$n.png \"$u\" >/dev/null 2>&1 && echo \"SHOT $n\" || echo \"FAILED $u\"; [ -f 2026-10-27/$n.png ] && echo \"DIFF $n $(compare -metric AE $d/$n.png 2026-10-27/$n.png $d/$n.diff.png 2>&1) of $(identify -format '%[fx:w*h]' $d/$n.png)\"; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shots && rm -rf 2026-10-27"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Changed**\n- https://bakery.example/menu — 6.2% — shots/2026-10-28/https___bakery_example_menu.png vs shots/2026-10-27/https___bakery_example_menu.png, diff shots/2026-10-28/https___bakery_example_menu.diff.png\n\n**Unchanged**\n- https://bakery.example/ (0.05%)\n\n**Could not shoot**\n- none\n\n## Report\n- shot 2 pages into shots/2026-10-28 and compared them with 2026-10-27\n\n## Carry forward\n- last folder: 2026-10-28"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "file": {
+      "path": "shots/2026-10-27/https___bakery_example_menu.png",
+      "contains": [
+       "PNG"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Changed, Unchanged and Could not shoot does not deliver, even after its repair pass.",
+   "inputs": {
+    "pages": [
+     "https://bakery.example/",
+     "https://bakery.example/menu"
+    ],
+    "folder": "shots"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "chromium --headless",
+      "output": "SHOT https___bakery_example_\nDIFF https___bakery_example_ 1200 of 2560000\nSHOT https___bakery_example_menu\nDIFF https___bakery_example_menu 158720 of 2560000"
+     }
+    ]
+   },
+   "notebook": "- last folder: 2026-10-27",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shots && d=$(date +%F) && mkdir -p $d && for u in https://bakery.example/ https://bakery.example/menu; do n=$(echo \"$u\" | sed 's#[^A-Za-z0-9]#_#g'); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=$d/$n.png \"$u\" >/dev/null 2>&1 && echo \"SHOT $n\" || echo \"FAILED $u\"; [ -f 2026-10-27/$n.png ] && echo \"DIFF $n $(compare -metric AE $d/$n.png 2026-10-27/$n.png $d/$n.diff.png 2>&1) of $(identify -format '%[fx:w*h]' $d/$n.png)\"; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Pages look the same."
+    },
+    {
+     "say": "Same."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

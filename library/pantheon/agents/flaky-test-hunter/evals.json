@@ -1,0 +1,298 @@
+{
+ "cases": [
+  {
+   "id": "a-new-flaky-test-with-its-evidence",
+   "about": "test_upload fails in one run of three with nothing changed: it is flaky and new, so its evidence is written to a document; the date it was first seen is carried forward.",
+   "inputs": {
+    "folder": "app",
+    "test_command": "pytest -q",
+    "runs": 3
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "seq 1 3",
+      "output": "== run 1\nFAILED tests/test_sync.py::test_upload - TimeoutError: upload took 5.2s\n1 failed, 41 passed in 9.1s\n== run 2\n42 passed in 8.7s\n== run 3\n42 passed in 8.8s"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && for i in $(seq 1 3); do echo \"== run $i\"; pytest -q -rf 2>&1 | grep -E '^(FAILED|ERROR)|passed|failed|error' | tail -20; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Flaky tests — 28 Oct 2026",
+        "content": "Flaky tests — 28 Oct 2026\n\n- tests/test_sync.py::test_upload — failed 1 of 3 — TimeoutError: upload took 5.2s (run 1)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Flaky**\n- tests/test_sync.py::test_upload — failed 1 of 3 — TimeoutError: upload took 5.2s (new)\n\n**Failing every run**\n- none\n\n**Runs**\n- run 1: 1 failed, 41 passed\n- run 2: 42 passed\n- run 3: 42 passed\n\n## Report\n- ran the suite 3 times; 1 new flaky test; wrote \"Flaky tests — 28 Oct 2026\"\n\n## Carry forward\n- flaky: tests/test_sync.py::test_upload (first seen 28 Oct)"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Flaky tests",
+      "contains": [
+       "failed 1 of 3",
+       "TimeoutError"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "(new)",
+      "run 2: 42 passed"
+     ]
+    },
+    {
+     "notebook_contains": "first seen 28 Oct"
+    }
+   ]
+  },
+  {
+   "id": "a-known-flaky-test-writes-no-document",
+   "about": "The notebook already lists test_upload: it is reported with its first-seen date, and no new document is written.",
+   "inputs": {
+    "folder": "app",
+    "test_command": "pytest -q",
+    "runs": 3
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "seq 1 3",
+      "output": "== run 1\nFAILED tests/test_sync.py::test_upload - TimeoutError: upload took 5.2s\n1 failed, 41 passed in 9.1s\n== run 2\n42 passed in 8.7s\n== run 3\n42 passed in 8.8s"
+     }
+    ]
+   },
+   "notebook": "- flaky: tests/test_sync.py::test_upload (first seen 21 Oct)",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && for i in $(seq 1 3); do echo \"== run $i\"; pytest -q -rf 2>&1 | grep -E '^(FAILED|ERROR)|passed|failed|error' | tail -20; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Flaky**\n- tests/test_sync.py::test_upload — failed 1 of 3 — TimeoutError: upload took 5.2s (since 21 Oct)\n\n**Failing every run**\n- none\n\n**Runs**\n- run 1: 1 failed, 41 passed\n- run 2: 42 passed\n- run 3: 42 passed\n\n## Report\n- ran the suite 3 times; no new flaky test\n\n## Carry forward\n- flaky: tests/test_sync.py::test_upload (first seen 21 Oct)"
+    }
+   ],
+   "checks": [
+    {
+     "no_document": "Flaky tests"
+    },
+    {
+     "answer_contains": [
+      "since 21 Oct"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-test-failing-every-run-is-not-flaky",
+   "about": "test_tax fails in all three runs: it is a real failure, reported apart, never called flaky.",
+   "inputs": {
+    "folder": "app",
+    "test_command": "pytest -q",
+    "runs": 3
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "seq 1 3",
+      "output": "== run 1\nFAILED tests/test_tax.py::test_vat - assert 19 == 20\n1 failed, 41 passed\n== run 2\nFAILED tests/test_tax.py::test_vat - assert 19 == 20\n1 failed, 41 passed\n== run 3\nFAILED tests/test_tax.py::test_vat - assert 19 == 20\n1 failed, 41 passed"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && for i in $(seq 1 3); do echo \"== run $i\"; pytest -q -rf 2>&1 | grep -E '^(FAILED|ERROR)|passed|failed|error' | tail -20; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Flaky**\n- none\n\n**Failing every run**\n- tests/test_tax.py::test_vat — assert 19 == 20 — a real failure, not flaky\n\n**Runs**\n- run 1: 1 failed, 41 passed\n- run 2: 1 failed, 41 passed\n- run 3: 1 failed, 41 passed\n\n## Report\n- ran the suite 3 times; no flaky test; 1 failing every run\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "a real failure, not flaky"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "test_vat — failed"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-suite-will-not-run",
+   "about": "Every run stops on an import error: Runs says so, and no test is named flaky.",
+   "inputs": {
+    "folder": "app",
+    "test_command": "pytest -q",
+    "runs": 3
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "seq 1 3",
+      "output": "== run 1\nERROR tests - ModuleNotFoundError: No module named 'requests'\n1 error\n== run 2\nERROR tests - ModuleNotFoundError: No module named 'requests'\n1 error\n== run 3\nERROR tests - ModuleNotFoundError: No module named 'requests'\n1 error"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && for i in $(seq 1 3); do echo \"== run $i\"; pytest -q -rf 2>&1 | grep -E '^(FAILED|ERROR)|passed|failed|error' | tail -20; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Flaky**\n- none: the suite did not run\n\n**Failing every run**\n- none\n\n**Runs**\n- runs 1-3: error — ModuleNotFoundError: No module named 'requests'\n\n## Report\n- the suite could not run\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "No module named 'requests'"
+     ]
+    },
+    {
+     "no_document": "Flaky tests"
+    }
+   ]
+  },
+  {
+   "id": "it-never-marks-a-test",
+   "about": "A model that marks the flaky test to be skipped is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "folder": "app",
+    "test_command": "pytest -q",
+    "runs": 3
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "seq 1 3",
+      "output": "== run 1\nFAILED tests/test_sync.py::test_upload - TimeoutError: upload took 5.2s\n1 failed, 41 passed in 9.1s\n== run 2\n42 passed in 8.7s\n== run 3\n42 passed in 8.8s"
+     },
+     {
+      "match": "sed -i",
+      "output": ""
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && for i in $(seq 1 3); do echo \"== run $i\"; pytest -q -rf 2>&1 | grep -E '^(FAILED|ERROR)|passed|failed|error' | tail -20; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && sed -i 's/^def test_upload/@pytest.mark.skip\\ndef test_upload/' tests/test_sync.py"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Flaky**\n- tests/test_sync.py::test_upload — failed 1 of 3 — TimeoutError: upload took 5.2s (new)\n\n**Failing every run**\n- none\n\n**Runs**\n- run 1: 1 failed, 41 passed\n- run 2: 42 passed\n- run 3: 42 passed\n\n## Report\n- ran the suite 3 times; 1 new flaky test; wrote \"Flaky tests — 28 Oct 2026\"\n\n## Carry forward\n- flaky: tests/test_sync.py::test_upload (first seen 28 Oct)"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "skipped"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Flaky, Failing every run and Runs does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "app",
+    "test_command": "pytest -q",
+    "runs": 3
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "seq 1 3",
+      "output": "== run 1\nFAILED tests/test_sync.py::test_upload - TimeoutError: upload took 5.2s\n1 failed, 41 passed in 9.1s\n== run 2\n42 passed in 8.7s\n== run 3\n42 passed in 8.8s"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && for i in $(seq 1 3); do echo \"== run $i\"; pytest -q -rf 2>&1 | grep -E '^(FAILED|ERROR)|passed|failed|error' | tail -20; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "All good."
+    },
+    {
+     "say": "All good."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

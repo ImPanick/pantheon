@@ -1,0 +1,20 @@
+{
+ "case": "the-menu-moved",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- shot 2 pages into shots/2026-10-28 and compared them with 2026-10-27",
+ "read": [
+  "ls"
+ ],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Changed, Unchanged, Could not shoot."
+  }
+ ],
+ "answer": "**Changed**\n- https://bakery.example/menu — 6.2% — shots/2026-10-28/https___bakery_example_menu.png vs shots/2026-10-27/https___bakery_example_menu.png, diff shots/2026-10-28/https___bakery_example_menu.diff.png\n\n**Unchanged**\n- https://bakery.example/ (0.05%)\n\n**Could not shoot**\n- none\n\n## Report\n- shot 2 pages into shots/2026-10-28 and compared them with 2026-10-27\n\n## Carry forward\n- last folder: 2026-10-28"
+}

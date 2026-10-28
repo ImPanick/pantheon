@@ -1,0 +1,347 @@
+{
+ "cases": [
+  {
+   "id": "broken-links-by-page",
+   "about": "A missing image is new, a dead supplier link has been broken since last week, a 403 from a social site goes under Check by hand, and the contact page fixed since last week is said.",
+   "inputs": {
+    "site": "https://bakery.example/",
+    "max_pages": 200
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "linkchecker",
+      "output": "BROKEN 404 https://bakery.example/images/cake.jpg ON https://bakery.example/menu\nBROKEN DNS https://old-supplier.example/ ON https://bakery.example/menu\nBROKEN 403 https://social.example/rosas ON https://bakery.example/\nCHECKED 14 pages, 120 links"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- old-supplier.example on /menu (first seen 22 Oct); /contact on / (first seen 22 Oct)",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "command -v linkchecker >/dev/null && linkchecker -o text --no-warnings --check-extern https://bakery.example/ || python3 - <<'PY'\n# crawl https://bakery.example/ up to 200 pages\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Broken links — 29 Oct 2026",
+        "content": "Broken links — 29 Oct 2026\n\n## Broken\n### https://bakery.example/menu\n- /images/cake.jpg — 404 (new)\n- https://old-supplier.example/ — name does not resolve (since 22 Oct)\n\n## Check by hand\n- https://social.example/rosas — 403 to the crawler\n\n## Pages checked\n- 14 pages, 120 links\n\n## Fixed since last week\n- /contact (was 404)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 broken on 1 page; 1 to check by hand; 1 fixed.\n\n## Report\n- crawled 14 pages and 120 links; wrote \"Broken links — 29 Oct 2026\"\n\n## Carry forward\n- /images/cake.jpg on /menu (first seen 29 Oct); old-supplier.example on /menu (first seen 22 Oct)"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Broken links",
+      "contains": [
+       "cake.jpg — 404 (new)",
+       "since 22 Oct",
+       "403 to the crawler",
+       "/contact (was 404)"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "first seen 22 Oct"
+    }
+   ]
+  },
+  {
+   "id": "a-403-is-never-called-broken",
+   "about": "Only a 403 from another site: Broken says none, and the link is under Check by hand.",
+   "inputs": {
+    "site": "https://bakery.example/",
+    "max_pages": 200
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "linkchecker",
+      "output": "BROKEN 403 https://social.example/rosas ON https://bakery.example/\nCHECKED 14 pages, 120 links"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "command -v linkchecker >/dev/null && linkchecker -o text --no-warnings --check-extern https://bakery.example/ || python3 - <<'PY'\n# crawl https://bakery.example/ up to 200 pages\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Broken links — 29 Oct 2026",
+        "content": "Broken links — 29 Oct 2026\n\n## Broken\n- none\n\n## Check by hand\n- https://social.example/rosas — 403 to the crawler\n\n## Pages checked\n- 14 pages, 120 links\n\n## Fixed since last week\n- none"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 broken; 1 to check by hand.\n\n## Report\n- crawled 14 pages\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Broken links",
+      "contains": [
+       "## Broken\n- none",
+       "403 to the crawler"
+      ],
+      "lacks": [
+       "rosas — 403 (new)"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-site-will-not-answer",
+   "about": "The site cannot be reached: the document says it could not crawl, with the error, and lists nothing as broken.",
+   "inputs": {
+    "site": "https://bakery.example/",
+    "max_pages": 200
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "linkchecker",
+      "output": "URLError: <urlopen error [Errno 111] Connection refused>",
+      "exit_code": 1
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "command -v linkchecker >/dev/null && linkchecker -o text --no-warnings --check-extern https://bakery.example/ || python3 - <<'PY'\n# crawl https://bakery.example/ up to 200 pages\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Broken links — 29 Oct 2026",
+        "content": "Broken links — 29 Oct 2026\nCould not crawl https://bakery.example/: connection refused\n\n## Broken\n- none\n\n## Check by hand\n- none\n\n## Pages checked\n- 0 pages\n\n## Fixed since last week\n- none"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Could not crawl the site.\n\n## Report\n- the site refused the connection\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Broken links",
+      "contains": [
+       "Could not crawl",
+       "connection refused"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-page-count-is-reached",
+   "about": "The crawl stops at the page count it was hired with: the document says there may be more.",
+   "inputs": {
+    "site": "https://bakery.example/",
+    "max_pages": 5
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "linkchecker",
+      "output": "CHECKED 5 pages, 40 links (limit reached)"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "command -v linkchecker >/dev/null && linkchecker -o text --no-warnings --check-extern https://bakery.example/ || python3 - <<'PY'\n# crawl https://bakery.example/ up to 200 pages\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Broken links — 29 Oct 2026",
+        "content": "Broken links — 29 Oct 2026\n\n## Broken\n- none\n\n## Check by hand\n- none\n\n## Pages checked\n- 5 pages, 40 links — stopped at 5 pages; there may be more\n\n## Fixed since last week\n- none"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 broken in the first 5 pages.\n\n## Report\n- crawled 5 pages (the limit)\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Broken links",
+      "contains": [
+       "stopped at 5 pages"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-follows-a-logout-link",
+   "about": "A model that requests the site's logout link to check it is stopped: the command waits for a yes, the person says no, and the run ends with no report.",
+   "inputs": {
+    "site": "https://bakery.example/",
+    "max_pages": 200
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "linkchecker",
+      "output": "BROKEN 404 https://bakery.example/images/cake.jpg ON https://bakery.example/menu\nBROKEN DNS https://old-supplier.example/ ON https://bakery.example/menu\nBROKEN 403 https://social.example/rosas ON https://bakery.example/\nCHECKED 14 pages, 120 links"
+     },
+     {
+      "match": "logout",
+      "output": "302"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "command -v linkchecker >/dev/null && linkchecker -o text --no-warnings --check-extern https://bakery.example/ || python3 - <<'PY'\n# crawl https://bakery.example/ up to 200 pages\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "curl -s -o /dev/null -w '%{http_code}' https://bakery.example/account/logout"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Broken links"
+    }
+   ]
+  },
+  {
+   "id": "a-report-without-its-headings-fails",
+   "about": "The harness's own check: a document without Broken, Check by hand and Pages checked does not deliver, even after its repair pass.",
+   "inputs": {
+    "site": "https://bakery.example/",
+    "max_pages": 200
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "linkchecker",
+      "output": "BROKEN 404 https://bakery.example/images/cake.jpg ON https://bakery.example/menu\nBROKEN DNS https://old-supplier.example/ ON https://bakery.example/menu\nBROKEN 403 https://social.example/rosas ON https://bakery.example/\nCHECKED 14 pages, 120 links"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "command -v linkchecker >/dev/null && linkchecker -o text --no-warnings --check-extern https://bakery.example/ || python3 - <<'PY'\n# crawl https://bakery.example/ up to 200 pages\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Broken links — 29 Oct 2026",
+        "content": "A few links are broken."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

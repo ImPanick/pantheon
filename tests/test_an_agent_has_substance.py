@@ -117,6 +117,9 @@ AT_THE_BAR = frozenset({
     # first, and says that every later step waits for the person's yes.
     "api-mocker", "bug-fixer", "changelog-writer", "code-explainer", "code-reviewer", "docs-writer",
     "migration-runner", "prototype-builder", "refactorer", "script-smith",
+    # Testing & QA, the whole section; nothing fetched to run a check (`Law 16`).
+    "accessibility-auditor", "browser-qa", "flaky-test-hunter", "link-checker", "load-tester",
+    "test-writer", "visual-regression",
 })
 
 SECTIONS = ("Steps", "Judgement calls", "Edge cases", "Deliverable", "Example")

@@ -1,0 +1,25 @@
+{
+ "case": "a-staging-service-bends-at-ten",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 4 steps of 30 s against staging.shop.example; wrote \"Load test — https://staging.shop.example/ — 28 Oct 2026\"",
+ "read": [],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Load test”",
+   "ok": true,
+   "detail": "“Load test — https://staging.shop.example/ — 28 Oct 2026” is there."
+  }
+ ],
+ "answer": "It bends at 10 users; errors start at 20 (503).\n\n## Report\n- 4 steps of 30 s against staging.shop.example; wrote \"Load test — https://staging.shop.example/ — 28 Oct 2026\"",
+ "documents": [
+  {
+   "title": "Load test — https://staging.shop.example/ — 28 Oct 2026",
+   "content": "Load test — https://staging.shop.example/ — 28 Oct 2026\n\n## Results\n| users | requests/s | p50 | p95 | p99 | errors |\n|---|---|---|---|---|---|\n| 1 | 48 | 20 ms | 31 ms | 40 ms | 0 |\n| 5 | 210 | 22 ms | 35 ms | 52 ms | 0 |\n| 10 | 260 | 35 ms | 90 ms | 140 ms | 0 |\n| 20 | 255 | 75 ms | 210 ms | 400 ms | 12 (503) |\n\n## Where it bends\n- at 10 users: p95 90 ms against 31 ms with 1 user; requests/s stop rising after it\n\n## First errors\n- 20 users: 12 responses of 503"
+  }
+ ]
+}

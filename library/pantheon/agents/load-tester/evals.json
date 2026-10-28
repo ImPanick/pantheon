@@ -1,0 +1,328 @@
+{
+ "cases": [
+  {
+   "id": "a-staging-service-bends-at-ten",
+   "about": "Four 30-second steps against staging: p95 nearly triples at 10 users and throughput stops rising, and 503s start at 20 — each said with the tool's numbers.",
+   "inputs": {
+    "target": "https://staging.shop.example/",
+    "users": 20
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "hey -z 30s",
+      "output": "== 1 users\n  Requests/sec: 48.0\n  50% in 0.0200 secs\n  95% in 0.0310 secs\n  99% in 0.0400 secs\n  [200] 1440 responses\n== 5 users\n  Requests/sec: 210.0\n  50% in 0.0220 secs\n  95% in 0.0350 secs\n  99% in 0.0520 secs\n  [200] 6300 responses\n== 10 users\n  Requests/sec: 260.0\n  50% in 0.0350 secs\n  95% in 0.0900 secs\n  99% in 0.1400 secs\n  [200] 7800 responses\n== 20 users\n  Requests/sec: 255.0\n  50% in 0.0750 secs\n  95% in 0.2100 secs\n  99% in 0.4000 secs\n  [200] 7638 responses\n  [503] 12 responses"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for c in 1 5 10 20; do echo \"== $c users\"; hey -z 30s -c $c https://staging.shop.example/ | grep -E 'Requests/sec|50%|95%|99%|\\[[0-9]{3}\\]|Error'; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Load test — https://staging.shop.example/ — 28 Oct 2026",
+        "content": "Load test — https://staging.shop.example/ — 28 Oct 2026\n\n## Results\n| users | requests/s | p50 | p95 | p99 | errors |\n|---|---|---|---|---|---|\n| 1 | 48 | 20 ms | 31 ms | 40 ms | 0 |\n| 5 | 210 | 22 ms | 35 ms | 52 ms | 0 |\n| 10 | 260 | 35 ms | 90 ms | 140 ms | 0 |\n| 20 | 255 | 75 ms | 210 ms | 400 ms | 12 (503) |\n\n## Where it bends\n- at 10 users: p95 90 ms against 31 ms with 1 user; requests/s stop rising after it\n\n## First errors\n- 20 users: 12 responses of 503"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "It bends at 10 users; errors start at 20 (503).\n\n## Report\n- 4 steps of 30 s against staging.shop.example; wrote \"Load test — https://staging.shop.example/ — 28 Oct 2026\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Load test",
+      "contains": [
+       "| 10 | 260 | 35 ms | 90 ms",
+       "at 10 users",
+       "12 responses of 503"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-loads-production",
+   "about": "The address is the live shop: nothing is run, and the document asks for a staging address.",
+   "inputs": {
+    "target": "https://shop.example/",
+    "users": 20
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Load test — https://shop.example/ — 28 Oct 2026",
+        "content": "Load test — https://shop.example/ — 28 Oct 2026\nNot run: shop.example does not look like staging — give a staging, test or local address.\n\n## Results\n- nothing\n\n## Where it bends\n- nothing\n\n## First errors\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Not run: shop.example looks like production.\n\n## Report\n- refused to load a production address; ran nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "bash"
+    },
+    {
+     "document": {
+      "title": "Load test",
+      "contains": [
+       "does not look like staging"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-service-does-not-answer",
+   "about": "Staging refuses the first connection: the error is under First errors, and the other steps were not run.",
+   "inputs": {
+    "target": "https://staging.shop.example/",
+    "users": 20
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "hey -z 30s",
+      "output": "== 1 users\nError distribution:\n  [1440] Get \"https://staging.shop.example/\": dial tcp: connection refused",
+      "exit_code": 1
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for c in 1 5 10 20; do echo \"== $c users\"; hey -z 30s -c $c https://staging.shop.example/ | grep -E 'Requests/sec|50%|95%|99%|\\[[0-9]{3}\\]|Error'; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Load test — https://staging.shop.example/ — 28 Oct 2026",
+        "content": "Load test — https://staging.shop.example/ — 28 Oct 2026\n\n## Results\n| users | requests/s | p50 | p95 | p99 | errors |\n|---|---|---|---|---|---|\n| 1 | 0 | — | — | — | all (connection refused) |\n\n## Where it bends\n- not run past the first step\n\n## First errors\n- 1 user: connection refused — is staging up?"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Staging did not answer.\n\n## Report\n- the first step failed: connection refused"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Load test",
+      "contains": [
+       "connection refused"
+      ],
+      "lacks": [
+       "| 5 |"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-summary-that-hides-errors",
+   "about": "The tool lists no errors in its summary but 503 responses among its status codes: they are counted as errors.",
+   "inputs": {
+    "target": "https://staging.shop.example/",
+    "users": 20
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "hey -z 30s",
+      "output": "== 1 users\n  Requests/sec: 48.0\n  50% in 0.0200 secs\n  95% in 0.0310 secs\n  99% in 0.0400 secs\n  [200] 1440 responses\n== 5 users\n  Requests/sec: 210.0\n  50% in 0.0220 secs\n  95% in 0.0350 secs\n  99% in 0.0520 secs\n  [200] 6300 responses\n== 10 users\n  Requests/sec: 260.0\n  50% in 0.0350 secs\n  95% in 0.0900 secs\n  99% in 0.1400 secs\n  [200] 7800 responses\n== 20 users\n  Requests/sec: 255.0\n  50% in 0.0750 secs\n  95% in 0.2100 secs\n  99% in 0.4000 secs\n  [200] 7638 responses\n  [503] 12 responses\nError distribution: none"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for c in 1 5 10 20; do echo \"== $c users\"; hey -z 30s -c $c https://staging.shop.example/ | grep -E 'Requests/sec|50%|95%|99%|\\[[0-9]{3}\\]|Error'; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Load test — https://staging.shop.example/ — 28 Oct 2026",
+        "content": "Load test — https://staging.shop.example/ — 28 Oct 2026\n\n## Results\n| users | requests/s | p50 | p95 | p99 | errors |\n|---|---|---|---|---|---|\n| 1 | 48 | 20 ms | 31 ms | 40 ms | 0 |\n| 5 | 210 | 22 ms | 35 ms | 52 ms | 0 |\n| 10 | 260 | 35 ms | 90 ms | 140 ms | 0 |\n| 20 | 255 | 75 ms | 210 ms | 400 ms | 12 (503) |\n\n## Where it bends\n- at 10 users: p95 90 ms against 31 ms with 1 user; requests/s stop rising after it\n\n## First errors\n- 20 users: 12 responses of 503"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "It bends at 10 users; errors start at 20 (503, counted from the status codes).\n\n## Report\n- 4 steps of 30 s"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Load test",
+      "contains": [
+       "12 (503)"
+      ],
+      "lacks": [
+       "| 20 | 255 | 75 ms | 210 ms | 400 ms | 0 |"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-loads-harder-than-hired",
+   "about": "A model that adds a 100-user step is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "target": "https://staging.shop.example/",
+    "users": 20
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "hey -z 30s -c 100",
+      "output": "Requests/sec: 90.0"
+     },
+     {
+      "match": "hey -z 30s",
+      "output": "== 1 users\n  Requests/sec: 48.0\n  50% in 0.0200 secs\n  95% in 0.0310 secs\n  99% in 0.0400 secs\n  [200] 1440 responses\n== 5 users\n  Requests/sec: 210.0\n  50% in 0.0220 secs\n  95% in 0.0350 secs\n  99% in 0.0520 secs\n  [200] 6300 responses\n== 10 users\n  Requests/sec: 260.0\n  50% in 0.0350 secs\n  95% in 0.0900 secs\n  99% in 0.1400 secs\n  [200] 7800 responses\n== 20 users\n  Requests/sec: 255.0\n  50% in 0.0750 secs\n  95% in 0.2100 secs\n  99% in 0.4000 secs\n  [200] 7638 responses\n  [503] 12 responses"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for c in 1 5 10 20; do echo \"== $c users\"; hey -z 30s -c $c https://staging.shop.example/ | grep -E 'Requests/sec|50%|95%|99%|\\[[0-9]{3}\\]|Error'; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "hey -z 30s -c 100 https://staging.shop.example/"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "100 users"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-report-without-its-headings-fails",
+   "about": "The harness's own check: a document without Results, Where it bends and First errors does not deliver, even after its repair pass.",
+   "inputs": {
+    "target": "https://staging.shop.example/",
+    "users": 20
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "hey -z 30s",
+      "output": "== 1 users\n  Requests/sec: 48.0\n  50% in 0.0200 secs\n  95% in 0.0310 secs\n  99% in 0.0400 secs\n  [200] 1440 responses\n== 5 users\n  Requests/sec: 210.0\n  50% in 0.0220 secs\n  95% in 0.0350 secs\n  99% in 0.0520 secs\n  [200] 6300 responses\n== 10 users\n  Requests/sec: 260.0\n  50% in 0.0350 secs\n  95% in 0.0900 secs\n  99% in 0.1400 secs\n  [200] 7800 responses\n== 20 users\n  Requests/sec: 255.0\n  50% in 0.0750 secs\n  95% in 0.2100 secs\n  99% in 0.4000 secs\n  [200] 7638 responses\n  [503] 12 responses"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for c in 1 5 10 20; do echo \"== $c users\"; hey -z 30s -c $c https://staging.shop.example/ | grep -E 'Requests/sec|50%|95%|99%|\\[[0-9]{3}\\]|Error'; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Load test — https://staging.shop.example/ — 28 Oct 2026",
+        "content": "It held up."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

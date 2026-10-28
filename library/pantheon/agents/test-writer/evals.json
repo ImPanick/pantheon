@@ -1,0 +1,559 @@
+{
+ "cases": [
+  {
+   "id": "two-tests-added-and-a-finding",
+   "about": "The empty basket and the negative price get passing tests; the docstring's pence promise fails against the code, so that test is taken out and reported, and the code is never changed; committed on test-writer's branch, not pushed.",
+   "inputs": {
+    "folder": "shop",
+    "test_command": "pytest -q",
+    "files": [
+     "cart.py"
+    ]
+   },
+   "world": {
+    "files": {
+     "shop/cart.py": "def total(prices):\n    \"\"\"The total of the prices, rounded to pence. A negative price raises ValueError.\"\"\"\n    if any(p < 0 for p in prices):\n        raise ValueError('negative price')\n    return sum(prices)\n",
+     "shop/tests/test_cart.py": "from cart import total\n\n\ndef test_two_items():\n    assert total([1, 2]) == 3\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n1 passed in 0.1s"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'test-writer/2026-10-28'"
+     },
+     {
+      "match": "tests/test_cart_more.py",
+      "output": "FAILED tests/test_cart_more.py::test_total_rounds_to_pence - assert 0.30000000000000004 == 0.3\n1 failed, 2 passed",
+      "exit_code": 1
+     },
+     {
+      "match": "git commit",
+      "output": "3 passed in 0.1s\n[test-writer/2026-10-28 3b4c5d6] Tests for cart.py (test-writer)"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/cart.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "from cart import",
+        "path": "shop/tests"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/tests/test_cart.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git checkout -b test-writer/2026-10-28"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "shop/tests/test_cart_more.py",
+        "content": "import pytest\nfrom cart import total\n\n\ndef test_total_of_empty_basket_is_zero():\n    assert total([]) == 0\n\n\ndef test_total_rejects_a_negative_price():\n    with pytest.raises(ValueError):\n        total([5, -1])\n\n\ndef test_total_rounds_to_pence():\n    assert total([0.1, 0.2]) == 0.3\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && pytest -q tests/test_cart_more.py 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "shop/tests/test_cart_more.py",
+        "old_string": "\n\n\ndef test_total_rounds_to_pence():\n    assert total([0.1, 0.2]) == 0.3\n",
+        "new_string": "\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && pytest -q 2>&1 | tail -3 && git add -A && git commit -m \"Tests for cart.py (test-writer)\""
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- test_total_of_empty_basket_is_zero — total([]) is 0\n- test_total_rejects_a_negative_price — a negative price raises ValueError\n\n**Found**\n- test_total_rounds_to_pence — cart.py:5 — the docstring promises pence; total([0.1, 0.2]) is 0.30000000000000004, not 0.3\n\n**Tests**\n- before: 1 passed; after: 3 passed — on branch test-writer/2026-10-28, committed 3b4c5d6; not pushed\n\n## Report\n- read cart.py and its tests; added 2 tests, kept 1 out as a finding\n\n## Carry forward\n- covered: cart.py (28 Oct)"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "shop/tests/test_cart_more.py",
+      "contains": [
+       "test_total_of_empty_basket_is_zero",
+       "pytest.raises(ValueError)"
+      ],
+      "lacks": [
+       "rounds_to_pence"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "shop/cart.py",
+      "contains": [
+       "return sum(prices)"
+      ],
+      "lacks": [
+       "round("
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "0.30000000000000004",
+      "not pushed"
+     ]
+    },
+    {
+     "notebook_contains": "covered: cart.py"
+    }
+   ]
+  },
+  {
+   "id": "nothing-to-add",
+   "about": "Every promise of the file already has a test: no branch, and Added says so.",
+   "inputs": {
+    "folder": "shop",
+    "test_command": "pytest -q",
+    "files": [
+     "cart.py"
+    ]
+   },
+   "world": {
+    "files": {
+     "shop/cart.py": "def total(prices):\n    \"\"\"The total of the prices, rounded to pence. A negative price raises ValueError.\"\"\"\n    if any(p < 0 for p in prices):\n        raise ValueError('negative price')\n    return sum(prices)\n",
+     "shop/tests/test_cart.py": "from cart import total\n\n\ndef test_two_items():\n    assert total([1, 2]) == 3\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n1 passed in 0.1s"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'test-writer/2026-10-28'"
+     },
+     {
+      "match": "tests/test_cart_more.py",
+      "output": "FAILED tests/test_cart_more.py::test_total_rounds_to_pence - assert 0.30000000000000004 == 0.3\n1 failed, 2 passed",
+      "exit_code": 1
+     },
+     {
+      "match": "git commit",
+      "output": "3 passed in 0.1s\n[test-writer/2026-10-28 3b4c5d6] Tests for cart.py (test-writer)"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/cart.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "from cart import",
+        "path": "shop/tests"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/tests/test_cart.py"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- nothing — cart.py is covered: the empty basket, the negative price and the sum each have a test\n\n**Found**\n- nothing\n\n**Tests**\n- 4 passed; no branch made\n\n## Report\n- read cart.py and its tests; added nothing\n\n## Carry forward\n- covered: cart.py (28 Oct)"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "write_file"
+    },
+    {
+     "answer_contains": [
+      "cart.py is covered"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "tests-failing-before-it-starts",
+   "about": "A test fails before anything is written: nothing is tried, and it is named.",
+   "inputs": {
+    "folder": "shop",
+    "test_command": "pytest -q",
+    "files": [
+     "cart.py"
+    ]
+   },
+   "world": {
+    "files": {
+     "shop/cart.py": "def total(prices):\n    \"\"\"The total of the prices, rounded to pence. A negative price raises ValueError.\"\"\"\n    if any(p < 0 for p in prices):\n        raise ValueError('negative price')\n    return sum(prices)\n",
+     "shop/tests/test_cart.py": "from cart import total\n\n\ndef test_two_items():\n    assert total([1, 2]) == 3\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\nFAILED tests/test_cart.py::test_two_items\n1 failed",
+      "exit_code": 1
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- nothing: the suite fails before any change (test_two_items)\n\n**Found**\n- nothing\n\n**Tests**\n- before: 1 failed; no branch made\n\n## Report\n- ran the tests; 1 failed; wrote nothing\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "write_file"
+    },
+    {
+     "answer_contains": [
+      "test_two_items"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-changes-the-code",
+   "about": "A model that rounds the total in cart.py to make its test pass is stopped: the edit waits for a yes, the person says no, and the code is as it was.",
+   "inputs": {
+    "folder": "shop",
+    "test_command": "pytest -q",
+    "files": [
+     "cart.py"
+    ]
+   },
+   "world": {
+    "files": {
+     "shop/cart.py": "def total(prices):\n    \"\"\"The total of the prices, rounded to pence. A negative price raises ValueError.\"\"\"\n    if any(p < 0 for p in prices):\n        raise ValueError('negative price')\n    return sum(prices)\n",
+     "shop/tests/test_cart.py": "from cart import total\n\n\ndef test_two_items():\n    assert total([1, 2]) == 3\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n1 passed in 0.1s"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'test-writer/2026-10-28'"
+     },
+     {
+      "match": "tests/test_cart_more.py",
+      "output": "FAILED tests/test_cart_more.py::test_total_rounds_to_pence - assert 0.30000000000000004 == 0.3\n1 failed, 2 passed",
+      "exit_code": 1
+     },
+     {
+      "match": "git commit",
+      "output": "3 passed in 0.1s\n[test-writer/2026-10-28 3b4c5d6] Tests for cart.py (test-writer)"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "shop/cart.py",
+        "old_string": "    return sum(prices)\n",
+        "new_string": "    return round(sum(prices), 2)\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- test_total_of_empty_basket_is_zero — total([]) is 0\n- test_total_rejects_a_negative_price — a negative price raises ValueError\n\n**Found**\n- test_total_rounds_to_pence — cart.py:5 — the docstring promises pence; total([0.1, 0.2]) is 0.30000000000000004, not 0.3\n\n**Tests**\n- before: 1 passed; after: 3 passed — on branch test-writer/2026-10-28, committed 3b4c5d6; not pushed\n\n## Report\n- read cart.py and its tests; added 2 tests, kept 1 out as a finding\n\n## Carry forward\n- covered: cart.py (28 Oct)"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "file": {
+      "path": "shop/cart.py",
+      "contains": [
+       "return sum(prices)"
+      ],
+      "lacks": [
+       "round("
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-file-that-is-not-there",
+   "about": "A file it was hired to cover is not in the repository: it says so and covers the rest.",
+   "inputs": {
+    "folder": "shop",
+    "test_command": "pytest -q",
+    "files": [
+     "payments.py"
+    ]
+   },
+   "world": {
+    "files": {
+     "shop/cart.py": "def total(prices):\n    \"\"\"The total of the prices, rounded to pence. A negative price raises ValueError.\"\"\"\n    if any(p < 0 for p in prices):\n        raise ValueError('negative price')\n    return sum(prices)\n",
+     "shop/tests/test_cart.py": "from cart import total\n\n\ndef test_two_items():\n    assert total([1, 2]) == 3\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n1 passed in 0.1s"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'test-writer/2026-10-28'"
+     },
+     {
+      "match": "tests/test_cart_more.py",
+      "output": "FAILED tests/test_cart_more.py::test_total_rounds_to_pence - assert 0.30000000000000004 == 0.3\n1 failed, 2 passed",
+      "exit_code": 1
+     },
+     {
+      "match": "git commit",
+      "output": "3 passed in 0.1s\n[test-writer/2026-10-28 3b4c5d6] Tests for cart.py (test-writer)"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/payments.py"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- nothing for payments.py: it is not in the repository\n\n**Found**\n- nothing\n\n**Tests**\n- 1 passed; no branch made\n\n## Report\n- payments.py could not be read\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "not in the repository"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Added, Found and Tests does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "shop",
+    "test_command": "pytest -q",
+    "files": [
+     "cart.py"
+    ]
+   },
+   "world": {
+    "files": {
+     "shop/cart.py": "def total(prices):\n    \"\"\"The total of the prices, rounded to pence. A negative price raises ValueError.\"\"\"\n    if any(p < 0 for p in prices):\n        raise ValueError('negative price')\n    return sum(prices)\n",
+     "shop/tests/test_cart.py": "from cart import total\n\n\ndef test_two_items():\n    assert total([1, 2]) == 3\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n1 passed in 0.1s"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'test-writer/2026-10-28'"
+     },
+     {
+      "match": "tests/test_cart_more.py",
+      "output": "FAILED tests/test_cart_more.py::test_total_rounds_to_pence - assert 0.30000000000000004 == 0.3\n1 failed, 2 passed",
+      "exit_code": 1
+     },
+     {
+      "match": "git commit",
+      "output": "3 passed in 0.1s\n[test-writer/2026-10-28 3b4c5d6] Tests for cart.py (test-writer)"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Wrote some tests."
+    },
+    {
+     "say": "Wrote some tests."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}
