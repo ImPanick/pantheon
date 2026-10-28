@@ -481,6 +481,13 @@ the next one is cut.
 
 ### Fixed
 
+- **A folder, branch, address or commit message a hire gives an agent reaches its shell as one
+  quoted word** — a folder with a space works, and one named with `$(…)` runs nothing (`B1634`);
+  a page handed to a browser or an auditor is always read as an address (`B1636`); Screenshot
+  Reporter keeps the page order it was given (`B1635`).
+- **The Knowledge index re-reads its folders at start when the vector store comes back empty,**
+  each under the person who added it (`B1639`); the model picker no longer shuts itself as it
+  opens after a quick close (`B1638`).
 - **No name an agent is handed or reads back runs as a command** — file names, services and
   folders sent to a remote machine, machine names given to ssh, page lists from a hire, and table
   names read back during a restore (`B1631`); a remote SSE MCP server inside a `NO_PROXY` range

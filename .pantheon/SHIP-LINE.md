@@ -295,6 +295,10 @@ Re-measured 2026-10-28, after the seventeenth wave: **83 filed, 119 closed**, op
 
 **Direction as of 2026-10-28, after the seventeenth wave: the open count is falling.**
 
+Re-measured 2026-10-28, after the eighteenth wave: **74 filed, 104 closed**, open **75 → 45** — falling, by three in one wave. Five rows closed and two filed. Of the 45 open, most now wait on a ruling, a redesign or something outside this machine rather than on work — which is where a backlog that is converging ends up. The window moved on, so its start reads 75. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1602`–`B1641`) block.
+
+**Direction as of 2026-10-28, after the eighteenth wave: the open count is falling, and what is left is mostly decisions.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
