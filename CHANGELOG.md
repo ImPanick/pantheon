@@ -251,6 +251,19 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **Chroma's index now survives a recreate** (`B1626`). The compose files mounted the
+  `chromadb-data` volume at `/chroma/chroma`, where Chroma 0.x kept its data; Chroma 1.x — the
+  pinned 1.5.9, and every `latest` for a long while — keeps it at `/data`, so the volume stayed
+  empty and the index lived in the container's own layer: kept across a restart, lost whenever
+  the container was recreated. The volume is now mounted at `/data`. **Upgrading:** the first
+  `docker compose up -d` with the new files recreates the container and drops that index one
+  last time; Pantheon refills memories, chat search and the tool index on the next start. **A
+  folder added under Settings → Knowledge index is not re-read on its own — add it again** to
+  search it by meaning (`B1639`).
+- **Restore Drill and Screenshot Reporter ask before deleting** their scratch files, unless their
+  hire allows it; API Mocker and Prototype Builder stop their check servers without `kill`
+  (`B1629`). Thirteen agents that use ssh now say so, and their hire is refused, naming what to
+  install, on a workstation without it (`B1630`).
 - **`mcp` 2.3.0** (with `mcp-types` 2.3.0) replaces 1.30.0: the built-in MCP servers, the manager
   and the OAuth sign-in moved together. Reinstall the requirements; a third-party MCP server you
   run is unaffected (`B621`).
@@ -468,6 +481,10 @@ the next one is cut.
 
 ### Fixed
 
+- **No name an agent is handed or reads back runs as a command** — file names, services and
+  folders sent to a remote machine, machine names given to ssh, page lists from a hire, and table
+  names read back during a restore (`B1631`); a remote SSE MCP server inside a `NO_PROXY` range
+  is reached directly (`B1627`); MCP Builder writes for the MCP SDK that is installed (`B1628`).
 - **Every tool call in a round is answered after one of them asks for approval** — the others
   were dropped without a word (`B1620`); a hire's *never* refuses only the calls that carry it
   (`B1619`); a streamed turn's token counts are written off the event loop (`B1618`).

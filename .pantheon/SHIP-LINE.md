@@ -291,6 +291,10 @@ Re-measured 2026-10-28, after the sixteenth wave: **84 filed, 144 closed**, open
 
 **Direction as of 2026-10-28, after the sixteenth wave: the open count is falling.**
 
+Re-measured 2026-10-28, after the seventeenth wave: **83 filed, 119 closed**, open **84 → 48** — falling, by three in one wave. Nine rows closed and six filed, one closed in it (`B1637`). `B1631` was the kind of row this register is for, and it closed inside the wave that found it: hostile names ran commands on a remote machine, on the workstation and in a restore's database, and none does now. The window moved on, so its start reads 84. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1600`–`B1639`) block.
+
+**Direction as of 2026-10-28, after the seventeenth wave: the open count is falling.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
