@@ -35,8 +35,9 @@ _active_model: Optional[str] = None
 # open for this turn, and a turn with none takes up the document it reads. The
 # process-wide pointer stays for every caller outside an agent turn, and for
 # the chat route's last-resort lookup (`#1160`).
-class TurnDocument:
-    """The document this agent turn has in hand."""
+class _TurnDocument:
+    """The document this agent turn has in hand. (A part of the document
+    tools, not a tool: private, as `P20-03`'s helpers are.)"""
 
     def __init__(self, doc_id: Optional[str] = None):
         self.id = doc_id or None
@@ -49,7 +50,12 @@ class TurnDocument:
 _turn_document: contextvars.ContextVar = contextvars.ContextVar("pantheon_turn_document", default=None)
 
 
-def bind_turn_document(holder: Optional[TurnDocument]) -> None:
+def new_turn_document(doc_id: Optional[str] = None) -> "_TurnDocument":
+    """A holder for one agent turn, starting with the editor's document."""
+    return _TurnDocument(doc_id)
+
+
+def bind_turn_document(holder: Optional["_TurnDocument"]) -> None:
     """Bind the turn's document holder for the tool call about to run."""
     _turn_document.set(holder)
 

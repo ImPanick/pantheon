@@ -127,7 +127,7 @@ from src.agent_tools import (
     MAX_AGENT_ROUNDS,
 )
 from src.active_plan import ActivePlan, bind_active_plan   # `B1415`
-from src.agent_tools.document_tools import TurnDocument, bind_turn_document  # `B1599`
+from src.agent_tools.document_tools import bind_turn_document, new_turn_document  # `B1599`
 from src.agent_tools.computer_tools import (
     ACTIONS as _COMPUTER_ACTIONS,
     command_line as _computer_command_line,
@@ -8685,7 +8685,7 @@ async def stream_agent_loop(
     # editor for it, else the one it reads — so a document tool that names
     # none acts on this turn's document, never on whichever one another turn
     # last left in the process-wide pointer.
-    _doc_holder = TurnDocument(getattr(_prompt_active_document, "id", None))
+    _doc_holder = new_turn_document(getattr(_prompt_active_document, "id", None))
     # `B1281`. Set when a round is refused for a tool's picture: every request
     # after it, this turn, carries the pictures in words.
     _pictures_refused = False

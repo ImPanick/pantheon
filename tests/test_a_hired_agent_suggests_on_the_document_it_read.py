@@ -129,13 +129,13 @@ def two_documents(monkeypatch):
 def test_a_turn_opened_on_an_editor_document_keeps_it(two_documents):
     """A chat whose editor has the minutes open, reading the roadmap for
     reference, still suggests on the minutes — what the person is looking at."""
-    D.bind_turn_document(D.TurnDocument("doc-open"))
+    D.bind_turn_document(D.new_turn_document("doc-open"))
     assert _read("doc-roadmap").get("exit_code") == 0
     assert _suggest("Dark mode — planned for October")["doc_id"] == "doc-open"
 
 
 def test_a_turn_with_no_editor_document_takes_up_what_it_reads(two_documents):
-    holder = D.TurnDocument(None)
+    holder = D.new_turn_document(None)
     D.bind_turn_document(holder)
     D._active_document_id = "doc-open"   # another turn's
     assert _suggest("Dark mode — planned for October") == {"error": "No active document to suggest on"}, \
