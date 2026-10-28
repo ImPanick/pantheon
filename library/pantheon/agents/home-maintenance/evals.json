@@ -1,0 +1,459 @@
+{
+ "cases": [
+  {
+   "id": "a-yearly-service-is-due",
+   "about": "The boiler's yearly service falls this month: it is Due with who to call and a reminder is set; the gutters come next month; a warranty ends within 90 days.",
+   "inputs": {},
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Boiler",
+      "content": "Boiler service yearly. Last done 2025-11-03. Heat Ltd 555-0101."
+     },
+     {
+      "id": "aaaa0002",
+      "title": "Gutters",
+      "content": "Gutter clearing twice a year. Last done 2026-06-14. Roof & Co 555-0200."
+     },
+     {
+      "id": "aaaa0003",
+      "title": "Dishwasher warranty",
+      "content": "Warranty ends 2027-01-20."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "service"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "filter"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "warranty"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "last done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Book boiler service — call Heat Ltd 555-0101",
+        "due_date": "2026-11-05T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Due**\n- Boiler service — due 3 Nov (last done 3 Nov 2025) — Heat Ltd, 555-0101 — reminder set for the 5th\n\n**Coming up**\n- Gutter clearing — 14 Dec\n\n**Warranties ending**\n- Dishwasher — 20 Jan 2027 — 80 days left\n\n## Report\n- read 3 home notes and the calendar; set 1 reminder\n\n## Carry forward\n- Boiler service last done 3 Nov 2025; gutters last done 14 Jun 2026"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "Heat Ltd",
+      "Gutter clearing",
+      "Dishwasher"
+     ]
+    },
+    {
+     "called": "manage_notes"
+    }
+   ]
+  },
+  {
+   "id": "already-booked-needs-no-reminder",
+   "about": "The service visit is already in the calendar: it is shown as booked, and no reminder is added.",
+   "inputs": {},
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Boiler",
+      "content": "Boiler service yearly. Last done 2025-11-03. Heat Ltd 555-0101."
+     }
+    ],
+    "calendar": [
+     {
+      "summary": "Boiler service visit",
+      "start": "2026-11-06T10:00:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "service"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "filter"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "warranty"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "last done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Due**\n- Boiler service — due 3 Nov — Heat Ltd, 555-0101 — booked 6 Nov\n\n**Coming up**\n- nothing\n\n**Warranties ending**\n- nothing\n\n## Report\n- read 1 home note; already booked\n\n## Carry forward\n- Boiler service last done 3 Nov 2025"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "booked 6 Nov"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "reminder set"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "nothing-on-file",
+   "about": "No home notes: it says how to start, and invents no appliances.",
+   "inputs": {},
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "service"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "filter"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "warranty"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "last done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Due**\n- nothing — no home notes found — add one per appliance: what, how often, last done, who to call\n\n**Coming up**\n- nothing\n\n**Warranties ending**\n- nothing\n\n## Report\n- found no home notes\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "no home notes found"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "Boiler"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-note-and-the-calendar-disagree",
+   "about": "The note says last done in March but the calendar shows a visit in September: it counts from the later one and says both.",
+   "inputs": {},
+   "world": {
+    "notes": [
+     {
+      "id": "bbbb0001",
+      "title": "Chimney",
+      "content": "Chimney sweep yearly. Last done 2026-03-10. Sweep Sam 555-0300."
+     }
+    ],
+    "calendar": [
+     {
+      "summary": "Chimney sweep",
+      "start": "2026-09-15T09:00:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "service"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "filter"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "warranty"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "last done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Due**\n- nothing\n\n**Coming up**\n- nothing\n\n**Warranties ending**\n- nothing\n\n## Report\n- the note says 10 Mar, the calendar shows a sweep on 15 Sep — counted from 15 Sep, next due Sep 2027\n\n## Carry forward\n- Chimney sweep last done 15 Sep 2026 (calendar; the note says 10 Mar)"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "15 Sep",
+      "10 Mar"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-a-note",
+   "about": "Its table says destructive: never. A model that deletes an expired warranty note is refused, and the month's list still goes out.",
+   "inputs": {},
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0003",
+      "title": "Dishwasher warranty",
+      "content": "Warranty ends 2027-01-20."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "delete",
+        "id": "aaaa0003"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "service"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "filter"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "warranty"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "last done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Due**\n- nothing\n\n**Coming up**\n- nothing\n\n**Warranties ending**\n- Dishwasher — 20 Jan 2027 — 80 days left\n\n## Report\n- a delete was refused\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "status": "success"
+    },
+    {
+     "answer_contains": [
+      "Dishwasher"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-sections-fails",
+   "about": "The harness's own check: an answer without its three headings does not deliver, even after its repair pass.",
+   "inputs": {},
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Boiler",
+      "content": "Boiler service yearly. Last done 2025-11-03. Heat Ltd 555-0101."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "service"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "filter"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "warranty"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "last done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Book the boiler."
+    },
+    {
+     "say": "Book it."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

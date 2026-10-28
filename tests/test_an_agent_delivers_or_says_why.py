@@ -56,17 +56,20 @@ def _report(db, run_id):
     return json.loads(db.query(AgentRunReport).get(run_id).report)
 
 
+# `P24-27`: Morning Brief's file promises four headings now (Today, Mail that
+# needs you, Due, Overnight), so its fixtures say all four.
+
 # ── `P24-09` · the contract ─────────────────────────────────────────────────
 
 def test_an_answer_with_its_promised_words_is_checked_and_kept(world):
     factory, sched, seen = world
     db = factory()
     h, _ = _hire(db, "morning-brief", inputs={"at": "06:00"})
-    calls = _loop_answers(sched, seen, "Today: two meetings.\n\n## Report\n- read the calendar")
+    calls = _loop_answers(sched, seen, "Today: two meetings. Mail that needs you: nothing. Due: nothing. Overnight: nothing.\n\n## Report\n- read the calendar")
     run_id, answer = _run(sched, db, _task(db, h.id))
     assert len(calls) == 1, "nothing was missing, so there is no second pass"
     report = _report(db, run_id)
-    assert report["checks"] == [{"check": "the answer", "ok": True, "detail": "It answered, with Today."}]
+    assert report["checks"] == [{"check": "the answer", "ok": True, "detail": "It answered, with Today, Mail that needs you, Due, Overnight."}]
     assert report["repaired"] is False
 
 
@@ -74,12 +77,12 @@ def test_a_missing_word_gets_one_more_try_that_is_told_what_is_missing(world):
     factory, sched, seen = world
     db = factory()
     h, _ = _hire(db, "morning-brief", inputs={"at": "06:00"})
-    calls = _loop_answers(sched, seen, "Two meetings.", "Today: two meetings.\n\n## Report\n- fixed")
+    calls = _loop_answers(sched, seen, "Two meetings.", "Today: two meetings. Mail that needs you: nothing. Due: nothing. Overnight: nothing.\n\n## Report\n- fixed")
     run_id, answer = _run(sched, db, _task(db, h.id))
     assert len(calls) == 2
     repair = calls[1]
     assert repair["override_user_message"].startswith("Your run is not finished")
-    assert "- The answer does not say: Today." in repair["override_user_message"]
+    assert "- The answer does not say: Today, Mail that needs you, Due, Overnight." in repair["override_user_message"]
     so_far = repair["context_msgs"][-1]
     assert "Two meetings." in so_far["content"]
     assert so_far["metadata"]["tool_gate_untrusted"] is False, "its own words are data, not a taint"
@@ -99,7 +102,7 @@ def test_a_run_that_still_does_not_deliver_fails_and_parks_the_hire_saying_what_
         _run(sched, db, _task(db, h.id))
     assert len(calls) == 1 + R.REPAIR_PASSES
     sentence = str(caught.value)
-    assert "The answer does not say: Today." in sentence
+    assert "The answer does not say: Today, Mail that needs you, Due, Overnight." in sentence
     db.expire_all()
     hire = db.query(AgentHire).get(h.id)
     assert hire.status == "attention" and hire.attention == sentence
@@ -222,7 +225,7 @@ def test_past_the_limit_a_run_waits_and_is_not_lost(world, monkeypatch):
     assert "Morning Brief runs when one finishes" in str(caught.value)
     db.query(TaskRun).filter(TaskRun.id == other).update({"status": "success"})
     db.commit()
-    seen["answer"] = "Today: nothing."
+    seen["answer"] = "Today: nothing. Mail that needs you: nothing. Due: nothing. Overnight: nothing."
     _run(sched, db, _task(db, a.id))
     assert "system_prompt" in seen
 
@@ -236,7 +239,7 @@ def test_a_plain_tasks_run_is_not_counted_against_the_agents_limit(world, monkey
     db.add(plain)
     db.add(TaskRun(id=str(uuid.uuid4()), task_id="plain", status="running"))
     db.commit()
-    seen["answer"] = "Today: nothing."
+    seen["answer"] = "Today: nothing. Mail that needs you: nothing. Due: nothing. Overnight: nothing."
     _run(sched, db, _task(db, a.id))
     assert "system_prompt" in seen
 
@@ -265,7 +268,7 @@ def test_a_trial_runs_only_when_asked_and_hiring_it_gives_back_its_triggers(worl
     t = _task(db, h.id)
     assert (t.status, t.trigger_type, t.cron_expression, t.next_run, t.webhook_token) == \
         ("active", "webhook", None, None, None), "active so a forced run runs; no token, so no caller can"
-    seen["answer"] = "Today: a quiet day."
+    seen["answer"] = "Today: a quiet day. Mail that needs you: nothing. Due: nothing. Overnight: nothing."
     _run(sched, db, t)
     assert "system_prompt" in seen, "a trial run is a real run"
     H.set_status(db, h, m, "on")
@@ -348,11 +351,11 @@ def test_a_hire_runs_in_its_project_or_the_projects_folder(world, monkeypatch):
     root = projects_root("alice", create=True)
     os.makedirs(os.path.join(root, "shop"), exist_ok=True)
     h, _ = _hire(db, "morning-brief", inputs={"at": "06:00"}, project="shop")
-    seen["answer"] = "Today: nothing."
+    seen["answer"] = "Today: nothing. Mail that needs you: nothing. Due: nothing. Overnight: nothing."
     _run(sched, db, _task(db, h.id))
     assert seen["slot"]["workspace"] == os.path.realpath(os.path.join(root, "shop"))
     h2, _ = _hire(db, "morning-brief", inputs={"at": "06:00"})
-    seen["answer"] = "Today: nothing."
+    seen["answer"] = "Today: nothing. Mail that needs you: nothing. Due: nothing. Overnight: nothing."
     _run(sched, db, _task(db, h2.id))
     assert seen["slot"]["workspace"] == os.path.realpath(root)
     import src.workstation_access as wa

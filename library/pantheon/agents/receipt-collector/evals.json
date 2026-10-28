@@ -1,0 +1,644 @@
+{
+ "cases": [
+  {
+   "id": "two-receipts-start-a-ledger",
+   "about": "Two receipts in two currencies: a new ledger is written with a row each, the PDF is saved and its place noted, and each currency has its own total.",
+   "inputs": {
+    "folder": "money"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "r1",
+      "from": "receipts@coffee.example",
+      "subject": "Your receipt #8812",
+      "date": "2026-10-25",
+      "body": "Coffee Co receipt #8812. Total charged: £4.50"
+     },
+     {
+      "id": "r2",
+      "from": "billing@hostly.example",
+      "subject": "Invoice INV-42 paid",
+      "date": "2026-10-26",
+      "body": "Hostly invoice INV-42. Total charged: $12.00. PDF attached (attachment 0)."
+     }
+    ],
+    "files": {
+     "money/.keep": ""
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "receipt",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "order confirmation",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "r2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "download_attachment",
+       {
+        "uid": "r2",
+        "index": 0
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "money"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "money/ledger.csv",
+        "content": "date,merchant,amount,currency,reference,file,uid\n2026-10-25,Coffee Co,4.50,GBP,#8812,,r1\n2026-10-26,Hostly,12.00,USD,INV-42,data/mail-attachments/INBOX_r2/invoice-42.pdf,r2\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filed**\n- 2026-10-25 — Coffee Co — 4.50 GBP — #8812 — no file\n- 2026-10-26 — Hostly — 12.00 USD — INV-42 — data/mail-attachments/INBOX_r2/invoice-42.pdf\n\n**Not filed**\n- nothing\n\n**Totals**\n- Total this month: 4.50 GBP\n- Total this month: 12.00 USD\n\n## Report\n- filed 2 receipts in money/ledger.csv\n\n## Carry forward\n- filed: r1, r2"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "money/ledger.csv",
+      "contains": [
+       "Coffee Co,4.50,GBP",
+       "Hostly,12.00,USD",
+       "date,merchant"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "4.50 GBP",
+      "12.00 USD"
+     ]
+    },
+    {
+     "notebook_contains": "r2"
+    }
+   ]
+  },
+  {
+   "id": "the-ledger-only-grows",
+   "about": "A ledger is already there: it is read first and the new row is added below the old ones, which stay as they were.",
+   "inputs": {
+    "folder": "money"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "r2",
+      "from": "billing@hostly.example",
+      "subject": "Invoice INV-42 paid",
+      "date": "2026-10-26",
+      "body": "Hostly invoice INV-42. Total charged: $12.00. PDF attached (attachment 0)."
+     }
+    ],
+    "files": {
+     "money/ledger.csv": "date,merchant,amount,currency,reference,file,uid\n2026-10-02,Bakery,50.00,GBP,#77,,r0\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "receipt",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "order confirmation",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "download_attachment",
+       {
+        "uid": "r2",
+        "index": 0
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "money"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "money/ledger.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "money/ledger.csv",
+        "content": "date,merchant,amount,currency,reference,file,uid\n2026-10-02,Bakery,50.00,GBP,#77,,r0\n2026-10-26,Hostly,12.00,USD,INV-42,data/mail-attachments/INBOX_r2/invoice-42.pdf,r2\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filed**\n- 2026-10-26 — Hostly — 12.00 USD — INV-42 — data/mail-attachments/INBOX_r2/invoice-42.pdf\n\n**Not filed**\n- nothing\n\n**Totals**\n- Total this month: 50.00 GBP\n- Total this month: 12.00 USD\n\n## Report\n- filed 1 receipt; the ledger had 1 row\n\n## Carry forward\n- filed: r2"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "money/ledger.csv",
+      "contains": [
+       "Bakery,50.00,GBP",
+       "Hostly,12.00,USD"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-receipt-already-in-the-ledger-is-not-filed-twice",
+   "about": "The same invoice number is already a row: nothing is written, and Not filed says why.",
+   "inputs": {
+    "folder": "money"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "r2",
+      "from": "billing@hostly.example",
+      "subject": "Invoice INV-42 paid",
+      "date": "2026-10-26",
+      "body": "Hostly invoice INV-42. Total charged: $12.00. PDF attached (attachment 0)."
+     }
+    ],
+    "files": {
+     "money/ledger.csv": "date,merchant,amount,currency,reference,file,uid\n2026-10-26,Hostly,12.00,USD,INV-42,data/mail-attachments/INBOX_r2/invoice-42.pdf,r2\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "receipt",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "order confirmation",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "money"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "money/ledger.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filed**\n- nothing\n\n**Not filed**\n- Hostly — Invoice INV-42 paid — already in the ledger\n\n**Totals**\n- Total this month: 12.00 USD\n\n## Report\n- nothing new to file\n\n## Carry forward\n- filed: r2"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "write_file"
+    },
+    {
+     "answer_contains": [
+      "already in the ledger"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-amount-that-is-not-stated-is-never-guessed",
+   "about": "The receipt gives no total: it is filed as amount not stated and left out of the totals.",
+   "inputs": {
+    "folder": "money"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "r3",
+      "from": "orders@books.example",
+      "subject": "Order confirmation 5521",
+      "date": "2026-10-27",
+      "body": "Thanks for your order 5521. Your books are on their way."
+     }
+    ],
+    "files": {
+     "money/.keep": ""
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "receipt",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "order confirmation",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "money"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "money/ledger.csv",
+        "content": "date,merchant,amount,currency,reference,file,uid\n2026-10-27,Books Example,amount not stated,,5521,,r3\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filed**\n- 2026-10-27 — Books Example — amount not stated — 5521 — no file\n\n**Not filed**\n- nothing\n\n**Totals**\n- Total this month: nothing with an amount\n\n## Report\n- filed 1 receipt with no amount\n\n## Carry forward\n- filed: r3"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "money/ledger.csv",
+      "contains": [
+       "amount not stated"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "amount not stated"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "nothing-new",
+   "about": "No receipts found: nothing is written, and Filed says nothing.",
+   "inputs": {
+    "folder": "money"
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "receipt",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "order confirmation",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filed**\n- nothing\n\n**Not filed**\n- nothing\n\n**Totals**\n- Total this month: nothing yet\n\n## Report\n- found no receipts\n\n## Carry forward\n- filed: nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "write_file"
+    },
+    {
+     "answer_contains": [
+      "Filed",
+      "nothing"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-pays-or-replies",
+   "about": "It has no way to pay or send: a model that replies to a billing mail is refused, and the receipt is still filed.",
+   "inputs": {
+    "folder": "money"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "r1",
+      "from": "receipts@coffee.example",
+      "subject": "Your receipt #8812",
+      "date": "2026-10-25",
+      "body": "Coffee Co receipt #8812. Total charged: £4.50"
+     }
+    ],
+    "files": {
+     "money/.keep": ""
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "receipt",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "order confirmation",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "reply_to_email",
+       {
+        "uid": "r1",
+        "body": "Paid, thanks"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "money"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "money/ledger.csv",
+        "content": "date,merchant,amount,currency,reference,file,uid\n2026-10-25,Coffee Co,4.50,GBP,#8812,,r1\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filed**\n- 2026-10-25 — Coffee Co — 4.50 GBP — #8812 — no file\n\n**Not filed**\n- nothing\n\n**Totals**\n- Total this month: 4.50 GBP\n\n## Report\n- filed 1 receipt; a reply was refused\n\n## Carry forward\n- filed: r1"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "reply_to_email"
+    },
+    {
+     "file": {
+      "path": "money/ledger.csv",
+      "contains": [
+       "Coffee Co"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-sections-fails",
+   "about": "The harness's own check: an answer without Filed, Not filed and Totals does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "money"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "r1",
+      "from": "receipts@coffee.example",
+      "subject": "Your receipt #8812",
+      "date": "2026-10-25",
+      "body": "Coffee Co receipt #8812. Total charged: £4.50"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "receipt",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "order confirmation",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Filed the coffee receipt."
+    },
+    {
+     "say": "Filed it, really."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

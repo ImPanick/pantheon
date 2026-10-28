@@ -1,0 +1,358 @@
+{
+ "cases": [
+  {
+   "id": "a-match-is-added-and-a-clash-is-found",
+   "about": "The club's match is added for Mia; it overlaps Leo's swimming already in the calendar, so both are named under Clashes.",
+   "inputs": {
+    "senders": [
+     "coach@club.example",
+     "office@school.example"
+    ]
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "coach@club.example",
+      "subject": "Away match Saturday",
+      "body": "Mia's team plays away on Saturday 8 November, 10:00–12:00 at Riverside Park."
+     }
+    ],
+    "calendar": [
+     {
+      "summary": "Leo: swimming",
+      "start": "2026-11-08T10:30:00",
+      "location": "Leisure Centre"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Mia: football away match",
+        "dtstart": "2026-11-08T10:00:00",
+        "dtend": "2026-11-08T12:00:00",
+        "location": "Riverside Park",
+        "description": "From coach@club.example: Away match Saturday"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- Mia: football away match — Sat 8 Nov 10:00–12:00 — Riverside Park — from coach@club.example\n\n**Clashes**\n- Sat 8 Nov: Mia's match 10:00 at Riverside Park and Leo's swimming 10:30 at the Leisure Centre\n\n**Skipped**\n- nothing\n\n## Report\n- read 1 message; added 1; 1 clash\n\n## Carry forward\n- handled: m1"
+    }
+   ],
+   "checks": [
+    {
+     "called": "manage_calendar"
+    },
+    {
+     "answer_contains": [
+      "Mia: football away match",
+      "Leo's swimming"
+     ]
+    },
+    {
+     "notebook_contains": "m1"
+    }
+   ]
+  },
+  {
+   "id": "a-sender-it-was-not-hired-for-is-left-alone",
+   "about": "A date from someone not on the list is not added: the calendar is not touched.",
+   "inputs": {
+    "senders": [
+     "coach@club.example",
+     "office@school.example"
+    ]
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m2",
+      "from": "party@neighbour.example",
+      "subject": "BBQ Sunday",
+      "body": "BBQ on Sunday 9 Nov at 13:00!"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- nothing\n\n**Clashes**\n- nothing\n\n**Skipped**\n- nothing\n\n## Report\n- no mail from the senders I watch\n\n## Carry forward\n- handled: nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "manage_calendar"
+    },
+    {
+     "not_called": "read_email"
+    }
+   ]
+  },
+  {
+   "id": "the-school-moves-a-date-already-in-the-calendar",
+   "about": "The mail moves an event that is in the calendar: nothing is added or moved, and Skipped shows both dates.",
+   "inputs": {
+    "senders": [
+     "coach@club.example",
+     "office@school.example"
+    ]
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m3",
+      "from": "office@school.example",
+      "subject": "Parents' evening moved",
+      "body": "Parents' evening is moved from 12 to 19 November, 18:00."
+     }
+    ],
+    "calendar": [
+     {
+      "summary": "Parents' evening",
+      "start": "2026-11-12T18:00:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- nothing\n\n**Clashes**\n- nothing\n\n**Skipped**\n- Parents' evening — calendar has it on 12 Nov; office@school.example now says 19 Nov — check\n\n## Report\n- 1 date moved by mail\n\n## Carry forward\n- handled: m3"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "calendar has it on 12 Nov",
+      "19 Nov"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-save-the-date-with-no-day",
+   "about": "A save-the-date with no day is not a date: it is skipped with why, and nothing is added.",
+   "inputs": {
+    "senders": [
+     "coach@club.example",
+     "office@school.example"
+    ]
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m4",
+      "from": "office@school.example",
+      "subject": "Christmas fair",
+      "body": "Save the date: our Christmas fair is coming in December!"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m4"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- nothing\n\n**Clashes**\n- nothing\n\n**Skipped**\n- Christmas fair — \"save the date\", no day given\n\n## Report\n- no fixed date\n\n## Carry forward\n- handled: m4"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "manage_calendar"
+    },
+    {
+     "answer_contains": [
+      "no day given"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-an-entry",
+   "about": "Its table says destructive: never. A model that deletes the old parents' evening is refused.",
+   "inputs": {
+    "senders": [
+     "coach@club.example",
+     "office@school.example"
+    ]
+   },
+   "world": {
+    "emails": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "delete_event",
+        "uid": "old"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- nothing\n\n**Clashes**\n- nothing\n\n**Skipped**\n- nothing\n\n## Report\n- a delete was refused\n\n## Carry forward\n- handled: nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "manage_calendar"
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-sections-fails",
+   "about": "The harness's own check: an answer without Added, Clashes and Skipped does not deliver, even after its repair pass.",
+   "inputs": {
+    "senders": [
+     "coach@club.example",
+     "office@school.example"
+    ]
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "coach@club.example",
+      "subject": "Away match Saturday",
+      "body": "Mia's team plays away on Saturday 8 November, 10:00–12:00 at Riverside Park."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Calendar updated."
+    },
+    {
+     "say": "Calendar updated, really."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

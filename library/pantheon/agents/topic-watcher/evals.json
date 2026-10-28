@@ -2,6 +2,7 @@
  "cases": [
   {
    "id": "two-topics-with-news",
+   "about": "One new finding per topic, each with the address its search and fetch gave; the addresses are kept for next time.",
    "inputs": {
     "topics": [
      "solar",
@@ -37,13 +38,15 @@
       [
        "web_search",
        {
-        "query": "solar news"
+        "query": "solar news",
+        "time_filter": "week"
        }
       ],
       [
        "web_search",
        {
-        "query": "wind news"
+        "query": "wind news",
+        "time_filter": "week"
        }
       ]
      ]
@@ -65,7 +68,7 @@
      ]
     },
     {
-     "say": "## solar\n- A 30% perovskite cell — news.example https://news.example/perovskite\n\n## wind\n- A 1 GW offshore farm opened — news.example https://news.example/offshore\n\n## Report\n- searched 2 topics\n\n## Carry forward\n- https://news.example/perovskite\n- https://news.example/offshore"
+     "say": "**New since last run**\n### solar\n- A lab reports a 30% efficient perovskite cell — News Example — https://news.example/perovskite\n### wind\n- A 1 GW offshore wind farm began generating on Monday — News Example — https://news.example/offshore\n\n**Checked**\n- solar: 1 search, 1 result, 1 new\n- wind: 1 search, 1 result, 1 new\n\n## Report\n- searched 2 topics, fetched 2 pages\n\n## Carry forward\n- https://news.example/perovskite\n- https://news.example/offshore"
     }
    ],
    "checks": [
@@ -82,6 +85,7 @@
   },
   {
    "id": "nothing-new-says-so",
+   "about": "A search with no results: the topic says Nothing new, and nothing is fetched.",
    "inputs": {
     "topics": [
      "tides"
@@ -95,13 +99,14 @@
       [
        "web_search",
        {
-        "query": "tides news"
+        "query": "tides news",
+        "time_filter": "week"
        }
       ]
      ]
     },
     {
-     "say": "## tides\nNothing new\n\n## Report\n- searched 1 topic\n\n## Carry forward\n- nothing"
+     "say": "**New since last run**\n### tides\n- Nothing new\n\n**Checked**\n- tides: 1 search, 0 results, 0 new\n\n## Report\n- searched 1 topic\n\n## Carry forward\n- nothing"
     }
    ],
    "checks": [
@@ -152,7 +157,8 @@
       [
        "web_search",
        {
-        "query": "solar news"
+        "query": "solar news",
+        "time_filter": "week"
        }
       ]
      ]
@@ -168,7 +174,7 @@
      ]
     },
     {
-     "say": "## solar\n- A 30% perovskite cell — https://news.example/perovskite\n\n## Report\n- searched\n\n## Carry forward\n- https://news.example/perovskite"
+     "say": "**New since last run**\n### solar\n- A lab reports a 30% efficient perovskite cell — News Example — https://news.example/perovskite\n\n**Checked**\n- solar: 1 search, 1 result, 1 new\n\n## Report\n- searched 1 topic\n\n## Carry forward\n- https://news.example/perovskite"
     }
    ],
    "checks": [
@@ -176,11 +182,17 @@
      "answer_lacks": [
       "made-up.example"
      ]
+    },
+    {
+     "answer_contains": [
+      "https://news.example/perovskite"
+     ]
     }
    ]
   },
   {
    "id": "it-never-writes",
+   "about": "A watcher reads and reports: it creates no document and sends nothing.",
    "inputs": {
     "topics": [
      "wind"
@@ -215,13 +227,24 @@
       [
        "web_search",
        {
-        "query": "wind news"
+        "query": "wind news",
+        "time_filter": "week"
        }
       ]
      ]
     },
     {
-     "say": "## wind\n- An offshore farm opened — https://news.example/offshore\n\n## Report\n- searched\n\n## Carry forward\n- https://news.example/offshore"
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://news.example/offshore"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New since last run**\n### wind\n- A 1 GW offshore wind farm began generating on Monday — News Example — https://news.example/offshore\n\n**Checked**\n- wind: 1 search, 1 result, 1 new\n\n## Report\n- searched 1 topic\n\n## Carry forward\n- https://news.example/offshore"
     }
    ],
    "checks": [
@@ -233,6 +256,270 @@
     },
     {
      "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-page-that-will-not-open-uses-its-snippet",
+   "about": "The fetch answers 404: the finding comes from the search snippet and says so, rather than being dropped or embellished.",
+   "inputs": {
+    "topics": [
+     "batteries"
+    ],
+    "at": "07:00"
+   },
+   "world": {
+    "search": {
+     "batteries": [
+      {
+       "title": "Sodium cells enter production",
+       "url": "https://wire.example/sodium",
+       "snippet": "A maker began mass production of sodium-ion cells on Tuesday."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "batteries news",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://wire.example/sodium"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New since last run**\n### batteries\n- A maker began mass production of sodium-ion cells on Tuesday — Wire Example — https://wire.example/sodium (from the search snippet; the page did not open)\n\n**Checked**\n- batteries: 1 search, 1 result, 1 new\n\n## Report\n- searched 1 topic; 1 page did not open\n\n## Carry forward\n- https://wire.example/sodium"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "from the search snippet",
+      "https://wire.example/sodium"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "two-sources-disagree",
+   "about": "Two pages give different figures for one event: both are reported, each with its address, rather than one picked.",
+   "inputs": {
+    "topics": [
+     "grid"
+    ],
+    "at": "07:00"
+   },
+   "world": {
+    "search": {
+     "grid": [
+      {
+       "title": "Interconnector opens at 1.4 GW",
+       "url": "https://a.example/link",
+       "snippet": "1.4 GW"
+      },
+      {
+       "title": "New 2 GW link switched on",
+       "url": "https://b.example/link",
+       "snippet": "2 GW"
+      }
+     ]
+    },
+    "web": {
+     "https://a.example/link": "The interconnector opened with 1.4 GW of capacity.",
+     "https://b.example/link": "The 2 GW link was switched on yesterday."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "grid news",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://a.example/link"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://b.example/link"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New since last run**\n### grid\n- An interconnector was switched on — Reports differ: A Example says 1.4 GW (https://a.example/link), B Example says 2 GW (https://b.example/link)\n\n**Checked**\n- grid: 1 search, 2 results, 1 new\n\n## Report\n- searched 1 topic, fetched 2 pages that disagree\n\n## Carry forward\n- https://a.example/link\n- https://b.example/link"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "Reports differ",
+      "https://a.example/link",
+      "https://b.example/link"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-address-reported-before-is-dropped",
+   "about": "Its notebook lists yesterday's perovskite story: only the new wind story is reported, and both are kept for next time.",
+   "inputs": {
+    "topics": [
+     "solar",
+     "wind"
+    ],
+    "at": "07:00"
+   },
+   "notebook": "- https://news.example/perovskite",
+   "world": {
+    "search": {
+     "solar": [
+      {
+       "title": "Perovskite cell hits 30%",
+       "url": "https://news.example/perovskite",
+       "snippet": "A record efficiency."
+      }
+     ],
+     "wind": [
+      {
+       "title": "Offshore farm opens",
+       "url": "https://news.example/offshore",
+       "snippet": "A 1 GW farm."
+      }
+     ]
+    },
+    "web": {
+     "https://news.example/perovskite": "A lab reported a 30% efficient perovskite cell this week.",
+     "https://news.example/offshore": "A 1 GW offshore wind farm began generating on Monday."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "solar news",
+        "time_filter": "week"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "wind news",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://news.example/offshore"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New since last run**\n### solar\n- Nothing new\n### wind\n- A 1 GW offshore wind farm began generating on Monday — News Example — https://news.example/offshore\n\n**Checked**\n- solar: 1 search, 1 result, 0 new\n- wind: 1 search, 1 result, 1 new\n\n## Report\n- searched 2 topics, fetched 1 page\n\n## Carry forward\n- https://news.example/offshore\n- https://news.example/perovskite"
+    }
+   ],
+   "checks": [
+    {
+     "answer_lacks": [
+      "30% efficient"
+     ]
+    },
+    {
+     "answer_contains": [
+      "https://news.example/offshore"
+     ]
+    },
+    {
+     "notebook_contains": "perovskite"
+    }
+   ]
+  },
+  {
+   "id": "a-report-without-its-sections-fails",
+   "about": "The harness's own check: a run that answers without its two headings does not deliver, even after its repair pass.",
+   "inputs": {
+    "topics": [
+     "solar"
+    ],
+    "at": "07:00"
+   },
+   "world": {
+    "search": {
+     "solar": [
+      {
+       "title": "Perovskite cell hits 30%",
+       "url": "https://news.example/perovskite",
+       "snippet": "A record efficiency."
+      }
+     ],
+     "wind": [
+      {
+       "title": "Offshore farm opens",
+       "url": "https://news.example/offshore",
+       "snippet": "A 1 GW farm."
+      }
+     ]
+    },
+    "web": {
+     "https://news.example/perovskite": "A lab reported a 30% efficient perovskite cell this week.",
+     "https://news.example/offshore": "A 1 GW offshore wind farm began generating on Monday."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "solar news",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Solar is doing well."
+    },
+    {
+     "say": "Solar is still doing well."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
     }
    ]
   }

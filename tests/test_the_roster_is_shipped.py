@@ -16,8 +16,10 @@ what the lint cannot see, across the whole roster:
     and Bills Due declares it never pays (`D-2026-10-22-01` §3);
   * **no wave-2 effect is left to the default** — every effect of every tool a
     wave-2 agent lists is in its table. (Two starters, Morning Brief and Weekly
-    Review, list tools that can write and leave `write_private` out on purpose:
-    an effect a file is silent on asks, and they only read.);
+    Review, list tools that can write and left `write_private` out on purpose:
+    an effect a file is silent on asks, and they only read. `P24-27` has them
+    say `ask` outright, and `tests/test_an_agent_has_substance.py` holds every
+    agent at its bar to a table with nothing left to the default.);
   * **the teams are the plan's fourteen**, every member in the hall.
 """
 

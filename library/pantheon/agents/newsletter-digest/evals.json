@@ -1,0 +1,448 @@
+{
+ "cases": [
+  {
+   "id": "a-week-of-two-newsletters",
+   "about": "One real issue is digested with its article link, never its tracking or unsubscribe link; a promotions mail is skipped with why.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "Energy Weekly <news@energyweekly.example>",
+      "subject": "Issue 212",
+      "date": "2026-10-30",
+      "body": "The EU agreed battery passport rules for 2027. Read: https://energyweekly.example/battery-passport\nTrack: https://click.energyweekly.example/track/123?utm_source=mail\nUnsubscribe: https://energyweekly.example/unsubscribe"
+     },
+     {
+      "id": "m2",
+      "from": "Shop Deals <deals@shop.example>",
+      "subject": "Black Friday early access",
+      "date": "2026-10-31",
+      "body": "50% off everything! https://shop.example/sale?utm_campaign=bf\nUnsubscribe here."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "unsubscribe",
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Newsletter digest — 2 Nov",
+        "content": "## Worth reading\n- EU agrees battery passport rules for 2027 — Energy Weekly — https://energyweekly.example/battery-passport\n\n## By newsletter\n### Energy Weekly — Issue 212\nThe EU agreed battery passport rules for 2027.\n- https://energyweekly.example/battery-passport\n\n## Skipped\n- Shop Deals — \"Black Friday early access\" — promotions only"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Read 2 issues: 1 featured, 1 skipped.\n\n## Report\n- read 2 newsletters; wrote the digest\n\n## Carry forward\n- digested: m1, m2"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Newsletter digest",
+      "contains": [
+       "https://energyweekly.example/battery-passport",
+       "promotions only"
+      ],
+      "lacks": [
+       "utm_",
+       "unsubscribe"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "m2"
+    }
+   ]
+  },
+  {
+   "id": "no-newsletters-this-week",
+   "about": "Nothing came: the digest says nothing this week under each heading.",
+   "inputs": {},
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "unsubscribe",
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Newsletter digest — 2 Nov",
+        "content": "## Worth reading\n- nothing this week\n\n## By newsletter\n- nothing this week\n\n## Skipped\n- nothing this week"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Read 0 issues.\n\n## Report\n- found no newsletters this week\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Newsletter digest",
+      "contains": [
+       "nothing this week"
+      ]
+     }
+    },
+    {
+     "not_called": "read_email"
+    }
+   ]
+  },
+  {
+   "id": "digested-mail-is-skipped",
+   "about": "Its notebook lists last week's issue as digested: it is not read again.",
+   "inputs": {},
+   "notebook": "- digested: m1",
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "Energy Weekly <news@energyweekly.example>",
+      "subject": "Issue 212",
+      "date": "2026-10-30",
+      "body": "The EU agreed battery passport rules for 2027. Read: https://energyweekly.example/battery-passport\nTrack: https://click.energyweekly.example/track/123?utm_source=mail\nUnsubscribe: https://energyweekly.example/unsubscribe"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "unsubscribe",
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Newsletter digest — 2 Nov",
+        "content": "## Worth reading\n- nothing this week\n\n## By newsletter\n- nothing this week\n\n## Skipped\n- nothing this week"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Read 0 new issues.\n\n## Report\n- the only issue was digested before\n\n## Carry forward\n- digested: m1"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "read_email"
+    }
+   ]
+  },
+  {
+   "id": "two-newsletters-disagree",
+   "about": "Two issues give different figures for one story: both are given, each with its link.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "Energy Weekly <news@energyweekly.example>",
+      "subject": "Issue 213",
+      "date": "2026-10-30",
+      "body": "Germany installed 12 GW of solar this year: https://energyweekly.example/solar-12\nUnsubscribe"
+     },
+     {
+      "id": "m2",
+      "from": "The Grid <hello@thegrid.example>",
+      "subject": "Sunday edition",
+      "date": "2026-10-31",
+      "body": "Germany added 14 GW of solar so far: https://thegrid.example/solar-14\nUnsubscribe"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "unsubscribe",
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Newsletter digest — 2 Nov",
+        "content": "## Worth reading\n- German solar this year — Reports differ: Energy Weekly says 12 GW (https://energyweekly.example/solar-12), The Grid says 14 GW (https://thegrid.example/solar-14)\n\n## By newsletter\n### Energy Weekly — Issue 213\n12 GW of solar in Germany.\n- https://energyweekly.example/solar-12\n\n### The Grid — Sunday edition\n14 GW of solar in Germany.\n- https://thegrid.example/solar-14\n\n## Skipped\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Read 2 issues: 2 featured.\n\n## Report\n- read 2 newsletters that disagree\n\n## Carry forward\n- digested: m1, m2"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Newsletter digest",
+      "contains": [
+       "Reports differ",
+       "solar-12",
+       "solar-14"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-issue-that-will-not-open",
+   "about": "A message will not open: it is listed under Skipped with the reason, and the digest still goes out.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "Energy Weekly <news@energyweekly.example>",
+      "subject": "Issue 212",
+      "date": "2026-10-30",
+      "body": "The EU agreed battery passport rules for 2027. Read: https://energyweekly.example/battery-passport\nTrack: https://click.energyweekly.example/track/123?utm_source=mail\nUnsubscribe: https://energyweekly.example/unsubscribe"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "unsubscribe",
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m9"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Newsletter digest — 2 Nov",
+        "content": "## Worth reading\n- nothing this week\n\n## By newsletter\n- nothing this week\n\n## Skipped\n- Energy Weekly — Issue 212 — could not open: No message m9"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Read 0 of 1 issues.\n\n## Report\n- one issue would not open\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Newsletter digest",
+      "contains": [
+       "could not open"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-unsubscribes-or-sends",
+   "about": "It has no way to act on mail: a model that tries to unsubscribe or reply is refused, and the digest is still written.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m2",
+      "from": "Shop Deals <deals@shop.example>",
+      "subject": "Black Friday early access",
+      "date": "2026-10-31",
+      "body": "50% off everything! https://shop.example/sale?utm_campaign=bf\nUnsubscribe here."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "unsubscribe",
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "unsubscribe_email",
+       {
+        "uid": "m2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "send_email",
+       {
+        "to": "deals@shop.example",
+        "subject": "stop",
+        "body": "stop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Newsletter digest — 2 Nov",
+        "content": "## Worth reading\n- nothing this week\n\n## By newsletter\n- nothing this week\n\n## Skipped\n- Shop Deals — promotions only"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Read 1 issue: 1 skipped.\n\n## Report\n- skipped 1; an unsubscribe and a send were refused\n\n## Carry forward\n- digested: m2"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "unsubscribe_email"
+    },
+    {
+     "not_called": "send_email"
+    }
+   ]
+  },
+  {
+   "id": "a-digest-without-its-sections-fails",
+   "about": "The harness's own check: a digest without its three headings does not deliver, even after its repair pass.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "Energy Weekly <news@energyweekly.example>",
+      "subject": "Issue 212",
+      "date": "2026-10-30",
+      "body": "The EU agreed battery passport rules for 2027. Read: https://energyweekly.example/battery-passport\nTrack: https://click.energyweekly.example/track/123?utm_source=mail\nUnsubscribe: https://energyweekly.example/unsubscribe"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "unsubscribe",
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Newsletter digest — 2 Nov",
+        "content": "Battery passport news."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- wrote it\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done.\n\n## Report\n- again\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

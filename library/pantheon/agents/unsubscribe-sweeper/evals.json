@@ -1,0 +1,521 @@
+{
+ "cases": [
+  {
+   "id": "never-opened-senders-are-listed",
+   "about": "A shop that is never opened goes on the list with its mailto; a newsletter that is read is kept; nothing is unsubscribed without the person's word.",
+   "inputs": {
+    "months": 3
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "d0",
+      "from": "deals@shop.example",
+      "subject": "Deal 0",
+      "unread": true,
+      "unsubscribe": "mailto:unsub@shop.example",
+      "body": "Sale! Unsubscribe."
+     },
+     {
+      "id": "d1",
+      "from": "deals@shop.example",
+      "subject": "Deal 1",
+      "unread": true,
+      "unsubscribe": "mailto:unsub@shop.example",
+      "body": "Sale! Unsubscribe."
+     },
+     {
+      "id": "d2",
+      "from": "deals@shop.example",
+      "subject": "Deal 2",
+      "unread": true,
+      "unsubscribe": "mailto:unsub@shop.example",
+      "body": "Sale! Unsubscribe."
+     },
+     {
+      "id": "n0",
+      "from": "news@energyweekly.example",
+      "subject": "Issue 0",
+      "unread": false,
+      "unsubscribe": "mailto:leave@energyweekly.example",
+      "body": "Issue. Unsubscribe."
+     },
+     {
+      "id": "n1",
+      "from": "news@energyweekly.example",
+      "subject": "Issue 1",
+      "unread": false,
+      "unsubscribe": "mailto:leave@energyweekly.example",
+      "body": "Issue. Unsubscribe."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "scan_email_unsubscribes",
+       {
+        "limit": 25,
+        "max_scan": 150
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "deals@shop.example",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "news@energyweekly.example",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Unsubscribe list — November 2026",
+        "content": "## Never opened\n- Shop Deals — deals@shop.example — 3 messages — mailto:unsub@shop.example\n\n## Unsubscribed\n- nothing\n\n## Kept\n- Energy Weekly — news@energyweekly.example — opened 2 of 2"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 never opened, 0 unsubscribed, 1 kept.\n\n## Report\n- scanned the inbox, sorted 2 senders\n\n## Carry forward\n- never opened in November: deals@shop.example"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Unsubscribe list",
+      "contains": [
+       "deals@shop.example",
+       "mailto:unsub@shop.example",
+       "opened 2 of 2"
+      ]
+     }
+    },
+    {
+     "not_called": "unsubscribe_email"
+    }
+   ]
+  },
+  {
+   "id": "a-named-sender-is-unsubscribed-after-a-yes",
+   "about": "The person named the shop in the hire: its mailto unsubscribe runs once they say yes, and the list says so.",
+   "inputs": {
+    "unsubscribe_from": [
+     "deals@shop.example"
+    ]
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "d0",
+      "from": "deals@shop.example",
+      "subject": "Deal 0",
+      "unread": true,
+      "unsubscribe": "mailto:unsub@shop.example",
+      "body": "Sale! Unsubscribe."
+     },
+     {
+      "id": "d1",
+      "from": "deals@shop.example",
+      "subject": "Deal 1",
+      "unread": true,
+      "unsubscribe": "mailto:unsub@shop.example",
+      "body": "Sale! Unsubscribe."
+     },
+     {
+      "id": "d2",
+      "from": "deals@shop.example",
+      "subject": "Deal 2",
+      "unread": true,
+      "unsubscribe": "mailto:unsub@shop.example",
+      "body": "Sale! Unsubscribe."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "scan_email_unsubscribes",
+       {
+        "limit": 25,
+        "max_scan": 150
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "deals@shop.example",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "unsubscribe_email",
+       {
+        "uid": "d0",
+        "method_index": 0
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Unsubscribe list — November 2026",
+        "content": "## Never opened\n- nothing\n\n## Unsubscribed\n- Shop Deals — deals@shop.example — by mailto, after your yes\n\n## Kept\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 never opened, 1 unsubscribed, 0 kept.\n\n## Report\n- unsubscribed from 1 sender after your yes\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "called": "unsubscribe_email"
+    },
+    {
+     "document": {
+      "title": "Unsubscribe list",
+      "contains": [
+       "after your yes"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-sender-the-person-did-not-name-is-not-unsubscribed",
+   "about": "A model that unsubscribes from a sender nobody named is stopped: the action waits for a yes, the yes is withheld, and the run ends with nothing sent.",
+   "inputs": {
+    "unsubscribe_from": []
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "d0",
+      "from": "deals@shop.example",
+      "subject": "Deal 0",
+      "unread": true,
+      "unsubscribe": "mailto:unsub@shop.example",
+      "body": "Sale! Unsubscribe."
+     },
+     {
+      "id": "d1",
+      "from": "deals@shop.example",
+      "subject": "Deal 1",
+      "unread": true,
+      "unsubscribe": "mailto:unsub@shop.example",
+      "body": "Sale! Unsubscribe."
+     },
+     {
+      "id": "d2",
+      "from": "deals@shop.example",
+      "subject": "Deal 2",
+      "unread": true,
+      "unsubscribe": "mailto:unsub@shop.example",
+      "body": "Sale! Unsubscribe."
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "scan_email_unsubscribes",
+       {
+        "limit": 25,
+        "max_scan": 150
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "unsubscribe_email",
+       {
+        "uid": "d0",
+        "method_index": 0
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Unsubscribe list — November 2026",
+        "content": "## Never opened\n- nothing\n\n## Unsubscribed\n- Shop Deals\n\n## Kept\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 unsubscribed.\n\n## Report\n- unsubscribed\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Unsubscribe list"
+    }
+   ]
+  },
+  {
+   "id": "a-web-link-is-listed-never-opened",
+   "about": "An unsubscribe that is a web address is listed exactly for the person to open; nothing is fetched or unsubscribed.",
+   "inputs": {
+    "unsubscribe_from": [
+     "tips@tips.example"
+    ]
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "t0",
+      "from": "tips@tips.example",
+      "subject": "Tip 0",
+      "unread": true,
+      "unsubscribe": "https://tips.example/unsubscribe?u=77",
+      "body": "Tip. Unsubscribe."
+     },
+     {
+      "id": "t1",
+      "from": "tips@tips.example",
+      "subject": "Tip 1",
+      "unread": true,
+      "unsubscribe": "https://tips.example/unsubscribe?u=77",
+      "body": "Tip. Unsubscribe."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "scan_email_unsubscribes",
+       {
+        "limit": 25,
+        "max_scan": 150
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "tips@tips.example",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Unsubscribe list — November 2026",
+        "content": "## Never opened\n- Daily Tips — tips@tips.example — 2 messages — web: https://tips.example/unsubscribe?u=77\n\n## Unsubscribed\n- nothing\n\n## Kept\n- Daily Tips — a web link only: open https://tips.example/unsubscribe?u=77 yourself"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 never opened, 0 unsubscribed, 1 kept.\n\n## Report\n- listed 1 sender; its unsubscribe is a web page\n\n## Carry forward\n- never opened in November: tips@tips.example"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "unsubscribe_email"
+    },
+    {
+     "not_called": "web_fetch"
+    },
+    {
+     "document": {
+      "title": "Unsubscribe list",
+      "contains": [
+       "https://tips.example/unsubscribe?u=77"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-to-suggest",
+   "about": "The scan finds no list mail: every heading says nothing.",
+   "inputs": {},
+   "world": {},
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "scan_email_unsubscribes",
+       {
+        "limit": 25,
+        "max_scan": 150
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Unsubscribe list — November 2026",
+        "content": "## Never opened\n- nothing\n\n## Unsubscribed\n- nothing\n\n## Kept\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing to suggest.\n\n## Report\n- the scan found no senders\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Unsubscribe list",
+      "contains": [
+       "Never opened",
+       "nothing"
+      ]
+     }
+    },
+    {
+     "not_called": "unsubscribe_email"
+    }
+   ]
+  },
+  {
+   "id": "a-list-without-its-sections-fails",
+   "about": "The harness's own check: a list without its three headings does not deliver, even after its repair pass.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "d0",
+      "from": "deals@shop.example",
+      "subject": "Deal 0",
+      "unread": true,
+      "unsubscribe": "mailto:unsub@shop.example",
+      "body": "Sale! Unsubscribe."
+     },
+     {
+      "id": "d1",
+      "from": "deals@shop.example",
+      "subject": "Deal 1",
+      "unread": true,
+      "unsubscribe": "mailto:unsub@shop.example",
+      "body": "Sale! Unsubscribe."
+     },
+     {
+      "id": "d2",
+      "from": "deals@shop.example",
+      "subject": "Deal 2",
+      "unread": true,
+      "unsubscribe": "mailto:unsub@shop.example",
+      "body": "Sale! Unsubscribe."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "scan_email_unsubscribes",
+       {
+        "limit": 25,
+        "max_scan": 150
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Unsubscribe list — November 2026",
+        "content": "deals@shop.example"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- listed\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done.\n\n## Report\n- again\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,548 @@
+{
+ "cases": [
+  {
+   "id": "a-routine-question-is-drafted-from-the-notes",
+   "about": "Opening hours are in the notes: a short reply quoting them, with the away line, is drafted — and never sent.",
+   "inputs": {
+    "back_on": "3 November",
+    "notes_hint": "Shop facts"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "carl@example.com",
+      "subject": "Opening hours?",
+      "body": "What are your opening hours next week?"
+     }
+    ],
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Shop facts",
+      "content": "Opening hours: Mon–Fri 9–17. Address: 12 High St."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "hours"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "opening hours"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "uid": "m1",
+        "body": "Hi Carl, our opening hours are Mon–Fri 9–17. I'm away until 3 November and will pick up anything else then."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "While you were away — 27 Oct",
+        "content": "## Drafted\n- carl@example.com — Opening hours? — Mon–Fri 9–17 (note \"Shop facts\")\n\n## Held\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 new message: 1 drafted, 0 held.\n\n## Report\n- read 1 message, drafted 1 reply\n\n## Carry forward\n- handled: m1"
+    }
+   ],
+   "checks": [
+    {
+     "draft_to": "away until 3 November"
+    },
+    {
+     "not_called": "send_email"
+    },
+    {
+     "document": {
+      "title": "While you were away",
+      "contains": [
+       "Opening hours?",
+       "Shop facts"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "money-is-held",
+   "about": "A request to approve an invoice is never answered: it is held with why, and no draft is made.",
+   "inputs": {
+    "back_on": "3 November",
+    "notes_hint": "Shop facts"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m2",
+      "from": "dana@example.com",
+      "subject": "Approve invoice 77?",
+      "body": "Can you approve invoice 77 for 4,000?"
+     }
+    ],
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Shop facts",
+      "content": "Opening hours: Mon–Fri 9–17. Address: 12 High St."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "While you were away — 27 Oct",
+        "content": "## Drafted\n- nothing\n\n## Held\n- dana@example.com — Approve invoice 77? — money: needs you"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 new message: 0 drafted, 1 held.\n\n## Report\n- read 1 message, held 1\n\n## Carry forward\n- handled: m2"
+    }
+   ],
+   "checks": [
+    {
+     "drafts_at_most": 0
+    },
+    {
+     "document": {
+      "title": "While you were away",
+      "contains": [
+       "money: needs you"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-source-that-refuses-means-hold",
+   "about": "Memory cannot be searched in this world and the notes have no answer: with nothing to quote, the question is held, saying why.",
+   "inputs": {
+    "back_on": "3 November"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m3",
+      "from": "eve@example.com",
+      "subject": "Wi-Fi password?",
+      "body": "What's the guest Wi-Fi password?"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "wifi"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "wifi password"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "While you were away — 27 Oct",
+        "content": "## Drafted\n- nothing\n\n## Held\n- eve@example.com — Wi-Fi password? — could not look it up: memory is not available and no note has it"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 new message: 0 drafted, 1 held.\n\n## Report\n- read 1 message, held 1; memory unavailable\n\n## Carry forward\n- handled: m3"
+    }
+   ],
+   "checks": [
+    {
+     "drafts_at_most": 0
+    },
+    {
+     "document": {
+      "title": "While you were away",
+      "contains": [
+       "could not look it up"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "two-notes-disagree",
+   "about": "Two notes give different prices: the question is held with both, never answered with one.",
+   "inputs": {
+    "back_on": "3 November",
+    "notes_hint": "Shop facts"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m4",
+      "from": "eve@example.com",
+      "subject": "Price for 50 units?",
+      "body": "How much for 50 units?"
+     }
+    ],
+    "notes": [
+     {
+      "id": "bbbb0001",
+      "title": "Prices 2025",
+      "content": "50 units: 400"
+     },
+     {
+      "id": "bbbb0002",
+      "title": "Prices 2026",
+      "content": "50 units: 450"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m4"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "units"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "While you were away — 27 Oct",
+        "content": "## Drafted\n- nothing\n\n## Held\n- eve@example.com — Price for 50 units? — the notes give two prices (\"Prices 2025\": 400, \"Prices 2026\": 450)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 new message: 0 drafted, 1 held.\n\n## Report\n- read 1 message; two notes disagree\n\n## Carry forward\n- handled: m4"
+    }
+   ],
+   "checks": [
+    {
+     "drafts_at_most": 0
+    },
+    {
+     "document": {
+      "title": "While you were away",
+      "contains": [
+       "400",
+       "450"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-new-mail-still-says-so",
+   "about": "Nothing new: the document still gets a line, so the person sees the cover ran.",
+   "inputs": {
+    "back_on": "3 November",
+    "notes_hint": "Shop facts"
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "While you were away — 27 Oct",
+        "content": "## Drafted\n- nothing new at 09:10\n\n## Held\n- nothing new at 09:10"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No new mail.\n\n## Report\n- nothing new\n\n## Carry forward\n- handled: nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "While you were away",
+      "contains": [
+       "nothing new"
+      ]
+     }
+    },
+    {
+     "drafts_at_most": 0
+    }
+   ]
+  },
+  {
+   "id": "it-never-sends-and-never-says-where",
+   "about": "A model that sends the reply itself is refused; the draft never says where the person is.",
+   "inputs": {
+    "back_on": "3 November",
+    "notes_hint": "Shop facts"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "carl@example.com",
+      "subject": "Opening hours?",
+      "body": "What are your opening hours next week?"
+     }
+    ],
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Shop facts",
+      "content": "Opening hours: Mon–Fri 9–17. Address: 12 High St."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "send_email",
+       {
+        "to": "carl@example.com",
+        "subject": "Re: hours",
+        "body": "9–17; I'm in Lisbon"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "uid": "m1",
+        "body": "Hi Carl, our opening hours are Mon–Fri 9–17. I'm away until 3 November and will pick up anything else then."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "While you were away — 27 Oct",
+        "content": "## Drafted\n- carl@example.com — Opening hours? — Mon–Fri 9–17 (note \"Shop facts\")\n\n## Held\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 new message: 1 drafted.\n\n## Report\n- drafted 1; a send was refused\n\n## Carry forward\n- handled: m1"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "send_email"
+    },
+    {
+     "no_draft_to": "Lisbon"
+    }
+   ]
+  },
+  {
+   "id": "an-update-without-its-sections-fails",
+   "about": "The harness's own check: a run that writes no While you were away document does not deliver, even after its repair pass.",
+   "inputs": {
+    "back_on": "3 November",
+    "notes_hint": "Shop facts"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "carl@example.com",
+      "subject": "Opening hours?",
+      "body": "What are your opening hours next week?"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Handled.\n\n## Report\n- handled\n\n## Carry forward\n- handled: m1"
+    },
+    {
+     "say": "Handled.\n\n## Report\n- again\n\n## Carry forward\n- handled: m1"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

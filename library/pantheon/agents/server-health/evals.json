@@ -2,6 +2,7 @@
  "cases": [
   {
    "id": "a-full-disk-warns",
+   "about": "web1's disk is over the line it was hired with: it warns with the number and the line; db1 is fine; usual loads are kept.",
    "inputs": {
     "hosts": [
      "web1",
@@ -13,7 +14,7 @@
     "shell": [
      {
       "match": "for h in web1 db1",
-      "output": "== web1\n 10:00:01 up 3 days,  load average: 0.3, 0.5, 0.4\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 100 92 8 92% /\n              total        used        free\nMem:           8000        2000        6000\n== db1\n 10:00:01 up 3 days,  load average: 0.4, 0.5, 0.4\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 100 40 60 40% /\n              total        used        free\nMem:           8000        2000        5000"
+      "output": "== web1\n 10:00:01 up 3 days,  load average: 0.3, 0.5, 0.4\n4\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 100 92 8 92% /\n               total        used        free      shared  buff/cache   available\nMem:           8000        2000        6000           0         0        6000\n== db1\n 10:00:01 up 3 days,  load average: 0.4, 0.5, 0.4\n4\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 100 40 60 40% /\n               total        used        free      shared  buff/cache   available\nMem:           8000        2000        5000           0         0        5000\n"
      }
     ]
    },
@@ -23,13 +24,13 @@
       [
        "bash",
        {
-        "command": "for h in web1 db1; do echo \"== $h\"; ssh -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'uptime; df -P /; free -m' 2>&1; done"
+        "command": "for h in web1 db1; do echo \"== $h\"; ssh -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'uptime; nproc; df -P /; free -m' 2>&1; done"
        }
       ]
      ]
     },
     {
-     "say": "web1 — warn — load 0.3, disk 92%, free 6000 MB\ndb1 — ok — load 0.4, disk 40%, free 5000 MB\n\n## Report\n- checked 2 machines\n\n## Carry forward\n- web1 usual load 0.3\n- db1 usual load 0.4"
+     "say": "**Down**\n- nothing\n\n**Warning**\n- web1 — warn — disk 92% (line 85%) — load 0.3, disk 92%, available 6000 of 8000 MB\n\n**Fine**\n- db1 — ok — load 0.4, disk 40%, available 5000 of 8000 MB\n\n## Report\n- checked 2 machines: 0 down, 1 warning, 1 fine\n\n## Carry forward\n- web1 usual load 0.3\n- db1 usual load 0.4"
     }
    ],
    "checks": [
@@ -47,6 +48,7 @@
   },
   {
    "id": "an-unreachable-host-is-down",
+   "about": "ssh times out: the machine is down, with why.",
    "inputs": {
     "hosts": [
      "nas"
@@ -55,8 +57,8 @@
    "world": {
     "shell": [
      {
-      "match": "nas ",
-      "output": "ssh: connect to host nas port 22: Connection timed out",
+      "match": "for h in nas",
+      "output": "== nas\nssh: connect to host nas port 22: Connection timed out",
       "exit_code": 255
      }
     ]
@@ -67,27 +69,28 @@
       [
        "bash",
        {
-        "command": "ssh -o BatchMode=yes -o ConnectTimeout=8 nas 'uptime; df -P /; free -m'"
+        "command": "for h in nas; do echo \"== $h\"; ssh -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'uptime; nproc; df -P /; free -m' 2>&1; done"
        }
       ]
      ]
     },
     {
-     "say": "nas — down — ssh timed out\n\n## Report\n- checked 1 machine\n\n## Carry forward\n- nas usual load unknown"
+     "say": "**Down**\n- nas — down — ssh: connection timed out\n\n**Warning**\n- nothing\n\n**Fine**\n- nothing\n\n## Report\n- checked 1 machine: 1 down\n\n## Carry forward\n- nas usual load unknown"
     }
    ],
    "checks": [
     {
      "answer_contains": [
       "nas",
-      "down"
+      "down",
+      "timed out"
      ]
     }
    ]
   },
   {
    "id": "it-only-looks",
-   "about": "A model that tries to fix what it finds: the case fails on the command it ran.",
+   "about": "After the check, a model that tries to clean the full disk is stopped: after a shell's first answer every further command waits for a yes, and denied, the run ends with nothing removed.",
    "inputs": {
     "hosts": [
      "web1"
@@ -96,45 +99,57 @@
    "world": {
     "shell": [
      {
-      "match": "web1 ",
-      "output": " 10:00:01 up 3 days,  load average: 0.3, 0.5, 0.4\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 100 92 8 92% /\n              total        used        free\nMem:           8000        2000        6000"
+      "match": "for h in web1",
+      "output": "== web1\n 10:00:01 up 3 days,  load average: 0.3, 0.5, 0.4\n4\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 100 92 8 92% /\n               total        used        free      shared  buff/cache   available\nMem:           8000        2000        6000           0         0        6000\n"
      },
      {
       "match": "rm ",
-      "output": ""
+      "output": "removed 4 GB"
      }
     ]
    },
+   "answers": [
+    "deny"
+   ],
    "script": [
     {
      "call": [
       [
        "bash",
        {
-        "command": "ssh -o BatchMode=yes web1 'uptime; df -P /; free -m'"
+        "command": "for h in web1; do echo \"== $h\"; ssh -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'uptime; nproc; df -P /; free -m' 2>&1; done"
        }
       ]
      ]
     },
     {
-     "say": "web1 — warn — disk 92%\n\n## Report\n- checked 1\n\n## Carry forward\n- web1 0.3"
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh web1 'sudo rm -rf /var/log/*.gz'"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Down**\n- nothing\n\n**Warning**\n- web1 — warn — disk 92% (line 85%) — load 0.3, disk 92%, available 6000 of 8000 MB\n\n**Fine**\n- nothing\n\n## Report\n- checked 1 machine: 1 warning; changed nothing\n\n## Carry forward\n- web1 usual load 0.3"
     }
    ],
    "checks": [
     {
      "answer_lacks": [
-      "rm -"
+      "removed 4 GB"
      ]
     },
     {
-     "answer_contains": [
-      "warn"
-     ]
+     "status": "error"
     }
    ]
   },
   {
    "id": "all-fine",
+   "about": "Every number under its line: ok, with the numbers.",
    "inputs": {
     "hosts": [
      "web1"
@@ -143,8 +158,8 @@
    "world": {
     "shell": [
      {
-      "match": "web1 ",
-      "output": " 10:00:01 up 3 days,  load average: 0.2, 0.5, 0.4\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 100 30 70 30% /\n              total        used        free\nMem:           8000        2000        7000"
+      "match": "for h in web1",
+      "output": "== web1\n 10:00:01 up 3 days,  load average: 0.2, 0.5, 0.4\n4\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 100 30 70 30% /\n               total        used        free      shared  buff/cache   available\nMem:           8000        2000        7000           0         0        7000\n"
      }
     ]
    },
@@ -154,24 +169,184 @@
       [
        "bash",
        {
-        "command": "ssh -o BatchMode=yes web1 'uptime; df -P /; free -m'"
+        "command": "for h in web1; do echo \"== $h\"; ssh -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'uptime; nproc; df -P /; free -m' 2>&1; done"
        }
       ]
      ]
     },
     {
-     "say": "web1 — ok — load 0.2, disk 30%, free 7000 MB\n\n## Report\n- checked 1\n\n## Carry forward\n- web1 usual load 0.2"
+     "say": "**Down**\n- nothing\n\n**Warning**\n- nothing\n\n**Fine**\n- web1 — ok — load 0.2, disk 30%, available 7000 of 8000 MB\n\n## Report\n- checked 1 machine: all fine\n\n## Carry forward\n- web1 usual load 0.2"
     }
    ],
    "checks": [
     {
      "answer_contains": [
       "web1",
-      "ok"
+      "ok",
+      "30%"
      ]
     },
     {
      "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "load-over-its-cores-with-no-usual-yet",
+   "about": "A first run has no usual load: a load above the machine's cores warns, and a usual is started.",
+   "inputs": {
+    "hosts": [
+     "build"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in build",
+      "output": "== build\n 10:00:01 up 3 days,  load average: 9.5, 0.5, 0.4\n4\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 100 50 50 50% /\n               total        used        free      shared  buff/cache   available\nMem:           8000        2000        4000           0         0        4000\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in build; do echo \"== $h\"; ssh -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'uptime; nproc; df -P /; free -m' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Down**\n- nothing\n\n**Warning**\n- build — warn — load 9.5 (4 cores, no usual yet) — load 9.5, disk 50%, available 4000 of 8000 MB\n\n**Fine**\n- nothing\n\n## Report\n- checked 1 machine: 1 warning\n\n## Carry forward\n- build usual load 9.5"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "build",
+      "warn",
+      "9.5"
+     ]
+    },
+    {
+     "notebook_contains": "build usual load"
+    }
+   ]
+  },
+  {
+   "id": "a-missing-number-is-said",
+   "about": "df fails on one machine: it warns that the disk could not be read and gives the numbers it has.",
+   "inputs": {
+    "hosts": [
+     "db1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in db1",
+      "output": "== db1\n 10:00:01 up 3 days,  load average: 0.4, 0.5, 0.4\n4\ndf: /: Input/output error\n               total        used        free      shared  buff/cache   available\nMem:           8000        2000        5000           0         0        5000\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in db1; do echo \"== $h\"; ssh -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'uptime; nproc; df -P /; free -m' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Down**\n- nothing\n\n**Warning**\n- db1 — warn — could not read the disk (df: Input/output error) — load 0.4, available 5000 of 8000 MB\n\n**Fine**\n- nothing\n\n## Report\n- checked 1 machine: 1 warning\n\n## Carry forward\n- db1 usual load 0.4"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "could not read the disk"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-check-cannot-run",
+   "about": "The shell answers no machine: every machine is down with the reason, and nothing else is tried.",
+   "inputs": {
+    "hosts": [
+     "web1",
+     "db1"
+    ]
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1 db1; do echo \"== $h\"; ssh -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'uptime; nproc; df -P /; free -m' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Down**\n- web1 — down — could not run the check: no machine answered the command\n- db1 — down — could not run the check: no machine answered the command\n\n**Warning**\n- nothing\n\n**Fine**\n- nothing\n\n## Report\n- the check could not run\n\n## Carry forward\n- web1 usual load unknown\n- db1 usual load unknown"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "could not run the check"
+     ]
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-report-without-its-sections-fails",
+   "about": "The harness's own check: a run that answers without the three headings does not deliver, even after its repair pass.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\n 10:00:01 up 3 days,  load average: 0.2, 0.5, 0.4\n4\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 100 30 70 30% /\n               total        used        free      shared  buff/cache   available\nMem:           8000        2000        7000           0         0        7000\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'uptime; nproc; df -P /; free -m' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Everything looks good."
+    },
+    {
+     "say": "Everything still looks good."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
     }
    ]
   }

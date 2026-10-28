@@ -77,6 +77,7 @@ from src.tool_capabilities import (
     DEFAULT_TRUST_RUNG,
     ResultIntegrity,
     RUNS_IN_WORKSTATION,
+    TOOL_CLASSIFICATION_UNAVAILABLE,
     ToolRunSecurityContext,
     TrustRung,
     blocked_tool_result,
@@ -11022,6 +11023,40 @@ async def stream_agent_loop(
                         "command": cmd_display,
                         "reason": reason,
                         "policy": "current_tool_policy",
+                        **_command_fields(cmd_display, full_command),
+                        **block_effects,
+                    })
+                    + "\n\n"
+                )
+            elif (
+                not security_decision.allowed
+                and approval_held_by_run
+                and security_decision.classification == TOOL_CLASSIFICATION_UNAVAILABLE
+            ):
+                # `P24-27`. A refusal no approval lifts — a hire's `never`
+                # (`P24-07`) — in a run nobody is watching. The card below is
+                # how a chat shows that sentence; a held run parked on it, on
+                # the waiting list, for a yes `asks_for` will never replay. The
+                # refusal is the step's answer and the run goes on.
+                reason = security_decision.reason or (
+                    f"'{block.tool_type}' is not available to this run.")
+                desc = f"{block.tool_type}: BLOCKED"
+                result = {
+                    "error": reason,
+                    "exit_code": 1,
+                    "blocked": True,
+                    "policy": "not_available",
+                }
+                yield (
+                    "data: "
+                    + json.dumps({
+                        "type": "tool_blocked",
+                        "tool": block.tool_type,
+                        "round": round_num,
+                        **_step_fields(_step_offset),
+                        "command": cmd_display,
+                        "reason": reason,
+                        "policy": "not_available",
                         **_command_fields(cmd_display, full_command),
                         **block_effects,
                     })

@@ -1,0 +1,27 @@
+{
+ "case": "an-unanswered-question-gets-a-nudge",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- checked 1 sent message, drafted 1 nudge",
+ "read": [
+  "list_emails",
+  "read_email",
+  "search_emails"
+ ],
+ "wrote": [
+  "draft_email"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Waiting, Not chased."
+  },
+  {
+   "check": "at most 10 drafts",
+   "ok": true,
+   "detail": "It made 1 draft."
+  }
+ ],
+ "answer": "**Waiting**\n- ana@example.com — Q3 figures — 6 days — nudge drafted\n\n**Not chased**\n- nothing\n\n## Report\n- checked 1 sent message, drafted 1 nudge\n\n## Carry forward\n- nudged 27 Oct: \"Q3 figures\" to ana@example.com"
+}

@@ -70,8 +70,12 @@ async def do_manage_notes(content: str, owner: Optional[str] = None) -> Dict:
             pin = " [PINNED]" if n.pinned else ""
             typ = " [checklist]" if n.note_type == "checklist" else ""
             lbl = f" #{n.label}" if n.label else ""
+            # `P24-27`. A reminder's date is half of what it is: a hired
+            # Morning Brief was told to keep what is due today from a listing
+            # that never said when anything was due.
+            due = f" — due {n.due_date}" if getattr(n, "due_date", None) else ""
             title = n.title or "(untitled)"
-            lines.append(f"- [{n.id[:8]}] **{title}**{pin}{typ}{lbl}")
+            lines.append(f"- [{n.id[:8]}] **{title}**{pin}{typ}{lbl}{due}")
             if n.note_type == "checklist" and n.items:
                 try:
                     items = json.loads(n.items)

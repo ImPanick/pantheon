@@ -37,7 +37,8 @@ from tests.test_an_agent_delivers_or_says_why import _loop_answers, _report, _se
 from core.database import AgentHire
 from src.agents import runtime as R
 
-GOOD = "Today: two meetings and a dentist.\n\n## Report\n- read the calendar"
+# `P24-27`: Morning Brief promises four headings now, so its fixtures say all four.
+GOOD = "Today: two meetings and a dentist. Mail that needs you: nothing. Due: nothing. Overnight: nothing.\n\n## Report\n- read the calendar"
 
 
 @pytest.fixture()
@@ -89,7 +90,7 @@ def test_on_its_verdict_and_reasons_sit_beside_the_code_checks(world, judge, mon
     assert (asked["fallback_model"], asked["owner"]) == ("m-1", "alice")
     system, answer_msg = asked["messages"][0]["content"], asked["messages"][1]
     assert "Morning Brief" in system and "- An answer, which says: Today" in system
-    assert "- It answered, with Today." in system, "it is told what the code found"
+    assert "- It answered, with Today, Mail that needs you, Due, Overnight." in system, "it is told what the code found"
     assert "two meetings and a dentist" in answer_msg["content"]
     assert answer_msg["role"] != "system" and answer_msg["metadata"]["trusted"] is False, \
         "the answer is handed in as data, never as instructions"
@@ -107,7 +108,7 @@ def test_a_no_gets_the_one_more_try_told_the_judges_reasons(world, judge, monkey
     db = factory()
     _settings(monkeypatch, agents_judge=True)
     h, _ = _hire(db, "morning-brief", inputs={"at": "06:00"})
-    calls = _loop_answers(sched, seen, "Today: see your calendar.", GOOD)
+    calls = _loop_answers(sched, seen, "Today: see your calendar. Mail that needs you: nothing. Due: nothing. Overnight: nothing.", GOOD)
     judge["replies"] += [_verdict("not_delivered", "It names no meeting"),
                          _verdict("delivered", "Now it lists them.")]
     run_id, answer = _run(sched, db, _task(db, h.id))
@@ -127,7 +128,7 @@ def test_two_noes_fail_the_run_and_park_the_hire_with_the_judges_sentence(world,
     db = factory()
     _settings(monkeypatch, agents_judge=True)
     h, _ = _hire(db, "morning-brief", inputs={"at": "06:00"})
-    _loop_answers(sched, seen, "Today: see your calendar.", "Today: still see it.")
+    _loop_answers(sched, seen, "Today: see your calendar. Mail that needs you: nothing. Due: nothing. Overnight: nothing.", "Today: still see it. Mail that needs you: nothing. Due: nothing. Overnight: nothing.")
     judge["replies"] += [_verdict("not_delivered", "It names no meeting")] * 2
     with pytest.raises(R.AgentDidNotDeliver) as caught:
         _run(sched, db, _task(db, h.id))

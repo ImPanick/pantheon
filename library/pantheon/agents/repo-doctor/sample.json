@@ -1,0 +1,22 @@
+{
+ "case": "a-failing-test-is-fixed-on-a-branch",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- fixed 1 failing test on repo-doctor/2026-10-27",
+ "read": [
+  "grep",
+  "read_file"
+ ],
+ "wrote": [
+  "bash",
+  "edit_file"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Before, Fixes, After."
+  }
+ ],
+ "answer": "**Before**\n- 1 failed, 11 passed — tests/test_calc.py::test_add\n\n**Fixes**\n- test_add — add() subtracted its second number — calc.py: `a - b` → `a + b`\n\n**After**\n- 12 passed — on branch repo-doctor/2026-10-27, committed 1a2b3c4; not pushed\n\n## Report\n- fixed 1 failing test on repo-doctor/2026-10-27\n\n## Carry forward\n- nothing"
+}

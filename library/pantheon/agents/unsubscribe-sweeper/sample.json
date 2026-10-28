@@ -1,0 +1,21 @@
+{
+ "case": "never-opened-senders-are-listed",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- scanned the inbox, sorted 2 senders",
+ "read": [
+  "scan_email_unsubscribes",
+  "search_emails"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Unsubscribe list”",
+   "ok": true,
+   "detail": "“Unsubscribe list — November 2026” is there."
+  }
+ ],
+ "answer": "1 never opened, 0 unsubscribed, 1 kept.\n\n## Report\n- scanned the inbox, sorted 2 senders\n\n## Carry forward\n- never opened in November: deals@shop.example"
+}

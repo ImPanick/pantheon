@@ -1,0 +1,20 @@
+{
+ "case": "one-done-one-missed",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read today's list and the log; wrote today's line; set out tomorrow's list",
+ "read": [
+  "manage_notes"
+ ],
+ "wrote": [
+  "manage_notes"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Streaks, Tomorrow."
+  }
+ ],
+ "answer": "[View note: Habits — 28 Oct](#note-434f65d1-8e30-46b2-888c-803f8e6514d6)\n**Streaks**\n- walk 20 minutes — done — 6 days\n- read 20 pages — not today — back to 0\n\n**Tomorrow**\n- \"Habits — 28 Oct\" is ready: walk 20 minutes, read 20 pages.\n- Six days of walking — lovely. Try putting the book on your pillow tonight.\n\n## Report\n- read today's list and the log; wrote today's line; set out tomorrow's list\n\n## Carry forward\n- walk 20 minutes: 6\n- read 20 pages: 0"
+}

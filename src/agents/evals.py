@@ -15,9 +15,11 @@ own `delivers`:
         "web":     {"https://example.org/x": "page text"},
         "search":  {"solar": [{"title": "...", "url": "...", "snippet": "..."}]},
         "shell":   [{"match": "df -P", "output": "...", "exit_code": 0}],
-        "documents": [{"title": "...", "content": "..."}]
+        "documents": [{"title": "...", "content": "..."}],
+        "research": [{"id": "r1", "query": "...", "summary": "...", "sources": [{"title": "...", "url": "..."}]}]
       },
       "answers": ["deny"],
+      "notebook": "- sorted: m0",
       "script": [ {"call": [["list_emails", {"unread_only": true}]]}, {"say": "..."} ],
       "checks": [ {"document": {"title": "Inbox triage", "contains": ["Urgent", "Ana"]}},
                   {"not_called": "send_email"} ]
@@ -35,7 +37,13 @@ every commit, no model at all — or a real endpoint (`proof runs`, `P24-18`),
 run with `python -m src.agents.evals`.
 
 A case never reaches the internet, a mailbox or a host: a tool the world does
-not answer and Pantheon does not own is refused in the world's words.
+not answer and Pantheon does not own is refused in the world's words. A
+world's `research` is finished deep-research reports in its own research
+folder; with the key present (even empty) the world also starts research when
+asked, and without it `trigger_research` is refused like any other tool that
+would leave the install (`P24-27`). A case's `notebook` is what the hire's last
+run carried forward, so "new since last time" can be measured; its `trigger`
+is the webhook payload or app event that started the run.
 """
 
 from __future__ import annotations
@@ -50,6 +58,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from pathlib import PurePath
 from typing import Any, Dict, List, Optional, Tuple
 
 EVAL_FILE = "evals.json"
@@ -67,11 +76,17 @@ DRAFT_TOOLS = {"draft_email", "draft_email_reply", "ai_draft_email_reply"}
 WEB_TOOLS = {"web_search", "web_fetch"}
 SHELL_TOOLS = {"bash", "python", "computer", "host_shell"}
 WORLD_TOOLS = MAIL_TOOLS | SEND_TOOLS | DRAFT_TOOLS | WEB_TOOLS | SHELL_TOOLS
+#: `P24-27`. A tool with any of these effects reaches outside the install. One
+#: the world answers is above; any other — `trigger_research`, `search_hf_models`,
+#: `chat_with_model`, `network` — asks the install's own server or the network
+#: for real, so the world answers it or refuses it, never the real one.
+OUTSIDE_EFFECTS = frozenset({"network_egress", "brokered_network_read", "external_side_effect"})
 
 CHECK_KINDS = ("answer_contains", "answer_lacks", "document", "no_document", "called",
                "not_called", "drafts_at_most", "draft_to", "no_draft_to", "status",
                "file", "notebook_contains")
-WORLD_KEYS = ("emails", "web", "search", "shell", "documents", "notes", "calendar", "files", "accounts")
+WORLD_KEYS = ("emails", "web", "search", "shell", "documents", "notes", "calendar", "files", "accounts",
+              "research")
 
 
 class EvalRefused(ValueError):
@@ -101,8 +116,19 @@ def lint_evals(data: Any, manifest) -> List[Dict[str, Any]]:
         _need(bool(re.fullmatch(r"[a-z0-9][a-z0-9-]{1,63}", cid)), f"Case {n}'s id “{cid}” is not lower-case words joined by dashes.")
         _need(cid not in seen, f"Two cases are called “{cid}”.")
         seen.add(cid)
-        extra = set(case) - {"id", "about", "inputs", "world", "answers", "script", "checks"}
+        extra = set(case) - {"id", "about", "inputs", "world", "answers", "script", "checks", "notebook", "trigger"}
         _need(not extra, f"Case “{cid}” has a field nothing reads: {', '.join(sorted(extra))}.")
+        _need(isinstance(case.get("notebook", ""), str),
+              f"Case “{cid}”'s notebook is the text the last run carried forward, not a list or a map.")
+        trig = case.get("trigger")
+        if trig is not None:
+            from src.event_bus import EVENT_NAMES
+            _need(isinstance(trig, dict) and (
+                (set(trig) == {"webhook"} and isinstance(trig["webhook"], dict))
+                or (set(trig) <= {"event", "data"} and trig.get("event") in EVENT_NAMES
+                    and isinstance(trig.get("data", {}), dict))),
+                f"Case “{cid}”'s trigger is {{\"webhook\": {{body, json, query, headers}}}} or "
+                f"{{\"event\": <an event Pantheon raises>, \"data\": {{…}}}}.")
         unknown = set(case.get("inputs") or {}) - keys
         _need(not unknown, f"Case “{cid}” gives inputs the agent does not ask for: {', '.join(sorted(unknown))}.")
         world = case.get("world") or {}
@@ -153,6 +179,7 @@ class World:
     calls: List[Dict[str, Any]] = field(default_factory=list)
     drafts: List[Dict[str, Any]] = field(default_factory=list)
     sent: List[Dict[str, Any]] = field(default_factory=list)
+    research: List[str] = field(default_factory=list)
 
     def _args(self, content: str) -> Dict[str, Any]:
         try:
@@ -165,11 +192,27 @@ class World:
         """The world's answer, or `None` when the tool is Pantheon's own."""
         tool = tool.split("__")[-1] if tool.startswith("mcp__email__") else tool
         if tool not in WORLD_TOOLS:
-            return None
+            if not _reaches_outside(tool):
+                return None
+            out = self._outside(tool, self._args(content))
+            text = json.dumps(out, indent=1)
+            return f"{tool}: {text[:200]}", {"output": text, "exit_code": 0}
         args = self._args(content)
         out = self._answer(tool, args, content)
         text = out if isinstance(out, str) else json.dumps(out, indent=1)
         return f"{tool}: {text[:200]}", {"output": text, "exit_code": 0}
+
+    def _outside(self, tool: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        """`P24-27`. A tool that leaves the install and is not one of the
+        world's own: deep research the world can start, or a refusal."""
+        if tool == "trigger_research" and "research" in self.fixture:
+            topic = str(args.get("topic") or args.get("query") or "").strip()
+            self.research.append(topic)
+            sid = f"started{len(self.research)}"
+            return {"output": f"Deep research started: [{topic}](#research-{sid}).",
+                    "session_id": sid, "exit_code": 0}
+        return {"error": f"This world has no {tool}: an evaluation runs inside the install, and "
+                         f"nothing in an evaluation leaves it.", "exit_code": 1}
 
     def _answer(self, tool: str, args: Dict[str, Any], content: str):
         mails = self.fixture.get("emails") or []
@@ -220,6 +263,12 @@ class World:
         return {"output": "", "error": "This world has no machine that answers that command.", "exit_code": 127}
 
 
+def _reaches_outside(tool: str) -> bool:
+    from src.tool_capabilities import capabilities_for_tool
+    caps = capabilities_for_tool(tool)
+    return bool({e.value for e in caps.effects} & OUTSIDE_EFFECTS)
+
+
 # ── Isolation ───────────────────────────────────────────────────────────────
 
 class _Patches:
@@ -246,6 +295,9 @@ def isolated(root: Optional[str] = None):
     import core.database as cdb
     import src.constants as constants
 
+    # `P24-27`. A world the harness makes is removed when it ends: each is a
+    # SQLite file and a data folder, and a roster's evaluation runs hundreds.
+    made_here = root is None
     root = root or tempfile.mkdtemp(prefix="pantheon-eval-")
     data = os.path.join(root, "data")
     os.makedirs(data, exist_ok=True)
@@ -266,7 +318,36 @@ def isolated(root: Optional[str] = None):
             except Exception:
                 continue
 
+    def _swap_paths(frm_data, to_data, record):
+        """`P24-27`. A path the install derived from its data folder at
+        import — `DEEP_RESEARCH_DIR`, `CONTACTS_FILE`, `COOKBOOK_STATE_FILE` —
+        is the world's while it lasts: swapping `DATA_DIR` alone left
+        `manage_research` reading the install's research and `manage_contact`
+        writing its address book."""
+        if not isinstance(frm_data, str) or not frm_data:
+            return
+        prefix = frm_data.rstrip(os.sep) + os.sep
+        for mod in list(sys.modules.values()):
+            name = getattr(mod, "__name__", "") or ""
+            if not name.startswith(("src.", "routes.", "core.", "services.", "mcp_servers.")):
+                continue
+            try:
+                found = [(k, v) for k, v in vars(mod).items()
+                         if isinstance(v, (str, PurePath))
+                         and (str(v).startswith(prefix) or str(v) == prefix.rstrip(os.sep))]
+            except Exception:
+                continue
+            for k, v in found:
+                # A `Path` stays a `Path` (`LOCAL_CONTACTS_FILE`, the contacts
+                # route's own `DATA_DIR`): kept as a string-only swap, the
+                # address book pointed into a world that was gone, and later
+                # cases wrote into — and recreated — a deleted folder.
+                moved = os.path.join(to_data, str(v)[len(prefix):]) if str(v).startswith(prefix) else to_data
+                moved = type(v)(moved) if isinstance(v, PurePath) else moved
+                p.set(mod, k, moved) if record else setattr(mod, k, moved)
+
     _swap(old_session, factory, old_data, data, True)
+    _swap_paths(old_data, data, True)
     # A module may hold a session factory or data folder that is not the
     # install's current one (one copied while something else had swapped them
     # — a test, an earlier world). Every one of ours is swapped, so nothing a
@@ -298,6 +379,11 @@ def isolated(root: Optional[str] = None):
         # A module first imported inside the world copied the world's names;
         # it is given the install's back, so nothing outlives the world.
         _swap(factory, old_session, data, old_data, False)
+        _swap_paths(data, old_data, False)
+        engine.dispose()
+        if made_here:
+            import shutil
+            shutil.rmtree(root, ignore_errors=True)
 
 
 # ── The model ───────────────────────────────────────────────────────────────
@@ -319,6 +405,19 @@ def scripted_model(script: List[Dict[str, Any]]):
 
 
 # ── A run ───────────────────────────────────────────────────────────────────
+
+def _trigger(spec: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """`P24-27`. A case's `trigger` as the run would get it — the event bus's
+    own envelope, so a webhook's payload keeps only what a webhook hands on."""
+    if not spec:
+        return None
+    from src.event_bus import (TRIGGER_SOURCE_EVENT, TRIGGER_SOURCE_WEBHOOK,
+                               WEBHOOK_PAYLOAD_FIELDS, build_trigger)
+    if "webhook" in spec:
+        return build_trigger(TRIGGER_SOURCE_WEBHOOK, TRIGGER_SOURCE_WEBHOOK, spec["webhook"],
+                             fields=WEBHOOK_PAYLOAD_FIELDS)
+    return build_trigger(TRIGGER_SOURCE_EVENT, spec["event"], spec.get("data") or {})
+
 
 @dataclass
 class CaseResult:
@@ -353,10 +452,12 @@ def _seed(db, owner: str, world: Dict[str, Any], data_dir: str) -> None:
     from datetime import timedelta
     from core.database import CalendarCal, CalendarEvent, Document, Note
     for d in world.get("documents") or []:
-        db.add(Document(id=str(uuid.uuid4()), owner=owner, title=d["title"],
+        # `P24-27`. A document (and a note, below) may name its id, so a
+        # script can open, change or delete it.
+        db.add(Document(id=str(d.get("id") or uuid.uuid4()), owner=owner, title=d["title"],
                         current_content=d.get("content", "")))
     for n in world.get("notes") or []:
-        db.add(Note(id=str(uuid.uuid4()), owner=owner, title=n.get("title", ""), content=n.get("content", ""),
+        db.add(Note(id=str(n.get("id") or uuid.uuid4()), owner=owner, title=n.get("title", ""), content=n.get("content", ""),
                     due_date=n.get("due")))
     if world.get("calendar"):
         cal = CalendarCal(id=str(uuid.uuid4()), owner=owner, name="Personal")
@@ -368,6 +469,17 @@ def _seed(db, owner: str, world: Dict[str, Any], data_dir: str) -> None:
                                  location=e.get("location", ""), dtstart=start,
                                  dtend=_when(e["end"]) if e.get("end") else start + timedelta(hours=1)))
     db.commit()
+    if world.get("research"):
+        # `P24-27`. Finished reports, where the real `manage_research` reads
+        # them — the world's own research folder.
+        import src.constants as constants
+        os.makedirs(constants.DEEP_RESEARCH_DIR, exist_ok=True)
+        for n, r in enumerate(world["research"], start=1):
+            rid = re.sub(r"[^A-Za-z0-9_-]", "", str(r.get("id") or f"r{n}")) or f"r{n}"
+            body = {"query": r.get("query", ""), "summary": r.get("summary", ""), "owner": owner,
+                    "sources": r.get("sources") or [], "completed_at": r.get("completed_at", n)}
+            with open(os.path.join(constants.DEEP_RESEARCH_DIR, f"{rid}.json"), "w", encoding="utf-8") as fh:
+                json.dump(body, fh)
     if world.get("files"):
         from src.tool_execution import projects_root
         root = projects_root(owner, create=True)
@@ -489,6 +601,10 @@ async def run_case(manifest, case: Dict[str, Any], *, factory, data_dir: str,
                                  endpoint_kind="local", cached_models=json.dumps([name])))
         _seed(db, owner, case.get("world") or {}, data_dir)
         hire = H.make_hire(db, owner=owner, manifest=manifest, inputs=case.get("inputs") or {})
+        # `P24-27`. What the last run carried forward, so a case can measure
+        # "new since last time" — read by the run as its notebook always is.
+        if case.get("notebook"):
+            hire.notebook = case["notebook"]
         db.commit()
         tid = H.task_ids_of(db, hire.id)[0]
         task = db.get(ScheduledTask, tid)
@@ -499,7 +615,7 @@ async def run_case(manifest, case: Dict[str, Any], *, factory, data_dir: str,
 
         sched = TaskScheduler(None)
         sched._log_to_assistant = lambda *a, **k: None
-        await sched._execute_task(tid)
+        await sched._execute_task(tid, trigger=_trigger(case.get("trigger")))
         answers = list(case.get("answers") or [])
         app = FastAPI()
 

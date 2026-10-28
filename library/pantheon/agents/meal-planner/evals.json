@@ -1,0 +1,572 @@
+{
+ "cases": [
+  {
+   "id": "a-week-from-the-pantry-and-the-rules",
+   "about": "The pantry's spinach is used first, Tuesday is a night out as the rules say, and the list leaves out what the pantry has; memory is not available in this world and it says so.",
+   "inputs": {
+    "people": 2,
+    "rules": "Out on Tuesdays. No pork."
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Pantry",
+      "content": "red lentils, basmati rice, cumin, tinned tomatoes, spinach (use soon)"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "food"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "diet"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "allergy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "pantry"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "recipes"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "meals"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Meals this week — 3 Nov",
+        "content": "## Dinners\n- Monday — spinach and lentil dal — 25 min\n- Tuesday — out\n- Wednesday — salmon tray bake — 30 min\n- Thursday — mushroom risotto — 30 min\n- Friday — bean chilli — 30 min\n- Saturday — homemade pizza — 45 min\n- Sunday — slow-roast chicken — 2 hours\n\n## Shopping\n- Fruit and veg: 2 onions, garlic, 250 g mushrooms\n- Meat and fish: 2 salmon fillets, 1 chicken\n- Dairy: mozzarella\n\n## From the pantry\n- red lentils, basmati rice, cumin, tinned tomatoes, spinach"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "\"Meals this week — 3 Nov\" is ready: 6 dinners and a night out. (could not search memory: the memory manager is not available)\n\n## Report\n- planned 7 nights for 2 people from the pantry note\n\n## Carry forward\n- dishes: spinach dal, salmon tray bake, mushroom risotto, bean chilli, pizza, roast chicken"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Meals this week",
+      "contains": [
+       "spinach",
+       "Tuesday — out"
+      ],
+      "lacks": [
+       "pork",
+       "bacon"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "risotto"
+    }
+   ]
+  },
+  {
+   "id": "an-allergy-is-absolute",
+   "about": "A nut allergy in the rules: no dish and nothing on the list carries nuts.",
+   "inputs": {
+    "people": 3,
+    "rules": "Severe peanut and tree-nut allergy."
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Pantry",
+      "content": "red lentils, basmati rice, cumin, tinned tomatoes, spinach (use soon)"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "food"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "diet"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "allergy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "pantry"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "recipes"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "meals"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Meals this week — 3 Nov",
+        "content": "## Dinners\n- Monday — spinach and lentil dal — 25 min\n- Tuesday — out\n- Wednesday — salmon tray bake — 30 min\n- Thursday — mushroom risotto — 30 min\n- Friday — bean chilli — 30 min\n- Saturday — fish pie — 45 min\n- Sunday — slow-roast chicken — 2 hours\n\n## Shopping\n- Fruit and veg: 2 onions, garlic, 250 g mushrooms\n- Meat and fish: 2 salmon fillets, 1 chicken\n- Dairy: mozzarella\n\n## From the pantry\n- red lentils, basmati rice"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "\"Meals this week — 3 Nov\" is ready, nut-free.\n\n## Report\n- planned 7 nights for 3 people; nut-free\n\n## Carry forward\n- dishes: dal, salmon, risotto, chilli, fish pie, chicken"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Meals this week",
+      "lacks": [
+       "peanut",
+       "cashew",
+       "almond",
+       "pesto",
+       "satay"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-last-two-weeks-are-not-repeated",
+   "about": "Its notebook lists last week's dal and chilli: neither is planned again.",
+   "inputs": {
+    "people": 2
+   },
+   "notebook": "- dishes: spinach and lentil dal, bean chilli",
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Pantry",
+      "content": "red lentils, basmati rice, cumin, tinned tomatoes, spinach (use soon)"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "food"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "diet"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "allergy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "pantry"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "recipes"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "meals"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Meals this week — 3 Nov",
+        "content": "## Dinners\n- Monday — tomato and spinach soup — 25 min\n- Tuesday — salmon tray bake — 30 min\n- Wednesday — mushroom risotto — 30 min\n- Thursday — chickpea curry — 30 min\n- Friday — fish tacos — 25 min\n- Saturday — homemade pizza — 45 min\n- Sunday — slow-roast chicken — 2 hours\n\n## Shopping\n- Fruit and veg: 2 onions, garlic, 250 g mushrooms\n- Meat and fish: 2 salmon fillets, 1 chicken\n- Dairy: mozzarella\n\n## From the pantry\n- tinned tomatoes, spinach, rice"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "\"Meals this week — 3 Nov\" is ready.\n\n## Report\n- planned 7 nights; skipped last week's dishes\n\n## Carry forward\n- dishes: soup, salmon, risotto, chickpea curry, tacos, pizza, chicken"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Meals this week",
+      "lacks": [
+       "lentil dal",
+       "bean chilli"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-notes-and-the-rules-disagree",
+   "about": "The rules say vegetarian and a note says steak on Fridays: the stricter is followed, and the plan says so.",
+   "inputs": {
+    "people": 2,
+    "rules": "Vegetarian."
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Pantry",
+      "content": "red lentils, basmati rice, cumin, tinned tomatoes, spinach (use soon)"
+     },
+     {
+      "id": "bbbb0001",
+      "title": "Meals",
+      "content": "Steak on Fridays!"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "food"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "diet"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "allergy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "pantry"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "recipes"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "meals"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Meals this week — 3 Nov",
+        "content": "## Dinners\n- note: \"steak on Fridays\" disagrees with the rules (vegetarian) — followed the rules\n- Friday — halloumi and vegetable skewers — 25 min\n- (other nights) vegetable dishes\n\n## Shopping\n- Fruit and veg: peppers, courgettes\n- Dairy: halloumi\n\n## From the pantry\n- rice, lentils"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "\"Meals this week — 3 Nov\" is ready, vegetarian.\n\n## Report\n- followed the rules over a note\n\n## Carry forward\n- dishes: halloumi skewers"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Meals this week",
+      "contains": [
+       "followed the rules"
+      ],
+      "lacks": [
+       "Friday — steak"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-on-file",
+   "about": "No notes and no memory: the plan comes from the rules alone, says so, and asks for a pantry note.",
+   "inputs": {
+    "people": 1
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "food"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "diet"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "allergy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "pantry"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "recipes"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "meals"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Meals this week — 3 Nov",
+        "content": "## Dinners\n- planned from your rules alone — no pantry or recipe notes found\n- Monday — spinach and lentil dal — 25 min\n- Tuesday — out\n- Wednesday — salmon tray bake — 30 min\n- Thursday — mushroom risotto — 30 min\n- Friday — bean chilli — 30 min\n- Saturday — homemade pizza — 45 min\n- Sunday — slow-roast chicken — 2 hours\n\n## Shopping\n- Fruit and veg: 2 onions, garlic, 250 g mushrooms\n- Meat and fish: 2 salmon fillets, 1 chicken\n- Dairy: mozzarella\n\n## From the pantry\n- nothing — add a pantry note"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "\"Meals this week — 3 Nov\" is ready, planned from the rules alone.\n\n## Report\n- found no notes\n\n## Carry forward\n- dishes: dal, salmon, risotto, chilli, pizza, chicken"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Meals this week",
+      "contains": [
+       "rules alone",
+       "add a pantry note"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-plan-without-its-sections-fails",
+   "about": "The harness's own check: a plan without Dinners, Shopping and From the pantry does not deliver, even after its repair pass.",
+   "inputs": {
+    "people": 2
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Pantry",
+      "content": "red lentils, basmati rice, cumin, tinned tomatoes, spinach (use soon)"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "food"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "diet"
+       }
+      ],
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "text": "allergy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "pantry"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "recipes"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "meals"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Meals this week — 3 Nov",
+        "content": "Pasta every night."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- planned\n\n## Carry forward\n- dishes: pasta"
+    },
+    {
+     "say": "Done.\n\n## Report\n- again\n\n## Carry forward\n- dishes: pasta"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

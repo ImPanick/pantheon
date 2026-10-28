@@ -1,0 +1,22 @@
+{
+ "case": "a-flight-and-a-stay",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 2 confirmations; wrote the itinerary",
+ "read": [
+  "search_emails",
+  "read_email",
+  "web_search"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Itinerary”",
+   "ok": true,
+   "detail": "“Itinerary — Lisbon, 4-9 November” is there."
+  }
+ ],
+ "answer": "Missing: a flight home on 9 Nov, and online check-in (opens 3 Nov 10:05).\n\n## Report\n- read 2 confirmations; wrote the itinerary\n\n## Carry forward\n- Lisbon 4-9 Nov: TP1351 QX7P2L, Casa Azul 88213"
+}

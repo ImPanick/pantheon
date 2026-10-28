@@ -1,0 +1,265 @@
+{
+ "cases": [
+  {
+   "id": "a-drop-below-the-price",
+   "about": "The shoes are now under the person's price (the crossed-out price is ignored); the espresso machine moved since yesterday (the compact model's price is ignored); the lamp is unchanged.",
+   "inputs": {
+    "items": [
+     "https://shop.example/trail-9 80",
+     "https://shop.example/espresso 200",
+     "https://shop.example/lamp 30"
+    ]
+   },
+   "notebook": "- https://shop.example/trail-9 95.00\n- https://shop.example/espresso 249.00\n- https://shop.example/lamp 35.00",
+   "world": {
+    "web": {
+     "https://shop.example/trail-9": "Trail running shoes — size 9. Was £95.00. Now £79.00. In stock.",
+     "https://shop.example/espresso": "Espresso machine. £229.00. In stock. Also from £199 for the compact model.",
+     "https://shop.example/lamp": "Desk lamp. £35.00. In stock."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://shop.example/trail-9"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://shop.example/espresso"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://shop.example/lamp"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Below your price**\n- Trail running shoes, size 9 — 79.00 GBP — your price 80.00 — https://shop.example/trail-9\n\n**Changed**\n- Espresso machine — 249.00 → 229.00 GBP — https://shop.example/espresso\n\n**No change**\n- Desk lamp — 35.00 GBP\n\n**Could not read**\n- nothing\n\n## Report\n- read 3 product pages\n\n## Carry forward\n- https://shop.example/trail-9 79.00\n- https://shop.example/espresso 229.00\n- https://shop.example/lamp 35.00"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "79.00",
+      "249.00 → 229.00"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "199",
+      "95.00 GBP —"
+     ]
+    },
+    {
+     "notebook_contains": "trail-9 79.00"
+    }
+   ]
+  },
+  {
+   "id": "a-page-that-will-not-open",
+   "about": "A page answers 404: it goes under Could not read, and yesterday's price is kept.",
+   "inputs": {
+    "items": [
+     "https://old.example/headphones 100"
+    ]
+   },
+   "notebook": "- https://old.example/headphones 120.00",
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://old.example/headphones"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Below your price**\n- nothing\n\n**Changed**\n- nothing\n\n**No change**\n- nothing\n\n**Could not read**\n- Headphones — the page answered 404 — https://old.example/headphones\n\n## Report\n- read 0 of 1 pages\n\n## Carry forward\n- https://old.example/headphones 120.00"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "404"
+     ]
+    },
+    {
+     "notebook_contains": "headphones 120.00"
+    }
+   ]
+  },
+  {
+   "id": "two-prices-on-one-page",
+   "about": "The banner and the buy box disagree: it is not guessed, it goes under Could not read with both.",
+   "inputs": {
+    "items": [
+     "https://shop.example/kettle 40"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://shop.example/kettle": "SALE banner: kettles £39! Buy box: Kettle £59.00. In stock."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://shop.example/kettle"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Below your price**\n- nothing\n\n**Changed**\n- nothing\n\n**No change**\n- nothing\n\n**Could not read**\n- Kettle — two prices: 39 and 59 — check — https://shop.example/kettle\n\n## Report\n- read 1 page with two prices\n\n## Carry forward\n- https://shop.example/kettle unknown"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "two prices"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "Kettle — 39.00"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "out-of-stock-is-not-a-bargain",
+   "about": "Under the price but out of stock: it is under Changed, saying so, never under Below your price.",
+   "inputs": {
+    "items": [
+     "https://shop.example/trail-9 80"
+    ]
+   },
+   "notebook": "- https://shop.example/trail-9 95.00",
+   "world": {
+    "web": {
+     "https://shop.example/trail-9": "Trail running shoes — size 9. £75.00. Out of stock."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://shop.example/trail-9"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Below your price**\n- nothing\n\n**Changed**\n- Trail running shoes, size 9 — 95.00 → 75.00 GBP — out of stock — https://shop.example/trail-9\n\n**No change**\n- nothing\n\n**Could not read**\n- nothing\n\n## Report\n- read 1 page\n\n## Carry forward\n- https://shop.example/trail-9 75.00"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "out of stock"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "nothing-changed",
+   "about": "Every item is at yesterday's price: they are all under No change, and nothing is called a bargain.",
+   "inputs": {
+    "items": [
+     "https://shop.example/lamp 30"
+    ]
+   },
+   "notebook": "- https://shop.example/lamp 35.00",
+   "world": {
+    "web": {
+     "https://shop.example/trail-9": "Trail running shoes — size 9. Was £95.00. Now £79.00. In stock.",
+     "https://shop.example/espresso": "Espresso machine. £229.00. In stock. Also from £199 for the compact model.",
+     "https://shop.example/lamp": "Desk lamp. £35.00. In stock."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://shop.example/lamp"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Below your price**\n- nothing\n\n**Changed**\n- nothing\n\n**No change**\n- Desk lamp — 35.00 GBP\n\n**Could not read**\n- nothing\n\n## Report\n- read 1 page; no change\n\n## Carry forward\n- https://shop.example/lamp 35.00"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "No change",
+      "35.00"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "your price 30"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-sections-fails",
+   "about": "The harness's own check: an answer without its four headings does not deliver, even after its repair pass.",
+   "inputs": {
+    "items": [
+     "https://shop.example/lamp 30"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://shop.example/trail-9": "Trail running shoes — size 9. Was £95.00. Now £79.00. In stock.",
+     "https://shop.example/espresso": "Espresso machine. £229.00. In stock. Also from £199 for the compact model.",
+     "https://shop.example/lamp": "Desk lamp. £35.00. In stock."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://shop.example/lamp"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "The lamp costs 35."
+    },
+    {
+     "say": "Still 35."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

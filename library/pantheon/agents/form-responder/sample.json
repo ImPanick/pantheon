@@ -1,0 +1,24 @@
+{
+ "case": "an-enquiry-is-filed-and-answered-in-draft",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- filed 1 submission, drafted 1 reply",
+ "read": [],
+ "wrote": [
+  "draft_email",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Form”",
+   "ok": true,
+   "detail": "“Form — Ana Ruiz — 27 Oct 2026” is there."
+  },
+  {
+   "check": "at most 1 drafts",
+   "ok": true,
+   "detail": "It made 1 draft."
+  }
+ ],
+ "answer": "Filed \"Form — Ana Ruiz — 27 Oct 2026\" and drafted a reply to ana@example.com.\n\n## Report\n- filed 1 submission, drafted 1 reply"
+}

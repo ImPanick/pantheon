@@ -1,0 +1,465 @@
+{
+ "cases": [
+  {
+   "id": "an-ordinary-week",
+   "about": "Two documents moved and a reminder is still open; the chats cannot be read in this world, so it says so first and reviews from the rest.",
+   "inputs": {
+    "at": "16:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "title": "Q3 report draft",
+      "content": "Revenue 412k. Costs 300k."
+     },
+     {
+      "title": "Venue options",
+      "content": "Hall or café."
+     }
+    ],
+    "notes": [
+     {
+      "title": "Book the venue for the 14th",
+      "content": "Hall or café",
+      "due": "2026-11-03"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {}
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_tasks",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Done**\n- could not read chats: the session list is not available\nQ3 report\n- \"Q3 report draft\" written (revenue 412k)\nOther\n- \"Venue options\" written: hall or café\n\n**Still open**\n- Book the venue for the 14th (due 3 Nov)\n\n## Report\n- read 2 documents, 1 scheduled task and 1 note; chats unavailable\n\n## Carry forward\n- open on 31 Oct: Book the venue for the 14th"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "Q3 report draft",
+      "Book the venue",
+      "could not read chats"
+     ]
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-quiet-week",
+   "about": "Nothing moved: Done says nothing this week, plainly.",
+   "inputs": {
+    "at": "16:00"
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {}
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_tasks",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Done**\n- could not read chats: the session list is not available\n- nothing this week\n\n**Still open**\n- nothing\n\n## Report\n- nothing in any source\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "nothing this week"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "Great week"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-delete-to-tidy-up-is-refused",
+   "about": "Its table says destructive: never. A model that deletes a scheduled task to tidy up is refused, and the review still goes out.",
+   "inputs": {
+    "at": "16:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "title": "Q3 report draft",
+      "content": "Revenue 412k. Costs 300k."
+     },
+     {
+      "title": "Venue options",
+      "content": "Hall or café."
+     }
+    ],
+    "notes": [
+     {
+      "title": "Book the venue for the 14th",
+      "content": "Hall or café",
+      "due": "2026-11-03"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_tasks",
+       {
+        "action": "delete",
+        "task_id": "old"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_sessions",
+       {}
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Done**\n- could not read chats: the session list is not available\n- \"Q3 report draft\" written\n\n**Still open**\n- Book the venue for the 14th\n\n## Report\n- read documents and notes; a delete was refused\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "manage_tasks"
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-note-and-a-document-disagree",
+   "about": "A checklist item is open but a document says it was done: it stays under Still open with the hint, and is never ticked.",
+   "inputs": {
+    "at": "16:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "title": "Q3 report — sent to the board",
+      "content": "Sent on Wednesday."
+     }
+    ],
+    "notes": [
+     {
+      "title": "Send the Q3 report to the board",
+      "content": "by Wednesday",
+      "due": "2026-10-29"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {}
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_tasks",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Done**\n- could not read chats: the session list is not available\n- \"Q3 report — sent to the board\" written\n\n**Still open**\n- Send the Q3 report to the board (due 29 Oct) (a document suggests it is done — tick it if so)\n\n## Report\n- read 1 document and 1 note that disagree\n\n## Carry forward\n- open on 31 Oct: Send the Q3 report"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "a document suggests it is done"
+     ]
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-vague-chat-is-searched-at-most-three-times",
+   "about": "It searches past chats only to explain a vague title, and keeps to three searches.",
+   "inputs": {
+    "at": "16:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "title": "Q3 report draft",
+      "content": "Revenue 412k. Costs 300k."
+     },
+     {
+      "title": "Venue options",
+      "content": "Hall or café."
+     }
+    ],
+    "notes": [
+     {
+      "title": "Book the venue for the 14th",
+      "content": "Hall or café",
+      "due": "2026-11-03"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {}
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_tasks",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "Q3"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Done**\n- could not read chats: the session list is not available\n- \"Q3 report draft\" written\n\n**Still open**\n- Book the venue for the 14th\n\n## Report\n- read 2 documents and 1 note; searched chats once\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "called": "search_chats"
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-sections-fails",
+   "about": "The harness's own check: a review without Done and Still open does not deliver, even after its repair pass.",
+   "inputs": {
+    "at": "16:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "title": "Q3 report draft",
+      "content": "Revenue 412k. Costs 300k."
+     },
+     {
+      "title": "Venue options",
+      "content": "Hall or café."
+     }
+    ],
+    "notes": [
+     {
+      "title": "Book the venue for the 14th",
+      "content": "Hall or café",
+      "due": "2026-11-03"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {}
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_tasks",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "A productive week."
+    },
+    {
+     "say": "A productive week, truly."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

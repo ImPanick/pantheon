@@ -1,0 +1,420 @@
+{
+ "cases": [
+  {
+   "id": "an-ordinary-day",
+   "about": "A meeting happened, a reminder slipped, tomorrow starts early: each goes under its heading; the chats cannot be read in this world and it says so.",
+   "inputs": {
+    "at": "18:00"
+   },
+   "world": {
+    "calendar": [
+     {
+      "summary": "Design review",
+      "start": "today 10:00"
+     },
+     {
+      "summary": "Standup",
+      "start": "tomorrow 08:30",
+      "location": "video call"
+     }
+    ],
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Send the Q3 report",
+      "content": "to the board",
+      "due": "today"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {}
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_tasks",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Done**\n- could not read chats: the session list is not available\n- 10:00 Design review — happened\n\n**Moved**\n- Send the Q3 report (due today)\n\n**Tomorrow**\n- 08:30 Standup — video call (an early start); then nothing else booked\n\n## Report\n- read the calendar, 1 note and tasks; chats unavailable\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "Design review",
+      "Send the Q3 report",
+      "08:30 Standup"
+     ]
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-quiet-day",
+   "about": "Nothing booked and nothing due: plainly nothing, and nothing booked tomorrow.",
+   "inputs": {
+    "at": "18:00"
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {}
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_tasks",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Done**\n- could not read chats: the session list is not available\n- nothing\n\n**Moved**\n- nothing\n\n**Tomorrow**\n- nothing booked tomorrow\n\n## Report\n- nothing in any source\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "nothing booked tomorrow"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "Great job"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-reminder-the-calendar-disagrees-with",
+   "about": "A reminder says call Ana today, the calendar has the call tomorrow: it is under Moved with the calendar's time, and nothing is changed.",
+   "inputs": {
+    "at": "18:00"
+   },
+   "world": {
+    "calendar": [
+     {
+      "summary": "Call Ana",
+      "start": "tomorrow 16:00"
+     }
+    ],
+    "notes": [
+     {
+      "id": "bbbb0001",
+      "title": "Call Ana at 3",
+      "content": "about the contract",
+      "due": "today"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {}
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_tasks",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Done**\n- could not read chats: the session list is not available\n- nothing\n\n**Moved**\n- Call Ana at 3 (calendar has it at 16:00 tomorrow)\n\n**Tomorrow**\n- 16:00 Call Ana; nothing else booked\n\n## Report\n- a reminder and the calendar disagree\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "calendar has it at 16:00 tomorrow"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-reschedules",
+   "about": "Its table says destructive: never. A model that deletes the slipped reminder to tidy up is refused, and the wrap still goes out.",
+   "inputs": {
+    "at": "18:00"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "cccc0001",
+      "title": "Old to-do",
+      "content": "x",
+      "due": "2026-09-01T09:00:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "delete",
+        "id": "cccc0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_sessions",
+       {}
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_tasks",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Done**\n- could not read chats: the session list is not available\n\n**Moved**\n- Old to-do (overdue since 1 Sep)\n\n**Tomorrow**\n- nothing booked tomorrow\n\n## Report\n- a delete was refused\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "manage_notes"
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-calendar-that-fails",
+   "about": "The calendar call fails: Done and Tomorrow say they could not read it, and the wrap still goes out.",
+   "inputs": {
+    "at": "18:00"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "dddd0001",
+      "title": "Book the venue",
+      "content": "",
+      "due": "today"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {}
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "this morning"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_tasks",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Done**\n- could not read chats: the session list is not available\n- could not read the calendar: it refused the date range\n\n**Moved**\n- Book the venue (due today)\n\n**Tomorrow**\n- could not read the calendar: it refused the date range\n\n## Report\n- the calendar failed\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "could not read the calendar",
+      "Book the venue"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-wrap-without-its-sections-fails",
+   "about": "The harness's own check: a wrap without Done, Moved and Tomorrow does not deliver, even after its repair pass.",
+   "inputs": {
+    "at": "18:00"
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {}
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_tasks",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Good day!"
+    },
+    {
+     "say": "Still a good day!"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

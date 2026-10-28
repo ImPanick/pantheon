@@ -1,0 +1,29 @@
+{
+ "case": "a-routine-question-is-drafted-from-the-notes",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 1 message, drafted 1 reply",
+ "read": [
+  "list_emails",
+  "read_email",
+  "manage_notes"
+ ],
+ "wrote": [
+  "manage_memory",
+  "draft_email_reply",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “While you were away”",
+   "ok": true,
+   "detail": "“While you were away — 27 Oct” is there."
+  },
+  {
+   "check": "at most 15 drafts",
+   "ok": true,
+   "detail": "It made 1 draft."
+  }
+ ],
+ "answer": "1 new message: 1 drafted, 0 held.\n\n## Report\n- read 1 message, drafted 1 reply\n\n## Carry forward\n- handled: m1"
+}

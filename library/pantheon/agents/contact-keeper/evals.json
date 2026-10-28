@@ -1,0 +1,429 @@
+{
+ "cases": [
+  {
+   "id": "a-new-correspondent-is-added-after-a-yes",
+   "about": "A new person's signature becomes a contact once the person says yes; the signature's full name wins over the shorter From name.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "A. Ruiz <ana@acme.example>",
+      "subject": "Q3 figures",
+      "body": "Hi, figures attached.\n\n--\nAna Ruiz-López\nHead of Finance, Acme Ltd\n+34 600 111 222"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_contact",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "resolve_contact",
+       {
+        "name": "Ana Ruiz-López"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_contact",
+       {
+        "action": "add",
+        "name": "Ana Ruiz-López",
+        "email": "ana@acme.example",
+        "phones": [
+         "+34 600 111 222"
+        ]
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- Ana Ruiz-López — ana@acme.example — Head of Finance, Acme Ltd, +34 600 111 222\n\n**Updated**\n- nothing\n\n**Maybe the same person**\n- nothing\n\n## Report\n- read 1 message; added 1 contact\n\n## Carry forward\n- read: m1"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "Ana Ruiz-López",
+      "+34 600 111 222"
+     ]
+    },
+    {
+     "status": "success"
+    },
+    {
+     "notebook_contains": "m1"
+    }
+   ]
+  },
+  {
+   "id": "a-no-saves-nothing",
+   "about": "Every change waits for the person: with the yes withheld, the run ends and nothing is saved.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "A. Ruiz <ana@acme.example>",
+      "subject": "Q3 figures",
+      "body": "Hi, figures attached.\n\n--\nAna Ruiz-López\nHead of Finance, Acme Ltd\n+34 600 111 222"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_contact",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_contact",
+       {
+        "action": "add",
+        "name": "Ana Ruiz-López",
+        "email": "ana@acme.example",
+        "phones": [
+         "+34 600 111 222"
+        ]
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- Ana\n\n**Updated**\n- nothing\n\n**Maybe the same person**\n- nothing\n\n## Report\n- added\n\n## Carry forward\n- read: m1"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "added 1 contact"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-newsletter-is-never-a-contact",
+   "about": "A newsletter with a signature-like footer is not a person: nothing is read for it and nothing is added.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "Deals <news@shop.example>",
+      "subject": "Big sale",
+      "body": "20% off.\n--\nThe Shop Team\n+1 800 555 0000"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_contact",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- nothing\n\n**Updated**\n- nothing\n\n**Maybe the same person**\n- nothing\n\n## Report\n- read 1 message; a newsletter, skipped\n\n## Carry forward\n- read: m1"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "read_email"
+    },
+    {
+     "answer_contains": [
+      "Added",
+      "nothing"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-quoted-signature-is-not-the-senders",
+   "about": "A reply quotes someone else's signature below the sender's own: only the sender's details are used.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "Bob Lee <bob@example.com>",
+      "subject": "Re: venue",
+      "body": "Booked.\n--\nBob Lee\nOffice manager\n555-0100\n\n> On Monday Carl Moss wrote:\n> --\n> Carl Moss, CEO, Moss & Co\n> 555-0999"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_contact",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "resolve_contact",
+       {
+        "name": "Bob Lee"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_contact",
+       {
+        "action": "add",
+        "name": "Bob Lee",
+        "email": "bob@example.com",
+        "phones": [
+         "555-0100"
+        ]
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- Bob Lee — bob@example.com — Office manager, 555-0100\n\n**Updated**\n- nothing\n\n**Maybe the same person**\n- nothing\n\n## Report\n- read 1 message; added 1 contact\n\n## Carry forward\n- read: m1"
+    }
+   ],
+   "checks": [
+    {
+     "answer_lacks": [
+      "Carl Moss",
+      "555-0999"
+     ]
+    },
+    {
+     "answer_contains": [
+      "Bob Lee",
+      "555-0100"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "read-mail-is-skipped",
+   "about": "Its notebook lists the message as read: nothing is opened or saved again.",
+   "inputs": {},
+   "notebook": "- read: m1",
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "A. Ruiz <ana@acme.example>",
+      "subject": "Q3 figures",
+      "body": "Hi, figures attached.\n\n--\nAna Ruiz-López\nHead of Finance, Acme Ltd\n+34 600 111 222"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- nothing\n\n**Updated**\n- nothing\n\n**Maybe the same person**\n- nothing\n\n## Report\n- read 0 new messages\n\n## Carry forward\n- read: m1"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "read_email"
+    },
+    {
+     "not_called": "manage_contact"
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-a-contact",
+   "about": "Its table says destructive: never. A model that deletes a contact it thinks is a duplicate is refused before anything is removed.",
+   "inputs": {},
+   "world": {
+    "emails": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_contact",
+       {
+        "action": "delete",
+        "uid": "dup"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Added**\n- nothing\n\n**Updated**\n- nothing\n\n**Maybe the same person**\n- nothing\n\n## Report\n- read 0 messages; a delete was refused\n\n## Carry forward\n- read: nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "manage_contact"
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-sections-fails",
+   "about": "The harness's own check: an answer without its three headings does not deliver, even after its repair pass.",
+   "inputs": {},
+   "world": {
+    "emails": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Contacts are up to date."
+    },
+    {
+     "say": "Still up to date."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

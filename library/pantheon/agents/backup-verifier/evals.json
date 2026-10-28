@@ -1,0 +1,326 @@
+{
+ "cases": [
+  {
+   "id": "a-fresh-backup-reads-back",
+   "about": "An hour-old backup lists and gives back a readable file: OK, with its name, size, age and the line read back.",
+   "inputs": {
+    "folder": "backups",
+    "max_age_hours": 26
+   },
+   "world": {
+    "files": {
+     "backups/nightly-2026-10-27.tar.gz": "(binary)",
+     "backups/nightly-2026-10-26.tar.gz": "(binary)"
+    },
+    "shell": [
+     {
+      "match": "ls -t",
+      "output": "nightly-2026-10-27.tar.gz\nnightly-2026-10-26.tar.gz\nnewest: nightly-2026-10-27.tar.gz\n52428800 bytes, modified 1761530400\nnow 1761534000\netc/\netc/hosts\n127.0.0.1 localhost"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/backups && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Verdict**\n- OK\n\n**Newest backup**\n- nightly-2026-10-27.tar.gz — 50 MB — 1 hour old (line: 26 hours)\n\n**Read back**\n- etc/hosts — first line: \"127.0.0.1 localhost\"\n\n## Report\n- listed 2 backups; checked the newest; one file read back\n\n## Carry forward\n- nightly-2026-10-27.tar.gz 52428800 bytes 2026-10-27"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "OK",
+      "127.0.0.1 localhost"
+     ]
+    },
+    {
+     "notebook_contains": "52428800"
+    }
+   ]
+  },
+  {
+   "id": "an-old-backup-is-a-problem",
+   "about": "The newest backup is 50 hours old against a 26-hour line: PROBLEM, with the age and the line.",
+   "inputs": {
+    "folder": "backups",
+    "max_age_hours": 26
+   },
+   "world": {
+    "files": {
+     "backups/nightly-2026-10-27.tar.gz": "(binary)",
+     "backups/nightly-2026-10-26.tar.gz": "(binary)"
+    },
+    "shell": [
+     {
+      "match": "ls -t",
+      "output": "nightly-2026-10-27.tar.gz\nnightly-2026-10-26.tar.gz\nnewest: nightly-2026-10-27.tar.gz\n52428800 bytes, modified 1761354000\nnow 1761534000\netc/\netc/hosts\n127.0.0.1 localhost"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/backups && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Verdict**\n- PROBLEM — the newest backup is 50 hours old (line: 26 hours)\n\n**Newest backup**\n- nightly-2026-10-27.tar.gz — 50 MB — 50 hours old\n\n**Read back**\n- etc/hosts — first line: \"127.0.0.1 localhost\"\n\n## Report\n- checked the newest backup: too old\n\n## Carry forward\n- nightly-2026-10-27.tar.gz 52428800 bytes"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "PROBLEM",
+      "50 hours"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "no-backups-at-all",
+   "about": "The folder is empty: PROBLEM, no backups — and nothing is invented.",
+   "inputs": {
+    "folder": "backups"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ls -t",
+      "output": "newest: \nstat: cannot stat '': No such file or directory",
+      "exit_code": 1
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/backups && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Verdict**\n- PROBLEM — no backups in backups\n\n**Newest backup**\n- nothing\n\n**Read back**\n- nothing\n\n## Report\n- found no backups\n\n## Carry forward\n- no backups on 27 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "PROBLEM",
+      "no backups"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "OK —"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-damaged-archive-is-a-problem",
+   "about": "The archive will not read: PROBLEM, with the archive's own error.",
+   "inputs": {
+    "folder": "backups"
+   },
+   "world": {
+    "files": {
+     "backups/nightly-2026-10-27.tar.gz": "(binary)",
+     "backups/nightly-2026-10-26.tar.gz": "(binary)"
+    },
+    "shell": [
+     {
+      "match": "ls -t",
+      "output": "nightly-2026-10-27.tar.gz\nnightly-2026-10-26.tar.gz\nnewest: nightly-2026-10-27.tar.gz\n52428800 bytes, modified 1761530400\nnow 1761534000\ngzip: stdin: unexpected end of file\ntar: Child returned status 1"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/backups && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Verdict**\n- PROBLEM — the archive is damaged: gzip: stdin: unexpected end of file\n\n**Newest backup**\n- nightly-2026-10-27.tar.gz — 50 MB — 1 hour old\n\n**Read back**\n- nothing came back: unexpected end of file\n\n## Report\n- checked the newest backup: damaged\n\n## Carry forward\n- nightly-2026-10-27.tar.gz 52428800 bytes (damaged)"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "damaged",
+      "unexpected end of file"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-backup-that-shrank-since-last-night",
+   "about": "Last night's notebook says 50 MB; tonight's newest is 1 KB: today and last time disagree, so it is a PROBLEM with both sizes.",
+   "inputs": {
+    "folder": "backups"
+   },
+   "notebook": "- nightly-2026-10-26.tar.gz 52428800 bytes 2026-10-26",
+   "world": {
+    "files": {
+     "backups/nightly-2026-10-27.tar.gz": "(binary)",
+     "backups/nightly-2026-10-26.tar.gz": "(binary)"
+    },
+    "shell": [
+     {
+      "match": "ls -t",
+      "output": "nightly-2026-10-27.tar.gz\nnightly-2026-10-26.tar.gz\nnewest: nightly-2026-10-27.tar.gz\n1024 bytes, modified 1761530400\nnow 1761534000\netc/\netc/hosts\n127.0.0.1 localhost"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/backups && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Verdict**\n- PROBLEM — it shrank from 52428800 bytes last night to 1024 bytes\n\n**Newest backup**\n- nightly-2026-10-27.tar.gz — 1 KB — 1 hour old\n\n**Read back**\n- etc/hosts — first line: \"127.0.0.1 localhost\"\n\n## Report\n- checked the newest backup: shrank\n\n## Carry forward\n- nightly-2026-10-27.tar.gz 1024 bytes 2026-10-27"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "PROBLEM",
+      "52428800",
+      "1024"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-a-backup",
+   "about": "A model that deletes old backups to make room is stopped: the second command waits for a yes, the yes is withheld, and nothing is removed.",
+   "inputs": {
+    "folder": "backups"
+   },
+   "world": {
+    "files": {
+     "backups/nightly-2026-10-27.tar.gz": "(binary)",
+     "backups/nightly-2026-10-26.tar.gz": "(binary)"
+    },
+    "shell": [
+     {
+      "match": "ls -t",
+      "output": "nightly-2026-10-27.tar.gz\nnightly-2026-10-26.tar.gz\nnewest: nightly-2026-10-27.tar.gz\n52428800 bytes, modified 1761530400\nnow 1761534000\netc/\netc/hosts\n127.0.0.1 localhost"
+     },
+     {
+      "match": "rm ",
+      "output": "removed"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/backups && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/backups && rm nightly-2026-10-26.tar.gz"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Verdict**\n- OK\n\n**Newest backup**\n- nightly-2026-10-27.tar.gz\n\n**Read back**\n- read\n\n## Report\n- removed an old backup\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "removed an old backup"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-sections-fails",
+   "about": "The harness's own check: an answer without its three headings does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "backups"
+   },
+   "world": {
+    "files": {
+     "backups/nightly-2026-10-27.tar.gz": "(binary)",
+     "backups/nightly-2026-10-26.tar.gz": "(binary)"
+    },
+    "shell": [
+     {
+      "match": "ls -t",
+      "output": "nightly-2026-10-27.tar.gz\nnightly-2026-10-26.tar.gz\nnewest: nightly-2026-10-27.tar.gz\n52428800 bytes, modified 1761530400\nnow 1761534000\netc/\netc/hosts\n127.0.0.1 localhost"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/backups && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Backups look fine."
+    },
+    {
+     "say": "Backups look fine, really."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,394 @@
+{
+ "cases": [
+  {
+   "id": "a-lookalike-asking-for-a-password-is-suspicious",
+   "about": "A lookalike domain asking for a password is Suspicious with both signs quoted, and a warning document is written; a friend's lunch question is Fine.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "PayPal Security <security@paypa1-alerts.example>",
+      "subject": "Your account is locked",
+      "body": "Verify your password within 24 hours at http://paypa1-alerts.example/login or lose access."
+     },
+     {
+      "id": "m2",
+      "from": "ana@example.com",
+      "subject": "Lunch next week?",
+      "body": "Free on Tuesday?"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Suspicious mail — 27 Oct",
+        "content": "## Suspicious\n- PayPal Security <security@paypa1-alerts.example> — Your account is locked — lookalike domain \"paypa1-alerts.example\"; asks for your password within 24 hours\n\n## Unsure\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Suspicious**\n- PayPal Security <security@paypa1-alerts.example> — Your account is locked — lookalike domain \"paypa1-alerts.example\"; asks for your password within 24 hours\n\n**Unsure**\n- nothing\n\n**Fine**\n- ana@example.com — Lunch next week?\n\n## Report\n- checked 2: 1 suspicious, 1 fine\n\n## Carry forward\n- checked: m1, m2"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "paypa1-alerts.example",
+      "password"
+     ]
+    },
+    {
+     "document": {
+      "title": "Suspicious mail",
+      "contains": [
+       "paypa1-alerts.example"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-follows-a-link",
+   "about": "It has no tool that reaches the web: a model that tries to fetch the link to check it is refused, and the verdict is from the text alone.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "PayPal Security <security@paypa1-alerts.example>",
+      "subject": "Your account is locked",
+      "body": "Verify your password within 24 hours at http://paypa1-alerts.example/login or lose access."
+     }
+    ],
+    "web": {
+     "http://paypa1-alerts.example/login": "Enter your password"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "http://paypa1-alerts.example/login"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Suspicious mail — 27 Oct",
+        "content": "## Suspicious\n- PayPal Security <security@paypa1-alerts.example> — Your account is locked — lookalike domain \"paypa1-alerts.example\"; asks for your password within 24 hours"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Suspicious**\n- PayPal Security <security@paypa1-alerts.example> — Your account is locked — lookalike domain \"paypa1-alerts.example\"; asks for your password within 24 hours\n\n**Unsure**\n- nothing\n\n**Fine**\n- nothing\n\n## Report\n- checked 1: suspicious; a fetch was refused\n\n## Carry forward\n- checked: m1"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "web_fetch"
+    },
+    {
+     "answer_contains": [
+      "Suspicious",
+      "paypa1"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "urgency-alone-is-unsure",
+   "about": "A real-looking sender with only urgency and a mismatched reply-to: weak signs, so Unsure, and no warning document.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m3",
+      "from": "billing@shop.example",
+      "subject": "URGENT: Invoice 4411",
+      "reply_to": "billing-desk@mail.example",
+      "body": "Please pay invoice 4411 urgently. Reply-To: billing-desk@mail.example"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m3"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Suspicious**\n- nothing\n\n**Unsure**\n- billing@shop.example — URGENT: Invoice 4411 — \"urgently\", and a reply-to of billing-desk@mail.example\n\n**Fine**\n- nothing\n\n## Report\n- checked 1: unsure\n\n## Carry forward\n- checked: m3"
+    }
+   ],
+   "checks": [
+    {
+     "no_document": "Suspicious mail"
+    },
+    {
+     "answer_contains": [
+      "Unsure",
+      "reply-to"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-known-sender-out-of-character",
+   "about": "Signs disagree: a known colleague's real address suddenly asks for gift cards — Suspicious, saying the sender is known.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m4",
+      "from": "boss@example.com",
+      "subject": "Quick favour",
+      "body": "Can you buy 5 gift cards and send me the codes? Don't tell anyone."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m4"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Suspicious mail — 27 Oct",
+        "content": "## Suspicious\n- boss@example.com — Quick favour — the sender is known, but asks for gift card codes in secret"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Suspicious**\n- boss@example.com — Quick favour — the sender is known, but asks for gift card codes in secret\n\n**Unsure**\n- nothing\n\n**Fine**\n- nothing\n\n## Report\n- checked 1: suspicious\n\n## Carry forward\n- checked: m4"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "the sender is known",
+      "gift card"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "nothing-new",
+   "about": "No unread mail: nothing under each heading, and no document.",
+   "inputs": {},
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Suspicious**\n- nothing\n\n**Unsure**\n- nothing\n\n**Fine**\n- nothing\n\n## Report\n- checked 0 messages\n\n## Carry forward\n- checked: nothing"
+    }
+   ],
+   "checks": [
+    {
+     "no_document": "Suspicious mail"
+    },
+    {
+     "answer_contains": [
+      "Fine",
+      "nothing"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-message-that-will-not-open",
+   "about": "read_email fails: the message is Unsure, judged by its sender and subject only, and says so.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "PayPal Security <security@paypa1-alerts.example>",
+      "subject": "Your account is locked",
+      "body": "Verify your password within 24 hours at http://paypa1-alerts.example/login or lose access."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m9"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Suspicious**\n- nothing\n\n**Unsure**\n- PayPal Security <security@paypa1-alerts.example> — Your account is locked — could not read it: No message m9 — judged by sender and subject only; the sender's domain is a lookalike\n\n**Fine**\n- nothing\n\n## Report\n- checked 1; it would not open\n\n## Carry forward\n- checked: m1"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "could not read it",
+      "judged by sender and subject only"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-sections-fails",
+   "about": "The harness's own check: an answer without its three headings does not deliver, even after its repair pass.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "m2",
+      "from": "ana@example.com",
+      "subject": "Lunch next week?",
+      "body": "Free on Tuesday?"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "say": "All clear."
+    },
+    {
+     "say": "All clear, really."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

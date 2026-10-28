@@ -116,6 +116,170 @@ def test_the_world_leaves_the_install_as_it_found_it(tmp_path):
         sys.modules.pop("src._late_in_world", None)
 
 
+def test_a_world_takes_its_folder_with_it(tmp_path):
+    """`P24-27`. Every case made a world folder under the system's temp
+    directory — a SQLite file and a data folder, ~850 KB — and none was ever
+    removed: 434 of them sat in `/tmp` on a disk with 2 GB free, and the
+    roster's evaluation sets run a case per agent many times over. A world the
+    harness made is removed when it ends; a folder the caller handed in is the
+    caller's."""
+    import os
+    with E.isolated() as (factory, data):
+        made = os.path.dirname(data)
+        assert os.path.isdir(made)
+    assert not os.path.exists(made), "the world's folder outlived it"
+    given = tmp_path / "mine"
+    given.mkdir()
+    with E.isolated(str(given)) as (factory, data):
+        pass
+    assert given.is_dir(), "a folder the caller handed in is the caller's to remove"
+
+
+def test_every_path_in_the_install_data_folder_is_the_worlds():
+    """`P24-27`. The world swapped `DATA_DIR` and nothing it had derived at
+    import: `DEEP_RESEARCH_DIR`, `CONTACTS_FILE`, `COOKBOOK_STATE_FILE` and
+    thirty more stayed the install's, so a case's `manage_research` read the
+    install's own research and `manage_contact` wrote its address book. Every
+    module's path inside the install's data folder is the world's while it
+    lasts, and the install's again after."""
+    import os
+    import src.constants as constants
+    import src.tools.research as research
+    before = (constants.DEEP_RESEARCH_DIR, research.DEEP_RESEARCH_DIR, constants.CONTACTS_FILE)
+    with E.isolated() as (factory, data):
+        for path in (constants.DEEP_RESEARCH_DIR, research.DEEP_RESEARCH_DIR, constants.CONTACTS_FILE):
+            assert path.startswith(data + os.sep), path
+        os.makedirs(research.DEEP_RESEARCH_DIR, exist_ok=True)
+        with open(os.path.join(research.DEEP_RESEARCH_DIR, "r1.json"), "w", encoding="utf-8") as fh:
+            json.dump({"query": "heat pumps", "summary": "They work in the cold.", "sources": []}, fh)
+        out = asyncio.run(research.do_manage_research('{"action": "read", "id": "r1"}', owner=E.EVAL_OWNER))
+        assert "They work in the cold." in out["output"]
+    assert (constants.DEEP_RESEARCH_DIR, research.DEEP_RESEARCH_DIR, constants.CONTACTS_FILE) == before
+    # A path kept as a `Path` is a path too: the address book's
+    # (`LOCAL_CONTACTS_FILE`) went on pointing into a world that was gone, so
+    # every later case wrote its contacts into a deleted folder.
+    import routes.contacts.contacts_routes as contacts
+    book, folder = contacts.LOCAL_CONTACTS_FILE, contacts.DATA_DIR
+    with E.isolated() as (factory, data):
+        assert str(contacts.LOCAL_CONTACTS_FILE).startswith(data + os.sep)
+        assert str(contacts.DATA_DIR) == data, "the route's own Path of the data folder is the world's"
+    assert (contacts.LOCAL_CONTACTS_FILE, contacts.DATA_DIR) == (book, folder)
+
+
+def test_a_tool_that_reaches_outside_is_answered_by_the_world_or_refused():
+    """`P24-27`. `search_hf_models` and `trigger_research` are not the world's
+    tools, so a case ran them for real: they ask the install's own server, which
+    on a machine running Pantheon is the person's install (and the hub behind
+    it). A tool that reaches outside the install is the world's to answer: with
+    nothing in the world for it, it is refused in the world's words."""
+    for tool, args in (("trigger_research", '{"topic": "heat pumps"}'),
+                       ("search_hf_models", '{"query": "qwen"}'),
+                       ("chat_with_model", "some-model\nhello")):
+        out = E.World({}).answer(tool, args)
+        assert out is not None, f"{tool} ran for real"
+        assert "nothing in an evaluation leaves it" in json.loads(out[1]["output"])["error"]
+    w = E.World({"research": []})
+    started = json.loads(w.answer("trigger_research", '{"topic": "heat pumps"}')[1]["output"])
+    assert started["exit_code"] == 0 and started["session_id"] and w.research == ["heat pumps"]
+    assert E.World({}).answer("manage_research", '{"action": "list"}') is None, "Pantheon's own store is the real one"
+
+
+def test_a_case_can_start_from_what_the_last_run_carried_forward(monkeypatch):
+    """`P24-27`. Half of what an agent with `memory: own` decides is "new since
+    last time" — the addresses Topic Watcher reported, the versions Release
+    Watcher saw, the uids Inbox Triage sorted — and a case could not say what
+    last time was: every case began with an empty notebook. A case's
+    `notebook` is the hire's notebook when its run starts, read by the run as
+    its notebook always is (data, never instructions)."""
+    m = get_agent(None, "topic-watcher")
+    seen = []
+    real = E.scripted_model
+
+    def spying(script):
+        inner = real(script)
+
+        async def model(candidates, messages, **kw):
+            seen.append(json.dumps(messages))
+            async for chunk in inner(candidates, messages, **kw):
+                yield chunk
+        return model
+    monkeypatch.setattr(E, "scripted_model", spying)
+    case = dict(E.load_evals(m)[1], notebook="- https://news.example/old-story")
+    E.lint_evals({"cases": [case]}, m)
+    (r,) = asyncio.run(E.run_agent(m, cases=[case]))
+    assert any("https://news.example/old-story" in s for s in seen), "the run never saw its notebook"
+    with pytest.raises(E.EvalRefused, match="notebook is the text"):
+        E.lint_evals({"cases": [dict(case, notebook=["a list"])]}, m)
+
+
+def test_a_case_can_start_the_run_as_a_webhook_or_an_event_would(monkeypatch):
+    """`P24-27`. Form Responder's whole job is the form a webhook hands it, and
+    Deep Researcher's second run is told which report finished — and every case
+    started its run with no trigger at all, so neither could be measured doing
+    it. A case's `trigger` is a webhook's payload or an app event's, built by the
+    event bus's own envelope (`build_trigger`), so the run reads it exactly as it
+    would: as data, never instructions."""
+    m = get_agent(None, "topic-watcher")
+    seen = []
+    real = E.scripted_model
+
+    def spying(script):
+        inner = real(script)
+
+        async def model(candidates, messages, **kw):
+            seen.append(json.dumps(messages))
+            async for chunk in inner(candidates, messages, **kw):
+                yield chunk
+        return model
+    monkeypatch.setattr(E, "scripted_model", spying)
+    base = E.load_evals(m)[1]
+    for trigger, words in (({"webhook": {"json": {"name": "Ana", "message": "Do you deliver to Leeds?"}}}, "Do you deliver to Leeds?"),
+                           ({"event": "research_completed", "data": {"session_id": "r7", "topic": "heat pumps"}}, "r7")):
+        seen.clear()
+        case = dict(base, trigger=trigger)
+        E.lint_evals({"cases": [case]}, m)
+        asyncio.run(E.run_agent(m, cases=[case]))
+        assert any(words in s for s in seen), f"the run never saw its trigger: {trigger}"
+    for bad in ({"webhook": "a string"}, {"event": "no_such_event"}, {"both": 1}):
+        with pytest.raises(E.EvalRefused, match="trigger is"):
+            E.lint_evals({"cases": [dict(base, trigger=bad)]}, m)
+
+
+def test_a_world_document_can_be_read_by_the_id_a_script_names():
+    """`P24-27`. `manage_documents` reads a document by its id, and the world
+    gave every seeded document a fresh random one — so a scripted case could
+    list documents but never open one, and no agent that reads the person's
+    documents (36 of them) could be measured doing it. Notes the same: a
+    script could not update or delete one. A world document or note may name
+    its id."""
+    from src.tool_execution import _document_tool_dispatch
+    with E.isolated() as (factory, data):
+        db = factory()
+        E._seed(db, E.EVAL_OWNER, {"documents": [{"id": "d1", "title": "Q3 notes", "content": "Teh quick brown fox."}]}, data)
+        db.close()
+        out = asyncio.run(_document_tool_dispatch("manage_documents", '{"action": "read", "document_id": "d1"}', None, E.EVAL_OWNER))
+        db = factory()
+        E._seed(db, E.EVAL_OWNER, {"notes": [{"id": "n1000000", "title": "Boiler", "content": "Serviced in May."}]}, data)
+        db.close()
+        from src.tools.notes import do_manage_notes
+        note = asyncio.run(do_manage_notes('{"action": "view", "id": "n1000000"}', owner=E.EVAL_OWNER))
+    assert "Teh quick brown fox." in json.dumps(out)
+    assert "Serviced in May." in json.dumps(note)
+
+
+def test_a_world_seeds_finished_research_in_its_own_folder():
+    """`P24-27`. A world's `research` is finished reports in the world's
+    research folder, read by the real `manage_research`."""
+    import src.tools.research as research
+    with E.isolated() as (factory, data):
+        db = factory()
+        E._seed(db, E.EVAL_OWNER, {"research": [{"id": "r9", "query": "heat pumps", "summary": "Cold is fine.",
+                                                 "sources": [{"title": "A", "url": "https://a.example/"}]}]}, data)
+        db.close()
+        out = asyncio.run(research.do_manage_research('{"action": "read", "id": "r9"}', owner=E.EVAL_OWNER))
+        assert "Cold is fine." in out["output"] and "https://a.example/" in out["output"]
+
+
 # ── proof rows and the badge ────────────────────────────────────────────────
 
 def _row(**kw):
@@ -183,5 +347,6 @@ def test_the_hall_carries_each_agents_fit_and_its_page_the_sample(client, monkey
     assert data["fit_model"] == "gpt-oss-20b"
     assert fits["topic-watcher"]["words"] == "Runs well" and fits["morning-brief"]["words"] == "Not measured"
     page = call(client, "GET", "/api/agents/morning-brief").json()
-    assert page["eval_cases"] == 4 and page["sample"]["case"] == "an-ordinary-day"
+    # `P24-27`: Morning Brief's set grew from four cases to seven.
+    assert page["eval_cases"] == 7 and page["sample"]["case"] == "an-ordinary-day"
     assert page["fit"]["badge"] == "not-measured"

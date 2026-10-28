@@ -84,7 +84,8 @@ def test_everyone_sees_the_whole_catalogue_in_sections(client):
     assert sum(s["count"] for s in alice["sections"]) == 173
     assert [f["label"] for f in alice["families"]] == ["Everyday", "Knowledge", "Engineering", "Business"]
     brief = next(a for a in alice["agents"] if a["id"] == "morning-brief")
-    assert brief["starts_on"] == "daily at 07:30" and brief["runbook"].startswith("1. ")
+    # `P24-27`: a runbook opens with the job in a sentence, then its sections.
+    assert brief["starts_on"] == "daily at 07:30" and "## Steps" in brief["runbook"]
 
 
 def test_one_agent_says_what_a_non_admin_will_lack(client, admins):
@@ -103,8 +104,10 @@ def test_one_agent_says_what_a_non_admin_will_lack(client, admins):
 
 def test_a_hire_is_one_task_per_trigger_in_the_persons_zone(client, wf_db):
     h = hire(client, inputs={"at": "06:45"}, tz_name="Australia/Sydney")
+    # `P24-27` moved the file's version; the hire is at whatever the file says.
+    from src.agents.catalogue import get_agent
     assert (h["status"], h["agent_id"], h["version"], h["starts_on"]) == (
-        "on", "morning-brief", "1.0.0", "daily at 06:45")
+        "on", "morning-brief", get_agent(None, "morning-brief").version, "daily at 06:45")
     [task] = tasks_of(wf_db, h["id"])
     assert (task.task_type, task.trigger_type, task.schedule, task.cron_expression) == (
         "llm", "schedule", "cron", "45 6 * * *")
@@ -259,16 +262,17 @@ def test_an_update_to_the_file_waits_for_the_person(client, wf_db, monkeypatch):
 
     def newer(owner, agent_id, **kw):
         m = real(owner, agent_id, **kw)
-        return replace(m, version="1.1.0") if m is not None else None
+        # `P24-27`: a version the shipped file has not reached (it is 1.1.0 now).
+        return replace(m, version="9.9.9") if m is not None else None
 
     import routes.agent_routes as agent_routes
     monkeypatch.setattr(agent_routes, "get_agent", newer)
     res = call(client, "PUT", f"/api/agents/hires/{h['id']}", json={"name": "x"})
     assert res.status_code == 409 and "Update it first" in res.json()["detail"]
     shown = call(client, "GET", f"/api/agents/hires/{h['id']}").json()
-    assert shown["update_to"] == "1.1.0"
+    assert shown["update_to"] == "9.9.9"
     updated = call(client, "PUT", f"/api/agents/hires/{h['id']}", json={"update": True}).json()
-    assert updated["version"] == "1.1.0" and updated["update_to"] is None
+    assert updated["version"] == "9.9.9" and updated["update_to"] is None
 
 
 def test_a_file_that_says_never_cannot_be_loosened_by_a_hire(client, tmp_path):

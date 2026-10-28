@@ -1,7 +1,7 @@
 {
  "case": "a-full-disk-warns",
  "from": "its evaluation, with a scripted model",
- "summary": "- checked 2 machines",
+ "summary": "- checked 2 machines: 0 down, 1 warning, 1 fine",
  "read": [],
  "wrote": [
   "bash"
@@ -11,8 +11,8 @@
   {
    "check": "the answer",
    "ok": true,
-   "detail": "It answered."
+   "detail": "It answered, with Down, Warning, Fine."
   }
  ],
- "answer": "web1 — warn — load 0.3, disk 92%, free 6000 MB\ndb1 — ok — load 0.4, disk 40%, free 5000 MB\n\n## Report\n- checked 2 machines\n\n## Carry forward\n- web1 usual load 0.3\n- db1 usual load 0.4"
+ "answer": "**Down**\n- nothing\n\n**Warning**\n- web1 — warn — disk 92% (line 85%) — load 0.3, disk 92%, available 6000 of 8000 MB\n\n**Fine**\n- db1 — ok — load 0.4, disk 40%, available 5000 of 8000 MB\n\n## Report\n- checked 2 machines: 0 down, 1 warning, 1 fine\n\n## Carry forward\n- web1 usual load 0.3\n- db1 usual load 0.4"
 }

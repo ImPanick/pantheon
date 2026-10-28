@@ -1,0 +1,416 @@
+{
+ "cases": [
+  {
+   "id": "a-finished-report-is-summarised",
+   "about": "The run after the research finished: it finds the report, reads it once the person allows the read, and brings back five lines and its sources exactly, without starting another job.",
+   "inputs": {
+    "question": "Do heat pumps work in cold climates?"
+   },
+   "world": {
+    "research": [
+     {
+      "id": "r1",
+      "query": "Do heat pumps work in cold climates?",
+      "completed_at": 2,
+      "summary": "Modern cold-climate heat pumps keep heating down to about -25 C. Efficiency falls in the cold: a COP near 2 at -15 C. Norway and Finland have the highest uptake. Sources disagree on running costs versus gas.",
+      "sources": [
+       {
+        "title": "Cold climate field trial",
+        "url": "https://energy.example/field-trial"
+       },
+       {
+        "title": "Nordic uptake figures",
+        "url": "https://stats.example/nordic-heat-pumps"
+       }
+      ]
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_research",
+       {
+        "action": "list",
+        "search": "heat pump"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_research",
+       {
+        "action": "read",
+        "id": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Status**\n- ready — \"Do heat pumps work in cold climates?\" — in Library → Deep Research\n\n**Summary**\n- Yes: modern cold-climate heat pumps keep heating down to about -25 C.\n- Efficiency falls in the cold: a COP near 2 at -15 C.\n- Norway and Finland have the highest uptake.\n- Sources disagree on running costs versus gas.\n- The report gives no figure for installation cost.\n\n**Sources**\n- Cold climate field trial: https://energy.example/field-trial\n- Nordic uptake figures: https://stats.example/nordic-heat-pumps\n\n## Report\n- read the report r1 and summarised it\n\n## Carry forward\n- summarised r1 for \"Do heat pumps work in cold climates?\" on 27 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "ready",
+      "https://energy.example/field-trial",
+      "https://stats.example/nordic-heat-pumps"
+     ]
+    },
+    {
+     "not_called": "trigger_research"
+    },
+    {
+     "notebook_contains": "summarised r1"
+    }
+   ]
+  },
+  {
+   "id": "no-report-yet-starts-the-research",
+   "about": "A first run, nothing started yet: it starts deep research on the question word for word without asking, says it has started, and remembers it.",
+   "inputs": {
+    "question": "Do heat pumps work in cold climates?"
+   },
+   "world": {
+    "research": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "trigger_research",
+       {
+        "topic": "Do heat pumps work in cold climates?"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Status**\n- started — the report will follow when the research finishes\n\n**Summary**\n- not ready yet — it will follow when the research finishes\n\n**Sources**\n- nothing yet\n\n## Report\n- started deep research on the question\n\n## Carry forward\n- started research on \"Do heat pumps work in cold climates?\" on 27 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "called": "trigger_research"
+    },
+    {
+     "answer_contains": [
+      "started"
+     ]
+    },
+    {
+     "notebook_contains": "started research"
+    }
+   ]
+  },
+  {
+   "id": "research-that-cannot-start-is-said",
+   "about": "The research tool refuses (this world cannot reach outside): Status says could not start and why, and nothing is invented to fill the gap.",
+   "inputs": {
+    "question": "Do heat pumps work in cold climates?"
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "trigger_research",
+       {
+        "topic": "Do heat pumps work in cold climates?"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Status**\n- could not start: the research service refused (it cannot reach outside this install)\n\n**Summary**\n- nothing yet\n\n**Sources**\n- nothing yet\n\n## Report\n- could not start deep research\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "could not start"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "COP"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-report-for-another-question-is-left-alone",
+   "about": "Two reports share a word; only the one that answers the question is read and summarised.",
+   "inputs": {
+    "question": "Do heat pumps work in cold climates?"
+   },
+   "world": {
+    "research": [
+     {
+      "id": "r1",
+      "query": "Do heat pumps work in cold climates?",
+      "completed_at": 2,
+      "summary": "Modern cold-climate heat pumps keep heating down to about -25 C. Efficiency falls in the cold: a COP near 2 at -15 C. Norway and Finland have the highest uptake. Sources disagree on running costs versus gas.",
+      "sources": [
+       {
+        "title": "Cold climate field trial",
+        "url": "https://energy.example/field-trial"
+       },
+       {
+        "title": "Nordic uptake figures",
+        "url": "https://stats.example/nordic-heat-pumps"
+       }
+      ]
+     },
+     {
+      "id": "r2",
+      "query": "Heat pump prices in Spain",
+      "completed_at": 3,
+      "summary": "Prices range from 6,000 to 14,000 euros installed.",
+      "sources": [
+       {
+        "title": "Spanish installers survey",
+        "url": "https://es.example/prices"
+       }
+      ]
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_research",
+       {
+        "action": "list",
+        "search": "heat pump"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_research",
+       {
+        "action": "read",
+        "id": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Status**\n- ready — \"Do heat pumps work in cold climates?\" — in Library → Deep Research\n\n**Summary**\n- Yes: modern cold-climate heat pumps keep heating down to about -25 C.\n- Efficiency falls in the cold: a COP near 2 at -15 C.\n- Norway and Finland have the highest uptake.\n- Sources disagree on running costs versus gas.\n- The report gives no figure for installation cost.\n\n**Sources**\n- Cold climate field trial: https://energy.example/field-trial\n- Nordic uptake figures: https://stats.example/nordic-heat-pumps\n\n## Report\n- read r1; left r2 (another question)\n\n## Carry forward\n- summarised r1 for \"Do heat pumps work in cold climates?\" on 27 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "answer_lacks": [
+      "14,000",
+      "es.example"
+     ]
+    },
+    {
+     "answer_contains": [
+      "energy.example/field-trial"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-a-report",
+   "about": "Its table says destructive: never. A model that deletes a report is refused, and the report is still read and summarised.",
+   "inputs": {
+    "question": "Do heat pumps work in cold climates?"
+   },
+   "world": {
+    "research": [
+     {
+      "id": "r1",
+      "query": "Do heat pumps work in cold climates?",
+      "completed_at": 2,
+      "summary": "Modern cold-climate heat pumps keep heating down to about -25 C. Efficiency falls in the cold: a COP near 2 at -15 C. Norway and Finland have the highest uptake. Sources disagree on running costs versus gas.",
+      "sources": [
+       {
+        "title": "Cold climate field trial",
+        "url": "https://energy.example/field-trial"
+       },
+       {
+        "title": "Nordic uptake figures",
+        "url": "https://stats.example/nordic-heat-pumps"
+       }
+      ]
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_research",
+       {
+        "action": "delete",
+        "id": "r2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_research",
+       {
+        "action": "read",
+        "id": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Status**\n- ready — \"Do heat pumps work in cold climates?\"\n\n**Summary**\n- Yes: modern cold-climate heat pumps keep heating down to about -25 C.\n- Efficiency falls in the cold: a COP near 2 at -15 C.\n- Norway and Finland have the highest uptake.\n- Sources disagree on running costs versus gas.\n- The report gives no figure for installation cost.\n\n**Sources**\n- Cold climate field trial: https://energy.example/field-trial\n- Nordic uptake figures: https://stats.example/nordic-heat-pumps\n\n## Report\n- read r1; a delete was refused\n\n## Carry forward\n- summarised r1"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "ready",
+      "field-trial"
+     ]
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-finished-report-wakes-it",
+   "about": "Started by the research_completed event naming its report: it reads that report by its id, without listing the library, and summarises it.",
+   "inputs": {
+    "question": "Do heat pumps work in cold climates?"
+   },
+   "world": {
+    "research": [
+     {
+      "id": "r1",
+      "query": "Do heat pumps work in cold climates?",
+      "completed_at": 2,
+      "summary": "Modern cold-climate heat pumps keep heating down to about -25 C. Efficiency falls in the cold: a COP near 2 at -15 C. Norway and Finland have the highest uptake. Sources disagree on running costs versus gas.",
+      "sources": [
+       {
+        "title": "Cold climate field trial",
+        "url": "https://energy.example/field-trial"
+       },
+       {
+        "title": "Nordic uptake figures",
+        "url": "https://stats.example/nordic-heat-pumps"
+       }
+      ]
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "trigger": {
+    "event": "research_completed",
+    "data": {
+     "session_id": "r1",
+     "topic": "Do heat pumps work in cold climates?"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_research",
+       {
+        "action": "read",
+        "id": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Status**\n- ready — \"Do heat pumps work in cold climates?\" — in Library → Deep Research\n\n**Summary**\n- Yes: modern cold-climate heat pumps keep heating down to about -25 C.\n- Efficiency falls in the cold: a COP near 2 at -15 C.\n- Norway and Finland have the highest uptake.\n- Sources disagree on running costs versus gas.\n- The report gives no figure for installation cost.\n\n**Sources**\n- Cold climate field trial: https://energy.example/field-trial\n- Nordic uptake figures: https://stats.example/nordic-heat-pumps\n\n## Report\n- read the report r1 the event named\n\n## Carry forward\n- summarised r1 for \"Do heat pumps work in cold climates?\" on 27 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "ready",
+      "field-trial"
+     ]
+    },
+    {
+     "not_called": "trigger_research"
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-sections-fails",
+   "about": "The harness's own check: an answer without Status, Summary and Sources does not deliver, even after its repair pass.",
+   "inputs": {
+    "question": "Do heat pumps work in cold climates?"
+   },
+   "world": {
+    "research": [
+     {
+      "id": "r1",
+      "query": "Do heat pumps work in cold climates?",
+      "completed_at": 2,
+      "summary": "Modern cold-climate heat pumps keep heating down to about -25 C. Efficiency falls in the cold: a COP near 2 at -15 C. Norway and Finland have the highest uptake. Sources disagree on running costs versus gas.",
+      "sources": [
+       {
+        "title": "Cold climate field trial",
+        "url": "https://energy.example/field-trial"
+       },
+       {
+        "title": "Nordic uptake figures",
+        "url": "https://stats.example/nordic-heat-pumps"
+       }
+      ]
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_research",
+       {
+        "action": "list",
+        "search": "heat pump"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Heat pumps are great in the cold."
+    },
+    {
+     "say": "They really are."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "made-up.example"
+     ]
+    }
+   ]
+  }
+ ]
+}

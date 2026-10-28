@@ -1,0 +1,21 @@
+{
+ "case": "a-week-from-the-pantry-and-the-rules",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- planned 7 nights for 2 people from the pantry note",
+ "read": [
+  "manage_notes"
+ ],
+ "wrote": [
+  "manage_memory",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Meals this week”",
+   "ok": true,
+   "detail": "“Meals this week — 3 Nov” is there."
+  }
+ ],
+ "answer": "\"Meals this week — 3 Nov\" is ready: 6 dinners and a night out. (could not search memory: the memory manager is not available)\n\n## Report\n- planned 7 nights for 2 people from the pantry note\n\n## Carry forward\n- dishes: spinach dal, salmon tray bake, mushroom risotto, bean chilli, pizza, roast chicken"
+}
