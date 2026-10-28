@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "two-receipts-start-a-ledger",
-   "about": "Two receipts in two currencies: a new ledger is written with a row each, the PDF is saved and its place noted, and each currency has its own total.",
+   "about": "Two receipts in two currencies: a new ledger is written with a row each, the PDF is saved into receipts/ beside it and named in its row, and each currency has its own total.",
    "inputs": {
     "folder": "money"
    },
@@ -20,7 +20,13 @@
       "from": "billing@hostly.example",
       "subject": "Invoice INV-42 paid",
       "date": "2026-10-26",
-      "body": "Hostly invoice INV-42. Total charged: $12.00. PDF attached (attachment 0)."
+      "body": "Hostly invoice INV-42. Total charged: $12.00. PDF attached (attachment 0).",
+      "attachments": [
+       {
+        "filename": "invoice-42.pdf",
+        "content": "Hostly invoice INV-42 — 12.00 USD — paid"
+       }
+      ]
      }
     ],
     "files": {
@@ -75,7 +81,8 @@
        "download_attachment",
        {
         "uid": "r2",
-        "index": 0
+        "index": 0,
+        "destination": "money/receipts"
        }
       ]
      ]
@@ -96,13 +103,13 @@
        "write_file",
        {
         "path": "money/ledger.csv",
-        "content": "date,merchant,amount,currency,reference,file,uid\n2026-10-25,Coffee Co,4.50,GBP,#8812,,r1\n2026-10-26,Hostly,12.00,USD,INV-42,data/mail-attachments/INBOX_r2/invoice-42.pdf,r2\n"
+        "content": "date,merchant,amount,currency,reference,file,uid\n2026-10-25,Coffee Co,4.50,GBP,#8812,,r1\n2026-10-26,Hostly,12.00,USD,INV-42,receipts/invoice-42.pdf,r2\n"
        }
       ]
      ]
     },
     {
-     "say": "**Filed**\n- 2026-10-25 — Coffee Co — 4.50 GBP — #8812 — no file\n- 2026-10-26 — Hostly — 12.00 USD — INV-42 — data/mail-attachments/INBOX_r2/invoice-42.pdf\n\n**Not filed**\n- nothing\n\n**Totals**\n- Total this month: 4.50 GBP\n- Total this month: 12.00 USD\n\n## Report\n- filed 2 receipts in money/ledger.csv\n\n## Carry forward\n- filed: r1, r2"
+     "say": "**Filed**\n- 2026-10-25 — Coffee Co — 4.50 GBP — #8812 — no file\n- 2026-10-26 — Hostly — 12.00 USD — INV-42 — receipts/invoice-42.pdf\n\n**Not filed**\n- nothing\n\n**Totals**\n- Total this month: 4.50 GBP\n- Total this month: 12.00 USD\n\n## Report\n- filed 2 receipts in money/ledger.csv\n\n## Carry forward\n- filed: r1, r2"
     }
    ],
    "checks": [
@@ -113,6 +120,14 @@
        "Coffee Co,4.50,GBP",
        "Hostly,12.00,USD",
        "date,merchant"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "money/receipts/invoice-42.pdf",
+      "contains": [
+       "INV-42"
       ]
      }
     },
@@ -140,7 +155,13 @@
       "from": "billing@hostly.example",
       "subject": "Invoice INV-42 paid",
       "date": "2026-10-26",
-      "body": "Hostly invoice INV-42. Total charged: $12.00. PDF attached (attachment 0)."
+      "body": "Hostly invoice INV-42. Total charged: $12.00. PDF attached (attachment 0).",
+      "attachments": [
+       {
+        "filename": "invoice-42.pdf",
+        "content": "Hostly invoice INV-42 — 12.00 USD — paid"
+       }
+      ]
      }
     ],
     "files": {
@@ -189,7 +210,8 @@
        "download_attachment",
        {
         "uid": "r2",
-        "index": 0
+        "index": 0,
+        "destination": "money/receipts"
        }
       ]
      ]
@@ -220,13 +242,13 @@
        "write_file",
        {
         "path": "money/ledger.csv",
-        "content": "date,merchant,amount,currency,reference,file,uid\n2026-10-02,Bakery,50.00,GBP,#77,,r0\n2026-10-26,Hostly,12.00,USD,INV-42,data/mail-attachments/INBOX_r2/invoice-42.pdf,r2\n"
+        "content": "date,merchant,amount,currency,reference,file,uid\n2026-10-02,Bakery,50.00,GBP,#77,,r0\n2026-10-26,Hostly,12.00,USD,INV-42,receipts/invoice-42.pdf,r2\n"
        }
       ]
      ]
     },
     {
-     "say": "**Filed**\n- 2026-10-26 — Hostly — 12.00 USD — INV-42 — data/mail-attachments/INBOX_r2/invoice-42.pdf\n\n**Not filed**\n- nothing\n\n**Totals**\n- Total this month: 50.00 GBP\n- Total this month: 12.00 USD\n\n## Report\n- filed 1 receipt; the ledger had 1 row\n\n## Carry forward\n- filed: r2"
+     "say": "**Filed**\n- 2026-10-26 — Hostly — 12.00 USD — INV-42 — receipts/invoice-42.pdf\n\n**Not filed**\n- nothing\n\n**Totals**\n- Total this month: 50.00 GBP\n- Total this month: 12.00 USD\n\n## Report\n- filed 1 receipt; the ledger had 1 row\n\n## Carry forward\n- filed: r2"
     }
    ],
    "checks": [
@@ -254,11 +276,17 @@
       "from": "billing@hostly.example",
       "subject": "Invoice INV-42 paid",
       "date": "2026-10-26",
-      "body": "Hostly invoice INV-42. Total charged: $12.00. PDF attached (attachment 0)."
+      "body": "Hostly invoice INV-42. Total charged: $12.00. PDF attached (attachment 0).",
+      "attachments": [
+       {
+        "filename": "invoice-42.pdf",
+        "content": "Hostly invoice INV-42 — 12.00 USD — paid"
+       }
+      ]
      }
     ],
     "files": {
-     "money/ledger.csv": "date,merchant,amount,currency,reference,file,uid\n2026-10-26,Hostly,12.00,USD,INV-42,data/mail-attachments/INBOX_r2/invoice-42.pdf,r2\n"
+     "money/ledger.csv": "date,merchant,amount,currency,reference,file,uid\n2026-10-26,Hostly,12.00,USD,INV-42,receipts/invoice-42.pdf,r2\n"
     }
    },
    "script": [

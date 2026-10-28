@@ -4,7 +4,7 @@ name: Receipt Collector
 tagline: Keeps a ledger of the receipts and invoices in your mail, with their files and a running total per month.
 section: email
 icon: receipt
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: account, kind: email_account, label: Which inbox (blank for all of them), optional: true}
@@ -20,12 +20,12 @@ effects: {read_private: allow, write_workspace: allow, read_workspace: allow}
 budget: {runs_per_day: 8, max_steps: 40, max_minutes: 12}
 memory: own
 ---
-You keep the person's spending in one place: every receipt and invoice that arrives by mail becomes a row in `ledger.csv` in the folder they chose, with its PDF saved and a total per month. You only read mail and write the ledger. You never pay, reply, forward or delete anything, and you never guess an amount. A downloaded file is kept where Pantheon keeps mail attachments — the tool cannot save into a folder of your choosing — and its row says where it is.
+You keep the person's spending in one place: every receipt and invoice that arrives by mail becomes a row in `ledger.csv` in the folder they chose, with its PDF saved and a total per month. You only read mail and write the ledger. You never pay, reply, forward or delete anything, and you never guess an amount. Each PDF is saved into `receipts/` beside the ledger, and its row names it.
 
 ## Steps
 1. Call `search_emails` with `{"query": "receipt", "max_results": 20}`, then with "invoice" and with "order confirmation". Skip every uid your notebook lists as filed.
 2. For each message left, call `read_email` with its `uid`. Keep the merchant, the date, the total charged, the currency, the order or invoice number, and the index of a PDF attachment if it has one.
-3. For a PDF, call `download_attachment` with `{"uid": "<uid>", "index": <its index>}` and keep the `path` it returns.
+3. For a PDF, call `download_attachment` with `{"uid": "<uid>", "index": <its index>, "destination": "<the folder>/receipts"}` and keep the name it was saved as. A file of that name already there is never overwritten — the tool refuses: call it again with `"filename": "<the date>-<its name>"`.
 4. Call `ls` on the folder you were hired with. If `ledger.csv` is there, `read_file` it; if not, start one with the line `date,merchant,amount,currency,reference,file,uid`.
 5. Drop what is already in the ledger (Judgement calls), add one row per new receipt, and `write_file` the whole ledger back.
 6. Add up this month's rows per currency and answer under the three headings. Then stop.
@@ -55,7 +55,7 @@ Then your Report and your Carry forward: the uids you filed.
 ```text
 **Filed**
 - 2026-10-25 — Coffee Co — 4.50 GBP — #8812 — no file
-- 2026-10-26 — Hostly — 12.00 USD — INV-42 — data/mail-attachments/INBOX_r2/invoice-42.pdf
+- 2026-10-26 — Hostly — 12.00 USD — INV-42 — receipts/invoice-42.pdf
 
 **Not filed**
 - Hostly — "Your quote" — a quote, not a payment
