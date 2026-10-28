@@ -1623,7 +1623,9 @@ def setup_chat_routes(
         if memory_response:
             return {"response": memory_response}
 
-        foreground_policy = resolve_foreground_model_policy(
+        # `B1598`: the endpoint and fallback rows, read in a worker thread.
+        foreground_policy = await asyncio.to_thread(
+            resolve_foreground_model_policy,
             owner=owner,
             allowed_models=_allowed_models_for_request(request),
         )
@@ -1663,14 +1665,17 @@ def setup_chat_routes(
             except Exception as e:
                 logger.error(f"Research failed: {e}")
 
-        foreground_candidates = build_foreground_model_candidates(
+        # `B1598`: both read the endpoint rows — in a worker thread.
+        foreground_candidates = await asyncio.to_thread(
+            build_foreground_model_candidates,
             sess.endpoint_url,
             sess.model,
             sess.headers,
             owner=owner,
             policy=foreground_policy,
         )
-        route_descriptors = build_foreground_route_descriptors(
+        route_descriptors = await asyncio.to_thread(
+            build_foreground_route_descriptors,
             sess.endpoint_url,
             sess.model,
             sess.headers,
@@ -1704,6 +1709,10 @@ def setup_chat_routes(
                 transcribe=_fallback_transcriber(chat_handler, owner),
             )
         requested_model = sess.model
+        # `B934`'s ceiling asks the endpoint row whether it is local — read in a
+        # worker thread (`B1598`) before the call it sizes.
+        _door_max_tokens = await asyncio.to_thread(
+            local_door_max_tokens, ctx.preset.max_tokens, sess.endpoint_url)
         reply, actual_candidate, actual_model = await llm_call_async_with_route_fallback(
             foreground_candidates,
             request_messages,
@@ -1718,7 +1727,7 @@ def setup_chat_routes(
             # `B934`. The ceiling a person typed for local inference, on a
             # local endpoint — the agent path's rule; with none typed, the
             # preset's number as before. The factory sets each fallback's own.
-            max_tokens=local_door_max_tokens(ctx.preset.max_tokens, sess.endpoint_url),
+            max_tokens=_door_max_tokens,
             # `B1029`'s resend on this door too (`B1087`): a server
             # that refuses the length and states what it can serve is asked
             # for that (`D-2026-10-02-01` §2).
@@ -1736,7 +1745,8 @@ def setup_chat_routes(
         )
         # `B1566`. A fallback that does not hear answered: the card says what
         # it was given instead of the recording.
-        _say_what_the_answering_model_got(
+        await asyncio.to_thread(  # `B1598`: it writes the card's history row
+            _say_what_the_answering_model_got,
             ctx, session, candidate_request_state.get("unheard", {}).get(actual_index))
         requested_route = route_descriptors[0]
         actual_route = route_descriptors[actual_index]
@@ -2093,7 +2103,8 @@ def setup_chat_routes(
                         409,
                         approval_consume_message(_approval_outcome.get("reason")),
                     )
-                if not _mark_tool_approval_resolved(
+                if not await asyncio.to_thread(  # `B1598`: a history row's write
+                    _mark_tool_approval_resolved,
                     sess,
                     tool_approval_id,
                     decision,
@@ -2244,7 +2255,9 @@ def setup_chat_routes(
             last_user_message=message,
         )
         allow_tool_preprocessing = not pre_context_tool_policy.block_all_tool_calls
-        foreground_policy = resolve_foreground_model_policy(
+        # `B1598`: the endpoint and fallback rows, read in a worker thread.
+        foreground_policy = await asyncio.to_thread(
+            resolve_foreground_model_policy,
             owner=owner,
             allowed_models=_allowed_models_for_request(request),
         )

@@ -667,7 +667,10 @@ async def sync_caldav(owner: str) -> dict:
     Returns aggregated counts + per-account errors."""
     from src.secret_storage import decrypt
 
-    accounts = _load_caldav_accounts(owner)
+    # `B1598`. Every database read and address check here is a worker
+    # thread's: the sync and push routes are `async def`, and this ran their
+    # account reads, the event loads and the outbound check on the event loop.
+    accounts = await asyncio.to_thread(_load_caldav_accounts, owner)
     if not accounts:
         return {
             "calendars": 0, "events": 0, "deleted": 0,
@@ -689,7 +692,7 @@ async def sync_caldav(owner: str) -> dict:
             totals["errors"].append(f"{label}: missing URL, username, or password")
             continue
         try:
-            url = validate_caldav_url(url)
+            url = await asyncio.to_thread(validate_caldav_url, url)
             result = await asyncio.to_thread(_sync_blocking, owner, url, user, pw, account_id)
         except ValueError as e:
             result = {"calendars": 0, "events": 0, "deleted": 0, "errors": [str(e)]}
@@ -705,7 +708,7 @@ async def sync_caldav(owner: str) -> dict:
 
 
 async def push_event_create(owner: str, uid: str) -> dict:
-    loaded = _load_event_for_writeback(owner, uid)
+    loaded = await asyncio.to_thread(_load_event_for_writeback, owner, uid)  # `B1598`
     if not loaded:
         return {"ok": True, "skipped": True}
     source, calendar_id, payload = loaded
@@ -718,7 +721,7 @@ async def push_event_update(owner: str, uid: str) -> dict:
 
 
 async def push_event_delete(owner: str, uid: str) -> dict:
-    loaded = _load_delete_for_writeback(owner, uid)
+    loaded = await asyncio.to_thread(_load_delete_for_writeback, owner, uid)  # `B1598`
     if not loaded:
         return {"ok": True, "skipped": True}
     source, calendar_id, payload = loaded
@@ -728,7 +731,7 @@ async def push_event_delete(owner: str, uid: str) -> dict:
 
 async def push_pending_events(owner: str) -> dict:
     result = {"events": 0, "errors": []}
-    uids, delete_uids = _pending_writeback_uids(owner)
+    uids, delete_uids = await asyncio.to_thread(_pending_writeback_uids, owner)  # `B1598`
     for event_uid in uids:
         try:
             out = await push_event_update(owner, event_uid)

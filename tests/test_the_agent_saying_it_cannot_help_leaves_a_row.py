@@ -307,8 +307,13 @@ def test_the_agent_loop_actually_calls_the_detector():
                and n.name == "stream_agent_loop"), None)
     assert fn is not None, "stream_agent_loop is gone; this test has lost its subject"
 
+    # `B1598`: called in a worker thread — `asyncio.to_thread(note_turn_outcome,
+    # tool_results=…, …)` — since it writes a row; either spelling is a call.
     calls = [n for n in ast.walk(fn)
-             if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "note_turn_outcome"]
+             if isinstance(n, ast.Call) and (
+                 getattr(n.func, "id", None) == "note_turn_outcome"
+                 or (getattr(n.func, "attr", None) == "to_thread" and n.args
+                     and getattr(n.args[0], "id", None) == "note_turn_outcome"))]
     assert len(calls) == 1, (
         "the agent loop does not call note_turn_outcome exactly once — a detector "
         "nothing invokes is the state this row found evaluate_turn_regex in")

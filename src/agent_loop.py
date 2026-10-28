@@ -7098,8 +7098,11 @@ async def stream_agent_loop(
     # inherited, never global, and never what a new chat starts at — and
     # `mode_for` lowers it to Manual approve for a bearer token (`B70`) and for
     # a person whose `can_auto_approve` an admin has since taken away.
-    _approval_mode = approval_mode_for(
-        session_id, owner, delegated_credential=bool(delegated_credential),
+    # `B1598`: the chat's mode and the person's privileges are database
+    # reads — in a worker thread, as every read below is, so the loop a skill
+    # test or a chat runs on is not held by them.
+    _approval_mode = await asyncio.to_thread(
+        approval_mode_for, session_id, owner, delegated_credential=bool(delegated_credential),
     )
     _auto_approved = _approval_mode is ApprovalMode.AUTO
     if _auto_approved:
@@ -8366,7 +8369,8 @@ async def stream_agent_loop(
                 _prompt_tool_names(_relevant_tools, disabled_tools, _needs_admin),
                 disabled_tools,
             )["offered"])
-            _record_run_config(suite=_record, session_id=session_id, owner=owner)
+            await asyncio.to_thread(  # `B1598`: an event row's write
+                _record_run_config, suite=_record, session_id=session_id, owner=owner)
         except Exception as _exc:
             logger.debug("[tool-suite] receipt skipped: %s", _exc)
 
@@ -9002,7 +9006,8 @@ async def stream_agent_loop(
     # the approved-action replay, because an approved card for a raise runs
     # first; resolved with the same helpers `agent_run_limits` uses, and settled
     # onto the loop's own lift below, where the loop has always resolved it.
-    _preview_limits = agent_run_limits(endpoint_url, max_rounds, max_tool_calls)
+    _preview_limits = await asyncio.to_thread(  # `B1598`: settings and the endpoint row
+        agent_run_limits, endpoint_url, max_rounds, max_tool_calls)
     _run_limits = RunLimits(
         round_limit=_preview_limits["round_limit"],
         round_limit_source=_preview_limits["round_limit_source"],
@@ -9414,7 +9419,7 @@ async def stream_agent_loop(
     try:
         from src.runtime_limits import set_local_mode, unlimited as _cyber_unlimited
         # `B929`: the product's one answer to "is this local".
-        set_local_mode(is_local_endpoint(endpoint_url))
+        set_local_mode(await asyncio.to_thread(is_local_endpoint, endpoint_url))  # `B1598`
     except Exception:
         def _cyber_unlimited():
             return False
@@ -9436,7 +9441,8 @@ async def stream_agent_loop(
     # `P4-23`. The meter reads the same two caps the loop enforces, after the
     # lift, and the counter the budget check reads — never a second copy of any
     # of them, which is the only way a progress bar cannot lie about a stop.
-    _max_rounds_source = _round_limit_source(_configured_max_rounds, max_rounds, endpoint_url)
+    _max_rounds_source = await asyncio.to_thread(  # `B1598`: the endpoint row
+        _round_limit_source, _configured_max_rounds, max_rounds, endpoint_url)
     # `P7-12`. The holder adopts the lift the loop just resolved; a raise an
     # approved card granted at the top of the run stays on top of it. From here
     # on `max_rounds` / `max_tool_calls` are the holder's, re-read whenever a
@@ -10319,10 +10325,12 @@ async def stream_agent_loop(
                         _requested_temperature if "temperature" in (explicit_params or ())
                         else 0.3,
                         model, explicit_params)
+                    _synth_max_tokens = await asyncio.to_thread(  # `B1598`: the endpoint row
+                        candidate_max_tokens, _preset_max_tokens, endpoint_url)
                     _raw = await llm_call_async(
                         url=endpoint_url, model=model, messages=_synth_messages,
                         headers=headers, temperature=_synth_temperature,
-                        max_tokens=candidate_max_tokens(_preset_max_tokens, endpoint_url),
+                        max_tokens=_synth_max_tokens,
                         max_tokens_floor=_preset_max_tokens,   # `B1029`
                         timeout=60,
                     )
@@ -12094,7 +12102,8 @@ async def stream_agent_loop(
     if not _is_teacher_run and not guide_only and not _awaiting_user:
         try:
             from src.teacher_escalation import note_turn_outcome
-            note_turn_outcome(
+            await asyncio.to_thread(  # `B1598`: it records the turn's outcome
+                note_turn_outcome,
                 tool_results=tool_events,
                 agent_reply=full_response,
                 session_id=session_id,

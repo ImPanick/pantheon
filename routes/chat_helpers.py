@@ -322,8 +322,10 @@ async def auto_name_session(session_manager, sess):
             return
 
         owner = getattr(sess, "owner", None)
-        t_url, t_model, t_headers = resolve_task_endpoint(
-            sess.endpoint_url, sess.model, sess.headers, owner=owner
+        # `B1598`: the endpoint rows, read in a worker thread — this runs on
+        # the event loop, spawned by the chat routes after a reply.
+        t_url, t_model, t_headers = await asyncio.to_thread(
+            resolve_task_endpoint, sess.endpoint_url, sess.model, sess.headers, owner=owner
         )
         if not t_model:
             logger.debug("[auto-name] No model provided, skipping")
@@ -1092,11 +1094,16 @@ async def build_chat_context(
 
     # Normalize model ID. Prefer cached endpoint models so group chat does not
     # re-hit slow local /models endpoints on every participant turn.
-    norm = _normalize_model_id_from_cache(sess) or normalize_model_id(
-        sess.endpoint_url,
-        sess.model,
-        owner=getattr(sess, "owner", None),
-    )
+    # `B1598`: both read the endpoint table, and the second may ask the
+    # server for its models — a worker thread's work, not the event loop's.
+    def _normalized():
+        return _normalize_model_id_from_cache(sess) or normalize_model_id(
+            sess.endpoint_url,
+            sess.model,
+            owner=getattr(sess, "owner", None),
+        )
+
+    norm = await asyncio.to_thread(_normalized)
     if norm:
         sess.model = norm
 
@@ -1161,7 +1168,7 @@ async def build_chat_context(
     # later larger-context candidate unable to recover discarded history.
     _before_compact = list(messages)
     if defer_context_shaping:
-        context_length = get_context_length(sess.endpoint_url, sess.model)
+        context_length = await asyncio.to_thread(get_context_length, sess.endpoint_url, sess.model)  # `B1598`
         was_compacted = False
     else:
         messages, context_length, was_compacted = await maybe_compact(
@@ -1641,13 +1648,17 @@ def run_post_response_tasks(
     if allow_background_extraction and not incognito and not compare_mode and _should_extract and uprefs.get("auto_memory", True):
         from services.memory.memory_extractor import extract_and_store
         from src.task_endpoint import resolve_task_endpoint
-        t_url, t_model, t_headers = resolve_task_endpoint(
-            sess.endpoint_url, sess.model, sess.headers, owner=owner,
-        )
-        _extraction_jobs.append(("memory", extract_and_store(
-            sess, memory_manager, memory_vector,
-            t_url, t_model, t_headers,
-        )))
+
+        async def _memory_job():
+            # `B1598`. The endpoint is read in a worker thread when the job
+            # runs: this function is called on the event loop, from the chat
+            # routes, and the read was a database session there.
+            t_url, t_model, t_headers = await asyncio.to_thread(
+                resolve_task_endpoint, sess.endpoint_url, sess.model, sess.headers, owner=owner,
+            )
+            await extract_and_store(sess, memory_manager, memory_vector, t_url, t_model, t_headers)
+
+        _extraction_jobs.append(("memory", _memory_job()))
 
     # Skill extraction from complex agent runs. Only when the user actually
     # chose agent mode — not a chat we auto-escalated for a notes/calendar
@@ -1679,16 +1690,21 @@ def run_post_response_tasks(
         else:
             from services.memory.skill_extractor import maybe_extract_skill
             from src.task_endpoint import resolve_task_endpoint
-            s_url, s_model, s_headers = resolve_task_endpoint(
-                sess.endpoint_url, sess.model, sess.headers, owner=owner,
-            )
-            logger.debug("[skill-extract] dispatching extractor (model=%s)", s_model)
-            _extraction_jobs.append(("skill", maybe_extract_skill(
-                sess, skills_manager,
-                s_url, s_model, s_headers,
-                agent_rounds, agent_tool_calls,
-                owner=owner,
-            )))
+
+            async def _skill_job():
+                # `B1598`: as the memory job's, off the event loop.
+                s_url, s_model, s_headers = await asyncio.to_thread(
+                    resolve_task_endpoint, sess.endpoint_url, sess.model, sess.headers, owner=owner,
+                )
+                logger.debug("[skill-extract] dispatching extractor (model=%s)", s_model)
+                await maybe_extract_skill(
+                    sess, skills_manager,
+                    s_url, s_model, s_headers,
+                    agent_rounds, agent_tool_calls,
+                    owner=owner,
+                )
+
+            _extraction_jobs.append(("skill", _skill_job()))
 
     if _extraction_jobs:
         _spawn_bg(_run_extraction_jobs_sequentially(session_id, _extraction_jobs))

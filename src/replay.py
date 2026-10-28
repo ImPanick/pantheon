@@ -187,9 +187,15 @@ async def replay(run_id: str, *, model: Optional[str] = None) -> Dict[str, Any]:
     table and the comparison has to be reconstructed by timestamp, which is a
     guess.
     """
+    import asyncio
     from src import events as ev
 
-    plan = rerun_plan(run_id)
+    # `B1598`. Every database read and write here is made in a worker thread
+    # — the plan's message history, the run's config and event rows, the
+    # endpoint — because `POST /api/diagnostics/rerun` awaits this on the event
+    # loop. The run's identity is set here first, on the loop: the threads get
+    # a copy of this context, so their rows carry the replay's run id.
+    plan = await asyncio.to_thread(rerun_plan, run_id)
     result: Dict[str, Any] = {"replay_of": run_id, "plan": plan,
                               "run_id": None, "output": None, "error": None}
     if not plan.get("runnable"):
@@ -211,16 +217,19 @@ async def replay(run_id: str, *, model: Optional[str] = None) -> Dict[str, Any]:
     new_run = ev.current_run_id()
     result["run_id"] = new_run
 
-    ev.record_run_config(
-        sampling=plan.get("sampling") or {},
-        session_id=plan.get("session_id"),
-    )
-    ev.record_event("replay", name=chosen_model, session_id=plan.get("session_id"),
-                    outcome="ok",
-                    detail={"replay_of": run_id,
-                            "drift": plan.get("drift") or [],
-                            "deliberate": deliberate,
-                            "messages": len(plan["messages"])})
+    def _record_start():
+        ev.record_run_config(
+            sampling=plan.get("sampling") or {},
+            session_id=plan.get("session_id"),
+        )
+        ev.record_event("replay", name=chosen_model, session_id=plan.get("session_id"),
+                        outcome="ok",
+                        detail={"replay_of": run_id,
+                                "drift": plan.get("drift") or [],
+                                "deliberate": deliberate,
+                                "messages": len(plan["messages"])})
+
+    await asyncio.to_thread(_record_start)
 
     try:
         from src.llm_core import llm_call_async
@@ -229,7 +238,7 @@ async def replay(run_id: str, *, model: Optional[str] = None) -> Dict[str, Any]:
         return result
 
     try:
-        url, headers = _endpoint_for(chosen_model, plan.get('owner'))
+        url, headers = await asyncio.to_thread(_endpoint_for, chosen_model, plan.get('owner'))
         sampling = plan.get("sampling") or {}
         result["output"] = await llm_call_async(
             url, chosen_model, plan["messages"],
@@ -240,8 +249,8 @@ async def replay(run_id: str, *, model: Optional[str] = None) -> Dict[str, Any]:
         )
     except Exception as e:
         result["error"] = f"{type(e).__name__}: {e}"
-        ev.record_event("replay", name=chosen_model, outcome="error",
-                        detail={"replay_of": run_id, "error": str(e)[:400]})
+        await asyncio.to_thread(ev.record_event, "replay", name=chosen_model, outcome="error",
+                                detail={"replay_of": run_id, "error": str(e)[:400]})
     return result
 
 

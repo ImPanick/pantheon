@@ -611,21 +611,26 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
         Returns before and after memory counts.
         """
         user = _owner(request)
-        fallback_url = fallback_model = None
-        fallback_headers = None
-        if session:
-            try:
-                sess = session_manager.get_session(session)
-                _assert_session_owner(sess, user)
-                fallback_url = sess.endpoint_url
-                fallback_model = sess.model
-                fallback_headers = sess.headers
-            except KeyError:
-                pass
 
-        endpoint_url, model, headers = resolve_task_endpoint(
-            fallback_url, fallback_model, fallback_headers, owner=user
-        )
+        def _endpoint():
+            # `B1598`. The session's history and the endpoint rows are read
+            # here, in a worker thread, not on the event loop.
+            fallback_url = fallback_model = None
+            fallback_headers = None
+            if session:
+                try:
+                    sess = session_manager.get_session(session)
+                    _assert_session_owner(sess, user)
+                    fallback_url = sess.endpoint_url
+                    fallback_model = sess.model
+                    fallback_headers = sess.headers
+                except KeyError:
+                    pass
+            return resolve_task_endpoint(
+                fallback_url, fallback_model, fallback_headers, owner=user
+            )
+
+        endpoint_url, model, headers = await asyncio.to_thread(_endpoint)
 
         if not endpoint_url or not model:
             raise HTTPException(400, "No default model configured — set one in Settings")

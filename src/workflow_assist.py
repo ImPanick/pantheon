@@ -114,9 +114,14 @@ def model_name(owner) -> str | None:
 async def _complete(owner, messages, *, max_tokens, temperature, timeout) -> str:
     """The one seam every model call here goes through: one non-streaming call,
     no tools. Raises `NoModelSetUp`."""
+    import asyncio
     from src.llm_core import llm_call_async
 
-    url, model, headers = _endpoint(owner)
+    # `B1598`. The endpoint rows are read in a worker thread: every caller is
+    # an `async def` route (the workflow drafter, the agent workshop, the
+    # task parser, design extraction), and the read was a database session on
+    # the event loop for each of them.
+    url, model, headers = await asyncio.to_thread(_endpoint, owner)
     return await llm_call_async(url=url, model=model, messages=messages, headers=headers,
                                 temperature=temperature, max_tokens=max_tokens, timeout=timeout)
 

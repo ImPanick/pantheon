@@ -118,15 +118,25 @@ async def test_a_workflow_that_has_a_chat_keeps_it_through_a_test(world):
 # the real agent loop, the model scripted and slower than the page's patience.
 
 class _PageThatLeaves:
-    """A request whose `receive` answers `http.disconnect` after `after` s —
-    what a closed tab or a cancelled fetch looks like to the endpoint."""
+    """A request whose `receive` answers `http.disconnect` once `when()` is
+    true — what a closed tab or a cancelled fetch looks like to the endpoint.
 
-    def __init__(self, after):
-        self.after = after
+    `B1598`. It left after 0.3 s, and the test's premise — the model round had
+    begun by then — held only because the run's start-up reads (approval mode,
+    run limits, the run-config row) blocked the event loop, so the timer could
+    not fire until the model was called. Those reads are a worker thread's
+    now, the loop answers the page on time, and 0.3 s came before the model.
+    The page leaves on the condition the test is about: the round started."""
+
+    def __init__(self, when):
+        self.when = when
 
     async def receive(self):
         import asyncio
-        await asyncio.sleep(self.after)
+        for _ in range(3000):
+            if self.when():
+                break
+            await asyncio.sleep(0.01)
         return {"type": "http.disconnect"}
 
 
@@ -151,7 +161,7 @@ async def test_a_test_whose_page_stopped_waiting_does_not_run_on(world, monkeypa
     seed_workflow(factory, [STEP], [], name="Morning inbox brief")
     test = s.test_workflow_node(_trigger(factory), "Morning inbox brief", STEP)
     with pytest.raises(WorkflowRefused) as told:
-        await _while_the_request_waits(_PageThatLeaves(0.3), test)
+        await _while_the_request_waits(_PageThatLeaves(lambda: rounds["started"] == 1), test)
     assert told.value.status == 503 and told.value.sentence == TEST_REQUEST_GONE
     await asyncio.sleep(2.0)                   # past when the round would have finished
     assert rounds == {"started": 1, "completed": 0}, \

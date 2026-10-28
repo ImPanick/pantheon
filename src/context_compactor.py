@@ -7,6 +7,7 @@ Summarizes older messages via the same LLM, preserving key context.
 """
 
 import json
+import asyncio
 import logging
 import re
 from typing import Any, Dict, List, Optional
@@ -369,7 +370,9 @@ async def maybe_compact(
 
     Returns (messages, context_length, was_compacted).
     """
-    context_length = get_context_length(endpoint_url, model)
+    # `B1598`. A cache miss reads the endpoint table and may ask the server:
+    # a worker thread's work, as `llm_core`'s own reads are (`B1588`).
+    context_length = await asyncio.to_thread(get_context_length, endpoint_url, model)
     used = estimate_tokens(messages)
     pct = (used / context_length) * 100 if context_length else 0
 
@@ -410,7 +413,9 @@ async def maybe_compact(
     )
 
     # Use utility model if configured, otherwise fall back to session model
-    util_url, util_model, util_headers = resolve_endpoint("utility", owner=owner)
+    # `B1598`: the endpoint rows, read in a worker thread — compaction runs
+    # inside the chat routes, on the event loop.
+    util_url, util_model, util_headers = await asyncio.to_thread(resolve_endpoint, "utility", owner=owner)
     compact_url = util_url or endpoint_url
     compact_model = util_model or model
     compact_headers = util_headers if util_url else headers
