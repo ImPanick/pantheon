@@ -18,6 +18,16 @@ draws the app, and a signed-out visit still lands on the login page.
 "Offline" is this file's own server stopped mid-drive (`B1423`, after
 `test_a_kept_page_says_the_server_is_down.py`): Chromium's offline emulation
 does not reach a service worker's own `fetch`, so it measured the live server.
+
+`B1595`. Still red in a full run after `B1567`'s waits; reproduced with the
+server held 90% of each 100 ms (`starve.py`) and with the browser held too,
+three ways, none of them the product's: the signed-out visit raced the app's
+own redirect to `/login` (the page still running, its requests answering 401
+once the cookie went) and was aborted; the old `/static/` registration was
+read before the page's unregister had settled; and a start-up from the
+worker's cache took longer than the 90 s the offline half allowed. Each is a
+wait on its condition now, and a server that goes on answering after SIGTERM
+says what it answered and what its signal state was.
 """
 
 import json
@@ -34,6 +44,16 @@ const SERVER_PGID = Number(process.argv[3]);
 const wait = async (page, fn, ms) => {
   try { await page.waitForFunction(fn, null, { timeout: ms }); return true; } catch (_) { return false; }
 };
+// `B1595`. Asked from here, again and again, so a navigation or a slow
+// evaluation in the page is one more try rather than the end of the wait.
+const until = async (page, fn, ms) => {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    try { if (await page.evaluate(fn)) return true; } catch (_) { /* asked again */ }
+    await new Promise(r => setTimeout(r, 500));
+  }
+  return false;
+};
 // `B1567`, `B1521`'s way: every wait is for the condition the next step needs,
 // named, with room for a machine running the whole suite beside this drive.
 // In such a run `serverStopped` came back false: the server took longer than
@@ -42,12 +62,33 @@ const wait = async (page, fn, ms) => {
 // a busy server, not a stopped one, so it is asked again rather than counted.
 // (Not the process group's exit: the server is the pytest process's child, and
 // a child nobody has reaped yet still answers signal 0.)
+// `B1595`: what it saw is kept beside the answer, so a failure says whether
+// the server went on answering or only went on timing out.
+const downSeen = { answered: 0, timedOut: 0, ms: 0, last: '' };
+// Each try on a connection of its own (`agent: false`): `fetch` kept one alive
+// and asked on it 300 times, and a connection a stopping server still holds
+// is not the question "would it take a new one" (`app.py`'s
+// `GRACEFUL_SHUTDOWN_SECONDS` is the product's half of that finding).
+const probe = () => new Promise((resolve, reject) => {
+  const req = require('http').get(BASE + '/login', { agent: false, timeout: 5000 }, (res) => {
+    res.resume(); resolve(res.statusCode);
+  });
+  req.on('timeout', () => { const e = new Error('timeout'); e.name = 'TimeoutError'; req.destroy(e); });
+  req.on('error', reject);
+});
 const down = async () => {
+  const t0 = Date.now();
   for (let i = 0; i < 300; i++) {
-    try { await fetch(BASE + '/login', { signal: AbortSignal.timeout(5000) }); }
-    catch (e) { if (!e || (e.name !== 'TimeoutError' && e.name !== 'AbortError')) return true; }
+    try {
+      const status = await probe();
+      downSeen.answered += 1; downSeen.last = 'HTTP ' + status;
+    } catch (e) {
+      if (!e || e.name !== 'TimeoutError') { downSeen.ms = Date.now() - t0; downSeen.last = String(e && e.code); return true; }
+      downSeen.timedOut += 1; downSeen.last = e.name;
+    }
     await new Promise(r => setTimeout(r, 200));
   }
+  downSeen.ms = Date.now() - t0;
   return false;
 };
 (async () => {
@@ -76,6 +117,12 @@ const down = async () => {
   await page.goto(BASE + '/', { waitUntil: 'load' });
   await wait(page, () => window.__pantheonAppStarted === true, 180000);
   out.controlled = await wait(page, () => !!navigator.serviceWorker.controller, 240000);
+  // `B1595`. The page registers `/` and then unregisters the old `/static/`
+  // one; the new worker can take the page before that second promise settles,
+  // and on a loaded machine the list was read in between (`['/', '/static/']`).
+  // Wait for the replacement, and read whatever it came to.
+  out.legacyGone = await until(page, async () => (await navigator.serviceWorker.getRegistrations())
+    .every(r => new URL(r.scope).pathname !== '/static/'), 120000);
   out.scopes = await page.evaluate(async () =>
     (await navigator.serviceWorker.getRegistrations()).map(r => new URL(r.scope).pathname).sort());
   out.header = (await page.request.get(BASE + '/static/sw.js')).headers()['service-worker-allowed'] || null;
@@ -97,6 +144,11 @@ const down = async () => {
 
   // Signed out, the server's redirect still wins over the cached app. Asked
   // while the server is up, and then signed back in for the offline half.
+  // `B1595`: off the app first. Still running, the page's own requests answer
+  // 401 once the cookie is gone and it sends itself to `/login` — which, on a
+  // loaded machine, landed in the middle of this navigation and aborted it
+  // (`net::ERR_ABORTED`). The app doing that is right; racing it is not.
+  await page.goto('about:blank');
   await context.clearCookies();
   await page.goto(BASE + '/', { waitUntil: 'load' });
   out.signedOut = new URL(page.url()).pathname;
@@ -116,18 +168,38 @@ const down = async () => {
   // the proof it was the worker. A page error from here on is the app's own
   // requests failing with no server (recorded apart; the worker's job is that
   // the page runs at all).
+  // What the server's signal state was either side of the SIGTERM, kept for
+  // the assertion's message: a server that goes on answering says whether the
+  // signal was pending, caught, or never arrived.
+  const signals = () => {
+    try {
+      return require('fs').readFileSync('/proc/' + SERVER_PGID + '/status', 'utf8').split('\n')
+        .filter(l => /^(State|SigPnd|ShdPnd|SigCgt)/.test(l)).join(' | ');
+    } catch (e) { return String((e && e.code) || e); }
+  };
+  downSeen.before = signals();
   process.kill(-SERVER_PGID, 'SIGTERM');
   out.serverStopped = await down();
+  downSeen.after = signals();
+  out.downSeen = downSeen;
   out.offline = {};
+  // `B1595`: what failed to load offline, kept for the assertions' messages —
+  // a page that does not start says which request the worker could not answer.
+  out.offlineFailed = [];
+  page.on('requestfailed', (r) => out.offlineFailed.push(
+    r.url().replace(BASE, '') + ' ' + ((r.failure() || {}).errorText || '')));
   for (const path of ['/', '/tasks']) {
     try {
-      const res = await page.goto(BASE + path, { waitUntil: 'domcontentloaded', timeout: 90000 });
+      // `B1595`: the online half's room (180 s) offline too — a start-up from
+      // the worker's cache on a machine running the whole suite took longer
+      // than 90 s on `/tasks`, and the drive called that "did not start".
+      const res = await page.goto(BASE + path, { waitUntil: 'domcontentloaded', timeout: 180000 });
       out.offline[path] = {
         fromWorker: !!(res && res.fromServiceWorker()),
         keptCopyNotice: await page.evaluate(() => !!document.getElementById('kept-copy-notice')),
-        drawn: await wait(page, () => !!document.getElementById('tool-workbench-btn'), 90000),
+        drawn: await wait(page, () => !!document.getElementById('tool-workbench-btn'), 180000),
         // `B1508`: the page's JavaScript ran, not just its static HTML.
-        started: await wait(page, () => window.__pantheonAppStarted === true, 90000),
+        started: await wait(page, () => window.__pantheonAppStarted === true, 180000),
       };
     } catch (e) {
       out.offline[path] = String(e && e.message || e).slice(0, 80);
@@ -168,7 +240,8 @@ def test_the_worker_controls_the_app(drive):
 
 def test_an_older_clients_static_registration_is_replaced(drive):
     assert drive["legacyScope"] == "/static/"
-    assert drive["scopes"] == ["/"], drive["scopes"]
+    assert drive["scopes"] == ["/"], (drive["scopes"], "the old registration was still there after 120 s"
+                                      if not drive.get("legacyGone") else "")
 
 
 def test_a_reload_is_served_through_the_worker(drive):
@@ -188,7 +261,7 @@ def test_an_offline_reload_draws_the_app(drive):
     `B1567`: what that rests on, each said, so a failure names it."""
     assert drive["controlled"] is True, "the worker never took the page"
     assert drive["kept"] is True, "the worker holds no copy of the shell"
-    assert drive["serverStopped"] is True, "the server still answered after SIGTERM"
+    assert drive["serverStopped"] is True, ("the server still answered after SIGTERM", drive.get("downSeen"))
     for path in ("/", "/tasks"):
         got = drive["offline"][path]
         assert isinstance(got, dict), (path, got)
@@ -208,7 +281,8 @@ def test_offline_the_apps_javascript_runs(drive):
     missed (`net::ERR_FAILED`, 33 of 36 failed requests). `static/sw.js` now
     looks up with `{ ignoreVary: true }`."""
     for path in ("/", "/tasks"):
-        assert drive["offline"][path]["started"] is True, (path, drive["offline"][path])
+        assert drive["offline"][path]["started"] is True, (path, drive["offline"][path],
+                                                            drive.get("offlineFailed"))
 
 
 def test_a_signed_out_visit_still_lands_on_the_login_page(drive):
