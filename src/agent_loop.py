@@ -127,6 +127,7 @@ from src.agent_tools import (
     MAX_AGENT_ROUNDS,
 )
 from src.active_plan import ActivePlan, bind_active_plan   # `B1415`
+from src.agent_tools.document_tools import TurnDocument, bind_turn_document  # `B1599`
 from src.agent_tools.computer_tools import (
     ACTIONS as _COMPUTER_ACTIONS,
     command_line as _computer_command_line,
@@ -6926,6 +6927,35 @@ def agent_run_limits(endpoint_url: str, max_rounds: int, max_tool_calls: int) ->
     }
 
 
+async def _document_to_seal(holder, active_document, owner):
+    """`B1599`. The document an approval card for `edit_document`,
+    `suggest_document` or `update_document` seals: the editor's document while
+    it is the one this turn has in hand (as before), else the one the turn
+    took up — a hired run's, the document it read — read in a worker thread,
+    owner-scoped. `None` when the turn holds none, which refuses as before."""
+    held = getattr(holder, "id", None)
+    if not held or (active_document is not None and getattr(active_document, "id", None) == held):
+        return active_document
+
+    def _load():
+        from src.database import SessionLocal, Document
+        from src.agent_tools.document_tools import _get_owned_document
+        db = SessionLocal()
+        try:
+            doc = _get_owned_document(db, Document, held, owner, active_only=True)
+            if doc is not None:
+                db.expunge(doc)
+            return doc
+        finally:
+            db.close()
+
+    try:
+        return await asyncio.to_thread(_load)
+    except Exception:
+        logger.warning("Could not read the held document %s to seal an approval", held, exc_info=True)
+        return None
+
+
 async def stream_agent_loop(
     endpoint_url: str,
     model: str,
@@ -8651,6 +8681,11 @@ async def stream_agent_loop(
     # owner's transcript ticked six with none, and the verifier, gated on
     # `_effectful_used` alone, waved that turn through.
     _plan_holder = ActivePlan(approved_plan)
+    # `B1599`. The document this turn has in hand — the one open in the
+    # editor for it, else the one it reads — so a document tool that names
+    # none acts on this turn's document, never on whichever one another turn
+    # last left in the process-wide pointer.
+    _doc_holder = TurnDocument(getattr(_prompt_active_document, "id", None))
     # `B1281`. Set when a round is refused for a tool's picture: every request
     # after it, this turn, carries the pictures in words.
     _pictures_refused = False
@@ -9075,6 +9110,7 @@ async def stream_agent_loop(
             bind_run_limits(_run_limits)
             bind_tool_call_started_by(workload)  # `B1061`
             bind_active_plan(_plan_holder)       # `B1415`
+            bind_turn_document(_doc_holder)      # `B1599`
             try:
                 return await execute_tool_block(
                     approved_block,
@@ -11064,7 +11100,9 @@ async def stream_agent_loop(
                 )
             elif not security_decision.allowed:
                 approval_document = (
-                    active_document
+                    # `B1599`: the document this turn has in hand — a hired
+                    # run's is the one it read, never the person's editor's.
+                    await _document_to_seal(_doc_holder, active_document, owner)
                     if block.tool_type
                     in {"edit_document", "suggest_document", "update_document"}
                     else None
@@ -11208,6 +11246,7 @@ async def stream_agent_loop(
                     bind_run_limits(_run_limits)
                     bind_tool_call_started_by(workload)  # `B1061`
                     bind_active_plan(_plan_holder)       # `B1415`
+                    bind_turn_document(_doc_holder)      # `B1599`
                     try:
                         return await execute_tool_block(
                             block,

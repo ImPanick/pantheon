@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 from src.document_provenance import after_agent_edit  # `B1325`
 from typing import Any, Dict, List, Optional
+import contextvars
 import logging
 import re
 from src.constants import MAX_READ_CHARS
@@ -23,10 +24,66 @@ _active_document_id: Optional[str] = None
 _active_model: Optional[str] = None
 
 
+# `B1599`. **The document a turn has in hand, per turn.** `_active_document_id`
+# above is one pointer for the whole process, set by every turn's prompt build
+# — so a hired agent that read the person's "Q3 letter" and then called
+# `suggest_document` put its suggestions on whatever document the person's
+# chat had open at that moment, or on none (a run that started after the chat
+# cleared it). The loop hands each tool call a holder for its own turn (the
+# `B1415` shape: each call runs in a copy of the loop's context, so a mutable
+# holder is what the next call sees): it starts as the document the editor had
+# open for this turn, and a turn with none takes up the document it reads. The
+# process-wide pointer stays for every caller outside an agent turn, and for
+# the chat route's last-resort lookup (`#1160`).
+class TurnDocument:
+    """The document this agent turn has in hand."""
+
+    def __init__(self, doc_id: Optional[str] = None):
+        self.id = doc_id or None
+        # A turn opened on a document in the editor keeps it: reading another
+        # one for reference does not move its edits away from what the person
+        # is looking at.
+        self.from_editor = bool(doc_id)
+
+
+_turn_document: contextvars.ContextVar = contextvars.ContextVar("pantheon_turn_document", default=None)
+
+
+def bind_turn_document(holder: Optional[TurnDocument]) -> None:
+    """Bind the turn's document holder for the tool call about to run."""
+    _turn_document.set(holder)
+
+
+def document_in_hand(ctx: Optional[dict] = None) -> Optional[str]:
+    """The document a document tool acts on when its call names none: the
+    approved action's sealed target, else this turn's own, else — outside an
+    agent turn only — the process-wide pointer."""
+    sealed = (ctx or {}).get("doc_id")
+    if sealed:
+        return sealed
+    holder = _turn_document.get()
+    if holder is not None:
+        return holder.id
+    return _active_document_id
+
+
+def _took_up(doc_id: Optional[str]) -> None:
+    """A document this turn read becomes the one in hand, unless the turn was
+    opened on one in the editor."""
+    holder = _turn_document.get()
+    if holder is not None and doc_id and not holder.from_editor:
+        holder.id = doc_id
+
+
 def set_active_document(doc_id: Optional[str]):
     """Set the active document ID for document tool execution."""
     global _active_document_id
     _active_document_id = doc_id
+    # `B1599`: inside an agent turn, the turn's own holder moves with it — a
+    # document the turn creates (or falls back to) is the one in hand next.
+    holder = _turn_document.get()
+    if holder is not None:
+        holder.id = doc_id
 
 
 def set_active_model(model: Optional[str]):
@@ -488,7 +545,7 @@ class UpdateDocumentTool:
         import uuid
         from src.database import SessionLocal, Document, DocumentVersion
 
-        target_id = ctx.get("doc_id", None) or _active_document_id
+        target_id = document_in_hand(ctx)  # `B1599`: this turn's, not the process's
         owner = ctx.get("owner")
 
         db = SessionLocal()
@@ -571,7 +628,7 @@ class EditDocumentTool:
         import uuid
         from src.database import SessionLocal, Document, DocumentVersion
 
-        target_id = ctx.get("doc_id", None) or _active_document_id
+        target_id = document_in_hand(ctx)  # `B1599`: this turn's, not the process's
         owner = ctx.get("owner")
 
         edits = parse_edit_blocks(content)
@@ -726,7 +783,7 @@ class SuggestDocumentTool:
         """Create inline suggestions for the active document WITHOUT modifying it."""
         from src.database import SessionLocal, Document
 
-        target_id = ctx.get("doc_id", None) or _active_document_id
+        target_id = document_in_hand(ctx)  # `B1599`: this turn's, not the process's
         owner = ctx.get("owner")
 
         if not target_id:
@@ -1110,6 +1167,7 @@ class ManageDocumentTool:
                 doc = _get_owned_document(db, Document, doc_id, owner, active_only=True)
                 if not doc:
                     return {"error": f"Document '{doc_id}' not found", "exit_code": 1}
+                _took_up(doc.id)  # `B1599`: the document this turn now has in hand
                 body = doc.current_content or ""
                 try:
                     preview_limit = max(1, min(int(args.get("limit", MAX_READ_CHARS)), MAX_READ_CHARS))
@@ -1152,7 +1210,7 @@ class ManageDocumentTool:
                     ids = list(many)
                 else:
                     named = args.get("document_id") or args.get("id") or args.get("uid")
-                    doc_id = named or _active_document_id
+                    doc_id = named or document_in_hand(ctx)  # `B1599`
                     doc = _get_owned_document(db, Document, doc_id, owner, active_only=True) if doc_id else None
                     if not doc and named:
                         return {"error": f"Document '{named}' not found. Nothing was deleted; "
