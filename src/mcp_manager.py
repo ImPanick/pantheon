@@ -431,8 +431,8 @@ _MCP_HTTP_TIMEOUT = 30.0
 _MCP_HTTP_READ_TIMEOUT = 300.0
 
 
-def _mcp_http_client(url: str, *, auth: Any = None):
-    """`B621`. The HTTP client a streamable-HTTP MCP session runs on.
+def _mcp_http_client(url: str, *, auth: Any = None, headers: Any = None, timeout: Any = None):
+    """`B621`. The HTTP client a remote MCP session runs on.
 
     mcp 2.x's transport no longer builds one around an `auth=` it is handed;
     the caller builds the client and the OAuth provider from `src/mcp_oauth.py`
@@ -440,12 +440,22 @@ def _mcp_http_client(url: str, *, auth: Any = None):
     every client this product builds says how it is routed, so an MCP server
     at an address in an operator's `NO_PROXY` range goes direct here as every
     other client's destination does.
+
+    `B1627`: the SSE transport's too. `sse_client` builds its client through
+    `httpx_client_factory(headers=, timeout=, auth=)`, and left to the SDK's
+    default it was a client that said nothing of how it is routed — an SSE
+    server in a range went to the proxy. `_connect_sse` passes this, bound to
+    the URL, so `headers` and `timeout` are the transport's own (its 5 s, and
+    300 s to read the stream); with none given the session gets the 30/300 s
+    above.
     """
     import httpx2
     from src import paced_http
     return httpx2.AsyncClient(
         auth=auth,
-        timeout=httpx2.Timeout(_MCP_HTTP_TIMEOUT, read=_MCP_HTTP_READ_TIMEOUT),
+        headers=headers,
+        timeout=timeout if timeout is not None
+        else httpx2.Timeout(_MCP_HTTP_TIMEOUT, read=_MCP_HTTP_READ_TIMEOUT),
         mounts=paced_http.direct_mounts(url),
     )
 
@@ -1394,12 +1404,16 @@ class McpManager:
     async def _connect_sse(self, server_id: str, name: str, url: str) -> bool:
         """Connect to an MCP server via SSE transport."""
         try:
+            import functools
             from mcp import ClientSession
             from mcp.client.sse import sse_client
             from contextlib import AsyncExitStack
 
             async def _setup(stack):  # `B880` — owned by one task
-                transport = await stack.enter_async_context(sse_client(url))
+                # `B1627`: on the client the streamable-HTTP session runs on,
+                # so a server in an operator's `NO_PROXY` range goes direct.
+                transport = await stack.enter_async_context(sse_client(
+                    url, httpx_client_factory=functools.partial(_mcp_http_client, url)))
                 read_stream, write_stream = transport
                 session = await stack.enter_async_context(ClientSession(read_stream, write_stream))
 

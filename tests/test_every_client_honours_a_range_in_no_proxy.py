@@ -194,6 +194,95 @@ def test_control_without_the_range_the_proxy_is_handed_the_mcp_session(proxy, la
     assert lan.RequestHandlerClass.seen == []
 
 
+# ── a remote SSE MCP server (`B1627`) ────────────────────────────────────────
+#
+# `_connect_sse` called `sse_client(url)` with no client factory, so the SDK
+# built a client that read the environment alone, and an SSE server at an
+# address in a range went to the proxy. Driven end to end: a real SSE MCP
+# server on 127.0.0.2, built with the installed SDK, and the manager's real
+# connect and tool call — the stream's GET and every message POST.
+
+@pytest.fixture
+def sse_lan():
+    """An SSE MCP server on 127.0.0.2 with one tool; `.seen` is every request
+    it was handed, `(method, path)`."""
+    import socket
+    import time
+
+    import uvicorn
+    from mcp.server.mcpserver import MCPServer
+
+    server = MCPServer("b1627-sse-probe")
+
+    @server.tool()
+    def ping() -> str:
+        """Answers pong."""
+        return "pong"
+
+    inner = server.sse_app(host="127.0.0.2")
+    seen = []
+
+    async def app(scope, receive, send):
+        if scope["type"] == "http":
+            seen.append((scope["method"], scope["path"]))
+        await inner(scope, receive, send)
+
+    sock = socket.socket()
+    sock.bind(("127.0.0.2", 0))
+    sock.listen(16)
+    live = uvicorn.Server(uvicorn.Config(app, log_level="warning", access_log=False))
+    thread = threading.Thread(target=lambda: asyncio.run(live.serve(sockets=[sock])), daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 15
+    while not live.started:
+        assert thread.is_alive() and time.monotonic() < deadline, "the SSE server did not start"
+        time.sleep(0.02)
+    live.url = f"http://127.0.0.2:{sock.getsockname()[1]}/sse"
+    live.seen = seen
+    try:
+        yield live
+    finally:
+        live.should_exit = True
+        thread.join(timeout=10)
+        sock.close()
+
+
+def _sse_session(url):
+    """`McpManager._connect_sse`, then the server's tool through `call_tool`."""
+    from src.mcp_manager import McpManager
+
+    async def go():
+        mgr = McpManager()
+        try:
+            try:
+                ok = await asyncio.wait_for(mgr._connect_sse("b1627", "LAN SSE", url), timeout=30)
+            except Exception as exc:  # noqa: BLE001 — the control's 502 is not the question
+                return f"raised {type(exc).__name__}", None
+            return ok, await mgr.call_tool("mcp__b1627__ping", {})
+        finally:
+            await mgr.disconnect_server("b1627")
+
+    return asyncio.run(go())
+
+
+def test_a_remote_sse_mcp_server_in_a_range_is_reached_direct(proxy, sse_lan):
+    ok, result = _sse_session(sse_lan.url)
+    assert ok is True, (ok, proxy.lines)
+    assert result.get("stdout") == "pong", result
+    assert sse_lan.seen[0] == ("GET", "/sse"), sse_lan.seen
+    assert ("POST", "/messages/") in sse_lan.seen, sse_lan.seen
+    assert proxy.lines == []
+
+
+def test_control_without_the_range_the_proxy_is_handed_the_sse_session(proxy, sse_lan,
+                                                                         monkeypatch):
+    _no_range(monkeypatch)
+    ok, _ = _sse_session(sse_lan.url)
+    assert ok is not True
+    assert proxy.lines and proxy.lines[0].startswith(f"GET {sse_lan.url}"), proxy.lines
+    assert sse_lan.seen == []
+
+
 # ── a third party, paced as well as routed ───────────────────────────────────
 
 def _remind(lan, monkeypatch):
