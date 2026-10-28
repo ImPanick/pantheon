@@ -302,6 +302,13 @@ class ToolPolicy:
     #: vault login granted to some agents only is offered to those. `None` is
     #: the plain chat, which every existing caller is.
     agent_id: Optional[str] = None
+    #: `B1606`. True for a hired agent's run (`src.task_scheduler`), which
+    #: nobody watches as it goes: a document tool that names no document and
+    #: has none in hand is refused in a sentence instead of taking the
+    #: person's most recently edited one. False for every other turn — a chat,
+    #: a summoned agent (a person is here, `P24-26`), a workflow step — which
+    #: keeps that fallback (`Law 1`).
+    hired: bool = False
 
     def __post_init__(self) -> None:
         # A list or set handed in becomes a frozenset of names, so the policy a

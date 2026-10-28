@@ -39,20 +39,24 @@ class _TurnDocument:
     """The document this agent turn has in hand. (A part of the document
     tools, not a tool: private, as `P20-03`'s helpers are.)"""
 
-    def __init__(self, doc_id: Optional[str] = None):
+    def __init__(self, doc_id: Optional[str] = None, hired: bool = False):
         self.id = doc_id or None
         # A turn opened on a document in the editor keeps it: reading another
         # one for reference does not move its edits away from what the person
         # is looking at.
         self.from_editor = bool(doc_id)
+        # `B1606`. A hired run's turn (`ToolPolicy.hired`): with nothing in
+        # hand, a write is refused rather than landing on the person's most
+        # recently edited document.
+        self.hired = bool(hired)
 
 
 _turn_document: contextvars.ContextVar = contextvars.ContextVar("pantheon_turn_document", default=None)
 
 
-def new_turn_document(doc_id: Optional[str] = None) -> "_TurnDocument":
+def new_turn_document(doc_id: Optional[str] = None, hired: bool = False) -> "_TurnDocument":
     """A holder for one agent turn, starting with the editor's document."""
-    return _TurnDocument(doc_id)
+    return _TurnDocument(doc_id, hired=hired)
 
 
 def bind_turn_document(holder: Optional["_TurnDocument"]) -> None:
@@ -71,6 +75,28 @@ def document_in_hand(ctx: Optional[dict] = None) -> Optional[str]:
     if holder is not None:
         return holder.id
     return _active_document_id
+
+
+def _nothing_in_hand(target_id: Optional[str], verb: str) -> Optional[Dict]:
+    """`B1606`. The refusal for a hired run's write that has no document to
+    act on, else `None`. `update_document` and `edit_document` fell back to
+    `_most_recent_owned_document` — a rescue for a person's chat, where the
+    document it lands on opens in front of them — so a hired agent that never
+    read or made a document overwrote whichever of the person's documents was
+    edited last, and reported it done. A chat, and a caller with no turn,
+    keep the fallback (`Law 1`)."""
+    holder = _turn_document.get()
+    if holder is None or not holder.hired:
+        return None
+    if target_id:
+        why = f"Document {target_id} is not one this run can {verb}, so nothing was written."
+    else:
+        why = f"This run has no document in hand to {verb}, so nothing was written."
+    return {
+        "error": why + " Read the document first (manage_documents, action \"read\", with its "
+                       "id) or make a new one with create_document, then write to it.",
+        "exit_code": 1,
+    }
 
 
 def _took_up(doc_id: Optional[str]) -> None:
@@ -566,6 +592,9 @@ class UpdateDocumentTool:
             ):
                 return _approved_document_version_error(None, ctx)
             if not doc:
+                refused = _nothing_in_hand(target_id, "update")  # `B1606`
+                if refused:
+                    return refused
                 doc = _most_recent_owned_document(db, Document, owner)
                 if doc:
                     target_id = doc.id
@@ -653,6 +682,9 @@ class EditDocumentTool:
             ):
                 return _approved_document_version_error(None, ctx)
             if not doc:
+                refused = _nothing_in_hand(target_id, "edit")  # `B1606`: the same guess
+                if refused:
+                    return refused
                 # Fallback: most recently updated document. Avoids "no active doc" errors
                 # after server restart or when the agent loses track of which doc to edit.
                 doc = _most_recent_owned_document(db, Document, owner)
