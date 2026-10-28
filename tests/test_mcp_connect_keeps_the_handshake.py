@@ -127,14 +127,13 @@ def connect(monkeypatch):
         async def _two(*a, **k):
             yield ("read", "write")
 
-        @asynccontextmanager
-        async def _three(*a, **k):
-            yield ("read", "write", lambda: "session-id")
-
         monkeypatch.setattr("mcp.client.stdio.stdio_client", _two, raising=True)
         monkeypatch.setattr("mcp.client.sse.sse_client", _two, raising=True)
+        # `B621`: mcp 2.x renamed `streamablehttp_client` to
+        # `streamable_http_client`, and it yields two streams where 1.x yielded
+        # a third, the session-id getter.
         monkeypatch.setattr(
-            "mcp.client.streamable_http.streamablehttp_client", _three, raising=True
+            "mcp.client.streamable_http.streamable_http_client", _two, raising=True
         )
         monkeypatch.setattr("src.mcp_oauth.build_provider",
                             lambda *a, **k: None, raising=True)

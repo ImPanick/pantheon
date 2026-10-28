@@ -681,6 +681,50 @@ _JAPANESE_CODECS = frozenset({"euc_jp", "euc_jis_2004", "euc_jisx0213", "shift_j
                               "shift_jis_2004", "shift_jisx0213", "cp932"})
 
 
+#: `B1617`. The Big5 codecs, as `_canonical_codec` spells them.
+_BIG5_CODECS = frozenset({"big5", "big5hkscs", "cp950"})
+
+#: `B1617`. A run of compatibility jamo.
+_JAMO_RUN = re.compile("[\u3131-\u318e]+")
+
+
+def _reads_as_korean_chat(decoded: str) -> bool:
+    """`B1617`. A Korean reading that is Korean chat and nothing else: three or
+    more jamo, every one a modern letter (U+3131–U+3163) standing in a run of
+    two or more — the abbreviations, laughs and filter-dodging spellings Korean
+    types (`ㄱㅅㄱㅅ`, `ㅋㅋㅋ`, `ㄱㅐㅅㄲㅣ`) — spaces between words, every
+    other letter a KS X 1001 syllable, and nothing `_not_korean` objects to.
+
+    EUC-KR's jamo row is Big5's row of one- to four-stroke characters
+    (`丑今元六`), and its syllable rows land in Big5's level 1, so the detector
+    ranked ``ㄱㅅㄱㅅ ㅈㅅㅈㅅ ㅇㅋㅇㅋ 내일 봐`` Big5 first and its Big5 reading
+    (``丑今丑今 元今元今 仄六仄六 頂橾 瑭``) carries nothing any count here can
+    object to. Asked of the rival instead, it is narrow on purpose: Chinese
+    read as cp949 lands on Hanja, on symbols, on syllables outside KS X 1001
+    and on old jamo — every Big5 character whose trail byte is under 0xA1, or
+    whose lead byte is outside KS X 1001's jamo row (0xA4) and syllable rows
+    (0xB0–0xC8), breaks it — and a jamo standing
+    alone between syllables, which is what scattered 4-stroke characters
+    become, breaks it too. Measured: the 16 sweep cuts this row filed right, no
+    change to the 4,054-cut sweep's other answers or to 634 cuts of
+    traditional Chinese spaced every two characters; on 5,226 cuts of nonsense
+    built only from Big5 characters that read as Korean letters, 10 flip.
+    """
+    jamo = [ch for ch in decoded if _is_compatibility_jamo(ch)]
+    if len(jamo) < 3 or not any(ch.isspace() for ch in decoded):
+        return False
+    if any(not ("\u3131" <= ch <= "\u3163") for ch in jamo):
+        return False
+    if any(len(run) < 2 for run in _JAMO_RUN.findall(decoded)):
+        return False
+    for ch in decoded:
+        if ord(ch) <= 0x7F or _is_compatibility_jamo(ch):
+            continue
+        if not (_is_hangul_syllable(ch) and _in_ks_x_1001(ch)):
+            return False
+    return _not_korean(decoded) == 0
+
+
 def _not_chinese(decoded: str) -> int:
     """`B1596`. A Chinese reading that is Japanese: kana at least half of its
     kana and ideographs together, four or more. GB2312 put hiragana and
@@ -753,6 +797,27 @@ def _rank_encodings(head: bytes) -> list[str]:
         return []
 
 
+def _narrow_runner_up(head: bytes) -> str | None:
+    """`B1616`. The detector's best candidate for *head* that is not UTF-16/32.
+
+    Asked only when the detector's own answer was a wide codec about bytes with
+    no NUL in them, and UTF-8 cannot carry them either (the call site says
+    why) — the guess `B101` throws away, because every byte pair
+    decodes under UTF-16 to *some* code point. Throwing the guess away is right;
+    throwing the ranking away with it was not: EUC-KR chat
+    (``ㅗㅜㅑ 대박 이거 뭐야 ㅋㅋㅋㅋ``, 30 bytes) is ranked
+    ``['utf_16_le', 'cp949', …]`` and was answered `NOT_TEXT` with the right
+    codec sitting second. Only a reordering of the detector's own list, like
+    `_more_plausible_alternative`, and the answer goes through every guard the
+    detector's first answer would have (the short-sample floor, the Korean
+    check, strictly cleaner than UTF-8).
+    """
+    for name in _rank_encodings(head):
+        if not _is_wide_encoding(name):
+            return name
+    return None
+
+
 def _more_plausible_alternative(head: bytes, detected: str) -> str | None:
     """A candidate the detector ranked lower whose decode reads like prose.
 
@@ -787,6 +852,19 @@ def _more_plausible_alternative(head: bytes, detected: str) -> str | None:
         baseline_text = head.decode(canonical_detected, errors="replace")
     except (LookupError, UnicodeError):
         return None
+    if canonical_detected in _BIG5_CODECS:
+        # `B1617`. Nothing about a Big5 reading of Korean jamo chat is wrong on
+        # its face, so the evidence is asked of the detector's Korean candidate.
+        for name, original in canonical:
+            if name not in _KOREAN_CODECS:
+                continue
+            try:
+                rival = head.decode(name)
+            except (LookupError, UnicodeError):
+                continue
+            if _reads_as_korean_chat(rival):
+                logger.debug("preferring %s over %s: it reads as Korean chat", name, detected)
+                return original
     symbols = _word_interior_symbols(baseline_text)
     not_korean = _not_korean(baseline_text)
     not_chinese = _not_chinese(baseline_text) if canonical_detected in _CHINESE_CODECS else 0
@@ -945,8 +1023,19 @@ def describe_text_encoding(head: bytes) -> tuple[str | None, str]:
         # w\xc3\xb6rld\xff" is detected as utf_16_be and decodes to CJK. Real
         # UTF-16 reaches this function with a BOM or with NULs, and both are
         # answered above, so there is nothing here for a wide codec to win.
-        detected = None
-    elif (
+        #
+        # `B1616`: the guess goes, and — when UTF-8 cannot carry these bytes
+        # either, so the answer would otherwise be a refusal — the detector's
+        # runner-up is asked in its place. Over the 4,054-cut CJK sweep this
+        # turned all 20 of its refusals (Korean chat, Korean prose and Big5,
+        # each ranked UTF-16 first) into right answers and changed nothing
+        # else. Only then: UTF-8 with one stray byte has been ranked UTF-16
+        # first too, and its runner-up is a single-byte codec that decodes it
+        # "cleaner" by turning every accented letter into two — the UTF-8 floor
+        # below, one U+FFFD, is the better answer there, and stays it
+        # (`test_a_detector_guess_is_taken_only_when_it_decodes_better`).
+        detected = _narrow_runner_up(head) if utf8_ratio > _MAX_REPLACEMENT_RATIO else None
+    if (
         detected
         and _is_multibyte_encoding(detected)
         and len(head) < _MIN_MULTIBYTE_SAMPLE

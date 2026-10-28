@@ -14,11 +14,11 @@ import os
 import sys
 from pathlib import Path
 
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from src.mcp_tool_server import serve_stdio, tool_server  # noqa: E402
 
 # `B131`, then `B1118`. `src.agent_tools` is imported before `src.tool_schemas`
 # here, and since `B1118` the order no longer matters: the facade re-exports
@@ -37,7 +37,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import src.agent_tools  # noqa: F401 — kept by choice since `B1118`, see above
 from src.tool_schemas import mcp_tool_schema  # noqa: E402 — needs the path above
 
-server = Server("rag")
 
 _rag_manager = None
 _personal_docs_manager = None
@@ -83,7 +82,6 @@ def _ensure_init():
         pass
 
 
-@server.list_tools()
 async def list_tools() -> list[Tool]:
     # `B74`. Derived, never retyped. The copy that used to live here was
     # missing the sentence `B66` added to the schema register to make this
@@ -93,7 +91,6 @@ async def list_tools() -> list[Tool]:
     return [Tool(**mcp_tool_schema("manage_rag"))]
 
 
-@server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     if name != "manage_rag":
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
@@ -246,9 +243,13 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         return [TextContent(type="text", text=f"Error: Unknown action '{action}'. Use: list, add_directory, remove_directory, add_text, search")]
 
 
+# `B621`: mcp 2.x has no `@server.list_tools()` / `@server.call_tool()`; the
+# two functions above are handed to the SDK in `src/mcp_tool_server.py`.
+server = tool_server("rag", list_tools, call_tool)
+
+
 async def run():
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream, server.create_initialization_options())
+    await serve_stdio(server)
 
 
 if __name__ == "__main__":

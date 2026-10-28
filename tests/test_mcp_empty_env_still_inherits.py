@@ -38,7 +38,10 @@ if str(ROOT) not in sys.path:
 
 from src.mcp_manager import McpManager  # noqa: E402
 
-pytest.importorskip("mcp.server.fastmcp")
+# `B621`: mcp 2.x renamed `FastMCP` to `MCPServer`, and `mcp.server.fastmcp`
+# raises on import — so this guard, which named the old module, silently
+# skipped every case here on 2.x rather than failing.
+pytest.importorskip("mcp.server.mcpserver")
 
 # The four names this row is about, plus one arbitrary sentinel to show the
 # rule is about inheritance and not about a hard-coded allowlist of our own.
@@ -47,9 +50,9 @@ _PROBED = ("PYTHONPATH", "HTTPS_PROXY", "NO_PROXY", "NPM_CONFIG_CACHE",
 
 _SERVER = '''
 import json, os
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
-app = FastMCP("env-probe")
+app = MCPServer("env-probe")
 
 
 @app.tool()

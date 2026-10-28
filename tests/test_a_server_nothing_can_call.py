@@ -89,13 +89,13 @@ def _server_tool(name):
 
 
 def test_the_two_forms_offer_the_same_actions():
-    served = _server_tool("manage_memory").inputSchema
+    served = _server_tool("manage_memory").input_schema   # `B621`: mcp 2.x's name
     native = _function_schema("manage_memory")["parameters"]
     assert served["properties"]["action"]["enum"] == native["properties"]["action"]["enum"]
 
 
 def test_the_two_forms_take_the_same_parameters():
-    served = _server_tool("manage_memory").inputSchema
+    served = _server_tool("manage_memory").input_schema   # `B621`: mcp 2.x's name
     native = _function_schema("manage_memory")["parameters"]
     assert set(served["properties"]) == set(native["properties"])
     assert set(served["required"]) == set(native["required"])

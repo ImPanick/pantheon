@@ -394,8 +394,14 @@ def _plain(value: Any) -> Any:
     """
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
-    for attr, kwargs in (("model_dump", {"exclude_none": True, "mode": "json"}),
-                         ("dict", {"exclude_none": True})):
+    # `B621`: `by_alias`, so the keys are the protocol's own names. mcp 2.x moved
+    # its models' fields to snake_case and kept camelCase only as aliases for
+    # the wire; dumped without it, a tool's annotations came back as
+    # `read_only_hint` and `mcp_tool_is_readonly`, which reads `readOnlyHint`,
+    # saw nothing — and the browser, which gets this dict, saw a key the spec
+    # does not have.
+    for attr, kwargs in (("model_dump", {"exclude_none": True, "mode": "json", "by_alias": True}),
+                         ("dict", {"exclude_none": True, "by_alias": True})):
         fn = getattr(value, attr, None)
         if not callable(fn):
             continue
@@ -416,6 +422,49 @@ def _plain(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_plain(v) for v in value]
     return str(value)
+
+
+# The timeouts mcp 1.x's `streamablehttp_client` defaulted to, and 2.x's
+# `create_mcp_http_client` still does: 30 s to connect and write, 300 s to wait
+# on a response stream a server may hold open.
+_MCP_HTTP_TIMEOUT = 30.0
+_MCP_HTTP_READ_TIMEOUT = 300.0
+
+
+def _mcp_http_client(url: str, *, auth: Any = None):
+    """`B621`. The HTTP client a streamable-HTTP MCP session runs on.
+
+    mcp 2.x's transport no longer builds one around an `auth=` it is handed;
+    the caller builds the client and the OAuth provider from `src/mcp_oauth.py`
+    rides on it — `httpx2`, which the SDK's transports moved onto. `B1014`:
+    every client this product builds says how it is routed, so an MCP server
+    at an address in an operator's `NO_PROXY` range goes direct here as every
+    other client's destination does.
+    """
+    import httpx2
+    from src import paced_http
+    return httpx2.AsyncClient(
+        auth=auth,
+        timeout=httpx2.Timeout(_MCP_HTTP_TIMEOUT, read=_MCP_HTTP_READ_TIMEOUT),
+        mounts=paced_http.direct_mounts(url),
+    )
+
+
+def _sdk_field(obj: Any, field: str, wire: str) -> Any:
+    """`B621`. A field of an SDK object by its mcp 2.x name, else by the
+    protocol's own (wire) name.
+
+    mcp 2.x renamed every model attribute to snake_case — `is_error`,
+    `input_schema`, `server_info`, `protocol_version`, `mime_type` — and kept
+    the camelCase only as a pydantic alias for the wire, so
+    `getattr(result, "isError", False)` against a 2.x result is `False` for
+    every result: each failing tool would have reached the model as a success,
+    with nothing raised. The wire name is read second because an object that
+    did not come from the SDK — a test double, a caller's own record — carries
+    the names the protocol uses.
+    """
+    value = getattr(obj, field, None)
+    return value if value is not None else getattr(obj, wire, None)
 
 
 def _normalize_annotations(ann: Any) -> Optional[Dict[str, Any]]:
@@ -463,7 +512,7 @@ def summarize_initialize_result(result: Any) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     if result is None:
         return out
-    info = _plain(getattr(result, "serverInfo", None))
+    info = _plain(_sdk_field(result, "server_info", "serverInfo"))
     if isinstance(info, dict):
         name = info.get("name")
         version = info.get("version")
@@ -474,7 +523,7 @@ def summarize_initialize_result(result: Any) -> Dict[str, Any]:
             out["server_version"] = _sanitize_schema_token(version, 40)
         if isinstance(title, str) and title.strip():
             out["server_title"] = _sanitize_schema_token(title, 80)
-    proto = getattr(result, "protocolVersion", None)
+    proto = _sdk_field(result, "protocol_version", "protocolVersion")
     if isinstance(proto, str) and proto.strip():
         out["protocol_version"] = _sanitize_schema_token(proto, 40)
     caps = _plain(getattr(result, "capabilities", None))
@@ -510,7 +559,7 @@ def _tool_entries(tools_result: Any) -> List[Dict[str, Any]]:
         entries.append({
             "name": tool.name,
             "description": tool.description or "",
-            "input_schema": getattr(tool, "inputSchema", None) or {},
+            "input_schema": _sdk_field(tool, "input_schema", "inputSchema") or {},
             # MCP tool annotations (readOnlyHint / destructiveHint) drive
             # plan-mode read-only gating. Absent on many servers, so we fall
             # back to a name heuristic in mcp_tool_is_readonly().
@@ -552,8 +601,12 @@ MCP_CALL_TIMEOUT_MAX_SECONDS = 600.0
 # advisory.
 _MCP_CALL_TIMEOUT_GRACE = 2.0
 
-# The SDK spells its read timeout as an `McpError` carrying HTTP 408.
-_MCP_TIMEOUT_CODE = 408
+# The SDK spells its read timeout as an `MCPError` carrying JSON-RPC
+# `REQUEST_TIMEOUT`, -32001 (`mcp_types.REQUEST_TIMEOUT`). `B621`: mcp 1.x used
+# HTTP's 408 here, and a 2.x timeout carrying -32001 was not recognised as one —
+# a hung tool came back as an ordinary failure, and a built-in server's was
+# retried, spending the deadline twice (`McpCallTimeout`).
+_MCP_TIMEOUT_CODE = -32001
 
 # `B888`. How long one enabled server may take to connect at boot
 # (`connect_all_enabled` → `_connect_with_timeout`) before it is recorded as
@@ -602,7 +655,7 @@ def _is_sdk_read_timeout(exc: BaseException) -> bool:
 
     Duck-typed rather than imported: every other reference to `mcp` in this
     module is a lazy, guarded import because the package is optional, and a
-    top-level `from mcp.shared.exceptions import McpError` here would undo
+    top-level `from mcp.shared.exceptions import MCPError` here would undo
     that for the one path that must work when a server misbehaves.
     """
     return getattr(getattr(exc, "error", None), "code", None) == _MCP_TIMEOUT_CODE
@@ -1405,7 +1458,7 @@ class McpManager:
         """Connect to a Streamable HTTP MCP server (with automatic OAuth)."""
         try:
             from mcp import ClientSession
-            from mcp.client.streamable_http import streamablehttp_client
+            from mcp.client.streamable_http import streamable_http_client
             from contextlib import AsyncExitStack
             from src.mcp_oauth import build_provider, clear_auth_url
 
@@ -1420,8 +1473,15 @@ class McpManager:
             provider = build_provider(server_id, url, on_redirect=_on_redirect)
 
             async def _setup(stack):  # `B880` — owned by one task
-                transport = await stack.enter_async_context(streamablehttp_client(url, auth=provider))
-                read_stream, write_stream, _get_session_id = transport
+                # `B621`. mcp 1.x took the provider as `streamablehttp_client(url,
+                # auth=provider)`; 2.x renamed the transport and dropped `auth=`
+                # — it takes the HTTP client itself, and the provider rides on
+                # that. Entered here, so it closes with the session's stack.
+                http_client = await stack.enter_async_context(
+                    _mcp_http_client(url, auth=provider))
+                transport = await stack.enter_async_context(
+                    streamable_http_client(url, http_client=http_client))
+                read_stream, write_stream = transport
                 session = await stack.enter_async_context(ClientSession(read_stream, write_stream))
                 handshake = summarize_initialize_result(await session.initialize())
                 tools_result = await session.list_tools()
@@ -1670,15 +1730,18 @@ class McpManager:
         """Send one `tools/call`, asking the SDK to bound the response wait.
 
         `read_timeout_seconds` is the SDK's own mechanism (`Law 14`): it stops
-        waiting on the response stream and raises `McpError(408)` rather than
+        waiting on the response stream and raises `MCPError(-32001)` rather than
         cancelling the caller mid-await, which keeps the session usable for the
         next call. A session object that does not take the argument — an older
         SDK, a test double — still gets the hard bound in `_do_call`.
         """
         if _session_takes_read_timeout(session):
-            from datetime import timedelta
+            # `B621`: seconds as a float. mcp 1.x took a `timedelta`; 2.x adds
+            # this to a float clock, and a `timedelta` raised `TypeError` on
+            # every call — measured as `unsupported operand type(s) for +:
+            # 'float' and 'datetime.timedelta'` on all of them.
             return await session.call_tool(
-                tool_name, arguments, read_timeout_seconds=timedelta(seconds=deadline)
+                tool_name, arguments, read_timeout_seconds=float(deadline)
             )
         return await session.call_tool(tool_name, arguments)
 
@@ -1716,14 +1779,14 @@ class McpManager:
                 output_parts.append(content.text)
             elif getattr(content, 'type', '') == 'image' and hasattr(content, 'data'):
                 # Image content (e.g. Playwright screenshots)
-                mime = getattr(content, 'mimeType', 'image/png')
+                mime = _sdk_field(content, "mime_type", "mimeType") or "image/png"
                 images.append({"data": content.data, "mimeType": mime})
                 output_parts.append(f"[Screenshot captured ({mime})]")
             elif hasattr(content, 'data'):
                 output_parts.append(str(content.data))
 
         output = "\n".join(output_parts)
-        is_error = getattr(result, 'isError', False)
+        is_error = bool(_sdk_field(result, "is_error", "isError"))
 
         result_dict = {
             "stdout": output if not is_error else "",

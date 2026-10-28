@@ -11,11 +11,11 @@ import sys
 import uuid
 from pathlib import Path
 
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from src.mcp_tool_server import serve_stdio, tool_server  # noqa: E402
 
 from src.constants import GENERATED_IMAGES_DIR
 # `B1357` / `D-2026-10-14-01` §1: one register, and this server derives
@@ -27,17 +27,13 @@ from src.paced_http import guard_environment_reader
 # Pantheon started it with — an IPv6 range in NO_PROXY would stop it being built.
 guard_environment_reader()
 
-server = Server("image_gen")
 
-
-@server.list_tools()
 async def list_tools() -> list[Tool]:
     return [
         Tool(**mcp_tool_schema("generate_image"))
     ]
 
 
-@server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     if name != "generate_image":
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
@@ -173,9 +169,13 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         return [TextContent(type="text", text=f"Error: {e}")]
 
 
+# `B621`: mcp 2.x has no `@server.list_tools()` / `@server.call_tool()`; the
+# two functions above are handed to the SDK in `src/mcp_tool_server.py`.
+server = tool_server("image_gen", list_tools, call_tool)
+
+
 async def run():
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream, server.create_initialization_options())
+    await serve_stdio(server)
 
 
 if __name__ == "__main__":

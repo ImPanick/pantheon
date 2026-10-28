@@ -664,3 +664,78 @@ def test_koreans_middle_dot_is_not_a_jamo_glued_after_a_word(text):
     body = text.encode("euc_kr")
     assert dp._not_korean(text) == 0
     assert body.decode(sniff_text_encoding(body)) == text
+
+
+# ── `B1616`: a wide first guess, and the runner-up nobody asked ─────────────
+#
+# A UTF-16/32 guess about bytes with no NUL in them is thrown away (`B101`);
+# the detector's runner-up was thrown away with it, and Korean chat whose
+# runner-up was cp949 came back `NOT_TEXT`. Every refusal in the 4,054-cut
+# sweep was this shape — Korean chat, Korean prose and Big5 — and all 20 now
+# read right; nothing else in the sweep changed.
+
+RANKED_WIDE_FIRST = [
+    ("euc_kr", "ㅗㅜㅑ 대박 이거 뭐야 ㅋㅋㅋㅋ"),   # the row's own line
+    ("cp949", "데이터베이스 연결 시간이"),
+    ("big5", "登入失敗，請確認您的密碼"),
+]
+
+
+@pytest.mark.parametrize("encoding,text", RANKED_WIDE_FIRST)
+def test_a_wide_first_guess_does_not_hide_the_runner_up(tmp_path, encoding, text):
+    """`B1616`'s `Verify:` — it decodes as itself, not `NOT_TEXT`."""
+    body = text.encode(encoding)
+    assert len(body) >= dp._MIN_MULTIBYTE_SAMPLE and b"\x00" not in body
+    assert dp._is_wide_encoding(dp._detect_encoding(body)), (
+        "the detector no longer guesses UTF-16 first here — this measures nothing")
+    found, reason = dp.describe_text_encoding(body)
+    assert (found, reason) != (None, dp.NOT_TEXT)
+    assert body.decode(found) == text
+    assert decode_text_file(_write(tmp_path, "chat.txt", body)) == text
+
+
+def test_the_wide_guess_itself_is_still_never_taken():
+    """`B101` stands: the runner-up is asked *instead of* the wide codec."""
+    body = "ㅗㅜㅑ 대박 이거 뭐야 ㅋㅋㅋㅋ".encode("euc_kr")
+    assert not dp._is_wide_encoding(sniff_text_encoding(body))
+    assert dp._narrow_runner_up(body) and not dp._is_wide_encoding(dp._narrow_runner_up(body))
+
+
+# ── `B1617`: Korean jamo chat, ranked Big5 first ─────────────────────────────
+#
+# EUC-KR's jamo row is Big5's row of one- to four-stroke characters, so chat
+# that types its abbreviations and laughs in jamo reads in Big5 as clean
+# hanzi (`丑今丑今 元今元今`). Nothing about that reading is wrong on its face;
+# the evidence is the Korean candidate, which is Korean chat and nothing else
+# (`_reads_as_korean_chat`).
+
+JAMO_CHAT = ["ㄱㅅㄱㅅ ㅈㅅㅈㅅ ㅇㅋㅇㅋ 내일 봐", "ㄱㅐㅅㄲㅣ야 왜 그래 ㅋㅋㅋ"]
+
+
+@pytest.mark.parametrize("text", JAMO_CHAT, ids=["abbreviations", "spelled-apart"])
+def test_korean_jamo_chat_is_not_read_as_big5(tmp_path, text):
+    """`B1617`'s `Verify:` — both decode as Korean."""
+    body = text.encode("euc_kr")
+    assert dp._canonical_codec(dp._detect_encoding(body)) in dp._BIG5_CODECS, (
+        "the detector no longer answers Big5 here — this measures nothing")
+    assert body.decode(sniff_text_encoding(body)) == text
+    assert decode_text_file(_write(tmp_path, "chat.txt", body)) == text
+
+
+SPACED_TRADITIONAL = [
+    "會議時間 下午三點 地點 第二會議室",
+    "伺服 器連 接埠 設定 資料 庫網 路組 態檔 案系 統管 理員",
+    "登入 失敗 請確 認您 的密 碼是 否正 確然 後再 試一 次",
+]
+
+
+@pytest.mark.parametrize("text", SPACED_TRADITIONAL, ids=["meeting", "server", "login"])
+@pytest.mark.parametrize("encoding", ["big5", "cp950"])
+def test_spaced_traditional_chinese_stays_chinese(encoding, text):
+    """`Law 1` for `B1617`, at every cut: Big5 with spaces between its words is
+    the text the rule could take for chat, and none of it reads as chat."""
+    for n in range(1, len(text) + 1):
+        body = text[:n].encode(encoding)
+        if len(body) >= dp._MIN_MULTIBYTE_SAMPLE:
+            found = sniff_text_encoding(body)
+            assert found and body.decode(found) == text[:n], (text[:n], found)

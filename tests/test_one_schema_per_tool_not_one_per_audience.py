@@ -112,7 +112,8 @@ def test_every_shared_tool_serves_exactly_what_pantheon_declares(declared, serve
         module_name, tool = served[name]
         assert (tool.description or "").startswith(
             declared[name]["description"]), f"{module_name}:{name}"
-        assert tool.inputSchema == declared[name]["parameters"], f"{module_name}:{name}"
+        # `B621`: mcp 2.x's `Tool` keeps `inputSchema` only as the wire alias.
+        assert tool.input_schema == declared[name]["parameters"], f"{module_name}:{name}"
 
 
 def test_no_served_tool_is_fenced_channel_only(declared, served):

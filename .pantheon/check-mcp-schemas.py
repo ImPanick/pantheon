@@ -188,7 +188,8 @@ def main() -> int:
                     f"register's — a server may append runtime text to it "
                     f"(the writing-style guidance) but not rewrite it"
                 )
-            if tool.inputSchema != declared["parameters"]:
+            # `B621`: mcp 2.x's `Tool` keeps `inputSchema` only as the wire alias.
+            if tool.input_schema != declared["parameters"]:
                 problems.append(
                     f"E  {module_name}:{tool.name} schema differs from "
                     f"FUNCTION_TOOL_SCHEMAS"

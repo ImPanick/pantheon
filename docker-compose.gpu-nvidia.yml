@@ -174,7 +174,12 @@ services:
               capabilities: [gpu]
 
   chromadb:
-    image: docker.io/chromadb/chroma:latest
+    # `B445`: pinned, not :latest. 1.5.9 is the release `chromadb-client==1.5.9`
+    # in requirements.txt is cut from, and the tag `latest` resolved to when this
+    # was pinned (both sha256:1e0b73a1…acdf6, pushed 2026-05-05, read from Docker
+    # Hub 2026-10-28) — so the pin freezes what every install pulled since May
+    # rather than choosing a version nobody has run. Move it with the client.
+    image: docker.io/chromadb/chroma:1.5.9
     ports:
       - "${CHROMADB_BIND:-127.0.0.1}:8100:8000"
     volumes:
@@ -242,7 +247,10 @@ services:
     restart: unless-stopped
 
   ntfy:
-    image: docker.io/binwiederhier/ntfy
+    # `B445`: pinned; this line carried no tag at all, which is :latest written
+    # shorter. v2.34.0 is the tag `latest` resolved to when this was pinned
+    # (both sha256:901e1450…b3792, pushed 2026-10-24, read 2026-10-28).
+    image: docker.io/binwiederhier/ntfy:v2.34.0
     command: serve
     ports:
       - "${NTFY_BIND:-127.0.0.1}:8091:80"
