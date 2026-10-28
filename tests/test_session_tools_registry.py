@@ -189,7 +189,9 @@ def test_send_to_session_blocks_null_owner_for_authenticated_caller(monkeypatch)
 
 def test_dispatched_via_registry_not_dispatch_ai_tool():
     source = (Path(__file__).resolve().parent.parent / "src" / "tool_execution.py").read_text(encoding="utf-8")
-    assert 'elif tool in ("create_session", "list_sessions", "send_to_session", "manage_session"):' in source
+    # `B1621`: `read_chat` is dispatched by the same branch, through the registry.
+    assert ('elif tool in ("create_session", "list_sessions", "send_to_session", "manage_session", '
+            '"read_chat"):') in source
 
     marker = "from src.ai_interaction import dispatch_ai_tool"
     idx = source.index(marker)

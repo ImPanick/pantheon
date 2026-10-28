@@ -185,7 +185,9 @@ async def test_the_listing_covers_every_tool_section(router):
     assert {row["name"] for row in listing["builtin"]} == expected
     # 61 since `P20-04` added the fenced `computer` section; 63 since `P25-03`
     # and `P25-05` added `git` and `agent_browser`.
-    assert len(expected) == 66  # `P27-07`: + shell_with_login; `P27-09`: + connections; `P16-20`: + network
+    # `P27-07`: + shell_with_login; `P27-09`: + connections; `P16-20`: + network;
+    # `B1621`: + read_chat.
+    assert len(expected) == 67
 
 
 # ── the loader and the flag ─────────────────────────────────────────────────
