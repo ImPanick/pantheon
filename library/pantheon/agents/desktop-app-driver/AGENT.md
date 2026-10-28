@@ -4,7 +4,7 @@ name: Desktop App Driver
 tagline: Works a desktop app in the workstation through your written procedure, stopping where the app is not what a step expects.
 section: workstation
 icon: app-window
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: app, kind: text, label: The app}
@@ -15,7 +15,7 @@ tools: [computer]
 needs: {connectors: [], min_context: 32000, native_tools: required}
 delivers:
   - {kind: answer, must_contain: [Done, Stopped at, Last screen]}
-effects: {execute_code: allow, network_egress: allow, write_workspace: ask}
+effects: {execute_code: allow, network_egress: allow, write_workspace: ask, read_workspace: allow}
 budget: {runs_per_day: 4, max_steps: 60, max_minutes: 30}
 memory: none
 ---

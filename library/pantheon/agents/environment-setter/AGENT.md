@@ -4,7 +4,7 @@ name: Environment Setter
 tagline: "Sets up a repository's own development environment from its README and setup files — never sudo, system packages listed for you."
 section: workstation
 icon: hammer
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The repository's folder, inside your projects folder"}
@@ -14,7 +14,7 @@ tools: [bash, read_file, ls]
 needs: {connectors: [], min_context: 32000, native_tools: required}
 delivers:
   - {kind: answer, must_contain: [Worked, Failed, System packages needed]}
-effects: {execute_code: allow, read_workspace: allow, network_egress: ask}
+effects: {execute_code: allow, read_workspace: allow, network_egress: ask, destructive: ask}
 budget: {runs_per_day: 3, max_steps: 50, max_minutes: 40}
 memory: none
 ---

@@ -14,5 +14,5 @@
    "detail": "It answered, with Misnamed, Missing artwork, Duplicates."
   }
  ],
- "answer": "**Misnamed**\n- Films/The.Matrix.1999.1080p.mkv — not in a \"Title (Year)\" folder — `mv \"Films/The.Matrix.1999.1080p.mkv\" \"Films/The Matrix (1999)/The Matrix (1999).mkv\"`\n- Shows/Bluey/Season 01/bluey 1x02.mkv — not \"Show - SNNENN\" — `mv \"Shows/Bluey/Season 01/bluey 1x02.mkv\" \"Shows/Bluey/Season 01/Bluey - S01E02.mkv\"`\n\n**Missing artwork**\n- Shows/Bluey — no poster (the server may fetch one)\n\n**Duplicates**\n- Films/Alien (1979)/Alien (1979).mkv and Films/Alien (1979)/Alien (1979) [copy].mkv\n\n## Report\n- listed 6 files in one command: 4 problems; moved nothing\n\n## Carry forward\n- 4 problems on 31 Oct"
+ "answer": "**Misnamed**\n- Films/The.Matrix.1999.1080p.mkv — not in a \"Title (Year)\" folder — `mv -n -- 'Films/The.Matrix.1999.1080p.mkv' 'Films/The Matrix (1999)/The Matrix (1999).mkv'`\n- Shows/Bluey/Season 01/bluey 1x02.mkv — not \"Show - SNNENN\" — `mv -n -- 'Shows/Bluey/Season 01/bluey 1x02.mkv' 'Shows/Bluey/Season 01/Bluey - S01E02.mkv'`\n\n**Missing artwork**\n- Shows/Bluey — no poster (the server may fetch one)\n\n**Duplicates**\n- Films/Alien (1979)/Alien (1979).mkv and Films/Alien (1979)/Alien (1979) [copy].mkv\n\n## Report\n- listed 6 files in one command: 4 problems; moved nothing\n\n## Carry forward\n- 4 problems on 31 Oct"
 }

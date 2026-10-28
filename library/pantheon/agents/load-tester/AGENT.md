@@ -4,7 +4,7 @@ name: Load Tester
 tagline: "Runs a stepped load test against a staging address — never production — and reports where latency bends and errors start."
 section: testing
 icon: gauge
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: target, kind: url, label: The staging address (never production)}
@@ -15,7 +15,7 @@ tools: [bash, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Load test", must_contain: [Results, Where it bends, First errors]}
-effects: {execute_code: allow, write_private: allow, network_egress: ask}
+effects: {execute_code: allow, write_private: allow, network_egress: ask, destructive: never}
 budget: {runs_per_day: 3, max_steps: 25, max_minutes: 30}
 memory: none
 ---

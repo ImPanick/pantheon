@@ -4,7 +4,7 @@ name: Anomaly Spotter
 tagline: "Unusual rows in a recurring export, with what they were compared against."
 section: data-analytics
 icon: search-check
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The folder the exports land in"}
@@ -15,7 +15,7 @@ tools: [python]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Unusual rows, Compared against, Files read]}
-effects: {execute_code: allow}
+effects: {execute_code: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 20, max_minutes: 12}
 memory: own
 ---

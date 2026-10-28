@@ -4,7 +4,7 @@ name: Dependency Watch
 tagline: Each week, finds a project's outdated and vulnerable packages and tries an upgrade on a branch.
 section: development
 icon: package
-version: 1.1.0
+version: 1.2.0
 wave: 1
 inputs:
   - {key: folder, kind: folder, label: "The repository's folder, inside your projects folder"}
@@ -15,7 +15,7 @@ tools: [bash, read_file, edit_file]
 needs: {connectors: [], min_context: 24000, native_tools: required}
 delivers:
   - {kind: answer, must_contain: [Outdated, Vulnerable, Tried]}
-effects: {read_workspace: allow, write_workspace: allow, execute_code: allow, network_egress: allow}
+effects: {read_workspace: allow, write_workspace: allow, execute_code: allow, network_egress: allow, destructive: never}
 budget: {runs_per_day: 1, max_steps: 40, max_minutes: 40}
 memory: own
 ---

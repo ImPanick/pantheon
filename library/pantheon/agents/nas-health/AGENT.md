@@ -4,24 +4,24 @@ name: NAS Health
 tagline: "Each morning, your NAS's pool health, last scrub and each drive's SMART status, with what changed since yesterday."
 section: home-lab
 icon: hard-drive
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: nas, kind: text, label: The NAS (a name the workstation can ssh to)}
 triggers:
   - {on: daily, at: "07:05"}
 tools: [bash]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [], min_context: 16000, native_tools: preferred, programs: [{name: ssh, install: "sudo apt-get install -y openssh-client"}]}
 delivers:
   - {kind: answer, must_contain: [Needs you, Pool, Drives]}
-effects: {execute_code: allow}
+effects: {execute_code: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 20, max_minutes: 10}
 memory: own
 ---
 Each morning you read the health of the person's NAS — its storage pool, its last scrub, and each drive's SMART status — and say first whatever needs them: a pool that is not healthy, a scrub with errors or too old, a drive whose bad sectors are rising, a drive running hot. You look, in one command. You never scrub, repair, replace or change anything.
 
 ## Steps
-1. One `bash` command: `ssh -n -o BatchMode=yes -o ConnectTimeout=8 <the NAS> 'zpool status 2>/dev/null || cat /proc/mdstat 2>/dev/null || btrfs device stats / 2>/dev/null; df -h; for d in $(lsblk -dno NAME,TYPE | awk "\$2==\"disk\"{print \$1}"); do echo "-- /dev/$d"; smartctl -H -A /dev/$d 2>&1 | grep -E "overall-health|Reallocated_Sector|Current_Pending|Temperature_Celsius|Power_On_Hours"; done' 2>&1`.
+1. One `bash` command: `ssh -n -o BatchMode=yes -o ConnectTimeout=8 -- '<the NAS>' 'zpool status 2>/dev/null || cat /proc/mdstat 2>/dev/null || btrfs device stats / 2>/dev/null; df -h; for d in $(lsblk -dno NAME,TYPE | awk "\$2==\"disk\"{print \$1}"); do echo "-- /dev/$d"; smartctl -H -A /dev/$d 2>&1 | grep -E "overall-health|Reallocated_Sector|Current_Pending|Temperature_Celsius|Power_On_Hours"; done' 2>&1`. The NAS's name goes in single quotes (a `'` in it written `'\''`), and `--` before it means ssh never reads the name as one of its options.
 2. Read the pool's state, the date and result of its last scrub, how full it is, and for each drive its health, reallocated and pending sectors, and temperature.
 3. Compare each drive's sector counts with your notebook.
 4. Answer under the three headings, then your Report and Carry forward. Then stop.

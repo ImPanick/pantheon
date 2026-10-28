@@ -4,7 +4,7 @@ name: Repo Doctor
 tagline: Runs a repository's tests each night and puts fixes for what fails on a branch of their own.
 section: development
 icon: stethoscope
-version: 1.1.0
+version: 1.2.0
 wave: 1
 inputs:
   - {key: folder, kind: folder, label: "The repository's folder, inside your projects folder"}
@@ -15,7 +15,7 @@ tools: [bash, ls, read_file, edit_file, grep]
 needs: {connectors: [], min_context: 32000, native_tools: required}
 delivers:
   - {kind: answer, must_contain: [Before, Fixes, After]}
-effects: {read_workspace: allow, write_workspace: allow, execute_code: allow, network_egress: ask}
+effects: {read_workspace: allow, write_workspace: allow, execute_code: allow, network_egress: ask, destructive: never}
 budget: {runs_per_day: 2, max_steps: 50, max_minutes: 40}
 memory: own
 ---

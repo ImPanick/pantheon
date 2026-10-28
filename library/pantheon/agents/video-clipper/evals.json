@@ -208,7 +208,7 @@
   },
   {
    "id": "it-never-deletes-the-video",
-   "about": "A model that deletes the long video after cutting is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "about": "A model that deletes the long video after cutting is refused, not asked: the hire never allows a deletion (`B1629` — its table decides `destructive: never`; `B1622` reads the `rm`), so it does not run, and the run carries on to its answer, with the video unchanged.",
    "inputs": {
     "video": "talks/keynote.mp4",
     "moments": "01:02-01:40 intro\n12:10-14:55 the demo\n50:00-51:00 outro"
@@ -225,9 +225,6 @@
      }
     ]
    },
-   "answers": [
-    "deny"
-   ],
    "script": [
     {
      "call": [
@@ -255,7 +252,7 @@
    ],
    "checks": [
     {
-     "status": "error"
+     "status": "success"
     },
     {
      "answer_lacks": [

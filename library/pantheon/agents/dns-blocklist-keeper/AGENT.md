@@ -4,7 +4,7 @@ name: DNS Blocklist Keeper
 tagline: "Your Pi-hole or AdGuard week — queries, block rate, the most-blocked domains — and the allow-list requests in your note, judged."
 section: home-lab
 icon: shield-ban
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: server, kind: url, label: "Its API address (Pi-hole: http://pi.hole/admin/api.php)"}
@@ -14,7 +14,7 @@ tools: [web_fetch, manage_notes]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [This week, Most blocked, Allow-list requests]}
-effects: {brokered_network_read: allow, network_egress: allow, write_private: allow, destructive: never}
+effects: {brokered_network_read: allow, network_egress: allow, write_private: allow, destructive: never, read_private: allow}
 budget: {runs_per_day: 2, max_steps: 15, max_minutes: 8}
 memory: own
 ---

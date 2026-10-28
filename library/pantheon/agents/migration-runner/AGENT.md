@@ -4,7 +4,7 @@ name: Migration Runner
 tagline: "Moves a codebase between versions or frameworks in small steps on a branch, the tests green at every commit."
 section: development
 icon: arrow-right-left
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The repository's folder, inside your projects folder"}
@@ -16,7 +16,7 @@ tools: [bash, read_file, edit_file, grep, web_fetch]
 needs: {connectors: [], min_context: 32000, native_tools: required}
 delivers:
   - {kind: answer, must_contain: [Plan, Done, Left, branch]}
-effects: {execute_code: allow, read_workspace: allow, write_workspace: allow, brokered_network_read: allow, network_egress: allow}
+effects: {execute_code: allow, read_workspace: allow, write_workspace: allow, brokered_network_read: allow, network_egress: allow, destructive: ask}
 budget: {runs_per_day: 3, max_steps: 60, max_minutes: 60}
 memory: own
 ---

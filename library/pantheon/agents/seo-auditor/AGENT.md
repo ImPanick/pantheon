@@ -4,7 +4,7 @@ name: SEO Auditor
 tagline: "Titles, meta, structured data and speed across your site, with the fixes ranked."
 section: seo
 icon: search
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: site, kind: url, label: Your site}
@@ -15,7 +15,7 @@ tools: [bash, web_fetch, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "SEO audit", must_contain: [Fix first, All issues, Checked]}
-effects: {execute_code: allow, read_public: allow, brokered_network_read: allow, network_egress: allow, write_private: allow}
+effects: {execute_code: allow, read_public: allow, brokered_network_read: allow, network_egress: allow, write_private: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 40, max_minutes: 40}
 memory: own
 ---

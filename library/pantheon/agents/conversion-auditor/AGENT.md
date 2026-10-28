@@ -4,7 +4,7 @@ name: Conversion Auditor
 tagline: "Walks your funnel in the workstation's browser and lists where people are likely to drop off, with a test for each."
 section: seo
 icon: filter
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: site, kind: url, label: Your site}
@@ -15,7 +15,7 @@ tools: [computer, create_document]
 needs: {connectors: [], min_context: 32000, native_tools: required}
 delivers:
   - {kind: document, title: "Conversion audit", must_contain: [Risks, Test to run, Biggest risk]}
-effects: {execute_code: allow, network_egress: allow, write_private: allow}
+effects: {execute_code: allow, network_egress: allow, write_private: allow, read_workspace: allow}
 budget: {runs_per_day: 3, max_steps: 60, max_minutes: 30}
 memory: none
 ---

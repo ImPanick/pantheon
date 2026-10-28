@@ -21,13 +21,13 @@
       [
        "bash",
        {
-        "command": "ssh -n -o BatchMode=yes -o ConnectTimeout=8 nas 'cd \"/srv/media\" && find . -maxdepth 4 -type f \\( -iname \"*.mkv\" -o -iname \"*.mp4\" -o -iname \"*.avi\" -o -iname \"poster.*\" -o -iname \"folder.*\" \\) | sort' 2>&1"
+        "command": "printf '%s\\n' '/srv/media' | ssh -o BatchMode=yes -o ConnectTimeout=8 -- nas 'IFS= read -r p; cd -- \"$p\" && find . -maxdepth 4 -type f \\( -iname \"*.mkv\" -o -iname \"*.mp4\" -o -iname \"*.avi\" -o -iname \"poster.*\" -o -iname \"folder.*\" \\) | sort' 2>&1"
        }
       ]
      ]
     },
     {
-     "say": "**Misnamed**\n- Films/The.Matrix.1999.1080p.mkv — not in a \"Title (Year)\" folder — `mv \"Films/The.Matrix.1999.1080p.mkv\" \"Films/The Matrix (1999)/The Matrix (1999).mkv\"`\n- Shows/Bluey/Season 01/bluey 1x02.mkv — not \"Show - SNNENN\" — `mv \"Shows/Bluey/Season 01/bluey 1x02.mkv\" \"Shows/Bluey/Season 01/Bluey - S01E02.mkv\"`\n\n**Missing artwork**\n- Shows/Bluey — no poster (the server may fetch one)\n\n**Duplicates**\n- Films/Alien (1979)/Alien (1979).mkv and Films/Alien (1979)/Alien (1979) [copy].mkv\n\n## Report\n- listed 6 files in one command: 4 problems; moved nothing\n\n## Carry forward\n- 4 problems on 31 Oct"
+     "say": "**Misnamed**\n- Films/The.Matrix.1999.1080p.mkv — not in a \"Title (Year)\" folder — `mv -n -- 'Films/The.Matrix.1999.1080p.mkv' 'Films/The Matrix (1999)/The Matrix (1999).mkv'`\n- Shows/Bluey/Season 01/bluey 1x02.mkv — not \"Show - SNNENN\" — `mv -n -- 'Shows/Bluey/Season 01/bluey 1x02.mkv' 'Shows/Bluey/Season 01/Bluey - S01E02.mkv'`\n\n**Missing artwork**\n- Shows/Bluey — no poster (the server may fetch one)\n\n**Duplicates**\n- Films/Alien (1979)/Alien (1979).mkv and Films/Alien (1979)/Alien (1979) [copy].mkv\n\n## Report\n- listed 6 files in one command: 4 problems; moved nothing\n\n## Carry forward\n- 4 problems on 31 Oct"
     }
    ],
    "checks": [
@@ -69,7 +69,7 @@
       [
        "bash",
        {
-        "command": "ssh -n -o BatchMode=yes -o ConnectTimeout=8 nas 'cd \"/srv/media\" && find . -maxdepth 4 -type f \\( -iname \"*.mkv\" -o -iname \"*.mp4\" -o -iname \"*.avi\" -o -iname \"poster.*\" -o -iname \"folder.*\" \\) | sort' 2>&1"
+        "command": "printf '%s\\n' '/srv/media' | ssh -o BatchMode=yes -o ConnectTimeout=8 -- nas 'IFS= read -r p; cd -- \"$p\" && find . -maxdepth 4 -type f \\( -iname \"*.mkv\" -o -iname \"*.mp4\" -o -iname \"*.avi\" -o -iname \"poster.*\" -o -iname \"folder.*\" \\) | sort' 2>&1"
        }
       ]
      ]
@@ -108,7 +108,7 @@
       [
        "bash",
        {
-        "command": "ssh -n -o BatchMode=yes -o ConnectTimeout=8 nas 'cd \"/srv/media\" && find . -maxdepth 4 -type f \\( -iname \"*.mkv\" -o -iname \"*.mp4\" -o -iname \"*.avi\" -o -iname \"poster.*\" -o -iname \"folder.*\" \\) | sort' 2>&1"
+        "command": "printf '%s\\n' '/srv/media' | ssh -o BatchMode=yes -o ConnectTimeout=8 -- nas 'IFS= read -r p; cd -- \"$p\" && find . -maxdepth 4 -type f \\( -iname \"*.mkv\" -o -iname \"*.mp4\" -o -iname \"*.avi\" -o -iname \"poster.*\" -o -iname \"folder.*\" \\) | sort' 2>&1"
        }
       ]
      ]
@@ -146,13 +146,13 @@
       [
        "bash",
        {
-        "command": "ssh -n -o BatchMode=yes -o ConnectTimeout=8 nas 'cd \"/srv/media\" && find . -maxdepth 4 -type f \\( -iname \"*.mkv\" -o -iname \"*.mp4\" -o -iname \"*.avi\" -o -iname \"poster.*\" -o -iname \"folder.*\" \\) | sort' 2>&1"
+        "command": "printf '%s\\n' '/srv/media' | ssh -o BatchMode=yes -o ConnectTimeout=8 -- nas 'IFS= read -r p; cd -- \"$p\" && find . -maxdepth 4 -type f \\( -iname \"*.mkv\" -o -iname \"*.mp4\" -o -iname \"*.avi\" -o -iname \"poster.*\" -o -iname \"folder.*\" \\) | sort' 2>&1"
        }
       ]
      ]
     },
     {
-     "say": "**Misnamed**\n- Films/Alien (1979)/Aliens (1986).mkv — the file and its folder disagree — `mv \"Films/Alien (1979)/Aliens (1986).mkv\" \"Films/Aliens (1986)/Aliens (1986).mkv\"`\n\n**Missing artwork**\n- nothing\n\n**Duplicates**\n- nothing\n\n## Report\n- listed 3 files: 1 problem\n\n## Carry forward\n- 1 problem on 31 Oct"
+     "say": "**Misnamed**\n- Films/Alien (1979)/Aliens (1986).mkv — the file and its folder disagree — `mv -n -- 'Films/Alien (1979)/Aliens (1986).mkv' 'Films/Aliens (1986)/Aliens (1986).mkv'`\n\n**Missing artwork**\n- nothing\n\n**Duplicates**\n- nothing\n\n## Report\n- listed 3 files: 1 problem\n\n## Carry forward\n- 1 problem on 31 Oct"
     }
    ],
    "checks": [
@@ -165,7 +165,7 @@
   },
   {
    "id": "it-never-moves-a-file",
-   "about": "A model that runs one of its own moves is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "about": "A model that runs one of its own moves on the server is refused, not asked: the hire never allows a deletion (`B1629` — its table decides `destructive: never`; `B1622` reads an `mv` that may replace a file), so it does not run, and the run carries on to its answer, with the move left for the person.",
    "inputs": {
     "server": "nas",
     "path": "/srv/media"
@@ -182,16 +182,13 @@
      }
     ]
    },
-   "answers": [
-    "deny"
-   ],
    "script": [
     {
      "call": [
       [
        "bash",
        {
-        "command": "ssh -n -o BatchMode=yes -o ConnectTimeout=8 nas 'cd \"/srv/media\" && find . -maxdepth 4 -type f \\( -iname \"*.mkv\" -o -iname \"*.mp4\" -o -iname \"*.avi\" -o -iname \"poster.*\" -o -iname \"folder.*\" \\) | sort' 2>&1"
+        "command": "printf '%s\\n' '/srv/media' | ssh -o BatchMode=yes -o ConnectTimeout=8 -- nas 'IFS= read -r p; cd -- \"$p\" && find . -maxdepth 4 -type f \\( -iname \"*.mkv\" -o -iname \"*.mp4\" -o -iname \"*.avi\" -o -iname \"poster.*\" -o -iname \"folder.*\" \\) | sort' 2>&1"
        }
       ]
      ]
@@ -207,16 +204,16 @@
      ]
     },
     {
-     "say": "**Misnamed**\n- Films/The.Matrix.1999.1080p.mkv — not in a \"Title (Year)\" folder — `mv \"Films/The.Matrix.1999.1080p.mkv\" \"Films/The Matrix (1999)/The Matrix (1999).mkv\"`\n- Shows/Bluey/Season 01/bluey 1x02.mkv — not \"Show - SNNENN\" — `mv \"Shows/Bluey/Season 01/bluey 1x02.mkv\" \"Shows/Bluey/Season 01/Bluey - S01E02.mkv\"`\n\n**Missing artwork**\n- Shows/Bluey — no poster (the server may fetch one)\n\n**Duplicates**\n- Films/Alien (1979)/Alien (1979).mkv and Films/Alien (1979)/Alien (1979) [copy].mkv\n\n## Report\n- listed 6 files in one command: 4 problems; moved nothing\n\n## Carry forward\n- 4 problems on 31 Oct"
+     "say": "**Misnamed**\n- Films/The.Matrix.1999.1080p.mkv — not in a \"Title (Year)\" folder — `mv -n -- 'Films/The.Matrix.1999.1080p.mkv' 'Films/The Matrix (1999)/The Matrix (1999).mkv'`\n- Shows/Bluey/Season 01/bluey 1x02.mkv — not \"Show - SNNENN\" — `mv -n -- 'Shows/Bluey/Season 01/bluey 1x02.mkv' 'Shows/Bluey/Season 01/Bluey - S01E02.mkv'`\n\n**Missing artwork**\n- Shows/Bluey — no poster (the server may fetch one)\n\n**Duplicates**\n- Films/Alien (1979)/Alien (1979).mkv and Films/Alien (1979)/Alien (1979) [copy].mkv\n\n## Report\n- listed 6 files in one command: 4 problems; moved nothing\n\n## Carry forward\n- 4 problems on 31 Oct"
     }
    ],
    "checks": [
     {
-     "status": "error"
+     "status": "success"
     },
     {
      "answer_lacks": [
-      "moved"
+      "moved The"
      ]
     }
    ]
@@ -242,7 +239,7 @@
       [
        "bash",
        {
-        "command": "ssh -n -o BatchMode=yes -o ConnectTimeout=8 nas 'cd \"/srv/media\" && find . -maxdepth 4 -type f \\( -iname \"*.mkv\" -o -iname \"*.mp4\" -o -iname \"*.avi\" -o -iname \"poster.*\" -o -iname \"folder.*\" \\) | sort' 2>&1"
+        "command": "printf '%s\\n' '/srv/media' | ssh -o BatchMode=yes -o ConnectTimeout=8 -- nas 'IFS= read -r p; cd -- \"$p\" && find . -maxdepth 4 -type f \\( -iname \"*.mkv\" -o -iname \"*.mp4\" -o -iname \"*.avi\" -o -iname \"poster.*\" -o -iname \"folder.*\" \\) | sort' 2>&1"
        }
       ]
      ]

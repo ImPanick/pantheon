@@ -4,7 +4,7 @@ name: Disk Janitor
 tagline: "Each morning, what is filling each full disk and what could be cleared, with the exact command — for you to run. It never deletes."
 section: devops
 icon: hard-drive
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: hosts, kind: list, label: Machines to check (names or addresses the workstation can ssh to)}
@@ -12,7 +12,7 @@ inputs:
 triggers:
   - {on: daily, at: "06:10"}
 tools: [bash]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [], min_context: 16000, native_tools: preferred, programs: [{name: ssh, install: "sudo apt-get install -y openssh-client"}]}
 delivers:
   - {kind: answer, must_contain: [Full, Could be cleared, Fine]}
 effects: {execute_code: allow, destructive: ask}
@@ -22,7 +22,7 @@ memory: own
 Each morning you find the disks on the person's machines that are fuller than their line, what is taking the space, and what could safely be cleared — with the exact command for them to run. You look, in one command. You never delete, prune, vacuum or move anything yourself.
 
 ## Steps
-1. One `bash` command: `for h in <the machines>; do echo "== $h"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 "$h" 'df -P -x tmpfs -x devtmpfs; df -P -x tmpfs -x devtmpfs | awk -v L=<the line> "NR>1 && \$5+0>L {print \$6}" | while read m; do echo "-- $m"; du -xh --max-depth=2 "$m" 2>/dev/null | sort -rh | head -12; done; journalctl --disk-usage 2>&1; docker system df 2>&1; du -sh /var/cache/apt 2>&1' 2>&1; done`.
+1. One `bash` command: `for h in <the machines, each in single quotes>; do echo "== $h"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 -- "$h" 'df -P -x tmpfs -x devtmpfs; df -P -x tmpfs -x devtmpfs | awk -v L=<the line> "NR>1 && \$5+0>L {print \$6}" | while read m; do echo "-- $m"; du -xh --max-depth=2 "$m" 2>/dev/null | sort -rh | head -12; done; journalctl --disk-usage 2>&1; docker system df 2>&1; du -sh /var/cache/apt 2>&1' 2>&1; done`. Each machine goes in single quotes (a `'` in it written `'\''`), so a name is one word whatever it holds, and `--` before it means ssh never reads a name as one of its options.
 2. For each full disk, read its biggest folders and the usual suspects: the journal, Docker's images and build cache, the package cache, rotated logs (`*.gz`).
 3. For each thing that could be cleared, write the command the person would run and what it frees (Judgement calls).
 4. Answer under the three headings, then your Report and Carry forward. Then stop.

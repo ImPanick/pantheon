@@ -149,11 +149,23 @@ def is_blind(tools) -> bool:
         for t in tools)
 
 
-def is_sealed(tools) -> bool:
-    """Whether a kit cannot carry data out of the install."""
-    from src.tool_capabilities import capabilities_for_tool
-    return all(not ({e.value for e in capabilities_for_tool(t).effects} & SEALING_EFFECTS)
-               and capabilities_for_tool(t).known for t in tools)
+def is_sealed(tools, never=()) -> bool:
+    """Whether a kit cannot carry data out of the install.
+
+    `B1632`. Read from the calls the hire's `never`s leave
+    (`tool_capabilities.reach_left`), not each tool's whole registration:
+    since `B1619` a tool stays in the kit with only its *never* calls
+    refused, and `git` kept under `network_egress: never` can still read and
+    commit but can no longer pull, clone or push — every call that reaches out
+    is refused before anything is asked. Counting its registration called the
+    kit unsealed and asked for nothing it could do. It moves one way only: a
+    `never` takes a call away, so what is left is never wider than the
+    registration, and a kit is sealed here only when no call the hire allows
+    or asks about can carry anything out. A tool that is not known is never
+    sealed."""
+    from src.tool_capabilities import capabilities_for_tool, reach_left
+    return all(capabilities_for_tool(t).known
+               and not ({e.value for e in reach_left(t, never)} & SEALING_EFFECTS) for t in tools)
 
 
 def _person(owner: Optional[str]) -> str:
@@ -314,7 +326,7 @@ def plan_for_task(db, task, run_id: Optional[str] = None) -> Optional[RunPlan]:
                    ask_effects=ask, never_effects=never, context_messages=msgs,
                    skill_lines=lines, memory=manifest.memory, delivers=manifest.delivers,
                    owner=hire.owner, inputs=inputs, project=hire.project,
-                   sealed=is_sealed(tools), blind=is_blind(tools), workspace=workspace_for(hire.owner, hire.project),
+                   sealed=is_sealed(tools, never), blind=is_blind(tools), workspace=workspace_for(hire.owner, hire.project),
                    tagline=manifest.tagline)
 
 

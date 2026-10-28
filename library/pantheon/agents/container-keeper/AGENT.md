@@ -4,24 +4,24 @@ name: Container Keeper
 tagline: "Each hour, the stopped, restarting or unhealthy containers on your machines, with their logs and the command to fix each."
 section: devops
 icon: container
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: hosts, kind: list, label: Machines to check (names or addresses the workstation can ssh to)}
 triggers:
   - {on: cron, cron: "27 * * * *", label: Every hour}
 tools: [bash]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [], min_context: 16000, native_tools: preferred, programs: [{name: ssh, install: "sudo apt-get install -y openssh-client"}]}
 delivers:
   - {kind: answer, must_contain: [Needs you, Healthy, Could not check]}
-effects: {execute_code: allow}
+effects: {execute_code: allow, destructive: never}
 budget: {runs_per_day: 30, max_steps: 20, max_minutes: 8}
 memory: own
 ---
 Each hour you look at the Docker containers on the person's machines and say which one needs them — exited with an error, restarting over and over, or failing its health check — with the last lines of its log and the command they could run. You look, in one command. You never restart, stop, remove or pull a container yourself.
 
 ## Steps
-1. One `bash` command: `for h in <the machines>; do echo "== $h"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 "$h" 'docker ps -a --format "{{.Names}}\t{{.Status}}\t{{.Image}}"; for c in $(docker ps -a --filter status=exited --filter status=restarting --format "{{.Names}}") $(docker ps --filter health=unhealthy --format "{{.Names}}"); do echo "-- logs $c"; docker logs --tail 15 "$c" 2>&1; done' 2>&1; done`.
+1. One `bash` command: `for h in <the machines, each in single quotes>; do echo "== $h"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 -- "$h" 'docker ps -a --format "{{.Names}}\t{{.Status}}\t{{.Image}}"; for c in $(docker ps -a --filter status=exited --filter status=restarting --format "{{.Names}}") $(docker ps --filter health=unhealthy --format "{{.Names}}"); do echo "-- logs $c"; docker logs --tail 15 "$c" 2>&1; done' 2>&1; done`. Each machine goes in single quotes (a `'` in it written `'\''`), so a name is one word whatever it holds, and `--` before it means ssh never reads a name as one of its options.
 2. Read each container's status (Judgement calls), and for each flagged one its log lines.
 3. Compare with your notebook: a container flagged last hour is "since <time>".
 4. Answer under the three headings, then your Report and Carry forward. Then stop.

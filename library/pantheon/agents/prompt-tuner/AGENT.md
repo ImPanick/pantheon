@@ -4,7 +4,7 @@ name: Prompt Tuner
 tagline: "Tries one change at a time to an agent's runbook against its evaluation cases, and keeps a change only if the score rises."
 section: ai-engineering
 icon: sliders-horizontal
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: runbook, kind: text, label: The runbook document title}
@@ -16,7 +16,7 @@ tools: [manage_documents, chat_with_model, create_document]
 needs: {connectors: [], min_context: 32000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Tuned runbook", must_contain: [Scores, Kept changes, New runbook]}
-effects: {write_private: allow, network_egress: allow, destructive: never}
+effects: {write_private: allow, network_egress: allow, destructive: never, read_private: allow}
 budget: {runs_per_day: 2, max_steps: 60, max_minutes: 60}
 memory: own
 ---

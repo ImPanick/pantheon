@@ -290,9 +290,10 @@ class ToolPolicy:
     ask_effects: frozenset = frozenset()
     never_effects: frozenset = frozenset()
     #: `D-2026-10-24-01`. True when a hired agent's whole kit has no way to
-    #: carry data out of the install (`src.agents.runtime.SEALING_EFFECTS`):
-    #: then reading more of the person's own data after outside content does
-    #: not ask. False for every other turn, which is every existing caller.
+    #: carry data out of the install (`src.agents.runtime.SEALING_EFFECTS`) —
+    #: read from the calls its hire's `never`s leave (`B1632`): then reading
+    #: more of the person's own data after outside content does not ask.
+    #: False for every other turn, which is every existing caller.
     sealed: bool = False
     #: `D-2026-10-24-02`. True when a hired agent's whole kit cannot read any
     #: of the person's private data (`src.agents.runtime.PRIVATE_READ_EFFECTS`):

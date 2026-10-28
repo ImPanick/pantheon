@@ -4,7 +4,7 @@ name: Policy Checker
 tagline: "Checks a document or config against a policy you supply, rule by rule, quoting the line that decides each."
 section: security
 icon: file-check
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: subject, kind: text, label: The document or config file to check}
@@ -15,7 +15,7 @@ tools: [manage_documents, read_file, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Policy check", must_contain: [Breaks, Meets, Not covered]}
-effects: {write_private: allow, read_workspace: allow, destructive: never}
+effects: {write_private: allow, read_workspace: allow, destructive: never, read_private: allow}
 budget: {runs_per_day: 6, max_steps: 20, max_minutes: 10}
 memory: none
 ---

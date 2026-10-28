@@ -27,7 +27,7 @@
       [
        "bash",
        {
-        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'journalctl --since \"2026-10-28 13:30\" --until \"2026-10-28 14:40\" -p warning --no-pager | tail -150; for c in $(docker ps -a --format \"{{.Names}}\" 2>/dev/null); do echo \"-- $c\"; docker logs --since \"2026-10-28T13:30\" --until \"2026-10-28T14:40\" \"$c\" 2>&1 | grep -iE \"error|fatal|panic|killed|refused|timeout\" | tail -20; done' 2>&1; done"
+        "command": "for h in web1 db1; do echo \"== $h\"; printf '%s\\n' '2026-10-28 13:30:00' '2026-10-28 14:40:00' | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'IFS= read -r s; IFS= read -r e; journalctl --since \"$s\" --until \"$e\" -p warning --no-pager | tail -150; S=$(printf %s \"$s\" | tr \" \" T); E=$(printf %s \"$e\" | tr \" \" T); for c in $(docker ps -a --format \"{{.Names}}\" 2>/dev/null); do echo \"-- $c\"; docker logs --since \"$S\" --until \"$E\" \"$c\" 2>&1 | grep -iE \"error|fatal|panic|killed|refused|timeout\" | tail -20; done' 2>&1; done"
        }
       ]
      ]
@@ -90,7 +90,7 @@
       [
        "bash",
        {
-        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'journalctl --since \"2026-10-28 13:30\" --until \"2026-10-28 14:40\" -p warning --no-pager | tail -150; for c in $(docker ps -a --format \"{{.Names}}\" 2>/dev/null); do echo \"-- $c\"; docker logs --since \"2026-10-28T13:30\" --until \"2026-10-28T14:40\" \"$c\" 2>&1 | grep -iE \"error|fatal|panic|killed|refused|timeout\" | tail -20; done' 2>&1; done"
+        "command": "for h in web1 db1; do echo \"== $h\"; printf '%s\\n' '2026-10-28 13:30:00' '2026-10-28 14:40:00' | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'IFS= read -r s; IFS= read -r e; journalctl --since \"$s\" --until \"$e\" -p warning --no-pager | tail -150; S=$(printf %s \"$s\" | tr \" \" T); E=$(printf %s \"$e\" | tr \" \" T); for c in $(docker ps -a --format \"{{.Names}}\" 2>/dev/null); do echo \"-- $c\"; docker logs --since \"$S\" --until \"$E\" \"$c\" 2>&1 | grep -iE \"error|fatal|panic|killed|refused|timeout\" | tail -20; done' 2>&1; done"
        }
       ]
      ]
@@ -148,7 +148,7 @@
       [
        "bash",
        {
-        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'journalctl --since \"2026-10-28 13:30\" --until \"2026-10-28 14:40\" -p warning --no-pager | tail -150; for c in $(docker ps -a --format \"{{.Names}}\" 2>/dev/null); do echo \"-- $c\"; docker logs --since \"2026-10-28T13:30\" --until \"2026-10-28T14:40\" \"$c\" 2>&1 | grep -iE \"error|fatal|panic|killed|refused|timeout\" | tail -20; done' 2>&1; done"
+        "command": "for h in web1 db1; do echo \"== $h\"; printf '%s\\n' '2026-10-28 13:30:00' '2026-10-28 14:40:00' | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'IFS= read -r s; IFS= read -r e; journalctl --since \"$s\" --until \"$e\" -p warning --no-pager | tail -150; S=$(printf %s \"$s\" | tr \" \" T); E=$(printf %s \"$e\" | tr \" \" T); for c in $(docker ps -a --format \"{{.Names}}\" 2>/dev/null); do echo \"-- $c\"; docker logs --since \"$S\" --until \"$E\" \"$c\" 2>&1 | grep -iE \"error|fatal|panic|killed|refused|timeout\" | tail -20; done' 2>&1; done"
        }
       ]
      ]
@@ -210,7 +210,7 @@
       [
        "bash",
        {
-        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'journalctl --since \"2026-10-28 13:30\" --until \"2026-10-28 14:40\" -p warning --no-pager | tail -150; for c in $(docker ps -a --format \"{{.Names}}\" 2>/dev/null); do echo \"-- $c\"; docker logs --since \"2026-10-28T13:30\" --until \"2026-10-28T14:40\" \"$c\" 2>&1 | grep -iE \"error|fatal|panic|killed|refused|timeout\" | tail -20; done' 2>&1; done"
+        "command": "for h in web1 db1; do echo \"== $h\"; printf '%s\\n' '2026-10-28 13:30:00' '2026-10-28 14:40:00' | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'IFS= read -r s; IFS= read -r e; journalctl --since \"$s\" --until \"$e\" -p warning --no-pager | tail -150; S=$(printf %s \"$s\" | tr \" \" T); E=$(printf %s \"$e\" | tr \" \" T); for c in $(docker ps -a --format \"{{.Names}}\" 2>/dev/null); do echo \"-- $c\"; docker logs --since \"$S\" --until \"$E\" \"$c\" 2>&1 | grep -iE \"error|fatal|panic|killed|refused|timeout\" | tail -20; done' 2>&1; done"
        }
       ]
      ]
@@ -266,7 +266,7 @@
       [
        "bash",
        {
-        "command": "for h in web1 db1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'journalctl --since \"2026-10-28 13:30\" --until \"2026-10-28 14:40\" -p warning --no-pager | tail -150; for c in $(docker ps -a --format \"{{.Names}}\" 2>/dev/null); do echo \"-- $c\"; docker logs --since \"2026-10-28T13:30\" --until \"2026-10-28T14:40\" \"$c\" 2>&1 | grep -iE \"error|fatal|panic|killed|refused|timeout\" | tail -20; done' 2>&1; done"
+        "command": "for h in web1 db1; do echo \"== $h\"; printf '%s\\n' '2026-10-28 13:30:00' '2026-10-28 14:40:00' | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'IFS= read -r s; IFS= read -r e; journalctl --since \"$s\" --until \"$e\" -p warning --no-pager | tail -150; S=$(printf %s \"$s\" | tr \" \" T); E=$(printf %s \"$e\" | tr \" \" T); for c in $(docker ps -a --format \"{{.Names}}\" 2>/dev/null); do echo \"-- $c\"; docker logs --since \"$S\" --until \"$E\" \"$c\" 2>&1 | grep -iE \"error|fatal|panic|killed|refused|timeout\" | tail -20; done' 2>&1; done"
        }
       ]
      ]

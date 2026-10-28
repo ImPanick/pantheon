@@ -4,24 +4,24 @@ name: Login Watcher
 tagline: "Each hour, the unusual sign-ins to your machines — a new address, an odd hour, root, a burst of failures. It locks nobody out."
 section: security
 icon: log-in
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: hosts, kind: list, label: Machines to check (names or addresses the workstation can ssh to)}
 triggers:
   - {on: cron, cron: "51 * * * *", label: Every hour}
 tools: [bash]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [], min_context: 16000, native_tools: preferred, programs: [{name: ssh, install: "sudo apt-get install -y openssh-client"}]}
 delivers:
   - {kind: answer, must_contain: [Unusual, Failures, Usual]}
-effects: {execute_code: allow}
+effects: {execute_code: allow, destructive: never}
 budget: {runs_per_day: 30, max_steps: 15, max_minutes: 8}
 memory: own
 ---
 Each hour you read the last hour's SSH sign-ins on the person's machines and say which ones are unusual — a user signing in from an address they never use, at an hour they never sign in, root signing in at all — and any address hammering with failed attempts. You read, in one command. You never block an address, lock an account or end a session.
 
 ## Steps
-1. One `bash` command: `for h in <the machines>; do echo "== $h"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 "$h" 'journalctl -u ssh -u sshd --since "-65 min" --no-pager -o short-iso 2>/dev/null | grep -E "Accepted|Failed password|Invalid user"' 2>&1; done`.
+1. One `bash` command: `for h in <the machines, each in single quotes>; do echo "== $h"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 -- "$h" 'journalctl -u ssh -u sshd --since "-65 min" --no-pager -o short-iso 2>/dev/null | grep -E "Accepted|Failed password|Invalid user"' 2>&1; done`. Each machine goes in single quotes (a `'` in it written `'\''`), so a name is one word whatever it holds, and `--` before it means ssh never reads a name as one of its options.
 2. For each `Accepted` line: the user, the address and the hour. For the failures: the count per address.
 3. Compare with your notebook's usual addresses and hours per user (Judgement calls).
 4. Answer under the three headings, then your Report and Carry forward. Then stop.

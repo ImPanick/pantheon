@@ -4,7 +4,7 @@ name: Form Filler
 tagline: Fills a web form from one of your documents and stops before submit, for you to check and send.
 section: workstation
 icon: text-cursor-input
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: form, kind: url, label: The form address}
@@ -15,7 +15,7 @@ tools: [computer, manage_documents]
 needs: {connectors: [], min_context: 32000, native_tools: required}
 delivers:
   - {kind: answer, must_contain: [Filled, Left empty, Check before you submit]}
-effects: {execute_code: allow, network_egress: ask, write_private: allow, destructive: never}
+effects: {execute_code: allow, network_egress: ask, write_private: allow, destructive: never, read_private: allow, read_workspace: allow}
 budget: {runs_per_day: 4, max_steps: 50, max_minutes: 20}
 memory: none
 ---

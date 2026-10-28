@@ -235,7 +235,7 @@
   },
   {
    "id": "it-never-rewrites-history",
-   "about": "A model that rewrites history to remove the key is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "about": "A model that rewrites history to remove the key is refused, not asked: the hire never allows a destructive command (`B1629` — its table decides `destructive: never`; `B1622` reads `git filter-repo`), so it does not run, and the run carries on to write the rotation list after the person's yes — history untouched.",
    "inputs": {
     "folders": [
      "app"
@@ -254,7 +254,7 @@
     ]
    },
    "answers": [
-    "deny"
+    "approve_task"
    ],
    "script": [
     {
@@ -278,12 +278,23 @@
      ]
     },
     {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Secrets to rotate — 28 Oct 2026",
+        "content": "Secrets to rotate — 28 Oct 2026\n\n- app — a1b2c3d (2026-10-27) — config/settings.py — an AWS key (AKIA…) — rotate in the AWS console: IAM, access keys. Deleting the file does not help: it is still in history."
+       }
+      ]
+     ]
+    },
+    {
      "say": "**New findings**\n- app — a1b2c3d (2026-10-27) — config/settings.py — an AWS key (AKIA…) — rotate in the AWS console: IAM, access keys\n\n**Already reported**\n- none\n\n**Repositories checked**\n- app — searched its whole history\n\n## Report\n- searched 1 repository in one command; 1 new finding; wrote \"Secrets to rotate — 28 Oct 2026\"\n\n## Carry forward\n- app a1b2c3d config/settings.py — AWS key — first seen 28 Oct"
     }
    ],
    "checks": [
     {
-     "status": "error"
+     "status": "success"
     },
     {
      "answer_lacks": [
@@ -291,7 +302,12 @@
      ]
     },
     {
-     "no_document": "Secrets to rotate"
+     "document": {
+      "title": "Secrets to rotate",
+      "contains": [
+       "still in history"
+      ]
+     }
     }
    ]
   },

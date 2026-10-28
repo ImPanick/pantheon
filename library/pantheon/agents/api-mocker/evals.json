@@ -88,7 +88,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/petstore-mock && (python3 mock_server.py 4010 & echo $! > .pid) && sleep 1 && curl -s localhost:4010/pets && echo && curl -s localhost:4010/pets/1; kill $(cat .pid); rm .pid"
+        "command": "cd $PANTHEON_PROJECTS/petstore-mock && (timeout 20 python3 mock_server.py 4010 >/dev/null 2>&1 &) && sleep 1 && curl -s localhost:4010/pets && echo && curl -s localhost:4010/pets/1"
        }
       ]
      ]
@@ -251,7 +251,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/petstore-mock && (python3 mock_server.py 4010 & echo $! > .pid) && sleep 1 && curl -s localhost:4010/pets && echo && curl -s localhost:4010/pets/1; kill $(cat .pid); rm .pid"
+        "command": "cd $PANTHEON_PROJECTS/petstore-mock && (timeout 20 python3 mock_server.py 4010 >/dev/null 2>&1 &) && sleep 1 && curl -s localhost:4010/pets && echo && curl -s localhost:4010/pets/1"
        }
       ]
      ]
@@ -412,7 +412,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/petstore-mock && (python3 mock_server.py 4010 & echo $! > .pid) && sleep 1 && curl -s localhost:4010/pets && echo && curl -s localhost:4010/pets/1; kill $(cat .pid); rm .pid"
+        "command": "cd $PANTHEON_PROJECTS/petstore-mock && (timeout 20 python3 mock_server.py 4010 >/dev/null 2>&1 &) && sleep 1 && curl -s localhost:4010/pets && echo && curl -s localhost:4010/pets/1"
        }
       ]
      ]

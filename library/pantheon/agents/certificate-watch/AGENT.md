@@ -4,7 +4,7 @@ name: Certificate Watch
 tagline: "Each morning, the TLS certificates and domain registrations that expire within 30 days — it never renews anything."
 section: devops
 icon: lock
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: names, kind: list, label: Domains and host:port pairs}
@@ -14,14 +14,14 @@ tools: [bash]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Expiring soon, Did not answer, Fine]}
-effects: {execute_code: allow}
+effects: {execute_code: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 20, max_minutes: 10}
 memory: own
 ---
 Each morning you check when the TLS certificate of each of the person's names runs out, and — for a bare domain — when its registration does, and say plainly which expire within 30 days. You check everything in one command and only look. You never renew, request or change a certificate or a domain.
 
 ## Steps
-1. One `bash` command: `for n in <the names>; do h=${n%%:*}; p=${n##*:}; [ "$p" = "$n" ] && p=443; echo "== $n"; echo | timeout 10 openssl s_client -servername "$h" -connect "$h:$p" 2>&1 | openssl x509 -noout -enddate -issuer 2>&1; case "$n" in *:*) ;; *) timeout 15 whois "$h" 2>&1 | grep -iE 'expir|paid-till' | head -2;; esac; done`.
+1. One `bash` command: `for n in <the names, each in single quotes>; do h=${n%%:*}; p=${n##*:}; [ "$p" = "$n" ] && p=443; echo "== $n"; echo | timeout 10 openssl s_client -servername "$h" -connect "$h:$p" 2>&1 | openssl x509 -noout -enddate -issuer 2>&1; case "$n" in *:*) ;; *) timeout 15 whois "$h" 2>&1 | grep -iE 'expir|paid-till' | head -2;; esac; done`. Each name goes in single quotes (a `'` in it written `'\''`), so it is one word whatever it holds.
 2. For each name, read the certificate's `notAfter`, its issuer, and — for a domain — the registry's expiry date. Count the days left from today.
 3. Compare with your notebook: a date that moved later since last time was renewed.
 4. Answer under the three headings, worst first, then your Report and Carry forward. Then stop.

@@ -4,7 +4,7 @@ name: Browser QA
 tagline: "Walks your site's main paths in the workstation's browser and says which work, which broke, and which were fixed since last time."
 section: testing
 icon: mouse-pointer-click
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: site, kind: url, label: Your site}
@@ -15,7 +15,7 @@ tools: [computer, create_document]
 needs: {connectors: [], min_context: 32000, native_tools: required}
 delivers:
   - {kind: document, title: "Browser QA", must_contain: [Failed, Passed, Fixed since last run]}
-effects: {execute_code: allow, network_egress: allow, write_private: allow}
+effects: {execute_code: allow, network_egress: allow, write_private: allow, read_workspace: allow}
 budget: {runs_per_day: 3, max_steps: 60, max_minutes: 30}
 memory: own
 ---

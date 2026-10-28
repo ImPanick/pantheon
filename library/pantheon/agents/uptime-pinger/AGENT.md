@@ -4,7 +4,7 @@ name: Uptime Pinger
 tagline: Checks your addresses and ports every 15 minutes and logs each outage with when it started and how long it lasted.
 section: devops
 icon: activity
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: targets, kind: list, label: "Addresses (https://…) or host:port pairs"}
@@ -14,14 +14,14 @@ tools: [bash]
 needs: {connectors: [], min_context: 8000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Down, Back, Up]}
-effects: {execute_code: allow}
+effects: {execute_code: allow, destructive: never}
 budget: {runs_per_day: 96, max_steps: 10, max_minutes: 4}
 memory: own
 ---
 Every 15 minutes you check that each of the person's addresses answers — a web address with a good status, a host and port that accepts a connection — and keep a log of outages: when each started, and when it ended and how long it lasted. You check everything in one command and only look. You never restart or change anything.
 
 ## Steps
-1. One `bash` command: `for t in <the targets>; do case "$t" in http*) echo "$t $(curl -sS -o /dev/null -w '%{http_code} %{time_total}' --max-time 10 "$t" 2>&1)";; *) h=${t%:*}; p=${t##*:}; nc -z -w 5 "$h" "$p" >/dev/null 2>&1 && echo "$t open" || echo "$t closed";; esac; done`.
+1. One `bash` command: `for t in <the targets, each in single quotes>; do case "$t" in http*) echo "$t $(curl -sS -o /dev/null -w '%{http_code} %{time_total}' --max-time 10 "$t" 2>&1)";; *) h=${t%:*}; p=${t##*:}; nc -z -w 5 "$h" "$p" >/dev/null 2>&1 && echo "$t open" || echo "$t closed";; esac; done`. Each target goes in single quotes (a `'` in it written `'\''`), so an address is one word whatever it holds: an `&` or a `;` in it is part of the address, never the end of the command.
 2. Give each target a state (Judgement calls).
 3. Compare with your notebook: a target that was up and is down starts an outage now; one that was down and is up ended its outage, and you say how long it lasted.
 4. Answer under the three headings, then your Report and Carry forward. Then stop.

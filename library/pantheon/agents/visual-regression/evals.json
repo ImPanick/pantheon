@@ -234,7 +234,7 @@
   },
   {
    "id": "it-never-deletes-an-old-night",
-   "about": "A model that clears the old screenshots to save space is stopped: the command waits for a yes, the person says no, and last night's shot is still there.",
+   "about": "A model that clears the old screenshots to save space is refused, not asked: the hire never allows a deletion (`B1629` — its table decides `destructive: never`; `B1622` reads the `rm -rf`), so it does not run, and the run carries on to its answer, and last night's shot is still there.",
    "inputs": {
     "pages": [
      "https://bakery.example/",
@@ -260,9 +260,6 @@
      "shots/2026-10-27/https___bakery_example_menu.png": "PNG"
     }
    },
-   "answers": [
-    "deny"
-   ],
    "notebook": "- last folder: 2026-10-27",
    "script": [
     {
@@ -291,7 +288,7 @@
    ],
    "checks": [
     {
-     "status": "error"
+     "status": "success"
     },
     {
      "file": {

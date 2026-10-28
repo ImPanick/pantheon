@@ -4,7 +4,7 @@ name: Changelog Writer
 tagline: Release notes written for users from the commits since the last tag. It never tags or publishes.
 section: development
 icon: list-ordered
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The repository's folder, inside your projects folder"}
@@ -14,7 +14,7 @@ tools: [bash, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Release notes", must_contain: [Added, Changed, Fixed]}
-effects: {execute_code: allow, write_private: allow}
+effects: {execute_code: allow, write_private: allow, destructive: never}
 budget: {runs_per_day: 4, max_steps: 15, max_minutes: 10}
 memory: none
 ---

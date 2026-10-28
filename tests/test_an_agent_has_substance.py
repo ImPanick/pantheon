@@ -190,7 +190,6 @@ def misses(m) -> List[str]:
     """What this agent's file lacks to clear the bar, one sentence each.
     Empty means it clears it."""
     from src.agents import runtime
-    from src.tool_capabilities import capabilities_for_tool
     from src.tool_policy import selectable_tool_names
 
     out: List[str] = []
@@ -257,7 +256,10 @@ def misses(m) -> List[str]:
     unused = sorted(t for t in m.tools if t not in ticked)
     if unused:
         out.append(f"The runbook never says when to use {', '.join(unused)} (named in backticks).")
-    undecided = sorted({e.value for t in m.tools for e in capabilities_for_tool(t).effects} - set(m.effects))
+    # `B1629`: every effect a call of its tools can carry — a shell's `rm`, a
+    # `manage_*` delete or list — read as the hire form reads it.
+    from src.agents.hires import manifest_effects
+    undecided = sorted(set(manifest_effects(m)) - set(m.effects))
     if undecided:
         out.append(f"Its effects table leaves {', '.join(undecided)} to the default.")
 

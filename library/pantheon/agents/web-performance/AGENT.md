@@ -4,7 +4,7 @@ name: Web Performance
 tagline: "Core Web Vitals and bundle sizes for each page, worst first."
 section: design
 icon: zap
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: pages, kind: list, label: Page addresses}
@@ -14,7 +14,7 @@ tools: [bash, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Web performance", must_contain: [Pages, One fix each, Checked]}
-effects: {execute_code: allow, write_private: allow}
+effects: {execute_code: allow, write_private: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 30, max_minutes: 30}
 memory: own
 ---

@@ -117,7 +117,13 @@ def test_a_hire_is_one_task_per_trigger_in_the_persons_zone(client, wf_db):
     assert (task.max_steps, task.timeout_seconds) == (15, 8 * 60)
 
 
-def test_each_kind_of_trigger_compiles_to_its_task(client, wf_db):
+def test_each_kind_of_trigger_compiles_to_its_task(client, wf_db, monkeypatch):
+    # `B1630`: Server Health declares the ssh it runs, and a hire asks for it
+    # first (`B1623`) — the machine running this test need not have one.
+    import shutil
+    real_which = shutil.which
+    monkeypatch.setattr(shutil, "which", lambda name, *a, **k: "/usr/bin/ssh" if name == "ssh"
+                        else real_which(name, *a, **k))
     inbox = hire(client, "inbox-triage")
     event, weekday = tasks_of(wf_db, inbox["id"])
     assert (event.trigger_type, event.trigger_event, event.trigger_count) == ("event", "email_received", 5)

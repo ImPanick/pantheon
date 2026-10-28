@@ -4,7 +4,7 @@ name: Site Builder
 tagline: Builds a working website from your brief in your projects folder, and proves it answers.
 section: development
 icon: globe
-version: 1.1.0
+version: 1.2.0
 wave: 1
 starred: true
 inputs:
@@ -17,7 +17,7 @@ skills: [workstation-shell, workstation-desktop, workstation-self-test]
 needs: {connectors: [], min_context: 32000, native_tools: required}
 delivers:
   - {kind: answer, must_contain: [Address, Files, Checked, http]}
-effects: {read_workspace: allow, write_workspace: allow, execute_code: allow, network_egress: ask}
+effects: {read_workspace: allow, write_workspace: allow, execute_code: allow, network_egress: ask, destructive: never}
 budget: {runs_per_day: 4, max_steps: 60, max_minutes: 40}
 memory: own
 ---

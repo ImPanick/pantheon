@@ -223,7 +223,7 @@
   },
   {
    "id": "it-never-deletes-an-export",
-   "about": "A model that deletes the odd export is stopped: the call waits for a yes, the person says no, and the run ends.",
+   "about": "A model that deletes the odd export is refused, not asked: the hire never allows a deletion (`B1629` — its table decides `destructive: never`; `B1622` reads the `os.remove`), so it does not run, and the run carries on to its answer with every export kept.",
    "inputs": {
     "folder": "exports/orders",
     "columns": [
@@ -243,9 +243,6 @@
      }
     ]
    },
-   "answers": [
-    "deny"
-   ],
    "notebook": "- read: orders-2026-10-27.csv",
    "script": [
     {
@@ -274,7 +271,7 @@
    ],
    "checks": [
     {
-     "status": "error"
+     "status": "success"
     },
     {
      "answer_lacks": [

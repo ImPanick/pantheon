@@ -1185,6 +1185,44 @@ def _replies_in_numbers(tool_name: str, content: Any) -> bool:
         return False
 
 
+def call_reaches(tool_name: Any) -> tuple[frozenset[ToolEffect], ...]:
+    """`B1629` / `B1632`. Each set of effects one call of this tool can be
+    classified with by `capabilities_for_action`, distinct, the registration
+    first: an action a table names, a look, a read or a write of the person's
+    own data, a deletion (`_ACTION_DESTRUCTIVE`), and a command that deletes
+    or cannot be read (`B1622`). Read in one place so the three questions
+    below cannot disagree about what a call of the tool can be (`Law 7`).
+
+    Two classifications are not listed, and neither is something a hire's
+    table decides: a switch that widens the assistant's own reach is asked at
+    every rung, whatever else says yes (`self_escalation_for`, `P7-02`), and
+    an argument too deep to read is classified unknown, which a hire asks
+    about and a sealed run never lifts (`B17`). A tool that is not known is
+    its registration alone — already every effect (fail high).
+    """
+    base = capabilities_for_tool(tool_name)
+    if not base.known or not isinstance(tool_name, str):
+        return (base.effects,)
+    bare = tool_name
+    if tool_name.startswith("mcp__email__") and tool_name[len("mcp__email__"):] in BUILTIN_EMAIL_TOOLS:
+        bare = tool_name[len("mcp__email__"):]
+    reaches = [base.effects]
+    if tool_name in _COMMAND_TOOLS:
+        reaches.append(base.effects | {ToolEffect.DESTRUCTIVE})
+    if bare in _ACTION_CAPABILITIES:
+        reaches += [c.effects for c in _ACTION_CAPABILITIES[bare].values()]
+    if bare in _OBSERVE_ONLY_ACTIONS:
+        reaches.append(_OBSERVE_ONLY_CAPABILITIES.effects)
+    if bare in _ACTION_DESTRUCTIVE:
+        reaches.append(base.effects | {ToolEffect.DESTRUCTIVE})
+    if _PRIVATE_ACTION_READS.get(bare):
+        reaches.append(frozenset({ToolEffect.READ_PRIVATE}))
+        # An action neither of its tables names: `capabilities_for_action`'s
+        # last line, a read and a write of the person's own data.
+        reaches.append(frozenset({ToolEffect.READ_PRIVATE, ToolEffect.WRITE_PRIVATE}))
+    return tuple(dict.fromkeys(reaches))
+
+
 def least_reach(tool_name: Any) -> frozenset[ToolEffect]:
     """`B1619`. The effects **every** call of this tool carries, whatever its
     action or command — the tool's registration for a tool that does one
@@ -1199,18 +1237,27 @@ def least_reach(tool_name: Any) -> frozenset[ToolEffect]:
     `capabilities_for_action`). An action a table does not name keeps the
     tool's whole registration there, so it is refused, never let through.
     """
-    base = capabilities_for_tool(tool_name)
-    if not base.known or not isinstance(tool_name, str):
-        return base.effects
-    bare = tool_name[len("mcp__email__"):] if tool_name.startswith("mcp__email__") else tool_name
-    reaches = [base.effects]
-    if bare in _ACTION_CAPABILITIES:
-        reaches += [c.effects for c in _ACTION_CAPABILITIES[bare].values()]
-    if bare in _OBSERVE_ONLY_ACTIONS:
-        reaches.append(_OBSERVE_ONLY_CAPABILITIES.effects)
-    if _PRIVATE_ACTION_READS.get(bare):
-        reaches.append(frozenset({ToolEffect.READ_PRIVATE}))
-    return frozenset.intersection(*reaches)
+    return frozenset.intersection(*call_reaches(tool_name))
+
+
+def widest_reach(tool_name: Any) -> frozenset[ToolEffect]:
+    """`B1629`. The effects **some** call of this tool can carry — what an
+    agent's effects table must decide (`hires.manifest_effects`). The
+    registration alone left out what only some calls carry: `destructive`
+    from a shell's `rm` (`B1622`) or a `manage_*` delete, and `read_private`
+    from a `manage_*` list, so a hire of Restore Drill, whose one command
+    ends `rm -rf "$t"`, had no `destructive` row and no cautious default."""
+    return frozenset().union(*call_reaches(tool_name))
+
+
+def reach_left(tool_name: Any, never: Iterable[Any]) -> frozenset[ToolEffect]:
+    """`B1632`. The effects the calls of this tool a hire's `never` leaves
+    can carry: a call carrying any `never` is refused before anything else
+    is asked (`_hire_decision_for`), so what it could have done is no part of
+    what the run can do. With no `never`, `widest_reach`."""
+    refused = {getattr(e, "value", e) for e in never or ()}
+    left = [r for r in call_reaches(tool_name) if not ({e.value for e in r} & refused)]
+    return frozenset().union(*left)
 
 
 # ── `B1622` · a shell's deletion is a deletion ──────────────────────────────

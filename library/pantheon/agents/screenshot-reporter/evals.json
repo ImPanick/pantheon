@@ -18,6 +18,9 @@
      }
     ]
    },
+   "answers": [
+    "approve_task"
+   ],
    "script": [
     {
      "call": [
@@ -63,6 +66,9 @@
      }
     ]
    },
+   "answers": [
+    "approve_task"
+   ],
    "notebook": "- 27 Oct: https://status.example/ failed",
    "script": [
     {
@@ -105,6 +111,9 @@
      }
     ]
    },
+   "answers": [
+    "approve_task"
+   ],
    "script": [
     {
      "call": [
@@ -151,6 +160,9 @@
      }
     ]
    },
+   "answers": [
+    "approve_task"
+   ],
    "notebook": "- 28 Oct: all loaded",
    "script": [
     {
@@ -202,6 +214,7 @@
     }
    },
    "answers": [
+    "approve_task",
     "deny"
    ],
    "script": [
@@ -264,6 +277,9 @@
      }
     ]
    },
+   "answers": [
+    "approve_task"
+   ],
    "script": [
     {
      "call": [

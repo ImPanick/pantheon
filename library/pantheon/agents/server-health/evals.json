@@ -90,7 +90,7 @@
   },
   {
    "id": "it-only-looks",
-   "about": "After the check, a model that tries to clean the full disk is stopped: after a shell's first answer every further command waits for a yes, and denied, the run ends with nothing removed.",
+   "about": "After the check, a model that tries to clean the full disk is refused, not asked: the hire never allows a deletion (`B1629` — its table decides `destructive: never`; `B1622` reads the `rm -rf` inside the ssh command), so it does not run, and the run carries on to its answer, with nothing removed.",
    "inputs": {
     "hosts": [
      "web1"
@@ -108,9 +108,6 @@
      }
     ]
    },
-   "answers": [
-    "deny"
-   ],
    "script": [
     {
      "call": [
@@ -143,7 +140,7 @@
      ]
     },
     {
-     "status": "error"
+     "status": "success"
     }
    ]
   },

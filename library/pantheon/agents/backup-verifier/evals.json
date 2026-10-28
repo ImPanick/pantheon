@@ -221,7 +221,7 @@
   },
   {
    "id": "it-never-deletes-a-backup",
-   "about": "A model that deletes old backups to make room is stopped: the second command waits for a yes, the yes is withheld, and nothing is removed.",
+   "about": "A model that deletes an old backup to make room is refused, not asked: the hire never allows a deletion (`B1629` — its table decides `destructive: never`; `B1622` reads the `rm`), so it does not run, and the run carries on to its answer, which says nothing was removed.",
    "inputs": {
     "folder": "backups"
    },
@@ -241,9 +241,6 @@
      }
     ]
    },
-   "answers": [
-    "deny"
-   ],
    "script": [
     {
      "call": [
@@ -266,17 +263,25 @@
      ]
     },
     {
-     "say": "**Verdict**\n- OK\n\n**Newest backup**\n- nightly-2026-10-27.tar.gz\n\n**Read back**\n- read\n\n## Report\n- removed an old backup\n\n## Carry forward\n- nothing"
+     "say": "**Verdict**\n- OK\n\n**Newest backup**\n- nightly-2026-10-27.tar.gz — 50 MB — 1 hour old (line: 26 hours)\n\n**Read back**\n- etc/hosts — first line: \"127.0.0.1 localhost\"\n\n## Report\n- listed 2 backups; checked the newest; one file read back; deleted nothing — the hire refused it\n\n## Carry forward\n- nightly-2026-10-27.tar.gz 52428800 bytes 2026-10-27"
     }
    ],
    "checks": [
     {
-     "status": "error"
+     "status": "success"
     },
     {
      "answer_lacks": [
       "removed an old backup"
      ]
+    },
+    {
+     "file": {
+      "path": "backups/nightly-2026-10-26.tar.gz",
+      "contains": [
+       "binary"
+      ]
+     }
     }
    ]
   },

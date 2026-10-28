@@ -143,8 +143,12 @@ def lacking_tools(manifest: Manifest, owner: Optional[str]) -> List[Dict[str, st
 
 
 def tool_effects(tool: str) -> List[str]:
-    from src.tool_capabilities import capabilities_for_tool
-    return sorted(e.value for e in capabilities_for_tool(tool).effects)
+    """Every effect some call of `tool` can carry (`B1629`): a shell's `rm`
+    carries `destructive` and a `manage_notes` list `read_private`, so a
+    table read from the registration alone left both to nobody — no row on
+    the hire form and, for `destructive`, no cautious default."""
+    from src.tool_capabilities import widest_reach
+    return sorted(e.value for e in widest_reach(tool))
 
 
 def kit(manifest: Manifest, never) -> List[str]:
@@ -164,8 +168,9 @@ def kit(manifest: Manifest, never) -> List[str]:
 
 
 def manifest_effects(manifest: Manifest) -> Dict[str, str]:
-    """Every effect the agent's tools can have, with the manifest's rule for
-    it — or the cautious default where the manifest is silent."""
+    """Every effect the agent's tools can have — including one only some of
+    their calls carry (`B1629`) — with the manifest's rule for it, or the
+    cautious default where the manifest is silent."""
     out: Dict[str, str] = {}
     for tool in manifest.tools:
         for eff in tool_effects(tool):

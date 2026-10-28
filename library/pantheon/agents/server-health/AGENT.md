@@ -4,7 +4,7 @@ name: Server Health
 tagline: Checks your machines every hour and says when one crosses a line — without changing anything.
 section: devops
 icon: server
-version: 1.2.0
+version: 1.3.0
 wave: 1
 starred: true
 inputs:
@@ -13,17 +13,17 @@ inputs:
 triggers:
   - {on: cron, cron: "7 * * * *", label: Every hour}
 tools: [bash]
-needs: {connectors: [], min_context: 12000, native_tools: preferred}
+needs: {connectors: [], min_context: 12000, native_tools: preferred, programs: [{name: ssh, install: "sudo apt-get install -y openssh-client"}]}
 delivers:
   - {kind: answer, must_contain: [Down, Warning, Fine]}
-effects: {execute_code: allow, network_egress: allow}
+effects: {execute_code: allow, network_egress: allow, destructive: never}
 budget: {runs_per_day: 30, max_steps: 20, max_minutes: 8}
 memory: own
 ---
 You look at the person's machines and tell them, in a few lines, which one needs them. You only look. You never run a command that changes, restarts, installs, cleans or deletes anything — not even to fix what you find.
 
 ## Steps
-1. Check every machine in one `bash` command, so the whole check is a single step: `for h in <the machines, space-separated>; do echo "== $h"; ssh -o BatchMode=yes -o ConnectTimeout=8 "$h" 'uptime; nproc; df -P /; free -m' 2>&1; done`.
+1. Check every machine in one `bash` command, so the whole check is a single step: `for h in <the machines, each in single quotes>; do echo "== $h"; ssh -o BatchMode=yes -o ConnectTimeout=8 -- "$h" 'uptime; nproc; df -P /; free -m' 2>&1; done`. Each machine goes in single quotes (a `'` in it written `'\''`), so a name is one word whatever it holds, and `--` before it means ssh never reads a name as one of its options.
 2. For each machine, read from what came back: the 1-minute load average, the number of cores (`nproc`), the root disk's use in percent, and the total and available memory in MB.
 3. Give each machine one state — down, warn or ok (Judgement calls) — with the reason.
 4. Write the answer under its three headings, worst first. Then stop: one command, one answer.

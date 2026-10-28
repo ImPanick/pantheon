@@ -4,7 +4,7 @@ name: Docs Writer
 tagline: "Each week, finds where a repository's README and docs no longer match its code, and fixes them on a branch."
 section: development
 icon: book-text
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The repository's folder, inside your projects folder"}
@@ -14,7 +14,7 @@ tools: [bash, read_file, write_file, edit_file, grep, ls]
 needs: {connectors: [], min_context: 32000, native_tools: required}
 delivers:
   - {kind: answer, must_contain: [Out of date, Changed, branch]}
-effects: {execute_code: allow, read_workspace: allow, write_workspace: allow}
+effects: {execute_code: allow, read_workspace: allow, write_workspace: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 50, max_minutes: 30}
 memory: own
 ---

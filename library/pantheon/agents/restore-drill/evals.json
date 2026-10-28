@@ -15,6 +15,9 @@
      }
     ]
    },
+   "answers": [
+    "approve_task"
+   ],
    "notebook": "- 18 Oct: public.orders 12,400; public.customers 3,190",
    "script": [
     {
@@ -22,7 +25,7 @@
       [
        "bash",
        {
-        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At drill -c \"select schemaname||'.'||tablename from pg_tables where schemaname not in ('pg_catalog','information_schema')\" | while read x; do echo \"count $x $(psql -h \"$t\" -U drill -At drill -c \"select count(*) from $x\")\"; done; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
+        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At -F ' ' drill -c \"select 'count', format('%I.%I', schemaname, tablename), (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I.%I', schemaname, tablename), false, true, '')))[1] from pg_tables where schemaname not in ('pg_catalog','information_schema')\"; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
        }
       ]
      ]
@@ -59,6 +62,9 @@
      }
     ]
    },
+   "answers": [
+    "approve_task"
+   ],
    "notebook": "- 18 Oct: public.orders 12,400; public.customers 3,190",
    "script": [
     {
@@ -66,7 +72,7 @@
       [
        "bash",
        {
-        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At drill -c \"select schemaname||'.'||tablename from pg_tables where schemaname not in ('pg_catalog','information_schema')\" | while read x; do echo \"count $x $(psql -h \"$t\" -U drill -At drill -c \"select count(*) from $x\")\"; done; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
+        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At -F ' ' drill -c \"select 'count', format('%I.%I', schemaname, tablename), (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I.%I', schemaname, tablename), false, true, '')))[1] from pg_tables where schemaname not in ('pg_catalog','information_schema')\"; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
        }
       ]
      ]
@@ -103,6 +109,9 @@
      }
     ]
    },
+   "answers": [
+    "approve_task"
+   ],
    "notebook": "- 18 Oct: public.orders 12,400; public.customers 3,190",
    "script": [
     {
@@ -110,7 +119,7 @@
       [
        "bash",
        {
-        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At drill -c \"select schemaname||'.'||tablename from pg_tables where schemaname not in ('pg_catalog','information_schema')\" | while read x; do echo \"count $x $(psql -h \"$t\" -U drill -At drill -c \"select count(*) from $x\")\"; done; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
+        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At -F ' ' drill -c \"select 'count', format('%I.%I', schemaname, tablename), (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I.%I', schemaname, tablename), false, true, '')))[1] from pg_tables where schemaname not in ('pg_catalog','information_schema')\"; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
        }
       ]
      ]
@@ -143,6 +152,9 @@
      }
     ]
    },
+   "answers": [
+    "approve_task"
+   ],
    "notebook": "- 18 Oct: public.orders 12,400; public.customers 3,190",
    "script": [
     {
@@ -150,7 +162,7 @@
       [
        "bash",
        {
-        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At drill -c \"select schemaname||'.'||tablename from pg_tables where schemaname not in ('pg_catalog','information_schema')\" | while read x; do echo \"count $x $(psql -h \"$t\" -U drill -At drill -c \"select count(*) from $x\")\"; done; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
+        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At -F ' ' drill -c \"select 'count', format('%I.%I', schemaname, tablename), (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I.%I', schemaname, tablename), false, true, '')))[1] from pg_tables where schemaname not in ('pg_catalog','information_schema')\"; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
        }
       ]
      ]
@@ -182,6 +194,9 @@
      }
     ]
    },
+   "answers": [
+    "approve_task"
+   ],
    "notebook": "- 18 Oct: public.orders 12,400; public.customers 3,190",
    "script": [
     {
@@ -189,7 +204,7 @@
       [
        "bash",
        {
-        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At drill -c \"select schemaname||'.'||tablename from pg_tables where schemaname not in ('pg_catalog','information_schema')\" | while read x; do echo \"count $x $(psql -h \"$t\" -U drill -At drill -c \"select count(*) from $x\")\"; done; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
+        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At -F ' ' drill -c \"select 'count', format('%I.%I', schemaname, tablename), (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I.%I', schemaname, tablename), false, true, '')))[1] from pg_tables where schemaname not in ('pg_catalog','information_schema')\"; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
        }
       ]
      ]
@@ -227,6 +242,7 @@
     ]
    },
    "answers": [
+    "approve_task",
     "deny"
    ],
    "notebook": "- 18 Oct: public.orders 12,400; public.customers 3,190",
@@ -236,7 +252,7 @@
       [
        "bash",
        {
-        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At drill -c \"select schemaname||'.'||tablename from pg_tables where schemaname not in ('pg_catalog','information_schema')\" | while read x; do echo \"count $x $(psql -h \"$t\" -U drill -At drill -c \"select count(*) from $x\")\"; done; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
+        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At -F ' ' drill -c \"select 'count', format('%I.%I', schemaname, tablename), (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I.%I', schemaname, tablename), false, true, '')))[1] from pg_tables where schemaname not in ('pg_catalog','information_schema')\"; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
        }
       ]
      ]
@@ -281,6 +297,9 @@
      }
     ]
    },
+   "answers": [
+    "approve_task"
+   ],
    "notebook": "- 18 Oct: public.orders 12,400; public.customers 3,190",
    "script": [
     {
@@ -288,7 +307,7 @@
       [
        "bash",
        {
-        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At drill -c \"select schemaname||'.'||tablename from pg_tables where schemaname not in ('pg_catalog','information_schema')\" | while read x; do echo \"count $x $(psql -h \"$t\" -U drill -At drill -c \"select count(*) from $x\")\"; done; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
+        "command": "f=/backups/pg; [ -d \"$f\" ] && f=$(ls -t \"$f\"/* | head -1); echo \"dump $f $(date -r \"$f\" '+%F %T') $(du -h \"$f\" | cut -f1)\"; t=$(mktemp -d); s=$(date +%s); PATH=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1):$PATH; initdb -D \"$t/db\" -A trust -U drill >/dev/null && pg_ctl -D \"$t/db\" -o \"-k $t -c listen_addresses=''\" -l \"$t/log\" -w start >/dev/null && createdb -h \"$t\" -U drill drill && (case \"$f\" in *.sql|*.sql.gz) zcat -f \"$f\" | psql -q -v ON_ERROR_STOP=1 -h \"$t\" -U drill drill;; *) pg_restore --no-owner -h \"$t\" -U drill -d drill \"$f\";; esac) 2>&1 | tail -5; echo \"restore exit ${PIPESTATUS[0]}\"; psql -h \"$t\" -U drill -At -F ' ' drill -c \"select 'count', format('%I.%I', schemaname, tablename), (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I.%I', schemaname, tablename), false, true, '')))[1] from pg_tables where schemaname not in ('pg_catalog','information_schema')\"; pg_ctl -D \"$t/db\" -m fast stop >/dev/null; echo \"took $(( $(date +%s) - s ))s\"; rm -rf \"$t\""
        }
       ]
      ]

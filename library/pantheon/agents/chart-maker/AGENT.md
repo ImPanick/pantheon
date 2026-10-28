@@ -4,7 +4,7 @@ name: Chart Maker
 tagline: "Charts from a table, each explained in a paragraph."
 section: data-analytics
 icon: pie-chart
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: file, kind: text, label: "The table (CSV), inside your projects folder"}
@@ -15,7 +15,7 @@ tools: [python]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Charts, What they show, What they do not show]}
-effects: {execute_code: allow}
+effects: {execute_code: allow, destructive: never}
 budget: {runs_per_day: 6, max_steps: 25, max_minutes: 15}
 memory: none
 ---

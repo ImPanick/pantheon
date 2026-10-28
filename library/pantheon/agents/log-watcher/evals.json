@@ -27,7 +27,7 @@
       [
        "bash",
        {
-        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'for u in api nginx; do echo \"-- $u\"; if systemctl cat \"$u\" >/dev/null 2>&1; then journalctl -u \"$u\" --since \"-65 min\" -p warning --no-pager -o cat | tail -300; else docker logs --since 65m \"$u\" 2>&1 | grep -iE \"warn|error|fatal|panic|exception\" | tail -300; fi; done' 2>&1; done"
+        "command": "for h in web1; do echo \"== $h\"; printf '%s\\n' 'api' 'nginx' | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'set --; while IFS= read -r u; do set -- \"$@\" \"$u\"; done; for u in \"$@\"; do echo \"-- $u\"; if systemctl cat -- \"$u\" >/dev/null 2>&1; then journalctl -u \"$u\" --since \"-65 min\" -p warning --no-pager -o cat | tail -300; else docker logs --since 65m \"$u\" 2>&1 | grep -iE \"warn|error|fatal|panic|exception\" | tail -300; fi; done' 2>&1; done"
        }
       ]
      ]
@@ -80,7 +80,7 @@
       [
        "bash",
        {
-        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'for u in api nginx; do echo \"-- $u\"; if systemctl cat \"$u\" >/dev/null 2>&1; then journalctl -u \"$u\" --since \"-65 min\" -p warning --no-pager -o cat | tail -300; else docker logs --since 65m \"$u\" 2>&1 | grep -iE \"warn|error|fatal|panic|exception\" | tail -300; fi; done' 2>&1; done"
+        "command": "for h in web1; do echo \"== $h\"; printf '%s\\n' 'api' 'nginx' | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'set --; while IFS= read -r u; do set -- \"$@\" \"$u\"; done; for u in \"$@\"; do echo \"-- $u\"; if systemctl cat -- \"$u\" >/dev/null 2>&1; then journalctl -u \"$u\" --since \"-65 min\" -p warning --no-pager -o cat | tail -300; else docker logs --since 65m \"$u\" 2>&1 | grep -iE \"warn|error|fatal|panic|exception\" | tail -300; fi; done' 2>&1; done"
        }
       ]
      ]
@@ -124,7 +124,7 @@
       [
        "bash",
        {
-        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'for u in api nginx; do echo \"-- $u\"; if systemctl cat \"$u\" >/dev/null 2>&1; then journalctl -u \"$u\" --since \"-65 min\" -p warning --no-pager -o cat | tail -300; else docker logs --since 65m \"$u\" 2>&1 | grep -iE \"warn|error|fatal|panic|exception\" | tail -300; fi; done' 2>&1; done"
+        "command": "for h in web1; do echo \"== $h\"; printf '%s\\n' 'api' 'nginx' | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'set --; while IFS= read -r u; do set -- \"$@\" \"$u\"; done; for u in \"$@\"; do echo \"-- $u\"; if systemctl cat -- \"$u\" >/dev/null 2>&1; then journalctl -u \"$u\" --since \"-65 min\" -p warning --no-pager -o cat | tail -300; else docker logs --since 65m \"$u\" 2>&1 | grep -iE \"warn|error|fatal|panic|exception\" | tail -300; fi; done' 2>&1; done"
        }
       ]
      ]
@@ -168,7 +168,7 @@
       [
        "bash",
        {
-        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'for u in api nginx; do echo \"-- $u\"; if systemctl cat \"$u\" >/dev/null 2>&1; then journalctl -u \"$u\" --since \"-65 min\" -p warning --no-pager -o cat | tail -300; else docker logs --since 65m \"$u\" 2>&1 | grep -iE \"warn|error|fatal|panic|exception\" | tail -300; fi; done' 2>&1; done"
+        "command": "for h in web1; do echo \"== $h\"; printf '%s\\n' 'api' 'nginx' | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'set --; while IFS= read -r u; do set -- \"$@\" \"$u\"; done; for u in \"$@\"; do echo \"-- $u\"; if systemctl cat -- \"$u\" >/dev/null 2>&1; then journalctl -u \"$u\" --since \"-65 min\" -p warning --no-pager -o cat | tail -300; else docker logs --since 65m \"$u\" 2>&1 | grep -iE \"warn|error|fatal|panic|exception\" | tail -300; fi; done' 2>&1; done"
        }
       ]
      ]
@@ -219,7 +219,7 @@
       [
        "bash",
        {
-        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'for u in api nginx; do echo \"-- $u\"; if systemctl cat \"$u\" >/dev/null 2>&1; then journalctl -u \"$u\" --since \"-65 min\" -p warning --no-pager -o cat | tail -300; else docker logs --since 65m \"$u\" 2>&1 | grep -iE \"warn|error|fatal|panic|exception\" | tail -300; fi; done' 2>&1; done"
+        "command": "for h in web1; do echo \"== $h\"; printf '%s\\n' 'api' 'nginx' | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'set --; while IFS= read -r u; do set -- \"$@\" \"$u\"; done; for u in \"$@\"; do echo \"-- $u\"; if systemctl cat -- \"$u\" >/dev/null 2>&1; then journalctl -u \"$u\" --since \"-65 min\" -p warning --no-pager -o cat | tail -300; else docker logs --since 65m \"$u\" 2>&1 | grep -iE \"warn|error|fatal|panic|exception\" | tail -300; fi; done' 2>&1; done"
        }
       ]
      ]
@@ -276,7 +276,7 @@
       [
        "bash",
        {
-        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'for u in api nginx; do echo \"-- $u\"; if systemctl cat \"$u\" >/dev/null 2>&1; then journalctl -u \"$u\" --since \"-65 min\" -p warning --no-pager -o cat | tail -300; else docker logs --since 65m \"$u\" 2>&1 | grep -iE \"warn|error|fatal|panic|exception\" | tail -300; fi; done' 2>&1; done"
+        "command": "for h in web1; do echo \"== $h\"; printf '%s\\n' 'api' 'nginx' | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'set --; while IFS= read -r u; do set -- \"$@\" \"$u\"; done; for u in \"$@\"; do echo \"-- $u\"; if systemctl cat -- \"$u\" >/dev/null 2>&1; then journalctl -u \"$u\" --since \"-65 min\" -p warning --no-pager -o cat | tail -300; else docker logs --since 65m \"$u\" 2>&1 | grep -iE \"warn|error|fatal|panic|exception\" | tail -300; fi; done' 2>&1; done"
        }
       ]
      ]

@@ -4,7 +4,7 @@ name: Browser Runner
 tagline: Does a repeated web chore in the workstation's browser from your written steps — every action waits for your yes.
 section: workstation
 icon: globe
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: steps, kind: long_text, label: "The steps, in plain words"}
@@ -15,7 +15,7 @@ tools: [computer]
 needs: {connectors: [], min_context: 32000, native_tools: required}
 delivers:
   - {kind: answer, must_contain: [Done, Stopped at, Last screen]}
-effects: {execute_code: allow, network_egress: ask}
+effects: {execute_code: allow, network_egress: ask, read_workspace: allow}
 budget: {runs_per_day: 3, max_steps: 60, max_minutes: 20}
 memory: own
 ---
