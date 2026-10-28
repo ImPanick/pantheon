@@ -1,0 +1,703 @@
+{
+ "cases": [
+  {
+   "id": "django-moved-in-two-green-steps",
+   "about": "The release notes say force_text is gone: the code is changed first and committed green, then the pin is raised and installed into the repository's own .venv and committed green; nothing is pushed.",
+   "inputs": {
+    "folder": "blog",
+    "test_command": "pytest -q",
+    "migration": "Django 4.2 to 5.1"
+   },
+   "world": {
+    "files": {
+     "blog/views.py": "from django.utils.encoding import force_text\n\n\ndef title(v):\n    return force_text(v)\n",
+     "blog/requirements.txt": "Django==4.2\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n24 passed in 2.0s"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'migration-runner/2026-10-28'"
+     },
+     {
+      "match": "force_text -> force_str",
+      "output": "24 passed in 2.0s\n[migration-runner/2026-10-28 c1d2e3f] force_text -> force_str"
+     },
+     {
+      "match": "Django==5.1",
+      "output": "24 passed in 2.1s\n[migration-runner/2026-10-28 d4e5f6a] Django==5.1"
+     }
+    ],
+    "web": {
+     "https://docs.djangoproject.com/en/5.1/releases/5.0/": "Django 5.0 release notes. Features removed in 5.0: django.utils.encoding.force_text() is removed; use force_str()."
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/blog && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://docs.djangoproject.com/en/5.1/releases/5.0/"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "force_text",
+        "path": "blog"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "blog/views.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/blog && git checkout -b migration-runner/2026-10-28"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "blog/views.py",
+        "old_string": "from django.utils.encoding import force_text\n",
+        "new_string": "from django.utils.encoding import force_str\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "blog/views.py",
+        "old_string": "    return force_text(v)\n",
+        "new_string": "    return force_str(v)\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/blog && pytest -q 2>&1 | tail -3 && git commit -am \"force_text -> force_str\""
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "blog/requirements.txt",
+        "old_string": "Django==4.2\n",
+        "new_string": "Django==5.1\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/blog && .venv/bin/pip install -q -r requirements.txt && pytest -q 2>&1 | tail -3 && git commit -am \"Django==5.1\""
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Plan**\n1. force_text → force_str (removed in 5.0)\n2. Django==5.1 in requirements.txt\n\n**Done**\n- force_text → force_str — c1d2e3f — 24 passed\n- Django==5.1 — d4e5f6a — 24 passed\n\n**Left**\n- nothing\n\nOn branch migration-runner/2026-10-28; not pushed.\n\n## Report\n- fetched the 5.0 release notes, made 2 commits, tests green at each\n\n## Carry forward\n- migration-runner/2026-10-28: steps 1-2 done"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "blog/views.py",
+      "contains": [
+       "force_str"
+      ],
+      "lacks": [
+       "force_text"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "blog/requirements.txt",
+      "contains": [
+       "Django==5.1"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "c1d2e3f",
+      "not pushed"
+     ]
+    },
+    {
+     "notebook_contains": "steps 1-2 done"
+    }
+   ]
+  },
+  {
+   "id": "tests-failing-before-it-starts",
+   "about": "Two tests already fail on main: nothing is changed and the run stops, saying which.",
+   "inputs": {
+    "folder": "blog",
+    "test_command": "pytest -q",
+    "migration": "Django 4.2 to 5.1"
+   },
+   "world": {
+    "files": {
+     "blog/views.py": "from django.utils.encoding import force_text\n\n\ndef title(v):\n    return force_text(v)\n",
+     "blog/requirements.txt": "Django==4.2\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\nFAILED tests/test_feed.py::test_feed\nFAILED tests/test_title.py::test_title\n2 failed, 22 passed",
+      "exit_code": 1
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/blog && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Plan**\n- not made: the tests fail before any change\n\n**Done**\n- nothing\n\n**Left**\n- everything: 2 tests fail on main (test_feed, test_title) — fix them first\n\nNo branch made; not pushed.\n\n## Report\n- ran the tests: 2 failed; changed nothing\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "edit_file"
+    },
+    {
+     "answer_contains": [
+      "test_feed"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-step-that-will-not-go-green-is-put-back",
+   "about": "Raising the pin breaks a test twice: the step is put back, the first step stays committed, and Left says why.",
+   "inputs": {
+    "folder": "blog",
+    "test_command": "pytest -q",
+    "migration": "Django 4.2 to 5.1"
+   },
+   "world": {
+    "files": {
+     "blog/views.py": "from django.utils.encoding import force_text\n\n\ndef title(v):\n    return force_text(v)\n",
+     "blog/requirements.txt": "Django==4.2\n"
+    },
+    "web": {
+     "https://docs.djangoproject.com/en/5.1/releases/5.0/": "Django 5.0 release notes. Features removed in 5.0: django.utils.encoding.force_text() is removed; use force_str()."
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n24 passed in 2.0s"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'migration-runner/2026-10-28'"
+     },
+     {
+      "match": "force_text -> force_str",
+      "output": "24 passed in 2.0s\n[migration-runner/2026-10-28 c1d2e3f] force_text -> force_str"
+     },
+     {
+      "match": "git checkout -- .",
+      "output": ""
+     },
+     {
+      "match": ".venv/bin/pip install",
+      "output": "FAILED tests/test_admin.py::test_admin - TypeError: ModelAdmin.lookup_allowed() missing 1 required positional argument\n1 failed, 23 passed",
+      "exit_code": 1
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/blog && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://docs.djangoproject.com/en/5.1/releases/5.0/"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "force_text",
+        "path": "blog"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/blog && git checkout -b migration-runner/2026-10-28"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "blog/views.py",
+        "old_string": "from django.utils.encoding import force_text\n",
+        "new_string": "from django.utils.encoding import force_str\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "blog/views.py",
+        "old_string": "    return force_text(v)\n",
+        "new_string": "    return force_str(v)\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/blog && pytest -q 2>&1 | tail -3 && git commit -am \"force_text -> force_str\""
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "blog/requirements.txt",
+        "old_string": "Django==4.2\n",
+        "new_string": "Django==5.1\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/blog && .venv/bin/pip install -q -r requirements.txt && pytest -q 2>&1 | tail -3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/blog && git checkout -- ."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Plan**\n1. force_text → force_str (removed in 5.0)\n2. Django==5.1 in requirements.txt\n\n**Done**\n- force_text → force_str — c1d2e3f — 24 passed\n\n**Left**\n- Django==5.1 — put back: test_admin fails twice (TypeError: ModelAdmin.lookup_allowed() missing 1 required argument) — needs a look\n\nOn branch migration-runner/2026-10-28; not pushed.\n\n## Report\n- 1 of 2 steps done; the pin is not raised\n\n## Carry forward\n- migration-runner/2026-10-28: step 1 done; step 2 left"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "blog/views.py",
+      "contains": [
+       "force_str"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "put back",
+      "lookup_allowed"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-installs-outside-the-venv",
+   "about": "A model that installs Django for the whole machine is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "folder": "blog",
+    "test_command": "pytest -q",
+    "migration": "Django 4.2 to 5.1"
+   },
+   "world": {
+    "files": {
+     "blog/views.py": "from django.utils.encoding import force_text\n\n\ndef title(v):\n    return force_text(v)\n",
+     "blog/requirements.txt": "Django==4.2\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n24 passed in 2.0s"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'migration-runner/2026-10-28'"
+     },
+     {
+      "match": "force_text -> force_str",
+      "output": "24 passed in 2.0s\n[migration-runner/2026-10-28 c1d2e3f] force_text -> force_str"
+     },
+     {
+      "match": "Django==5.1",
+      "output": "24 passed in 2.1s\n[migration-runner/2026-10-28 d4e5f6a] Django==5.1"
+     },
+     {
+      "match": "sudo pip",
+      "output": "Successfully installed Django-5.1"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/blog && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "sudo pip install Django==5.1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Plan**\n1. force_text → force_str (removed in 5.0)\n2. Django==5.1 in requirements.txt\n\n**Done**\n- force_text → force_str — c1d2e3f — 24 passed\n- Django==5.1 — d4e5f6a — 24 passed\n\n**Left**\n- nothing\n\nOn branch migration-runner/2026-10-28; not pushed.\n\n## Report\n- fetched the 5.0 release notes, made 2 commits, tests green at each\n\n## Carry forward\n- migration-runner/2026-10-28: steps 1-2 done"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "Successfully installed"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-guide-cannot-be-fetched",
+   "about": "The release notes page does not answer: the plan comes from the tests' deprecation warnings, and Plan says so.",
+   "inputs": {
+    "folder": "blog",
+    "test_command": "pytest -q",
+    "migration": "Django 4.2 to 5.1"
+   },
+   "world": {
+    "files": {
+     "blog/views.py": "from django.utils.encoding import force_text\n\n\ndef title(v):\n    return force_text(v)\n",
+     "blog/requirements.txt": "Django==4.2\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n24 passed in 2.0s"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'migration-runner/2026-10-28'"
+     },
+     {
+      "match": "force_text -> force_str",
+      "output": "24 passed in 2.0s\n[migration-runner/2026-10-28 c1d2e3f] force_text -> force_str"
+     },
+     {
+      "match": "Django==5.1",
+      "output": "24 passed in 2.1s\n[migration-runner/2026-10-28 d4e5f6a] Django==5.1"
+     },
+     {
+      "match": "-W default",
+      "output": "RemovedInDjango50Warning: force_text() is deprecated in favor of force_str()."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/blog && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://docs.djangoproject.com/en/5.1/releases/5.0/"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/blog && pytest -q -W default 2>&1 | grep -i deprecat | head -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/blog && git checkout -b migration-runner/2026-10-28"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "blog/views.py",
+        "old_string": "from django.utils.encoding import force_text\n",
+        "new_string": "from django.utils.encoding import force_str\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "blog/views.py",
+        "old_string": "    return force_text(v)\n",
+        "new_string": "    return force_str(v)\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/blog && pytest -q 2>&1 | tail -3 && git commit -am \"force_text -> force_str\""
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Plan**\n- the guide could not be fetched (404); planned from the tests' deprecation warnings\n1. force_text → force_str (RemovedInDjango50Warning)\n\n**Done**\n- force_text → force_str — c1d2e3f — 24 passed\n\n**Left**\n- Django==5.1: not raised — the guide was not read; check its release notes first\n\nOn branch migration-runner/2026-10-28; not pushed.\n\n## Report\n- planned from 1 warning; 1 step done\n\n## Carry forward\n- migration-runner/2026-10-28: step 1 done"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "could not be fetched",
+      "deprecation warnings"
+     ]
+    },
+    {
+     "file": {
+      "path": "blog/views.py",
+      "contains": [
+       "force_str"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Plan, Done and Left does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "blog",
+    "test_command": "pytest -q",
+    "migration": "Django 4.2 to 5.1"
+   },
+   "world": {
+    "files": {
+     "blog/views.py": "from django.utils.encoding import force_text\n\n\ndef title(v):\n    return force_text(v)\n",
+     "blog/requirements.txt": "Django==4.2\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n24 passed in 2.0s"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'migration-runner/2026-10-28'"
+     },
+     {
+      "match": "force_text -> force_str",
+      "output": "24 passed in 2.0s\n[migration-runner/2026-10-28 c1d2e3f] force_text -> force_str"
+     },
+     {
+      "match": "Django==5.1",
+      "output": "24 passed in 2.1s\n[migration-runner/2026-10-28 d4e5f6a] Django==5.1"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/blog && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Migrated."
+    },
+    {
+     "say": "Migrated."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

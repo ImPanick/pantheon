@@ -1,0 +1,23 @@
+{
+ "case": "a-port-and-an-option-corrected",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read README.md and cli.py; corrected 2 lines; committed on docs-writer/2026-10-31",
+ "read": [
+  "ls",
+  "read_file",
+  "grep"
+ ],
+ "wrote": [
+  "bash",
+  "edit_file"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Out of date, Changed, branch."
+  }
+ ],
+ "answer": "**Out of date**\n- README.md: says `app serve --port 8000`; cli.py has `--port`, default 8080\n- README.md: never mentions `--quiet`, which cli.py has\n\n**Changed**\n- README.md — the default port, and a line for --quiet\n- on branch docs-writer/2026-10-31, committed 9a8b7c6; not pushed\n\n## Report\n- read README.md and cli.py; corrected 2 lines; committed on docs-writer/2026-10-31\n\n## Carry forward\n- last commit read: 5e6f7a8"
+}

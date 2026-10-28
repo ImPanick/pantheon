@@ -1,0 +1,19 @@
+{
+ "case": "a-csv-merger-tested-on-its-sample",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- wrote the script and a sample; ran it on the sample only",
+ "read": [],
+ "wrote": [
+  "write_file",
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Script, Run it, Tested."
+  }
+ ],
+ "answer": "**Script**\n- scripts/merge_csv.py — merges every CSV in a folder into all.csv with one header row\n\n**Run it**\n- `python3 scripts/merge_csv.py ~/exports --dry-run`, then the same with `--apply`\n\n**Tested**\n- sample/ with 2 CSVs and an empty one: the empty one was skipped; the dry run said \"2 files, 2 rows\", the apply wrote all.csv\n\n## Report\n- wrote the script and a sample; ran it on the sample only"
+}

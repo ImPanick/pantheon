@@ -113,6 +113,10 @@ AT_THE_BAR = frozenset({
     # AI Engineering, the whole section, on the world's models, Forge, hub and index.
     "model-steward", "benchmark-runner", "dataset-curator", "eval-builder", "mcp-builder",
     "prompt-tuner", "rag-builder",
+    # Development, the whole section: each gathers what it needs in one command
+    # first, and says that every later step waits for the person's yes.
+    "api-mocker", "bug-fixer", "changelog-writer", "code-explainer", "code-reviewer", "docs-writer",
+    "migration-runner", "prototype-builder", "refactorer", "script-smith",
 })
 
 SECTIONS = ("Steps", "Judgement calls", "Edge cases", "Deliverable", "Example")

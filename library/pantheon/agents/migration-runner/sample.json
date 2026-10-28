@@ -1,0 +1,23 @@
+{
+ "case": "django-moved-in-two-green-steps",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- fetched the 5.0 release notes, made 2 commits, tests green at each",
+ "read": [
+  "web_fetch",
+  "grep",
+  "read_file"
+ ],
+ "wrote": [
+  "bash",
+  "edit_file"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Plan, Done, Left, branch."
+  }
+ ],
+ "answer": "**Plan**\n1. force_text → force_str (removed in 5.0)\n2. Django==5.1 in requirements.txt\n\n**Done**\n- force_text → force_str — c1d2e3f — 24 passed\n- Django==5.1 — d4e5f6a — 24 passed\n\n**Left**\n- nothing\n\nOn branch migration-runner/2026-10-28; not pushed.\n\n## Report\n- fetched the 5.0 release notes, made 2 commits, tests green at each\n\n## Carry forward\n- migration-runner/2026-10-28: steps 1-2 done"
+}

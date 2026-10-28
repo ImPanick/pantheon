@@ -1,0 +1,22 @@
+{
+ "case": "a-petstore-mock-written-and-checked",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the spec (3 operations), wrote 3 files, checked 2 calls on port 4010",
+ "read": [
+  "read_file",
+  "ls"
+ ],
+ "wrote": [
+  "write_file",
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Written, Checked, No example."
+  }
+ ],
+ "answer": "**Written**\n- petstore-mock/mock_server.py — run it with `python3 petstore-mock/mock_server.py 4010`\n- petstore-mock/fixtures/listPets.json, petstore-mock/fixtures/getPet.json\n\n**Checked**\n- GET /pets → [{\"id\": 1, \"name\": \"Rex\"}]\n- GET /pets/1 → {\"id\": 1, \"name\": \"Rex\"}\n\n**No example**\n- deletePet\n\n## Report\n- read the spec (3 operations), wrote 3 files, checked 2 calls on port 4010"
+}

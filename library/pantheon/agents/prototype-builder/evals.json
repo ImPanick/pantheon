@@ -1,0 +1,378 @@
+{
+ "cases": [
+  {
+   "id": "a-plant-swap-clickable",
+   "about": "Three screens with made-up neighbours, every button going to another screen, everything inline and nothing from the internet; the page answers 200.",
+   "inputs": {
+    "idea": "A plant swap for my street: see the plants on offer, ask for one, and see your requests.",
+    "folder": "plant-swap"
+   },
+   "world": {
+    "files": {
+     "plant-swap/.keep": ""
+    },
+    "shell": [
+     {
+      "match": "http.server 8081",
+      "output": "200"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "plant-swap"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "plant-swap/index.html",
+        "content": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>Plant swap</title><style>section{display:none}section.on{display:block}</style></head><body><section id=\"home\" class=\"on\"><h1>On offer</h1><p>Spider plant — Ana Example, no. 12</p><button onclick=\"go('ask')\">Ask for it</button><button onclick=\"go('mine')\">My requests</button></section><section id=\"ask\"><h1>Ask for the spider plant</h1><button onclick=\"go('mine')\">Send request</button><button onclick=\"go('home')\">Back</button></section><section id=\"mine\"><h1>My requests</h1><p>Spider plant — waiting</p><button onclick=\"go('home')\">Home</button></section><script>function go(id){document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id===id))}</script></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/plant-swap && (python3 -m http.server 8081 >/dev/null 2>&1 & echo $! > .pid) && sleep 1 && curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/; kill $(cat .pid); rm .pid"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Screens**\n- On offer — the plants on the street, Ask for it on each\n- Ask — send a request, or Back\n- My requests — each request and its state, Home\n\n**Open it**\n- in plant-swap/: `python3 -m http.server 8081`, then http://localhost:8081/\n\n**Checked**\n- curl http://localhost:8081/ → 200\n\n## Report\n- wrote plant-swap/index.html (3 screens) and checked it loads"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "plant-swap/index.html",
+      "contains": [
+       "lang=\"en\"",
+       "My requests",
+       "onclick"
+      ],
+      "lacks": [
+       "http://",
+       "https://"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "→ 200",
+      "localhost:8081"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-page-already-there-is-kept",
+   "about": "plant-swap/index.html already exists: it is read, nothing is written, and the person is told.",
+   "inputs": {
+    "idea": "A plant swap for my street: see the plants on offer, ask for one, and see your requests.",
+    "folder": "plant-swap"
+   },
+   "world": {
+    "files": {
+     "plant-swap/index.html": "<!-- the person's own page -->"
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "plant-swap"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "plant-swap/index.html"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Screens**\n- nothing new: plant-swap/index.html is already there — pick another folder\n\n**Open it**\n- the existing page: `python3 -m http.server 8081` in plant-swap/\n\n**Checked**\n- nothing run\n\n## Report\n- read the existing page; wrote nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "write_file"
+    },
+    {
+     "file": {
+      "path": "plant-swap/index.html",
+      "contains": [
+       "the person's own page"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-check-fails",
+   "about": "The server does not answer: Checked gives what it printed, and the answer does not claim it loads.",
+   "inputs": {
+    "idea": "A plant swap for my street: see the plants on offer, ask for one, and see your requests.",
+    "folder": "plant-swap"
+   },
+   "world": {
+    "files": {
+     "plant-swap/.keep": ""
+    },
+    "shell": [
+     {
+      "match": "http.server 8081",
+      "output": "000",
+      "exit_code": 7
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "plant-swap"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "plant-swap/index.html",
+        "content": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>Plant swap</title><style>section{display:none}section.on{display:block}</style></head><body><section id=\"home\" class=\"on\"><h1>On offer</h1><p>Spider plant — Ana Example, no. 12</p><button onclick=\"go('ask')\">Ask for it</button><button onclick=\"go('mine')\">My requests</button></section><section id=\"ask\"><h1>Ask for the spider plant</h1><button onclick=\"go('mine')\">Send request</button><button onclick=\"go('home')\">Back</button></section><section id=\"mine\"><h1>My requests</h1><p>Spider plant — waiting</p><button onclick=\"go('home')\">Home</button></section><script>function go(id){document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id===id))}</script></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/plant-swap && (python3 -m http.server 8081 >/dev/null 2>&1 & echo $! > .pid) && sleep 1 && curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/; kill $(cat .pid); rm .pid"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Screens**\n- On offer — the plants on the street, Ask for it on each\n- Ask — send a request, or Back\n- My requests — each request and its state, Home\n\n**Open it**\n- in plant-swap/: `python3 -m http.server 8081`, then http://localhost:8081/\n\n**Checked**\n- curl printed 000: nothing answered on port 8081 (is it taken?)\n\n## Report\n- wrote plant-swap/index.html (3 screens) and the check failed"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "000"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "→ 200"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-idea-that-contradicts-itself",
+   "about": "\"No sign-up\" and \"a profile page for each user\": the first is prototyped and the conflict is named.",
+   "inputs": {
+    "idea": "A plant swap for my street: see the plants on offer, ask for one, and see your requests. No sign-up. A profile page for each user.",
+    "folder": "plant-swap"
+   },
+   "world": {
+    "files": {
+     "plant-swap/.keep": ""
+    },
+    "shell": [
+     {
+      "match": "http.server 8081",
+      "output": "200"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "plant-swap"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "plant-swap/index.html",
+        "content": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>Plant swap</title><style>section{display:none}section.on{display:block}</style></head><body><section id=\"home\" class=\"on\"><h1>On offer</h1><p>Spider plant — Ana Example, no. 12</p><button onclick=\"go('ask')\">Ask for it</button><button onclick=\"go('mine')\">My requests</button></section><section id=\"ask\"><h1>Ask for the spider plant</h1><button onclick=\"go('mine')\">Send request</button><button onclick=\"go('home')\">Back</button></section><section id=\"mine\"><h1>My requests</h1><p>Spider plant — waiting</p><button onclick=\"go('home')\">Home</button></section><script>function go(id){document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id===id))}</script></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/plant-swap && (python3 -m http.server 8081 >/dev/null 2>&1 & echo $! > .pid) && sleep 1 && curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/; kill $(cat .pid); rm .pid"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Screens**\n- On offer — the plants on the street, Ask for it on each\n- Ask — send a request, or Back\n- My requests — each request and its state, Home\n\n- not made: a profile page per user — the idea also says no sign-up; prototyped without accounts\n\n**Open it**\n- in plant-swap/: `python3 -m http.server 8081`, then http://localhost:8081/\n\n**Checked**\n- curl http://localhost:8081/ → 200\n\n## Report\n- wrote plant-swap/index.html (3 screens) and checked it loads"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "also says no sign-up"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "nothing-to-prototype",
+   "about": "The description names no screen or task: nothing is written — never a page made up to fill the gap — and the run ends undelivered, asking what a visitor should be able to do.",
+   "inputs": {
+    "idea": "Something cool.",
+    "folder": "plant-swap"
+   },
+   "world": {
+    "files": {
+     "plant-swap/.keep": ""
+    },
+    "shell": [
+     {
+      "match": "http.server 8081",
+      "output": "200"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "plant-swap"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Screens**\n- nothing made: the description names nothing a visitor does — what should they be able to see or do?\n\n**Open it**\n- nothing yet\n\n**Checked**\n- nothing run\n\n## Report\n- wrote nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "write_file"
+    },
+    {
+     "status": "error"
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Screens, Open it and Checked does not deliver, even after its repair pass.",
+   "inputs": {
+    "idea": "A plant swap for my street: see the plants on offer, ask for one, and see your requests.",
+    "folder": "plant-swap"
+   },
+   "world": {
+    "files": {
+     "plant-swap/.keep": ""
+    },
+    "shell": [
+     {
+      "match": "http.server 8081",
+      "output": "200"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "plant-swap"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "plant-swap/index.html",
+        "content": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>Plant swap</title><style>section{display:none}section.on{display:block}</style></head><body><section id=\"home\" class=\"on\"><h1>On offer</h1><p>Spider plant — Ana Example, no. 12</p><button onclick=\"go('ask')\">Ask for it</button><button onclick=\"go('mine')\">My requests</button></section><section id=\"ask\"><h1>Ask for the spider plant</h1><button onclick=\"go('mine')\">Send request</button><button onclick=\"go('home')\">Back</button></section><section id=\"mine\"><h1>My requests</h1><p>Spider plant — waiting</p><button onclick=\"go('home')\">Home</button></section><script>function go(id){document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id===id))}</script></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Made it."
+    },
+    {
+     "say": "Made it."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

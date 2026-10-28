@@ -1,0 +1,26 @@
+{
+ "case": "a-plant-swap-clickable",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- wrote plant-swap/index.html (3 screens) and checked it loads",
+ "read": [
+  "ls"
+ ],
+ "wrote": [
+  "write_file",
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the file plant-swap/index.html",
+   "ok": true,
+   "detail": "plant-swap/index.html is there."
+  },
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Screens, Open it, Checked."
+  }
+ ],
+ "answer": "**Screens**\n- On offer — the plants on the street, Ask for it on each\n- Ask — send a request, or Back\n- My requests — each request and its state, Home\n\n**Open it**\n- in plant-swap/: `python3 -m http.server 8081`, then http://localhost:8081/\n\n**Checked**\n- curl http://localhost:8081/ → 200\n\n## Report\n- wrote plant-swap/index.html (3 screens) and checked it loads"
+}

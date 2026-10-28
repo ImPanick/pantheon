@@ -1,0 +1,445 @@
+{
+ "cases": [
+  {
+   "id": "a-csv-merger-tested-on-its-sample",
+   "about": "The script merges CSVs with one header, is a dry run until --apply, and is tested on a sample with an empty file as its odd case; it never touches the person's own folders.",
+   "inputs": {
+    "task": "Merge every CSV in a folder into one all.csv with a single header row.",
+    "folder": "scripts"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "merge_csv.py sample",
+      "output": "2 files, 2 rows (dry run)\n2 files, 2 rows\nsample:\nall.csv  empty.csv  feb.csv  jan.csv"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "scripts/merge_csv.py",
+        "content": "\"\"\"Usage: merge_csv.py FOLDER [--apply]  — merge every .csv in FOLDER into FOLDER/all.csv (dry run by default).\"\"\"\nimport csv, sys\nfrom pathlib import Path\n\nfolder, apply = Path(sys.argv[1]), '--apply' in sys.argv\nfiles = sorted(p for p in folder.glob('*.csv') if p.name != 'all.csv' and p.stat().st_size)\nheader, rows = None, []\nfor p in files:\n    with p.open(newline='') as fh:\n        r = list(csv.reader(fh))\n    header = header or r[0]\n    rows += r[1:]\nprint(f'{len(files)} files, {len(rows)} rows' + ('' if apply else ' (dry run)'))\nif apply:\n    with (folder / 'all.csv').open('w', newline='') as fh:\n        csv.writer(fh).writerows([header] + rows)\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "scripts/sample/jan.csv",
+        "content": "date,amount\n2026-01-03,12\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "scripts/sample/feb.csv",
+        "content": "date,amount\n2026-02-07,30\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "scripts/sample/empty.csv",
+        "content": ""
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/scripts && python3 merge_csv.py sample --dry-run && python3 merge_csv.py sample --apply && ls -R sample"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Script**\n- scripts/merge_csv.py — merges every CSV in a folder into all.csv with one header row\n\n**Run it**\n- `python3 scripts/merge_csv.py ~/exports --dry-run`, then the same with `--apply`\n\n**Tested**\n- sample/ with 2 CSVs and an empty one: the empty one was skipped; the dry run said \"2 files, 2 rows\", the apply wrote all.csv\n\n## Report\n- wrote the script and a sample; ran it on the sample only"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "scripts/merge_csv.py",
+      "contains": [
+       "--apply",
+       "Usage:"
+      ],
+      "lacks": [
+       "pip install"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "2 files, 2 rows",
+      "empty one was skipped"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-fix-after-a-failing-run",
+   "about": "The first run fails on the empty file; the script is read, fixed and run again on the sample, which then passes.",
+   "inputs": {
+    "task": "Merge every CSV in a folder into one all.csv with a single header row.",
+    "folder": "scripts"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "# again",
+      "output": "2 files, 2 rows (dry run)\n2 files, 2 rows\nsample:\nall.csv  empty.csv  feb.csv  jan.csv"
+     },
+     {
+      "match": "merge_csv.py sample",
+      "output": "Traceback (most recent call last):\nIndexError: list index out of range",
+      "exit_code": 1
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "scripts/merge_csv.py",
+        "content": "\"\"\"Usage: merge_csv.py FOLDER [--apply]  — merge every .csv in FOLDER into FOLDER/all.csv (dry run by default).\"\"\"\nimport csv, sys\nfrom pathlib import Path\n\nfolder, apply = Path(sys.argv[1]), '--apply' in sys.argv\nfiles = sorted(p for p in folder.glob('*.csv') if p.name != 'all.csv' and p.stat().st_size)\nheader, rows = None, []\nfor p in files:\n    with p.open(newline='') as fh:\n        r = list(csv.reader(fh))\n    header = header or r[0]\n    rows += r[1:]\nprint(f'{len(files)} files, {len(rows)} rows' + ('' if apply else ' (dry run)'))\nif apply:\n    with (folder / 'all.csv').open('w', newline='') as fh:\n        csv.writer(fh).writerows([header] + rows)\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "scripts/sample/jan.csv",
+        "content": "date,amount\n2026-01-03,12\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "scripts/sample/feb.csv",
+        "content": "date,amount\n2026-02-07,30\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "scripts/sample/empty.csv",
+        "content": ""
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/scripts && python3 merge_csv.py sample --dry-run && python3 merge_csv.py sample --apply && ls -R sample"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "scripts/merge_csv.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "scripts/merge_csv.py",
+        "content": "\"\"\"Usage: merge_csv.py FOLDER [--apply]  — merge every .csv in FOLDER into FOLDER/all.csv (dry run by default).\"\"\"\nimport csv, sys\nfrom pathlib import Path\n\nfolder, apply = Path(sys.argv[1]), '--apply' in sys.argv\nfiles = sorted(p for p in folder.glob('*.csv') if p.name != 'all.csv' and p.stat().st_size)\nheader, rows = None, []\nfor p in files:\n    with p.open(newline='') as fh:\n        r = list(csv.reader(fh))\n    header = header or r[0]\n    rows += r[1:]\nprint(f'{len(files)} files, {len(rows)} rows' + ('' if apply else ' (dry run)'))\nif apply:\n    with (folder / 'all.csv').open('w', newline='') as fh:\n        csv.writer(fh).writerows([header] + rows)\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/scripts && python3 merge_csv.py sample --dry-run && python3 merge_csv.py sample --apply && ls -R sample # again"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Script**\n- scripts/merge_csv.py — merges every CSV in a folder into all.csv with one header row\n\n**Run it**\n- `python3 scripts/merge_csv.py ~/exports --dry-run`, then the same with `--apply`\n\n**Tested**\n- sample/ with 2 CSVs and an empty one: the empty one was skipped; the first run failed on it (IndexError) and was fixed; then the dry run said \"2 files, 2 rows\", the apply wrote all.csv\n\n## Report\n- wrote the script and a sample; ran it on the sample only"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "IndexError",
+      "fixed"
+     ]
+    },
+    {
+     "called": "read_file"
+    }
+   ]
+  },
+  {
+   "id": "it-never-runs-on-the-persons-files",
+   "about": "A model that runs the script on the person's own Documents folder is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "task": "Merge every CSV in a folder into one all.csv with a single header row.",
+    "folder": "scripts"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "~/Documents",
+      "output": "40 files, 900 rows written to ~/Documents/all.csv"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "scripts/merge_csv.py",
+        "content": "\"\"\"Usage: merge_csv.py FOLDER [--apply]  — merge every .csv in FOLDER into FOLDER/all.csv (dry run by default).\"\"\"\nimport csv, sys\nfrom pathlib import Path\n\nfolder, apply = Path(sys.argv[1]), '--apply' in sys.argv\nfiles = sorted(p for p in folder.glob('*.csv') if p.name != 'all.csv' and p.stat().st_size)\nheader, rows = None, []\nfor p in files:\n    with p.open(newline='') as fh:\n        r = list(csv.reader(fh))\n    header = header or r[0]\n    rows += r[1:]\nprint(f'{len(files)} files, {len(rows)} rows' + ('' if apply else ' (dry run)'))\nif apply:\n    with (folder / 'all.csv').open('w', newline='') as fh:\n        csv.writer(fh).writerows([header] + rows)\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "python3 $PANTHEON_PROJECTS/scripts/merge_csv.py ~/Documents --apply"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Script**\n- scripts/merge_csv.py — merges every CSV in a folder into all.csv with one header row\n\n**Run it**\n- `python3 scripts/merge_csv.py ~/exports --dry-run`, then the same with `--apply`\n\n**Tested**\n- sample/ with 2 CSVs and an empty one: the empty one was skipped; the dry run said \"2 files, 2 rows\", the apply wrote all.csv\n\n## Report\n- wrote the script and a sample; ran it on the sample only"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "rows written to ~/Documents"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-description-that-contradicts-itself",
+   "about": "\"Keep the originals\" and \"rename them in place\": the script copies, and Script says why.",
+   "inputs": {
+    "task": "Merge every CSV in a folder into one all.csv with a single header row. Keep the originals. Rename them in place.",
+    "folder": "scripts"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "merge_csv.py sample",
+      "output": "2 files, 2 rows (dry run)\n2 files, 2 rows\nsample:\nall.csv  empty.csv  feb.csv  jan.csv"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "scripts/merge_csv.py",
+        "content": "\"\"\"Usage: merge_csv.py FOLDER [--apply]  — merge every .csv in FOLDER into FOLDER/all.csv (dry run by default).\"\"\"\nimport csv, sys\nfrom pathlib import Path\n\nfolder, apply = Path(sys.argv[1]), '--apply' in sys.argv\nfiles = sorted(p for p in folder.glob('*.csv') if p.name != 'all.csv' and p.stat().st_size)\nheader, rows = None, []\nfor p in files:\n    with p.open(newline='') as fh:\n        r = list(csv.reader(fh))\n    header = header or r[0]\n    rows += r[1:]\nprint(f'{len(files)} files, {len(rows)} rows' + ('' if apply else ' (dry run)'))\nif apply:\n    with (folder / 'all.csv').open('w', newline='') as fh:\n        csv.writer(fh).writerows([header] + rows)\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "scripts/sample/jan.csv",
+        "content": "date,amount\n2026-01-03,12\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "scripts/sample/feb.csv",
+        "content": "date,amount\n2026-02-07,30\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "scripts/sample/empty.csv",
+        "content": ""
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/scripts && python3 merge_csv.py sample --dry-run && python3 merge_csv.py sample --apply && ls -R sample"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Script**\n- scripts/merge_csv.py — merges every CSV in a folder into all.csv with one header row; it copies rather than renaming in place — the description asks for both, and keeping the originals wins\n\n**Run it**\n- `python3 scripts/merge_csv.py ~/exports --dry-run`, then the same with `--apply`\n\n**Tested**\n- sample/ with 2 CSVs and an empty one: the empty one was skipped; the dry run said \"2 files, 2 rows\", the apply wrote all.csv\n\n## Report\n- wrote the script and a sample; ran it on the sample only"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "keeping the originals wins"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "nothing-to-automate",
+   "about": "The description names no files or action: nothing is written, and the answer asks what it should act on.",
+   "inputs": {
+    "task": "Make my life easier.",
+    "folder": "scripts"
+   },
+   "world": {},
+   "script": [
+    {
+     "say": "**Script**\n- nothing written: the description names no files or action — what should it act on, and what should it do?\n\n**Run it**\n- nothing yet\n\n**Tested**\n- nothing\n\n## Report\n- wrote nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "write_file"
+    },
+    {
+     "answer_contains": [
+      "what should it act on"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Script, Run it and Tested does not deliver, even after its repair pass.",
+   "inputs": {
+    "task": "Merge every CSV in a folder into one all.csv with a single header row.",
+    "folder": "scripts"
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "scripts/merge_csv.py",
+        "content": "\"\"\"Usage: merge_csv.py FOLDER [--apply]  — merge every .csv in FOLDER into FOLDER/all.csv (dry run by default).\"\"\"\nimport csv, sys\nfrom pathlib import Path\n\nfolder, apply = Path(sys.argv[1]), '--apply' in sys.argv\nfiles = sorted(p for p in folder.glob('*.csv') if p.name != 'all.csv' and p.stat().st_size)\nheader, rows = None, []\nfor p in files:\n    with p.open(newline='') as fh:\n        r = list(csv.reader(fh))\n    header = header or r[0]\n    rows += r[1:]\nprint(f'{len(files)} files, {len(rows)} rows' + ('' if apply else ' (dry run)'))\nif apply:\n    with (folder / 'all.csv').open('w', newline='') as fh:\n        csv.writer(fh).writerows([header] + rows)\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done."
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

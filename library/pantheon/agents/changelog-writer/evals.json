@@ -1,0 +1,345 @@
+{
+ "cases": [
+  {
+   "id": "five-commits-become-three-lines",
+   "about": "Five commits since v1.4.0: a feature, a change and a fix each get one line in a user's words with its hash; the test and CI commits are left out and counted.",
+   "inputs": {
+    "folder": "app"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git describe",
+      "output": "TAG v1.4.0\na1b2c3d feat: add date col to csv export\n\n--\nd4e5f6a settings: remember last tab\n\n--\n9f8e7d6 fix: basket of two dropped last item\n\n--\n1111111 test: more cart tests\n\n--\n2222222 ci: cache pip\n\n--"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && tag=$(git describe --tags --abbrev=0 2>/dev/null); echo \"TAG ${tag:-none}\"; git log ${tag:+$tag..}HEAD --no-merges --format='%h %s%n%b%n--'"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Release notes — 28 Oct 2026",
+        "content": "Release notes — 28 Oct 2026\nSince v1.4.0\n\n## Added\n- Exports now include the date of each row (a1b2c3d)\n\n## Changed\n- The settings page opens on the tab you used last (d4e5f6a)\n\n## Fixed\n- Totals no longer drop the last item in a basket of two (9f8e7d6)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Added 1, Changed 1, Fixed 1.\n\n## Report\n- read 5 commits since v1.4.0; left out 2 (tests, CI); wrote \"Release notes — 28 Oct 2026\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Release notes",
+      "contains": [
+       "Since v1.4.0",
+       "(a1b2c3d)",
+       "basket of two"
+      ],
+      "lacks": [
+       "ci: cache pip",
+       "1111111"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-since-the-tag",
+   "about": "No commits since the last tag: the notes say nothing has changed, and every heading says nothing.",
+   "inputs": {
+    "folder": "app"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git describe",
+      "output": "TAG v1.4.0\n"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && tag=$(git describe --tags --abbrev=0 2>/dev/null); echo \"TAG ${tag:-none}\"; git log ${tag:+$tag..}HEAD --no-merges --format='%h %s%n%b%n--'"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Release notes — 28 Oct 2026",
+        "content": "Release notes — 28 Oct 2026\nSince v1.4.0\n\nNothing has changed since v1.4.0.\n\n## Added\n- nothing\n\n## Changed\n- nothing\n\n## Fixed\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Added 0, Changed 0, Fixed 0.\n\n## Report\n- no commits since v1.4.0"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Release notes",
+      "contains": [
+       "Nothing has changed since v1.4.0"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-tags-yet",
+   "about": "The repository has never been tagged: the notes cover every commit and say since the beginning.",
+   "inputs": {
+    "folder": "app"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git describe",
+      "output": "TAG none\naaaa111 feat: csv export\n\n--"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && tag=$(git describe --tags --abbrev=0 2>/dev/null); echo \"TAG ${tag:-none}\"; git log ${tag:+$tag..}HEAD --no-merges --format='%h %s%n%b%n--'"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Release notes — 28 Oct 2026",
+        "content": "Release notes — 28 Oct 2026\nSince the beginning\n\n## Added\n- A first export to CSV (aaaa111)\n\n## Changed\n- nothing\n\n## Fixed\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Added 1, Changed 0, Fixed 0.\n\n## Report\n- no tags yet: read all 1 commit"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Release notes",
+      "contains": [
+       "Since the beginning"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "not-a-repository",
+   "about": "The folder is not a git repository: the notes say they could not read the history, with the error, and list nothing.",
+   "inputs": {
+    "folder": "app"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git describe",
+      "output": "TAG none\nfatal: not a git repository (or any of the parent directories): .git",
+      "exit_code": 128
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && tag=$(git describe --tags --abbrev=0 2>/dev/null); echo \"TAG ${tag:-none}\"; git log ${tag:+$tag..}HEAD --no-merges --format='%h %s%n%b%n--'"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Release notes — 28 Oct 2026",
+        "content": "Release notes — 28 Oct 2026\nCould not read the history: fatal: not a git repository (app)\n\n## Added\n- nothing\n\n## Changed\n- nothing\n\n## Fixed\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Added 0, Changed 0, Fixed 0: the history could not be read.\n\n## Report\n- the command failed: not a git repository"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Release notes",
+      "contains": [
+       "Could not read the history: fatal: not a git repository"
+      ],
+      "lacks": [
+       "Since"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-revert-cancels-its-commit",
+   "about": "A feature and its revert are both since the tag: both are left out, and the Report says so — the notes never promise what was taken back.",
+   "inputs": {
+    "folder": "app"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git describe",
+      "output": "TAG v1.4.0\ncccc333 Revert \"feat: dark mode\"\n\nThis reverts commit bbbb222.\n--\nbbbb222 feat: dark mode\n\n--\n9f8e7d6 fix: basket of two dropped last item\n\n--"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && tag=$(git describe --tags --abbrev=0 2>/dev/null); echo \"TAG ${tag:-none}\"; git log ${tag:+$tag..}HEAD --no-merges --format='%h %s%n%b%n--'"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Release notes — 28 Oct 2026",
+        "content": "Release notes — 28 Oct 2026\nSince v1.4.0\n\n## Added\n- nothing\n\n## Changed\n- nothing\n\n## Fixed\n- Totals no longer drop the last item in a basket of two (9f8e7d6)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Added 0, Changed 0, Fixed 1.\n\n## Report\n- read 3 commits since v1.4.0; left out bbbb222 and its revert cccc333"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Release notes",
+      "contains": [
+       "(9f8e7d6)"
+      ],
+      "lacks": [
+       "dark mode"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "its revert"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "notes-without-their-headings-fail",
+   "about": "The harness's own check: notes without Added, Changed and Fixed do not deliver, even after their repair pass.",
+   "inputs": {
+    "folder": "app"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git describe",
+      "output": "TAG v1.4.0\na1b2c3d feat: add date col to csv export\n\n--\nd4e5f6a settings: remember last tab\n\n--\n9f8e7d6 fix: basket of two dropped last item\n\n--\n1111111 test: more cart tests\n\n--\n2222222 ci: cache pip\n\n--"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && tag=$(git describe --tags --abbrev=0 2>/dev/null); echo \"TAG ${tag:-none}\"; git log ${tag:+$tag..}HEAD --no-merges --format='%h %s%n%b%n--'"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Release notes — 28 Oct 2026",
+        "content": "Lots of improvements."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

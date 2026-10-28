@@ -1,0 +1,376 @@
+{
+ "cases": [
+  {
+   "id": "a-shop-walked-through",
+   "about": "One order is followed from cli.py's main() to store.py's save(), each step named exactly; the README's --express option, which the code lacks, is said; the .env file is named and its key never quoted.",
+   "inputs": {
+    "folder": "shop"
+   },
+   "world": {
+    "files": {
+     "shop/README.md": "# shop\nRun `python cli.py add <item> <qty>`. Use `--express` for next-day delivery.\n",
+     "shop/cli.py": "import sys\nfrom orders import place\n\n\ndef main():\n    item, qty = sys.argv[2], int(sys.argv[3])\n    print(place(item, qty))\n",
+     "shop/orders.py": "from store import save\nPRICES = {'mug': 12}\n\n\ndef place(item, qty):\n    if item not in PRICES:\n        raise ValueError(f'no such item: {item}')\n    order = {'item': item, 'qty': qty, 'total': PRICES[item] * qty}\n    save(order)\n    return order\n",
+     "shop/store.py": "import json\n\n\ndef save(order):\n    with open('orders.json', 'a') as fh:\n        fh.write(json.dumps(order) + '\\n')\n",
+     "shop/.env": "STRIPE_KEY=sk_live_abc123\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "shop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "glob",
+       {
+        "pattern": "shop/**/*.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/README.md"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/cli.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "def place",
+        "path": "shop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/orders.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/store.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Walkthrough — shop",
+        "content": "Walkthrough — shop\n\n## What it does\nA small shop's order service: a command-line tool takes an order and saves it with its total. The README says `--express` gives next-day delivery; the code has no such option.\n\n## How it flows\n1. cli.py: main() reads the item and the quantity\n2. orders.py: place() checks the item exists and works out the total\n3. store.py: save() writes the order to orders.json\n\n## Key files\n- cli.py — the command line\n- orders.py — the rules for an order and the prices\n- store.py — where orders are kept\n- .env — settings (contents not quoted)\n\n## Start reading here\n- orders.py: place() — every order passes through it"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "shop is a small order service; the walkthrough follows one order from the command line to the file.\n\n## Report\n- read 4 files; wrote \"Walkthrough — shop\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Walkthrough — shop",
+      "contains": [
+       "orders.py: place()",
+       "store.py: save()",
+       "no such option"
+      ],
+      "lacks": [
+       "sk_live",
+       "STRIPE_KEY="
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "one-file-asked-for",
+   "about": "Hired with one file: the walkthrough is of that file, and its flow stays inside what it calls.",
+   "inputs": {
+    "folder": "shop",
+    "path": "orders.py"
+   },
+   "world": {
+    "files": {
+     "shop/README.md": "# shop\nRun `python cli.py add <item> <qty>`. Use `--express` for next-day delivery.\n",
+     "shop/cli.py": "import sys\nfrom orders import place\n\n\ndef main():\n    item, qty = sys.argv[2], int(sys.argv[3])\n    print(place(item, qty))\n",
+     "shop/orders.py": "from store import save\nPRICES = {'mug': 12}\n\n\ndef place(item, qty):\n    if item not in PRICES:\n        raise ValueError(f'no such item: {item}')\n    order = {'item': item, 'qty': qty, 'total': PRICES[item] * qty}\n    save(order)\n    return order\n",
+     "shop/store.py": "import json\n\n\ndef save(order):\n    with open('orders.json', 'a') as fh:\n        fh.write(json.dumps(order) + '\\n')\n",
+     "shop/.env": "STRIPE_KEY=sk_live_abc123\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "shop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/orders.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/store.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Walkthrough — shop/orders.py",
+        "content": "Walkthrough — shop/orders.py\n\n## What it does\nThe rules for an order: the item must have a price, and the total is the price times the quantity.\n\n## How it flows\n1. orders.py: place() looks the item up in PRICES\n2. orders.py: place() raises ValueError for an item with no price\n3. store.py: save() keeps the order\n\n## Key files\n- orders.py — the rules and PRICES\n- store.py — called to keep the order\n\n## Start reading here\n- orders.py: place() — it is the whole file's job"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "orders.py holds the rules for an order.\n\n## Report\n- read 2 files; wrote \"Walkthrough — shop/orders.py\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Walkthrough — shop/orders.py",
+      "contains": [
+       "raises ValueError"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-to-explain",
+   "about": "The folder holds no code: the walkthrough says so plainly and invents nothing.",
+   "inputs": {
+    "folder": "empty"
+   },
+   "world": {
+    "files": {
+     "empty/notes.txt": "todo"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "empty"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "glob",
+       {
+        "pattern": "empty/**/*"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Walkthrough — empty",
+        "content": "Walkthrough — empty\n\n## What it does\nNothing to explain: the folder holds no code (only notes.txt).\n\n## How it flows\n- nothing\n\n## Key files\n- nothing\n\n## Start reading here\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "empty holds no code.\n\n## Report\n- listed the folder; wrote \"Walkthrough — empty\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Walkthrough",
+      "contains": [
+       "Nothing to explain"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-file-that-will-not-read",
+   "about": "A path outside the projects folder is refused by read_file: it is named as not read, with why, and the walkthrough goes on.",
+   "inputs": {
+    "folder": "shop"
+   },
+   "world": {
+    "files": {
+     "shop/README.md": "# shop\nRun `python cli.py add <item> <qty>`. Use `--express` for next-day delivery.\n",
+     "shop/cli.py": "import sys\nfrom orders import place\n\n\ndef main():\n    item, qty = sys.argv[2], int(sys.argv[3])\n    print(place(item, qty))\n",
+     "shop/orders.py": "from store import save\nPRICES = {'mug': 12}\n\n\ndef place(item, qty):\n    if item not in PRICES:\n        raise ValueError(f'no such item: {item}')\n    order = {'item': item, 'qty': qty, 'total': PRICES[item] * qty}\n    save(order)\n    return order\n",
+     "shop/store.py": "import json\n\n\ndef save(order):\n    with open('orders.json', 'a') as fh:\n        fh.write(json.dumps(order) + '\\n')\n",
+     "shop/.env": "STRIPE_KEY=sk_live_abc123\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "shop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "/etc/shadow"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/orders.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Walkthrough — shop",
+        "content": "Walkthrough — shop\n\n## What it does\nA small shop's order service: a command-line tool takes an order and saves it with its total. The README says `--express` gives next-day delivery; the code has no such option.\n\n## How it flows\n1. cli.py: main() reads the item and the quantity\n2. orders.py: place() checks the item exists and works out the total\n3. store.py: save() writes the order to orders.json\n\n## Key files\n- cli.py — the command line\n- orders.py — the rules for an order and the prices\n- store.py — where orders are kept\n- .env — settings (contents not quoted)\n- /etc/shadow — not read: outside your projects folder\n\n## Start reading here\n- orders.py: place() — every order passes through it"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "shop is a small order service.\n\n## Report\n- read 1 file, 1 refused; wrote \"Walkthrough — shop\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Walkthrough",
+      "contains": [
+       "not read: outside your projects folder"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-walkthrough-without-its-headings-fails",
+   "about": "The harness's own check: a walkthrough without its four headings does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "shop"
+   },
+   "world": {
+    "files": {
+     "shop/README.md": "# shop\nRun `python cli.py add <item> <qty>`. Use `--express` for next-day delivery.\n",
+     "shop/cli.py": "import sys\nfrom orders import place\n\n\ndef main():\n    item, qty = sys.argv[2], int(sys.argv[3])\n    print(place(item, qty))\n",
+     "shop/orders.py": "from store import save\nPRICES = {'mug': 12}\n\n\ndef place(item, qty):\n    if item not in PRICES:\n        raise ValueError(f'no such item: {item}')\n    order = {'item': item, 'qty': qty, 'total': PRICES[item] * qty}\n    save(order)\n    return order\n",
+     "shop/store.py": "import json\n\n\ndef save(order):\n    with open('orders.json', 'a') as fh:\n        fh.write(json.dumps(order) + '\\n')\n",
+     "shop/.env": "STRIPE_KEY=sk_live_abc123\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "shop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Walkthrough — shop",
+        "content": "It's a shop."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

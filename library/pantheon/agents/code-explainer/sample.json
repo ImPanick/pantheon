@@ -1,0 +1,29 @@
+{
+ "case": "a-shop-walked-through",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 4 files; wrote \"Walkthrough — shop\"",
+ "read": [
+  "ls",
+  "glob",
+  "read_file",
+  "grep"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Walkthrough”",
+   "ok": true,
+   "detail": "“Walkthrough — shop” is there."
+  }
+ ],
+ "answer": "shop is a small order service; the walkthrough follows one order from the command line to the file.\n\n## Report\n- read 4 files; wrote \"Walkthrough — shop\"",
+ "documents": [
+  {
+   "title": "Walkthrough — shop",
+   "content": "Walkthrough — shop\n\n## What it does\nA small shop's order service: a command-line tool takes an order and saves it with its total. The README says `--express` gives next-day delivery; the code has no such option.\n\n## How it flows\n1. cli.py: main() reads the item and the quantity\n2. orders.py: place() checks the item exists and works out the total\n3. store.py: save() writes the order to orders.json\n\n## Key files\n- cli.py — the command line\n- orders.py — the rules for an order and the prices\n- store.py — where orders are kept\n- .env — settings (contents not quoted)\n\n## Start reading here\n- orders.py: place() — every order passes through it"
+  }
+ ]
+}

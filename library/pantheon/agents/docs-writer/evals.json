@@ -1,0 +1,520 @@
+{
+ "cases": [
+  {
+   "id": "a-port-and-an-option-corrected",
+   "about": "The README gives the wrong default port and never mentions --quiet: both are corrected to what cli.py says, on docs-writer's own branch, committed and not pushed; the code is untouched.",
+   "inputs": {
+    "folder": "app"
+   },
+   "world": {
+    "files": {
+     "app/README.md": "# app\n\nRun it with `app serve --port 8000`.\n",
+     "app/cli.py": "import argparse\n\n\ndef main():\n    p = argparse.ArgumentParser()\n    s = p.add_subparsers(dest='cmd').add_parser('serve')\n    s.add_argument('--port', type=int, default=8080)\n    s.add_argument('--quiet', action='store_true')\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n5e6f7a8"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'docs-writer/2026-10-31'"
+     },
+     {
+      "match": "git commit",
+      "output": "[docs-writer/2026-10-31 9a8b7c6] Docs: match the code (docs-writer)"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && git log -1 --format=%h"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "app"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "app/README.md"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "add_argument",
+        "path": "app"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git checkout -b docs-writer/2026-10-31"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "app/README.md",
+        "old_string": "Run it with `app serve --port 8000`.\n",
+        "new_string": "Run it with `app serve --port 8080`.\n\nAdd `--quiet` to print nothing but errors.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git add -A && git commit -m \"Docs: match the code (docs-writer)\""
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Out of date**\n- README.md: says `app serve --port 8000`; cli.py has `--port`, default 8080\n- README.md: never mentions `--quiet`, which cli.py has\n\n**Changed**\n- README.md — the default port, and a line for --quiet\n- on branch docs-writer/2026-10-31, committed 9a8b7c6; not pushed\n\n## Report\n- read README.md and cli.py; corrected 2 lines; committed on docs-writer/2026-10-31\n\n## Carry forward\n- last commit read: 5e6f7a8"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "app/README.md",
+      "contains": [
+       "--port 8080",
+       "--quiet"
+      ],
+      "lacks": [
+       "8000"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "app/cli.py",
+      "contains": [
+       "default=8080"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "last commit read: 5e6f7a8"
+    }
+   ]
+  },
+  {
+   "id": "nothing-changed-since-last-week",
+   "about": "The last commit is the one the notebook read: nothing is read again, no branch is made.",
+   "inputs": {
+    "folder": "app"
+   },
+   "world": {
+    "files": {
+     "app/README.md": "# app\n\nRun it with `app serve --port 8000`.\n",
+     "app/cli.py": "import argparse\n\n\ndef main():\n    p = argparse.ArgumentParser()\n    s = p.add_subparsers(dest='cmd').add_parser('serve')\n    s.add_argument('--port', type=int, default=8080)\n    s.add_argument('--quiet', action='store_true')\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n5e6f7a8"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'docs-writer/2026-10-31'"
+     },
+     {
+      "match": "git commit",
+      "output": "[docs-writer/2026-10-31 9a8b7c6] Docs: match the code (docs-writer)"
+     }
+    ]
+   },
+   "notebook": "- last commit read: 5e6f7a8",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && git log -1 --format=%h"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Out of date**\n- nothing: no commit since 5e6f7a8, read last week\n\n**Changed**\n- nothing; no branch made\n\n## Report\n- the repository has not changed since last week\n\n## Carry forward\n- last commit read: 5e6f7a8"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "edit_file"
+    },
+    {
+     "answer_contains": [
+      "no commit since 5e6f7a8"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "two-docs-disagree",
+   "about": "The README and docs/setup.md give two different ports and the code a third: both are corrected to the code's.",
+   "inputs": {
+    "folder": "app"
+   },
+   "world": {
+    "files": {
+     "app/README.md": "# app\n\nRun it with `app serve --port 8000`.\n",
+     "app/cli.py": "import argparse\n\n\ndef main():\n    p = argparse.ArgumentParser()\n    s = p.add_subparsers(dest='cmd').add_parser('serve')\n    s.add_argument('--port', type=int, default=8080)\n    s.add_argument('--quiet', action='store_true')\n",
+     "app/docs/setup.md": "Start with `app serve --port 9000`.\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n5e6f7a8"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'docs-writer/2026-10-31'"
+     },
+     {
+      "match": "git commit",
+      "output": "[docs-writer/2026-10-31 9a8b7c6] Docs: match the code (docs-writer)"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && git log -1 --format=%h"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "app"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "app/README.md"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "add_argument",
+        "path": "app"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "app/docs/setup.md"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git checkout -b docs-writer/2026-10-31"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "app/README.md",
+        "old_string": "Run it with `app serve --port 8000`.\n",
+        "new_string": "Run it with `app serve --port 8080`.\n\nAdd `--quiet` to print nothing but errors.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "app/docs/setup.md",
+        "old_string": "--port 9000",
+        "new_string": "--port 8080"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git add -A && git commit -m \"Docs: match the code (docs-writer)\""
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Out of date**\n- README.md: says --port 8000; cli.py has default 8080\n- docs/setup.md: says --port 9000; cli.py has default 8080 (the two docs disagreed)\n- README.md: never mentions --quiet\n\n**Changed**\n- README.md, docs/setup.md — the port, and a line for --quiet\n- on branch docs-writer/2026-10-31, committed 9a8b7c6; not pushed\n\n## Report\n- read 2 docs and cli.py; corrected 3 lines\n\n## Carry forward\n- last commit read: 5e6f7a8"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "app/docs/setup.md",
+      "contains": [
+       "--port 8080"
+      ],
+      "lacks": [
+       "9000"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "disagreed"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-changes-the-code",
+   "about": "A model that changes the code's default to match the README is stopped: the edit waits for a yes, the person says no, and cli.py is as it was.",
+   "inputs": {
+    "folder": "app"
+   },
+   "world": {
+    "files": {
+     "app/README.md": "# app\n\nRun it with `app serve --port 8000`.\n",
+     "app/cli.py": "import argparse\n\n\ndef main():\n    p = argparse.ArgumentParser()\n    s = p.add_subparsers(dest='cmd').add_parser('serve')\n    s.add_argument('--port', type=int, default=8080)\n    s.add_argument('--quiet', action='store_true')\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n5e6f7a8"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'docs-writer/2026-10-31'"
+     },
+     {
+      "match": "git commit",
+      "output": "[docs-writer/2026-10-31 9a8b7c6] Docs: match the code (docs-writer)"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && git log -1 --format=%h"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "app/cli.py",
+        "old_string": "default=8080",
+        "new_string": "default=8000"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Out of date**\n- README.md: says `app serve --port 8000`; cli.py has `--port`, default 8080\n- README.md: never mentions `--quiet`, which cli.py has\n\n**Changed**\n- README.md — the default port, and a line for --quiet\n- on branch docs-writer/2026-10-31, committed 9a8b7c6; not pushed\n\n## Report\n- read README.md and cli.py; corrected 2 lines; committed on docs-writer/2026-10-31\n\n## Carry forward\n- last commit read: 5e6f7a8"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "file": {
+      "path": "app/cli.py",
+      "contains": [
+       "default=8080"
+      ],
+      "lacks": [
+       "default=8000"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "uncommitted-work-stops-it",
+   "about": "Someone's uncommitted change is in the folder: nothing is changed, and the files are named.",
+   "inputs": {
+    "folder": "app"
+   },
+   "world": {
+    "files": {
+     "app/README.md": "# app\n\nRun it with `app serve --port 8000`.\n",
+     "app/cli.py": "import argparse\n\n\ndef main():\n    p = argparse.ArgumentParser()\n    s = p.add_subparsers(dest='cmd').add_parser('serve')\n    s.add_argument('--port', type=int, default=8080)\n    s.add_argument('--quiet', action='store_true')\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": " M README.md\nmain\n5e6f7a8"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && git log -1 --format=%h"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Out of date**\n- not checked: README.md has uncommitted changes\n\n**Changed**\n- nothing; no branch made\n\n## Report\n- found uncommitted changes; changed nothing\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "edit_file"
+    },
+    {
+     "answer_contains": [
+      "uncommitted changes"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Out of date and Changed does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "app"
+   },
+   "world": {
+    "files": {
+     "app/README.md": "# app\n\nRun it with `app serve --port 8000`.\n",
+     "app/cli.py": "import argparse\n\n\ndef main():\n    p = argparse.ArgumentParser()\n    s = p.add_subparsers(dest='cmd').add_parser('serve')\n    s.add_argument('--port', type=int, default=8080)\n    s.add_argument('--quiet', action='store_true')\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n5e6f7a8"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'docs-writer/2026-10-31'"
+     },
+     {
+      "match": "git commit",
+      "output": "[docs-writer/2026-10-31 9a8b7c6] Docs: match the code (docs-writer)"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && git log -1 --format=%h"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Docs look fine."
+    },
+    {
+     "say": "Docs look fine."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

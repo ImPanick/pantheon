@@ -1,0 +1,487 @@
+{
+ "cases": [
+  {
+   "id": "a-petstore-mock-written-and-checked",
+   "about": "Three operations: two with examples become fixtures, the delete answers {} and is listed; the standard-library server is checked with two calls; the spec's real server address is never written in.",
+   "inputs": {
+    "spec": "specs/petstore.json",
+    "out": "petstore-mock"
+   },
+   "world": {
+    "files": {
+     "specs/petstore.json": "{\n \"openapi\": \"3.0.0\",\n \"servers\": [\n  {\n   \"url\": \"https://api.petstore.example/v1\"\n  }\n ],\n \"paths\": {\n  \"/pets\": {\n   \"get\": {\n    \"operationId\": \"listPets\",\n    \"responses\": {\n     \"200\": {\n      \"content\": {\n       \"application/json\": {\n        \"example\": [\n         {\n          \"id\": 1,\n          \"name\": \"Rex\"\n         }\n        ]\n       }\n      }\n     }\n    }\n   }\n  },\n  \"/pets/{id}\": {\n   \"get\": {\n    \"operationId\": \"getPet\",\n    \"responses\": {\n     \"200\": {\n      \"content\": {\n       \"application/json\": {\n        \"example\": {\n         \"id\": 1,\n         \"name\": \"Rex\"\n        }\n       }\n      }\n     }\n    }\n   },\n   \"delete\": {\n    \"operationId\": \"deletePet\",\n    \"responses\": {\n     \"204\": {\n      \"description\": \"gone\"\n     }\n    }\n   }\n  }\n }\n}",
+     "petstore-mock/.keep": ""
+    },
+    "shell": [
+     {
+      "match": "mock_server.py 4010",
+      "output": "[{\"id\": 1, \"name\": \"Rex\"}]\n{\"id\": 1, \"name\": \"Rex\"}"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "specs/petstore.json"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "petstore-mock"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "petstore-mock/fixtures/listPets.json",
+        "content": "[{\"id\": 1, \"name\": \"Rex\"}]"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "petstore-mock/fixtures/getPet.json",
+        "content": "{\"id\": 1, \"name\": \"Rex\"}"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "petstore-mock/mock_server.py",
+        "content": "import json, re, sys\nfrom http.server import BaseHTTPRequestHandler, HTTPServer\nfrom pathlib import Path\n\nHERE = Path(__file__).parent\nROUTES = [(\"GET\", r\"^/pets$\", 200, \"listPets\"), (\"GET\", r\"^/pets/[^/]+$\", 200, \"getPet\"),\n          (\"DELETE\", r\"^/pets/[^/]+$\", 204, None)]\n\n\nclass Mock(BaseHTTPRequestHandler):\n    def answer(self, method):\n        for m, rx, status, op in ROUTES:\n            if m == method and re.match(rx, self.path):\n                body = (HERE / \"fixtures\" / f\"{op}.json\").read_text() if op else \"{}\"\n                self.send_response(status); self.send_header(\"Content-Type\", \"application/json\"); self.end_headers()\n                self.wfile.write(body.encode()); return\n        self.send_response(404); self.end_headers()\n\n    def do_GET(self): self.answer(\"GET\")\n    def do_DELETE(self): self.answer(\"DELETE\")\n\n\nHTTPServer((\"127.0.0.1\", int(sys.argv[1]) if len(sys.argv) > 1 else 4010), Mock).serve_forever()\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/petstore-mock && (python3 mock_server.py 4010 & echo $! > .pid) && sleep 1 && curl -s localhost:4010/pets && echo && curl -s localhost:4010/pets/1; kill $(cat .pid); rm .pid"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Written**\n- petstore-mock/mock_server.py — run it with `python3 petstore-mock/mock_server.py 4010`\n- petstore-mock/fixtures/listPets.json, petstore-mock/fixtures/getPet.json\n\n**Checked**\n- GET /pets → [{\"id\": 1, \"name\": \"Rex\"}]\n- GET /pets/1 → {\"id\": 1, \"name\": \"Rex\"}\n\n**No example**\n- deletePet\n\n## Report\n- read the spec (3 operations), wrote 3 files, checked 2 calls on port 4010"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "petstore-mock/mock_server.py",
+      "contains": [
+       "http.server",
+       "listPets",
+       "404"
+      ],
+      "lacks": [
+       "api.petstore.example",
+       "fastapi"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "petstore-mock/fixtures/getPet.json",
+      "contains": [
+       "Rex"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "deletePet",
+      "GET /pets/1"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-spec-cannot-be-read",
+   "about": "The spec is not where the person said: nothing is written, and Written says why.",
+   "inputs": {
+    "spec": "specs/petstore.json",
+    "out": "petstore-mock"
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "specs/petstore.json"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Written**\n- nothing: specs/petstore.json could not be read (no such file)\n\n**Checked**\n- nothing\n\n**No example**\n- none\n\n## Report\n- the spec could not be read; wrote nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "write_file"
+    },
+    {
+     "answer_contains": [
+      "could not be read"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-check-fails",
+   "about": "The mock does not answer (the port is taken): Checked gives the error's last lines, and nothing is claimed to work.",
+   "inputs": {
+    "spec": "specs/petstore.json",
+    "out": "petstore-mock"
+   },
+   "world": {
+    "files": {
+     "specs/petstore.json": "{\n \"openapi\": \"3.0.0\",\n \"servers\": [\n  {\n   \"url\": \"https://api.petstore.example/v1\"\n  }\n ],\n \"paths\": {\n  \"/pets\": {\n   \"get\": {\n    \"operationId\": \"listPets\",\n    \"responses\": {\n     \"200\": {\n      \"content\": {\n       \"application/json\": {\n        \"example\": [\n         {\n          \"id\": 1,\n          \"name\": \"Rex\"\n         }\n        ]\n       }\n      }\n     }\n    }\n   }\n  },\n  \"/pets/{id}\": {\n   \"get\": {\n    \"operationId\": \"getPet\",\n    \"responses\": {\n     \"200\": {\n      \"content\": {\n       \"application/json\": {\n        \"example\": {\n         \"id\": 1,\n         \"name\": \"Rex\"\n        }\n       }\n      }\n     }\n    }\n   },\n   \"delete\": {\n    \"operationId\": \"deletePet\",\n    \"responses\": {\n     \"204\": {\n      \"description\": \"gone\"\n     }\n    }\n   }\n  }\n }\n}",
+     "petstore-mock/.keep": ""
+    },
+    "shell": [
+     {
+      "match": "mock_server.py 4010",
+      "output": "OSError: [Errno 98] Address already in use\ncurl: (7) Failed to connect to localhost port 4010",
+      "exit_code": 7
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "specs/petstore.json"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "petstore-mock"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "petstore-mock/fixtures/listPets.json",
+        "content": "[{\"id\": 1, \"name\": \"Rex\"}]"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "petstore-mock/fixtures/getPet.json",
+        "content": "{\"id\": 1, \"name\": \"Rex\"}"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "petstore-mock/mock_server.py",
+        "content": "import json, re, sys\nfrom http.server import BaseHTTPRequestHandler, HTTPServer\nfrom pathlib import Path\n\nHERE = Path(__file__).parent\nROUTES = [(\"GET\", r\"^/pets$\", 200, \"listPets\"), (\"GET\", r\"^/pets/[^/]+$\", 200, \"getPet\"),\n          (\"DELETE\", r\"^/pets/[^/]+$\", 204, None)]\n\n\nclass Mock(BaseHTTPRequestHandler):\n    def answer(self, method):\n        for m, rx, status, op in ROUTES:\n            if m == method and re.match(rx, self.path):\n                body = (HERE / \"fixtures\" / f\"{op}.json\").read_text() if op else \"{}\"\n                self.send_response(status); self.send_header(\"Content-Type\", \"application/json\"); self.end_headers()\n                self.wfile.write(body.encode()); return\n        self.send_response(404); self.end_headers()\n\n    def do_GET(self): self.answer(\"GET\")\n    def do_DELETE(self): self.answer(\"DELETE\")\n\n\nHTTPServer((\"127.0.0.1\", int(sys.argv[1]) if len(sys.argv) > 1 else 4010), Mock).serve_forever()\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/petstore-mock && (python3 mock_server.py 4010 & echo $! > .pid) && sleep 1 && curl -s localhost:4010/pets && echo && curl -s localhost:4010/pets/1; kill $(cat .pid); rm .pid"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Written**\n- petstore-mock/mock_server.py — run it with `python3 petstore-mock/mock_server.py 4010`\n- petstore-mock/fixtures/listPets.json, petstore-mock/fixtures/getPet.json\n\n**Checked**\n- the server did not start: OSError: [Errno 98] Address already in use — run it on another port: `python3 petstore-mock/mock_server.py 4011`\n\n**No example**\n- deletePet\n\n## Report\n- wrote 3 files; the check failed: port 4010 is taken"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "Address already in use"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "GET /pets →"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-mock-already-there-is-never-overwritten",
+   "about": "mock_server.py is already in the folder: nothing is written, and the person is told.",
+   "inputs": {
+    "spec": "specs/petstore.json",
+    "out": "petstore-mock"
+   },
+   "world": {
+    "files": {
+     "specs/petstore.json": "{\n \"openapi\": \"3.0.0\",\n \"servers\": [\n  {\n   \"url\": \"https://api.petstore.example/v1\"\n  }\n ],\n \"paths\": {\n  \"/pets\": {\n   \"get\": {\n    \"operationId\": \"listPets\",\n    \"responses\": {\n     \"200\": {\n      \"content\": {\n       \"application/json\": {\n        \"example\": [\n         {\n          \"id\": 1,\n          \"name\": \"Rex\"\n         }\n        ]\n       }\n      }\n     }\n    }\n   }\n  },\n  \"/pets/{id}\": {\n   \"get\": {\n    \"operationId\": \"getPet\",\n    \"responses\": {\n     \"200\": {\n      \"content\": {\n       \"application/json\": {\n        \"example\": {\n         \"id\": 1,\n         \"name\": \"Rex\"\n        }\n       }\n      }\n     }\n    }\n   },\n   \"delete\": {\n    \"operationId\": \"deletePet\",\n    \"responses\": {\n     \"204\": {\n      \"description\": \"gone\"\n     }\n    }\n   }\n  }\n }\n}",
+     "petstore-mock/mock_server.py": "# the person's own mock\n"
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "specs/petstore.json"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "petstore-mock"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Written**\n- nothing: petstore-mock/mock_server.py is already there — move it or name another folder\n\n**Checked**\n- nothing\n\n**No example**\n- none\n\n## Report\n- read the spec; the folder already holds a mock; wrote nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "write_file"
+    },
+    {
+     "file": {
+      "path": "petstore-mock/mock_server.py",
+      "contains": [
+       "the person's own mock"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "examples-that-disagree-use-the-responses",
+   "about": "The response's example and its schema's example differ: the response's is the fixture, and Checked says they disagree.",
+   "inputs": {
+    "spec": "specs/petstore.json",
+    "out": "petstore-mock"
+   },
+   "world": {
+    "files": {
+     "specs/petstore.json": "{\"paths\": {\"/pets/{id}\": {\"get\": {\"operationId\": \"getPet\", \"responses\": {\"200\": {\"content\": {\"application/json\": {\"example\": {\"id\": 1, \"name\": \"Rex\"}, \"schema\": {\"example\": {\"id\": 1, \"name\": \"Tom\"}}}}}}}}}}",
+     "petstore-mock/.keep": ""
+    },
+    "shell": [
+     {
+      "match": "mock_server.py 4010",
+      "output": "{\"id\": 1, \"name\": \"Rex\"}"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "specs/petstore.json"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "petstore-mock"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "petstore-mock/fixtures/getPet.json",
+        "content": "{\"id\": 1, \"name\": \"Rex\"}"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "petstore-mock/mock_server.py",
+        "content": "import json, re, sys\nfrom http.server import BaseHTTPRequestHandler, HTTPServer\nfrom pathlib import Path\n\nHERE = Path(__file__).parent\nROUTES = [(\"GET\", r\"^/pets$\", 200, \"listPets\"), (\"GET\", r\"^/pets/[^/]+$\", 200, \"getPet\"),\n          (\"DELETE\", r\"^/pets/[^/]+$\", 204, None)]\n\n\nclass Mock(BaseHTTPRequestHandler):\n    def answer(self, method):\n        for m, rx, status, op in ROUTES:\n            if m == method and re.match(rx, self.path):\n                body = (HERE / \"fixtures\" / f\"{op}.json\").read_text() if op else \"{}\"\n                self.send_response(status); self.send_header(\"Content-Type\", \"application/json\"); self.end_headers()\n                self.wfile.write(body.encode()); return\n        self.send_response(404); self.end_headers()\n\n    def do_GET(self): self.answer(\"GET\")\n    def do_DELETE(self): self.answer(\"DELETE\")\n\n\nHTTPServer((\"127.0.0.1\", int(sys.argv[1]) if len(sys.argv) > 1 else 4010), Mock).serve_forever()\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/petstore-mock && (python3 mock_server.py 4010 & echo $! > .pid) && sleep 1 && curl -s localhost:4010/pets && echo && curl -s localhost:4010/pets/1; kill $(cat .pid); rm .pid"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Written**\n- petstore-mock/mock_server.py — run it with `python3 petstore-mock/mock_server.py 4010`\n- petstore-mock/fixtures/getPet.json\n\n**Checked**\n- GET /pets/1 → {\"id\": 1, \"name\": \"Rex\"}\n- spec examples disagree for getPet: the response's (Rex) is used, not the schema's (Tom)\n\n**No example**\n- none\n\n## Report\n- read the spec (1 operation), wrote 2 files, checked 1 call"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "petstore-mock/fixtures/getPet.json",
+      "contains": [
+       "Rex"
+      ],
+      "lacks": [
+       "Tom"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "spec examples disagree for getPet"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Written, Checked and No example does not deliver, even after its repair pass.",
+   "inputs": {
+    "spec": "specs/petstore.json",
+    "out": "petstore-mock"
+   },
+   "world": {
+    "files": {
+     "specs/petstore.json": "{\n \"openapi\": \"3.0.0\",\n \"servers\": [\n  {\n   \"url\": \"https://api.petstore.example/v1\"\n  }\n ],\n \"paths\": {\n  \"/pets\": {\n   \"get\": {\n    \"operationId\": \"listPets\",\n    \"responses\": {\n     \"200\": {\n      \"content\": {\n       \"application/json\": {\n        \"example\": [\n         {\n          \"id\": 1,\n          \"name\": \"Rex\"\n         }\n        ]\n       }\n      }\n     }\n    }\n   }\n  },\n  \"/pets/{id}\": {\n   \"get\": {\n    \"operationId\": \"getPet\",\n    \"responses\": {\n     \"200\": {\n      \"content\": {\n       \"application/json\": {\n        \"example\": {\n         \"id\": 1,\n         \"name\": \"Rex\"\n        }\n       }\n      }\n     }\n    }\n   },\n   \"delete\": {\n    \"operationId\": \"deletePet\",\n    \"responses\": {\n     \"204\": {\n      \"description\": \"gone\"\n     }\n    }\n   }\n  }\n }\n}",
+     "petstore-mock/.keep": ""
+    },
+    "shell": [
+     {
+      "match": "mock_server.py 4010",
+      "output": "[{\"id\": 1, \"name\": \"Rex\"}]\n{\"id\": 1, \"name\": \"Rex\"}"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "specs/petstore.json"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "The mock is ready."
+    },
+    {
+     "say": "Ready."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

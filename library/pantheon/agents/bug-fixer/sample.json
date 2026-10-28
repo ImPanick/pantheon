@@ -1,0 +1,22 @@
+{
+ "case": "the-issue-reproduced-and-fixed-on-a-branch",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- reproduced the issue with 1 test, fixed cart.py on bug-fixer/2026-10-28, committed it",
+ "read": [
+  "grep",
+  "read_file"
+ ],
+ "wrote": [
+  "bash",
+  "edit_file"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Reproduced, Fix, Tests, branch."
+  }
+ ],
+ "answer": "**Reproduced**\n- tests/test_cart.py::test_ten_percent_off_two_items — assert 20 == 18\n\n**Fix**\n- The discount started at three items (`len(prices) > 2`), so two items paid full price; the docstring and the report say 10% off from two. cart.py: `> 2` → `> 1`.\n\n**Tests**\n- before: 1 passed; after: 2 passed — on branch bug-fixer/2026-10-28, committed 9f8e7d6; not pushed\n\n## Report\n- reproduced the issue with 1 test, fixed cart.py on bug-fixer/2026-10-28, committed it"
+}

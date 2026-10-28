@@ -1,0 +1,22 @@
+{
+ "case": "a-rename-everywhere",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- renamed get_user to fetch_user in 3 files on refactorer/2026-10-28, committed it",
+ "read": [
+  "grep",
+  "read_file"
+ ],
+ "wrote": [
+  "bash",
+  "edit_file"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Before, Changed, After, branch."
+  }
+ ],
+ "answer": "**Before**\n- 31 passed\n\n**Changed**\n- users.py — get_user → fetch_user (definition)\n- views.py — the import and 1 call\n- README.md — the example uses fetch_user\n- 4 places in 3 files; grep finds no get_user\n\n**After**\n- 31 passed — on branch refactorer/2026-10-28, committed 7c8d9e0; not pushed\n\n## Report\n- renamed get_user to fetch_user in 3 files on refactorer/2026-10-28, committed it"
+}

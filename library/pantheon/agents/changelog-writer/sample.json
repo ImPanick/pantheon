@@ -1,0 +1,25 @@
+{
+ "case": "five-commits-become-three-lines",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 5 commits since v1.4.0; left out 2 (tests, CI); wrote \"Release notes — 28 Oct 2026\"",
+ "read": [],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Release notes”",
+   "ok": true,
+   "detail": "“Release notes — 28 Oct 2026” is there."
+  }
+ ],
+ "answer": "Added 1, Changed 1, Fixed 1.\n\n## Report\n- read 5 commits since v1.4.0; left out 2 (tests, CI); wrote \"Release notes — 28 Oct 2026\"",
+ "documents": [
+  {
+   "title": "Release notes — 28 Oct 2026",
+   "content": "Release notes — 28 Oct 2026\nSince v1.4.0\n\n## Added\n- Exports now include the date of each row (a1b2c3d)\n\n## Changed\n- The settings page opens on the tab you used last (d4e5f6a)\n\n## Fixed\n- Totals no longer drop the last item in a basket of two (9f8e7d6)"
+  }
+ ]
+}

@@ -1,0 +1,531 @@
+{
+ "cases": [
+  {
+   "id": "a-rename-everywhere",
+   "about": "get_user becomes fetch_user in its definition, its import, its call and the README; the tests pass before and after; it is committed on refactorer's own branch and not pushed.",
+   "inputs": {
+    "folder": "app",
+    "test_command": "pytest -q",
+    "refactor": "Rename get_user to fetch_user."
+   },
+   "world": {
+    "files": {
+     "app/users.py": "def get_user(uid):\n    return {'id': uid}\n",
+     "app/views.py": "from users import get_user\n\n\ndef profile(uid):\n    return get_user(uid)\n",
+     "app/README.md": "Call `get_user(1)` to load a user.\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n31 passed in 1.0s"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'refactorer/2026-10-28'"
+     },
+     {
+      "match": "git commit",
+      "output": "31 passed in 1.0s\n[refactorer/2026-10-28 7c8d9e0] Refactor: get_user -> fetch_user (refactorer)"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "get_user",
+        "path": "app"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "app/views.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git checkout -b refactorer/2026-10-28"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "app/users.py",
+        "old_string": "def get_user(uid):",
+        "new_string": "def fetch_user(uid):"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "app/views.py",
+        "old_string": "from users import get_user\n",
+        "new_string": "from users import fetch_user\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "app/views.py",
+        "old_string": "    return get_user(uid)\n",
+        "new_string": "    return fetch_user(uid)\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "app/README.md",
+        "old_string": "`get_user(1)`",
+        "new_string": "`fetch_user(1)`"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "get_user",
+        "path": "app"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && pytest -q 2>&1 | tail -3 && git commit -am \"Refactor: get_user -> fetch_user (refactorer)\""
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Before**\n- 31 passed\n\n**Changed**\n- users.py — get_user → fetch_user (definition)\n- views.py — the import and 1 call\n- README.md — the example uses fetch_user\n- 4 places in 3 files; grep finds no get_user\n\n**After**\n- 31 passed — on branch refactorer/2026-10-28, committed 7c8d9e0; not pushed\n\n## Report\n- renamed get_user to fetch_user in 3 files on refactorer/2026-10-28, committed it"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "app/views.py",
+      "contains": [
+       "from users import fetch_user",
+       "return fetch_user(uid)"
+      ],
+      "lacks": [
+       "get_user"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "app/README.md",
+      "contains": [
+       "fetch_user(1)"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "31 passed",
+      "refactorer/2026-10-28",
+      "not pushed"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "nothing-uses-it",
+   "about": "Nothing in the repository uses the name: no branch, and Changed says so.",
+   "inputs": {
+    "folder": "app",
+    "test_command": "pytest -q",
+    "refactor": "Rename load_user to fetch_user."
+   },
+   "world": {
+    "files": {
+     "app/users.py": "def get_user(uid):\n    return {'id': uid}\n",
+     "app/views.py": "from users import get_user\n\n\ndef profile(uid):\n    return get_user(uid)\n",
+     "app/README.md": "Call `get_user(1)` to load a user.\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n31 passed in 1.0s"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'refactorer/2026-10-28'"
+     },
+     {
+      "match": "git commit",
+      "output": "31 passed in 1.0s\n[refactorer/2026-10-28 7c8d9e0] Refactor: get_user -> fetch_user (refactorer)"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "get_user",
+        "path": "app"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Before**\n- 31 passed\n\n**Changed**\n- nothing — load_user is not used here\n\n**After**\n- unchanged; no branch made\n\n## Report\n- searched for load_user; found nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "edit_file"
+    },
+    {
+     "answer_contains": [
+      "is not used here"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "tests-failing-before-it-starts",
+   "about": "A test fails before any change: nothing is changed, and Before names it.",
+   "inputs": {
+    "folder": "app",
+    "test_command": "pytest -q",
+    "refactor": "Rename get_user to fetch_user."
+   },
+   "world": {
+    "files": {
+     "app/users.py": "def get_user(uid):\n    return {'id': uid}\n",
+     "app/views.py": "from users import get_user\n\n\ndef profile(uid):\n    return get_user(uid)\n",
+     "app/README.md": "Call `get_user(1)` to load a user.\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\nFAILED tests/test_views.py::test_profile\n1 failed, 30 passed",
+      "exit_code": 1
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Before**\n- 1 failed, 30 passed — test_profile fails before any change\n\n**Changed**\n- nothing: the tests must pass before a refactor\n\n**After**\n- unchanged; no branch made\n\n## Report\n- ran the tests; 1 failed; changed nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "edit_file"
+    },
+    {
+     "answer_contains": [
+      "test_profile"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "two-of-the-same-name",
+   "about": "There are two get_user functions in two modules: neither is changed, and the person is asked which is meant.",
+   "inputs": {
+    "folder": "app",
+    "test_command": "pytest -q",
+    "refactor": "Rename get_user to fetch_user."
+   },
+   "world": {
+    "files": {
+     "app/users.py": "def get_user(uid):\n    return {'id': uid}\n",
+     "app/views.py": "from users import get_user\n\n\ndef profile(uid):\n    return get_user(uid)\n",
+     "app/README.md": "Call `get_user(1)` to load a user.\n",
+     "app/legacy/users.py": "def get_user(uid):\n    return None\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n31 passed in 1.0s"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'refactorer/2026-10-28'"
+     },
+     {
+      "match": "git commit",
+      "output": "31 passed in 1.0s\n[refactorer/2026-10-28 7c8d9e0] Refactor: get_user -> fetch_user (refactorer)"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "get_user",
+        "path": "app"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Before**\n- 31 passed\n\n**Changed**\n- nothing: users.py and legacy/users.py both define get_user — which one is meant?\n\n**After**\n- unchanged; no branch made\n\n## Report\n- found 2 definitions; changed nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "edit_file"
+    },
+    {
+     "answer_contains": [
+      "which one is meant?"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-changes-what-a-test-expects",
+   "about": "A model that edits a test's expected value is stopped: the edit waits for a yes, the person says no, and the test is unchanged.",
+   "inputs": {
+    "folder": "app",
+    "test_command": "pytest -q",
+    "refactor": "Rename get_user to fetch_user."
+   },
+   "world": {
+    "files": {
+     "app/users.py": "def get_user(uid):\n    return {'id': uid}\n",
+     "app/views.py": "from users import get_user\n\n\ndef profile(uid):\n    return get_user(uid)\n",
+     "app/README.md": "Call `get_user(1)` to load a user.\n",
+     "app/tests/test_users.py": "from users import get_user\n\n\ndef test_get():\n    assert get_user(1) == {'id': 1}\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n31 passed in 1.0s"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'refactorer/2026-10-28'"
+     },
+     {
+      "match": "git commit",
+      "output": "31 passed in 1.0s\n[refactorer/2026-10-28 7c8d9e0] Refactor: get_user -> fetch_user (refactorer)"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "app/tests/test_users.py",
+        "old_string": "== {'id': 1}",
+        "new_string": "is not None"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Before**\n- 31 passed\n\n**Changed**\n- users.py — get_user → fetch_user (definition)\n- views.py — the import and 1 call\n- README.md — the example uses fetch_user\n- 4 places in 3 files; grep finds no get_user\n\n**After**\n- 31 passed — on branch refactorer/2026-10-28, committed 7c8d9e0; not pushed\n\n## Report\n- renamed get_user to fetch_user in 3 files on refactorer/2026-10-28, committed it"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "file": {
+      "path": "app/tests/test_users.py",
+      "contains": [
+       "== {'id': 1}"
+      ],
+      "lacks": [
+       "is not None"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Before, Changed and After does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "app",
+    "test_command": "pytest -q",
+    "refactor": "Rename get_user to fetch_user."
+   },
+   "world": {
+    "files": {
+     "app/users.py": "def get_user(uid):\n    return {'id': uid}\n",
+     "app/views.py": "from users import get_user\n\n\ndef profile(uid):\n    return get_user(uid)\n",
+     "app/README.md": "Call `get_user(1)` to load a user.\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n31 passed in 1.0s"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'refactorer/2026-10-28'"
+     },
+     {
+      "match": "git commit",
+      "output": "31 passed in 1.0s\n[refactorer/2026-10-28 7c8d9e0] Refactor: get_user -> fetch_user (refactorer)"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Refactored."
+    },
+    {
+     "say": "Refactored."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

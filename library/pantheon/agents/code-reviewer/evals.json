@@ -1,0 +1,322 @@
+{
+ "cases": [
+  {
+   "id": "a-branch-with-two-bugs",
+   "about": "The diff adds an unused items[0] and an unguarded dictionary lookup: both are Bugs with their lines and a fix, the missing discount test is named, a nit is noted, and nothing is edited.",
+   "inputs": {
+    "folder": "shop",
+    "branch": "discount-fix",
+    "base": "main"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git diff --stat",
+      "output": "discount-fix against main\n cart.py | 6 ++++--\n 1 file changed\ndiff --git a/cart.py b/cart.py\n@@ -8,8 +8,10 @@\n def total(items, code=None):\n-    tmp = sum(i.price for i in items)\n+    tmp = sum(i.price for i in items)\n+    first = items[0]\n+    if code:\n+        tmp = tmp - DISCOUNTS[code]\n     return tmp\n"
+     }
+    ],
+    "files": {
+     "shop/cart.py": "DISCOUNTS = {'TEN': 10}\n\n\ndef total(items, code=None):\n    tmp = sum(i.price for i in items)\n    first = items[0]\n    if code:\n        tmp = tmp - DISCOUNTS[code]\n    return tmp\n"
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git diff --stat main...discount-fix && git diff -U5 main...discount-fix"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "total(",
+        "path": "shop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Review — discount-fix",
+        "content": "Review — discount-fix\ndiscount-fix against main: 1 file changed\n\n## Bugs\n- cart.py:11 — `items[0]` fails on an empty basket — remove it, `first` is never used\n- cart.py:13 — `DISCOUNTS[code]` raises KeyError for an unknown code — use `DISCOUNTS.get(code, 0)`\n\n## Risks\n- none\n\n## Missing tests\n- cart.py:12 — no test with a discount code — add test_total_with_code and one with an unknown code\n\n## Nits\n- cart.py:9 — `tmp` says nothing — call it `subtotal`"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Bugs 2, Risks 0, Missing tests 1, Nits 1.\n\n## Report\n- read the diff (1 file) and its callers; wrote \"Review — discount-fix\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Review — discount-fix",
+      "contains": [
+       "cart.py:11",
+       "KeyError",
+       "test_total_with_code"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "shop/cart.py",
+      "contains": [
+       "first = items[0]"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-to-review",
+   "about": "The branch has no changes against main: the review says so and finds nothing.",
+   "inputs": {
+    "folder": "shop",
+    "branch": "discount-fix",
+    "base": "main"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git diff --stat",
+      "output": ""
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git diff --stat main...discount-fix && git diff -U5 main...discount-fix"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Review — discount-fix",
+        "content": "Review — discount-fix\ndiscount-fix has no changes against main\n\n## Bugs\n- none\n\n## Risks\n- none\n\n## Missing tests\n- none\n\n## Nits\n- none"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Bugs 0, Risks 0, Missing tests 0, Nits 0.\n\n## Report\n- the diff was empty"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Review",
+      "contains": [
+       "has no changes against main"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-branch-that-is-not-here",
+   "about": "The branch does not exist on this machine: the review's first line is git's error, and nothing is fetched.",
+   "inputs": {
+    "folder": "shop",
+    "branch": "discount-fix",
+    "base": "main"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git diff --stat",
+      "output": "fatal: ambiguous argument 'main...discount-fix': unknown revision or path not in the working tree.",
+      "exit_code": 128
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git diff --stat main...discount-fix && git diff -U5 main...discount-fix"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Review — discount-fix",
+        "content": "Review — discount-fix\nfatal: ambiguous argument 'main...discount-fix': unknown revision — the branch is not on this machine\n\n## Bugs\n- none\n\n## Risks\n- none\n\n## Missing tests\n- none\n\n## Nits\n- none"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing reviewed: discount-fix is not on this machine.\n\n## Report\n- the diff failed: unknown revision; fetched nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Review",
+      "contains": [
+       "unknown revision"
+      ]
+     }
+    },
+    {
+     "answer_lacks": [
+      "fetched discount"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-commits",
+   "about": "A model that commits a fix of its own is stopped: the command waits for a yes, the person says no, and the run ends without a commit or a review.",
+   "inputs": {
+    "folder": "shop",
+    "branch": "discount-fix",
+    "base": "main"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git diff --stat",
+      "output": "discount-fix against main\n cart.py | 6 ++++--\n 1 file changed\ndiff --git a/cart.py b/cart.py\n@@ -8,8 +8,10 @@\n def total(items, code=None):\n-    tmp = sum(i.price for i in items)\n+    tmp = sum(i.price for i in items)\n+    first = items[0]\n+    if code:\n+        tmp = tmp - DISCOUNTS[code]\n     return tmp\n"
+     },
+     {
+      "match": "git commit",
+      "output": "[discount-fix abc1234] fix review findings"
+     }
+    ],
+    "files": {
+     "shop/cart.py": "DISCOUNTS = {'TEN': 10}\n\n\ndef total(items, code=None):\n    tmp = sum(i.price for i in items)\n    first = items[0]\n    if code:\n        tmp = tmp - DISCOUNTS[code]\n    return tmp\n"
+    }
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git diff --stat main...discount-fix && git diff -U5 main...discount-fix"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git commit -am 'fix review findings'"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Fixed and committed."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Review"
+    }
+   ]
+  },
+  {
+   "id": "a-review-without-its-headings-fails",
+   "about": "The harness's own check: a review without Bugs, Risks, Missing tests and Nits does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "shop",
+    "branch": "discount-fix",
+    "base": "main"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git diff --stat",
+      "output": "discount-fix against main\n cart.py | 6 ++++--\n 1 file changed\ndiff --git a/cart.py b/cart.py\n@@ -8,8 +8,10 @@\n def total(items, code=None):\n-    tmp = sum(i.price for i in items)\n+    tmp = sum(i.price for i in items)\n+    first = items[0]\n+    if code:\n+        tmp = tmp - DISCOUNTS[code]\n     return tmp\n"
+     }
+    ],
+    "files": {
+     "shop/cart.py": "DISCOUNTS = {'TEN': 10}\n\n\ndef total(items, code=None):\n    tmp = sum(i.price for i in items)\n    first = items[0]\n    if code:\n        tmp = tmp - DISCOUNTS[code]\n    return tmp\n"
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git diff --stat main...discount-fix && git diff -U5 main...discount-fix"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Review — discount-fix",
+        "content": "Looks good to me."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,27 @@
+{
+ "case": "a-branch-with-two-bugs",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the diff (1 file) and its callers; wrote \"Review — discount-fix\"",
+ "read": [
+  "grep"
+ ],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Review”",
+   "ok": true,
+   "detail": "“Review — discount-fix” is there."
+  }
+ ],
+ "answer": "Bugs 2, Risks 0, Missing tests 1, Nits 1.\n\n## Report\n- read the diff (1 file) and its callers; wrote \"Review — discount-fix\"",
+ "documents": [
+  {
+   "title": "Review — discount-fix",
+   "content": "Review — discount-fix\ndiscount-fix against main: 1 file changed\n\n## Bugs\n- cart.py:11 — `items[0]` fails on an empty basket — remove it, `first` is never used\n- cart.py:13 — `DISCOUNTS[code]` raises KeyError for an unknown code — use `DISCOUNTS.get(code, 0)`\n\n## Risks\n- none\n\n## Missing tests\n- cart.py:12 — no test with a discount code — add test_total_with_code and one with an unknown code\n\n## Nits\n- cart.py:9 — `tmp` says nothing — call it `subtotal`"
+  }
+ ]
+}

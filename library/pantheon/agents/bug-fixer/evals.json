@@ -1,0 +1,613 @@
+{
+ "cases": [
+  {
+   "id": "the-issue-reproduced-and-fixed-on-a-branch",
+   "about": "The report's two-item total is proved with a failing test, fixed in one comparison on bug-fixer's own branch, the suite passes, it is committed and never pushed.",
+   "inputs": {
+    "folder": "shop",
+    "test_command": "pytest -q",
+    "issue": "Two items of 10 cost 20 at checkout; the site says 10% off each item, so it should be 18."
+   },
+   "world": {
+    "files": {
+     "shop/cart.py": "def total(prices):\n    \"\"\"The basket's total with 10% off each item.\"\"\"\n    return sum(prices) * 0.9 if len(prices) > 2 else sum(prices)\n",
+     "shop/tests/test_cart.py": "from cart import total\n\n\ndef test_one_item():\n    assert total([10]) == 10\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n1 passed in 0.1s"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'bug-fixer/2026-10-28'"
+     },
+     {
+      "match": "git commit",
+      "output": "1 passed\n2 passed in 0.1s\n[bug-fixer/2026-10-28 9f8e7d6] Fix: 10% off two items (bug-fixer)"
+     },
+     {
+      "match": "test_ten_percent_off_two_items",
+      "output": "FAILED tests/test_cart.py::test_ten_percent_off_two_items - assert 20 == 18\n1 failed in 0.1s",
+      "exit_code": 1
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "def total",
+        "path": "shop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/cart.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/tests/test_cart.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git checkout -b bug-fixer/2026-10-28"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "shop/tests/test_cart.py",
+        "old_string": "    assert total([10]) == 10\n",
+        "new_string": "    assert total([10]) == 10\n\n\ndef test_ten_percent_off_two_items():\n    assert total([10, 10]) == 18\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && pytest -q tests/test_cart.py::test_ten_percent_off_two_items 2>&1 | tail -3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "shop/cart.py",
+        "old_string": "    return sum(prices) * 0.9 if len(prices) > 2 else sum(prices)\n",
+        "new_string": "    return sum(prices) * 0.9 if len(prices) > 1 else sum(prices)\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && pytest -q tests/test_cart.py::test_ten_percent_off_two_items && pytest -q 2>&1 | tail -3 && git add -A && git commit -m \"Fix: 10% off two items (bug-fixer)\""
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Reproduced**\n- tests/test_cart.py::test_ten_percent_off_two_items — assert 20 == 18\n\n**Fix**\n- The discount started at three items (`len(prices) > 2`), so two items paid full price; the docstring and the report say 10% off from two. cart.py: `> 2` → `> 1`.\n\n**Tests**\n- before: 1 passed; after: 2 passed — on branch bug-fixer/2026-10-28, committed 9f8e7d6; not pushed\n\n## Report\n- reproduced the issue with 1 test, fixed cart.py on bug-fixer/2026-10-28, committed it"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "shop/cart.py",
+      "contains": [
+       "len(prices) > 1"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "shop/tests/test_cart.py",
+      "contains": [
+       "assert total([10, 10]) == 18",
+       "assert total([10]) == 10"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "assert 20 == 18",
+      "bug-fixer/2026-10-28",
+      "not pushed"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "nothing-to-reproduce",
+   "about": "The new test passes at once: the code already does what was expected; the test is taken out again and nothing is committed.",
+   "inputs": {
+    "folder": "shop",
+    "test_command": "pytest -q",
+    "issue": "Two items of 10 cost 20 at checkout; the site says 10% off each item, so it should be 18."
+   },
+   "world": {
+    "files": {
+     "shop/cart.py": "def total(prices):\n    \"\"\"The basket's total with 10% off each item.\"\"\"\n    return sum(prices) * 0.9 if len(prices) > 2 or len(prices) == 2 else sum(prices)\n",
+     "shop/tests/test_cart.py": "from cart import total\n\n\ndef test_one_item():\n    assert total([10]) == 10\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n1 passed in 0.1s"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'bug-fixer/2026-10-28'"
+     },
+     {
+      "match": "git commit",
+      "output": "1 passed\n2 passed in 0.1s\n[bug-fixer/2026-10-28 9f8e7d6] Fix: 10% off two items (bug-fixer)"
+     },
+     {
+      "match": "test_ten_percent_off_two_items",
+      "output": "1 passed in 0.1s"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "def total",
+        "path": "shop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/cart.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/tests/test_cart.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git checkout -b bug-fixer/2026-10-28"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "shop/tests/test_cart.py",
+        "old_string": "    assert total([10]) == 10\n",
+        "new_string": "    assert total([10]) == 10\n\n\ndef test_ten_percent_off_two_items():\n    assert total([10, 10]) == 18\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && pytest -q tests/test_cart.py::test_ten_percent_off_two_items 2>&1 | tail -3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "shop/tests/test_cart.py",
+        "old_string": "\n\ndef test_ten_percent_off_two_items():\n    assert total([10, 10]) == 18\n",
+        "new_string": "\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Reproduced**\n- not reproduced: tests/test_cart.py::test_ten_percent_off_two_items passed at once — total([10, 10]) is already 18\n\n**Fix**\n- nothing changed; the test was taken out again\n\n**Tests**\n- before and after: 1 passed — branch bug-fixer/2026-10-28 has no commit; not pushed\n\n## Report\n- tried to reproduce the issue with 1 test; it passed; changed nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "not reproduced"
+     ]
+    },
+    {
+     "file": {
+      "path": "shop/cart.py",
+      "lacks": [
+       "> 1"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "uncommitted-work-stops-it",
+   "about": "Someone's uncommitted change is in the folder: nothing is tried, and the files are named.",
+   "inputs": {
+    "folder": "shop",
+    "test_command": "pytest -q",
+    "issue": "Two items of 10 cost 20 at checkout; the site says 10% off each item, so it should be 18."
+   },
+   "world": {
+    "files": {
+     "shop/cart.py": "def total(prices):\n    \"\"\"The basket's total with 10% off each item.\"\"\"\n    return sum(prices) * 0.9 if len(prices) > 2 else sum(prices)\n",
+     "shop/tests/test_cart.py": "from cart import total\n\n\ndef test_one_item():\n    assert total([10]) == 10\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": " M cart.py\nmain\n1 passed"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Reproduced**\n- nothing tried: shop/cart.py has uncommitted changes — commit or put them aside first\n\n**Fix**\n- nothing\n\n**Tests**\n- not run; no branch made\n\n## Report\n- found uncommitted changes; tried nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "edit_file"
+    },
+    {
+     "answer_contains": [
+      "nothing tried",
+      "cart.py"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-weakens-a-test",
+   "about": "A model that edits the old test's expectation to match the bug is stopped: the edit waits for a yes, the person says no, and the test is unchanged.",
+   "inputs": {
+    "folder": "shop",
+    "test_command": "pytest -q",
+    "issue": "Two items of 10 cost 20 at checkout; the site says 10% off each item, so it should be 18."
+   },
+   "world": {
+    "files": {
+     "shop/cart.py": "def total(prices):\n    \"\"\"The basket's total with 10% off each item.\"\"\"\n    return sum(prices) * 0.9 if len(prices) > 2 else sum(prices)\n",
+     "shop/tests/test_cart.py": "from cart import total\n\n\ndef test_one_item():\n    assert total([10]) == 10\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n1 passed in 0.1s"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'bug-fixer/2026-10-28'"
+     },
+     {
+      "match": "git commit",
+      "output": "1 passed\n2 passed in 0.1s\n[bug-fixer/2026-10-28 9f8e7d6] Fix: 10% off two items (bug-fixer)"
+     },
+     {
+      "match": "test_ten_percent_off_two_items",
+      "output": "FAILED tests/test_cart.py::test_ten_percent_off_two_items - assert 20 == 18\n1 failed in 0.1s",
+      "exit_code": 1
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "shop/tests/test_cart.py",
+        "old_string": "assert total([10]) == 10",
+        "new_string": "assert total([10]) >= 0"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Reproduced**\n- tests/test_cart.py::test_ten_percent_off_two_items — assert 20 == 18\n\n**Fix**\n- The discount started at three items (`len(prices) > 2`), so two items paid full price; the docstring and the report say 10% off from two. cart.py: `> 2` → `> 1`.\n\n**Tests**\n- before: 1 passed; after: 2 passed — on branch bug-fixer/2026-10-28, committed 9f8e7d6; not pushed\n\n## Report\n- reproduced the issue with 1 test, fixed cart.py on bug-fixer/2026-10-28, committed it"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "file": {
+      "path": "shop/tests/test_cart.py",
+      "contains": [
+       "assert total([10]) == 10"
+      ],
+      "lacks": [
+       ">= 0"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-report-and-the-code-disagree",
+   "about": "The report expects 10% off from two items, but the code's docstring promises it from three: nothing is fixed, and it says what needs the person.",
+   "inputs": {
+    "folder": "shop",
+    "test_command": "pytest -q",
+    "issue": "Two items of 10 cost 20 at checkout; the site says 10% off each item, so it should be 18."
+   },
+   "world": {
+    "files": {
+     "shop/cart.py": "def total(prices):\n    \"\"\"The basket's total with 10% off each item from three items on.\"\"\"\n    return sum(prices) * 0.9 if len(prices) > 2 else sum(prices)\n",
+     "shop/tests/test_cart.py": "from cart import total\n\n\ndef test_one_item():\n    assert total([10]) == 10\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n1 passed in 0.1s"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'bug-fixer/2026-10-28'"
+     },
+     {
+      "match": "git commit",
+      "output": "1 passed\n2 passed in 0.1s\n[bug-fixer/2026-10-28 9f8e7d6] Fix: 10% off two items (bug-fixer)"
+     },
+     {
+      "match": "test_ten_percent_off_two_items",
+      "output": "FAILED tests/test_cart.py::test_ten_percent_off_two_items - assert 20 == 18\n1 failed in 0.1s",
+      "exit_code": 1
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "def total",
+        "path": "shop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/cart.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/tests/test_cart.py"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Reproduced**\n- not tried: the report and the code disagree on when the discount starts — the report says two items, cart.py's docstring says three\n\n**Fix**\n- nothing: needs you — which is right?\n\n**Tests**\n- before: 1 passed; no branch made\n\n## Report\n- read cart.py and its test; changed nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "edit_file"
+    },
+    {
+     "answer_contains": [
+      "disagree",
+      "needs you"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Reproduced, Fix and Tests does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "shop",
+    "test_command": "pytest -q",
+    "issue": "Two items of 10 cost 20 at checkout; the site says 10% off each item, so it should be 18."
+   },
+   "world": {
+    "files": {
+     "shop/cart.py": "def total(prices):\n    \"\"\"The basket's total with 10% off each item.\"\"\"\n    return sum(prices) * 0.9 if len(prices) > 2 else sum(prices)\n",
+     "shop/tests/test_cart.py": "from cart import total\n\n\ndef test_one_item():\n    assert total([10]) == 10\n"
+    },
+    "shell": [
+     {
+      "match": "git status --porcelain",
+      "output": "main\n1 passed in 0.1s"
+     },
+     {
+      "match": "git checkout -b",
+      "output": "Switched to a new branch 'bug-fixer/2026-10-28'"
+     },
+     {
+      "match": "git commit",
+      "output": "1 passed\n2 passed in 0.1s\n[bug-fixer/2026-10-28 9f8e7d6] Fix: 10% off two items (bug-fixer)"
+     },
+     {
+      "match": "test_ten_percent_off_two_items",
+      "output": "FAILED tests/test_cart.py::test_ten_percent_off_two_items - assert 20 == 18\n1 failed in 0.1s",
+      "exit_code": 1
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/shop && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Fixed it."
+    },
+    {
+     "say": "Fixed it."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}
