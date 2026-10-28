@@ -711,20 +711,23 @@ def isolated(root: Optional[str] = None):
 
 # ── The model ───────────────────────────────────────────────────────────────
 
-def scripted_model(script: List[Dict[str, Any]], projects: str = ""):
-    """The agent loop's model call, answered round by round from `script`;
-    past its end it says only "Done." — a model that stopped. A call's
-    `$WORLD_PROJECTS` is the world's projects folder (`projects`)."""
-    rounds = iter(script)
+def in_world(script: List[Dict[str, Any]], projects: str) -> List[Dict[str, Any]]:
+    """`P24-27`. The script with its `$WORLD_PROJECTS` made the
+    world's projects folder (`projects`) — a path only the run can know."""
+    if not projects:
+        return script
+    return json.loads(json.dumps(script).replace(WORLD_PROJECTS, projects.replace("\\", "\\\\")))
 
-    def args_of(a):
-        text = json.dumps(a)
-        return text.replace(WORLD_PROJECTS, projects) if projects else text
+
+def scripted_model(script: List[Dict[str, Any]]):
+    """The agent loop's model call, answered round by round from `script`;
+    past its end it says only "Done." — a model that stopped."""
+    rounds = iter(script)
 
     async def model(candidates, messages, **kwargs):
         step = next(rounds, {"say": "Done."})
         if "call" in step:
-            calls = [{"name": n, "arguments": args_of(a)} for n, a in step["call"]]
+            calls = [{"name": n, "arguments": json.dumps(a)} for n, a in step["call"]]
             yield "data: " + json.dumps({"type": "tool_calls", "calls": calls}) + "\n\n"
         else:
             yield "data: " + json.dumps({"delta": step["say"]}) + "\n\n"
@@ -1057,55 +1060,62 @@ async def run_case(manifest, case: Dict[str, Any], *, factory, data_dir: str,
             return out
         return await real_impl(block, *a, **kw)
 
-    p.set(tool_execution, "_execute_tool_block_impl", far_end)
-    # `B1602`. `resolve_contact` searched the mail history by calling the
-    # install's own mail route over loopback — whatever install was running on
-    # the machine, its mailbox. The world's mailbox answers instead, as it
-    # answers every other mail tool.
-    import src.tools.contacts as contacts_tools
+    # `P24-27`. The world is set up inside a `try`: a case that breaks here
+    # (a model that cannot be made) undoes what it patched, rather than
+    # leave every later case in the process half inside a dead world.
+    try:
+        p.set(tool_execution, "_execute_tool_block_impl", far_end)
+        # `B1602`. `resolve_contact` searched the mail history by calling the
+        # install's own mail route over loopback — whatever install was running on
+        # the machine, its mailbox. The world's mailbox answers instead, as it
+        # answers every other mail tool.
+        import src.tools.contacts as contacts_tools
 
-    async def world_mail_history(name, owner=None):
-        return world.mail_contacts(name), None
+        async def world_mail_history(name, owner=None):
+            return world.mail_contacts(name), None
 
-    p.set(contacts_tools, "mail_history", world_mail_history)
-    _refuse_loopback(p, world)
-    # `P24-27`. A world's model servers are the ones it names (`served`):
-    # `list_served_models` also scanned the processes of the machine running
-    # the evaluation, so a case's answer was whatever that machine served.
-    import src.tools.cookbook as cookbook
-    p.set(cookbook, "_scan_running_model_processes", lambda: [])
-    # The world's one person is its admin: a case measures the agent, not
-    # the privileges of whoever hires it (the hire form names what a run
-    # will lack, `P24-13`).
-    for mod in list(sys.modules.values()):
-        for fname in ("_owner_is_admin", "owner_is_admin", "owner_has_admin_task_privileges"):
-            fn = getattr(mod, fname, None)
-            if callable(fn) and getattr(mod, "__name__", "").startswith(("src.", "routes.", "core.")):
-                p.set(mod, fname, (lambda real: lambda o, *a, **k: o == EVAL_OWNER or real(o, *a, **k))(fn))
-    p.set(agent_loop, "blocked_tools_for_owner", lambda o: set())
-    # `B1607`. The world is the workstation: `computer` is answered from its
-    # screens (or shell rules), so the loop offers it. It was withheld — no
-    # workstation is set up in a world — so every case's `computer` call was
-    # refused before the world could answer it, and Site Builder's sample
-    # said "screenshot taken" over a refusal.
-    p.set(agent_loop, "_computer_unavailable_reason", lambda owner, **kw: None)
-    p.set(agent_loop, "get_mcp_manager", lambda: None)
-    url, name = endpoint or SCRIPTED_URL, model or SCRIPTED_MODEL
-    if endpoint is None:
-        from src.tool_execution import projects_root
-        p.set(agent_loop, "stream_llm_with_fallback",
-              scripted_model(case.get("script") or [], projects_root(owner, create=True)))
-        p.set(agent_loop, "_agent_route_tool_mode",
-              lambda url, model, owner=None, headers=None: (True, False, False))
-        import src.task_endpoint as task_endpoint
-        p.set(task_endpoint, "resolve_task_candidates", lambda **kw: [])
-        # `P24-27`. The run asked the scripted endpoint for its window about
-        # twice a case — a loopback request each, 45% of an evaluation's time.
-        import src.model_context as model_context
-        real_window = model_context._query_context_length
-        p.set(model_context, "_query_context_length",
-              lambda u, m: scripted_window(u, m) if str(u).startswith(SCRIPTED_URL) and m == SCRIPTED_MODEL
-              else real_window(u, m))
+        p.set(contacts_tools, "mail_history", world_mail_history)
+        _refuse_loopback(p, world)
+        # `P24-27`. A world's model servers are the ones it names (`served`):
+        # `list_served_models` also scanned the processes of the machine running
+        # the evaluation, so a case's answer was whatever that machine served.
+        import src.tools.cookbook as cookbook
+        p.set(cookbook, "_scan_running_model_processes", lambda: [])
+        # The world's one person is its admin: a case measures the agent, not
+        # the privileges of whoever hires it (the hire form names what a run
+        # will lack, `P24-13`).
+        for mod in list(sys.modules.values()):
+            for fname in ("_owner_is_admin", "owner_is_admin", "owner_has_admin_task_privileges"):
+                fn = getattr(mod, fname, None)
+                if callable(fn) and getattr(mod, "__name__", "").startswith(("src.", "routes.", "core.")):
+                    p.set(mod, fname, (lambda real: lambda o, *a, **k: o == EVAL_OWNER or real(o, *a, **k))(fn))
+        p.set(agent_loop, "blocked_tools_for_owner", lambda o: set())
+        # `B1607`. The world is the workstation: `computer` is answered from its
+        # screens (or shell rules), so the loop offers it. It was withheld — no
+        # workstation is set up in a world — so every case's `computer` call was
+        # refused before the world could answer it, and Site Builder's sample
+        # said "screenshot taken" over a refusal.
+        p.set(agent_loop, "_computer_unavailable_reason", lambda owner, **kw: None)
+        p.set(agent_loop, "get_mcp_manager", lambda: None)
+        url, name = endpoint or SCRIPTED_URL, model or SCRIPTED_MODEL
+        if endpoint is None:
+            from src.tool_execution import projects_root
+            p.set(agent_loop, "stream_llm_with_fallback",
+                  scripted_model(in_world(case.get("script") or [], projects_root(owner, create=True))))
+            p.set(agent_loop, "_agent_route_tool_mode",
+                  lambda url, model, owner=None, headers=None: (True, False, False))
+            import src.task_endpoint as task_endpoint
+            p.set(task_endpoint, "resolve_task_candidates", lambda **kw: [])
+            # `P24-27`. The run asked the scripted endpoint for its window about
+            # twice a case — a loopback request each, 45% of an evaluation's time.
+            import src.model_context as model_context
+            real_window = model_context._query_context_length
+            p.set(model_context, "_query_context_length",
+                  lambda u, m: scripted_window(u, m) if str(u).startswith(SCRIPTED_URL) and m == SCRIPTED_MODEL
+                  else real_window(u, m))
+    except BaseException:
+        p.undo()
+        raise
     try:
         db = factory()
         if not db.query(ModelEndpoint).filter(ModelEndpoint.base_url == url).first():
