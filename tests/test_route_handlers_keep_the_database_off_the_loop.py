@@ -89,6 +89,26 @@ teacher's endpoint. **25 → 1.** Left: `chat_endpoint` → `run_post_response_t
 metrics); the stream's own call runs inside its generator, which this scan
 does not follow, and moving the counters off the loop changes when a turn's
 figures land, so it is a row of its own.
+
+**`B1609` — a session by any name.** Both scans matched `SessionLocal` and
+`get_db_session` by name, so a module that imports one under another —
+`SessionLocal as _SL` (28 imports on `5adbc35e`), `as _GallerySL`, `as SL2`,
+`as _SessionLocal`, or `factory = SessionLocal` — opened sessions nothing
+counted. `_session_names` reads those names per module: the own-body count
+went 0 → 4 and the helper count 1 → 39 without a line of product code
+changing — the scan widened, the product did not get worse (`Law 13`'s note).
+Thirty-one were mail routes (29 in `email_routes`, the two Codex mail reads),
+through `_imap` → `_get_email_config`, `_assert_owns_account` and the
+tag-owner clause; four the skill tests and audit, through the agent loop
+itself (`stream_agent_loop` → `mcp_manager.load_disabled_map`, whose
+`_SessionLocal()` the `B1598` split could not see); two the workflow drafting
+and explain routes, through the same read; one the generated-image route; and
+the residual above. What `B1609` took off: the 24 handlers that awaited
+nothing are plain `def` now (their IMAP talk leaves the loop with their
+sessions); the rest hand the account check, the send configuration, the
+chat's route, the context readers, the MCP map and the workflow palette and
+resources to worker threads. **39 → 1**, the residual above; the own-body
+count is back at 0.
 """
 from __future__ import annotations
 
@@ -114,7 +134,34 @@ def _is_route(fn) -> bool:
                and d.func.attr in _METHODS for d in fn.decorator_list)
 
 
-def _calls_the_database_itself(fn) -> bool:
+def _session_names(tree) -> frozenset:
+    """`B1609`. The names a module calls a session by: `SessionLocal` and
+    `get_db_session`, and every name it gives them — `from core.database import
+    SessionLocal as _SL` (28 imports on `5adbc35e`), `as _GallerySL`, `as SL2`,
+    `as _SessionLocal`, and `factory = SessionLocal`. The scan matched the two
+    names alone, so `_SL()` opened a session nothing counted: 35 handlers, most
+    of them the email routes through `_imap`, `_assert_owns_account` and
+    `_get_email_config`. Module-wide, function-local imports included, as
+    `_imports` reads them — this codebase imports late."""
+    names = set(_DB_CALLS)
+    grew = True
+    while grew:
+        grew = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                new = {a.asname for a in node.names if a.name in _DB_CALLS and a.asname}
+            elif (isinstance(node, ast.Assign) and isinstance(node.value, ast.Name)
+                  and node.value.id in names):
+                new = {t.id for t in node.targets if isinstance(t, ast.Name)}
+            else:
+                continue
+            if not new <= names:
+                names |= new
+                grew = True
+    return frozenset(names)
+
+
+def _calls_the_database_itself(fn, names=frozenset(_DB_CALLS)) -> bool:
     stack = list(fn.body)
     while stack:
         node = stack.pop()
@@ -123,14 +170,15 @@ def _calls_the_database_itself(fn) -> bool:
         if isinstance(node, ast.Call):
             f = node.func
             name = f.id if isinstance(f, ast.Name) else (f.attr if isinstance(f, ast.Attribute) else None)
-            if name in _DB_CALLS:
+            if name in names:
                 return True
         stack.extend(ast.iter_child_nodes(node))
     return False
 
 
 #: `B1580`. The ceiling through helpers: 51 after `B1580`, from 107; 25 after
-#: `B1588`; 1 after `B1598`.
+#: `B1588`; 1 after `B1598`; 39 when `B1609` taught the scan aliases, and 1
+#: again after its fixes.
 MAX_THROUGH_A_HELPER = 1
 
 #: Where a helper a handler calls can live.
@@ -185,6 +233,7 @@ def _call_graph(trees):
     defs = {(m, n.name): n for m, (_p, t) in trees.items() for n in t.body
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
     scope = {m: _imports(t, m) for m, (_p, t) in trees.items()}
+    sessions = {m: _session_names(t) for m, (_p, t) in trees.items()}   # `B1609`
 
     def resolve(call, module):
         names, modules = scope[module]
@@ -205,12 +254,13 @@ def _call_graph(trees):
         if key in seen:
             return False
         fn = defs[key]
-        hit = _calls_the_database_itself(fn) or any(
+        hit = _calls_the_database_itself(fn, sessions[key[0]]) or any(
             target in defs and reaches(target, seen + (key,))
             for target in (resolve(c, key[0]) for c in _own_calls(fn)) if target)
         memo[key] = hit
         return hit
 
+    reaches.sessions = sessions
     return defs, resolve, reaches
 
 
@@ -238,7 +288,7 @@ def through_a_helper(trees=None):
         for fn in ast.walk(tree):
             if not (isinstance(fn, ast.AsyncFunctionDef) and _is_route(fn)):
                 continue
-            if _calls_the_database_itself(fn):
+            if _calls_the_database_itself(fn, reaches.sessions[module]):
                 out.append((str(path.relative_to(ROOT)), fn.lineno, fn.name, "its own body"))
                 continue
             for call in _own_calls(fn):
@@ -255,8 +305,9 @@ def on_the_loop():
     out = []
     for path in sorted(ROOT.glob("routes/**/*.py")) + [ROOT / "app.py"]:
         tree = ast.parse(path.read_text(encoding="utf-8"))
+        names = _session_names(tree)   # `B1609`
         for fn in ast.walk(tree):
-            if isinstance(fn, ast.AsyncFunctionDef) and _is_route(fn) and _calls_the_database_itself(fn):
+            if isinstance(fn, ast.AsyncFunctionDef) and _is_route(fn) and _calls_the_database_itself(fn, names):
                 out.append((str(path.relative_to(ROOT)), fn.lineno, fn.name))
     return out
 
@@ -312,6 +363,82 @@ def test_the_helper_scan_follows_a_chain_and_stops_at_a_thread():
                               "routes.x": (ROOT / "routes" / "x.py", routes)})
     assert [(name, helper) for _f, _l, name, helper in found] == [
         ("login", "src.events.record_auth_event"), ("logout", "src.events.record_event")]
+
+
+def test_the_scan_reads_a_session_by_any_name_it_is_given():
+    """`B1609`, `Law 20`: a session opened under an imported alias or an
+    assigned name is caught in a handler's own body and two modules away,
+    and a name that is not a session is not."""
+    mail = ast.parse(
+        "def config(owner):\n    from core.database import SessionLocal as _SL\n    db = _SL()\n"
+        "factory = None\n"
+        "def other(owner):\n    from core.database import SessionLocal\n"
+        "    factory = SessionLocal\n    return factory()\n"
+        "def harmless(owner):\n    _SL2 = dict\n    return _SL2()\n")
+    routes = ast.parse(
+        "from core.database import SessionLocal as _GallerySL\nfrom src.mail import config, other, harmless\n"
+        "@router.get('/own')\nasync def own():\n    db = _GallerySL()\n"
+        "@router.get('/a')\nasync def a():\n    config('x')\n"
+        "@router.get('/b')\nasync def b():\n    other('x')\n"
+        "@router.get('/c')\nasync def c():\n    harmless('x')\n"
+        "@router.get('/d')\nasync def d():\n    await asyncio.to_thread(config, 'x')\n")
+    found = through_a_helper({"src.mail": (ROOT / "src" / "mail.py", mail),
+                              "routes.x": (ROOT / "routes" / "x.py", routes)})
+    assert [(name, helper) for _f, _l, name, helper in found] == [
+        ("own", "its own body"), ("a", "src.mail.config"), ("b", "src.mail.other")]
+    assert "_SL2" not in _session_names(mail)
+
+
+def test_a_mail_route_checks_its_account_off_the_loop(tmp_path, monkeypatch):
+    """`B1609`, driven: a mail route that awaits nothing (`GET /style`, a plain
+    `def` now) and one that does (`POST /summarize`) check the account a
+    request names over a real SQLite accounts table — every session on a
+    worker thread, and the check still decides: another person's account is
+    refused."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from core.database import Base, EmailAccount
+
+    monkeypatch.setenv("PANTHEON_INPROCESS_POLLERS", "0")
+    engine = create_engine(f"sqlite:///{tmp_path}/mail.db", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=engine, tables=[EmailAccount.__table__])
+    maker = sessionmaker(bind=engine)
+    db = maker()
+    db.add(EmailAccount(id="acc-alice", owner="alice", name="Work"))
+    db.add(EmailAccount(id="acc-bob", owner="bob", name="Bob's"))
+    db.commit()
+    db.close()
+    opened = _sessions_by_thread(monkeypatch, maker)
+
+    import routes.email_routes as email_routes
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def _who(request, call_next):
+        request.state.current_user = "alice"
+        return await call_next(request)
+
+    @app.get("/loop")
+    async def _the_loop():
+        return threading.get_ident()
+
+    app.include_router(email_routes.setup_email_routes())
+    try:
+        with TestClient(app) as client:
+            loop_thread = client.get("/loop").json()
+            assert client.get("/api/email/style", params={"account_id": "acc-alice"}).status_code == 200
+            out = client.post("/api/email/summarize", json={"account_id": "acc-alice", "body": ""}).json()
+            assert out.get("error_code") == "email_summary_missing_body", out
+            assert client.get("/api/email/style", params={"account_id": "acc-bob"}).status_code == 404
+            refused = client.post("/api/email/summarize", json={"account_id": "acc-bob", "body": "x"})
+            assert refused.status_code == 404 or refused.json().get("success") is False, refused.text
+    finally:
+        engine.dispose()
+    assert len(opened) >= 4, f"the account was not read for every request: {opened}"
+    assert loop_thread not in opened, "an account was read on the event loop"
 
 
 def test_a_model_call_opens_no_session_on_the_loop():

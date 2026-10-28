@@ -593,3 +593,74 @@ def test_korean_with_hanja_and_full_width_punctuation_stays_korean(encoding, tex
     body = text.encode(encoding)
     assert dp._not_korean(text) == 0
     assert body.decode(sniff_text_encoding(body)) == text
+
+
+# ── `B1611`: kana read as cp949 jamo ────────────────────────────────────────
+#
+# GB2312's hiragana row is KS X 1001's jamo row, so a GB line that leads with
+# kana reads in cp949 as a run of jamo with no syllable for `B1514`'s count to
+# see a jamo glued after. Over the `B402` sweep plus 1,037 further cuts: 86
+# corrected (the sweep's last four EUC-JP-as-cp949 among them, and Korean's
+# `ㆍ` middle dot), none regressed, no new refusal.
+
+KANA_LED_GB = "ありがとうございます（谢谢）"
+
+
+def test_a_gb2312_line_that_starts_with_kana_reads_as_chinese(tmp_path):
+    """`B1611`'s `Verify:`."""
+    body = KANA_LED_GB.encode("gb2312")
+    assert len(body) >= dp._MIN_MULTIBYTE_SAMPLE
+    assert dp._canonical_codec(dp._detect_encoding(body)) in dp._KOREAN_CODECS, (
+        "the detector no longer answers cp949 here — this measures nothing")
+    misread = body.decode("cp949")
+    assert not any(dp._is_hangul_syllable(ch) for ch in misread), misread
+    assert dp._not_korean(misread) > 0, misread
+    assert decode_text_file(_write(tmp_path, "notes.txt", body)) == KANA_LED_GB
+    for encoding in ("gbk", "gb18030"):
+        other = KANA_LED_GB.encode(encoding)
+        assert other.decode(sniff_text_encoding(other)) == KANA_LED_GB, encoding
+
+
+def test_the_euc_jp_cuts_b1514_left_read_as_japanese():
+    """The same run in EUC-JP, cut short before a syllable could follow it:
+    the four cuts `B1514`'s sweep left wrong."""
+    text = "申し訳ありませんが、ご注文の商"
+    for n in range(12, len(text) + 1):
+        body = text[:n].encode("euc_jp")
+        if len(body) >= dp._MIN_MULTIBYTE_SAMPLE:
+            assert body.decode(sniff_text_encoding(body)) == text[:n], text[:n]
+
+
+KOREAN_THAT_WRITES_JAMO_IN_A_RUN = [
+    # Lists of the letters, named with a particle or after a space.
+    "ㄳㄵㄶㄺㄻㄼㄽㄾㄿㅀㅄ은 겹받침이고 받침으로만 쓴다",
+    "겹받침은 ㄳㄵㄶㄺㄻㄼㄽㄾㄿㅀㅄ 열한 개다",
+    "ㅏㅑㅓㅕㅗㅛㅜㅠㅡㅣ는 기본 모음이다",
+    "ㅸㅹㆄㅱ는 순경음이고 지금은 쓰지 않는다",
+    "훈민정음의 ㆍ(아래아)와 ㅿ(반치음), ㆁ(옛이응), ㆆ(여린히읗)은 지금 쓰지 않는다",
+    # Chat with no space anywhere.
+    "ㅇㄱㄹㅇㅂㅂㅂㄱ진짜웃기다ㅋㅋㅋ",
+]
+
+
+@pytest.mark.parametrize("text", KOREAN_THAT_WRITES_JAMO_IN_A_RUN,
+                         ids=[f"jamo{i}" for i in range(len(KOREAN_THAT_WRITES_JAMO_IN_A_RUN))])
+@pytest.mark.parametrize("encoding", ["euc_kr", "cp949"])
+def test_korean_that_writes_jamo_in_a_run_stays_korean(encoding, text):
+    """`Law 1` for `B1611`, on the Korean nearest the signal, at every cut."""
+    assert dp._not_korean(text) == 0
+    for n in range(1, len(text) + 1):
+        body = text[:n].encode(encoding)
+        if len(body) >= dp._MIN_MULTIBYTE_SAMPLE:
+            assert body.decode(sniff_text_encoding(body)) == text[:n], text[:n]
+
+
+@pytest.mark.parametrize("text", ["서울ㆍ경기ㆍ인천 지역에 비가 내리겠습니다.",
+                                  "그래서ㆍㆍㆍ나도잘모르겠어ㆍㆍㆍ미안해"])
+def test_koreans_middle_dot_is_not_a_jamo_glued_after_a_word(text):
+    """Found by `B1611`'s sweep: `ㆍ`, printed between words and as an
+    ellipsis, was counted as a jamo glued after a syllable (`B1514`), and the
+    line was answered Big5."""
+    body = text.encode("euc_kr")
+    assert dp._not_korean(text) == 0
+    assert body.decode(sniff_text_encoding(body)) == text

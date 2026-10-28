@@ -872,7 +872,8 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             return base_version, changed, current, node, owner, record, rows, trigger
         # `B1223`: the step's record is read off the event loop.
         base_version, changed, current, node, owner, record, rows, trigger = await asyncio.to_thread(_read)
-        resources = workflow_resources(owner)
+        # `B1609`: the resources read which MCP tools are switched off — a session.
+        resources = await asyncio.to_thread(workflow_resources, owner)
         try:
             explained = await workflow_assist.explain_step(
                 owner, node=node, record=record, graph=current, base_version=base_version,

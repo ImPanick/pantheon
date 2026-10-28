@@ -570,7 +570,8 @@ async def test_authorize_redirect_uri_follows_the_request_scheme(scheme, monkeyp
     monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_SECRET", "client-secret")
 
     authorize = _authorize_endpoint()
-    resp = await authorize(
+    # `B1609`: a plain `def` now (it awaits nothing), so it is called, not awaited.
+    resp = authorize(
         account_id="acct-a",
         request=_FakeRequest(scheme=scheme, host="pantheon.example.ts.net:7443"),
         owner="",
@@ -955,7 +956,8 @@ async def test_config_response_does_not_expose_oauth_storage_fields():
 
     with mock.patch("routes.email_routes._get_email_config", return_value=internal_cfg.copy()), \
          mock.patch("routes.email_routes._load_settings", return_value={}):
-        result = await get_config(owner="alice")
+        # `B1609`: a plain `def` now (it awaits nothing), so it is called, not awaited.
+        result = get_config(owner="alice")
 
     assert result["oauth_provider"] == "google"
     assert "oauth_access_token" not in result

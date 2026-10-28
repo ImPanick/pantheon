@@ -5837,7 +5837,8 @@ class TaskScheduler:
                     "never_effects": frozenset(_agent.get("never_effects") or ()),
                     "sealed": bool(_agent.get("sealed")),
                     "blind": bool(_agent.get("blind")),
-                    "agent_id": _agent.get("agent_id") or None}
+                    "agent_id": _agent.get("agent_id") or None,
+                    "hired": True}   # `B1606`
                    if _agent else {}))
         if _slot.get("suppress_skills"):
             _loop_extra["suppress_skills"] = True

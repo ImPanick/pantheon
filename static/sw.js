@@ -565,13 +565,37 @@ function etagOf(res) {
   return (res && res.headers && typeof res.headers.get === 'function' && res.headers.get('etag')) || '';
 }
 
-async function precacheOne(cache, url) {
-  let res;
-  try {
-    res = await fetch(url, { cache: 'no-cache' });
-  } catch (err) {
-    return [];
+// `B1612`. A failed fetch was skipped for good: one dropped connection or one
+// busy answer during install and that module was missing from the offline copy
+// until the next `CACHE_NAME` bump, and a window that imports it (`/tasks`)
+// could not start offline. A failure that can pass — the network threw, or the
+// server said to come back (408, 425, 429, 5xx) — is asked again after a short
+// wait, twice; one that will not pass (a 404, a redirect) is not. What still
+// failed is said in the worker's console, by URL.
+const PRECACHE_RETRY_DELAYS_MS = [250, 1000];
+const PRECACHE_RETRYABLE = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+async function fetchForPrecache(url) {
+  for (let attempt = 0; ; attempt += 1) {
+    let res = null;
+    let why = '';
+    try {
+      res = await fetch(url, { cache: 'no-cache' });
+      if (res && (res.ok || !PRECACHE_RETRYABLE.has(res.status))) return res;
+      why = 'HTTP ' + (res ? res.status : '?');
+    } catch (err) {
+      why = String((err && err.message) || err);
+    }
+    if (attempt >= PRECACHE_RETRY_DELAYS_MS.length) {
+      console.warn('[sw] precache gave up on ' + url + ' after ' + (attempt + 1) + ' tries: ' + why);
+      return res;
+    }
+    await new Promise(r => setTimeout(r, PRECACHE_RETRY_DELAYS_MS[attempt]));
   }
+}
+
+async function precacheOne(cache, url) {
+  const res = await fetchForPrecache(url);
   if (!res || !res.ok) return [];
   // `B122`. A response that arrived from somewhere else is not this URL's
   // body, and storing it here would answer this URL with the wrong document

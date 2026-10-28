@@ -7394,7 +7394,9 @@ async def stream_agent_loop(
             "[agent] keeping contextual path for low-signal turn in existing conversation latest=%r",
             _last_user[:80],
         )
-    _mcp_disabled_map = _load_mcp_disabled_map() if mcp_mgr else {}
+    # `B1609`: `load_disabled_map` opens its session as `_SessionLocal`, which
+    # the off-the-loop scan did not read as one; the read goes to a thread.
+    _mcp_disabled_map = (await asyncio.to_thread(_load_mcp_disabled_map)) if mcp_mgr else {}
     if _direct_low_signal:
         logger.info("[agent] direct low-signal reply path for latest=%r", _last_user[:80])
         direct_messages = (
@@ -8689,7 +8691,9 @@ async def stream_agent_loop(
     # editor for it, else the one it reads — so a document tool that names
     # none acts on this turn's document, never on whichever one another turn
     # last left in the process-wide pointer.
-    _doc_holder = new_turn_document(getattr(_prompt_active_document, "id", None))
+    # `B1606`: a hired run's holder never guesses the person's latest document.
+    _doc_holder = new_turn_document(getattr(_prompt_active_document, "id", None),
+                                    hired=bool(getattr(tool_policy, "hired", False)))
     # `B1281`. Set when a round is refused for a tool's picture: every request
     # after it, this turn, carries the pictures in words.
     _pictures_refused = False

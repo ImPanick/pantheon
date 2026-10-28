@@ -487,7 +487,9 @@ async def draft_workflow(db, owner, description, tz=None) -> Drafted:
     tasks_by_id, _crew = await asyncio.to_thread(store.owner_rows, db, owner)
     tasks = [(t.id, t.name) for t in tasks_by_id.values()
              if (t.task_type or "llm") != WORKFLOW_TASK_TYPE]
-    palette, described = drafting_palette(owner, text, tasks=tasks)
+    # `B1609`: the palette asks which MCP tools are switched off — a session
+    # (`mcp_manager.load_disabled_map`) — so it is built in a worker thread.
+    palette, described = await asyncio.to_thread(drafting_palette, owner, text, tasks=tasks)
     messages = _draft_messages(owner, text, palette, described, tz)
 
     async def ask(msgs):

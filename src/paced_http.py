@@ -39,6 +39,7 @@ slow it down". It will not.
 """
 import ipaddress
 import logging
+import threading
 from typing import Any, Dict, Iterable, Optional, Tuple
 from urllib.parse import urlsplit
 
@@ -295,16 +296,69 @@ async def post(url: str, **kwargs) -> Any:
     return await request("POST", url, **kwargs)
 
 
+# ── `B1608`: a lookup made on every round keeps one client ───────────────────
+#
+# `request_sync` built an `httpx.Client` per call and closed it after, and a
+# client builds its TLS context when it is made — the CA store loaded once for
+# the client and once more for each proxy the environment names, whether or not
+# the request is TLS. The context-window lookup (`src.model_context`) asks a
+# local endpoint on every agent round, never cached because a local server can
+# restart with another window: measured in one profile, 78 requests built 156
+# TLS contexts (~45 ms each); here, ten lookups against a plain-http
+# `127.0.0.1` built 20 clients and 40 contexts in 1.6 s. A caller that asks
+# again and again passes `reuse=True` and gets one client per client settings
+# (the `direct_mounts` its URL needs, its `verify`) for the life of the process,
+# with its timeout per request; the pacing is unchanged.
+
+_REUSED: Dict[Any, Any] = {}
+_REUSED_LOCK = threading.Lock()
+
+
+def _reused_client(url: str, verify: Any):
+    """The one client for `url`'s settings, made the first time it is asked
+    for. `None` for a `verify` that cannot be a key (an `SSLContext` a caller
+    built): that caller gets a client of its own, as before."""
+    import httpx
+    if not isinstance(verify, (bool, str)):
+        return None
+    mounts = direct_mounts(url)
+    key = (verify, tuple(sorted(mounts)))
+    with _REUSED_LOCK:
+        client = _REUSED.get(key)
+        if client is None or client.is_closed:
+            client = httpx.Client(follow_redirects=True, verify=verify, mounts=mounts or None)
+            _REUSED[key] = client
+        return client
+
+
+def close_reused() -> None:
+    """Close every reused client (a test's teardown, so no test inherits a
+    client another one made — with its transport, `B1520`)."""
+    with _REUSED_LOCK:
+        clients = list(_REUSED.values())
+        _REUSED.clear()
+    for client in clients:
+        try:
+            client.close()
+        except Exception:  # noqa: BLE001 — closing a client that is gone
+            pass
+
+
 def request_sync(method: str, url: str, *, authenticated: bool = False,
                  timeout: float = _DEFAULT_TIMEOUT, client=None, verify: Any = True,
-                 **kwargs) -> Any:
+                 reuse: bool = False, **kwargs) -> Any:
     """Paced sync request, for the `asyncio.to_thread` call sites. `verify` as
-    for `request`."""
+    for `request`; `reuse` (`B1608`) for a caller that asks again and again —
+    one kept client instead of a new one per call."""
     import httpx
     from src.rate_limiter import outbound
 
     host = _host(url)
     outbound.acquire(host, authenticated=authenticated)
+    if client is None and reuse:
+        client = _reused_client(url, verify)
+        if client is not None:
+            kwargs["timeout"] = timeout
     owns = client is None
     if owns:
         client = httpx.Client(timeout=timeout, follow_redirects=True, verify=verify,

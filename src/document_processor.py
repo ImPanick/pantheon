@@ -528,8 +528,12 @@ _KOREAN_CODECS = frozenset({"cp949", "euc_kr", "johab"})
 
 #: The compatibility jamo Korean writes standing alone: the consonants of its
 #: initial-consonant abbreviations (`ㅋㅋ`, `ㅇㅇ`, `ㄱㄱ`, `ㅂㅂ`, `ㄳ`) and the
-#: vowels of its faces (`ㅠㅠ`, `ㅜㅜ`, `ㅡㅡ`, `ㅗ`).
-_JAMO_WRITTEN_ALONE = frozenset("ㄱㄲㄳㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎㅗㅜㅠㅡ")
+#: vowels of its faces (`ㅠㅠ`, `ㅜㅜ`, `ㅡㅡ`, `ㅗ`). And (`B1611`'s sweep) `ㆍ`,
+#: the old vowel Korean prints as a middle dot between words and as an
+#: ellipsis (`서울ㆍ경기ㆍ인천`, `그래서ㆍㆍㆍ`): glued after a syllable it made
+#: Korean read as Big5 (28 of 102 such cuts measured; all 102 right now), and
+#: no kana lands on it.
+_JAMO_WRITTEN_ALONE = frozenset("ㄱㄲㄳㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎㅗㅜㅠㅡㆍ")
 
 
 def _in_ks_x_1001(ch: str) -> bool:
@@ -553,6 +557,47 @@ def _is_ideograph(ch: str) -> bool:
 def _is_kana(ch: str) -> bool:
     """Hiragana or katakana, the prolonged-sound mark included."""
     return "\u3041" <= ch <= "\u3096" or "\u30a1" <= ch <= "\u30fc"
+
+
+#: `B1611`. Compatibility jamo a Korean keyboard does not leave standing next to
+#: another: the compound finals (but `ㄳ` and `ㅄ`, abbreviations Korean writes
+#: alone) and the old letters from U+3165 on (but `ㆍ`, which Korean prints as a
+#: middle dot and an ellipsis, `서울ㆍ경기`, `ㆍㆍㆍ`). GB2312's hiragana row is
+#: KS X 1001's jamo row, and from `う` `お` `か` `が` `き` `く` and `ま` on the
+#: kana land on exactly these.
+_JAMO_NEVER_IN_A_RUN = frozenset("ㄵㄶㄺㄻㄼㄽㄾㄿㅀ") | frozenset(
+    chr(c) for c in range(0x3165, 0x318F) if c != 0x318D)
+
+#: `B1611`. The particles Korean puts straight after a letter it names (`ㄼ과`,
+#: `ㅚ와`, `ㄳㄵㄶ…은`).
+_PARTICLES_AFTER_A_LETTER = frozenset("은는이가과와도를을의로에만")
+
+
+def _is_compatibility_jamo(ch: str) -> bool:
+    return "ㄱ" <= ch <= "ㆎ"
+
+
+def _jamo_run_korean_does_not_type(decoded: str) -> int:
+    """`B1611`. Jamo of `_JAMO_NEVER_IN_A_RUN` standing directly after another
+    jamo, in runs no particle follows. Kana read as cp949 is a run of jamo with
+    nothing glued to a syllable — `ありがとうございます` is `ㄲㅺㄼㅘㄶㅄㅆㄴㅮㅉ`,
+    so `B1514`'s count, which asks what a jamo is glued *after*, sees none of
+    it. A run Korean writes is a laugh, a cry or an abbreviation
+    (`_JAMO_WRITTEN_ALONE`, `ㅗㅜㅑ`), or a list of the letters it then names
+    with a particle (`ㄳㄵㄶㄺㄻㄼㄽㄾㄿㅀㅄ은`)."""
+    count = 0
+    i = 0
+    while i < len(decoded):
+        if not _is_compatibility_jamo(decoded[i]):
+            i += 1
+            continue
+        j = i
+        while j < len(decoded) and _is_compatibility_jamo(decoded[j]):
+            j += 1
+        if not (j < len(decoded) and decoded[j] in _PARTICLES_AFTER_A_LETTER):
+            count += sum(1 for ch in decoded[i + 1:j] if ch in _JAMO_NEVER_IN_A_RUN)
+        i = j
+    return count
 
 
 def _hanja_inside_words(decoded: str) -> int:
@@ -596,6 +641,19 @@ def _not_korean(decoded: str) -> int:
     written to (`새누리黨은，國會에서法案을처리했다`, no space anywhere): it is
     refused with `ENCODING_UNIDENTIFIED` rather than read, which is this
     rule's cost, and a CJK frequency table is what would remove it.
+
+    `B1611`: and two or more jamo in a run Korean does not type
+    (`_jamo_run_korean_does_not_type`), in a reading with no space anywhere —
+    kana read as cp949, which is what GB2312 or EUC-JP text that leads with
+    kana becomes. Measured over the `B402` sweep plus 1,037 further cuts (GB
+    text quoting Japanese, Korean news with Hanja, spaced Chinese, and Korean
+    that writes jamo next to jamo — vowel and compound-final lists, old
+    letters, `ㅗㅜㅑ`, `ㆍㆍㆍ`, filter-dodging spelling, `ㅄㅄ`): 58 corrected
+    by this count (the sweep's last four EUC-JP-as-cp949 among them; the sweep
+    is wrong 7 → 3) and 28 by `ㆍ` in `_JAMO_WRITTEN_ALONE`, none regressed, no
+    new refusal; six kana-led GB cuts are still wrong, now as EUC-JIS-2004 —
+    mostly kana, which `B1596` reads as Japanese. A space is the guard: every
+    Korean line found that lists letters without one stops at its particle.
     """
     glued = sum(
         1 for i, ch in enumerate(decoded)
@@ -607,9 +665,13 @@ def _not_korean(decoded: str) -> int:
     evidence = glued if glued >= 2 else 0
     if rare >= 2 and rare * 2 >= len(syllables):
         evidence += rare
-    if syllables and any(0xFF01 <= ord(ch) <= 0xFF5E for ch in decoded) \
-            and not any(ch.isspace() for ch in decoded):
+    unspaced = not any(ch.isspace() for ch in decoded)
+    if syllables and any(0xFF01 <= ord(ch) <= 0xFF5E for ch in decoded) and unspaced:
         evidence += _hanja_inside_words(decoded)
+    if unspaced:
+        run = _jamo_run_korean_does_not_type(decoded)   # `B1611`
+        if run >= 2:
+            evidence += run
     return evidence
 
 

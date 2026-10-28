@@ -2889,7 +2889,8 @@ def setup_email_routes():
         }
 
     @router.post("/{uid}/unflag-spam")
-    async def unflag_spam(uid: str, owner: str = Depends(require_owner)):
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def unflag_spam(uid: str, owner: str = Depends(require_owner)):
         """User override — mark email as not spam."""
         try:
             owner_clause, owner_params = _email_tag_owner_clause(None, owner)
@@ -3000,7 +3001,7 @@ def setup_email_routes():
     ):
         """Review-only scan for spam/newsletter unsubscribe candidates."""
         if account_id:
-            _assert_owns_account(account_id, owner)
+            await asyncio.to_thread(_assert_owns_account, account_id, owner)  # `B1609`
         if _fixture_email_enabled():
             return {"success": True, "candidates": [], "total": 0, "scanned": 0, "folder": folder, "sync": {"source": "fixture"}}
         try:
@@ -3630,7 +3631,8 @@ def setup_email_routes():
             pass
 
     @router.get("/attachments/{uid}")
-    async def list_attachments(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def list_attachments(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
         """List attachments for an email."""
         cached = _email_attachment_meta_cache_get(owner, account_id, folder, uid)
         if cached is not None:
@@ -3651,7 +3653,8 @@ def setup_email_routes():
             return {"attachments": [], "error": "Mail operation failed"}
 
     @router.get("/attachment/{uid}/{index}")
-    async def download_attachment(uid: str, index: int, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def download_attachment(uid: str, index: int, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
         """Download a specific attachment by email UID and attachment index. Saves to local disk and returns the file."""
         try:
             with _imap(account_id, owner=owner) as conn:
@@ -3686,7 +3689,8 @@ def setup_email_routes():
             return {"error": "Mail operation failed"}
 
     @router.get("/attachments-download/{uid}")
-    async def download_all_attachments(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def download_all_attachments(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
         """Download all visible attachments for an email as a zip archive."""
         try:
             with _imap(account_id, owner=owner) as conn:
@@ -3739,7 +3743,8 @@ def setup_email_routes():
             raise HTTPException(status_code=500, detail="Mail operation failed")
 
     @router.get("/inline-image/{uid}")
-    async def inline_image(
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def inline_image(
         uid: str,
         cid: str = Query(...),
         folder: str = Query("INBOX"),
@@ -4199,7 +4204,8 @@ def setup_email_routes():
     # agent's `download_attachment` tool is the way an attachment reaches it.)
 
     @router.post("/mark-unread/{uid}")
-    async def mark_unread(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def mark_unread(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
         """Mark an email as unread (clear \\Seen flag)."""
         try:
             with _imap(account_id, owner=owner) as conn:
@@ -4214,7 +4220,8 @@ def setup_email_routes():
             return {"success": False, "error": "Mail operation failed"}
 
     @router.post("/flag/{uid}")
-    async def flag_email(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None),
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def flag_email(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None),
                          on: bool = Query(True), owner: str = Depends(require_owner)):
         """Toggle the \\Flagged flag (a.k.a. favorite / star) on an email.
         Pass `on=true` to favorite, `on=false` to unfavorite."""
@@ -4231,7 +4238,8 @@ def setup_email_routes():
             return {"success": False, "error": "Mail operation failed"}
 
     @router.post("/mark-read/{uid}")
-    async def mark_read(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def mark_read(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
         """Mark an email as read (set \\Seen flag)."""
         try:
             with _imap(account_id, owner=owner) as conn:
@@ -4263,7 +4271,8 @@ def setup_email_routes():
             return {"success": False, "error": "Mail operation failed"}
 
     @router.delete("/delete/{uid}")
-    async def delete_email(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def delete_email(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
         """Move email to Trash."""
         try:
             with _imap(account_id, owner=owner) as conn:
@@ -4278,7 +4287,8 @@ def setup_email_routes():
             return {"success": False, "error": "Mail operation failed"}
 
     @router.delete("/delete-permanent/{uid}")
-    async def delete_email_permanent(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def delete_email_permanent(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
         """Permanently delete an email (no Trash)."""
         try:
             with _imap(account_id, owner=owner) as conn:
@@ -4294,7 +4304,8 @@ def setup_email_routes():
             return {"success": False, "error": "Mail operation failed"}
 
     @router.delete("/pantheon/reminders")
-    async def delete_pantheon_reminder_emails(
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def delete_pantheon_reminder_emails(
         account_id: str | None = Query(None),
         permanent: bool = Query(False),
         owner: str = Depends(require_owner),
@@ -4374,7 +4385,8 @@ def setup_email_routes():
             return {"success": False, "error": "Mail operation failed"}
 
     @router.post("/move/{uid}")
-    async def move_email(uid: str, folder: str = Query("INBOX"), dest: str = Query(...), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def move_email(uid: str, folder: str = Query("INBOX"), dest: str = Query(...), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
         """Move an email to another folder."""
         try:
             with _imap(account_id, owner=owner) as conn:
@@ -4460,7 +4472,8 @@ def setup_email_routes():
             return {"folders": [], "error": "Mail operation failed"}
 
     @router.post("/mark-answered/{uid}")
-    async def mark_answered(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def mark_answered(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
         """Mark an email as answered (set \\Answered flag)."""
         try:
             with _imap(account_id, owner=owner) as conn:
@@ -4476,7 +4489,8 @@ def setup_email_routes():
             return {"success": False, "error": "Mail operation failed"}
 
     @router.post("/clear-answered/{uid}")
-    async def clear_answered(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def clear_answered(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
         """Clear the \\Answered flag from an email."""
         try:
             with _imap(account_id, owner=owner) as conn:
@@ -4597,7 +4611,8 @@ def setup_email_routes():
         raise HTTPException(status_code=400, detail="Unknown attachment kind")
 
     @router.post("/compose-from-pantheon")
-    async def compose_from_pantheon(data: dict, owner: str = Depends(require_owner)):
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def compose_from_pantheon(data: dict, owner: str = Depends(require_owner)):
         """Stage an Pantheon document or gallery image as a compose upload."""
         kind = str(data.get("kind") or "").strip().lower()
         item_id = str(data.get("id") or "").strip()
@@ -4621,7 +4636,8 @@ def setup_email_routes():
             return {"success": False, "error": "Mail operation failed"}
 
     @router.post("/compose-from-pantheon-zip")
-    async def compose_from_pantheon_zip(data: dict, owner: str = Depends(require_owner)):
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def compose_from_pantheon_zip(data: dict, owner: str = Depends(require_owner)):
         """Stage several Pantheon documents/gallery images as one zip attachment."""
         raw_items = data.get("items") or []
         if not isinstance(raw_items, list) or not raw_items:
@@ -4673,7 +4689,8 @@ def setup_email_routes():
             return {"success": False, "error": "Mail operation failed"}
 
     @router.post("/compose-from-attachment/{uid}/{index}")
-    async def compose_from_attachment(
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def compose_from_attachment(
         uid: str,
         index: int,
         folder: str = Query("INBOX"),
@@ -4738,7 +4755,8 @@ def setup_email_routes():
     # here; neither used it.)
 
     @router.post("/schedule")
-    async def schedule_email(req: dict, owner: str = Depends(require_owner)):
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def schedule_email(req: dict, owner: str = Depends(require_owner)):
         """Schedule an email to be sent at a specific time. ISO8601 UTC."""
         import sqlite3
         import uuid as _uuid
@@ -4994,7 +5012,8 @@ def setup_email_routes():
             return {"success": False, "error": "Mail operation failed"}
 
     @router.get("/resolve-contact")
-    async def resolve_contact(name: str = Query(..., description="Name to search for"), owner: str = Depends(require_owner)):
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def resolve_contact(name: str = Query(..., description="Name to search for"), owner: str = Depends(require_owner)):
         """Search Sent folder for a contact by name. Returns matching email addresses."""
         try:
             with _imap(owner=owner) as conn:
@@ -5057,11 +5076,12 @@ def setup_email_routes():
 
         Uses req.account_id to pick the sending account (falls back to default)."""
         # Body-based account_id — dep can't see it, check here.
+        # `B1609`: both read the accounts table, so off the event loop.
         if req.account_id:
-            _assert_owns_account(req.account_id, owner)
+            await asyncio.to_thread(_assert_owns_account, req.account_id, owner)
 
         try:
-            cfg = _resolve_send_config(req.account_id, owner=owner)
+            cfg = await asyncio.to_thread(_resolve_send_config, req.account_id, owner=owner)
         except Exception as e:
             logger.warning(f"No SMTP-capable account resolved: {e}")
             return {"success": False, "error": str(e) or "No SMTP-capable email account configured"}
@@ -5264,9 +5284,9 @@ def setup_email_routes():
         IMAP append is sync; offload via asyncio.to_thread so the event loop
         stays responsive on slow remote IMAP servers.
         """
-        if req.account_id:
-            _assert_owns_account(req.account_id, owner)
-        cfg = _get_email_config(req.account_id, owner=owner)
+        if req.account_id:   # `B1609`: the account reads, off the event loop too
+            await asyncio.to_thread(_assert_owns_account, req.account_id, owner)
+        cfg = await asyncio.to_thread(_get_email_config, req.account_id, owner=owner)
 
         # Multipart plain+HTML when the WYSIWYG composer supplied HTML, so a
         # reopened draft keeps its formatting; plain MIMEText otherwise.
@@ -5322,7 +5342,7 @@ def setup_email_routes():
         on the IMAP step alone with a remote server.
         """
         if account_id:
-            _assert_owns_account(account_id, owner)
+            await asyncio.to_thread(_assert_owns_account, account_id, owner)  # `B1609`
 
         def _gather_samples() -> tuple[list[str], str | None]:
             try:
@@ -5431,7 +5451,7 @@ def setup_email_routes():
             folder = data.get("folder", "INBOX") or "INBOX"
             account_id = data.get("account_id")
             if account_id:
-                _assert_owns_account(account_id, owner)
+                await asyncio.to_thread(_assert_owns_account, account_id, owner)  # `B1609`
             if not body:
                 return {
                     "success": False,
@@ -5702,7 +5722,7 @@ def setup_email_routes():
             fast_reply = bool(data.get("fast", False))
             user_hint = (data.get("user_hint") or "").strip()
             if account_id:
-                _assert_owns_account(account_id, owner)
+                await asyncio.to_thread(_assert_owns_account, account_id, owner)  # `B1609`
 
             if not original_body:
                 return {"success": False, "error": "No email body provided"}
@@ -5748,17 +5768,26 @@ def setup_email_routes():
                     # chat-completions URL the chat path uses verbatim — so use
                     # those directly rather than rebuilding via a nonexistent
                     # `api_key` field.
-                    from core.database import SessionLocal as _SL, Session as _CS
-                    _db = _SL()
-                    sess = _db.query(_CS).filter(_CS.id == session_id, _CS.owner == owner).first()
-                    if sess and sess.endpoint_url:
-                        url = sess.endpoint_url
+                    def _session_route():
+                        # `B1609`: the chat's row, read off the event loop.
+                        from core.database import SessionLocal as _SL, Session as _CS
+                        _db = _SL()
+                        try:
+                            sess = _db.query(_CS).filter(_CS.id == session_id, _CS.owner == owner).first()
+                            if not (sess and sess.endpoint_url):
+                                return None
+                            return sess.endpoint_url, sess.headers, sess.model
+                        finally:
+                            _db.close()
+
+                    route = await asyncio.to_thread(_session_route)
+                    if route:
+                        url, _h, _sess_model = route
                         # Some sessions stored headers double-encoded (a JSON
                         # string inside the JSON column), so the ORM hands back
                         # a str, not a dict — and llm_call_async's h.update()
                         # then throws "dictionary update sequence element…".
                         # Unwrap until we have a dict (or give up → no headers).
-                        _h = sess.headers
                         for _ in range(3):
                             if isinstance(_h, str):
                                 try:
@@ -5770,8 +5799,7 @@ def setup_email_routes():
                                 break
                         headers = _h if isinstance(_h, dict) and _h else None
                         if not requested_model:
-                            model = sess.model
-                    _db.close()
+                            model = _sess_model
                 except Exception as e:
                     logger.warning(f"Failed to read session endpoint: {e}")
 
@@ -5812,9 +5840,12 @@ def setup_email_routes():
             # can involve multiple IMAP folder searches and attachment parsing;
             # reserve that for callers that explicitly opt out of fast mode.
             # Owner-scoped so pre-retrieval never crosses tenants.
+            # `B1609`: both readers search IMAP folders and may refresh an OAuth
+            # token (a session), so they run in worker threads.
             context_snippets, _terms = ([], [])
             if not fast_reply:
-                context_snippets, _terms = _pre_retrieve_context(original_body, to, owner=owner)
+                context_snippets, _terms = await asyncio.to_thread(
+                    _pre_retrieve_context, original_body, to, owner=owner)
 
             # NEW: also pull the last few emails from the original sender +
             # their attachments. The "to" field on this endpoint is the
@@ -5825,7 +5856,8 @@ def setup_email_routes():
             if not fast_reply:
                 try:
                     from_addr_for_ctx = email.utils.parseaddr(to or "")[1]
-                    referenced = _fetch_sender_thread_context(
+                    referenced = await asyncio.to_thread(
+                        _fetch_sender_thread_context,
                         sender_addr=from_addr_for_ctx,
                         exclude_uid=source_uid,
                         exclude_folder=source_folder,
@@ -5982,7 +6014,8 @@ def setup_email_routes():
             return {"success": False, "error": "Mail operation failed"}
 
     @router.get("/style")
-    async def get_writing_style(
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def get_writing_style(
         account_id: str | None = Query(None),
         owner: str = Depends(require_user),
     ):
@@ -5993,7 +6026,8 @@ def setup_email_routes():
         return {"style": _get_email_writing_style_for_account(settings, account_id)}
 
     @router.put("/style")
-    async def update_writing_style(
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def update_writing_style(
         data: dict,
         account_id: str | None = Query(None),
         owner: str = Depends(require_user),
@@ -6007,7 +6041,8 @@ def setup_email_routes():
         return {"success": True}
 
     @router.get("/config")
-    async def get_email_config(
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def get_email_config(
         account_id: str | None = Query(None),
         owner: str = Depends(require_user),
     ):
@@ -6618,7 +6653,8 @@ def setup_email_routes():
         return provider
 
     @router.get("/oauth/{provider_id}/authorize")
-    async def provider_oauth_authorize(
+    # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
+    def provider_oauth_authorize(
         provider_id: str,
         account_id: str = Query(...),
         request: Request = None,

@@ -76,6 +76,21 @@ const probe = () => new Promise((resolve, reject) => {
   req.on('timeout', () => { const e = new Error('timeout'); e.name = 'TimeoutError'; req.destroy(e); });
   req.on('error', reject);
 });
+// `B1612`. Of the URLs a page asked for, the ones no cache holds — asked of
+// the page's own `caches`, the way the worker looks (`ignoreVary`), so an
+// offline page that did not start says which module or sheet was missing
+// rather than only that it did not start.
+const missingFromCache = async (page, urls) => {
+  try {
+    return await page.evaluate(async (list) => {
+      const out = [];
+      for (const u of list) if (!(await caches.match(u, { ignoreVary: true }))) out.push(u);
+      return out.sort();
+    }, urls);
+  } catch (e) {
+    return ['(the cache could not be asked: ' + String((e && e.message) || e).slice(0, 80) + ')'];
+  }
+};
 const down = async () => {
   const t0 = Date.now();
   for (let i = 0; i < 300; i++) {
@@ -158,6 +173,8 @@ const down = async () => {
   out.errors.length = out.onlineErrors.length;
   // The kept copy the offline half depends on, asked for rather than assumed.
   out.kept = await wait(page, async () => !!(await caches.match('/')), 120000);
+  // `B1612`: the probe that names what is missing can see a miss, and a hit.
+  out.missingProbe = await missingFromCache(page, ['/', '/static/js/__never-cached__.js']);
 
   // Offline: the app draws from the cache, on `/` and on a window's URL.
   // `B1423`: the server is really stopped. `context.setOffline(true)` (and
@@ -188,7 +205,15 @@ const down = async () => {
   out.offlineFailed = [];
   page.on('requestfailed', (r) => out.offlineFailed.push(
     r.url().replace(BASE, '') + ' ' + ((r.failure() || {}).errorText || '')));
+  // `B1612`: what each offline load asked for under `/static/`, so a page that
+  // did not start names what the worker's cache did not hold.
+  let asked = new Set();
+  page.on('request', (r) => {
+    const u = r.url();
+    if (u.startsWith(BASE + '/static/')) asked.add(u.slice(BASE.length));
+  });
   for (const path of ['/', '/tasks']) {
+    asked = new Set();
     try {
       // `B1595`: the online half's room (180 s) offline too — a start-up from
       // the worker's cache on a machine running the whole suite took longer
@@ -201,6 +226,8 @@ const down = async () => {
         // `B1508`: the page's JavaScript ran, not just its static HTML.
         started: await wait(page, () => window.__pantheonAppStarted === true, 180000),
       };
+      out.offline[path].asked = asked.size;
+      out.offline[path].missing = await missingFromCache(page, [...asked]);
     } catch (e) {
       out.offline[path] = String(e && e.message || e).slice(0, 80);
     }
@@ -267,7 +294,8 @@ def test_an_offline_reload_draws_the_app(drive):
         assert isinstance(got, dict), (path, got)
         assert got["fromWorker"] is True, (path, got)
         assert got["keptCopyNotice"] is True, (path, got)
-        assert got["drawn"] is True, (path, got)
+        assert got["drawn"] is True, (path, got, "missing from the cache:", got.get("missing"),
+                                      drive.get("offlineFailed"))
 
 
 def test_offline_the_apps_javascript_runs(drive):
@@ -281,8 +309,23 @@ def test_offline_the_apps_javascript_runs(drive):
     missed (`net::ERR_FAILED`, 33 of 36 failed requests). `static/sw.js` now
     looks up with `{ ignoreVary: true }`."""
     for path in ("/", "/tasks"):
-        assert drive["offline"][path]["started"] is True, (path, drive["offline"][path],
-                                                            drive.get("offlineFailed"))
+        got = drive["offline"][path]
+        assert got["started"] is True, (path, got, "missing from the cache:", got.get("missing"),
+                                        drive.get("offlineFailed"))
+
+
+def test_the_offline_drive_names_what_the_cache_lacks(drive):
+    """`B1612`. Two of ~20 starved runs did not start `/tasks` offline, with
+    nothing to say why. The drive now asks the cache, for each offline load,
+    which of the `/static/` URLs the page asked for it does not hold — and
+    the asking is shown to see a miss and a hit, so an empty list means
+    something."""
+    assert drive["missingProbe"] == ["/static/js/__never-cached__.js"], drive["missingProbe"]
+    for path in ("/", "/tasks"):
+        got = drive["offline"][path]
+        assert isinstance(got, dict), (path, got)
+        assert got["asked"] > 10, (path, got, "the page asked for almost nothing — the list measures nothing")
+        assert isinstance(got["missing"], list), (path, got)
 
 
 def test_a_signed_out_visit_still_lands_on_the_login_page(drive):

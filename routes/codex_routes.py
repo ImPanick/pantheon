@@ -286,7 +286,7 @@ def setup_codex_routes(
         if account_id:
             from routes.email_helpers import _assert_owns_account
 
-            _assert_owns_account(account_id, owner)
+            await asyncio.to_thread(_assert_owns_account, account_id, owner)  # `B1609`
         return await email_list_endpoint(
             folder=folder,
             limit=limit,
@@ -313,7 +313,7 @@ def setup_codex_routes(
         if account_id:
             from routes.email_helpers import _assert_owns_account
 
-            _assert_owns_account(account_id, owner)
+            await asyncio.to_thread(_assert_owns_account, account_id, owner)  # `B1609`
         return await email_read_endpoint(
             uid=uid,
             folder=folder,

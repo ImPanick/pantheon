@@ -429,6 +429,46 @@ def test_one_module_that_404s_does_not_take_the_rest_of_the_install_with_it():
 
 
 @_needs_node
+def test_a_precache_that_failed_is_retried():
+    """`B1612`. A dropped connection, or a server too busy to answer (503),
+    during install skipped that module for good — the offline copy lacked it
+    until the next `CACHE_NAME` bump, and the window that imports it could not
+    start offline. Each is asked again, and the module and the subtree only it
+    reaches are in the cache."""
+    files = {
+        "/static/js/root.js": "import './dropped.js';\nimport './busy.js';",
+        "/static/js/dropped.js": "import './behind.js';",
+        "/static/js/behind.js": "",
+        "/static/js/busy.js": "",
+    }
+    out = _run({"op": "walk", "seeds": ["/static/js/root.js"], "files": files,
+                "flaky": {"/static/js/dropped.js": 1}, "busy": {"/static/js/busy.js": 2}})
+    assert out["cached"] == sorted(files), out
+    assert out["fetched"].count("/static/js/dropped.js") == 2
+    assert out["fetched"].count("/static/js/busy.js") == 3
+    assert out["warned"] == []
+
+
+@_needs_node
+def test_a_precache_that_cannot_pass_is_not_retried_and_one_that_never_does_is_named():
+    """A 404 will not pass on a second try, so it is asked once; a URL that
+    goes on failing is given up after three tries and named in the worker's
+    console — and the walk still reaches its siblings."""
+    files = {
+        "/static/js/root.js": "import './gone.js';\nimport './down.js';\nimport './alive.js';",
+        "/static/js/gone.js": "",
+        "/static/js/down.js": "",
+        "/static/js/alive.js": "",
+    }
+    out = _run({"op": "walk", "seeds": ["/static/js/root.js"], "files": files,
+                "fail": ["/static/js/gone.js"], "flaky": {"/static/js/down.js": 99}})
+    assert out["cached"] == ["/static/js/alive.js", "/static/js/root.js"], out
+    assert out["fetched"].count("/static/js/gone.js") == 1
+    assert out["fetched"].count("/static/js/down.js") == 3
+    assert len(out["warned"]) == 1 and "/static/js/down.js" in out["warned"][0], out["warned"]
+
+
+@_needs_node
 def test_the_walk_terminates_on_an_import_cycle():
     """`seen` is the termination argument, not the round ceiling. Two modules
     that import each other are ordinary in this tree."""
