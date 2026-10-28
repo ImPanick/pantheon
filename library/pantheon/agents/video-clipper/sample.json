@@ -1,0 +1,18 @@
+{
+ "case": "two-clips-and-one-past-the-end",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- cut 2 clips in one command, copying the streams; the video is unchanged",
+ "read": [],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Video, Clips, Could not cut."
+  }
+ ],
+ "answer": "**Video**\n- talks/keynote.mp4 — 48:12\n\n**Clips**\n- talks/clips/intro.mp4 — 01:02–01:40 — 38s\n- talks/clips/the-demo.mp4 — 12:10–14:55 — 2m45s\n\n**Could not cut**\n- \"50:00-51:00 outro\" — the video ends at 48:12\n\n## Report\n- cut 2 clips in one command, copying the streams; the video is unchanged"
+}

@@ -138,6 +138,8 @@ AT_THE_BAR = frozenset({
     "survey-analyst",
     # Databases, the whole section.
     "etl-runner", "restore-drill",
+    # Creative & Media, the whole section.
+    "photo-organiser", "story-writer", "video-clipper",
 })
 
 SECTIONS = ("Steps", "Judgement calls", "Edge cases", "Deliverable", "Example")

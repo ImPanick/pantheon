@@ -1,0 +1,241 @@
+{
+ "cases": [
+  {
+   "id": "a-bedtime-story-in-a-new-world",
+   "about": "The first story in a new world: an original bedtime story near the length asked, every name it invents carried forward.",
+   "inputs": {
+    "brief": "A bedtime story about a girl who lights the lantern on her lane for the first time",
+    "voice": "gentle, read aloud",
+    "words": 130
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Story — The Lantern on Fen Lane",
+        "content": "Story — The Lantern on Fen Lane\n\n## The story\nThe Lantern on Fen Lane. Mira was nine, and she had never once been allowed to light the lantern at the end of Fen Lane. Grandad Tobin did it every evening, humming the way he hummed when he was worried, though he said he never was. Tonight his knees were stiff with the cold, so he held out the long brass match-holder and said, \"Go on, then.\" Mira's hands shook. The wick caught on the second try, and the glass turned gold. Down the lane, one window lit, then another, as if the houses had been waiting for her. \"Who is it for?\" she asked. \"Anyone coming home late,\" said Grandad Tobin, \"so they know the way.\" They walked back slowly, the light behind them, and Mira fell asleep still smelling the match.\n\n## Names and facts\n- Mira — nine; lives on Fen Lane with her grandfather\n- Grandad Tobin — keeps the lantern; hums when he is worried\n\n## Length\nAbout 133 words (asked: 130)."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "A bedtime story about Mira and the lantern, 133 words.\n\n## Report\n- wrote \"Story — The Lantern on Fen Lane\"\n\n## Carry forward\n- Mira — nine; lives on Fen Lane with Grandad Tobin\n- Grandad Tobin — keeps the lantern; hums when he is worried"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Story",
+      "contains": [
+       "## The story",
+       "Mira was nine",
+       "## Names and facts",
+       "About 133 words"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "Grandad Tobin"
+    }
+   ]
+  },
+  {
+   "id": "the-notebook-keeps-the-world-consistent",
+   "about": "A second story in the same world: Mira is still nine and Grandad Tobin still hums, as the notebook says.",
+   "inputs": {
+    "brief": "Another evening on Fen Lane: Mira lights the lantern on her own",
+    "voice": "gentle, read aloud",
+    "words": 130
+   },
+   "world": {},
+   "notebook": "- Mira — nine; lives on Fen Lane with Grandad Tobin\n- Grandad Tobin — keeps the lantern; hums when he is worried",
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Story — The Lantern, Alone",
+        "content": "Story — The Lantern, Alone\n\n## The story\nThe Lantern, Alone. On the first frosty evening of the year, Grandad Tobin's cough kept him by the fire, so Mira, who was nine, took the brass match-holder down from its hook by herself. Fen Lane was very quiet. Her breath made small clouds, and the lantern creaked on its post as if it were asking whether she was sure. She was not, entirely. The first match went out. The second one held, and the glass filled with gold, and somewhere behind her a door opened and Mrs Abara called out, \"Thank you, love!\" When Mira came back in, Grandad Tobin was humming, the way he did when he was worried, and then he stopped, because he had seen the light through the window.\n\n## Names and facts\n- Mira — nine; lives on Fen Lane with Grandad Tobin\n- Grandad Tobin — keeps the lantern; hums when he is worried\n- Mrs Abara — a neighbour on Fen Lane (new)\n\n## Length\nAbout 124 words (asked: 130)."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "A second Fen Lane story: Mira lights the lantern alone.\n\n## Report\n- wrote \"Story — The Lantern, Alone\"\n\n## Carry forward\n- Mira — nine; lives on Fen Lane with Grandad Tobin\n- Grandad Tobin — keeps the lantern; hums when he is worried\n- Mrs Abara — a neighbour on Fen Lane"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Story",
+      "contains": [
+       "Mira — nine",
+       "who was nine",
+       "hums when he is worried"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "Mrs Abara"
+    }
+   ]
+  },
+  {
+   "id": "a-brief-that-names-someone-elses-bear",
+   "about": "The brief asks for Paddington: the story has an original bear instead, and the answer says so; no borrowed name appears.",
+   "inputs": {
+    "brief": "A bedtime story about Paddington Bear arriving at the station",
+    "voice": "gentle, read aloud",
+    "words": 130
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Story — Bramble and the Station Clock",
+        "content": "Story — Bramble and the Station Clock\n\n## The story\nBramble and the Station Clock. Bramble was a small brown bear with a large green coat, and he had come a very long way. He sat on his suitcase under the station clock, which said a quarter to nine, and he waited for someone to read his label. The label said: Please be kind to this bear. A girl called Wren read it twice. Then she took off her scarf and wrapped it round his ears, because the wind came in through the arches and bears from far away feel the cold. \"Where are you going?\" she asked. Bramble did not know. Wren thought about it. \"Home,\" she decided, \"with us,\" and the clock struck nine, as if it agreed.\n\n## Names and facts\n- Bramble — a small brown bear in a large green coat, from far away\n- Wren — a girl who reads his label\n\n## Length\nAbout 120 words (asked: 130)."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "A bedtime story about a bear at a station. You asked for Paddington; he belongs to someone else, so this is Bramble, a bear of my own.\n\n## Report\n- wrote \"Story — Bramble and the Station Clock\"\n\n## Carry forward\n- Bramble — a small brown bear in a large green coat\n- Wren — reads his label; takes him home"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Story",
+      "contains": [
+       "Bramble"
+      ],
+      "lacks": [
+       "Paddington",
+       "marmalade",
+       "Peru"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "a bear of my own"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-brief-contradicts-the-notebook",
+   "about": "The brief says Mira is twelve; the notebook says nine: the brief is followed, and the change is said.",
+   "inputs": {
+    "brief": "Mira, now twelve, lights the lantern for the first time on her own",
+    "voice": "gentle, read aloud",
+    "words": 130
+   },
+   "world": {},
+   "notebook": "- Mira — nine; lives on Fen Lane with Grandad Tobin\n- Grandad Tobin — keeps the lantern; hums when he is worried",
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Story — The Lantern on Fen Lane",
+        "content": "Story — The Lantern on Fen Lane\n\n## The story\nThe Lantern on Fen Lane. Mira was twelve, and she had never once been allowed to light the lantern at the end of Fen Lane. Grandad Tobin did it every evening, humming the way he hummed when he was worried, though he said he never was. Tonight his knees were stiff with the cold, so he held out the long brass match-holder and said, \"Go on, then.\" Mira's hands shook. The wick caught on the second try, and the glass turned gold. Down the lane, one window lit, then another, as if the houses had been waiting for her. \"Who is it for?\" she asked. \"Anyone coming home late,\" said Grandad Tobin, \"so they know the way.\" They walked back slowly, the light behind them, and Mira fell asleep still smelling the match.\n\n## Names and facts\n- Mira — twelve now: the brief says so (the notebook had nine)\n- Grandad Tobin — keeps the lantern; hums when he is worried\n\n## Length\nAbout 133 words (asked: 130)."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "A bedtime story about Mira and the lantern, 133 words.\n\n## Report\n- wrote \"Story — The Lantern on Fen Lane\"\n\n## Carry forward\n- Mira — twelve; lives on Fen Lane with Grandad Tobin\n- Grandad Tobin — keeps the lantern; hums when he is worried"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Story",
+      "contains": [
+       "twelve now: the brief says so"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-length-close-to-the-ask",
+   "about": "Asked for 130 words: the story is within 10%, and Length says the count and the ask.",
+   "inputs": {
+    "brief": "A bedtime story about a girl who lights the lantern on her lane for the first time",
+    "voice": "gentle, read aloud",
+    "words": 130
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Story — The Lantern on Fen Lane",
+        "content": "Story — The Lantern on Fen Lane\n\n## The story\nThe Lantern on Fen Lane. Mira was nine, and she had never once been allowed to light the lantern at the end of Fen Lane. Grandad Tobin did it every evening, humming the way he hummed when he was worried, though he said he never was. Tonight his knees were stiff with the cold, so he held out the long brass match-holder and said, \"Go on, then.\" Mira's hands shook. The wick caught on the second try, and the glass turned gold. Down the lane, one window lit, then another, as if the houses had been waiting for her. \"Who is it for?\" she asked. \"Anyone coming home late,\" said Grandad Tobin, \"so they know the way.\" They walked back slowly, the light behind them, and Mira fell asleep still smelling the match.\n\n## Names and facts\n- Mira — nine; lives on Fen Lane with her grandfather\n- Grandad Tobin — keeps the lantern; hums when he is worried\n\n## Length\nAbout 133 words (asked: 130)."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "A bedtime story about Mira and the lantern, 133 words.\n\n## Report\n- wrote \"Story — The Lantern on Fen Lane\"\n\n## Carry forward\n- Mira — nine; lives on Fen Lane with Grandad Tobin\n- Grandad Tobin — keeps the lantern; hums when he is worried"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Story",
+      "contains": [
+       "(asked: 130)"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-document-without-its-headings-fails",
+   "about": "The harness's own check: a story document without The story, Names and facts and Length does not deliver, even after its repair pass.",
+   "inputs": {
+    "brief": "A bedtime story about a girl who lights the lantern on her lane for the first time",
+    "voice": "gentle, read aloud",
+    "words": 130
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Story — The Lantern on Fen Lane",
+        "content": "The Lantern on Fen Lane. Mira was nine, and she had never once been allowed to light the lantern at the end of Fen Lane. Grandad Tobin did it every evening, humming the way he hummed when he was worried, though he said he never was. Tonight his knees were stiff with the cold, so he held out the long brass match-holder and said, \"Go on, then.\" Mira's hands shook. The wick caught on the second try, and the glass turned gold. Down the lane, one window lit, then another, as if the houses had been waiting for her. \"Who is it for?\" she asked. \"Anyone coming home late,\" said Grandad Tobin, \"so they know the way.\" They walked back slowly, the light behind them, and Mira fell asleep still smelling the match."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "A bedtime story about Mira and the lantern, 133 words.\n\n## Report\n- wrote \"Story — The Lantern on Fen Lane\"\n\n## Carry forward\n- Mira — nine; lives on Fen Lane with Grandad Tobin\n- Grandad Tobin — keeps the lantern; hums when he is worried"
+    },
+    {
+     "say": "A bedtime story about Mira and the lantern, 133 words.\n\n## Report\n- wrote \"Story — The Lantern on Fen Lane\"\n\n## Carry forward\n- Mira — nine; lives on Fen Lane with Grandad Tobin\n- Grandad Tobin — keeps the lantern; hums when he is worried"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

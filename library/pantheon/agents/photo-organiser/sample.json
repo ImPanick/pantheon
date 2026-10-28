@@ -1,0 +1,18 @@
+{
+ "case": "dated-photos-into-albums-one-near-home",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 4 photos in one command; moved 3 after your yes; deleted nothing",
+ "read": [],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Moved, Left where they were, Identical."
+  }
+ ],
+ "answer": "**Moved**\n- albums/2026/2026-10-12 Home — 1 photo\n- albums/2026/2026-10-14 — 2 photos\n\n**Left where they were**\n- IMG_0003.jpg — no date in the photo\n\n**Identical**\n- IMG_0002.jpg and IMG_0002 copy.jpg — the same picture; both kept\n\n## Report\n- read 4 photos in one command; moved 3 after your yes; deleted nothing\n\n## Carry forward\n- places: Home 53.80,-1.55\n- albums: 2026-10-05, 2026-10-12 Home, 2026-10-14"
+}

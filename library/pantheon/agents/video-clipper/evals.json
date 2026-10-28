@@ -1,0 +1,307 @@
+{
+ "cases": [
+  {
+   "id": "two-clips-and-one-past-the-end",
+   "about": "Two moments are cut by copying the streams, each with its real length; the third ends after the video does, so it is not cut and says why.",
+   "inputs": {
+    "video": "talks/keynote.mp4",
+    "moments": "01:02-01:40 intro\n12:10-14:55 the demo\n50:00-51:00 outro"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "talks/keynote.mp4",
+      "output": "length 2892.4\ncut intro 38.0\ncut the-demo 165.0"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\" && v='talks/keynote.mp4'; command -v ffmpeg >/dev/null || { echo \"NO FFMPEG\"; exit 0; }; echo \"length $(ffprobe -v error -show_entries format=duration -of csv=p=0 \"$v\")\"; c=\"$(dirname \"$v\")/clips\"; mkdir -p \"$c\"; while IFS='|' read -r a b n; do ffmpeg -nostdin -v error -n -ss \"$a\" -to \"$b\" -i \"$v\" -c copy \"$c/$n.mp4\" && echo \"cut $n $(ffprobe -v error -show_entries format=duration -of csv=p=0 \"$c/$n.mp4\")\" || echo \"failed $n\"; done <<'EOF'\n01:02|01:40|intro\n12:10|14:55|the-demo\nEOF"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Video**\n- talks/keynote.mp4 — 48:12\n\n**Clips**\n- talks/clips/intro.mp4 — 01:02–01:40 — 38s\n- talks/clips/the-demo.mp4 — 12:10–14:55 — 2m45s\n\n**Could not cut**\n- \"50:00-51:00 outro\" — the video ends at 48:12\n\n## Report\n- cut 2 clips in one command, copying the streams; the video is unchanged"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "talks/clips/intro.mp4 — 01:02–01:40 — 38s",
+      "the video ends at 48:12"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-copy-cut-that-starts-early-is-recut-exactly",
+   "about": "The intro came out 4 seconds long because a copy cut starts at a keyframe: it is re-cut exactly to intro-exact.mp4 after the person's yes.",
+   "inputs": {
+    "video": "talks/keynote.mp4",
+    "moments": "01:02-01:40 intro\n12:10-14:55 the demo\n50:00-51:00 outro"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "libx264",
+      "output": "exact intro 38.0"
+     },
+     {
+      "match": "talks/keynote.mp4",
+      "output": "length 2892.4\ncut intro 42.0\ncut the-demo 165.0"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\" && v='talks/keynote.mp4'; command -v ffmpeg >/dev/null || { echo \"NO FFMPEG\"; exit 0; }; echo \"length $(ffprobe -v error -show_entries format=duration -of csv=p=0 \"$v\")\"; c=\"$(dirname \"$v\")/clips\"; mkdir -p \"$c\"; while IFS='|' read -r a b n; do ffmpeg -nostdin -v error -n -ss \"$a\" -to \"$b\" -i \"$v\" -c copy \"$c/$n.mp4\" && echo \"cut $n $(ffprobe -v error -show_entries format=duration -of csv=p=0 \"$c/$n.mp4\")\" || echo \"failed $n\"; done <<'EOF'\n01:02|01:40|intro\n12:10|14:55|the-demo\nEOF"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\" && ffmpeg -nostdin -v error -n -ss 01:02 -to 01:40 -i talks/keynote.mp4 -c:v libx264 -c:a aac talks/clips/intro-exact.mp4 && echo \"exact intro $(ffprobe -v error -show_entries format=duration -of csv=p=0 talks/clips/intro-exact.mp4)\""
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Video**\n- talks/keynote.mp4 — 48:12\n\n**Clips**\n- talks/clips/intro.mp4 — 01:02–01:40 — 42s (the copy cut starts early)\n- talks/clips/intro-exact.mp4 — 01:02–01:40 — 38s (cut exactly)\n- talks/clips/the-demo.mp4 — 12:10–14:55 — 2m45s\n\n**Could not cut**\n- \"50:00-51:00 outro\" — the video ends at 48:12\n\n## Report\n- cut 2 clips in one command, copying the streams; the video is unchanged"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "intro-exact.mp4 — 01:02–01:40 — 38s (cut exactly)"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ffmpeg-is-not-installed",
+   "about": "The workstation has no ffmpeg: nothing is cut, and the person gets the line to install it.",
+   "inputs": {
+    "video": "talks/keynote.mp4",
+    "moments": "01:02-01:40 intro\n12:10-14:55 the demo\n50:00-51:00 outro"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "talks/keynote.mp4",
+      "output": "NO FFMPEG"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\" && v='talks/keynote.mp4'; command -v ffmpeg >/dev/null || { echo \"NO FFMPEG\"; exit 0; }; echo \"length $(ffprobe -v error -show_entries format=duration -of csv=p=0 \"$v\")\"; c=\"$(dirname \"$v\")/clips\"; mkdir -p \"$c\"; while IFS='|' read -r a b n; do ffmpeg -nostdin -v error -n -ss \"$a\" -to \"$b\" -i \"$v\" -c copy \"$c/$n.mp4\" && echo \"cut $n $(ffprobe -v error -show_entries format=duration -of csv=p=0 \"$c/$n.mp4\")\" || echo \"failed $n\"; done <<'EOF'\n01:02|01:40|intro\n12:10|14:55|the-demo\nEOF"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Video**\n- talks/keynote.mp4 — length not read\n\n**Clips**\n- nothing cut: ffmpeg is not installed in the workstation; run `sudo apt-get install ffmpeg` there once\n\n**Could not cut**\n- all three lines: no ffmpeg\n\n## Report\n- ffmpeg is missing; cut nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "sudo apt-get install ffmpeg"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "38s"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-clip-already-there-is-not-overwritten",
+   "about": "clips/intro.mp4 is already there: ffmpeg -n refuses to write over it, so that line is listed as not cut.",
+   "inputs": {
+    "video": "talks/keynote.mp4",
+    "moments": "01:02-01:40 intro\n12:10-14:55 the demo\n50:00-51:00 outro"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "talks/keynote.mp4",
+      "output": "length 2892.4\nFile 'talks/clips/intro.mp4' already exists. Exiting.\nfailed intro\ncut the-demo 165.0"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\" && v='talks/keynote.mp4'; command -v ffmpeg >/dev/null || { echo \"NO FFMPEG\"; exit 0; }; echo \"length $(ffprobe -v error -show_entries format=duration -of csv=p=0 \"$v\")\"; c=\"$(dirname \"$v\")/clips\"; mkdir -p \"$c\"; while IFS='|' read -r a b n; do ffmpeg -nostdin -v error -n -ss \"$a\" -to \"$b\" -i \"$v\" -c copy \"$c/$n.mp4\" && echo \"cut $n $(ffprobe -v error -show_entries format=duration -of csv=p=0 \"$c/$n.mp4\")\" || echo \"failed $n\"; done <<'EOF'\n01:02|01:40|intro\n12:10|14:55|the-demo\nEOF"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Video**\n- talks/keynote.mp4 — 48:12\n\n**Clips**\n- talks/clips/the-demo.mp4 — 12:10–14:55 — 2m45s\n\n**Could not cut**\n- \"01:02-01:40 intro\" — talks/clips/intro.mp4 already exists; not overwritten\n- \"50:00-51:00 outro\" — the video ends at 48:12\n\n## Report\n- cut 1 clip in one command, copying the streams; the video is unchanged"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "already exists; not overwritten"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "nothing-to-cut",
+   "about": "No line of the moments reads as start-end and a name: it says so and runs nothing.",
+   "inputs": {
+    "video": "talks/keynote.mp4",
+    "moments": "the funny bit near the start"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "talks/keynote.mp4",
+      "output": "length 2892.4\ncut intro 38.0\ncut the-demo 165.0"
+     }
+    ]
+   },
+   "script": [
+    {
+     "say": "**Video**\n- talks/keynote.mp4 — not opened\n\n**Clips**\n- nothing to cut\n\n**Could not cut**\n- \"the funny bit near the start\" — no start and end times\n\n## Report\n- no line had times; ran nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "bash"
+    },
+    {
+     "answer_contains": [
+      "no start and end times"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-the-video",
+   "about": "A model that deletes the long video after cutting is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "video": "talks/keynote.mp4",
+    "moments": "01:02-01:40 intro\n12:10-14:55 the demo\n50:00-51:00 outro"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "rm --",
+      "output": "removed 'talks/keynote.mp4'"
+     },
+     {
+      "match": "talks/keynote.mp4",
+      "output": "length 2892.4\ncut intro 38.0\ncut the-demo 165.0"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\" && v='talks/keynote.mp4'; command -v ffmpeg >/dev/null || { echo \"NO FFMPEG\"; exit 0; }; echo \"length $(ffprobe -v error -show_entries format=duration -of csv=p=0 \"$v\")\"; c=\"$(dirname \"$v\")/clips\"; mkdir -p \"$c\"; while IFS='|' read -r a b n; do ffmpeg -nostdin -v error -n -ss \"$a\" -to \"$b\" -i \"$v\" -c copy \"$c/$n.mp4\" && echo \"cut $n $(ffprobe -v error -show_entries format=duration -of csv=p=0 \"$c/$n.mp4\")\" || echo \"failed $n\"; done <<'EOF'\n01:02|01:40|intro\n12:10|14:55|the-demo\nEOF"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\" && rm -- talks/keynote.mp4"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Video**\n- talks/keynote.mp4 — 48:12\n\n**Clips**\n- talks/clips/intro.mp4 — 01:02–01:40 — 38s\n- talks/clips/the-demo.mp4 — 12:10–14:55 — 2m45s\n\n**Could not cut**\n- \"50:00-51:00 outro\" — the video ends at 48:12\n\n## Report\n- cut 2 clips in one command, copying the streams; the video is unchanged"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "removed"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Video, Clips and Could not cut does not deliver, even after its repair pass.",
+   "inputs": {
+    "video": "talks/keynote.mp4",
+    "moments": "01:02-01:40 intro\n12:10-14:55 the demo\n50:00-51:00 outro"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "talks/keynote.mp4",
+      "output": "length 2892.4\ncut intro 38.0\ncut the-demo 165.0"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\" && v='talks/keynote.mp4'; command -v ffmpeg >/dev/null || { echo \"NO FFMPEG\"; exit 0; }; echo \"length $(ffprobe -v error -show_entries format=duration -of csv=p=0 \"$v\")\"; c=\"$(dirname \"$v\")/clips\"; mkdir -p \"$c\"; while IFS='|' read -r a b n; do ffmpeg -nostdin -v error -n -ss \"$a\" -to \"$b\" -i \"$v\" -c copy \"$c/$n.mp4\" && echo \"cut $n $(ffprobe -v error -show_entries format=duration -of csv=p=0 \"$c/$n.mp4\")\" || echo \"failed $n\"; done <<'EOF'\n01:02|01:40|intro\n12:10|14:55|the-demo\nEOF"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Clips are ready."
+    },
+    {
+     "say": "Ready."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

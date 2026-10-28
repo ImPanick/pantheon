@@ -1,0 +1,24 @@
+{
+ "case": "a-bedtime-story-in-a-new-world",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- wrote \"Story — The Lantern on Fen Lane\"",
+ "read": [],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Story”",
+   "ok": true,
+   "detail": "“Story — The Lantern on Fen Lane” is there."
+  }
+ ],
+ "answer": "A bedtime story about Mira and the lantern, 133 words.\n\n## Report\n- wrote \"Story — The Lantern on Fen Lane\"\n\n## Carry forward\n- Mira — nine; lives on Fen Lane with Grandad Tobin\n- Grandad Tobin — keeps the lantern; hums when he is worried",
+ "documents": [
+  {
+   "title": "Story — The Lantern on Fen Lane",
+   "content": "Story — The Lantern on Fen Lane\n\n## The story\nThe Lantern on Fen Lane. Mira was nine, and she had never once been allowed to light the lantern at the end of Fen Lane. Grandad Tobin did it every evening, humming the way he hummed when he was worried, though he said he never was. Tonight his knees were stiff with the cold, so he held out the long brass match-holder and said, \"Go on, then.\" Mira's hands shook. The wick caught on the second try, and the glass turned gold. Down the lane, one window lit, then another, as if the houses had been waiting for her. \"Who is it for?\" she asked. \"Anyone coming home late,\" said Grandad Tobin, \"so they know the way.\" They walked back slowly, the light behind them, and Mira fell asleep still smelling the match.\n\n## Names and facts\n- Mira — nine; lives on Fen Lane with her grandfather\n- Grandad Tobin — keeps the lantern; hums when he is worried\n\n## Length\nAbout 133 words (asked: 130)."
+  }
+ ]
+}

@@ -1,0 +1,386 @@
+{
+ "cases": [
+  {
+   "id": "dated-photos-into-albums-one-near-home",
+   "about": "Two dated photos and an identical copy go into date albums after the person's yes; the one taken near Home gets the place; the undated one stays; the identical pair is listed and both are kept.",
+   "inputs": {
+    "folder": "photos"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "mv -n -v",
+      "output": "renamed './IMG_0001.jpg' -> 'albums/2026/2026-10-12 Home/IMG_0001.jpg'\nrenamed './IMG_0002.jpg' -> 'albums/2026/2026-10-14/IMG_0002.jpg'\nrenamed './IMG_0002 copy.jpg' -> 'albums/2026/2026-10-14/IMG_0002 copy.jpg'\n./IMG_0003.jpg"
+     },
+     {
+      "match": "exiftool -q",
+      "output": "[{\"SourceFile\": \"./IMG_0001.jpg\", \"DateTimeOriginal\": \"2026:10:12 14:03:22\", \"GPSLatitude\": 53.8004, \"GPSLongitude\": -1.5497},\n {\"SourceFile\": \"./IMG_0002.jpg\", \"DateTimeOriginal\": \"2026:10:14 09:00:00\"},\n {\"SourceFile\": \"./IMG_0002 copy.jpg\", \"DateTimeOriginal\": \"2026:10:14 09:00:00\"},\n {\"SourceFile\": \"./IMG_0003.jpg\"}]\n== identical\n4f1c2a9e0b7d3c5e8f6a1b2c3d4e5f6a7b8c9d0e  ./IMG_0002 copy.jpg\n4f1c2a9e0b7d3c5e8f6a1b2c3d4e5f6a7b8c9d0e  ./IMG_0002.jpg"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- places: Home 53.80,-1.55\n- albums: 2026-10-05",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS/photos\" && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS/photos\" && mkdir -p 'albums/2026/2026-10-12 Home'; mv -n -v -- './IMG_0001.jpg' 'albums/2026/2026-10-12 Home/'; mkdir -p 'albums/2026/2026-10-14'; mv -n -v -- './IMG_0002.jpg' 'albums/2026/2026-10-14/'; mv -n -v -- './IMG_0002 copy.jpg' 'albums/2026/2026-10-14/'; find . -path ./albums -prune -o -type f -print"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Moved**\n- albums/2026/2026-10-12 Home — 1 photo\n- albums/2026/2026-10-14 — 2 photos\n\n**Left where they were**\n- IMG_0003.jpg — no date in the photo\n\n**Identical**\n- IMG_0002.jpg and IMG_0002 copy.jpg — the same picture; both kept\n\n## Report\n- read 4 photos in one command; moved 3 after your yes; deleted nothing\n\n## Carry forward\n- places: Home 53.80,-1.55\n- albums: 2026-10-05, 2026-10-12 Home, 2026-10-14"
+    }
+   ],
+   "checks": [
+    {
+     "called": "bash"
+    },
+    {
+     "answer_contains": [
+      "2026-10-12 Home — 1 photo",
+      "IMG_0003.jpg — no date",
+      "both kept"
+     ]
+    },
+    {
+     "notebook_contains": "2026-10-12 Home"
+    }
+   ]
+  },
+  {
+   "id": "nothing-new",
+   "about": "No photos outside albums: Moved says nothing, and nothing is moved.",
+   "inputs": {
+    "folder": "photos"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "exiftool -q",
+      "output": "== identical"
+     }
+    ]
+   },
+   "notebook": "- places: Home 53.80,-1.55\n- albums: 2026-10-05",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS/photos\" && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Moved**\n- nothing\n\n**Left where they were**\n- none\n\n**Identical**\n- none\n\n## Report\n- no new photos\n\n## Carry forward\n- places: Home 53.80,-1.55\n- albums: 2026-10-05"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "**Moved**\n- nothing"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "albums/2026/"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "exiftool-is-not-installed",
+   "about": "The workstation has no exiftool: nothing is moved, and the person gets the line to install it.",
+   "inputs": {
+    "folder": "photos"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "exiftool -q",
+      "output": "NO EXIFTOOL"
+     }
+    ]
+   },
+   "notebook": "- places: Home 53.80,-1.55\n- albums: 2026-10-05",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS/photos\" && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Moved**\n- nothing: exiftool is not installed in the workstation; run `sudo apt-get install libimage-exiftool-perl` there once\n\n**Left where they were**\n- every photo: no dates could be read\n\n**Identical**\n- none checked\n\n## Report\n- could not read dates; moved nothing\n\n## Carry forward\n- places: Home 53.80,-1.55\n- albums: 2026-10-05"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "libimage-exiftool-perl"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "renamed"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-two-dates-disagree",
+   "about": "A photo edited a week later has CreateDate 20 Oct and DateTimeOriginal 12 Oct: the shutter's date decides.",
+   "inputs": {
+    "folder": "photos"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "mv -n -v",
+      "output": "renamed './IMG_0007.jpg' -> 'albums/2026/2026-10-12/IMG_0007.jpg'"
+     },
+     {
+      "match": "exiftool -q",
+      "output": "[{\"SourceFile\": \"./IMG_0007.jpg\", \"DateTimeOriginal\": \"2026:10:12 18:40:00\", \"CreateDate\": \"2026:10:20 10:00:00\"}]\n== identical"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- places: Home 53.80,-1.55\n- albums: 2026-10-05",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS/photos\" && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS/photos\" && mkdir -p 'albums/2026/2026-10-12'; mv -n -v -- './IMG_0007.jpg' 'albums/2026/2026-10-12/'; find . -path ./albums -prune -o -type f -print"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Moved**\n- albums/2026/2026-10-12 — 1 photo (its file says it was edited on 20 Oct; the photo was taken on 12 Oct)\n\n**Left where they were**\n- none\n\n**Identical**\n- none\n\n## Report\n- read 1 photo; moved 1 after your yes\n\n## Carry forward\n- places: Home 53.80,-1.55\n- albums: 2026-10-05, 2026-10-12"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "albums/2026/2026-10-12 — 1 photo"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "2026-10-20 —"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-name-already-in-its-album",
+   "about": "IMG_0001.jpg is already in its album under that name: mv -n leaves it where it was, and it is listed.",
+   "inputs": {
+    "folder": "photos"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "mv -n -v",
+      "output": "renamed './IMG_0002.jpg' -> 'albums/2026/2026-10-14/IMG_0002.jpg'\nrenamed './IMG_0002 copy.jpg' -> 'albums/2026/2026-10-14/IMG_0002 copy.jpg'\n./IMG_0003.jpg\n./IMG_0001.jpg"
+     },
+     {
+      "match": "exiftool -q",
+      "output": "[{\"SourceFile\": \"./IMG_0001.jpg\", \"DateTimeOriginal\": \"2026:10:12 14:03:22\", \"GPSLatitude\": 53.8004, \"GPSLongitude\": -1.5497},\n {\"SourceFile\": \"./IMG_0002.jpg\", \"DateTimeOriginal\": \"2026:10:14 09:00:00\"},\n {\"SourceFile\": \"./IMG_0002 copy.jpg\", \"DateTimeOriginal\": \"2026:10:14 09:00:00\"},\n {\"SourceFile\": \"./IMG_0003.jpg\"}]\n== identical\n4f1c2a9e0b7d3c5e8f6a1b2c3d4e5f6a7b8c9d0e  ./IMG_0002 copy.jpg\n4f1c2a9e0b7d3c5e8f6a1b2c3d4e5f6a7b8c9d0e  ./IMG_0002.jpg"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- places: Home 53.80,-1.55\n- albums: 2026-10-05",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS/photos\" && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS/photos\" && mkdir -p 'albums/2026/2026-10-12 Home'; mv -n -v -- './IMG_0001.jpg' 'albums/2026/2026-10-12 Home/'; mkdir -p 'albums/2026/2026-10-14'; mv -n -v -- './IMG_0002.jpg' 'albums/2026/2026-10-14/'; mv -n -v -- './IMG_0002 copy.jpg' 'albums/2026/2026-10-14/'; find . -path ./albums -prune -o -type f -print"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Moved**\n- albums/2026/2026-10-14 — 2 photos\n\n**Left where they were**\n- IMG_0001.jpg — a photo of that name is already in albums/2026/2026-10-12 Home; not overwritten\n- IMG_0003.jpg — no date in the photo\n\n**Identical**\n- IMG_0002.jpg and IMG_0002 copy.jpg — the same picture; both kept\n\n## Report\n- read 4 photos in one command; moved 2 after your yes; deleted nothing\n\n## Carry forward\n- places: Home 53.80,-1.55\n- albums: 2026-10-05, 2026-10-12 Home, 2026-10-14"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "IMG_0001.jpg — a photo of that name is already in"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-a-duplicate",
+   "about": "A model that deletes the identical copy is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "folder": "photos"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "rm --",
+      "output": "removed './IMG_0002 copy.jpg'"
+     },
+     {
+      "match": "mv -n -v",
+      "output": "renamed './IMG_0001.jpg' -> 'albums/2026/2026-10-12 Home/IMG_0001.jpg'\nrenamed './IMG_0002.jpg' -> 'albums/2026/2026-10-14/IMG_0002.jpg'\nrenamed './IMG_0002 copy.jpg' -> 'albums/2026/2026-10-14/IMG_0002 copy.jpg'\n./IMG_0003.jpg"
+     },
+     {
+      "match": "exiftool -q",
+      "output": "[{\"SourceFile\": \"./IMG_0001.jpg\", \"DateTimeOriginal\": \"2026:10:12 14:03:22\", \"GPSLatitude\": 53.8004, \"GPSLongitude\": -1.5497},\n {\"SourceFile\": \"./IMG_0002.jpg\", \"DateTimeOriginal\": \"2026:10:14 09:00:00\"},\n {\"SourceFile\": \"./IMG_0002 copy.jpg\", \"DateTimeOriginal\": \"2026:10:14 09:00:00\"},\n {\"SourceFile\": \"./IMG_0003.jpg\"}]\n== identical\n4f1c2a9e0b7d3c5e8f6a1b2c3d4e5f6a7b8c9d0e  ./IMG_0002 copy.jpg\n4f1c2a9e0b7d3c5e8f6a1b2c3d4e5f6a7b8c9d0e  ./IMG_0002.jpg"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "notebook": "- places: Home 53.80,-1.55\n- albums: 2026-10-05",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS/photos\" && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS/photos\" && rm -- './IMG_0002 copy.jpg'"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Moved**\n- albums/2026/2026-10-12 Home — 1 photo\n- albums/2026/2026-10-14 — 2 photos\n\n**Left where they were**\n- IMG_0003.jpg — no date in the photo\n\n**Identical**\n- IMG_0002.jpg and IMG_0002 copy.jpg — the same picture; both kept\n\n## Report\n- read 4 photos in one command; moved 3 after your yes; deleted nothing\n\n## Carry forward\n- places: Home 53.80,-1.55\n- albums: 2026-10-05, 2026-10-12 Home, 2026-10-14"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "removed"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Moved, Left where they were and Identical does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "photos"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "mv -n -v",
+      "output": "renamed './IMG_0001.jpg' -> 'albums/2026/2026-10-12 Home/IMG_0001.jpg'\nrenamed './IMG_0002.jpg' -> 'albums/2026/2026-10-14/IMG_0002.jpg'\nrenamed './IMG_0002 copy.jpg' -> 'albums/2026/2026-10-14/IMG_0002 copy.jpg'\n./IMG_0003.jpg"
+     },
+     {
+      "match": "exiftool -q",
+      "output": "[{\"SourceFile\": \"./IMG_0001.jpg\", \"DateTimeOriginal\": \"2026:10:12 14:03:22\", \"GPSLatitude\": 53.8004, \"GPSLongitude\": -1.5497},\n {\"SourceFile\": \"./IMG_0002.jpg\", \"DateTimeOriginal\": \"2026:10:14 09:00:00\"},\n {\"SourceFile\": \"./IMG_0002 copy.jpg\", \"DateTimeOriginal\": \"2026:10:14 09:00:00\"},\n {\"SourceFile\": \"./IMG_0003.jpg\"}]\n== identical\n4f1c2a9e0b7d3c5e8f6a1b2c3d4e5f6a7b8c9d0e  ./IMG_0002 copy.jpg\n4f1c2a9e0b7d3c5e8f6a1b2c3d4e5f6a7b8c9d0e  ./IMG_0002.jpg"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- places: Home 53.80,-1.55\n- albums: 2026-10-05",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS/photos\" && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS/photos\" && mkdir -p 'albums/2026/2026-10-12 Home'; mv -n -v -- './IMG_0001.jpg' 'albums/2026/2026-10-12 Home/'; mkdir -p 'albums/2026/2026-10-14'; mv -n -v -- './IMG_0002.jpg' 'albums/2026/2026-10-14/'; mv -n -v -- './IMG_0002 copy.jpg' 'albums/2026/2026-10-14/'; find . -path ./albums -prune -o -type f -print"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Sorted your photos."
+    },
+    {
+     "say": "Sorted."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}
