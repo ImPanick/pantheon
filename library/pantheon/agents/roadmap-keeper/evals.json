@@ -34,7 +34,7 @@
       [
        "bash",
        {
-        "command": "cd 'shop' && git log --merges --since=\"7 days ago\" --date=short --pretty='%h %ad %s'"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git log --merges --since=\"7 days ago\" --date=short --pretty='%h %ad %s'"
        }
       ]
      ]
@@ -207,7 +207,7 @@
       [
        "bash",
        {
-        "command": "cd 'shop' && git log --merges --since=\"7 days ago\" --date=short --pretty='%h %ad %s'"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git log --merges --since=\"7 days ago\" --date=short --pretty='%h %ad %s'"
        }
       ]
      ]
@@ -294,7 +294,7 @@
       [
        "bash",
        {
-        "command": "cd 'shop' && git log --merges --since=\"7 days ago\" --date=short --pretty='%h %ad %s'"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git log --merges --since=\"7 days ago\" --date=short --pretty='%h %ad %s'"
        }
       ]
      ]
@@ -394,7 +394,7 @@
       [
        "bash",
        {
-        "command": "cd 'shop' && git log --merges --since=\"7 days ago\" --date=short --pretty='%h %ad %s'"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git log --merges --since=\"7 days ago\" --date=short --pretty='%h %ad %s'"
        }
       ]
      ]
@@ -473,7 +473,7 @@
       [
        "bash",
        {
-        "command": "cd 'shop' && git log --merges --since=\"7 days ago\" --date=short --pretty='%h %ad %s'"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git log --merges --since=\"7 days ago\" --date=short --pretty='%h %ad %s'"
        }
       ]
      ]

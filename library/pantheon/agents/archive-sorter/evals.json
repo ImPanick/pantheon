@@ -51,7 +51,7 @@
       [
        "bash",
        {
-        "command": "cd 'dump' && mkdir -p 'sorted/bills' 'sorted/manuals' 'sorted/photos' && mv -n -- 'scan001.pdf' 'sorted/bills/2026-10-northern-power-bill.pdf' && mv -n -- 'kettle-manual.pdf' 'sorted/manuals/kettle-manual.pdf' && mv -n -- 'IMG_2041.jpg' 'sorted/photos/IMG_2041.jpg' && ls -R sorted"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'dump' && mkdir -p 'sorted/bills' 'sorted/manuals' 'sorted/photos' && mv -n -- 'scan001.pdf' 'sorted/bills/2026-10-northern-power-bill.pdf' && mv -n -- 'kettle-manual.pdf' 'sorted/manuals/kettle-manual.pdf' && mv -n -- 'IMG_2041.jpg' 'sorted/photos/IMG_2041.jpg' && ls -R sorted"
        }
       ]
      ]
@@ -126,7 +126,7 @@
       [
        "bash",
        {
-        "command": "cd 'dump' && mkdir -p 'sorted/bills' 'sorted/manuals' 'sorted/photos' && mv -n -- 'scan001.pdf' 'sorted/bills/2026-10-northern-power-bill.pdf' && mv -n -- 'kettle-manual.pdf' 'sorted/manuals/kettle-manual.pdf' && mv -n -- 'IMG_2041.jpg' 'sorted/photos/IMG_2041.jpg' && ls -R sorted"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'dump' && mkdir -p 'sorted/bills' 'sorted/manuals' 'sorted/photos' && mv -n -- 'scan001.pdf' 'sorted/bills/2026-10-northern-power-bill.pdf' && mv -n -- 'kettle-manual.pdf' 'sorted/manuals/kettle-manual.pdf' && mv -n -- 'IMG_2041.jpg' 'sorted/photos/IMG_2041.jpg' && ls -R sorted"
        }
       ]
      ]
@@ -196,7 +196,7 @@
       [
        "bash",
        {
-        "command": "cd 'dump' && mkdir -p 'sorted/letters' && mv -n -- 'receipt-march.pdf' 'sorted/letters/2026-03-council-bin-letter.pdf' && ls -R sorted"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'dump' && mkdir -p 'sorted/letters' && mv -n -- 'receipt-march.pdf' 'sorted/letters/2026-03-council-bin-letter.pdf' && ls -R sorted"
        }
       ]
      ]
@@ -285,7 +285,7 @@
       [
        "bash",
        {
-        "command": "cd 'dump' && mkdir -p 'sorted/manuals' && mv -n -- 'kettle-manual.pdf' 'sorted/manuals/kettle-manual.pdf' && ls -R sorted"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'dump' && mkdir -p 'sorted/manuals' && mv -n -- 'kettle-manual.pdf' 'sorted/manuals/kettle-manual.pdf' && ls -R sorted"
        }
       ]
      ]

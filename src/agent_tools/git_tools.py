@@ -349,8 +349,12 @@ class _Place:
             return {"stdout": r.get("stdout") or "", "stderr": r.get("stderr") or "",
                     "exit_code": r.get("exit_code"), "timed_out": bool(r.get("timed_out"))}
         from src.agent_tools.subprocess_tools import _create_bash_subprocess, kill_tree, own_process_group
+        from src.tool_execution import projects_env
+        # `B1640`: the person's projects folder, as the workstation's daemon
+        # gives every command it runs — `shell_with_login`'s command is a
+        # model's, and may `cd "$PANTHEON_PROJECTS"/…` as a runbook does.
         proc = await _create_bash_subprocess(
-            command, cwd=cwd, env={**os.environ, **base_env, **env},
+            command, cwd=cwd, env={**os.environ, **projects_env(self.owner), **base_env, **env},
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, **own_process_group())
         try:
             out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)

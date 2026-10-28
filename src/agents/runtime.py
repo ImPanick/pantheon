@@ -195,8 +195,12 @@ def system_prompt(manifest, hire, *, owner: Optional[str]) -> str:
             "- only what your next run needs to remember (or the single word: nothing)",
         ]
     if hire.project:
+        # `B1640`: `$PANTHEON_PROJECTS` is set wherever a hire's shell runs —
+        # here (`tool_execution.projects_env`) as in the workstation — so the
+        # sentence no longer sends a run on this machine after a variable it
+        # did not have.
         lines += ["", f"You work in the project folder “{hire.project}” inside the person's "
-                      f"projects folder (in the workstation: $PANTHEON_PROJECTS/{hire.project})."]
+                      f"projects folder (in a shell: $PANTHEON_PROJECTS/{hire.project})."]
     lines += ["", "# Runbook", "", manifest.runbook.strip()]
     return "\n".join(lines)
 

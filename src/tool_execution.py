@@ -418,6 +418,26 @@ def projects_root(owner: Optional[str] = None, create: bool = True) -> str:
     return root
 
 
+def projects_env(owner: Optional[str] = None) -> Dict[str, str]:
+    """`B1640`. `$PANTHEON_PROJECTS` for a shell Pantheon starts on this
+    machine: this person's projects folder (`projects_root`).
+
+    The workstation daemon sets it for every command it runs
+    (`agentd._exec_prepare`), to the same person's folder under `/projects`,
+    and every runbook's `cd` is written against it — `cd "$PANTHEON_PROJECTS"/
+    '<folder>'` (`B1634`). Here nothing set it: `_direct_fallback`'s shell had
+    Pantheon's own environment, so on an install with no workstation a hire's
+    first command ran `cd /'<folder>'` — a folder at the root of the machine,
+    or none, and the rest of the command never ran. So the one rule: wherever
+    a hire's shell runs, the variable is the person's own projects folder,
+    named by `protocol.PROJECTS_ENV` (the one spelling) and found the way
+    every reader on this side finds it. Named, not made: a shell started here
+    does not create the folder (`projects_root` callers that work in it do),
+    so a tool call never scribbles into the data directory."""
+    from workstation import protocol as _wp
+    return {_wp.PROJECTS_ENV: projects_root(owner, create=False)}
+
+
 def save_into_projects(owner: Optional[str], destination: str, name: str,
                        payload: bytes) -> str:
     """`B1600`. Save `payload` as `name` in `destination`, a folder inside
@@ -830,6 +850,8 @@ async def _direct_fallback(
         "COLUMNS": "120",
         "LINES": "40",
         "HOME": _AGENT_WORKDIR,
+        # `B1640`: the person's projects folder, as the workstation names it.
+        **projects_env(owner),
     }
 
     try:
@@ -1425,7 +1447,10 @@ async def _execute_tool_block_impl(
             # The job is detached, so where it ends moves nothing.
             _bg_cwd, _bg_notes = host_start_folder(chat_key("host", owner, session_id),
                                                    agent_cwd())
-            rec = bg_jobs.launch(_bg_cmd, session_id=session_id, cwd=_bg_cwd)
+            # `B1640`: and with the person's projects folder, as the
+            # foreground shell has it.
+            rec = bg_jobs.launch(_bg_cmd, session_id=session_id, cwd=_bg_cwd,
+                                 env={**os.environ, **projects_env(owner)})
             short = _bg_cmd.strip().split(chr(10))[0][:80]
             desc = f"bash (background): {short}"
             result = {

@@ -4,7 +4,7 @@ name: Archive Sorter
 tagline: "Sorts a dump folder of scans and downloads into named, dated folders. Nothing is deleted."
 section: knowledge
 icon: archive
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The dump folder, inside your projects folder"}
@@ -23,7 +23,7 @@ Each night you sort the loose files in the person's dump folder — scans, downl
 ## Steps
 1. Call `ls` with `{"path": "<the folder you were hired with>"}`. Only the files at its top level are sorted; folders, including `sorted/`, are left alone.
 2. Decide each file's category and date from its name (Judgement calls). Where the name says nothing ("scan001.pdf"), call `read_file` with `{"path": "<folder>/<file>"}` and read its first lines — at most five files a run.
-3. Write one `bash` command that does every move: `cd '<folder>' && mkdir -p 'sorted/<category>' … && mv -n -- '<file>' 'sorted/<category>/<YYYY-MM>-<short name>.<ext>' && … && ls -R sorted`. Every name goes in single quotes (a `'` in it written `'\''`), so a file named with a space, a `$` or a backquote is one name and nothing in it runs; `--` keeps a name that starts with `-` a name. After the listing, the move waits for the person's yes, so they see the exact command before anything moves. That is the gate's call, not a failure.
+3. Write one `bash` command that does every move: `cd "$PANTHEON_PROJECTS"/'<folder>' && mkdir -p 'sorted/<category>' … && mv -n -- '<file>' 'sorted/<category>/<YYYY-MM>-<short name>.<ext>' && … && ls -R sorted`. Every name goes in single quotes (a `'` in it written `'\''`), so a file named with a space, a `$` or a backquote is one name and nothing in it runs; `--` keeps a name that starts with `-` a name. After the listing, the move waits for the person's yes, so they see the exact command before anything moves. That is the gate's call, not a failure.
 4. Answer under the two headings below, then stop.
 
 ## Judgement calls
