@@ -1035,6 +1035,21 @@ class PersonalDocsManager:
         budget = IndexBudget()
         pacer = IndexPacer()
 
+        # `B1644`. A file is listed under the name it was uploaded under, where
+        # one was given (`B1641`'s record, by stored path), and under its own
+        # name otherwise. The record was read only by the refill, so `GET
+        # /api/personal` listed `ada/Q3_ Board Pack_.md` — the storable form —
+        # for an upload whose chunks, and the chat's sources, said
+        # `Q3: Board Pack?.md`.
+        names = dict(self.file_names)
+
+        def given(f: Dict[str, Any]) -> str:
+            name = names.get(os.path.abspath(f.get("path", "")))
+            if not name:
+                return f['name']
+            folder = os.path.dirname(f['name'])
+            return f"{folder}/{name}" if folder else name
+
         # Index the base personal directory
         base_files = load_personal_index(self.personal_dir, skipped=skipped,
                                          budget=budget, pacer=pacer)
@@ -1042,6 +1057,7 @@ class PersonalDocsManager:
             if os.path.abspath(f.get("path", "")) in self.excluded_files:
                 continue
             f['source_dir'] = self.personal_dir
+            f['name'] = given(f)
             index.append(f)
 
         # Index additional directories
@@ -1062,7 +1078,7 @@ class PersonalDocsManager:
                     continue
                 # Update the name to include the directory for clarity
                 f['source_dir'] = directory
-                f['name'] = f"{os.path.basename(directory)}/{f['name']}"
+                f['name'] = f"{os.path.basename(directory)}/{given(f)}"
                 index.append(f)
 
         # Kept so `get_stats` can report what was held and what was not. A

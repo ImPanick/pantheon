@@ -548,19 +548,31 @@ def setup_personal_routes(personal_docs_manager, rag_manager, rag_available):
                     logger.error(f"Failed to upload/index {upload.filename}: {e}")
                     total_failed += 1
 
-            # Same transition, same lock: the tracking update must not land
-            # while another job is mid-write over the same state.
-            if uploaded_files and hasattr(personal_docs_manager, "add_directory"):
-                await run_in_threadpool(
-                    personal_docs_manager.add_directory, upload_dir, index=False, owner=user
-                )
             # `B1641`. The name each file was uploaded under, which its chunks
             # carry as `filename`, kept beside the folder's owner: a refill
             # (`B1639`) reads the stored file, whose own name is the storable
-            # form, and gives its chunks this one again.
+            # form, and gives its chunks this one again. `B1644`: recorded
+            # before the folder is tracked, because tracking a new folder
+            # builds the listing, which names each upload from this record.
             name_files = getattr(personal_docs_manager, "name_files", None)
             if named and callable(name_files):
                 await run_in_threadpool(name_files, named)
+            # Same transition, same lock: the tracking update must not land
+            # while another job is mid-write over the same state.
+            if uploaded_files and hasattr(personal_docs_manager, "add_directory"):
+                tracked = os.path.abspath(upload_dir) in (
+                    getattr(personal_docs_manager, "indexed_directories", None) or ())
+                await run_in_threadpool(
+                    personal_docs_manager.add_directory, upload_dir, index=False, owner=user
+                )
+                # `B1644`. A folder already tracked is not listed again by
+                # `add_directory`, so an upload into it — the person's second
+                # — was missing from the listing until a reload, and the panel
+                # reloads the listing straight after an upload. Built now when
+                # it has been built (an unbuilt one is built when first read).
+                refresh = getattr(personal_docs_manager, "refresh_index", None)
+                if tracked and callable(refresh) and getattr(personal_docs_manager, "index_built", False):
+                    await run_in_threadpool(refresh)
 
         return {
             "success": True,
