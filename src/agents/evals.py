@@ -214,6 +214,31 @@ class World:
         text = out if isinstance(out, str) else json.dumps(out, indent=1)
         return f"{tool}: {text[:200]}", {"output": text, "exit_code": 0}
 
+    def _file_attachment(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """`B1600`. An attachment saved into a folder: the world's message
+        holds it (`"attachments": [{"filename", "content"}]`), and it is saved
+        where the real tool saves it — the world person's projects folder, by
+        the same rule (`tool_execution.save_into_projects`), so a `file`
+        check finds it and a destination outside is refused in its words."""
+        from src.tool_execution import save_into_projects
+        uid = str(args.get("uid") or args.get("id") or "")
+        msg = next((m for m in self.fixture.get("emails") or [] if str(m.get("id")) == uid), None)
+        try:
+            index = int(args.get("index") or 0)
+        except (TypeError, ValueError):
+            index = -1
+        files = (msg or {}).get("attachments") or []
+        if msg is None or not 0 <= index < len(files):
+            return {"error": f"Attachment index {args.get('index')} not found"}
+        att = files[index]
+        try:
+            path = save_into_projects(EVAL_OWNER, str(args["destination"]).strip(),
+                                      str(args.get("filename") or "").strip() or str(att.get("filename") or ""),
+                                      str(att.get("content") or "").encode("utf-8"))
+        except (ValueError, FileExistsError) as exc:
+            return {"error": str(exc)}
+        return {"path": path, "filename": att.get("filename"), "saved_as": os.path.basename(path)}
+
     def mail_contacts(self, name: str) -> List[Dict[str, str]]:
         """`B1602`. The mail history `resolve_contact` searches, from the
         world's mailbox — the mail route's own rule: each From, To or Cc entry
@@ -270,6 +295,8 @@ class World:
             return {"senders": [{"from": m.get("from"), "unsubscribe": m.get("unsubscribe")}
                                 for m in mails if m.get("unsubscribe")]}
         if tool == "download_attachment":
+            if str(args.get("destination") or "").strip():
+                return self._file_attachment(args)
             return {"saved": args.get("filename") or "attachment"}
         if tool in DRAFT_TOOLS:
             self.drafts.append({"tool": tool, **args})

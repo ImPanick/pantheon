@@ -1229,8 +1229,10 @@ def _list_attachments_from_msg(msg):
     return attachments
 
 
-def _extract_attachment_to_disk(msg, index, target_dir):
-    """Extract a specific attachment to disk."""
+def _attachment_part(msg, index):
+    """`(name, payload)` of attachment `index` — the sender's name decoded, not
+    yet made storable — or `None` when there is no such attachment or it is
+    empty."""
     if not msg.is_multipart():
         return None
     idx = 0
@@ -1247,23 +1249,30 @@ def _extract_attachment_to_disk(msg, index, target_dir):
                 filename = _decode_header(filename)
             else:
                 filename = f"attachment_{idx}"
-            # `B1000`. The name the person sees, made safe to store
-            # (`src/file_names.stored_name`) — the same answer the mailbox
-            # routes give. It was `[^\w\s\-.]` → `_`, which kept CR/LF and
-            # had no length cap, so the agent was handed `Q3 Board Pack _ final
-            # _v2_.pdf`, and a long non-Latin name could not be saved at all
-            # (`ENAMETOOLONG`, measured through the routes' copy of the regex).
-            safe_name = _stored_name(filename, f"attachment_{idx}")
             payload = part.get_payload(decode=True)
-            if not payload:
-                return None
-            os.makedirs(target_dir, exist_ok=True)
-            filepath = os.path.join(target_dir, safe_name)
-            with open(filepath, "wb") as f:
-                f.write(payload)
-            return filepath
+            return (filename, payload) if payload else None
         idx += 1
     return None
+
+
+def _extract_attachment_to_disk(msg, index, target_dir):
+    """Extract a specific attachment to disk."""
+    found = _attachment_part(msg, index)
+    if not found:
+        return None
+    filename, payload = found
+    # `B1000`. The name the person sees, made safe to store
+    # (`src/file_names.stored_name`) — the same answer the mailbox
+    # routes give. It was `[^\w\s\-.]` → `_`, which kept CR/LF and
+    # had no length cap, so the agent was handed `Q3 Board Pack _ final
+    # _v2_.pdf`, and a long non-Latin name could not be saved at all
+    # (`ENAMETOOLONG`, measured through the routes' copy of the regex).
+    safe_name = _stored_name(filename, f"attachment_{index}")
+    os.makedirs(target_dir, exist_ok=True)
+    filepath = os.path.join(target_dir, safe_name)
+    with open(filepath, "wb") as f:
+        f.write(payload)
+    return filepath
 
 
 def _read_email(uid=None, message_id=None, folder="INBOX", account=None):
@@ -2139,8 +2148,15 @@ def _archive_email(uid, folder="INBOX", account=None):
     return _move_message(uid, folder, cfg["archive_folder"], account=account, role="archive")
 
 
-def _download_attachment(uid, index, folder="INBOX", account=None):
-    """Extract a specific attachment to disk and return its local path."""
+def _download_attachment(uid, index, folder="INBOX", account=None, destination=None, filename=None):
+    """Extract a specific attachment to disk and return its local path.
+
+    `B1600`. With `destination` — a folder inside the person's projects
+    folder, `invoices/2026` — it is saved there, under `filename` when one is
+    given, else under the sender's name; never outside that folder, and never
+    over a file already there (`tool_execution.save_into_projects`, which says
+    why in a sentence). Without one it goes where it always went, the mail
+    attachments area, `MAIL_ATTACHMENTS_DIR/<folder>_<uid>`."""
     conn = None
     try:
         conn = _imap_connect(account)
@@ -2155,15 +2171,29 @@ def _download_attachment(uid, index, folder="INBOX", account=None):
     raw = msg_data[0][1]
     msg = email.message_from_bytes(raw)
 
+    # `B1000`: the agent is told the sender's name for the file; `path` is
+    # where it was stored.
+    shown = next((a.get("filename") for a in _list_attachments_from_msg(msg)
+                  if a.get("index") == index), None)
+    if destination is not None and str(destination).strip():
+        found = _attachment_part(msg, index)
+        if not found:
+            return {"error": f"Attachment index {index} not found"}
+        sender_name, payload = found
+        from src.tool_execution import save_into_projects
+        try:
+            filepath = save_into_projects(_current_owner() or None, str(destination).strip(),
+                                          str(filename or "").strip() or sender_name, payload)
+        except (ValueError, FileExistsError) as exc:
+            return {"error": str(exc)}
+        return {"path": filepath, "filename": _display_name(shown or "") or os.path.basename(filepath),
+                "saved_as": os.path.basename(filepath), "size": os.path.getsize(filepath)}
+
     target_dir = Path(MAIL_ATTACHMENTS_DIR) / f"{folder}_{uid}"
     filepath = _extract_attachment_to_disk(msg, index, target_dir)
     if not filepath:
         return {"error": f"Attachment index {index} not found"}
     size = os.path.getsize(filepath)
-    # `B1000`: the agent is told the sender's name for the file; `path` is
-    # where it was stored.
-    shown = next((a.get("filename") for a in _list_attachments_from_msg(msg)
-                  if a.get("index") == index), None)
     return {"path": filepath, "filename": _display_name(shown or "") or os.path.basename(filepath),
             "size": size}
 
@@ -2393,13 +2423,16 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             folder = arguments.get("folder", "INBOX")
             if uid is None or index is None:
                 return [TextContent(type="text", text="Error: uid and index are required")]
-            result = _download_attachment(uid, index, folder, account=acct)
+            result = _download_attachment(uid, index, folder, account=acct,
+                                          destination=arguments.get("destination"),
+                                          filename=arguments.get("filename"))
             if "error" in result:
                 return [TextContent(type="text", text=f"Error: {result['error']}")]
             text = (
                 f"Attachment downloaded to: `{result['path']}`\n"
                 f"Filename: {result['filename']}\n"
-                f"Size: {result['size']} bytes\n\n"
+                + (f"Saved as: {result['saved_as']}\n" if result.get("saved_as") else "")
+                + f"Size: {result['size']} bytes\n\n"
                 f"You can now read this file using the read_file tool."
             )
             return [TextContent(type="text", text=text)]
