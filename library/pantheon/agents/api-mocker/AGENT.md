@@ -4,7 +4,7 @@ name: API Mocker
 tagline: A runnable mock server and fixtures from an OpenAPI spec, checked with two calls before you get it.
 section: development
 icon: server-cog
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: spec, kind: text, label: "The OpenAPI file, inside your projects folder"}
@@ -26,7 +26,7 @@ You turn an OpenAPI spec into a mock server the person can run while the real AP
 2. Call `ls` on the folder you were hired with. If `mock_server.py` is already there, stop (Edge cases).
 3. Call `write_file` once per operation with an example: `<out>/fixtures/<operationId>.json`.
 4. Call `write_file` with `<out>/mock_server.py`: Python's standard library only (`http.server`), a route per operation — a path's `{id}` matches any segment — answering its fixture with the spec's status code, `{}` for an operation with no example, 404 for anything else. It listens on the port given as its first argument, default 4010.
-5. Check in one `bash` command: `cd $PANTHEON_PROJECTS/<out> && (timeout 20 python3 mock_server.py 4010 >/dev/null 2>&1 &) && sleep 1 && curl -s localhost:4010<first path> && echo && curl -s localhost:4010<second path>`. The server stops itself after 20 seconds, so nothing is killed or deleted to end it.
+5. Check in one `bash` command: `cd "$PANTHEON_PROJECTS"/'<out>' && (timeout 20 python3 mock_server.py 4010 >/dev/null 2>&1 &) && sleep 1 && curl -s localhost:4010<first path> && echo && curl -s localhost:4010<second path>`. The server stops itself after 20 seconds, so nothing is killed or deleted to end it. The folder goes in single quotes (a `'` in it written `'\''`), so a name with a space, a `'` or a `$` in it is one folder.
 6. Answer under the three headings. Then stop.
 
 ## Judgement calls

@@ -23,7 +23,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && tag=$(git describe --tags --abbrev=0 2>/dev/null); echo \"TAG ${tag:-none}\"; git log ${tag:+$tag..}HEAD --no-merges --format='%h %s%n%b%n--'"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && tag=$(git describe --tags --abbrev=0 2>/dev/null); echo \"TAG ${tag:-none}\"; git log ${tag:+$tag..}HEAD --no-merges --format='%h %s%n%b%n--'"
        }
       ]
      ]
@@ -83,7 +83,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && tag=$(git describe --tags --abbrev=0 2>/dev/null); echo \"TAG ${tag:-none}\"; git log ${tag:+$tag..}HEAD --no-merges --format='%h %s%n%b%n--'"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && tag=$(git describe --tags --abbrev=0 2>/dev/null); echo \"TAG ${tag:-none}\"; git log ${tag:+$tag..}HEAD --no-merges --format='%h %s%n%b%n--'"
        }
       ]
      ]
@@ -137,7 +137,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && tag=$(git describe --tags --abbrev=0 2>/dev/null); echo \"TAG ${tag:-none}\"; git log ${tag:+$tag..}HEAD --no-merges --format='%h %s%n%b%n--'"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && tag=$(git describe --tags --abbrev=0 2>/dev/null); echo \"TAG ${tag:-none}\"; git log ${tag:+$tag..}HEAD --no-merges --format='%h %s%n%b%n--'"
        }
       ]
      ]
@@ -192,7 +192,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && tag=$(git describe --tags --abbrev=0 2>/dev/null); echo \"TAG ${tag:-none}\"; git log ${tag:+$tag..}HEAD --no-merges --format='%h %s%n%b%n--'"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && tag=$(git describe --tags --abbrev=0 2>/dev/null); echo \"TAG ${tag:-none}\"; git log ${tag:+$tag..}HEAD --no-merges --format='%h %s%n%b%n--'"
        }
       ]
      ]
@@ -249,7 +249,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && tag=$(git describe --tags --abbrev=0 2>/dev/null); echo \"TAG ${tag:-none}\"; git log ${tag:+$tag..}HEAD --no-merges --format='%h %s%n%b%n--'"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && tag=$(git describe --tags --abbrev=0 2>/dev/null); echo \"TAG ${tag:-none}\"; git log ${tag:+$tag..}HEAD --no-merges --format='%h %s%n%b%n--'"
        }
       ]
      ]
@@ -312,7 +312,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && tag=$(git describe --tags --abbrev=0 2>/dev/null); echo \"TAG ${tag:-none}\"; git log ${tag:+$tag..}HEAD --no-merges --format='%h %s%n%b%n--'"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && tag=$(git describe --tags --abbrev=0 2>/dev/null); echo \"TAG ${tag:-none}\"; git log ${tag:+$tag..}HEAD --no-merges --format='%h %s%n%b%n--'"
        }
       ]
      ]

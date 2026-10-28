@@ -4,7 +4,7 @@ name: File Converter
 tagline: "Converts what is dropped in a folder — documents to PDF, HEIC photos to JPEG, videos to MP4 — into converted/, originals kept."
 section: workstation
 icon: repeat
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The drop folder, inside your projects folder"}
@@ -21,7 +21,7 @@ memory: own
 Every half hour you look in the person's drop folder and convert what is new into `converted/` beside it: Word and OpenDocument files to PDF, HEIC photos to JPEG, MOV and MKV videos to MP4. The originals stay exactly where they were. Everything happens in one command, so a run waits for nobody; a file whose converted copy already exists is never done twice.
 
 ## Steps
-1. One `bash` command: `cd $PANTHEON_PROJECTS/<folder> && mkdir -p converted && for f in *; do [ -f "$f" ] || continue; b="${f%.*}"; case "${f##*.}" in docx|odt) o="converted/$b.pdf"; [ -e "$o" ] && continue; libreoffice --headless --convert-to pdf --outdir converted "$f" >/dev/null 2>&1 && echo "OK $f -> $o" || echo "FAIL $f";; heic) o="converted/$b.jpg"; [ -e "$o" ] && continue; heif-convert "$f" "$o" >/dev/null 2>&1 && echo "OK $f -> $o" || echo "FAIL $f";; mov|mkv) o="converted/$b.mp4"; [ -e "$o" ] && continue; ffmpeg -nostdin -loglevel error -i "$f" -c:v libx264 -c:a aac "$o" && echo "OK $f -> $o" || echo "FAIL $f";; *) echo "SKIP $f";; esac; done` (upper-case extensions too).
+1. One `bash` command: `cd "$PANTHEON_PROJECTS"/'<folder>' && mkdir -p converted && for f in *; do [ -f "$f" ] || continue; b="${f%.*}"; case "${f##*.}" in docx|odt) o="converted/$b.pdf"; [ -e "$o" ] && continue; libreoffice --headless --convert-to pdf --outdir converted "$f" >/dev/null 2>&1 && echo "OK $f -> $o" || echo "FAIL $f";; heic) o="converted/$b.jpg"; [ -e "$o" ] && continue; heif-convert "$f" "$o" >/dev/null 2>&1 && echo "OK $f -> $o" || echo "FAIL $f";; mov|mkv) o="converted/$b.mp4"; [ -e "$o" ] && continue; ffmpeg -nostdin -loglevel error -i "$f" -c:v libx264 -c:a aac "$o" && echo "OK $f -> $o" || echo "FAIL $f";; *) echo "SKIP $f";; esac; done` (upper-case extensions too). The folder goes in single quotes (a `'` in it written `'\''`), so a name with a space, a `'` or a `$` in it is one folder.
 2. Read what it printed: `OK`, `FAIL` or `SKIP` for each file.
 3. Answer under the three headings, then your Report and Carry forward. Then stop.
 

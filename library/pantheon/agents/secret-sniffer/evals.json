@@ -25,7 +25,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
+        "command": "cd \"$PANTHEON_PROJECTS\" && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
        }
       ]
      ]
@@ -89,7 +89,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
+        "command": "cd \"$PANTHEON_PROJECTS\" && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
        }
       ]
      ]
@@ -131,7 +131,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
+        "command": "cd \"$PANTHEON_PROJECTS\" && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
        }
       ]
      ]
@@ -173,7 +173,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
+        "command": "cd \"$PANTHEON_PROJECTS\" && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
        }
       ]
      ]
@@ -213,7 +213,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
+        "command": "cd \"$PANTHEON_PROJECTS\" && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
        }
       ]
      ]
@@ -262,7 +262,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
+        "command": "cd \"$PANTHEON_PROJECTS\" && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
        }
       ]
      ]
@@ -272,7 +272,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && git filter-repo --path config/settings.py --invert-paths --force"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && git filter-repo --path config/settings.py --invert-paths --force"
        }
       ]
      ]
@@ -333,7 +333,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
+        "command": "cd \"$PANTHEON_PROJECTS\" && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
        }
       ]
      ]

@@ -26,7 +26,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/infra && for h in web1 db1 nas; do echo \"== $h\"; [ -d \"$h\" ] || { echo \"NO FOLDER\"; continue; }; (cd \"$h\" && find . -type f -print0) | while IFS= read -r -d '' f; do f=${f#.}; echo \"-- $f\"; printf '%s\\0' \"$f\" | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'xargs -0 cat --' 2>&1 | diff -u \"$h$f\" - | head -20; done; done"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'infra' && for h in web1 db1 nas; do echo \"== $h\"; [ -d \"$h\" ] || { echo \"NO FOLDER\"; continue; }; (cd \"$h\" && find . -type f -print0) | while IFS= read -r -d '' f; do f=${f#.}; echo \"-- $f\"; printf '%s\\0' \"$f\" | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'xargs -0 cat --' 2>&1 | diff -u \"$h$f\" - | head -20; done; done"
        }
       ]
      ]
@@ -72,7 +72,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/infra && for h in web1; do echo \"== $h\"; [ -d \"$h\" ] || { echo \"NO FOLDER\"; continue; }; (cd \"$h\" && find . -type f -print0) | while IFS= read -r -d '' f; do f=${f#.}; echo \"-- $f\"; printf '%s\\0' \"$f\" | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'xargs -0 cat --' 2>&1 | diff -u \"$h$f\" - | head -20; done; done"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'infra' && for h in web1; do echo \"== $h\"; [ -d \"$h\" ] || { echo \"NO FOLDER\"; continue; }; (cd \"$h\" && find . -type f -print0) | while IFS= read -r -d '' f; do f=${f#.}; echo \"-- $f\"; printf '%s\\0' \"$f\" | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'xargs -0 cat --' 2>&1 | diff -u \"$h$f\" - | head -20; done; done"
        }
       ]
      ]
@@ -122,7 +122,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/infra && for h in web1 db1 nas; do echo \"== $h\"; [ -d \"$h\" ] || { echo \"NO FOLDER\"; continue; }; (cd \"$h\" && find . -type f -print0) | while IFS= read -r -d '' f; do f=${f#.}; echo \"-- $f\"; printf '%s\\0' \"$f\" | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'xargs -0 cat --' 2>&1 | diff -u \"$h$f\" - | head -20; done; done"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'infra' && for h in web1 db1 nas; do echo \"== $h\"; [ -d \"$h\" ] || { echo \"NO FOLDER\"; continue; }; (cd \"$h\" && find . -type f -print0) | while IFS= read -r -d '' f; do f=${f#.}; echo \"-- $f\"; printf '%s\\0' \"$f\" | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'xargs -0 cat --' 2>&1 | diff -u \"$h$f\" - | head -20; done; done"
        }
       ]
      ]
@@ -168,7 +168,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/infra && for h in web2; do echo \"== $h\"; [ -d \"$h\" ] || { echo \"NO FOLDER\"; continue; }; (cd \"$h\" && find . -type f -print0) | while IFS= read -r -d '' f; do f=${f#.}; echo \"-- $f\"; printf '%s\\0' \"$f\" | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'xargs -0 cat --' 2>&1 | diff -u \"$h$f\" - | head -20; done; done"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'infra' && for h in web2; do echo \"== $h\"; [ -d \"$h\" ] || { echo \"NO FOLDER\"; continue; }; (cd \"$h\" && find . -type f -print0) | while IFS= read -r -d '' f; do f=${f#.}; echo \"-- $f\"; printf '%s\\0' \"$f\" | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'xargs -0 cat --' 2>&1 | diff -u \"$h$f\" - | head -20; done; done"
        }
       ]
      ]
@@ -224,7 +224,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/infra && for h in web1 db1 nas; do echo \"== $h\"; [ -d \"$h\" ] || { echo \"NO FOLDER\"; continue; }; (cd \"$h\" && find . -type f -print0) | while IFS= read -r -d '' f; do f=${f#.}; echo \"-- $f\"; printf '%s\\0' \"$f\" | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'xargs -0 cat --' 2>&1 | diff -u \"$h$f\" - | head -20; done; done"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'infra' && for h in web1 db1 nas; do echo \"== $h\"; [ -d \"$h\" ] || { echo \"NO FOLDER\"; continue; }; (cd \"$h\" && find . -type f -print0) | while IFS= read -r -d '' f; do f=${f#.}; echo \"-- $f\"; printf '%s\\0' \"$f\" | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'xargs -0 cat --' 2>&1 | diff -u \"$h$f\" - | head -20; done; done"
        }
       ]
      ]
@@ -273,7 +273,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/infra && for h in web1 db1 nas; do echo \"== $h\"; [ -d \"$h\" ] || { echo \"NO FOLDER\"; continue; }; (cd \"$h\" && find . -type f -print0) | while IFS= read -r -d '' f; do f=${f#.}; echo \"-- $f\"; printf '%s\\0' \"$f\" | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'xargs -0 cat --' 2>&1 | diff -u \"$h$f\" - | head -20; done; done"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'infra' && for h in web1 db1 nas; do echo \"== $h\"; [ -d \"$h\" ] || { echo \"NO FOLDER\"; continue; }; (cd \"$h\" && find . -type f -print0) | while IFS= read -r -d '' f; do f=${f#.}; echo \"-- $f\"; printf '%s\\0' \"$f\" | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'xargs -0 cat --' 2>&1 | diff -u \"$h$f\" - | head -20; done; done"
        }
       ]
      ]
@@ -328,7 +328,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/infra && for h in web1 db1 nas; do echo \"== $h\"; [ -d \"$h\" ] || { echo \"NO FOLDER\"; continue; }; (cd \"$h\" && find . -type f -print0) | while IFS= read -r -d '' f; do f=${f#.}; echo \"-- $f\"; printf '%s\\0' \"$f\" | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'xargs -0 cat --' 2>&1 | diff -u \"$h$f\" - | head -20; done; done"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'infra' && for h in web1 db1 nas; do echo \"== $h\"; [ -d \"$h\" ] || { echo \"NO FOLDER\"; continue; }; (cd \"$h\" && find . -type f -print0) | while IFS= read -r -d '' f; do f=${f#.}; echo \"-- $f\"; printf '%s\\0' \"$f\" | ssh -o BatchMode=yes -o ConnectTimeout=8 -- \"$h\" 'xargs -0 cat --' 2>&1 | diff -u \"$h$f\" - | head -20; done; done"
        }
       ]
      ]

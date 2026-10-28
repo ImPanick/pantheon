@@ -31,7 +31,7 @@
       [
        "bash",
        {
-        "command": "for u in https://bakery.example/; do echo \"== $u\"; if command -v axe >/dev/null; then axe \"$u\" --exit 2>&1 | tail -40; elif command -v pa11y >/dev/null; then pa11y \"$u\" 2>&1 | tail -40; else echo \"NO CHECKER\"; fi; done"
+        "command": "for u in 'https://bakery.example/'; do echo \"== $u\"; if command -v axe >/dev/null; then axe --exit -- \"$u\" 2>&1 | tail -40; elif command -v pa11y >/dev/null; then pa11y -- \"$u\" 2>&1 | tail -40; else echo \"NO CHECKER\"; fi; done"
        }
       ]
      ]
@@ -105,7 +105,7 @@
       [
        "bash",
        {
-        "command": "for u in https://bakery.example/; do echo \"== $u\"; if command -v axe >/dev/null; then axe \"$u\" --exit 2>&1 | tail -40; elif command -v pa11y >/dev/null; then pa11y \"$u\" 2>&1 | tail -40; else echo \"NO CHECKER\"; fi; done"
+        "command": "for u in 'https://bakery.example/'; do echo \"== $u\"; if command -v axe >/dev/null; then axe --exit -- \"$u\" 2>&1 | tail -40; elif command -v pa11y >/dev/null; then pa11y -- \"$u\" 2>&1 | tail -40; else echo \"NO CHECKER\"; fi; done"
        }
       ]
      ]
@@ -167,7 +167,7 @@
       [
        "bash",
        {
-        "command": "for u in https://bakery.example/; do echo \"== $u\"; if command -v axe >/dev/null; then axe \"$u\" --exit 2>&1 | tail -40; elif command -v pa11y >/dev/null; then pa11y \"$u\" 2>&1 | tail -40; else echo \"NO CHECKER\"; fi; done"
+        "command": "for u in 'https://bakery.example/'; do echo \"== $u\"; if command -v axe >/dev/null; then axe --exit -- \"$u\" 2>&1 | tail -40; elif command -v pa11y >/dev/null; then pa11y -- \"$u\" 2>&1 | tail -40; else echo \"NO CHECKER\"; fi; done"
        }
       ]
      ]
@@ -240,7 +240,7 @@
       [
        "bash",
        {
-        "command": "for u in https://bakery.example/; do echo \"== $u\"; if command -v axe >/dev/null; then axe \"$u\" --exit 2>&1 | tail -40; elif command -v pa11y >/dev/null; then pa11y \"$u\" 2>&1 | tail -40; else echo \"NO CHECKER\"; fi; done"
+        "command": "for u in 'https://bakery.example/'; do echo \"== $u\"; if command -v axe >/dev/null; then axe --exit -- \"$u\" 2>&1 | tail -40; elif command -v pa11y >/dev/null; then pa11y -- \"$u\" 2>&1 | tail -40; else echo \"NO CHECKER\"; fi; done"
        }
       ]
      ]
@@ -300,7 +300,7 @@
       [
        "bash",
        {
-        "command": "for u in https://bakery.example/; do echo \"== $u\"; if command -v axe >/dev/null; then axe \"$u\" --exit 2>&1 | tail -40; elif command -v pa11y >/dev/null; then pa11y \"$u\" 2>&1 | tail -40; else echo \"NO CHECKER\"; fi; done"
+        "command": "for u in 'https://bakery.example/'; do echo \"== $u\"; if command -v axe >/dev/null; then axe --exit -- \"$u\" 2>&1 | tail -40; elif command -v pa11y >/dev/null; then pa11y -- \"$u\" 2>&1 | tail -40; else echo \"NO CHECKER\"; fi; done"
        }
       ]
      ]
@@ -370,7 +370,7 @@
       [
        "bash",
        {
-        "command": "for u in https://bakery.example/; do echo \"== $u\"; if command -v axe >/dev/null; then axe \"$u\" --exit 2>&1 | tail -40; elif command -v pa11y >/dev/null; then pa11y \"$u\" 2>&1 | tail -40; else echo \"NO CHECKER\"; fi; done"
+        "command": "for u in 'https://bakery.example/'; do echo \"== $u\"; if command -v axe >/dev/null; then axe --exit -- \"$u\" 2>&1 | tail -40; elif command -v pa11y >/dev/null; then pa11y -- \"$u\" 2>&1 | tail -40; else echo \"NO CHECKER\"; fi; done"
        }
       ]
      ]

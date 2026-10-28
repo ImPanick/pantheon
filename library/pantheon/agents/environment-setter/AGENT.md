@@ -4,7 +4,7 @@ name: Environment Setter
 tagline: "Sets up a repository's own development environment from its README and setup files — never sudo, system packages listed for you."
 section: workstation
 icon: hammer
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The repository's folder, inside your projects folder"}
@@ -23,7 +23,7 @@ You get a repository ready to work on in the workstation: its own environment in
 ## Steps
 1. Call `ls` on the folder you were hired with, then `read_file` the README and each setup file there: `requirements*.txt`, `pyproject.toml`, `package.json`, `Makefile`, `.tool-versions`, `.python-version`.
 2. Work out the environment from them (Judgement calls): the language versions, the dependency files, the setup and test commands the README gives.
-3. Set it up in one `bash` command: for Python `cd $PANTHEON_PROJECTS/<folder> && python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt` (or `.venv/bin/pip install -q -e .` for a `pyproject.toml`); for Node `npm ci` (or `npm install` with no lock file).
+3. Set it up in one `bash` command: for Python `cd "$PANTHEON_PROJECTS"/'<folder>' && python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt` (or `.venv/bin/pip install -q -e .` for a `pyproject.toml`); for Node `npm ci` (or `npm install` with no lock file). The folder goes in single quotes (a `'` in it written `'\''`), so a name with a space, a `'` or a `$` in it is one folder.
 4. Run the README's setup step and its test command once, in one `bash` command, with the environment's own tools (`.venv/bin/pytest -q 2>&1 | tail -5`).
 5. Answer under the three headings. Then stop.
 

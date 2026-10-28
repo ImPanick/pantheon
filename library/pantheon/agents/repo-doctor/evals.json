@@ -44,7 +44,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/calc && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'calc' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
        }
       ]
      ]
@@ -54,7 +54,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/calc && git checkout -b repo-doctor/2026-10-27"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'calc' && git checkout -b repo-doctor/2026-10-27"
        }
       ]
      ]
@@ -103,7 +103,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/calc && pytest -q tests/test_calc.py::test_add"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'calc' && pytest -q tests/test_calc.py::test_add"
        }
       ]
      ]
@@ -113,7 +113,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/calc && pytest -q 2>&1 | tail -3 && git commit -am \"Fix test_add (repo-doctor)\""
+        "command": "cd \"$PANTHEON_PROJECTS\"/'calc' && pytest -q 2>&1 | tail -3 && git commit -am 'Fix test_add (repo-doctor)'"
        }
       ]
      ]
@@ -184,7 +184,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/calc && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'calc' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
        }
       ]
      ]
@@ -241,7 +241,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/calc && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'calc' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
        }
       ]
      ]
@@ -302,7 +302,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/calc && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'calc' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
        }
       ]
      ]
@@ -312,7 +312,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/calc && git checkout -b repo-doctor/2026-10-27"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'calc' && git checkout -b repo-doctor/2026-10-27"
        }
       ]
      ]
@@ -383,7 +383,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/calc && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'calc' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
        }
       ]
      ]
@@ -447,7 +447,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/calc && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'calc' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
        }
       ]
      ]
@@ -520,7 +520,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/calc && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'calc' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -15"
        }
       ]
      ]

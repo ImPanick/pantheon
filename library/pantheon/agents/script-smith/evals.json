@@ -75,7 +75,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/scripts && python3 merge_csv.py sample --dry-run && python3 merge_csv.py sample --apply && ls -R sample"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'scripts' && python3 merge_csv.py sample --dry-run && python3 merge_csv.py sample --apply && ls -R sample"
        }
       ]
      ]
@@ -185,7 +185,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/scripts && python3 merge_csv.py sample --dry-run && python3 merge_csv.py sample --apply && ls -R sample"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'scripts' && python3 merge_csv.py sample --dry-run && python3 merge_csv.py sample --apply && ls -R sample"
        }
       ]
      ]
@@ -216,7 +216,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/scripts && python3 merge_csv.py sample --dry-run && python3 merge_csv.py sample --apply && ls -R sample # again"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'scripts' && python3 merge_csv.py sample --dry-run && python3 merge_csv.py sample --apply && ls -R sample # again"
        }
       ]
      ]
@@ -367,7 +367,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/scripts && python3 merge_csv.py sample --dry-run && python3 merge_csv.py sample --apply && ls -R sample"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'scripts' && python3 merge_csv.py sample --dry-run && python3 merge_csv.py sample --apply && ls -R sample"
        }
       ]
      ]

@@ -28,7 +28,7 @@
       [
        "bash",
        {
-        "command": "cd \"$PANTHEON_PROJECTS/photos\" && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'photos' && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
        }
       ]
      ]
@@ -38,7 +38,7 @@
       [
        "bash",
        {
-        "command": "cd \"$PANTHEON_PROJECTS/photos\" && mkdir -p 'albums/2026/2026-10-12 Home'; mv -n -v -- './IMG_0001.jpg' 'albums/2026/2026-10-12 Home/'; mkdir -p 'albums/2026/2026-10-14'; mv -n -v -- './IMG_0002.jpg' 'albums/2026/2026-10-14/'; mv -n -v -- './IMG_0002 copy.jpg' 'albums/2026/2026-10-14/'; find . -path ./albums -prune -o -type f -print"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'photos' && mkdir -p 'albums/2026/2026-10-12 Home'; mv -n -v -- './IMG_0001.jpg' 'albums/2026/2026-10-12 Home/'; mkdir -p 'albums/2026/2026-10-14'; mv -n -v -- './IMG_0002.jpg' 'albums/2026/2026-10-14/'; mv -n -v -- './IMG_0002 copy.jpg' 'albums/2026/2026-10-14/'; find . -path ./albums -prune -o -type f -print"
        }
       ]
      ]
@@ -84,7 +84,7 @@
       [
        "bash",
        {
-        "command": "cd \"$PANTHEON_PROJECTS/photos\" && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'photos' && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
        }
       ]
      ]
@@ -127,7 +127,7 @@
       [
        "bash",
        {
-        "command": "cd \"$PANTHEON_PROJECTS/photos\" && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'photos' && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
        }
       ]
      ]
@@ -177,7 +177,7 @@
       [
        "bash",
        {
-        "command": "cd \"$PANTHEON_PROJECTS/photos\" && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'photos' && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
        }
       ]
      ]
@@ -187,7 +187,7 @@
       [
        "bash",
        {
-        "command": "cd \"$PANTHEON_PROJECTS/photos\" && mkdir -p 'albums/2026/2026-10-12'; mv -n -v -- './IMG_0007.jpg' 'albums/2026/2026-10-12/'; find . -path ./albums -prune -o -type f -print"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'photos' && mkdir -p 'albums/2026/2026-10-12'; mv -n -v -- './IMG_0007.jpg' 'albums/2026/2026-10-12/'; find . -path ./albums -prune -o -type f -print"
        }
       ]
      ]
@@ -237,7 +237,7 @@
       [
        "bash",
        {
-        "command": "cd \"$PANTHEON_PROJECTS/photos\" && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'photos' && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
        }
       ]
      ]
@@ -247,7 +247,7 @@
       [
        "bash",
        {
-        "command": "cd \"$PANTHEON_PROJECTS/photos\" && mkdir -p 'albums/2026/2026-10-12 Home'; mv -n -v -- './IMG_0001.jpg' 'albums/2026/2026-10-12 Home/'; mkdir -p 'albums/2026/2026-10-14'; mv -n -v -- './IMG_0002.jpg' 'albums/2026/2026-10-14/'; mv -n -v -- './IMG_0002 copy.jpg' 'albums/2026/2026-10-14/'; find . -path ./albums -prune -o -type f -print"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'photos' && mkdir -p 'albums/2026/2026-10-12 Home'; mv -n -v -- './IMG_0001.jpg' 'albums/2026/2026-10-12 Home/'; mkdir -p 'albums/2026/2026-10-14'; mv -n -v -- './IMG_0002.jpg' 'albums/2026/2026-10-14/'; mv -n -v -- './IMG_0002 copy.jpg' 'albums/2026/2026-10-14/'; find . -path ./albums -prune -o -type f -print"
        }
       ]
      ]
@@ -293,7 +293,7 @@
       [
        "bash",
        {
-        "command": "cd \"$PANTHEON_PROJECTS/photos\" && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'photos' && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
        }
       ]
      ]
@@ -303,7 +303,7 @@
       [
        "bash",
        {
-        "command": "cd \"$PANTHEON_PROJECTS/photos\" && rm -- './IMG_0002 copy.jpg'"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'photos' && rm -- './IMG_0002 copy.jpg'"
        }
       ]
      ]
@@ -351,7 +351,7 @@
       [
        "bash",
        {
-        "command": "cd \"$PANTHEON_PROJECTS/photos\" && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'photos' && if ! command -v exiftool >/dev/null; then echo \"NO EXIFTOOL\"; else exiftool -q -q -r -n -json -DateTimeOriginal -CreateDate -GPSLatitude -GPSLongitude -i albums -ext jpg -ext jpeg -ext heic -ext png -ext mov -ext mp4 .; echo \"== identical\"; find . -path ./albums -prune -o -type f -print0 | xargs -0 -r sha1sum | sort | uniq -w40 -D; fi"
        }
       ]
      ]
@@ -361,7 +361,7 @@
       [
        "bash",
        {
-        "command": "cd \"$PANTHEON_PROJECTS/photos\" && mkdir -p 'albums/2026/2026-10-12 Home'; mv -n -v -- './IMG_0001.jpg' 'albums/2026/2026-10-12 Home/'; mkdir -p 'albums/2026/2026-10-14'; mv -n -v -- './IMG_0002.jpg' 'albums/2026/2026-10-14/'; mv -n -v -- './IMG_0002 copy.jpg' 'albums/2026/2026-10-14/'; find . -path ./albums -prune -o -type f -print"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'photos' && mkdir -p 'albums/2026/2026-10-12 Home'; mv -n -v -- './IMG_0001.jpg' 'albums/2026/2026-10-12 Home/'; mkdir -p 'albums/2026/2026-10-14'; mv -n -v -- './IMG_0002.jpg' 'albums/2026/2026-10-14/'; mv -n -v -- './IMG_0002 copy.jpg' 'albums/2026/2026-10-14/'; find . -path ./albums -prune -o -type f -print"
        }
       ]
      ]

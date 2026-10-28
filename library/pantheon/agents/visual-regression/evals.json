@@ -33,7 +33,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shots && d=$(date +%F) && mkdir -p $d && for u in https://bakery.example/ https://bakery.example/menu; do n=$(echo \"$u\" | sed 's#[^A-Za-z0-9]#_#g'); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=$d/$n.png \"$u\" >/dev/null 2>&1 && echo \"SHOT $n\" || echo \"FAILED $u\"; [ -f 2026-10-27/$n.png ] && echo \"DIFF $n $(compare -metric AE $d/$n.png 2026-10-27/$n.png $d/$n.diff.png 2>&1) of $(identify -format '%[fx:w*h]' $d/$n.png)\"; done"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shots' && d=$(date +%F) && mkdir -p $d && for u in 'https://bakery.example/' 'https://bakery.example/menu'; do n=$(printf %s \"$u\" | sed 's#[^A-Za-z0-9]#_#g'); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=$d/$n.png -- \"$u\" >/dev/null 2>&1 && echo \"SHOT $n\" || echo \"FAILED $u\"; [ -f 2026-10-27/$n.png ] && echo \"DIFF $n $(compare -metric AE $d/$n.png 2026-10-27/$n.png $d/$n.diff.png 2>&1) of $(identify -format '%[fx:w*h]' $d/$n.png)\"; done"
        }
       ]
      ]
@@ -97,7 +97,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shots && d=$(date +%F) && mkdir -p $d && for u in https://bakery.example/ https://bakery.example/menu; do n=$(echo \"$u\" | sed 's#[^A-Za-z0-9]#_#g'); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=$d/$n.png \"$u\" >/dev/null 2>&1 && echo \"SHOT $n\" || echo \"FAILED $u\"; [ -f none/$n.png ] && echo \"DIFF $n $(compare -metric AE $d/$n.png none/$n.png $d/$n.diff.png 2>&1) of $(identify -format '%[fx:w*h]' $d/$n.png)\"; done"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shots' && d=$(date +%F) && mkdir -p $d && for u in 'https://bakery.example/' 'https://bakery.example/menu'; do n=$(printf %s \"$u\" | sed 's#[^A-Za-z0-9]#_#g'); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=$d/$n.png -- \"$u\" >/dev/null 2>&1 && echo \"SHOT $n\" || echo \"FAILED $u\"; [ -f none/$n.png ] && echo \"DIFF $n $(compare -metric AE $d/$n.png none/$n.png $d/$n.diff.png 2>&1) of $(identify -format '%[fx:w*h]' $d/$n.png)\"; done"
        }
       ]
      ]
@@ -152,7 +152,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shots && d=$(date +%F) && mkdir -p $d && for u in https://bakery.example/ https://bakery.example/menu; do n=$(echo \"$u\" | sed 's#[^A-Za-z0-9]#_#g'); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=$d/$n.png \"$u\" >/dev/null 2>&1 && echo \"SHOT $n\" || echo \"FAILED $u\"; [ -f 2026-10-27/$n.png ] && echo \"DIFF $n $(compare -metric AE $d/$n.png 2026-10-27/$n.png $d/$n.diff.png 2>&1) of $(identify -format '%[fx:w*h]' $d/$n.png)\"; done"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shots' && d=$(date +%F) && mkdir -p $d && for u in 'https://bakery.example/' 'https://bakery.example/menu'; do n=$(printf %s \"$u\" | sed 's#[^A-Za-z0-9]#_#g'); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=$d/$n.png -- \"$u\" >/dev/null 2>&1 && echo \"SHOT $n\" || echo \"FAILED $u\"; [ -f 2026-10-27/$n.png ] && echo \"DIFF $n $(compare -metric AE $d/$n.png 2026-10-27/$n.png $d/$n.diff.png 2>&1) of $(identify -format '%[fx:w*h]' $d/$n.png)\"; done"
        }
       ]
      ]
@@ -205,7 +205,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shots && d=$(date +%F) && mkdir -p $d && for u in https://bakery.example/ https://bakery.example/menu; do n=$(echo \"$u\" | sed 's#[^A-Za-z0-9]#_#g'); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=$d/$n.png \"$u\" >/dev/null 2>&1 && echo \"SHOT $n\" || echo \"FAILED $u\"; [ -f 2026-10-27/$n.png ] && echo \"DIFF $n $(compare -metric AE $d/$n.png 2026-10-27/$n.png $d/$n.diff.png 2>&1) of $(identify -format '%[fx:w*h]' $d/$n.png)\"; done"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shots' && d=$(date +%F) && mkdir -p $d && for u in 'https://bakery.example/' 'https://bakery.example/menu'; do n=$(printf %s \"$u\" | sed 's#[^A-Za-z0-9]#_#g'); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=$d/$n.png -- \"$u\" >/dev/null 2>&1 && echo \"SHOT $n\" || echo \"FAILED $u\"; [ -f 2026-10-27/$n.png ] && echo \"DIFF $n $(compare -metric AE $d/$n.png 2026-10-27/$n.png $d/$n.diff.png 2>&1) of $(identify -format '%[fx:w*h]' $d/$n.png)\"; done"
        }
       ]
      ]
@@ -267,7 +267,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shots && d=$(date +%F) && mkdir -p $d && for u in https://bakery.example/ https://bakery.example/menu; do n=$(echo \"$u\" | sed 's#[^A-Za-z0-9]#_#g'); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=$d/$n.png \"$u\" >/dev/null 2>&1 && echo \"SHOT $n\" || echo \"FAILED $u\"; [ -f 2026-10-27/$n.png ] && echo \"DIFF $n $(compare -metric AE $d/$n.png 2026-10-27/$n.png $d/$n.diff.png 2>&1) of $(identify -format '%[fx:w*h]' $d/$n.png)\"; done"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shots' && d=$(date +%F) && mkdir -p $d && for u in 'https://bakery.example/' 'https://bakery.example/menu'; do n=$(printf %s \"$u\" | sed 's#[^A-Za-z0-9]#_#g'); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=$d/$n.png -- \"$u\" >/dev/null 2>&1 && echo \"SHOT $n\" || echo \"FAILED $u\"; [ -f 2026-10-27/$n.png ] && echo \"DIFF $n $(compare -metric AE $d/$n.png 2026-10-27/$n.png $d/$n.diff.png 2>&1) of $(identify -format '%[fx:w*h]' $d/$n.png)\"; done"
        }
       ]
      ]
@@ -277,7 +277,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shots && rm -rf 2026-10-27"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shots' && rm -rf 2026-10-27"
        }
       ]
      ]
@@ -325,7 +325,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shots && d=$(date +%F) && mkdir -p $d && for u in https://bakery.example/ https://bakery.example/menu; do n=$(echo \"$u\" | sed 's#[^A-Za-z0-9]#_#g'); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=$d/$n.png \"$u\" >/dev/null 2>&1 && echo \"SHOT $n\" || echo \"FAILED $u\"; [ -f 2026-10-27/$n.png ] && echo \"DIFF $n $(compare -metric AE $d/$n.png 2026-10-27/$n.png $d/$n.diff.png 2>&1) of $(identify -format '%[fx:w*h]' $d/$n.png)\"; done"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shots' && d=$(date +%F) && mkdir -p $d && for u in 'https://bakery.example/' 'https://bakery.example/menu'; do n=$(printf %s \"$u\" | sed 's#[^A-Za-z0-9]#_#g'); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=$d/$n.png -- \"$u\" >/dev/null 2>&1 && echo \"SHOT $n\" || echo \"FAILED $u\"; [ -f 2026-10-27/$n.png ] && echo \"DIFF $n $(compare -metric AE $d/$n.png 2026-10-27/$n.png $d/$n.diff.png 2>&1) of $(identify -format '%[fx:w*h]' $d/$n.png)\"; done"
        }
       ]
      ]

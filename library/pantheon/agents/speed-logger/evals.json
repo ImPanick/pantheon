@@ -20,7 +20,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/net && t=$(date +%FT%H:%M); if command -v speedtest-cli >/dev/null; then s=$(speedtest-cli --simple 2>&1); d=$(echo \"$s\" | awk '/Download/{print $2}'); u=$(echo \"$s\" | awk '/Upload/{print $2}'); else d=$(curl -s -o /dev/null -w '%{speed_download}' --max-time 30 https://speed.cloudflare.com/__down?bytes=25000000 | awk '{printf \"%.1f\", $1*8/1000000}'); u=; fi; p=$(ping -c 5 -q 1.1.1.1 2>&1 | awk -F/ '/rtt|round-trip/{print $5}'); [ -f speed.csv ] || echo \"time,down_mbit,up_mbit,ping_ms\" > speed.csv; echo \"$t,$d,$u,$p\" >> speed.csv; echo \"NOW $t,$d,$u,$p\"; [ \"$(date +%H)\" = 21 ] && grep \"^$(date +%F)\" speed.csv"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'net' && t=$(date +%FT%H:%M); if command -v speedtest-cli >/dev/null; then s=$(speedtest-cli --simple 2>&1); d=$(echo \"$s\" | awk '/Download/{print $2}'); u=$(echo \"$s\" | awk '/Upload/{print $2}'); else d=$(curl -s -o /dev/null -w '%{speed_download}' --max-time 30 https://speed.cloudflare.com/__down?bytes=25000000 | awk '{printf \"%.1f\", $1*8/1000000}'); u=; fi; p=$(ping -c 5 -q 1.1.1.1 2>&1 | awk -F/ '/rtt|round-trip/{print $5}'); [ -f speed.csv ] || echo \"time,down_mbit,up_mbit,ping_ms\" > speed.csv; echo \"$t,$d,$u,$p\" >> speed.csv; echo \"NOW $t,$d,$u,$p\"; [ \"$(date +%H)\" = 21 ] && grep \"^$(date +%F)\" speed.csv"
        }
       ]
      ]
@@ -62,7 +62,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/net && t=$(date +%FT%H:%M); if command -v speedtest-cli >/dev/null; then s=$(speedtest-cli --simple 2>&1); d=$(echo \"$s\" | awk '/Download/{print $2}'); u=$(echo \"$s\" | awk '/Upload/{print $2}'); else d=$(curl -s -o /dev/null -w '%{speed_download}' --max-time 30 https://speed.cloudflare.com/__down?bytes=25000000 | awk '{printf \"%.1f\", $1*8/1000000}'); u=; fi; p=$(ping -c 5 -q 1.1.1.1 2>&1 | awk -F/ '/rtt|round-trip/{print $5}'); [ -f speed.csv ] || echo \"time,down_mbit,up_mbit,ping_ms\" > speed.csv; echo \"$t,$d,$u,$p\" >> speed.csv; echo \"NOW $t,$d,$u,$p\"; [ \"$(date +%H)\" = 21 ] && grep \"^$(date +%F)\" speed.csv"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'net' && t=$(date +%FT%H:%M); if command -v speedtest-cli >/dev/null; then s=$(speedtest-cli --simple 2>&1); d=$(echo \"$s\" | awk '/Download/{print $2}'); u=$(echo \"$s\" | awk '/Upload/{print $2}'); else d=$(curl -s -o /dev/null -w '%{speed_download}' --max-time 30 https://speed.cloudflare.com/__down?bytes=25000000 | awk '{printf \"%.1f\", $1*8/1000000}'); u=; fi; p=$(ping -c 5 -q 1.1.1.1 2>&1 | awk -F/ '/rtt|round-trip/{print $5}'); [ -f speed.csv ] || echo \"time,down_mbit,up_mbit,ping_ms\" > speed.csv; echo \"$t,$d,$u,$p\" >> speed.csv; echo \"NOW $t,$d,$u,$p\"; [ \"$(date +%H)\" = 21 ] && grep \"^$(date +%F)\" speed.csv"
        }
       ]
      ]
@@ -99,7 +99,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/net && t=$(date +%FT%H:%M); if command -v speedtest-cli >/dev/null; then s=$(speedtest-cli --simple 2>&1); d=$(echo \"$s\" | awk '/Download/{print $2}'); u=$(echo \"$s\" | awk '/Upload/{print $2}'); else d=$(curl -s -o /dev/null -w '%{speed_download}' --max-time 30 https://speed.cloudflare.com/__down?bytes=25000000 | awk '{printf \"%.1f\", $1*8/1000000}'); u=; fi; p=$(ping -c 5 -q 1.1.1.1 2>&1 | awk -F/ '/rtt|round-trip/{print $5}'); [ -f speed.csv ] || echo \"time,down_mbit,up_mbit,ping_ms\" > speed.csv; echo \"$t,$d,$u,$p\" >> speed.csv; echo \"NOW $t,$d,$u,$p\"; [ \"$(date +%H)\" = 21 ] && grep \"^$(date +%F)\" speed.csv"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'net' && t=$(date +%FT%H:%M); if command -v speedtest-cli >/dev/null; then s=$(speedtest-cli --simple 2>&1); d=$(echo \"$s\" | awk '/Download/{print $2}'); u=$(echo \"$s\" | awk '/Upload/{print $2}'); else d=$(curl -s -o /dev/null -w '%{speed_download}' --max-time 30 https://speed.cloudflare.com/__down?bytes=25000000 | awk '{printf \"%.1f\", $1*8/1000000}'); u=; fi; p=$(ping -c 5 -q 1.1.1.1 2>&1 | awk -F/ '/rtt|round-trip/{print $5}'); [ -f speed.csv ] || echo \"time,down_mbit,up_mbit,ping_ms\" > speed.csv; echo \"$t,$d,$u,$p\" >> speed.csv; echo \"NOW $t,$d,$u,$p\"; [ \"$(date +%H)\" = 21 ] && grep \"^$(date +%F)\" speed.csv"
        }
       ]
      ]
@@ -142,7 +142,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/net && t=$(date +%FT%H:%M); if command -v speedtest-cli >/dev/null; then s=$(speedtest-cli --simple 2>&1); d=$(echo \"$s\" | awk '/Download/{print $2}'); u=$(echo \"$s\" | awk '/Upload/{print $2}'); else d=$(curl -s -o /dev/null -w '%{speed_download}' --max-time 30 https://speed.cloudflare.com/__down?bytes=25000000 | awk '{printf \"%.1f\", $1*8/1000000}'); u=; fi; p=$(ping -c 5 -q 1.1.1.1 2>&1 | awk -F/ '/rtt|round-trip/{print $5}'); [ -f speed.csv ] || echo \"time,down_mbit,up_mbit,ping_ms\" > speed.csv; echo \"$t,$d,$u,$p\" >> speed.csv; echo \"NOW $t,$d,$u,$p\"; [ \"$(date +%H)\" = 21 ] && grep \"^$(date +%F)\" speed.csv"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'net' && t=$(date +%FT%H:%M); if command -v speedtest-cli >/dev/null; then s=$(speedtest-cli --simple 2>&1); d=$(echo \"$s\" | awk '/Download/{print $2}'); u=$(echo \"$s\" | awk '/Upload/{print $2}'); else d=$(curl -s -o /dev/null -w '%{speed_download}' --max-time 30 https://speed.cloudflare.com/__down?bytes=25000000 | awk '{printf \"%.1f\", $1*8/1000000}'); u=; fi; p=$(ping -c 5 -q 1.1.1.1 2>&1 | awk -F/ '/rtt|round-trip/{print $5}'); [ -f speed.csv ] || echo \"time,down_mbit,up_mbit,ping_ms\" > speed.csv; echo \"$t,$d,$u,$p\" >> speed.csv; echo \"NOW $t,$d,$u,$p\"; [ \"$(date +%H)\" = 21 ] && grep \"^$(date +%F)\" speed.csv"
        }
       ]
      ]
@@ -186,7 +186,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/net && t=$(date +%FT%H:%M); if command -v speedtest-cli >/dev/null; then s=$(speedtest-cli --simple 2>&1); d=$(echo \"$s\" | awk '/Download/{print $2}'); u=$(echo \"$s\" | awk '/Upload/{print $2}'); else d=$(curl -s -o /dev/null -w '%{speed_download}' --max-time 30 https://speed.cloudflare.com/__down?bytes=25000000 | awk '{printf \"%.1f\", $1*8/1000000}'); u=; fi; p=$(ping -c 5 -q 1.1.1.1 2>&1 | awk -F/ '/rtt|round-trip/{print $5}'); [ -f speed.csv ] || echo \"time,down_mbit,up_mbit,ping_ms\" > speed.csv; echo \"$t,$d,$u,$p\" >> speed.csv; echo \"NOW $t,$d,$u,$p\"; [ \"$(date +%H)\" = 21 ] && grep \"^$(date +%F)\" speed.csv"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'net' && t=$(date +%FT%H:%M); if command -v speedtest-cli >/dev/null; then s=$(speedtest-cli --simple 2>&1); d=$(echo \"$s\" | awk '/Download/{print $2}'); u=$(echo \"$s\" | awk '/Upload/{print $2}'); else d=$(curl -s -o /dev/null -w '%{speed_download}' --max-time 30 https://speed.cloudflare.com/__down?bytes=25000000 | awk '{printf \"%.1f\", $1*8/1000000}'); u=; fi; p=$(ping -c 5 -q 1.1.1.1 2>&1 | awk -F/ '/rtt|round-trip/{print $5}'); [ -f speed.csv ] || echo \"time,down_mbit,up_mbit,ping_ms\" > speed.csv; echo \"$t,$d,$u,$p\" >> speed.csv; echo \"NOW $t,$d,$u,$p\"; [ \"$(date +%H)\" = 21 ] && grep \"^$(date +%F)\" speed.csv"
        }
       ]
      ]
@@ -236,7 +236,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/net && t=$(date +%FT%H:%M); if command -v speedtest-cli >/dev/null; then s=$(speedtest-cli --simple 2>&1); d=$(echo \"$s\" | awk '/Download/{print $2}'); u=$(echo \"$s\" | awk '/Upload/{print $2}'); else d=$(curl -s -o /dev/null -w '%{speed_download}' --max-time 30 https://speed.cloudflare.com/__down?bytes=25000000 | awk '{printf \"%.1f\", $1*8/1000000}'); u=; fi; p=$(ping -c 5 -q 1.1.1.1 2>&1 | awk -F/ '/rtt|round-trip/{print $5}'); [ -f speed.csv ] || echo \"time,down_mbit,up_mbit,ping_ms\" > speed.csv; echo \"$t,$d,$u,$p\" >> speed.csv; echo \"NOW $t,$d,$u,$p\"; [ \"$(date +%H)\" = 21 ] && grep \"^$(date +%F)\" speed.csv"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'net' && t=$(date +%FT%H:%M); if command -v speedtest-cli >/dev/null; then s=$(speedtest-cli --simple 2>&1); d=$(echo \"$s\" | awk '/Download/{print $2}'); u=$(echo \"$s\" | awk '/Upload/{print $2}'); else d=$(curl -s -o /dev/null -w '%{speed_download}' --max-time 30 https://speed.cloudflare.com/__down?bytes=25000000 | awk '{printf \"%.1f\", $1*8/1000000}'); u=; fi; p=$(ping -c 5 -q 1.1.1.1 2>&1 | awk -F/ '/rtt|round-trip/{print $5}'); [ -f speed.csv ] || echo \"time,down_mbit,up_mbit,ping_ms\" > speed.csv; echo \"$t,$d,$u,$p\" >> speed.csv; echo \"NOW $t,$d,$u,$p\"; [ \"$(date +%H)\" = 21 ] && grep \"^$(date +%F)\" speed.csv"
        }
       ]
      ]

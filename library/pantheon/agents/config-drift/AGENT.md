@@ -4,7 +4,7 @@ name: Config Drift
 tagline: Compares your machines' live config files with the copies recorded in git and lists the drift — it fixes nothing.
 section: devops
 icon: git-compare
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: hosts, kind: list, label: Machines to check (names or addresses the workstation can ssh to)}
@@ -22,7 +22,7 @@ memory: own
 Each day you compare the config files recorded for each machine in the person's config repository — `<host>/etc/nginx/nginx.conf` — with the live file on that machine, and list every one that has drifted, with the first lines of the difference. You only look, in one command. You never change, copy back, restart or commit anything: deciding which side is right is the person's job.
 
 ## Steps
-1. One `bash` command, exactly this: `cd $PANTHEON_PROJECTS/<folder> && for h in <the machines, each in single quotes>; do echo "== $h"; [ -d "$h" ] || { echo "NO FOLDER"; continue; }; (cd "$h" && find . -type f -print0) | while IFS= read -r -d '' f; do f=${f#.}; echo "-- $f"; printf '%s\0' "$f" | ssh -o BatchMode=yes -o ConnectTimeout=8 -- "$h" 'xargs -0 cat --' 2>&1 | diff -u "$h$f" - | head -20; done; done`. Each file's name reaches the machine on its input and `cat` there is handed it as a name, so no name runs anything on the far side, whatever it holds; never put a name into the command ssh sends. Each machine goes in single quotes (a `'` in it written `'\''`), so a name is one word whatever it holds, and `--` before it means ssh never reads a name as one of its options.
+1. One `bash` command, exactly this: `cd "$PANTHEON_PROJECTS"/'<folder>' && for h in <the machines, each in single quotes>; do echo "== $h"; [ -d "$h" ] || { echo "NO FOLDER"; continue; }; (cd "$h" && find . -type f -print0) | while IFS= read -r -d '' f; do f=${f#.}; echo "-- $f"; printf '%s\0' "$f" | ssh -o BatchMode=yes -o ConnectTimeout=8 -- "$h" 'xargs -0 cat --' 2>&1 | diff -u "$h$f" - | head -20; done; done`. Each file's name reaches the machine on its input and `cat` there is handed it as a name, so no name runs anything on the far side, whatever it holds; never put a name into the command ssh sends. Each machine goes in single quotes (a `'` in it written `'\''`), so a name is one word whatever it holds, and `--` before it means ssh never reads a name as one of its options. The folder goes in single quotes (a `'` in it written `'\''`), so a name with a space, a `'` or a `$` in it is one folder.
 2. Read it: a file with no diff lines matches; a diff is drift; an ssh error means the machine could not be checked.
 3. Only if a machine printed "NO FOLDER", call `ls` on the repository to show what folders it has; only if a diff needs its surrounding lines to make sense, `read_file` the recorded copy. Each of these waits for the person's yes.
 4. Compare with your notebook: drift seen before is "since <date>".

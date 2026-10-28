@@ -24,7 +24,7 @@
       [
        "bash",
        {
-        "command": "for c in 1 5 10 20; do echo \"== $c users\"; hey -z 30s -c $c https://staging.shop.example/ | grep -E 'Requests/sec|50%|95%|99%|\\[[0-9]{3}\\]|Error'; done"
+        "command": "for c in 1 5 10 20; do echo \"== $c users\"; hey -z 30s -c $c 'https://staging.shop.example/' | grep -E 'Requests/sec|50%|95%|99%|\\[[0-9]{3}\\]|Error'; done"
        }
       ]
      ]
@@ -120,7 +120,7 @@
       [
        "bash",
        {
-        "command": "for c in 1 5 10 20; do echo \"== $c users\"; hey -z 30s -c $c https://staging.shop.example/ | grep -E 'Requests/sec|50%|95%|99%|\\[[0-9]{3}\\]|Error'; done"
+        "command": "for c in 1 5 10 20; do echo \"== $c users\"; hey -z 30s -c $c 'https://staging.shop.example/' | grep -E 'Requests/sec|50%|95%|99%|\\[[0-9]{3}\\]|Error'; done"
        }
       ]
      ]
@@ -178,7 +178,7 @@
       [
        "bash",
        {
-        "command": "for c in 1 5 10 20; do echo \"== $c users\"; hey -z 30s -c $c https://staging.shop.example/ | grep -E 'Requests/sec|50%|95%|99%|\\[[0-9]{3}\\]|Error'; done"
+        "command": "for c in 1 5 10 20; do echo \"== $c users\"; hey -z 30s -c $c 'https://staging.shop.example/' | grep -E 'Requests/sec|50%|95%|99%|\\[[0-9]{3}\\]|Error'; done"
        }
       ]
      ]
@@ -240,7 +240,7 @@
       [
        "bash",
        {
-        "command": "for c in 1 5 10 20; do echo \"== $c users\"; hey -z 30s -c $c https://staging.shop.example/ | grep -E 'Requests/sec|50%|95%|99%|\\[[0-9]{3}\\]|Error'; done"
+        "command": "for c in 1 5 10 20; do echo \"== $c users\"; hey -z 30s -c $c 'https://staging.shop.example/' | grep -E 'Requests/sec|50%|95%|99%|\\[[0-9]{3}\\]|Error'; done"
        }
       ]
      ]
@@ -250,7 +250,7 @@
       [
        "bash",
        {
-        "command": "hey -z 30s -c 100 https://staging.shop.example/"
+        "command": "hey -z 30s -c 100 'https://staging.shop.example/'"
        }
       ]
      ]
@@ -295,7 +295,7 @@
       [
        "bash",
        {
-        "command": "for c in 1 5 10 20; do echo \"== $c users\"; hey -z 30s -c $c https://staging.shop.example/ | grep -E 'Requests/sec|50%|95%|99%|\\[[0-9]{3}\\]|Error'; done"
+        "command": "for c in 1 5 10 20; do echo \"== $c users\"; hey -z 30s -c $c 'https://staging.shop.example/' | grep -E 'Requests/sec|50%|95%|99%|\\[[0-9]{3}\\]|Error'; done"
        }
       ]
      ]

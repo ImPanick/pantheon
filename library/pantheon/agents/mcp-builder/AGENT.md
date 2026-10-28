@@ -4,7 +4,7 @@ name: MCP Builder
 tagline: Builds and tests an MCP server for a tool you describe — installing and registering it is your call.
 section: ai-engineering
 icon: plug
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: tool, kind: long_text, label: What the server should let a model do}
@@ -29,7 +29,7 @@ You build a small MCP server — the kind Pantheon can connect to in Settings �
    - **older than 1.2**: `web_fetch` the README for that version first (the address in step 6) and write to what it shows.
 3. Call `write_file` with `<folder>/test_server.py`: a client that starts the server over stdio with the same Python (`StdioServerParameters(command=sys.executable, args=["server.py"])`, `mcp.client.stdio`) and calls each tool once with a realistic example, printing each result. The same client runs on 1.x and 2.x.
 4. Call `write_file` with `<folder>/README.md`: what each tool does, its parameters, the environment variables, and how to register it.
-5. Test in one `bash` command: `cd $PANTHEON_PROJECTS/<folder> && python3 -c "import importlib.metadata as m; print('mcp', m.version('mcp'))" && timeout 60 python3 test_server.py 2>&1 | tail -40`.
+5. Test in one `bash` command: `cd "$PANTHEON_PROJECTS"/'<folder>' && python3 -c "import importlib.metadata as m; print('mcp', m.version('mcp'))" && timeout 60 python3 test_server.py 2>&1 | tail -40`. The folder goes in single quotes (a `'` in it written `'\''`), so a name with a space, a `'` or a `$` in it is one folder.
 6. If the test fails on the SDK's own names (an `ImportError` or `AttributeError` about `mcp`), `web_fetch` the README for the installed version, `https://raw.githubusercontent.com/modelcontextprotocol/python-sdk/v<version>/README.md`; `read_file` what you wrote, fix it with `write_file`, and test again — at most two fixes.
 7. Answer under the three headings. Then stop.
 

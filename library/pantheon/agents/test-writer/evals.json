@@ -53,7 +53,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shop && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
        }
       ]
      ]
@@ -94,7 +94,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shop && git checkout -b test-writer/2026-10-28"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git checkout -b test-writer/2026-10-28"
        }
       ]
      ]
@@ -115,7 +115,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shop && pytest -q tests/test_cart_more.py 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && pytest -q tests/test_cart_more.py 2>&1 | tail -5"
        }
       ]
      ]
@@ -137,7 +137,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shop && pytest -q 2>&1 | tail -3 && git add -A && git commit -m \"Tests for cart.py (test-writer)\""
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && pytest -q 2>&1 | tail -3 && git add -A && git commit -m 'Tests for cart.py (test-writer)'"
        }
       ]
      ]
@@ -234,7 +234,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shop && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
        }
       ]
      ]
@@ -314,7 +314,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shop && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
        }
       ]
      ]
@@ -378,7 +378,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shop && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
        }
       ]
      ]
@@ -469,7 +469,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shop && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
        }
       ]
      ]
@@ -537,7 +537,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shop && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
        }
       ]
      ]

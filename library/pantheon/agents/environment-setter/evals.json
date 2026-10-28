@@ -70,7 +70,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/api && python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'api' && python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt"
        }
       ]
      ]
@@ -80,7 +80,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/api && .venv/bin/pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'api' && .venv/bin/pytest -q 2>&1 | tail -5"
        }
       ]
      ]
@@ -171,7 +171,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/api && python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'api' && python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt"
        }
       ]
      ]
@@ -181,7 +181,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/api && .venv/bin/pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'api' && .venv/bin/pytest -q 2>&1 | tail -5"
        }
       ]
      ]
@@ -266,7 +266,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/api && python3 -m venv .venv && .venv/bin/pip install -q -e ."
+        "command": "cd \"$PANTHEON_PROJECTS\"/'api' && python3 -m venv .venv && .venv/bin/pip install -q -e ."
        }
       ]
      ]
@@ -276,7 +276,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/api && .venv/bin/pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'api' && .venv/bin/pytest -q 2>&1 | tail -5"
        }
       ]
      ]

@@ -28,7 +28,7 @@
       [
        "bash",
        {
-        "command": "command -v lighthouse jq || exit 3; for p in \"https://shop.example/\" \"https://shop.example/about\"; do lighthouse \"$p\" --quiet --chrome-flags=\"--headless\" --only-categories=performance --output=json --output-path=stdout | jq -c '{url: .finalUrl, lcp: .audits[\"largest-contentful-paint\"].numericValue}' || echo \"FAILED $p\"; done"
+        "command": "command -v lighthouse jq || exit 3; for p in 'https://shop.example/' 'https://shop.example/about'; do lighthouse --quiet --chrome-flags=\"--headless\" --only-categories=performance --output=json --output-path=stdout -- \"$p\" | jq -c '{url: .finalUrl, lcp: .audits[\"largest-contentful-paint\"].numericValue}' || echo \"FAILED $p\"; done"
        }
       ]
      ]
@@ -92,7 +92,7 @@
       [
        "bash",
        {
-        "command": "command -v lighthouse jq || exit 3; for p in \"https://shop.example/\" \"https://shop.example/about\"; do lighthouse \"$p\" --quiet --chrome-flags=\"--headless\" --only-categories=performance --output=json --output-path=stdout | jq -c '{url: .finalUrl, lcp: .audits[\"largest-contentful-paint\"].numericValue}' || echo \"FAILED $p\"; done"
+        "command": "command -v lighthouse jq || exit 3; for p in 'https://shop.example/' 'https://shop.example/about'; do lighthouse --quiet --chrome-flags=\"--headless\" --only-categories=performance --output=json --output-path=stdout -- \"$p\" | jq -c '{url: .finalUrl, lcp: .audits[\"largest-contentful-paint\"].numericValue}' || echo \"FAILED $p\"; done"
        }
       ]
      ]
@@ -153,7 +153,7 @@
       [
        "bash",
        {
-        "command": "command -v lighthouse jq || exit 3; for p in \"https://shop.example/\" \"https://shop.example/about\"; do lighthouse \"$p\" --quiet --chrome-flags=\"--headless\" --only-categories=performance --output=json --output-path=stdout | jq -c '{url: .finalUrl, lcp: .audits[\"largest-contentful-paint\"].numericValue}' || echo \"FAILED $p\"; done"
+        "command": "command -v lighthouse jq || exit 3; for p in 'https://shop.example/' 'https://shop.example/about'; do lighthouse --quiet --chrome-flags=\"--headless\" --only-categories=performance --output=json --output-path=stdout -- \"$p\" | jq -c '{url: .finalUrl, lcp: .audits[\"largest-contentful-paint\"].numericValue}' || echo \"FAILED $p\"; done"
        }
       ]
      ]
@@ -219,7 +219,7 @@
       [
        "bash",
        {
-        "command": "command -v lighthouse jq || exit 3; for p in \"https://shop.example/\" \"https://shop.example/about\"; do lighthouse \"$p\" --quiet --chrome-flags=\"--headless\" --only-categories=performance --output=json --output-path=stdout | jq -c '{url: .finalUrl, lcp: .audits[\"largest-contentful-paint\"].numericValue}' || echo \"FAILED $p\"; done"
+        "command": "command -v lighthouse jq || exit 3; for p in 'https://shop.example/' 'https://shop.example/about'; do lighthouse --quiet --chrome-flags=\"--headless\" --only-categories=performance --output=json --output-path=stdout -- \"$p\" | jq -c '{url: .finalUrl, lcp: .audits[\"largest-contentful-paint\"].numericValue}' || echo \"FAILED $p\"; done"
        }
       ]
      ]
@@ -280,7 +280,7 @@
       [
        "bash",
        {
-        "command": "command -v lighthouse jq || exit 3; for p in \"https://shop.example/\" \"https://shop.example/about\"; do lighthouse \"$p\" --quiet --chrome-flags=\"--headless\" --only-categories=performance --output=json --output-path=stdout | jq -c '{url: .finalUrl, lcp: .audits[\"largest-contentful-paint\"].numericValue}' || echo \"FAILED $p\"; done"
+        "command": "command -v lighthouse jq || exit 3; for p in 'https://shop.example/' 'https://shop.example/about'; do lighthouse --quiet --chrome-flags=\"--headless\" --only-categories=performance --output=json --output-path=stdout -- \"$p\" | jq -c '{url: .finalUrl, lcp: .audits[\"largest-contentful-paint\"].numericValue}' || echo \"FAILED $p\"; done"
        }
       ]
      ]
@@ -338,7 +338,7 @@
       [
        "bash",
        {
-        "command": "command -v lighthouse jq || exit 3; for p in \"https://shop.example/\" \"https://shop.example/about\"; do lighthouse \"$p\" --quiet --chrome-flags=\"--headless\" --only-categories=performance --output=json --output-path=stdout | jq -c '{url: .finalUrl, lcp: .audits[\"largest-contentful-paint\"].numericValue}' || echo \"FAILED $p\"; done"
+        "command": "command -v lighthouse jq || exit 3; for p in 'https://shop.example/' 'https://shop.example/about'; do lighthouse --quiet --chrome-flags=\"--headless\" --only-categories=performance --output=json --output-path=stdout -- \"$p\" | jq -c '{url: .finalUrl, lcp: .audits[\"largest-contentful-paint\"].numericValue}' || echo \"FAILED $p\"; done"
        }
       ]
      ]

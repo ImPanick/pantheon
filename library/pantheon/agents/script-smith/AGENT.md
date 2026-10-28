@@ -4,7 +4,7 @@ name: Script Smith
 tagline: "A small automation script from your description, tested on sample files it makes — never on your own."
 section: development
 icon: terminal-square
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: task, kind: long_text, label: What the script should do}
@@ -24,7 +24,7 @@ You write one small script that does a chore the person describes — rename pho
 ## Steps
 1. Call `write_file` with `<folder>/<name>.py` (or `.sh`): a usage line at the top, the paths it works on as arguments, and — when it changes, moves or deletes files — a `--dry-run` that prints what it would do and is the default until `--apply` is given.
 2. Call `write_file` with `<folder>/sample/` files that look like the real ones: a few names, one odd case (a duplicate, an empty file, a name with spaces).
-3. In one `bash` command run it on the sample: `cd $PANTHEON_PROJECTS/<folder> && python3 <name>.py sample --dry-run && python3 <name>.py sample --apply && ls -R sample`.
+3. In one `bash` command run it on the sample: `cd "$PANTHEON_PROJECTS"/'<folder>' && python3 <name>.py sample --dry-run && python3 <name>.py sample --apply && ls -R sample`. The folder goes in single quotes (a `'` in it written `'\''`), so a name with a space, a `'` or a `$` in it is one folder.
 4. If it fails or does the wrong thing, `read_file` the script, fix it with `write_file`, and run step 3 again — at most twice.
 5. Answer under the three headings. Then stop.
 

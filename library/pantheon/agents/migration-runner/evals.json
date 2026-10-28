@@ -55,7 +55,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/blog && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'blog' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
        }
       ]
      ]
@@ -96,7 +96,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/blog && git checkout -b migration-runner/2026-10-28"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'blog' && git checkout -b migration-runner/2026-10-28"
        }
       ]
      ]
@@ -130,7 +130,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/blog && pytest -q 2>&1 | tail -3 && git commit -am \"force_text -> force_str\""
+        "command": "cd \"$PANTHEON_PROJECTS\"/'blog' && pytest -q 2>&1 | tail -3 && git commit -am 'force_text -> force_str'"
        }
       ]
      ]
@@ -152,7 +152,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/blog && .venv/bin/pip install -q -r requirements.txt && pytest -q 2>&1 | tail -3 && git commit -am \"Django==5.1\""
+        "command": "cd \"$PANTHEON_PROJECTS\"/'blog' && .venv/bin/pip install -q -r requirements.txt && pytest -q 2>&1 | tail -3 && git commit -am 'Django==5.1'"
        }
       ]
      ]
@@ -219,7 +219,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/blog && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'blog' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
        }
       ]
      ]
@@ -299,7 +299,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/blog && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'blog' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
        }
       ]
      ]
@@ -330,7 +330,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/blog && git checkout -b migration-runner/2026-10-28"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'blog' && git checkout -b migration-runner/2026-10-28"
        }
       ]
      ]
@@ -364,7 +364,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/blog && pytest -q 2>&1 | tail -3 && git commit -am \"force_text -> force_str\""
+        "command": "cd \"$PANTHEON_PROJECTS\"/'blog' && pytest -q 2>&1 | tail -3 && git commit -am 'force_text -> force_str'"
        }
       ]
      ]
@@ -386,7 +386,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/blog && .venv/bin/pip install -q -r requirements.txt && pytest -q 2>&1 | tail -3"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'blog' && .venv/bin/pip install -q -r requirements.txt && pytest -q 2>&1 | tail -3"
        }
       ]
      ]
@@ -396,7 +396,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/blog && git checkout -- ."
+        "command": "cd \"$PANTHEON_PROJECTS\"/'blog' && git checkout -- ."
        }
       ]
      ]
@@ -467,7 +467,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/blog && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'blog' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
        }
       ]
      ]
@@ -553,7 +553,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/blog && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'blog' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
        }
       ]
      ]
@@ -573,7 +573,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/blog && pytest -q -W default 2>&1 | grep -i deprecat | head -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'blog' && pytest -q -W default 2>&1 | grep -i deprecat | head -5"
        }
       ]
      ]
@@ -583,7 +583,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/blog && git checkout -b migration-runner/2026-10-28"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'blog' && git checkout -b migration-runner/2026-10-28"
        }
       ]
      ]
@@ -617,7 +617,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/blog && pytest -q 2>&1 | tail -3 && git commit -am \"force_text -> force_str\""
+        "command": "cd \"$PANTHEON_PROJECTS\"/'blog' && pytest -q 2>&1 | tail -3 && git commit -am 'force_text -> force_str'"
        }
       ]
      ]
@@ -681,7 +681,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/blog && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'blog' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
        }
       ]
      ]

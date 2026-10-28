@@ -25,7 +25,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/backups && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'backups' && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
        }
       ]
      ]
@@ -71,7 +71,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/backups && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'backups' && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
        }
       ]
      ]
@@ -110,7 +110,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/backups && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'backups' && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
        }
       ]
      ]
@@ -157,7 +157,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/backups && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'backups' && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
        }
       ]
      ]
@@ -200,7 +200,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/backups && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'backups' && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
        }
       ]
      ]
@@ -247,7 +247,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/backups && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'backups' && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
        }
       ]
      ]
@@ -257,7 +257,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/backups && rm nightly-2026-10-26.tar.gz"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'backups' && rm nightly-2026-10-26.tar.gz"
        }
       ]
      ]
@@ -309,7 +309,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/backups && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'backups' && ls -t | head -5 && f=$(ls -t | head -1) && echo \"newest: $f\" && stat -c '%s bytes, modified %Y' \"$f\" && echo \"now $(date +%s)\" && case \"$f\" in *.zip) unzip -l \"$f\" | tail -3 && unzip -p \"$f\" \"$(unzip -Z1 \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; *.tar.gz|*.tgz) tar -tzf \"$f\" | head -5 && tar -xzOf \"$f\" \"$(tar -tzf \"$f\" | grep -v '/$' | head -1)\" | head -5 ;; esac"
        }
       ]
      ]

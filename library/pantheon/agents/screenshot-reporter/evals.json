@@ -27,7 +27,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/reports && d=$(date +%F) && mkdir -p .shots-$d && i=0; for u in https://dash.example/sales https://status.example/; do i=$((i+1)); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=.shots-$d/$i.png \"$u\" >/dev/null 2>&1 && echo \"OK $i $u\" || echo \"FAILED $u\"; done; ls .shots-$d/*.png >/dev/null 2>&1 && img2pdf .shots-$d/*.png -o $d.pdf && echo \"PDF $d.pdf\" || echo \"NO PDF\"; rm -rf .shots-$d"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'reports' && d=$(date +%F) && mkdir -p .shots-$d && i=0; for u in 'https://dash.example/sales' 'https://status.example/'; do i=$((i+1)); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=.shots-$d/$(printf %03d $i).png -- \"$u\" >/dev/null 2>&1 && echo \"OK $i $u\" || echo \"FAILED $u\"; done; ls .shots-$d/*.png >/dev/null 2>&1 && img2pdf .shots-$d/*.png -o $d.pdf && echo \"PDF $d.pdf\" || echo \"NO PDF\"; rm -rf .shots-$d"
        }
       ]
      ]
@@ -76,7 +76,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/reports && d=$(date +%F) && mkdir -p .shots-$d && i=0; for u in https://dash.example/sales https://status.example/; do i=$((i+1)); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=.shots-$d/$i.png \"$u\" >/dev/null 2>&1 && echo \"OK $i $u\" || echo \"FAILED $u\"; done; ls .shots-$d/*.png >/dev/null 2>&1 && img2pdf .shots-$d/*.png -o $d.pdf && echo \"PDF $d.pdf\" || echo \"NO PDF\"; rm -rf .shots-$d"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'reports' && d=$(date +%F) && mkdir -p .shots-$d && i=0; for u in 'https://dash.example/sales' 'https://status.example/'; do i=$((i+1)); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=.shots-$d/$(printf %03d $i).png -- \"$u\" >/dev/null 2>&1 && echo \"OK $i $u\" || echo \"FAILED $u\"; done; ls .shots-$d/*.png >/dev/null 2>&1 && img2pdf .shots-$d/*.png -o $d.pdf && echo \"PDF $d.pdf\" || echo \"NO PDF\"; rm -rf .shots-$d"
        }
       ]
      ]
@@ -120,7 +120,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/reports && d=$(date +%F) && mkdir -p .shots-$d && i=0; for u in https://dash.example/sales https://status.example/; do i=$((i+1)); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=.shots-$d/$i.png \"$u\" >/dev/null 2>&1 && echo \"OK $i $u\" || echo \"FAILED $u\"; done; ls .shots-$d/*.png >/dev/null 2>&1 && img2pdf .shots-$d/*.png -o $d.pdf && echo \"PDF $d.pdf\" || echo \"NO PDF\"; rm -rf .shots-$d"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'reports' && d=$(date +%F) && mkdir -p .shots-$d && i=0; for u in 'https://dash.example/sales' 'https://status.example/'; do i=$((i+1)); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=.shots-$d/$(printf %03d $i).png -- \"$u\" >/dev/null 2>&1 && echo \"OK $i $u\" || echo \"FAILED $u\"; done; ls .shots-$d/*.png >/dev/null 2>&1 && img2pdf .shots-$d/*.png -o $d.pdf && echo \"PDF $d.pdf\" || echo \"NO PDF\"; rm -rf .shots-$d"
        }
       ]
      ]
@@ -170,7 +170,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/reports && d=$(date +%F) && mkdir -p .shots-$d && i=0; for u in https://dash.example/sales https://status.example/; do i=$((i+1)); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=.shots-$d/$i.png \"$u\" >/dev/null 2>&1 && echo \"OK $i $u\" || echo \"FAILED $u\"; done; ls .shots-$d/*.png >/dev/null 2>&1 && img2pdf .shots-$d/*.png -o $d-2.pdf && echo \"PDF $d.pdf\" || echo \"NO PDF\"; rm -rf .shots-$d"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'reports' && d=$(date +%F) && mkdir -p .shots-$d && i=0; for u in 'https://dash.example/sales' 'https://status.example/'; do i=$((i+1)); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=.shots-$d/$(printf %03d $i).png -- \"$u\" >/dev/null 2>&1 && echo \"OK $i $u\" || echo \"FAILED $u\"; done; ls .shots-$d/*.png >/dev/null 2>&1 && img2pdf .shots-$d/*.png -o $d-2.pdf && echo \"PDF $d.pdf\" || echo \"NO PDF\"; rm -rf .shots-$d"
        }
       ]
      ]
@@ -223,7 +223,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/reports && d=$(date +%F) && mkdir -p .shots-$d && i=0; for u in https://dash.example/sales https://status.example/; do i=$((i+1)); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=.shots-$d/$i.png \"$u\" >/dev/null 2>&1 && echo \"OK $i $u\" || echo \"FAILED $u\"; done; ls .shots-$d/*.png >/dev/null 2>&1 && img2pdf .shots-$d/*.png -o $d.pdf && echo \"PDF $d.pdf\" || echo \"NO PDF\"; rm -rf .shots-$d"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'reports' && d=$(date +%F) && mkdir -p .shots-$d && i=0; for u in 'https://dash.example/sales' 'https://status.example/'; do i=$((i+1)); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=.shots-$d/$(printf %03d $i).png -- \"$u\" >/dev/null 2>&1 && echo \"OK $i $u\" || echo \"FAILED $u\"; done; ls .shots-$d/*.png >/dev/null 2>&1 && img2pdf .shots-$d/*.png -o $d.pdf && echo \"PDF $d.pdf\" || echo \"NO PDF\"; rm -rf .shots-$d"
        }
       ]
      ]
@@ -233,7 +233,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/reports && rm -f 2026-10-2*.pdf"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'reports' && rm -f 2026-10-2*.pdf"
        }
       ]
      ]
@@ -286,7 +286,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/reports && d=$(date +%F) && mkdir -p .shots-$d && i=0; for u in https://dash.example/sales https://status.example/; do i=$((i+1)); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=.shots-$d/$i.png \"$u\" >/dev/null 2>&1 && echo \"OK $i $u\" || echo \"FAILED $u\"; done; ls .shots-$d/*.png >/dev/null 2>&1 && img2pdf .shots-$d/*.png -o $d.pdf && echo \"PDF $d.pdf\" || echo \"NO PDF\"; rm -rf .shots-$d"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'reports' && d=$(date +%F) && mkdir -p .shots-$d && i=0; for u in 'https://dash.example/sales' 'https://status.example/'; do i=$((i+1)); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=.shots-$d/$(printf %03d $i).png -- \"$u\" >/dev/null 2>&1 && echo \"OK $i $u\" || echo \"FAILED $u\"; done; ls .shots-$d/*.png >/dev/null 2>&1 && img2pdf .shots-$d/*.png -o $d.pdf && echo \"PDF $d.pdf\" || echo \"NO PDF\"; rm -rf .shots-$d"
        }
       ]
      ]

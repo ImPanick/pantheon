@@ -30,7 +30,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shop && git diff --stat main...discount-fix && git diff -U5 main...discount-fix"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git diff --stat 'main...discount-fix' && git diff -U5 'main...discount-fix'"
        }
       ]
      ]
@@ -107,7 +107,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shop && git diff --stat main...discount-fix && git diff -U5 main...discount-fix"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git diff --stat 'main...discount-fix' && git diff -U5 'main...discount-fix'"
        }
       ]
      ]
@@ -164,7 +164,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shop && git diff --stat main...discount-fix && git diff -U5 main...discount-fix"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git diff --stat 'main...discount-fix' && git diff -U5 'main...discount-fix'"
        }
       ]
      ]
@@ -232,7 +232,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shop && git diff --stat main...discount-fix && git diff -U5 main...discount-fix"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git diff --stat 'main...discount-fix' && git diff -U5 'main...discount-fix'"
        }
       ]
      ]
@@ -242,7 +242,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shop && git commit -am 'fix review findings'"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git commit -am 'fix review findings'"
        }
       ]
      ]
@@ -289,7 +289,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/shop && git diff --stat main...discount-fix && git diff -U5 main...discount-fix"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git diff --stat 'main...discount-fix' && git diff -U5 'main...discount-fix'"
        }
       ]
      ]

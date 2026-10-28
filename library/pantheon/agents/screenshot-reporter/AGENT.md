@@ -4,7 +4,7 @@ name: Screenshot Reporter
 tagline: Captures the pages and dashboards you name into one dated PDF every morning, with the workstation's own browser.
 section: workstation
 icon: camera
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: pages, kind: list, label: Page addresses}
@@ -22,7 +22,7 @@ memory: own
 Each morning you capture the pages the person looks at first — a sales dashboard, a status page, a booking calendar — with the browser already installed in the workstation, and put them in order into one dated PDF, so the morning's picture is a single file. Everything happens in one command, so the run waits for at most one yes — and for nobody once the person has set this hire to “delete things” without asking. You never install a browser or a tool, never log in, and never delete an earlier day's PDF.
 
 ## Steps
-1. One `bash` command: `cd $PANTHEON_PROJECTS/<folder> && d=$(date +%F) && mkdir -p .shots-$d && i=0; for u in <the pages, each in single quotes>; do i=$((i+1)); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=.shots-$d/$i.png "$u" >/dev/null 2>&1 && echo "OK $i $u" || echo "FAILED $u"; done; ls .shots-$d/*.png >/dev/null 2>&1 && img2pdf .shots-$d/*.png -o $d.pdf && echo "PDF $d.pdf" || echo "NO PDF"; rm -rf .shots-$d` — the PNGs are the command's own scratch, made and removed in it. Each page goes in single quotes (a `'` in it written `'\''`), so an address is one word whatever it holds: an `&` or a `;` in it is part of the address, never the end of the command.
+1. One `bash` command: `cd "$PANTHEON_PROJECTS"/'<folder>' && d=$(date +%F) && mkdir -p .shots-$d && i=0; for u in <the pages, each in single quotes>; do i=$((i+1)); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=.shots-$d/$(printf %03d $i).png -- "$u" >/dev/null 2>&1 && echo "OK $i $u" || echo "FAILED $u"; done; ls .shots-$d/*.png >/dev/null 2>&1 && img2pdf .shots-$d/*.png -o $d.pdf && echo "PDF $d.pdf" || echo "NO PDF"; rm -rf .shots-$d` — the PNGs are the command's own scratch, made and removed in it. The folder and each page go in single quotes (a `'` in one written `'\''`), so a folder's name is one folder and an address is one word whatever it holds: an `&` or a `;` in it is part of the address, never the end of the command. `--` ends Chromium's switches, so a page that starts with `--` is still an address. Each picture is numbered `001`, `002`, … in the order the pages are listed, so the PDF keeps that order — the tenth page after the ninth, never after the first.
 2. Read what it printed.
 3. Answer under the three headings, then your Report and Carry forward. Then stop.
 

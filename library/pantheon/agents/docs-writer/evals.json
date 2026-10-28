@@ -42,7 +42,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && git log -1 --format=%h"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && git status --porcelain && git rev-parse --abbrev-ref HEAD && git log -1 --format=%h"
        }
       ]
      ]
@@ -83,7 +83,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && git checkout -b docs-writer/2026-10-31"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && git checkout -b docs-writer/2026-10-31"
        }
       ]
      ]
@@ -105,7 +105,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && git add -A && git commit -m \"Docs: match the code (docs-writer)\""
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && git add -A && git commit -m \"Docs: match the code (docs-writer)\""
        }
       ]
      ]
@@ -173,7 +173,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && git log -1 --format=%h"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && git status --porcelain && git rev-parse --abbrev-ref HEAD && git log -1 --format=%h"
        }
       ]
      ]
@@ -236,7 +236,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && git log -1 --format=%h"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && git status --porcelain && git rev-parse --abbrev-ref HEAD && git log -1 --format=%h"
        }
       ]
      ]
@@ -287,7 +287,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && git checkout -b docs-writer/2026-10-31"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && git checkout -b docs-writer/2026-10-31"
        }
       ]
      ]
@@ -321,7 +321,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && git add -A && git commit -m \"Docs: match the code (docs-writer)\""
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && git add -A && git commit -m \"Docs: match the code (docs-writer)\""
        }
       ]
      ]
@@ -384,7 +384,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && git log -1 --format=%h"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && git status --porcelain && git rev-parse --abbrev-ref HEAD && git log -1 --format=%h"
        }
       ]
      ]
@@ -446,7 +446,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && git log -1 --format=%h"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && git status --porcelain && git rev-parse --abbrev-ref HEAD && git log -1 --format=%h"
        }
       ]
      ]
@@ -498,7 +498,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && git log -1 --format=%h"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && git status --porcelain && git rev-parse --abbrev-ref HEAD && git log -1 --format=%h"
        }
       ]
      ]

@@ -50,7 +50,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/plant-swap && (timeout 20 python3 -m http.server 8081 >/dev/null 2>&1 &) && sleep 1 && curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'plant-swap' && (timeout 20 python3 -m http.server 8081 >/dev/null 2>&1 &) && sleep 1 && curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/"
        }
       ]
      ]
@@ -193,7 +193,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/plant-swap && (timeout 20 python3 -m http.server 8081 >/dev/null 2>&1 &) && sleep 1 && curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'plant-swap' && (timeout 20 python3 -m http.server 8081 >/dev/null 2>&1 &) && sleep 1 && curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/"
        }
       ]
      ]
@@ -265,7 +265,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/plant-swap && (timeout 20 python3 -m http.server 8081 >/dev/null 2>&1 &) && sleep 1 && curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'plant-swap' && (timeout 20 python3 -m http.server 8081 >/dev/null 2>&1 &) && sleep 1 && curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/"
        }
       ]
      ]

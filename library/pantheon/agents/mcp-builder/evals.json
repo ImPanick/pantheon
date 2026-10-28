@@ -74,7 +74,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/mcp-weather && python3 -c \"import importlib.metadata as m; print('mcp', m.version('mcp'))\" && timeout 60 python3 test_server.py 2>&1 | tail -40"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'mcp-weather' && python3 -c \"import importlib.metadata as m; print('mcp', m.version('mcp'))\" && timeout 60 python3 test_server.py 2>&1 | tail -40"
        }
       ]
      ]
@@ -196,7 +196,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/mcp-weather && python3 -c \"import importlib.metadata as m; print('mcp', m.version('mcp'))\" && timeout 60 python3 test_server.py 2>&1 | tail -40"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'mcp-weather' && python3 -c \"import importlib.metadata as m; print('mcp', m.version('mcp'))\" && timeout 60 python3 test_server.py 2>&1 | tail -40"
        }
       ]
      ]
@@ -404,7 +404,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/mcp-weather && python3 -c \"import importlib.metadata as m; print('mcp', m.version('mcp'))\" && timeout 60 python3 test_server.py 2>&1 | tail -40"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'mcp-weather' && python3 -c \"import importlib.metadata as m; print('mcp', m.version('mcp'))\" && timeout 60 python3 test_server.py 2>&1 | tail -40"
        }
       ]
      ]

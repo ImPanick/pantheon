@@ -68,7 +68,7 @@
       [
        "bash",
        {
-        "command": "cd \"site\" && git log --since=\"7 days ago\" --no-merges --oneline"
+        "command": "cd 'site' && git log --since=\"7 days ago\" --no-merges --oneline"
        }
       ]
      ]
@@ -254,7 +254,7 @@
       [
        "bash",
        {
-        "command": "cd \"site\" && git log --since=\"7 days ago\" --no-merges --oneline"
+        "command": "cd 'site' && git log --since=\"7 days ago\" --no-merges --oneline"
        }
       ]
      ]
@@ -420,7 +420,7 @@
       [
        "bash",
        {
-        "command": "cd \"site\" && git log --since=\"7 days ago\" --no-merges --oneline"
+        "command": "cd 'site' && git log --since=\"7 days ago\" --no-merges --oneline"
        }
       ]
      ]
@@ -532,7 +532,7 @@
       [
        "bash",
        {
-        "command": "cd \"site\" && git log --since=\"7 days ago\" --no-merges --oneline"
+        "command": "cd 'site' && git log --since=\"7 days ago\" --no-merges --oneline"
        }
       ]
      ]

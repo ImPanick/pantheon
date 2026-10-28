@@ -49,7 +49,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
        }
       ]
      ]
@@ -80,7 +80,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && git checkout -b refactorer/2026-10-28"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && git checkout -b refactorer/2026-10-28"
        }
       ]
      ]
@@ -149,7 +149,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && pytest -q 2>&1 | tail -3 && git commit -am \"Refactor: get_user -> fetch_user (refactorer)\""
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && pytest -q 2>&1 | tail -3 && git commit -am 'Refactor: get_user -> fetch_user (refactorer)'"
        }
       ]
      ]
@@ -237,7 +237,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
        }
       ]
      ]
@@ -296,7 +296,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
        }
       ]
      ]
@@ -366,7 +366,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
        }
       ]
      ]
@@ -436,7 +436,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
        }
       ]
      ]
@@ -509,7 +509,7 @@
       [
        "bash",
        {
-        "command": "cd $PANTHEON_PROJECTS/app && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'app' && git status --porcelain && git rev-parse --abbrev-ref HEAD && pytest -q 2>&1 | tail -5"
        }
       ]
      ]
