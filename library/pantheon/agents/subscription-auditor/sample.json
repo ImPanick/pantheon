@@ -1,0 +1,22 @@
+{
+ "case": "one-unused-one-in-use",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the ledger, found 2 recurring charges, searched mail twice; wrote \"Subscriptions — November 2026\"",
+ "read": [
+  "read_file",
+  "search_emails"
+ ],
+ "wrote": [
+  "python",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Subscriptions”",
+   "ok": true,
+   "detail": "“Subscriptions — November 2026” is there."
+  }
+ ],
+ "answer": "£539.88 a year in subscriptions; 1 to consider cancelling (StreamBox, £119.88).\n\n## Report\n- read the ledger, found 2 recurring charges, searched mail twice; wrote \"Subscriptions — November 2026\"\n\n## Carry forward\n- StreamBox £9.99 monthly; Fast Fibre £35.00 monthly"
+}

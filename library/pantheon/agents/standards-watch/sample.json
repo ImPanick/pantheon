@@ -1,0 +1,21 @@
+{
+ "case": "a-final-rule-and-a-consultation",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- ran 1 search, read 2 pages; wrote \"Standards watch — November 2026\"",
+ "read": [
+  "web_search",
+  "web_fetch"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Standards watch”",
+   "ok": true,
+   "detail": "“Standards watch — November 2026” is there."
+  }
+ ],
+ "answer": "2 items: 1 final, 1 consultation.\n\n## Report\n- ran 1 search, read 2 pages; wrote \"Standards watch — November 2026\"\n\n## Carry forward\n- https://regulator.example/cyber-2026\n- https://regulator.example/consult-refurb"
+}

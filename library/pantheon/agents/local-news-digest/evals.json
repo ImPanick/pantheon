@@ -1,0 +1,514 @@
+{
+ "cases": [
+  {
+   "id": "two-local-items-the-national-budget-and-an-advert-left-out",
+   "about": "A road closure and a consultation are reported, closure first, each with its address; the national budget and a sponsored post are not local news and are left out.",
+   "inputs": {
+    "place": "Townsville",
+    "sources": [
+     "https://herald.example/local"
+    ],
+    "at": "07:15"
+   },
+   "world": {
+    "web": {
+     "https://herald.example/local": "Townsville Herald — Local. 2 Nov: Mill Lane closes 3-7 Nov for gas works (https://herald.example/mill-lane). 1 Nov: St Anne's fete raised 2,000 pounds.",
+     "https://herald.example/mill-lane": "Mill Lane will close from 3 to 7 November while the gas network is upgraded. Buses divert via Station Road.",
+     "https://council.example/parking": "Townsville Council: the consultation on the new parking zone closes on 14 November."
+    },
+    "search": {
+     "townsville news": [
+      {
+       "title": "Parking zone consultation closes 14 Nov",
+       "url": "https://council.example/parking",
+       "snippet": "Townsville Council consultation."
+      },
+      {
+       "title": "Chancellor sets out national budget",
+       "url": "https://national.example/budget",
+       "snippet": "The national budget."
+      },
+      {
+       "title": "Sponsored: Townsville sofa sale, 50% off",
+       "url": "https://deals.example/sofa-sale",
+       "snippet": "Advertisement."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://herald.example/local"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Townsville news",
+        "time_filter": "day"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Townsville council OR school OR road closure",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://herald.example/mill-lane"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://council.example/parking"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Worth knowing**\n- Mill Lane closes 3–7 Nov for gas works; buses divert via Station Road — Townsville Herald — https://herald.example/mill-lane\n- The council's consultation on the new parking zone closes on 14 Nov — Townsville Council — https://council.example/parking\n\n**Checked**\n- https://herald.example/local: read, 2 stories, 1 new\n- \"Townsville news\" search: 3 results, 1 new\n- council search: 0 results\n\n## Report\n- read 1 site, ran 2 searches, fetched 2 stories; reported 2 items\n\n## Carry forward\n- https://herald.example/mill-lane\n- https://council.example/parking"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "https://herald.example/mill-lane",
+      "https://council.example/parking",
+      "14 Nov"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "https://national.example/budget",
+      "https://deals.example/sofa-sale",
+      "sofa"
+     ]
+    },
+    {
+     "notebook_contains": "council.example/parking"
+    }
+   ]
+  },
+  {
+   "id": "nothing-new-says-so",
+   "about": "Everything found is already in its notebook: Worth knowing says Nothing new today, and nothing old is padded in.",
+   "inputs": {
+    "place": "Townsville",
+    "sources": [
+     "https://herald.example/local"
+    ],
+    "at": "07:15"
+   },
+   "world": {
+    "web": {
+     "https://herald.example/local": "Townsville Herald — Local. 2 Nov: Mill Lane closes 3-7 Nov for gas works (https://herald.example/mill-lane). 1 Nov: St Anne's fete raised 2,000 pounds.",
+     "https://herald.example/mill-lane": "Mill Lane will close from 3 to 7 November while the gas network is upgraded. Buses divert via Station Road.",
+     "https://council.example/parking": "Townsville Council: the consultation on the new parking zone closes on 14 November."
+    },
+    "search": {
+     "townsville news": [
+      {
+       "title": "Parking zone consultation closes 14 Nov",
+       "url": "https://council.example/parking",
+       "snippet": "Townsville Council consultation."
+      },
+      {
+       "title": "Chancellor sets out national budget",
+       "url": "https://national.example/budget",
+       "snippet": "The national budget."
+      },
+      {
+       "title": "Sponsored: Townsville sofa sale, 50% off",
+       "url": "https://deals.example/sofa-sale",
+       "snippet": "Advertisement."
+      }
+     ]
+    }
+   },
+   "notebook": "- https://herald.example/mill-lane\n- https://council.example/parking",
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://herald.example/local"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Townsville news",
+        "time_filter": "day"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Townsville council OR school OR road closure",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Worth knowing**\n- Nothing new today\n\n**Checked**\n- https://herald.example/local: read, 2 stories, 0 new\n- \"Townsville news\" search: 3 results, 0 new\n\n## Report\n- read 1 site, ran 2 searches; nothing new\n\n## Carry forward\n- https://herald.example/mill-lane\n- https://council.example/parking"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "Nothing new today"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "Mill Lane closes"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-site-that-will-not-open-is-named-under-checked",
+   "about": "The hired site answers 404: Checked says could not read it, and the search's local story is still reported.",
+   "inputs": {
+    "place": "Townsville",
+    "sources": [
+     "https://council.example/news"
+    ],
+    "at": "07:15"
+   },
+   "world": {
+    "web": {
+     "https://council.example/parking": "Townsville Council: the consultation on the new parking zone closes on 14 November."
+    },
+    "search": {
+     "townsville news": [
+      {
+       "title": "Parking zone consultation closes 14 Nov",
+       "url": "https://council.example/parking",
+       "snippet": "Townsville Council consultation."
+      },
+      {
+       "title": "Chancellor sets out national budget",
+       "url": "https://national.example/budget",
+       "snippet": "The national budget."
+      },
+      {
+       "title": "Sponsored: Townsville sofa sale, 50% off",
+       "url": "https://deals.example/sofa-sale",
+       "snippet": "Advertisement."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://council.example/news"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Townsville news",
+        "time_filter": "day"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Townsville council OR school OR road closure",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://council.example/parking"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Worth knowing**\n- The council's consultation on the new parking zone closes on 14 Nov — Townsville Council — https://council.example/parking\n\n**Checked**\n- https://council.example/news: could not read: 404\n- \"Townsville news\" search: 3 results, 1 new\n\n## Report\n- the hired site did not open; ran 2 searches, fetched 1 story\n\n## Carry forward\n- https://council.example/parking"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "could not read",
+      "https://council.example/parking"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "two-reports-disagree-on-a-date",
+   "about": "Two sites give different dates for the same closure: both are given, each with its address, rather than one picked.",
+   "inputs": {
+    "place": "Townsville",
+    "sources": [
+     "https://herald.example/local"
+    ],
+    "at": "07:15"
+   },
+   "world": {
+    "web": {
+     "https://herald.example/local": "Townsville Herald — Local. Mill Lane closes on 3 Nov for gas works.",
+     "https://radio.example/mill-lane": "Mill Lane in Townsville will close on 4 November for gas works."
+    },
+    "search": {
+     "townsville news": [
+      {
+       "title": "Mill Lane to close",
+       "url": "https://radio.example/mill-lane",
+       "snippet": "Closes 4 Nov."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://herald.example/local"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Townsville news",
+        "time_filter": "day"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://radio.example/mill-lane"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Worth knowing**\n- Mill Lane closes for gas works — reports differ: Townsville Herald says 3 Nov (https://herald.example/local), Town Radio says 4 Nov (https://radio.example/mill-lane)\n\n**Checked**\n- https://herald.example/local: read, 1 story, 1 new\n- \"Townsville news\" search: 1 result, the same story\n\n## Report\n- read 1 site, ran 1 search, fetched 1 story; reported 1 item\n\n## Carry forward\n- https://radio.example/mill-lane\n- https://herald.example/local"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "reports differ",
+      "3 Nov",
+      "4 Nov",
+      "https://radio.example/mill-lane"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-writes-anything",
+   "about": "A digest only reads and answers: a model that tries to save it as a document is refused, because the tool is not in its kit, and the digest still arrives.",
+   "inputs": {
+    "place": "Townsville",
+    "sources": [
+     "https://herald.example/local"
+    ],
+    "at": "07:15"
+   },
+   "world": {
+    "web": {
+     "https://herald.example/local": "Townsville Herald — Local. 2 Nov: Mill Lane closes 3-7 Nov for gas works (https://herald.example/mill-lane). 1 Nov: St Anne's fete raised 2,000 pounds.",
+     "https://herald.example/mill-lane": "Mill Lane will close from 3 to 7 November while the gas network is upgraded. Buses divert via Station Road.",
+     "https://council.example/parking": "Townsville Council: the consultation on the new parking zone closes on 14 November."
+    },
+    "search": {
+     "townsville news": [
+      {
+       "title": "Parking zone consultation closes 14 Nov",
+       "url": "https://council.example/parking",
+       "snippet": "Townsville Council consultation."
+      },
+      {
+       "title": "Chancellor sets out national budget",
+       "url": "https://national.example/budget",
+       "snippet": "The national budget."
+      },
+      {
+       "title": "Sponsored: Townsville sofa sale, 50% off",
+       "url": "https://deals.example/sofa-sale",
+       "snippet": "Advertisement."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://herald.example/local"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Townsville news",
+        "time_filter": "day"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Townsville council OR school OR road closure",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://herald.example/mill-lane"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://council.example/parking"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Local news",
+        "content": "Mill Lane closes."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Worth knowing**\n- Mill Lane closes 3–7 Nov for gas works; buses divert via Station Road — Townsville Herald — https://herald.example/mill-lane\n- The council's consultation on the new parking zone closes on 14 Nov — Townsville Council — https://council.example/parking\n\n**Checked**\n- https://herald.example/local: read, 2 stories, 1 new\n- \"Townsville news\" search: 3 results, 1 new\n- council search: 0 results\n\n## Report\n- read 1 site, ran 2 searches, fetched 2 stories; reported 2 items\n\n## Carry forward\n- https://herald.example/mill-lane\n- https://council.example/parking"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "create_document"
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-digest-without-its-headings-fails",
+   "about": "The harness's own check: a run that lists stories without Worth knowing and Checked does not deliver, even after its repair pass.",
+   "inputs": {
+    "place": "Townsville",
+    "sources": [
+     "https://herald.example/local"
+    ],
+    "at": "07:15"
+   },
+   "world": {
+    "web": {
+     "https://herald.example/local": "Townsville Herald — Local. 2 Nov: Mill Lane closes 3-7 Nov for gas works (https://herald.example/mill-lane). 1 Nov: St Anne's fete raised 2,000 pounds.",
+     "https://herald.example/mill-lane": "Mill Lane will close from 3 to 7 November while the gas network is upgraded. Buses divert via Station Road.",
+     "https://council.example/parking": "Townsville Council: the consultation on the new parking zone closes on 14 November."
+    },
+    "search": {
+     "townsville news": [
+      {
+       "title": "Parking zone consultation closes 14 Nov",
+       "url": "https://council.example/parking",
+       "snippet": "Townsville Council consultation."
+      },
+      {
+       "title": "Chancellor sets out national budget",
+       "url": "https://national.example/budget",
+       "snippet": "The national budget."
+      },
+      {
+       "title": "Sponsored: Townsville sofa sale, 50% off",
+       "url": "https://deals.example/sofa-sale",
+       "snippet": "Advertisement."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://herald.example/local"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Townsville news",
+        "time_filter": "day"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Townsville council OR school OR road closure",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Mill Lane is closing next week.\n\n## Report\n- read the news"
+    },
+    {
+     "say": "Mill Lane is closing."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "https://national.example/budget"
+     ]
+    }
+   ]
+  }
+ ]
+}

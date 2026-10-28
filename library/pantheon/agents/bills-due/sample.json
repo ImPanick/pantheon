@@ -1,0 +1,21 @@
+{
+ "case": "three-bills-one-overdue-one-paid",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- searched mail 4 times, read 5 messages; wrote \"Bills due — 3 Nov\"",
+ "read": [
+  "search_emails",
+  "read_email"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Bills due”",
+   "ok": true,
+   "detail": "“Bills due — 3 Nov” is there."
+  }
+ ],
+ "answer": "£357.40 due in the next three weeks, £82.40 of it overdue (Northern Power).\n\n## Report\n- searched mail 4 times, read 5 messages; wrote \"Bills due — 3 Nov\"\n\n## Carry forward\n- Northern Power NP-5521 — due 30 Oct\n- Fast Fibre — due 10 Nov\n- Smith & Co INV-221 — due 21 Nov"
+}

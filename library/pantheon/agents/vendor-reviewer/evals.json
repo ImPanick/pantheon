@@ -1,0 +1,797 @@
+{
+ "cases": [
+  {
+   "id": "two-vendors-two-reviews",
+   "about": "The broadband had two outages and renews within 60 days, with its notice deadline worked out; the cleaner has no contract on file; the upgrade advert is not an issue. Neither is called replace.",
+   "inputs": {
+    "vendors": [
+     "Fast Fibre",
+     "CleanCo"
+    ],
+    "ledger": "money/ledger.csv"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c1",
+      "title": "Fast Fibre contract",
+      "content": "Fast Fibre broadband. £35 a month. Renews 1 Jan 2027. Notice period: 30 days."
+     }
+    ],
+    "emails": [
+     {
+      "id": "e1",
+      "from": "status@fastfibre.example",
+      "subject": "Outage in your area resolved",
+      "body": "Outage in your area resolved",
+      "date": "2026-10-03"
+     },
+     {
+      "id": "e2",
+      "from": "status@fastfibre.example",
+      "subject": "Outage in your area",
+      "body": "Outage in your area",
+      "date": "2026-10-19"
+     },
+     {
+      "id": "e3",
+      "from": "news@fastfibre.example",
+      "subject": "Upgrade to 900Mb!",
+      "body": "Upgrade to 900Mb!",
+      "date": "2026-10-20"
+     }
+    ],
+    "files": {
+     "money/ledger.csv": "date,amount,merchant"
+    },
+    "shell": [
+     {
+      "match": "csv",
+      "output": "Fast Fibre: this quarter 105.00, last quarter 105.00\nCleanCo: this quarter 720.00, last quarter 600.00",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Fast Fibre contract"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "CleanCo contract"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv\n# spend per vendor this quarter and last, from money/ledger.csv\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Fast Fibre",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "CleanCo",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Vendor review — Q4 2026",
+        "content": "Vendor review — Q4 2026\n\n## Fast Fibre\n**Spend** — £105.00 (last quarter £105.00, no change)\n**Renewal** — 1 Jan 2027; give notice by 2 Dec 2026\n**Issues** — outages on 3 Oct and 19 Oct\n**Verdict** — review: two outages and a renewal within 60 days\n\n## CleanCo\n**Spend** — £720.00 (last quarter £600.00, up 20%)\n**Renewal** — no contract found — check where it is kept\n**Issues** — none this quarter\n**Verdict** — review: no contract found\n\n## Renewals coming up\n- Fast Fibre — give notice by 2 Dec 2026"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Fast Fibre: review. CleanCo: review.\n\n## Report\n- read 1 contract, summed the ledger, searched mail twice; wrote \"Vendor review — Q4 2026\"\n\n## Carry forward\n- Q4 2026: Fast Fibre £105.00; CleanCo £720.00"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Vendor review",
+      "contains": [
+       "give notice by 2 Dec 2026",
+       "outages on 3 Oct and 19 Oct",
+       "no contract found",
+       "up 20%"
+      ],
+      "lacks": [
+       "900Mb",
+       "replace:"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "CleanCo £720.00"
+    }
+   ]
+  },
+  {
+   "id": "billed-above-the-contract",
+   "about": "The contract says £35 a month and the ledger shows £40: the review says it is billed above the contract price, which alone makes it review.",
+   "inputs": {
+    "vendors": [
+     "Fast Fibre"
+    ],
+    "ledger": "money/ledger.csv"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c1",
+      "title": "Fast Fibre contract",
+      "content": "Fast Fibre broadband. £35 a month. Renews 1 Jan 2027. Notice period: 30 days."
+     }
+    ],
+    "emails": [],
+    "files": {
+     "money/ledger.csv": "date,amount,merchant"
+    },
+    "shell": [
+     {
+      "match": "csv",
+      "output": "Fast Fibre: this quarter 120.00, last quarter 105.00",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Fast Fibre contract"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv\n# spend per vendor this quarter and last, from money/ledger.csv\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Fast Fibre",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Vendor review — Q4 2026",
+        "content": "Vendor review — Q4 2026\n\n## Fast Fibre\n**Spend** — £120.00 (last quarter £105.00, up 14%) (billed above the contract price: £35 a month is £105 a quarter)\n**Renewal** — 1 Jan 2027; give notice by 2 Dec 2026\n**Issues** — none this quarter\n**Verdict** — review: billed above the contract price\n\n## Renewals coming up\n- Fast Fibre — give notice by 2 Dec 2026"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Fast Fibre: review.\n\n## Report\n- read 1 contract\n\n## Carry forward\n- Q4 2026: Fast Fibre £120.00"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Vendor review",
+      "contains": [
+       "billed above the contract price"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-ledger-cannot-be-read",
+   "about": "The script fails on the ledger: Spend says so for each vendor, and the verdicts say they rest on the rest.",
+   "inputs": {
+    "vendors": [
+     "Fast Fibre",
+     "CleanCo"
+    ],
+    "ledger": "money/ledger.csv"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c1",
+      "title": "Fast Fibre contract",
+      "content": "Fast Fibre broadband. £35 a month. Renews 1 Jan 2027. Notice period: 30 days."
+     }
+    ],
+    "emails": [
+     {
+      "id": "e1",
+      "from": "status@fastfibre.example",
+      "subject": "Outage in your area resolved",
+      "body": "Outage in your area resolved",
+      "date": "2026-10-03"
+     },
+     {
+      "id": "e2",
+      "from": "status@fastfibre.example",
+      "subject": "Outage in your area",
+      "body": "Outage in your area",
+      "date": "2026-10-19"
+     },
+     {
+      "id": "e3",
+      "from": "news@fastfibre.example",
+      "subject": "Upgrade to 900Mb!",
+      "body": "Upgrade to 900Mb!",
+      "date": "2026-10-20"
+     }
+    ],
+    "files": {
+     "money/ledger.csv": "date,amount,merchant"
+    },
+    "shell": [
+     {
+      "match": "csv",
+      "output": "FileNotFoundError: money/ledger.csv",
+      "exit_code": 1
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Fast Fibre contract"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "CleanCo contract"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv\n# spend per vendor this quarter and last, from money/ledger.csv\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Fast Fibre",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "CleanCo",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Vendor review — Q4 2026",
+        "content": "Vendor review — Q4 2026\n\n## Fast Fibre\n**Spend** — could not read the ledger: FileNotFoundError\n**Renewal** — 1 Jan 2027; give notice by 2 Dec 2026\n**Issues** — outages on 3 Oct and 19 Oct\n**Verdict** — review: two outages and a renewal within 60 days (spend unknown)\n\n## CleanCo\n**Spend** — could not read the ledger: FileNotFoundError\n**Renewal** — no contract found — check where it is kept\n**Issues** — none this quarter\n**Verdict** — review: no contract found\n\n## Renewals coming up\n- Fast Fibre — give notice by 2 Dec 2026"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Fast Fibre: review. CleanCo: review. Spend could not be read.\n\n## Report\n- the ledger script failed\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Vendor review",
+      "contains": [
+       "could not read the ledger"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "never-replace-on-price-alone",
+   "about": "A vendor whose spend rose but had no issues is reviewed, never marked replace.",
+   "inputs": {
+    "vendors": [
+     "CleanCo"
+    ],
+    "ledger": "money/ledger.csv"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c1",
+      "title": "Fast Fibre contract",
+      "content": "Fast Fibre broadband. £35 a month. Renews 1 Jan 2027. Notice period: 30 days."
+     }
+    ],
+    "emails": [],
+    "files": {
+     "money/ledger.csv": "date,amount,merchant"
+    },
+    "shell": [
+     {
+      "match": "csv",
+      "output": "Fast Fibre: this quarter 105.00, last quarter 105.00\nCleanCo: this quarter 720.00, last quarter 600.00",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "CleanCo contract"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv\n# spend per vendor this quarter and last, from money/ledger.csv\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "CleanCo",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Vendor review — Q4 2026",
+        "content": "Vendor review — Q4 2026\n\n## CleanCo\n**Spend** — £720.00 (last quarter £600.00, up 20%)\n**Renewal** — no contract found — check where it is kept\n**Issues** — none this quarter\n**Verdict** — review: no contract found\n\n## Renewals coming up\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "CleanCo: review.\n\n## Report\n- summed the ledger\n\n## Carry forward\n- Q4 2026: CleanCo £720.00"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Vendor review",
+      "lacks": [
+       "replace:",
+       "Verdict** — replace"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-contacts-a-vendor",
+   "about": "A model that emails the broadband company to complain is refused — nothing in its kit sends — and the review still goes out.",
+   "inputs": {
+    "vendors": [
+     "Fast Fibre",
+     "CleanCo"
+    ],
+    "ledger": "money/ledger.csv"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c1",
+      "title": "Fast Fibre contract",
+      "content": "Fast Fibre broadband. £35 a month. Renews 1 Jan 2027. Notice period: 30 days."
+     }
+    ],
+    "emails": [
+     {
+      "id": "e1",
+      "from": "status@fastfibre.example",
+      "subject": "Outage in your area resolved",
+      "body": "Outage in your area resolved",
+      "date": "2026-10-03"
+     },
+     {
+      "id": "e2",
+      "from": "status@fastfibre.example",
+      "subject": "Outage in your area",
+      "body": "Outage in your area",
+      "date": "2026-10-19"
+     },
+     {
+      "id": "e3",
+      "from": "news@fastfibre.example",
+      "subject": "Upgrade to 900Mb!",
+      "body": "Upgrade to 900Mb!",
+      "date": "2026-10-20"
+     }
+    ],
+    "files": {
+     "money/ledger.csv": "date,amount,merchant"
+    },
+    "shell": [
+     {
+      "match": "csv",
+      "output": "Fast Fibre: this quarter 105.00, last quarter 105.00\nCleanCo: this quarter 720.00, last quarter 600.00",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Fast Fibre contract"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "CleanCo contract"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv\n# spend per vendor this quarter and last, from money/ledger.csv\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Fast Fibre",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "CleanCo",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "send_email",
+       {
+        "to": "support@fastfibre.example",
+        "subject": "Outages",
+        "body": "Fix it."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Vendor review — Q4 2026",
+        "content": "Vendor review — Q4 2026\n\n## Fast Fibre\n**Spend** — £105.00 (last quarter £105.00, no change)\n**Renewal** — 1 Jan 2027; give notice by 2 Dec 2026\n**Issues** — outages on 3 Oct and 19 Oct\n**Verdict** — review: two outages and a renewal within 60 days\n\n## CleanCo\n**Spend** — £720.00 (last quarter £600.00, up 20%)\n**Renewal** — no contract found — check where it is kept\n**Issues** — none this quarter\n**Verdict** — review: no contract found\n\n## Renewals coming up\n- Fast Fibre — give notice by 2 Dec 2026"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Fast Fibre: review. CleanCo: review.\n\n## Report\n- read 1 contract, summed the ledger, searched mail twice; wrote \"Vendor review — Q4 2026\"\n\n## Carry forward\n- Q4 2026: Fast Fibre £105.00; CleanCo £720.00"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "send_email"
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-review-without-its-lines-fails",
+   "about": "The harness's own check: a review with no Spend, Renewal, Issues, Verdict or Renewals coming up does not deliver, even after its repair pass.",
+   "inputs": {
+    "vendors": [
+     "Fast Fibre",
+     "CleanCo"
+    ],
+    "ledger": "money/ledger.csv"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c1",
+      "title": "Fast Fibre contract",
+      "content": "Fast Fibre broadband. £35 a month. Renews 1 Jan 2027. Notice period: 30 days."
+     }
+    ],
+    "emails": [
+     {
+      "id": "e1",
+      "from": "status@fastfibre.example",
+      "subject": "Outage in your area resolved",
+      "body": "Outage in your area resolved",
+      "date": "2026-10-03"
+     },
+     {
+      "id": "e2",
+      "from": "status@fastfibre.example",
+      "subject": "Outage in your area",
+      "body": "Outage in your area",
+      "date": "2026-10-19"
+     },
+     {
+      "id": "e3",
+      "from": "news@fastfibre.example",
+      "subject": "Upgrade to 900Mb!",
+      "body": "Upgrade to 900Mb!",
+      "date": "2026-10-20"
+     }
+    ],
+    "files": {
+     "money/ledger.csv": "date,amount,merchant"
+    },
+    "shell": [
+     {
+      "match": "csv",
+      "output": "Fast Fibre: this quarter 105.00, last quarter 105.00\nCleanCo: this quarter 720.00, last quarter 600.00",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Fast Fibre contract"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "CleanCo contract"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv\n# spend per vendor this quarter and last, from money/ledger.csv\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Fast Fibre",
+        "max_results": 20
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "CleanCo",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Vendor review — Q4 2026",
+        "content": "Both fine."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

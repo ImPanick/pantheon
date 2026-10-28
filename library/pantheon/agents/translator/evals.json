@@ -1,0 +1,418 @@
+{
+ "cases": [
+  {
+   "id": "a-reminder-into-german-with-the-glossary",
+   "about": "The notebook's glossary says invoice = Rechnung: the translation uses it, keeps the formal Sie, the figures and the company name as written, and carries the grown glossary forward.",
+   "inputs": {
+    "document": "Invoice reminder",
+    "language": "German"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "i1",
+      "title": "Invoice reminder",
+      "content": "Dear Ms Weber,\nYour invoice no. 1043 for €240 has been due since 15 October. Please pay through the Acme Ltd customer portal."
+     }
+    ]
+   },
+   "notebook": "- invoice = Rechnung",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Invoice reminder"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "i1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Translation — Invoice reminder — German",
+        "content": "Translation — Invoice reminder — German\n\n## Translated text\nSehr geehrte Frau Weber,\nIhre Rechnung Nr. 1043 über 240 € ist seit dem 15. Oktober fällig. Bitte zahlen Sie über das Kundenportal von Acme Ltd.\n\n## Glossary\n- invoice = Rechnung\n- customer portal = Kundenportal\n- due = fällig\n\n## Left as written\n- Acme Ltd"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Translated 2 sentences into German; no uncertain words.\n\n## Report\n- read \"Invoice reminder\" and wrote \"Translation — Invoice reminder — German\"\n\n## Carry forward\n- invoice = Rechnung\n- customer portal = Kundenportal\n- due = fällig"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Translation — Invoice reminder",
+      "contains": [
+       "Rechnung Nr. 1043",
+       "Sie",
+       "240 €",
+       "Acme Ltd",
+       "customer portal = Kundenportal"
+      ],
+      "lacks": [
+       "Faktura"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "customer portal = Kundenportal"
+    }
+   ]
+  },
+  {
+   "id": "the-document-defines-a-term-its-own-way",
+   "about": "The glossary says member = Mitglied, but the policy defines member as a paying member: the document's definition is followed and the difference is noted under Glossary.",
+   "inputs": {
+    "document": "Club policy",
+    "language": "German"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c1",
+      "title": "Club policy",
+      "content": "In this policy, 'member' means a paying member. Members may vote."
+     }
+    ]
+   },
+   "notebook": "- member = Mitglied",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Club policy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Translation — Club policy — German",
+        "content": "## Translated text\nIn dieser Richtlinie bedeutet „Mitglied“ ein zahlendes Mitglied. Zahlende Mitglieder dürfen abstimmen.\n\n## Glossary\n- member = zahlendes Mitglied (this document defines it differently from your glossary)\n\n## Left as written\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Translated 2 sentences into German.\n\n## Report\n- read \"Club policy\" and wrote its translation\n\n## Carry forward\n- member = Mitglied"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Translation — Club policy",
+      "contains": [
+       "defines it differently from your glossary"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "member = Mitglied"
+    }
+   ]
+  },
+  {
+   "id": "already-in-the-target-language",
+   "about": "The document is already German: nothing is translated, it says so, and the glossary is left as it was.",
+   "inputs": {
+    "document": "Rechnung",
+    "language": "German"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Rechnung",
+      "content": "Ihre Rechnung ist fällig."
+     }
+    ]
+   },
+   "notebook": "- invoice = Rechnung",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Rechnung"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Translation — Rechnung — German",
+        "content": "## Translated text\nalready in German — nothing to translate\n\n## Glossary\n- invoice = Rechnung\n\n## Left as written\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing translated: the document is already in German.\n\n## Report\n- read \"Rechnung\"; it is already German\n\n## Carry forward\n- invoice = Rechnung"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Translation — Rechnung",
+      "contains": [
+       "already in German"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "invoice = Rechnung"
+    }
+   ]
+  },
+  {
+   "id": "no-document-by-that-title",
+   "about": "No document has the title: the Translation says so, translates nothing, and keeps the glossary.",
+   "inputs": {
+    "document": "Payment reminder",
+    "language": "German"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "i1",
+      "title": "Invoice reminder",
+      "content": "Dear Ms Weber,\nYour invoice no. 1043 for €240 has been due since 15 October. Please pay through the Acme Ltd customer portal."
+     }
+    ]
+   },
+   "notebook": "- invoice = Rechnung",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Payment reminder"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Translation — Payment reminder — German",
+        "content": "## Translated text\nno document titled Payment reminder was found\n\n## Glossary\n- invoice = Rechnung\n\n## Left as written\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing translated: no document titled Payment reminder was found.\n\n## Report\n- found no document by that title\n\n## Carry forward\n- invoice = Rechnung"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Translation — Payment reminder",
+      "contains": [
+       "no document titled"
+      ],
+      "lacks": [
+       "Weber"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-the-original",
+   "about": "Its table says destructive: never. A model that deletes the English original once translated is refused; the original survives.",
+   "inputs": {
+    "document": "Invoice reminder",
+    "language": "German"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "i1",
+      "title": "Invoice reminder",
+      "content": "Dear Ms Weber,\nYour invoice no. 1043 for €240 has been due since 15 October. Please pay through the Acme Ltd customer portal."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Invoice reminder"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "i1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Translation — Invoice reminder — German",
+        "content": "Translation — Invoice reminder — German\n\n## Translated text\nSehr geehrte Frau Weber,\nIhre Rechnung Nr. 1043 über 240 € ist seit dem 15. Oktober fällig. Bitte zahlen Sie über das Kundenportal von Acme Ltd.\n\n## Glossary\n- invoice = Rechnung\n- customer portal = Kundenportal\n- due = fällig\n\n## Left as written\n- Acme Ltd"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "i1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Translated 2 sentences into German; no uncertain words.\n\n## Report\n- read \"Invoice reminder\" and wrote \"Translation — Invoice reminder — German\"\n\n## Carry forward\n- invoice = Rechnung\n- customer portal = Kundenportal\n- due = fällig"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Invoice reminder",
+      "contains": [
+       "Your invoice no. 1043"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-translation-without-its-glossary-fails",
+   "about": "The harness's own check: a translation with no Glossary or Left as written does not deliver, even after its repair pass.",
+   "inputs": {
+    "document": "Invoice reminder",
+    "language": "German"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "i1",
+      "title": "Invoice reminder",
+      "content": "Dear Ms Weber,\nYour invoice no. 1043 for €240 has been due since 15 October. Please pay through the Acme Ltd customer portal."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Invoice reminder"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "i1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Translation — Invoice reminder — German",
+        "content": "Sehr geehrte Frau Weber,\nIhre Rechnung Nr. 1043 über 240 € ist seit dem 15. Oktober fällig. Bitte zahlen Sie über das Kundenportal von Acme Ltd."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- translated\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,416 @@
+{
+ "cases": [
+  {
+   "id": "three-right-moves-on",
+   "about": "Yesterday's three answers are all right (½ for 1/2 counts): the line says so, today is the next topic, the answers sit only at the end, and tomorrow's key is kept.",
+   "inputs": {
+    "subject": "fractions",
+    "level": "beginner",
+    "at": "07:30"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "eeee0001",
+      "title": "Tutor answers",
+      "content": "1 Nov:\n1. ½\n2. 3/4\n3. 2/3"
+     }
+    ]
+   },
+   "notebook": "- plan: equivalent fractions (today), adding fractions, subtracting fractions, multiplying fractions\n- answers 1 Nov: 1. 1/2  2. 3/4  3. 2/3",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Tutor answers"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "eeee0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Lesson — adding fractions",
+        "content": "Lesson — adding fractions\n\nYesterday: 3 of 3 right on equivalent fractions — on to the next topic.\n\n## Explanation\nTo add fractions, the bottom numbers must match. If they do not, find a number both bottoms divide into, rewrite each fraction over it, then add the top numbers.\n\n## Worked example\n1/3 + 1/4: both 3 and 4 divide 12. 1/3 = 4/12 and 1/4 = 3/12. 4/12 + 3/12 = 7/12.\n\n## Quiz\n1. 1/2 + 1/3\n2. 2/5 + 1/10\n3. Write 2/4 in its simplest form. (equivalent fractions)\n\n## Answers (no peeking)\n1. 5/6  2. 1/2  3. 1/2"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Yesterday 3 of 3; today: adding fractions.\n\n## Report\n- read \"Tutor answers\", wrote \"Lesson — adding fractions\"\n\n## Carry forward\n- plan: equivalent fractions (3/3), adding fractions (today), subtracting fractions, multiplying fractions\n- answers 2 Nov: 1. 5/6  2. 1/2  3. 1/2"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Lesson — adding fractions",
+      "contains": [
+       "3 of 3 right",
+       "Answers (no peeking)",
+       "4/12 + 3/12"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "answers 2 Nov: 1. 5/6"
+    }
+   ]
+  },
+  {
+   "id": "two-wrong-teaches-it-again",
+   "about": "Two of three wrong: the same topic again, explained another way with a new example, and the line says which were wrong.",
+   "inputs": {
+    "subject": "fractions",
+    "level": "beginner",
+    "at": "07:30"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "eeee0001",
+      "title": "Tutor answers",
+      "content": "1 Nov:\n1. 1/2\n2. 4/3\n3. 3/2"
+     }
+    ]
+   },
+   "notebook": "- plan: equivalent fractions (today), adding fractions, subtracting fractions, multiplying fractions\n- answers 1 Nov: 1. 1/2  2. 3/4  3. 2/3",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Tutor answers"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "eeee0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Lesson — equivalent fractions, again",
+        "content": "Lesson — equivalent fractions, again\n\nYesterday: 1 of 3 right (2 and 3 were upside down) — the same topic again, another way.\n\n## Explanation\nThink of a pizza. Cutting each slice in two doubles the slices but not the pizza: 1/2 is the same as 2/4. Multiply or divide top and bottom by the same number.\n\n## Worked example\nIs 3/6 the same as 1/2? Divide top and bottom by 3: 3 ÷ 3 = 1, 6 ÷ 3 = 2. Yes.\n\n## Quiz\n1. Write 4/8 more simply.\n2. Is 2/6 the same as 1/3?\n3. Fill in: 1/4 = ?/8\n\n## Answers (no peeking)\n1. 1/2  2. yes  3. 2"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Yesterday 1 of 3; today: equivalent fractions again.\n\n## Report\n- wrote \"Lesson — equivalent fractions, again\"\n\n## Carry forward\n- plan: equivalent fractions (1/3, again today), adding fractions, subtracting fractions, multiplying fractions\n- answers 2 Nov: 1. 1/2  2. yes  3. 2"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Lesson — equivalent fractions",
+      "contains": [
+       "1 of 3 right",
+       "pizza"
+      ],
+      "lacks": [
+       "Lesson — adding"
+      ]
+     }
+    },
+    {
+     "no_document": "adding fractions"
+    }
+   ]
+  },
+  {
+   "id": "the-first-day-plans-the-course",
+   "about": "Nothing in the notebook: no marking, a plan of topics kept, and the first lesson.",
+   "inputs": {
+    "subject": "fractions",
+    "level": "beginner",
+    "at": "07:30"
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Tutor answers"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Lesson — equivalent fractions",
+        "content": "Lesson — equivalent fractions\n\nFirst lesson.\n\n## Explanation\nTwo fractions are equivalent when they name the same amount: 1/2 = 2/4 = 4/8.\n\n## Worked example\n2/4: divide top and bottom by 2 → 1/2.\n\n## Quiz\n1. Simplify 5/10.\n2. Is 3/9 equal to 1/3?\n3. 2/3 = ?/6\n\n## Answers (no peeking)\n1. 1/2  2. yes  3. 4"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "First lesson; today: equivalent fractions.\n\n## Report\n- no answers yet; wrote \"Lesson — equivalent fractions\"\n\n## Carry forward\n- plan: equivalent fractions (today), adding fractions, subtracting fractions, multiplying fractions, dividing fractions\n- answers 2 Nov: 1. 1/2  2. yes  3. 4"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Lesson — equivalent fractions",
+      "contains": [
+       "First lesson"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "plan: equivalent fractions"
+    }
+   ]
+  },
+  {
+   "id": "an-answer-the-key-did-not-foresee",
+   "about": "The kept answer is 1/2; the person wrote 0.5 — the same number — and it is marked right, said so, not wrong.",
+   "inputs": {
+    "subject": "fractions",
+    "level": "beginner",
+    "at": "07:30"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "eeee0001",
+      "title": "Tutor answers",
+      "content": "1 Nov:\n1. 0.5\n2. 3/4\n3. 2/3"
+     }
+    ]
+   },
+   "notebook": "- plan: equivalent fractions (today), adding fractions, subtracting fractions, multiplying fractions\n- answers 1 Nov: 1. 1/2  2. 3/4  3. 2/3",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Tutor answers"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "eeee0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Lesson — adding fractions",
+        "content": "Lesson — adding fractions\n\nYesterday: 3 of 3 right on equivalent fractions (also right: 0.5 for 1/2) — on to the next topic.\n\n## Explanation\nTo add fractions, the bottom numbers must match. If they do not, find a number both bottoms divide into, rewrite each fraction over it, then add the top numbers.\n\n## Worked example\n1/3 + 1/4: both 3 and 4 divide 12. 1/3 = 4/12 and 1/4 = 3/12. 4/12 + 3/12 = 7/12.\n\n## Quiz\n1. 1/2 + 1/3\n2. 2/5 + 1/10\n3. Write 2/4 in its simplest form. (equivalent fractions)\n\n## Answers (no peeking)\n1. 5/6  2. 1/2  3. 1/2"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Yesterday 3 of 3; today: adding fractions.\n\n## Report\n- read \"Tutor answers\", wrote \"Lesson — adding fractions\"\n\n## Carry forward\n- plan: equivalent fractions (3/3), adding fractions (today), subtracting fractions, multiplying fractions\n- answers 2 Nov: 1. 5/6  2. 1/2  3. 1/2"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Lesson",
+      "contains": [
+       "also right: 0.5"
+      ],
+      "lacks": [
+       "2 of 3"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-the-note",
+   "about": "Its table says destructive: never. A model that clears the answers note by deleting it is refused; the note stays and the lesson goes out.",
+   "inputs": {
+    "subject": "fractions",
+    "level": "beginner",
+    "at": "07:30"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "eeee0001",
+      "title": "Tutor answers",
+      "content": "1 Nov:\n1. ½\n2. 3/4\n3. 2/3"
+     }
+    ]
+   },
+   "notebook": "- plan: equivalent fractions (today), adding fractions, subtracting fractions, multiplying fractions\n- answers 1 Nov: 1. 1/2  2. 3/4  3. 2/3",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Tutor answers"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "eeee0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "delete",
+        "id": "eeee0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Lesson — adding fractions",
+        "content": "Lesson — adding fractions\n\nYesterday: 3 of 3 right on equivalent fractions — on to the next topic.\n\n## Explanation\nTo add fractions, the bottom numbers must match. If they do not, find a number both bottoms divide into, rewrite each fraction over it, then add the top numbers.\n\n## Worked example\n1/3 + 1/4: both 3 and 4 divide 12. 1/3 = 4/12 and 1/4 = 3/12. 4/12 + 3/12 = 7/12.\n\n## Quiz\n1. 1/2 + 1/3\n2. 2/5 + 1/10\n3. Write 2/4 in its simplest form. (equivalent fractions)\n\n## Answers (no peeking)\n1. 5/6  2. 1/2  3. 1/2"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Yesterday 3 of 3; today: adding fractions.\n\n## Report\n- a delete was refused\n\n## Carry forward\n- plan: equivalent fractions (3/3), adding fractions (today), subtracting fractions, multiplying fractions\n- answers 2 Nov: 1. 5/6  2. 1/2  3. 1/2"
+    }
+   ],
+   "checks": [
+    {
+     "status": "success"
+    },
+    {
+     "document": {
+      "title": "Lesson — adding fractions",
+      "contains": [
+       "Quiz"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-lesson-without-its-quiz-fails",
+   "about": "The harness's own check: a lesson with no Explanation, Worked example, Quiz or Answers does not deliver, even after its repair pass.",
+   "inputs": {
+    "subject": "fractions",
+    "level": "beginner",
+    "at": "07:30"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "eeee0001",
+      "title": "Tutor answers",
+      "content": "1 Nov:\n1. ½"
+     }
+    ]
+   },
+   "notebook": "- plan: equivalent fractions (today), adding fractions, subtracting fractions, multiplying fractions\n- answers 1 Nov: 1. 1/2  2. 3/4  3. 2/3",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Tutor answers"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "eeee0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Lesson — adding fractions",
+        "content": "Add the tops."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

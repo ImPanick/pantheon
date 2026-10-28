@@ -1,0 +1,19 @@
+{
+ "case": "the-home-page-got-slower",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- measured 2 pages with Lighthouse; wrote \"Web performance — 3 Nov\"",
+ "read": [],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Web performance”",
+   "ok": true,
+   "detail": "“Web performance — 3 Nov” is there."
+  }
+ ],
+ "answer": "Worst: the home page, LCP 4.8 s — compress hero.jpg (2.4 MB).\n\n## Report\n- measured 2 pages with Lighthouse; wrote \"Web performance — 3 Nov\"\n\n## Carry forward\n- https://shop.example/ — LCP 4.8 s, CLS 0.02, TBT 340 ms, 3.9 MB\n- https://shop.example/about — LCP 1.9 s, CLS 0.00, TBT 80 ms, 0.8 MB"
+}

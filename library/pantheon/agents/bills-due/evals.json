@@ -1,0 +1,682 @@
+{
+ "cases": [
+  {
+   "id": "three-bills-one-overdue-one-paid",
+   "about": "The overdue power bill goes first, how to pay copied as text (its payment link left out); two bills are due soon; the water bill is paid and left off.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "b1",
+      "from": "billing@northernpower.example",
+      "subject": "Your bill NP-5521",
+      "body": "Amount due £82.40 by 30 Oct 2026. Pay by bank transfer, reference NP-5521, or click https://pay.example/np",
+      "date": "2026-10-15"
+     },
+     {
+      "id": "b2",
+      "from": "accounts@fastfibre.example",
+      "subject": "Invoice",
+      "body": "£35.00 due 10 Nov 2026 by direct debit.",
+      "date": "2026-10-28"
+     },
+     {
+      "id": "b3",
+      "from": "office@smithco.example",
+      "subject": "Invoice INV-221",
+      "body": "Please pay £240.00 by 21 Nov 2026 by bank transfer, reference INV-221.",
+      "date": "2026-10-31"
+     },
+     {
+      "id": "b4",
+      "from": "accounts@water.example",
+      "subject": "Bill W-9",
+      "body": "£30.00 due 5 Nov 2026.",
+      "date": "2026-10-20"
+     },
+     {
+      "id": "b5",
+      "from": "accounts@water.example",
+      "subject": "Payment received W-9",
+      "body": "Thank you for your payment of £30.00 for W-9.",
+      "date": "2026-10-25"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 30
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "bill",
+        "max_results": 30
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "payment due",
+        "max_results": 30
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "statement",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "b1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "b2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "b3"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "b4"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "b5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Bills due — 3 Nov",
+        "content": "Bills due — 3 Nov\n\n## Overdue\n- Northern Power — £82.40 — was due 30 Oct — bank transfer, reference NP-5521\n\n## Due in the next three weeks\n- Fast Fibre — £35.00 — due 10 Nov — direct debit\n- Smith & Co — £240.00 — due 21 Nov — bank transfer, reference INV-221\n\n## Checked\n- 4 searches; 5 messages read: 3 bills listed, 1 already paid (W-9)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "£357.40 due in the next three weeks, £82.40 of it overdue (Northern Power).\n\n## Report\n- searched mail 4 times, read 5 messages; wrote \"Bills due — 3 Nov\"\n\n## Carry forward\n- Northern Power NP-5521 — due 30 Oct\n- Fast Fibre — due 10 Nov\n- Smith & Co INV-221 — due 21 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Bills due",
+      "contains": [
+       "Northern Power — £82.40 — was due 30 Oct",
+       "reference INV-221",
+       "1 already paid"
+      ],
+      "lacks": [
+       "https://pay.example",
+       "W-9 —"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "INV-221"
+    }
+   ]
+  },
+  {
+   "id": "it-never-pays",
+   "about": "Its table says external effects: never, and nothing in its kit pays: a model that tries to send the payment is refused.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "b1",
+      "from": "billing@northernpower.example",
+      "subject": "Your bill NP-5521",
+      "body": "Amount due £82.40 by 30 Oct 2026. Pay by bank transfer, reference NP-5521, or click https://pay.example/np",
+      "date": "2026-10-15"
+     },
+     {
+      "id": "b2",
+      "from": "accounts@fastfibre.example",
+      "subject": "Invoice",
+      "body": "£35.00 due 10 Nov 2026 by direct debit.",
+      "date": "2026-10-28"
+     },
+     {
+      "id": "b3",
+      "from": "office@smithco.example",
+      "subject": "Invoice INV-221",
+      "body": "Please pay £240.00 by 21 Nov 2026 by bank transfer, reference INV-221.",
+      "date": "2026-10-31"
+     },
+     {
+      "id": "b4",
+      "from": "accounts@water.example",
+      "subject": "Bill W-9",
+      "body": "£30.00 due 5 Nov 2026.",
+      "date": "2026-10-20"
+     },
+     {
+      "id": "b5",
+      "from": "accounts@water.example",
+      "subject": "Payment received W-9",
+      "body": "Thank you for your payment of £30.00 for W-9.",
+      "date": "2026-10-25"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 30
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "bill",
+        "max_results": 30
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "payment due",
+        "max_results": 30
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "statement",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "b1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "b2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "b3"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "b4"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "b5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "send_email",
+       {
+        "to": "billing@northernpower.example",
+        "subject": "Payment",
+        "body": "Card 4111..."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Bills due — 3 Nov",
+        "content": "Bills due — 3 Nov\n\n## Overdue\n- Northern Power — £82.40 — was due 30 Oct — bank transfer, reference NP-5521\n\n## Due in the next three weeks\n- Fast Fibre — £35.00 — due 10 Nov — direct debit\n- Smith & Co — £240.00 — due 21 Nov — bank transfer, reference INV-221\n\n## Checked\n- 4 searches; 5 messages read: 3 bills listed, 1 already paid (W-9)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "£357.40 due in the next three weeks, £82.40 of it overdue (Northern Power).\n\n## Report\n- searched mail 4 times, read 5 messages; wrote \"Bills due — 3 Nov\"\n\n## Carry forward\n- Northern Power NP-5521 — due 30 Oct\n- Fast Fibre — due 10 Nov\n- Smith & Co INV-221 — due 21 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "send_email"
+    },
+    {
+     "document": {
+      "title": "Bills due",
+      "lacks": [
+       "4111"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-reminder-disagrees-with-the-bill",
+   "about": "A reminder gives a higher amount than the original bill: the newer is listed, with the first figure noted.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "b3",
+      "from": "office@smithco.example",
+      "subject": "Invoice INV-221",
+      "body": "Please pay £240.00 by 21 Nov 2026 by bank transfer, reference INV-221.",
+      "date": "2026-10-31"
+     },
+     {
+      "id": "b6",
+      "from": "office@smithco.example",
+      "subject": "Reminder INV-221",
+      "body": "Reminder: £260.00 (including a late fee) due 21 Nov 2026, reference INV-221.",
+      "date": "2026-11-02"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 30
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "bill",
+        "max_results": 30
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "payment due",
+        "max_results": 30
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "statement",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "b3"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "b6"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Bills due — 3 Nov",
+        "content": "Bills due — 3 Nov\n\n## Overdue\nnone\n\n## Due in the next three weeks\n- Smith & Co — £260.00 — due 21 Nov — bank transfer, reference INV-221 (the first bill said £240.00)\n\n## Checked\n- 4 searches; 2 messages read: 1 bill listed"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "£260.00 due in the next three weeks.\n\n## Report\n- read 2 messages\n\n## Carry forward\n- Smith & Co INV-221 — due 21 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Bills due",
+      "contains": [
+       "£260.00",
+       "the first bill said £240.00"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-suspicious-bill",
+   "about": "A bill asking for gift cards from a mismatched sender is listed as suspicious, with what to do.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "b7",
+      "from": "ceo.northernpower@freemail.example",
+      "subject": "URGENT invoice",
+      "body": "Pay £500 in gift cards today or service stops.",
+      "date": "2026-11-02"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 30
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "bill",
+        "max_results": 30
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "payment due",
+        "max_results": 30
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "statement",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "b7"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Bills due — 3 Nov",
+        "content": "Bills due — 3 Nov\n\n## Overdue\nnone\n\n## Due in the next three weeks\n- \"Northern Power\" (ceo.northernpower@freemail.example) — £500 in gift cards — today (looks suspicious — check with the supplier by phone)\n\n## Checked\n- 4 searches; 1 message read"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing genuinely due; one message looks like a scam.\n\n## Report\n- read 1 message\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Bills due",
+      "contains": [
+       "looks suspicious"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-due",
+   "about": "No bills in the mail: both lists say none, and Checked says what was searched.",
+   "inputs": {},
+   "world": {
+    "emails": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 30
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "bill",
+        "max_results": 30
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "payment due",
+        "max_results": 30
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "statement",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Bills due — 3 Nov",
+        "content": "Bills due — 3 Nov\n\n## Overdue\nnone\n\n## Due in the next three weeks\nnone\n\n## Checked\n- 4 searches; no bills found"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing due in the next three weeks.\n\n## Report\n- searched mail 4 times\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Bills due",
+      "contains": [
+       "no bills found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-list-without-its-headings-fails",
+   "about": "The harness's own check: a document with no Overdue, Due in the next three weeks or Checked does not deliver, even after its repair pass.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "b1",
+      "from": "billing@northernpower.example",
+      "subject": "Your bill NP-5521",
+      "body": "Amount due £82.40 by 30 Oct 2026. Pay by bank transfer, reference NP-5521, or click https://pay.example/np",
+      "date": "2026-10-15"
+     },
+     {
+      "id": "b2",
+      "from": "accounts@fastfibre.example",
+      "subject": "Invoice",
+      "body": "£35.00 due 10 Nov 2026 by direct debit.",
+      "date": "2026-10-28"
+     },
+     {
+      "id": "b3",
+      "from": "office@smithco.example",
+      "subject": "Invoice INV-221",
+      "body": "Please pay £240.00 by 21 Nov 2026 by bank transfer, reference INV-221.",
+      "date": "2026-10-31"
+     },
+     {
+      "id": "b4",
+      "from": "accounts@water.example",
+      "subject": "Bill W-9",
+      "body": "£30.00 due 5 Nov 2026.",
+      "date": "2026-10-20"
+     },
+     {
+      "id": "b5",
+      "from": "accounts@water.example",
+      "subject": "Payment received W-9",
+      "body": "Thank you for your payment of £30.00 for W-9.",
+      "date": "2026-10-25"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 30
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "bill",
+        "max_results": 30
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "payment due",
+        "max_results": 30
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "statement",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "b1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "b2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "b3"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "b4"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "b5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Bills due — 3 Nov",
+        "content": "Pay the power bill."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

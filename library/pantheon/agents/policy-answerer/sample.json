@@ -1,0 +1,18 @@
+{
+ "case": "carry-over-answered-from-two-sections",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Staff handbook\" and answered from 4.2 and 4.3",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Answer, From the handbook."
+  }
+ ],
+ "answer": "**Answer**\nYou can carry over up to 5 days of unused holiday into next year; agree it with HR by 31 December.\n\n**From the handbook**\n- 4.2: \"Up to five days of unused annual leave may be carried over into the next leave year.\"\n- 4.3: \"Carry-over must be agreed with HR by 31 December.\"\n\n## Report\n- read \"Staff handbook\" and answered from 4.2 and 4.3"
+}

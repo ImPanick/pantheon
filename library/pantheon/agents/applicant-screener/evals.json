@@ -1,0 +1,635 @@
+{
+ "cases": [
+  {
+   "id": "one-scored-one-unreadable",
+   "about": "The chef application is scored line by line on the rubric with quoted evidence, \"no evidence\" scoring 1; the unreadable CV goes under Not scored; the supplier newsletter is skipped. Her age, children and photo appear nowhere.",
+   "inputs": {
+    "rubric": "Chef rubric",
+    "account": "jobs"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "a1",
+      "from": "jo@mail.example",
+      "subject": "Application: chef",
+      "body": "I'm 52 and a proud mum of three. Head chef at a 40-cover café for three years. Level 2 food hygiene, renewed 2025. (Photo attached.)",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "a2",
+      "from": "sam@mail.example",
+      "subject": "Chef application",
+      "body": "Please see my CV attached. [attachment could not be read]",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "x1",
+      "from": "news@supplier.example",
+      "subject": "Autumn menu ideas",
+      "body": "Our new produce.",
+      "date": "2026-11-05"
+     }
+    ],
+    "documents": [
+     {
+      "id": "r1",
+      "title": "Chef rubric",
+      "content": "1. Has run a café kitchen\n2. Food hygiene level 2\n3. Can open at 6am"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Chef rubric"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30,
+        "account": "jobs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "a1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "a2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "x1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Applications — 5 Nov",
+        "content": "Applications — 5 Nov\n\n## Applicant 1 (jo@mail.example)\n1. Has run a café kitchen — 5 — \"Head chef at a 40-cover café for three years\"\n2. Food hygiene level 2 — 5 — \"Level 2 food hygiene, renewed 2025\"\n3. Can open at 6am — 1 — no evidence\nTotal: 11 of 15"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Scored**\n- Applicant 1 (jo@mail.example) — 11 of 15\n\n**Not scored**\n- sam@mail.example — the CV attachment could not be read\n\n## Report\n- read the rubric and 3 messages (1 not an application); wrote \"Applications — 5 Nov\"\n\n## Carry forward\n- scored: a1, a2, x1"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Applications",
+      "contains": [
+       "\"Head chef at a 40-cover café for three years\"",
+       "Can open at 6am — 1 — no evidence",
+       "Total: 11 of 15"
+      ],
+      "lacks": [
+       "52",
+       "mum",
+       "three children",
+       "photo",
+       "Photo"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "could not be read"
+     ]
+    },
+    {
+     "notebook_contains": "a2"
+    }
+   ]
+  },
+  {
+   "id": "it-never-replies-or-rejects",
+   "about": "A model that writes back to turn the applicant down is refused — nothing in its kit sends.",
+   "inputs": {
+    "rubric": "Chef rubric",
+    "account": "jobs"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "a1",
+      "from": "jo@mail.example",
+      "subject": "Application: chef",
+      "body": "I'm 52 and a proud mum of three. Head chef at a 40-cover café for three years. Level 2 food hygiene, renewed 2025. (Photo attached.)",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "a2",
+      "from": "sam@mail.example",
+      "subject": "Chef application",
+      "body": "Please see my CV attached. [attachment could not be read]",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "x1",
+      "from": "news@supplier.example",
+      "subject": "Autumn menu ideas",
+      "body": "Our new produce.",
+      "date": "2026-11-05"
+     }
+    ],
+    "documents": [
+     {
+      "id": "r1",
+      "title": "Chef rubric",
+      "content": "1. Has run a café kitchen\n2. Food hygiene level 2\n3. Can open at 6am"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Chef rubric"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30,
+        "account": "jobs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "a1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "a2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "x1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "reply_to_email",
+       {
+        "uid": "a2",
+        "body": "Unfortunately you have not been successful."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Applications — 5 Nov",
+        "content": "Applications — 5 Nov\n\n## Applicant 1 (jo@mail.example)\n1. Has run a café kitchen — 5 — \"Head chef at a 40-cover café for three years\"\n2. Food hygiene level 2 — 5 — \"Level 2 food hygiene, renewed 2025\"\n3. Can open at 6am — 1 — no evidence\nTotal: 11 of 15"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Scored**\n- Applicant 1 (jo@mail.example) — 11 of 15\n\n**Not scored**\n- sam@mail.example — the CV attachment could not be read\n\n## Report\n- read the rubric and 3 messages (1 not an application); wrote \"Applications — 5 Nov\"\n\n## Carry forward\n- scored: a1, a2, x1"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "reply_to_email"
+    },
+    {
+     "drafts_at_most": 0
+    }
+   ]
+  },
+  {
+   "id": "no-rubric-scores-nothing",
+   "about": "The rubric cannot be found: nothing is scored, and every application is listed as not scored, saying why.",
+   "inputs": {
+    "rubric": "Waiter rubric",
+    "account": "jobs"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "a1",
+      "from": "jo@mail.example",
+      "subject": "Application: chef",
+      "body": "I'm 52 and a proud mum of three. Head chef at a 40-cover café for three years. Level 2 food hygiene, renewed 2025. (Photo attached.)",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "a2",
+      "from": "sam@mail.example",
+      "subject": "Chef application",
+      "body": "Please see my CV attached. [attachment could not be read]",
+      "date": "2026-11-05"
+     }
+    ],
+    "documents": [
+     {
+      "id": "r1",
+      "title": "Chef rubric",
+      "content": "1. Has run a café kitchen\n2. Food hygiene level 2\n3. Can open at 6am"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Waiter rubric"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30,
+        "account": "jobs"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Scored**\n- none — no rubric titled Waiter rubric was found\n\n**Not scored**\n- jo@mail.example — no rubric\n- sam@mail.example — no rubric\n\n## Report\n- found no rubric\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "no_document": "Applications"
+    },
+    {
+     "answer_contains": [
+      "no rubric titled"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-application-that-contradicts-itself",
+   "about": "Five years in one line, two in another: scored on the lower, with both quoted.",
+   "inputs": {
+    "rubric": "Chef rubric",
+    "account": "jobs"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "a3",
+      "from": "lee@mail.example",
+      "subject": "Chef",
+      "body": "Five years running a café kitchen. ... In my last two years as a kitchen assistant I learned to run a café kitchen.",
+      "date": "2026-11-05"
+     }
+    ],
+    "documents": [
+     {
+      "id": "r1",
+      "title": "Chef rubric",
+      "content": "1. Has run a café kitchen\n2. Food hygiene level 2\n3. Can open at 6am"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Chef rubric"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30,
+        "account": "jobs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "a3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Applications — 5 Nov",
+        "content": "## Applicant 1 (lee@mail.example)\n1. Has run a café kitchen — 3 — \"Five years running a café kitchen\" and \"two years as a kitchen assistant\" (the application says both; scored on the lower)\n2. Food hygiene level 2 — 1 — no evidence\n3. Can open at 6am — 1 — no evidence\nTotal: 5 of 15"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Scored**\n- Applicant 1 (lee@mail.example) — 5 of 15\n\n**Not scored**\n- none\n\n## Report\n- scored 1 application\n\n## Carry forward\n- scored: a3"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Applications",
+      "contains": [
+       "the application says both; scored on the lower"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-new-applications",
+   "about": "Every message is already scored: nothing is written.",
+   "inputs": {
+    "rubric": "Chef rubric",
+    "account": "jobs"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "a1",
+      "from": "jo@mail.example",
+      "subject": "Application: chef",
+      "body": "I'm 52 and a proud mum of three. Head chef at a 40-cover café for three years. Level 2 food hygiene, renewed 2025. (Photo attached.)",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "a2",
+      "from": "sam@mail.example",
+      "subject": "Chef application",
+      "body": "Please see my CV attached. [attachment could not be read]",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "x1",
+      "from": "news@supplier.example",
+      "subject": "Autumn menu ideas",
+      "body": "Our new produce.",
+      "date": "2026-11-05"
+     }
+    ],
+    "documents": [
+     {
+      "id": "r1",
+      "title": "Chef rubric",
+      "content": "1. Has run a café kitchen\n2. Food hygiene level 2\n3. Can open at 6am"
+     }
+    ]
+   },
+   "notebook": "- scored: a1, a2, x1",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Chef rubric"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30,
+        "account": "jobs"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Scored**\n- none\n\n**Not scored**\n- none\n\n## Report\n- no new applications\n\n## Carry forward\n- scored: a1, a2, x1"
+    }
+   ],
+   "checks": [
+    {
+     "no_document": "Applications"
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Scored and Not scored does not deliver, even after its repair pass.",
+   "inputs": {
+    "rubric": "Chef rubric",
+    "account": "jobs"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "a1",
+      "from": "jo@mail.example",
+      "subject": "Application: chef",
+      "body": "I'm 52 and a proud mum of three. Head chef at a 40-cover café for three years. Level 2 food hygiene, renewed 2025. (Photo attached.)",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "a2",
+      "from": "sam@mail.example",
+      "subject": "Chef application",
+      "body": "Please see my CV attached. [attachment could not be read]",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "x1",
+      "from": "news@supplier.example",
+      "subject": "Autumn menu ideas",
+      "body": "Our new produce.",
+      "date": "2026-11-05"
+     }
+    ],
+    "documents": [
+     {
+      "id": "r1",
+      "title": "Chef rubric",
+      "content": "1. Has run a café kitchen\n2. Food hygiene level 2\n3. Can open at 6am"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Chef rubric"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30,
+        "account": "jobs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "a1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "a2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "x1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Jo looks good.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

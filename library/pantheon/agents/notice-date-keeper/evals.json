@@ -1,0 +1,521 @@
+{
+ "cases": [
+  {
+   "id": "one-contract-dated-one-without-a-clause",
+   "about": "The broadband contract renews on 1 March with 30 days' notice: the last day and a reminder two weeks earlier go on the calendar, naming the clause and how to give notice; the window-cleaning terms have no notice clause and are said so.",
+   "inputs": {
+    "documents": [
+     "Fast Fibre contract",
+     "Window cleaning terms"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "f1",
+      "title": "Fast Fibre contract",
+      "content": "8. This contract renews on 1 March 2027 for 12 months. 9. Notice: 30 days, in writing to cancel@fastfibre.example."
+     },
+     {
+      "id": "w1",
+      "title": "Window cleaning terms",
+      "content": "Payment within 14 days."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Fast Fibre contract"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Window cleaning terms"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "f1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "w1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Last day to give notice: Fast Fibre contract (clause 9)",
+        "dtstart": "2027-01-30T09:00:00",
+        "dtend": "2027-01-30T09:30:00",
+        "description": "In writing to cancel@fastfibre.example"
+       }
+      ],
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Two weeks to give notice: Fast Fibre contract",
+        "dtstart": "2027-01-16T09:00:00",
+        "dtend": "2027-01-16T09:30:00",
+        "description": "In writing to cancel@fastfibre.example"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Dates added**\n- Fast Fibre contract — last day to give notice Sat 30 Jan 2027 (clause 9: renews 1 Mar 2027, 30 days' notice) — in writing to cancel@fastfibre.example; reminder on 16 Jan\n\n**Could not work out**\n- Window cleaning terms — no notice clause found\n\n## Report\n- read 2 contracts, added 2 calendar events\n\n## Carry forward\n- Fast Fibre contract — notice by 30 Jan 2027"
+    }
+   ],
+   "checks": [
+    {
+     "called": "manage_calendar"
+    },
+    {
+     "answer_contains": [
+      "30 Jan 2027",
+      "cancel@fastfibre.example",
+      "no notice clause found"
+     ]
+    },
+    {
+     "notebook_contains": "notice by 30 Jan 2027"
+    }
+   ]
+  },
+  {
+   "id": "already-on-the-calendar",
+   "about": "The notebook already has the broadband contract with that date: nothing is added again.",
+   "inputs": {
+    "documents": [
+     "Fast Fibre contract"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "f1",
+      "title": "Fast Fibre contract",
+      "content": "8. This contract renews on 1 March 2027 for 12 months. 9. Notice: 30 days, in writing to cancel@fastfibre.example."
+     }
+    ]
+   },
+   "notebook": "- Fast Fibre contract — notice by 30 Jan 2027",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Fast Fibre contract"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "f1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Dates added**\n- none — Fast Fibre contract is already on your calendar (notice by 30 Jan 2027)\n\n**Could not work out**\n- none\n\n## Report\n- read 1 contract; nothing new\n\n## Carry forward\n- Fast Fibre contract — notice by 30 Jan 2027"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "manage_calendar"
+    }
+   ]
+  },
+  {
+   "id": "two-notice-clauses-disagree",
+   "about": "One clause says 30 days and another 90: the longer is used, giving the earlier date, and the answer says so.",
+   "inputs": {
+    "documents": [
+     "CleanCo agreement"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c1",
+      "title": "CleanCo agreement",
+      "content": "7. Either party may give 30 days' notice. 9. Renews 1 April 2027 unless cancelled 90 days before, in writing to legal@cleanco.example."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "CleanCo agreement"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Last day to give notice: CleanCo agreement (clause 9)",
+        "dtstart": "2027-01-01T09:00:00",
+        "dtend": "2027-01-01T09:30:00",
+        "description": "In writing to legal@cleanco.example"
+       }
+      ],
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Two weeks to give notice: CleanCo agreement",
+        "dtstart": "2026-12-18T09:00:00",
+        "dtend": "2026-12-18T09:30:00",
+        "description": "In writing to legal@cleanco.example"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Dates added**\n- CleanCo agreement — last day to give notice Fri 1 Jan 2027 (clause 7 says 30 days, clause 9 says 90 — the earlier date is used) — in writing to legal@cleanco.example\n\n**Could not work out**\n- none\n\n## Report\n- read 1 contract\n\n## Carry forward\n- CleanCo agreement — notice by 1 Jan 2027"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "the earlier date is used"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-date-already-passed",
+   "about": "The notice deadline has already gone by: nothing is added to the calendar, and the answer says when it renews.",
+   "inputs": {
+    "documents": [
+     "Old lease"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "o1",
+      "title": "Old lease",
+      "content": "3. Renews 1 November 2026 unless cancelled 60 days before, in writing."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Old lease"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "o1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Dates added**\n- none\n\n**Could not work out**\n- Old lease — the last day to give notice (2 Sep 2026) has already passed — it renews on 1 Nov 2026 unless the other side agrees otherwise\n\n## Report\n- read 1 contract\n\n## Carry forward\n- Old lease — notice date passed (2 Sep 2026)"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "manage_calendar"
+    },
+    {
+     "answer_contains": [
+      "already passed"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "no-contract-by-that-title",
+   "about": "A title that matches nothing goes under Could not work out; nothing is added.",
+   "inputs": {
+    "documents": [
+     "Gym membership"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "f1",
+      "title": "Fast Fibre contract",
+      "content": "8. This contract renews on 1 March 2027 for 12 months. 9. Notice: 30 days, in writing to cancel@fastfibre.example."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Gym membership"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Dates added**\n- none\n\n**Could not work out**\n- Gym membership — not found\n\n## Report\n- found no contract\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "manage_calendar"
+    },
+    {
+     "answer_contains": [
+      "Gym membership — not found"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-moves-another-event",
+   "about": "Its table says destructive: never. A model that deletes an old reminder to replace it is refused; the new dates still go on.",
+   "inputs": {
+    "documents": [
+     "Fast Fibre contract",
+     "Window cleaning terms"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "f1",
+      "title": "Fast Fibre contract",
+      "content": "8. This contract renews on 1 March 2027 for 12 months. 9. Notice: 30 days, in writing to cancel@fastfibre.example."
+     },
+     {
+      "id": "w1",
+      "title": "Window cleaning terms",
+      "content": "Payment within 14 days."
+     }
+    ],
+    "calendar": [
+     {
+      "summary": "Old reminder: Fast Fibre",
+      "start": "2026-12-01T09:00:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Fast Fibre contract"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Window cleaning terms"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "f1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "w1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "delete_event",
+        "uid": "old"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Last day to give notice: Fast Fibre contract (clause 9)",
+        "dtstart": "2027-01-30T09:00:00",
+        "dtend": "2027-01-30T09:30:00",
+        "description": "In writing to cancel@fastfibre.example"
+       }
+      ],
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Two weeks to give notice: Fast Fibre contract",
+        "dtstart": "2027-01-16T09:00:00",
+        "dtend": "2027-01-16T09:30:00",
+        "description": "In writing to cancel@fastfibre.example"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Dates added**\n- Fast Fibre contract — last day to give notice Sat 30 Jan 2027 (clause 9: renews 1 Mar 2027, 30 days' notice) — in writing to cancel@fastfibre.example; reminder on 16 Jan\n\n**Could not work out**\n- Window cleaning terms — no notice clause found\n\n## Report\n- read 2 contracts, added 2 calendar events\n\n## Carry forward\n- Fast Fibre contract — notice by 30 Jan 2027"
+    }
+   ],
+   "checks": [
+    {
+     "status": "success"
+    },
+    {
+     "called": "manage_calendar"
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Dates added and Could not work out does not deliver, even after its repair pass.",
+   "inputs": {
+    "documents": [
+     "Fast Fibre contract",
+     "Window cleaning terms"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "f1",
+      "title": "Fast Fibre contract",
+      "content": "8. This contract renews on 1 March 2027 for 12 months. 9. Notice: 30 days, in writing to cancel@fastfibre.example."
+     },
+     {
+      "id": "w1",
+      "title": "Window cleaning terms",
+      "content": "Payment within 14 days."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Fast Fibre contract"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Window cleaning terms"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "f1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "w1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Added the date.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

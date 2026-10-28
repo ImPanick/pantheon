@@ -1,0 +1,18 @@
+{
+ "case": "two-slipping-one-coming-up",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- listed 4 notes, opened 3",
+ "read": [
+  "manage_notes"
+ ],
+ "wrote": [],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Slipping, Coming up, On track."
+  }
+ ],
+ "answer": "**Slipping**\n- Ben: book the venue — due Thu 6 Nov — nothing new since Monday — Ben — \"Hi Ben, is the venue booking still on track for Thursday?\"\n- Send the Q3 report — due Sun 2 Nov (overdue) — you — \"Finish and send the Q3 report today.\"\n\n**Coming up**\n- Chloe: print the flyers — due Mon 10 Nov — moving: proof approved — Chloe\n\n**On track**\n- 1 note with a later date\n\n## Report\n- listed 4 notes, opened 3\n\n## Carry forward\n- Ben: book the venue — due 6 Nov — no progress\n- Send the Q3 report — due 2 Nov — overdue\n- Chloe: print the flyers — due 10 Nov — proof approved"
+}

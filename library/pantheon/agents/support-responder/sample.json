@@ -1,0 +1,28 @@
+{
+ "case": "an-answer-from-the-docs-and-one-not-covered",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 2 help documents and 3 messages; drafted 2 replies",
+ "read": [
+  "manage_documents",
+  "list_emails",
+  "read_email",
+  "search_emails"
+ ],
+ "wrote": [
+  "draft_email_reply"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "at most 15 drafts",
+   "ok": true,
+   "detail": "It made 2 drafts."
+  },
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Drafted, Not covered by the docs."
+  }
+ ],
+ "answer": "**Drafted**\n- kim@users.example — Can't reset password — from Help: passwords\n- lee@users.example — Invoice in euros? — looking into it\n\n**Not covered by the docs**\n- Invoices in euros\n\n## Report\n- read 2 help documents and 3 messages; drafted 2 replies\n\n## Carry forward\n- handled: m1, m2, m3"
+}

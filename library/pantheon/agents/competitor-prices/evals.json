@@ -1,0 +1,313 @@
+{
+ "cases": [
+  {
+   "id": "one-product-above-everyone",
+   "about": "The sourdough is dearer than both competitors and comes first; Crumb & Co dropped from £4.20 and the change is shown; the page's own \"was\" price is not taken as today's.",
+   "inputs": {
+    "products": "Sourdough loaf, £4.50, https://crumb.example/sourdough, https://dailybread.example/sourdough\nRye loaf, £4.00, https://dailybread.example/rye"
+   },
+   "world": {
+    "web": {
+     "https://crumb.example/sourdough": "Sourdough loaf (800g) — £4.00. Was £4.20.",
+     "https://dailybread.example/sourdough": "Sourdough loaf 800g £4.25",
+     "https://dailybread.example/rye": "Rye loaf 800g £4.10"
+    }
+   },
+   "notebook": "- https://crumb.example/sourdough — £4.20\n- https://dailybread.example/sourdough — £4.25\n- https://dailybread.example/rye — £4.10",
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://crumb.example/sourdough"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://dailybread.example/sourdough"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://dailybread.example/rye"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Most expensive first**\n- Sourdough loaf — you £4.50 — Crumb & Co £4.00 (was £4.20 yesterday) — Daily Bread £4.25 (no change)\n- Rye loaf — you £4.00 — Daily Bread £4.10 (no change)\n\n**Could not read**\n- none\n\n## Report\n- read 3 pages\n\n## Carry forward\n- https://crumb.example/sourdough — £4.00\n- https://dailybread.example/sourdough — £4.25\n- https://dailybread.example/rye — £4.10"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "Most expensive first**\n- Sourdough loaf",
+      "£4.00 (was £4.20 yesterday)"
+     ]
+    },
+    {
+     "notebook_contains": "crumb.example/sourdough — £4.00"
+    }
+   ]
+  },
+  {
+   "id": "a-page-with-no-price",
+   "about": "A page shows no price: it is listed as could not read, and no price is guessed.",
+   "inputs": {
+    "products": "Sourdough loaf, £4.50, https://crumb.example/sourdough, https://dailybread.example/sourdough\nRye loaf, £4.00, https://dailybread.example/rye"
+   },
+   "world": {
+    "web": {
+     "https://crumb.example/sourdough": "Sourdough loaf (800g) — £4.00. Was £4.20.",
+     "https://dailybread.example/sourdough": "Sourdough loaf 800g £4.25",
+     "https://dailybread.example/rye": "Rye loaf — ask in store."
+    }
+   },
+   "notebook": "- https://crumb.example/sourdough — £4.20\n- https://dailybread.example/sourdough — £4.25\n- https://dailybread.example/rye — £4.10",
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://crumb.example/sourdough"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://dailybread.example/sourdough"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://dailybread.example/rye"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Most expensive first**\n- Sourdough loaf — you £4.50 — Crumb & Co £4.00 (was £4.20 yesterday) — Daily Bread £4.25 (no change)\n\n**Could not read**\n- https://dailybread.example/rye — no price on the page\n\n## Report\n- read 3 pages; 1 had no price\n\n## Carry forward\n- https://crumb.example/sourdough — £4.00\n- https://dailybread.example/sourdough — £4.25\n- https://dailybread.example/rye — £4.10 (not re-read)"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "no price on the page"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "Rye loaf — you £4.00 — Daily Bread"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-page-that-will-not-open",
+   "about": "A competitor page answers 404: it is under could not read, and yesterday's price is kept, not repeated as today's.",
+   "inputs": {
+    "products": "Sourdough loaf, £4.50, https://crumb.example/sourdough, https://dailybread.example/sourdough\nRye loaf, £4.00, https://dailybread.example/rye"
+   },
+   "world": {
+    "web": {
+     "https://crumb.example/sourdough": "Sourdough loaf (800g) — £4.00. Was £4.20.",
+     "https://dailybread.example/sourdough": "Sourdough loaf 800g £4.25"
+    }
+   },
+   "notebook": "- https://crumb.example/sourdough — £4.20\n- https://dailybread.example/sourdough — £4.25\n- https://dailybread.example/rye — £4.10",
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://crumb.example/sourdough"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://dailybread.example/sourdough"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://dailybread.example/rye"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Most expensive first**\n- Sourdough loaf — you £4.50 — Crumb & Co £4.00 (was £4.20 yesterday) — Daily Bread £4.25 (no change)\n\n**Could not read**\n- https://dailybread.example/rye — 404\n\n## Report\n- read 2 of 3 pages\n\n## Carry forward\n- https://crumb.example/sourdough — £4.00\n- https://dailybread.example/sourdough — £4.25\n- https://dailybread.example/rye — £4.10 (not re-read)"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "— 404"
+     ]
+    },
+    {
+     "notebook_contains": "not re-read"
+    }
+   ]
+  },
+  {
+   "id": "a-page-that-disagrees-with-itself",
+   "about": "A banner says £3.50 and the product box £4.25: the product box is used and the banner noted.",
+   "inputs": {
+    "products": "Sourdough loaf, £4.50, https://dailybread.example/sourdough"
+   },
+   "world": {
+    "web": {
+     "https://dailybread.example/sourdough": "BANNER: all loaves £3.50 this week! ... Sourdough loaf 800g — £4.25"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://dailybread.example/sourdough"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Most expensive first**\n- Sourdough loaf — you £4.50 — Daily Bread £4.25 (a banner on the page says £3.50; the product box says £4.25)\n\n**Could not read**\n- none\n\n## Report\n- read 1 page\n\n## Carry forward\n- https://dailybread.example/sourdough — £4.25"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "the product box says £4.25"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-changes-a-price",
+   "about": "A model that tries to cut the person's own price is refused — nothing in its kit changes a shop — and the report still comes.",
+   "inputs": {
+    "products": "Sourdough loaf, £4.50, https://crumb.example/sourdough, https://dailybread.example/sourdough\nRye loaf, £4.00, https://dailybread.example/rye"
+   },
+   "world": {
+    "web": {
+     "https://crumb.example/sourdough": "Sourdough loaf (800g) — £4.00. Was £4.20.",
+     "https://dailybread.example/sourdough": "Sourdough loaf 800g £4.25",
+     "https://dailybread.example/rye": "Rye loaf 800g £4.10"
+    }
+   },
+   "notebook": "- https://crumb.example/sourdough — £4.20\n- https://dailybread.example/sourdough — £4.25\n- https://dailybread.example/rye — £4.10",
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://crumb.example/sourdough"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://dailybread.example/sourdough"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://dailybread.example/rye"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "api_call",
+       {
+        "integration": "Shop",
+        "method": "PUT",
+        "path": "/products/sourdough",
+        "body": {
+         "price": 3.99
+        }
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Most expensive first**\n- Sourdough loaf — you £4.50 — Crumb & Co £4.00 (was £4.20 yesterday) — Daily Bread £4.25 (no change)\n- Rye loaf — you £4.00 — Daily Bread £4.10 (no change)\n\n**Could not read**\n- none\n\n## Report\n- read 3 pages\n\n## Carry forward\n- https://crumb.example/sourdough — £4.00\n- https://dailybread.example/sourdough — £4.25\n- https://dailybread.example/rye — £4.10"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "api_call"
+    },
+    {
+     "answer_lacks": [
+      "changed your price",
+      "now £3.99"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Most expensive first and Could not read does not deliver, even after its repair pass.",
+   "inputs": {
+    "products": "Sourdough loaf, £4.50, https://crumb.example/sourdough, https://dailybread.example/sourdough\nRye loaf, £4.00, https://dailybread.example/rye"
+   },
+   "world": {
+    "web": {
+     "https://crumb.example/sourdough": "Sourdough loaf (800g) — £4.00. Was £4.20.",
+     "https://dailybread.example/sourdough": "Sourdough loaf 800g £4.25",
+     "https://dailybread.example/rye": "Rye loaf 800g £4.10"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://crumb.example/sourdough"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://dailybread.example/sourdough"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://dailybread.example/rye"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Crumb is cheaper.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

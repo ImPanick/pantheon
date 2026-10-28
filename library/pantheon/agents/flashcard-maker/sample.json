@@ -1,0 +1,21 @@
+{
+ "case": "a-chapter-becomes-cards-and-four-reviews",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the chapter, wrote its flashcards, added 4 review sessions",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document",
+  "manage_calendar"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Flashcards”",
+   "ok": true,
+   "detail": "“Flashcards — Chapter 3: the water cycle” is there."
+  }
+ ],
+ "answer": "4 cards; reviews on 29 Oct, 31 Oct, 4 Nov and 18 Nov at 18:00.\n\n## Report\n- read the chapter, wrote its flashcards, added 4 review sessions\n\n## Carry forward\n- Chapter 3: the water cycle — reviews 29 Oct, 31 Oct, 4 Nov, 18 Nov"
+}

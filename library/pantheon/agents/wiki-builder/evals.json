@@ -1,0 +1,534 @@
+{
+ "cases": [
+  {
+   "id": "five-documents-two-topics-one-merge",
+   "about": "Five documents placed in two topics with a linked line each, the one with no partner under Unsorted, the two boiler documents suggested as a merge with what they disagree on — and last week's index is not listed in this one.",
+   "inputs": {},
+   "world": {
+    "documents": [
+     {
+      "id": "a1",
+      "title": "Garden plan",
+      "content": "Next spring: tomatoes in bed 1, beans in bed 2."
+     },
+     {
+      "id": "a2",
+      "title": "Seed list",
+      "content": "Seeds to order for the garden: tomato (Suttons), bean (Kings)."
+     },
+     {
+      "id": "b1",
+      "title": "Boiler notes",
+      "content": "Boiler: Vaillant ecoTEC. Last service: May 2026."
+     },
+     {
+      "id": "b2",
+      "title": "Boiler service history",
+      "content": "Services: 2021, 2022, 2023, 2024, 2025, June 2026."
+     },
+     {
+      "id": "c1",
+      "title": "Tax 2025",
+      "content": "Receipts to claim this year."
+     },
+     {
+      "id": "w0",
+      "title": "Wiki index — 25 Oct",
+      "content": "## Garden\n- old"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "a1",
+        "limit": 1500
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "a2",
+        "limit": 1500
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "b1",
+        "limit": 1500
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "b2",
+        "limit": 1500
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1",
+        "limit": 1500
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Wiki index — 1 Nov",
+        "content": "Wiki index — 1 Nov\n\n## Garden\n- [Garden plan](#document-a1) — what goes in each bed next spring.\n- [Seed list](#document-a2) — seeds to order, with suppliers.\n\n## House\n- [Boiler notes](#document-b1) — the boiler's model and its last service.\n- [Boiler service history](#document-b2) — every service since 2021.\n\n## Unsorted\n- [Tax 2025](#document-c1) — receipts to claim this year.\n\n## Suggested merges\n- Boiler notes + Boiler service history — both record the boiler's services (they disagree on the last service date: May vs June)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "5 documents in 2 topics, 1 unsorted; 1 merge suggested; none gone.\n\n## Report\n- listed 6 documents, read 5 new ones; wrote \"Wiki index — 1 Nov\"\n\n## Carry forward\n- last run: 1 Nov\n- Garden plan → Garden\n- Seed list → Garden\n- Boiler notes → House\n- Boiler service history → House\n- Tax 2025 → Unsorted"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Wiki index — 1 Nov",
+      "contains": [
+       "[Garden plan](#document-a1)",
+       "## House",
+       "Tax 2025",
+       "they disagree on the last service date"
+      ],
+      "lacks": [
+       "25 Oct"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "Seed list → Garden"
+    }
+   ]
+  },
+  {
+   "id": "last-weeks-placements-are-kept",
+   "about": "The notebook already places four documents; only the new one is read, and the index still lists all five under their topics.",
+   "inputs": {},
+   "world": {
+    "documents": [
+     {
+      "id": "a1",
+      "title": "Garden plan",
+      "content": "Next spring: tomatoes in bed 1, beans in bed 2."
+     },
+     {
+      "id": "a2",
+      "title": "Seed list",
+      "content": "Seeds to order for the garden: tomato (Suttons), bean (Kings)."
+     },
+     {
+      "id": "b1",
+      "title": "Boiler notes",
+      "content": "Boiler: Vaillant ecoTEC. Last service: May 2026."
+     },
+     {
+      "id": "b2",
+      "title": "Boiler service history",
+      "content": "Services: 2021, 2022, 2023, 2024, 2025, June 2026."
+     },
+     {
+      "id": "c1",
+      "title": "Tax 2025",
+      "content": "Receipts to claim this year."
+     }
+    ]
+   },
+   "notebook": "- last run: 25 Oct\n- Garden plan → Garden\n- Seed list → Garden\n- Boiler notes → House\n- Boiler service history → House",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1",
+        "limit": 1500
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Wiki index — 1 Nov",
+        "content": "Wiki index — 1 Nov\n\n## Garden\n- [Garden plan](#document-a1) — what goes in each bed next spring.\n- [Seed list](#document-a2) — seeds to order, with suppliers.\n\n## House\n- [Boiler notes](#document-b1) — the boiler's model and its last service.\n- [Boiler service history](#document-b2) — every service since 2021.\n\n## Unsorted\n- [Tax 2025](#document-c1) — receipts to claim this year.\n\n## Suggested merges\n- Boiler notes + Boiler service history — both record the boiler's services"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "5 documents in 2 topics, 1 unsorted; 1 merge suggested; none gone.\n\n## Report\n- listed 5 documents, read 1 new one\n\n## Carry forward\n- last run: 1 Nov\n- Garden plan → Garden\n- Seed list → Garden\n- Boiler notes → House\n- Boiler service history → House\n- Tax 2025 → Unsorted"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Wiki index",
+      "contains": [
+       "Seed list",
+       "Boiler notes",
+       "Tax 2025"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-document-gone-since-last-week",
+   "about": "The notebook lists a document the listing no longer shows: it is left out of the index and named in the answer.",
+   "inputs": {},
+   "world": {
+    "documents": [
+     {
+      "id": "a1",
+      "title": "Garden plan",
+      "content": "Next spring: tomatoes in bed 1, beans in bed 2."
+     },
+     {
+      "id": "a2",
+      "title": "Seed list",
+      "content": "Seeds to order for the garden: tomato (Suttons), bean (Kings)."
+     }
+    ]
+   },
+   "notebook": "- last run: 25 Oct\n- Garden plan → Garden\n- Seed list → Garden\n- Old shed plan → Garden",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Wiki index — 1 Nov",
+        "content": "Wiki index — 1 Nov\n\n## Garden\n- [Garden plan](#document-a1) — what goes in each bed next spring.\n- [Seed list](#document-a2) — seeds to order, with suppliers.\n\n## Unsorted\nnone\n\n## Suggested merges\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 documents in 1 topic; no merges; gone since last week: Old shed plan.\n\n## Report\n- listed 2 documents\n\n## Carry forward\n- last run: 1 Nov\n- Garden plan → Garden\n- Seed list → Garden"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Wiki index",
+      "lacks": [
+       "Old shed plan"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "gone since last week: Old shed plan"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-only-suggests-a-merge",
+   "about": "Its table says destructive: never. A model that deletes one of the two boiler documents to merge them is refused; both survive, and the merge stays a suggestion.",
+   "inputs": {},
+   "world": {
+    "documents": [
+     {
+      "id": "a1",
+      "title": "Garden plan",
+      "content": "Next spring: tomatoes in bed 1, beans in bed 2."
+     },
+     {
+      "id": "a2",
+      "title": "Seed list",
+      "content": "Seeds to order for the garden: tomato (Suttons), bean (Kings)."
+     },
+     {
+      "id": "b1",
+      "title": "Boiler notes",
+      "content": "Boiler: Vaillant ecoTEC. Last service: May 2026."
+     },
+     {
+      "id": "b2",
+      "title": "Boiler service history",
+      "content": "Services: 2021, 2022, 2023, 2024, 2025, June 2026."
+     },
+     {
+      "id": "c1",
+      "title": "Tax 2025",
+      "content": "Receipts to claim this year."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "a1",
+        "limit": 1500
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "a2",
+        "limit": 1500
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "b1",
+        "limit": 1500
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "b2",
+        "limit": 1500
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1",
+        "limit": 1500
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "b1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Wiki index — 1 Nov",
+        "content": "Wiki index — 1 Nov\n\n## Garden\n- [Garden plan](#document-a1) — what goes in each bed next spring.\n- [Seed list](#document-a2) — seeds to order, with suppliers.\n\n## House\n- [Boiler notes](#document-b1) — the boiler's model and its last service.\n- [Boiler service history](#document-b2) — every service since 2021.\n\n## Unsorted\n- [Tax 2025](#document-c1) — receipts to claim this year.\n\n## Suggested merges\n- Boiler notes + Boiler service history — both record the boiler's services (they disagree on the last service date: May vs June)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "5 documents in 2 topics, 1 unsorted; 1 merge suggested; none gone.\n\n## Report\n- listed 6 documents, read 5 new ones; wrote \"Wiki index — 1 Nov\"\n\n## Carry forward\n- last run: 1 Nov\n- Garden plan → Garden\n- Seed list → Garden\n- Boiler notes → House\n- Boiler service history → House\n- Tax 2025 → Unsorted\n- a delete was refused"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Boiler notes",
+      "contains": [
+       "Vaillant"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "no-documents",
+   "about": "Nothing to index: the index still goes out, with none under Unsorted and Suggested merges.",
+   "inputs": {},
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Wiki index — 1 Nov",
+        "content": "Wiki index — 1 Nov\n\n## Unsorted\nnone\n\n## Suggested merges\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 documents.\n\n## Report\n- listed no documents\n\n## Carry forward\n- last run: 1 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Wiki index",
+      "contains": [
+       "none"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-index-without-its-headings-fails",
+   "about": "The harness's own check: an index with no Unsorted and no Suggested merges does not deliver, even after its repair pass.",
+   "inputs": {},
+   "world": {
+    "documents": [
+     {
+      "id": "a1",
+      "title": "Garden plan",
+      "content": "Next spring: tomatoes in bed 1, beans in bed 2."
+     },
+     {
+      "id": "a2",
+      "title": "Seed list",
+      "content": "Seeds to order for the garden: tomato (Suttons), bean (Kings)."
+     },
+     {
+      "id": "b1",
+      "title": "Boiler notes",
+      "content": "Boiler: Vaillant ecoTEC. Last service: May 2026."
+     },
+     {
+      "id": "b2",
+      "title": "Boiler service history",
+      "content": "Services: 2021, 2022, 2023, 2024, 2025, June 2026."
+     },
+     {
+      "id": "c1",
+      "title": "Tax 2025",
+      "content": "Receipts to claim this year."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "a1",
+        "limit": 1500
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Wiki index — 1 Nov",
+        "content": "Wiki index — 1 Nov\n\n## Garden\n- [Garden plan](#document-a1) — what goes in each bed next spring.\n- [Seed list](#document-a2) — seeds to order, with suppliers."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

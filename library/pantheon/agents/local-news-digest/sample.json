@@ -1,0 +1,19 @@
+{
+ "case": "two-local-items-the-national-budget-and-an-advert-left-out",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 1 site, ran 2 searches, fetched 2 stories; reported 2 items",
+ "read": [
+  "web_fetch",
+  "web_search"
+ ],
+ "wrote": [],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Worth knowing, Checked."
+  }
+ ],
+ "answer": "**Worth knowing**\n- Mill Lane closes 3–7 Nov for gas works; buses divert via Station Road — Townsville Herald — https://herald.example/mill-lane\n- The council's consultation on the new parking zone closes on 14 Nov — Townsville Council — https://council.example/parking\n\n**Checked**\n- https://herald.example/local: read, 2 stories, 1 new\n- \"Townsville news\" search: 3 results, 1 new\n- council search: 0 results\n\n## Report\n- read 1 site, ran 2 searches, fetched 2 stories; reported 2 items\n\n## Carry forward\n- https://herald.example/mill-lane\n- https://council.example/parking"
+}

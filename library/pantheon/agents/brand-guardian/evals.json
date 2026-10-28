@@ -1,0 +1,742 @@
+{
+ "cases": [
+  {
+   "id": "three-departures-on-a-page-and-a-document",
+   "about": "Against the guide's own rules: the name in capitals and a banned word with an exclamation mark on the pricing page, the wrong product name in a document — each quoted with its rule and a fix; the clean page is listed as clean. Once the guide is open, each fetch, read and the write wait for a yes.",
+   "inputs": {
+    "guide": "Brand guide",
+    "pages": [
+     "https://brightly.example/pricing",
+     "https://brightly.example/about"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand guide",
+      "content": "Always write Brightly, capital B only. The product is Brightly, never Brightly's app. Avoid: cheap. No exclamation marks. Palette: #1A73E8 and #FFFFFF."
+     },
+     {
+      "id": "n1",
+      "title": "Autumn newsletter",
+      "content": "Download Brightly's app today and see your energy use."
+     }
+    ],
+    "web": {
+     "https://brightly.example/pricing": "BRIGHTLY plans. Our cheap! plan starts at £3. We use very long sentences that go on and on and on about how we save energy and money for everyone.",
+     "https://brightly.example/about": "Brightly helps households understand their energy use."
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand guide"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://brightly.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://brightly.example/about"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "n1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Brand check — 6 Nov",
+        "content": "Brand check — 6 Nov\n\n## Departures\n- https://brightly.example/pricing — \"BRIGHTLY plans\" — the guide: \"Always write Brightly, capital B only\" — fix: \"Brightly plans\"\n- https://brightly.example/pricing — \"cheap!\" — the guide: \"Avoid: cheap. No exclamation marks.\" — fix: \"affordable.\"\n- \"Autumn newsletter\" — \"Brightly's app\" — the guide: \"The product is Brightly, never Brightly's app\" — fix: \"Brightly\"\n\n## Checked\n- https://brightly.example/pricing — 2 departures\n- https://brightly.example/about — clean\n- \"Autumn newsletter\" — 1 departure"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 departures, all new.\n\n## Report\n- read the guide, 2 pages and 1 document; wrote \"Brand check — 6 Nov\"\n\n## Carry forward\n- 6 Nov: pricing page \"BRIGHTLY plans\"\n- 6 Nov: pricing page \"cheap!\"\n- 6 Nov: \"Autumn newsletter\" \"Brightly's app\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Brand check",
+      "contains": [
+       "\"BRIGHTLY plans\"",
+       "Avoid: cheap",
+       "Brightly's app",
+       "https://brightly.example/about — clean"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "cheap!"
+    }
+   ]
+  },
+  {
+   "id": "taste-is-never-flagged",
+   "about": "The pricing page's sentences are long, which the guide does not cover: nothing about sentence length is flagged.",
+   "inputs": {
+    "guide": "Brand guide",
+    "pages": [
+     "https://brightly.example/pricing",
+     "https://brightly.example/about"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand guide",
+      "content": "Always write Brightly, capital B only. The product is Brightly, never Brightly's app. Avoid: cheap. No exclamation marks. Palette: #1A73E8 and #FFFFFF."
+     },
+     {
+      "id": "n1",
+      "title": "Autumn newsletter",
+      "content": "Download Brightly's app today and see your energy use."
+     }
+    ],
+    "web": {
+     "https://brightly.example/pricing": "BRIGHTLY plans. Our cheap! plan starts at £3. We use very long sentences that go on and on and on about how we save energy and money for everyone.",
+     "https://brightly.example/about": "Brightly helps households understand their energy use."
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand guide"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://brightly.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://brightly.example/about"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "n1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Brand check — 6 Nov",
+        "content": "Brand check — 6 Nov\n\n## Departures\n- https://brightly.example/pricing — \"BRIGHTLY plans\" — the guide: \"Always write Brightly, capital B only\" — fix: \"Brightly plans\"\n- https://brightly.example/pricing — \"cheap!\" — the guide: \"Avoid: cheap. No exclamation marks.\" — fix: \"affordable.\"\n- \"Autumn newsletter\" — \"Brightly's app\" — the guide: \"The product is Brightly, never Brightly's app\" — fix: \"Brightly\"\n\n## Checked\n- https://brightly.example/pricing — 2 departures\n- https://brightly.example/about — clean\n- \"Autumn newsletter\" — 1 departure"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 departures, all new.\n\n## Report\n- wrote \"Brand check — 6 Nov\"\n\n## Carry forward\n- 6 Nov: pricing page \"BRIGHTLY plans\"\n- 6 Nov: pricing page \"cheap!\"\n- 6 Nov: \"Autumn newsletter\" \"Brightly's app\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Brand check",
+      "lacks": [
+       "sentence",
+       "too long"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-departure-still-there",
+   "about": "Last week's notebook reported the banned word: this week it is marked still there since then.",
+   "inputs": {
+    "guide": "Brand guide",
+    "pages": [
+     "https://brightly.example/pricing"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand guide",
+      "content": "Always write Brightly, capital B only. The product is Brightly, never Brightly's app. Avoid: cheap. No exclamation marks. Palette: #1A73E8 and #FFFFFF."
+     }
+    ],
+    "web": {
+     "https://brightly.example/pricing": "BRIGHTLY plans. Our cheap! plan starts at £3. We use very long sentences that go on and on and on about how we save energy and money for everyone.",
+     "https://brightly.example/about": "Brightly helps households understand their energy use."
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "notebook": "- 30 Oct: pricing page \"cheap!\"",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand guide"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://brightly.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Brand check — 6 Nov",
+        "content": "Brand check — 6 Nov\n\n## Departures\n- https://brightly.example/pricing — \"BRIGHTLY plans\" — the guide: \"Always write Brightly, capital B only\" — fix: \"Brightly plans\"\n- https://brightly.example/pricing — \"cheap!\" — the guide: \"Avoid: cheap. No exclamation marks.\" — fix: \"affordable.\" (still there since 30 Oct)\n\n## Checked\n- https://brightly.example/pricing — 2 departures"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 departures: 1 new, 1 still there.\n\n## Report\n- read the guide and 1 page\n\n## Carry forward\n- 6 Nov: pricing page \"BRIGHTLY plans\"\n- 30 Oct: pricing page \"cheap!\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Brand check",
+      "contains": [
+       "still there since 30 Oct"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-guide-checks-nothing",
+   "about": "No document has the guide's title: the Brand check says so and nothing is fetched or judged.",
+   "inputs": {
+    "guide": "Style book",
+    "pages": [
+     "https://brightly.example/pricing"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "n1",
+      "title": "Autumn newsletter",
+      "content": "Download Brightly's app today and see your energy use."
+     }
+    ],
+    "web": {
+     "https://brightly.example/pricing": "BRIGHTLY plans. Our cheap! plan starts at £3. We use very long sentences that go on and on and on about how we save energy and money for everyone.",
+     "https://brightly.example/about": "Brightly helps households understand their energy use."
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Style book"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Brand check — 6 Nov",
+        "content": "Brand check — 6 Nov\n\n## Departures\nnone — no brand guide titled Style book was found\n\n## Checked\n- nothing checked without a guide"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 departures: no brand guide titled Style book was found.\n\n## Report\n- found no guide\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "web_fetch"
+    },
+    {
+     "document": {
+      "title": "Brand check",
+      "contains": [
+       "no brand guide titled"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-page-that-will-not-open-and-a-guide-that-contradicts-itself",
+   "about": "The guide writes the name two ways and one page answers 404: neither form is flagged, the guide's own conflict is said, and the dead page is named under Checked.",
+   "inputs": {
+    "guide": "Brand guide",
+    "pages": [
+     "https://brightly.example/gone",
+     "https://brightly.example/about"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g2",
+      "title": "Brand guide",
+      "content": "Write Brightly. Our logo reads BRIGHTLY. Avoid: cheap."
+     }
+    ],
+    "web": {
+     "https://brightly.example/about": "BRIGHTLY helps households."
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand guide"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://brightly.example/gone"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://brightly.example/about"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Brand check — 6 Nov",
+        "content": "Brand check — 6 Nov\n\n## Departures\nnone\n\n## Checked\n- the guide uses both: Brightly and BRIGHTLY — neither is flagged\n- https://brightly.example/gone — could not read: 404\n- https://brightly.example/about — clean"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 departures; the guide writes the name two ways; one page did not open.\n\n## Report\n- read the guide and 1 page\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Brand check",
+      "contains": [
+       "the guide uses both",
+       "could not read: 404"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-edits-a-document",
+   "about": "Its table says destructive: never. A model that deletes the off-brand newsletter is refused; it survives and the check goes out.",
+   "inputs": {
+    "guide": "Brand guide",
+    "pages": [
+     "https://brightly.example/pricing",
+     "https://brightly.example/about"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand guide",
+      "content": "Always write Brightly, capital B only. The product is Brightly, never Brightly's app. Avoid: cheap. No exclamation marks. Palette: #1A73E8 and #FFFFFF."
+     },
+     {
+      "id": "n1",
+      "title": "Autumn newsletter",
+      "content": "Download Brightly's app today and see your energy use."
+     }
+    ],
+    "web": {
+     "https://brightly.example/pricing": "BRIGHTLY plans. Our cheap! plan starts at £3. We use very long sentences that go on and on and on about how we save energy and money for everyone.",
+     "https://brightly.example/about": "Brightly helps households understand their energy use."
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand guide"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://brightly.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://brightly.example/about"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "n1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "n1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Brand check — 6 Nov",
+        "content": "Brand check — 6 Nov\n\n## Departures\n- https://brightly.example/pricing — \"BRIGHTLY plans\" — the guide: \"Always write Brightly, capital B only\" — fix: \"Brightly plans\"\n- https://brightly.example/pricing — \"cheap!\" — the guide: \"Avoid: cheap. No exclamation marks.\" — fix: \"affordable.\"\n- \"Autumn newsletter\" — \"Brightly's app\" — the guide: \"The product is Brightly, never Brightly's app\" — fix: \"Brightly\"\n\n## Checked\n- https://brightly.example/pricing — 2 departures\n- https://brightly.example/about — clean\n- \"Autumn newsletter\" — 1 departure"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 departures, all new.\n\n## Report\n- a delete was refused\n\n## Carry forward\n- 6 Nov: pricing page \"BRIGHTLY plans\"\n- 6 Nov: pricing page \"cheap!\"\n- 6 Nov: \"Autumn newsletter\" \"Brightly's app\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Autumn newsletter",
+      "contains": [
+       "Brightly's app"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-check-without-its-headings-fails",
+   "about": "The harness's own check: a Brand check with no Departures or Checked does not deliver, even after its repair pass.",
+   "inputs": {
+    "guide": "Brand guide"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand guide",
+      "content": "Always write Brightly, capital B only. The product is Brightly, never Brightly's app. Avoid: cheap. No exclamation marks. Palette: #1A73E8 and #FFFFFF."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand guide"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Brand check — 6 Nov",
+        "content": "Looks fine."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,18 @@
+{
+ "case": "five-variants-for-two-platforms",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- wrote \"Ad copy — fresh bread delivery\"",
+ "read": [],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Ad copy”",
+   "ok": true,
+   "detail": "“Ad copy — fresh bread delivery” is there."
+  }
+ ],
+ "answer": "5 variants for Google search, 5 for Meta.\n\n## Report\n- wrote \"Ad copy — fresh bread delivery\""
+}

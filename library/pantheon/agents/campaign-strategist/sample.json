@@ -1,0 +1,21 @@
+{
+ "case": "a-two-week-plan-for-a-course",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- ran 2 searches, read 2 pages; wrote \"Campaign plan — 200 signups for the spring pottery course\"",
+ "read": [
+  "web_search",
+  "web_fetch"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Campaign plan”",
+   "ok": true,
+   "detail": "“Campaign plan — 200 signups for the spring pottery course” is there."
+  }
+ ],
+ "answer": "Channels: local ads, email to past students; budget £600 / £120 / £80 held back.\n\n## Report\n- ran 2 searches, read 2 pages; wrote \"Campaign plan — 200 signups for the spring pottery course\""
+}

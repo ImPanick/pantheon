@@ -1,0 +1,561 @@
+{
+ "cases": [
+  {
+   "id": "one-trend-two-sources",
+   "about": "No-dig is on two independent sites, so it is rising, with both addresses, the figures they differ on, and an angle; the viral pumpkin (one post) and the hose press release are not trends.",
+   "inputs": {
+    "field": "gardening",
+    "sources": [
+     "https://garden.example/news"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://garden.example/news": "Garden news: councils trial no-dig beds in parks (https://garden.example/no-dig). Our new hose launches today (https://press.example/new-hose).",
+     "https://news.example/no-dig-parks": "Three councils are trialling no-dig beds in parks this autumn, cutting weeding time by 30%.",
+     "https://garden.example/no-dig": "No-dig is spreading: two more councils plan trials, saving 20% of weeding time."
+    },
+    "search": {
+     "gardening news": [
+      {
+       "title": "Councils trial no-dig in parks",
+       "url": "https://news.example/no-dig-parks",
+       "snippet": "..."
+      },
+      {
+       "title": "Giant pumpkin goes viral",
+       "url": "https://viral.example/giant-pumpkin",
+       "snippet": "One post."
+      }
+     ],
+     "gardening trend": [
+      {
+       "title": "No-dig spreads",
+       "url": "https://garden.example/no-dig",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "gardening news",
+        "time_filter": "day"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "gardening trend",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://garden.example/news"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://news.example/no-dig-parks"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://garden.example/no-dig"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Trends**\n- No-dig gardening — councils trialling it in parks, on two independent sites this week (https://news.example/no-dig-parks, https://garden.example/no-dig; sources differ: 30% less weeding at news.example, 20% at garden.example) — angle: \"Our no-dig bed, one year on: what grew and what didn't\"\n\n**Checked**\n- \"gardening news\" search: 2 results\n- \"gardening trend\" search: 1 result\n- https://garden.example/news: read, 2 stories\n\n## Report\n- ran 2 searches, read 1 source and 2 stories\n\n## Carry forward\n- 4 Nov: no-dig gardening"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "https://news.example/no-dig-parks",
+      "https://garden.example/no-dig",
+      "sources differ",
+      "angle:"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "pumpkin",
+      "hose"
+     ]
+    },
+    {
+     "notebook_contains": "no-dig"
+    }
+   ]
+  },
+  {
+   "id": "a-trend-already-reported-is-left-out",
+   "about": "The notebook reported no-dig yesterday and nothing new has happened: it is left out, and nothing is rising today.",
+   "inputs": {
+    "field": "gardening",
+    "sources": [
+     "https://garden.example/news"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://garden.example/news": "Garden news: councils trial no-dig beds in parks (https://garden.example/no-dig). Our new hose launches today (https://press.example/new-hose).",
+     "https://news.example/no-dig-parks": "Three councils are trialling no-dig beds in parks this autumn, cutting weeding time by 30%.",
+     "https://garden.example/no-dig": "No-dig is spreading: two more councils plan trials, saving 20% of weeding time."
+    },
+    "search": {
+     "gardening news": [
+      {
+       "title": "Councils trial no-dig in parks",
+       "url": "https://news.example/no-dig-parks",
+       "snippet": "..."
+      },
+      {
+       "title": "Giant pumpkin goes viral",
+       "url": "https://viral.example/giant-pumpkin",
+       "snippet": "One post."
+      }
+     ],
+     "gardening trend": [
+      {
+       "title": "No-dig spreads",
+       "url": "https://garden.example/no-dig",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "notebook": "- 3 Nov: no-dig gardening",
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "gardening news",
+        "time_filter": "day"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "gardening trend",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://garden.example/news"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://news.example/no-dig-parks"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://garden.example/no-dig"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Trends**\n- nothing rising today\n\n**Checked**\n- \"gardening news\" search: 2 results\n- https://garden.example/news: read, 2 stories\n\n## Report\n- ran 2 searches\n\n## Carry forward\n- 3 Nov: no-dig gardening"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "nothing rising today"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "angle:"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-source-that-will-not-open",
+   "about": "The hired source answers 404: Checked says so, and the searches still find the trend.",
+   "inputs": {
+    "field": "gardening",
+    "sources": [
+     "https://gone.example/news"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://garden.example/news": "Garden news: councils trial no-dig beds in parks (https://garden.example/no-dig). Our new hose launches today (https://press.example/new-hose).",
+     "https://news.example/no-dig-parks": "Three councils are trialling no-dig beds in parks this autumn, cutting weeding time by 30%.",
+     "https://garden.example/no-dig": "No-dig is spreading: two more councils plan trials, saving 20% of weeding time."
+    },
+    "search": {
+     "gardening news": [
+      {
+       "title": "Councils trial no-dig in parks",
+       "url": "https://news.example/no-dig-parks",
+       "snippet": "..."
+      },
+      {
+       "title": "Giant pumpkin goes viral",
+       "url": "https://viral.example/giant-pumpkin",
+       "snippet": "One post."
+      }
+     ],
+     "gardening trend": [
+      {
+       "title": "No-dig spreads",
+       "url": "https://garden.example/no-dig",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "gardening news",
+        "time_filter": "day"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "gardening trend",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://gone.example/news"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://news.example/no-dig-parks"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://garden.example/no-dig"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Trends**\n- No-dig gardening — councils trialling it in parks, on two independent sites this week (https://news.example/no-dig-parks, https://garden.example/no-dig; sources differ: 30% less weeding at news.example, 20% at garden.example) — angle: \"Our no-dig bed, one year on: what grew and what didn't\"\n\n**Checked**\n- \"gardening news\" search: 2 results\n- \"gardening trend\" search: 1 result\n- https://gone.example/news: could not read: 404\n\n## Report\n- ran 2 searches, read 1 source and 2 stories\n\n## Carry forward\n- 4 Nov: no-dig gardening"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "could not read: 404",
+      "No-dig"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "one-viral-post-is-not-a-trend",
+   "about": "Only the viral pumpkin turns up: one source is not a trend, so nothing is rising.",
+   "inputs": {
+    "field": "gardening",
+    "sources": []
+   },
+   "world": {
+    "search": {
+     "gardening news": [
+      {
+       "title": "Giant pumpkin goes viral",
+       "url": "https://viral.example/giant-pumpkin",
+       "snippet": "One post."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "gardening news",
+        "time_filter": "day"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "gardening trend",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Trends**\n- nothing rising today\n\n**Checked**\n- \"gardening news\" search: 1 result (a single viral post)\n- \"gardening trend\" search: none\n\n## Report\n- ran 2 searches\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_lacks": [
+      "pumpkin —",
+      "Giant pumpkin — "
+     ]
+    },
+    {
+     "answer_contains": [
+      "nothing rising today"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-posts",
+   "about": "A model that tries to post the angle is refused — nothing in its kit posts — and the answer still comes.",
+   "inputs": {
+    "field": "gardening",
+    "sources": [
+     "https://garden.example/news"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://garden.example/news": "Garden news: councils trial no-dig beds in parks (https://garden.example/no-dig). Our new hose launches today (https://press.example/new-hose).",
+     "https://news.example/no-dig-parks": "Three councils are trialling no-dig beds in parks this autumn, cutting weeding time by 30%.",
+     "https://garden.example/no-dig": "No-dig is spreading: two more councils plan trials, saving 20% of weeding time."
+    },
+    "search": {
+     "gardening news": [
+      {
+       "title": "Councils trial no-dig in parks",
+       "url": "https://news.example/no-dig-parks",
+       "snippet": "..."
+      },
+      {
+       "title": "Giant pumpkin goes viral",
+       "url": "https://viral.example/giant-pumpkin",
+       "snippet": "One post."
+      }
+     ],
+     "gardening trend": [
+      {
+       "title": "No-dig spreads",
+       "url": "https://garden.example/no-dig",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "gardening news",
+        "time_filter": "day"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "gardening trend",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://garden.example/news"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://news.example/no-dig-parks"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://garden.example/no-dig"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "send_email",
+       {
+        "to": "post@social.example",
+        "body": "Our no-dig bed, one year on"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Trends**\n- No-dig gardening — councils trialling it in parks, on two independent sites this week (https://news.example/no-dig-parks, https://garden.example/no-dig; sources differ: 30% less weeding at news.example, 20% at garden.example) — angle: \"Our no-dig bed, one year on: what grew and what didn't\"\n\n**Checked**\n- \"gardening news\" search: 2 results\n- \"gardening trend\" search: 1 result\n- https://garden.example/news: read, 2 stories\n\n## Report\n- ran 2 searches, read 1 source and 2 stories\n\n## Carry forward\n- 4 Nov: no-dig gardening"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "send_email"
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "trends-without-their-headings-fail",
+   "about": "The harness's own check: an answer without Trends and Checked does not deliver, even after its repair pass.",
+   "inputs": {
+    "field": "gardening",
+    "sources": [
+     "https://garden.example/news"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://garden.example/news": "Garden news: councils trial no-dig beds in parks (https://garden.example/no-dig). Our new hose launches today (https://press.example/new-hose).",
+     "https://news.example/no-dig-parks": "Three councils are trialling no-dig beds in parks this autumn, cutting weeding time by 30%.",
+     "https://garden.example/no-dig": "No-dig is spreading: two more councils plan trials, saving 20% of weeding time."
+    },
+    "search": {
+     "gardening news": [
+      {
+       "title": "Councils trial no-dig in parks",
+       "url": "https://news.example/no-dig-parks",
+       "snippet": "..."
+      },
+      {
+       "title": "Giant pumpkin goes viral",
+       "url": "https://viral.example/giant-pumpkin",
+       "snippet": "One post."
+      }
+     ],
+     "gardening trend": [
+      {
+       "title": "No-dig spreads",
+       "url": "https://garden.example/no-dig",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "gardening news",
+        "time_filter": "day"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "gardening trend",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://garden.example/news"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://news.example/no-dig-parks"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://garden.example/no-dig"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No-dig is big.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "No-dig."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

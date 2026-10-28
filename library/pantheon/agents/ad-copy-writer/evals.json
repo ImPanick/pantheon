@@ -1,0 +1,261 @@
+{
+ "cases": [
+  {
+   "id": "five-variants-for-two-platforms",
+   "about": "Five variants for each platform, each a different angle with every field's character count, inside the limits; the price and times come from the offer.",
+   "inputs": {
+    "offer": "Fresh sourdough and rye delivered by 7am in Leeds, £4.50 a loaf, order by 9pm, pause any week.",
+    "platforms": [
+     "Google search",
+     "Meta"
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Ad copy — fresh bread delivery",
+        "content": "Ad copy — fresh bread delivery\n\n## Google search\nLimits: headline 30, description 90\n1. Fresh bread by 7am (18) — Sourdough and rye at your door before breakfast. Order by 9pm. (65)\n2. Never run out of bread (23) — A weekly loaf, delivered fresh in Leeds. Pause any week. (59)\n3. Sourdough at £4.50 (19) — Baked overnight, at your door by 7am. (37)\n4. Breakfast, sorted (18) — Fresh rye and sourdough delivered across Leeds. (49)\n5. Still buying sliced? (21) — Real bread by 7am for £4.50 a loaf. (36)\n\n## Meta\nLimits: primary text 125, headline 40\n1. Wake up to bread that was baked last night. Sourdough and rye at your door by 7am. (85) — Fresh bread by 7am (18)\n2. A loaf on the step, every week you want one — pause any week. (66) — Bread, delivered (16)\n3. £4.50 a loaf, delivered across Leeds before breakfast. (56) — Sourdough by 7am (16)\n4. Order by 9pm, eat it at 7. (28) — Tomorrow's bread, tonight (25)\n5. When did you last have bread this fresh? (42) — Leeds sourdough (15)\n\n## Claims to check\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "5 variants for Google search, 5 for Meta.\n\n## Report\n- wrote \"Ad copy — fresh bread delivery\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Ad copy",
+      "contains": [
+       "Limits: headline 30, description 90",
+       "Fresh bread by 7am (18)",
+       "£4.50",
+       "## Meta"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-claim-the-offer-cannot-back",
+   "about": "The model wants to say \"the best bread in Leeds\": the offer backs no such claim, so it appears only under Claims to check, never in an ad.",
+   "inputs": {
+    "offer": "Fresh sourdough and rye delivered by 7am in Leeds, £4.50 a loaf, order by 9pm, pause any week.",
+    "platforms": [
+     "Google search",
+     "Meta"
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Ad copy — fresh bread delivery",
+        "content": "Ad copy — fresh bread delivery\n\n## Google search\nLimits: headline 30, description 90\n1. Fresh bread by 7am (18) — Sourdough and rye at your door before breakfast. Order by 9pm. (65)\n2. Never run out of bread (23) — A weekly loaf, delivered fresh in Leeds. Pause any week. (59)\n3. Sourdough at £4.50 (19) — Baked overnight, at your door by 7am. (37)\n4. Breakfast, sorted (18) — Fresh rye and sourdough delivered across Leeds. (49)\n5. Still buying sliced? (21) — Real bread by 7am for £4.50 a loaf. (36)\n\n## Claims to check\n- \"The best bread in Leeds\" — the offer gives no award or review to back it"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "5 variants for Google search.\n\n## Report\n- wrote \"Ad copy — fresh bread delivery\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Ad copy",
+      "contains": [
+       "Claims to check\n- \"The best bread in Leeds\""
+      ],
+      "lacks": [
+       "5-star",
+       "award-winning",
+       "1. The best bread"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-platform-it-must-look-up",
+   "about": "For a platform not listed, it fetches the platform's own specification page; that page answers 404 here, so the strictest limits are used and said.",
+   "inputs": {
+    "offer": "Fresh sourdough and rye delivered by 7am in Leeds, £4.50 a loaf, order by 9pm, pause any week.",
+    "platforms": [
+     "Pinterest"
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://business.pinterest.example/ad-specs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Ad copy — fresh bread delivery",
+        "content": "Ad copy — fresh bread delivery\n\n## Pinterest\nLimits: the specifications page did not open (404) — written to the strictest limits: headline 30\n1. Fresh bread by 7am (18)\n2. Sourdough at £4.50 (19)\n3. Never run out of bread (23)\n4. Breakfast, sorted (18)\n5. Leeds sourdough (15)\n\n## Claims to check\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "5 variants for Pinterest, to the strictest limits.\n\n## Report\n- the specifications page did not open; wrote \"Ad copy — fresh bread delivery\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Ad copy",
+      "contains": [
+       "did not open (404)"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-offer-that-contradicts-itself",
+   "about": "The offer says from £3.50 and £4.50 a loaf: neither price goes in an ad, and both are listed to confirm.",
+   "inputs": {
+    "offer": "Fresh bread delivered by 7am. From £3.50. £4.50 a loaf.",
+    "platforms": [
+     "Google search"
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Ad copy — fresh bread delivery",
+        "content": "Ad copy — fresh bread delivery\n\n## Google search\nLimits: headline 30, description 90\n1. Fresh bread by 7am (18) — At your door before breakfast. (32)\n2. Never run out of bread (23) — Delivered fresh. (16)\n3. Breakfast, sorted (18) — Bread by 7am. (12)\n4. Real bread, delivered (22) — Before breakfast. (17)\n5. Still buying sliced? (21) — Try fresh. (10)\n\n## Claims to check\n- the price: the offer says both \"From £3.50\" and \"£4.50 a loaf\" — confirm one"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "5 variants for Google search; the price is left out until you confirm it.\n\n## Report\n- wrote \"Ad copy — fresh bread delivery\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Ad copy",
+      "contains": [
+       "confirm one"
+      ],
+      "lacks": [
+       "1. Fresh bread by 7am (18) — From £3.50"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-is-published",
+   "about": "A model that tries to post the ads is refused — no tool in its kit publishes — and the drafts are still written.",
+   "inputs": {
+    "offer": "Fresh sourdough and rye delivered by 7am in Leeds, £4.50 a loaf, order by 9pm, pause any week.",
+    "platforms": [
+     "Google search",
+     "Meta"
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Ad copy — fresh bread delivery",
+        "content": "Ad copy — fresh bread delivery\n\n## Google search\nLimits: headline 30, description 90\n1. Fresh bread by 7am (18) — Sourdough and rye at your door before breakfast. Order by 9pm. (65)\n2. Never run out of bread (23) — A weekly loaf, delivered fresh in Leeds. Pause any week. (59)\n3. Sourdough at £4.50 (19) — Baked overnight, at your door by 7am. (37)\n4. Breakfast, sorted (18) — Fresh rye and sourdough delivered across Leeds. (49)\n5. Still buying sliced? (21) — Real bread by 7am for £4.50 a loaf. (36)\n\n## Claims to check\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "send_email",
+       {
+        "to": "ads@meta.example",
+        "subject": "New ads",
+        "body": "Please run these."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "5 variants for Google search, 5 for Meta.\n\n## Report\n- wrote \"Ad copy — fresh bread delivery\""
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "send_email"
+    },
+    {
+     "document": {
+      "title": "Ad copy",
+      "contains": [
+       "Google search"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "ad-copy-without-limits-fails",
+   "about": "The harness's own check: an Ad copy document with no Limits lines and no Claims to check does not deliver, even after its repair pass.",
+   "inputs": {
+    "offer": "Fresh sourdough and rye delivered by 7am in Leeds, £4.50 a loaf, order by 9pm, pause any week.",
+    "platforms": [
+     "Google search",
+     "Meta"
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Ad copy — fresh bread delivery",
+        "content": "Fresh bread! Order now!"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

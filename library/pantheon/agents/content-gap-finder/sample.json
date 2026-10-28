@@ -1,0 +1,20 @@
+{
+ "case": "one-gap-and-one-hint",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 3 sites; wrote \"Content gaps — November 2026\"",
+ "read": [
+  "web_fetch"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Content gaps”",
+   "ok": true,
+   "detail": "“Content gaps — November 2026” is there."
+  }
+ ],
+ "answer": "1 gap: pruning apple trees.\n\n## Report\n- read 3 sites; wrote \"Content gaps — November 2026\"\n\n## Carry forward\n- Nov 2026: pruning apple trees"
+}

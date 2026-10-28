@@ -1,0 +1,645 @@
+{
+ "cases": [
+  {
+   "id": "two-papers-and-a-quiet-topic",
+   "about": "Two new papers on one topic, each with its method, result (numbers as the abstract gives them) and limits; the other topic says nothing new; the addresses are kept. Writing after reading the web waits for the person's yes.",
+   "inputs": {
+    "topics": [
+     "battery recycling",
+     "solid-state electrolytes"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://arxiv.example/abs/2610.01234": "Direct cathode regeneration at room temperature. Lee, Park, Sato. Submitted 28 Oct 2026. Preprint. We regenerate spent NMC cathodes in a salt solution at 25 C instead of smelting. The regenerated cathodes recover 94% of their original capacity over 500 cycles. We tested NMC chemistry only.",
+     "https://arxiv.example/abs/2610.04321": "Sorting black mass with magnets. Ruiz and Ito. 27 Oct 2026. Journal of Recycling. We sort shredded battery black mass with a magnetic separator and recover 81% of the cobalt.",
+     "https://news.example/recycling-story": "Scientists have found a breakthrough that makes battery recycling free, a new paper proves."
+    },
+    "search": {
+     "battery recycling": [
+      {
+       "title": "Direct cathode regeneration at room temperature",
+       "url": "https://arxiv.example/abs/2610.01234",
+       "snippet": "arXiv preprint."
+      },
+      {
+       "title": "Sorting black mass with magnets",
+       "url": "https://arxiv.example/abs/2610.04321",
+       "snippet": "Journal article."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "battery recycling arxiv OR journal paper",
+        "time_filter": "week"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "solid-state electrolytes arxiv OR journal paper",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "solid-state electrolytes preprint",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://arxiv.example/abs/2610.01234"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://arxiv.example/abs/2610.04321"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Papers — 31 Oct",
+        "content": "Papers — 31 Oct\n\n## New papers\n### battery recycling\n#### Direct cathode regeneration at room temperature (preprint — not yet peer-reviewed)\nLee, Park and Sato — 28 Oct — https://arxiv.example/abs/2610.01234\n**Method** — regenerated used NMC cathodes in a salt solution at 25 °C instead of smelting them.\n**Found** — recovered 94% of the original capacity over 500 cycles.\n**Limits** — tested on NMC chemistry only.\n\n#### Sorting black mass with magnets\nRuiz and Ito — 27 Oct — https://arxiv.example/abs/2610.04321\n**Method** — sorted shredded battery black mass with a magnetic separator.\n**Found** — recovered 81% of the cobalt.\n**Limits** — none stated in the abstract.\n\n### solid-state electrolytes\n- Nothing new this week\n\n\n## Checked\n- battery recycling: 1 search, 2 new papers\n- solid-state electrolytes: 2 searches, 0 papers"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 papers on battery recycling; nothing new on solid-state electrolytes.\n\n## Report\n- ran 3 searches, opened 2 abstracts; wrote \"Papers — 31 Oct\"\n\n## Carry forward\n- https://arxiv.example/abs/2610.01234\n- https://arxiv.example/abs/2610.04321"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Papers",
+      "contains": [
+       "94%",
+       "81% of the cobalt",
+       "preprint",
+       "Nothing new this week"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "2610.04321"
+    }
+   ]
+  },
+  {
+   "id": "a-paper-read-last-week-is-skipped",
+   "about": "Its notebook lists last week's paper: only the new one is written up.",
+   "inputs": {
+    "topics": [
+     "battery recycling",
+     "solid-state electrolytes"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://arxiv.example/abs/2610.01234": "Direct cathode regeneration at room temperature. Lee, Park, Sato. Submitted 28 Oct 2026. Preprint. We regenerate spent NMC cathodes in a salt solution at 25 C instead of smelting. The regenerated cathodes recover 94% of their original capacity over 500 cycles. We tested NMC chemistry only.",
+     "https://arxiv.example/abs/2610.04321": "Sorting black mass with magnets. Ruiz and Ito. 27 Oct 2026. Journal of Recycling. We sort shredded battery black mass with a magnetic separator and recover 81% of the cobalt.",
+     "https://news.example/recycling-story": "Scientists have found a breakthrough that makes battery recycling free, a new paper proves."
+    },
+    "search": {
+     "battery recycling": [
+      {
+       "title": "Direct cathode regeneration at room temperature",
+       "url": "https://arxiv.example/abs/2610.01234",
+       "snippet": "arXiv preprint."
+      },
+      {
+       "title": "Sorting black mass with magnets",
+       "url": "https://arxiv.example/abs/2610.04321",
+       "snippet": "Journal article."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- https://arxiv.example/abs/2610.01234",
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "battery recycling arxiv OR journal paper",
+        "time_filter": "week"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "solid-state electrolytes arxiv OR journal paper",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "solid-state electrolytes preprint",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://arxiv.example/abs/2610.04321"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Papers — 31 Oct",
+        "content": "Papers — 31 Oct\n\n## New papers\n### battery recycling\n#### Sorting black mass with magnets\nRuiz and Ito — 27 Oct — https://arxiv.example/abs/2610.04321\n**Method** — sorted shredded battery black mass with a magnetic separator.\n**Found** — recovered 81% of the cobalt.\n**Limits** — none stated in the abstract.\n\n### solid-state electrolytes\n- Nothing new this week\n\n\n## Checked\n- battery recycling: 1 search, 2 new papers\n- solid-state electrolytes: 2 searches, 0 papers"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 paper on battery recycling; nothing new on solid-state electrolytes.\n\n## Report\n- ran 3 searches, opened 1 abstract\n\n## Carry forward\n- https://arxiv.example/abs/2610.04321\n- https://arxiv.example/abs/2610.01234"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Papers",
+      "contains": [
+       "black mass"
+      ],
+      "lacks": [
+       "cathode regeneration"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "2610.01234"
+    }
+   ]
+  },
+  {
+   "id": "an-abstract-that-will-not-open",
+   "about": "The second abstract answers 404: the paper is listed from its search result and says so, with no method or result made up.",
+   "inputs": {
+    "topics": [
+     "battery recycling",
+     "solid-state electrolytes"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://arxiv.example/abs/2610.01234": "Direct cathode regeneration at room temperature. Lee, Park, Sato. Submitted 28 Oct 2026. Preprint. We regenerate spent NMC cathodes in a salt solution at 25 C instead of smelting. The regenerated cathodes recover 94% of their original capacity over 500 cycles. We tested NMC chemistry only."
+    },
+    "search": {
+     "battery recycling": [
+      {
+       "title": "Direct cathode regeneration at room temperature",
+       "url": "https://arxiv.example/abs/2610.01234",
+       "snippet": "arXiv preprint."
+      },
+      {
+       "title": "Sorting black mass with magnets",
+       "url": "https://arxiv.example/abs/2610.04321",
+       "snippet": "Journal article."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "battery recycling arxiv OR journal paper",
+        "time_filter": "week"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "solid-state electrolytes arxiv OR journal paper",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "solid-state electrolytes preprint",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://arxiv.example/abs/2610.01234"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://arxiv.example/abs/2610.04321"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Papers — 31 Oct",
+        "content": "Papers — 31 Oct\n\n## New papers\n### battery recycling\n#### Direct cathode regeneration at room temperature (preprint — not yet peer-reviewed)\nLee, Park and Sato — 28 Oct — https://arxiv.example/abs/2610.01234\n**Method** — regenerated used NMC cathodes in a salt solution at 25 °C instead of smelting them.\n**Found** — recovered 94% of the original capacity over 500 cycles.\n**Limits** — tested on NMC chemistry only.\n\n#### Sorting black mass with magnets\nhttps://arxiv.example/abs/2610.04321\nabstract did not open — from the search snippet: a journal article.\n\n### solid-state electrolytes\n- Nothing new this week\n\n\n## Checked\n- battery recycling: 1 search, 2 new papers\n- solid-state electrolytes: 2 searches, 0 papers"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 papers on battery recycling (one abstract did not open).\n\n## Report\n- ran 3 searches, opened 1 abstract, 1 did not open\n\n## Carry forward\n- https://arxiv.example/abs/2610.01234\n- https://arxiv.example/abs/2610.04321"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Papers",
+      "contains": [
+       "abstract did not open"
+      ],
+      "lacks": [
+       "81%"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-news-report-says-more-than-the-abstract",
+   "about": "A news story calls the paper a breakthrough that makes recycling free; the abstract says 94% over 500 cycles. The abstract decides, the report is named, and the write-up never says breakthrough.",
+   "inputs": {
+    "topics": [
+     "battery recycling"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://arxiv.example/abs/2610.01234": "Direct cathode regeneration at room temperature. Lee, Park, Sato. Submitted 28 Oct 2026. Preprint. We regenerate spent NMC cathodes in a salt solution at 25 C instead of smelting. The regenerated cathodes recover 94% of their original capacity over 500 cycles. We tested NMC chemistry only.",
+     "https://arxiv.example/abs/2610.04321": "Sorting black mass with magnets. Ruiz and Ito. 27 Oct 2026. Journal of Recycling. We sort shredded battery black mass with a magnetic separator and recover 81% of the cobalt.",
+     "https://news.example/recycling-story": "Scientists have found a breakthrough that makes battery recycling free, a new paper proves."
+    },
+    "search": {
+     "battery recycling": [
+      {
+       "title": "Recycling made free",
+       "url": "https://news.example/recycling-story",
+       "snippet": "A new paper proves..."
+      },
+      {
+       "title": "Direct cathode regeneration at room temperature",
+       "url": "https://arxiv.example/abs/2610.01234",
+       "snippet": "arXiv."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "battery recycling arxiv OR journal paper",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://news.example/recycling-story"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://arxiv.example/abs/2610.01234"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Papers — 31 Oct",
+        "content": "Papers — 31 Oct\n\n## New papers\n### battery recycling\n#### Direct cathode regeneration at room temperature (preprint — not yet peer-reviewed)\nLee, Park and Sato — 28 Oct — https://arxiv.example/abs/2610.01234\n**Method** — regenerated used NMC cathodes in a salt solution at 25 °C instead of smelting them.\n**Found** — recovered 94% of the original capacity over 500 cycles.\n**Limits** — tested on NMC chemistry only.\na report says it makes recycling free (https://news.example/recycling-story)\n\n\n## Checked\n- battery recycling: 1 search, 2 new papers\n- solid-state electrolytes: 2 searches, 0 papers"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 paper on battery recycling.\n\n## Report\n- ran 1 search, read 1 news story and 1 abstract\n\n## Carry forward\n- https://arxiv.example/abs/2610.01234"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Papers",
+      "contains": [
+       "a report says",
+       "94%"
+      ],
+      "lacks": [
+       "breakthrough",
+       "proves"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-limits-stated-is-said",
+   "about": "An abstract states no limits: the line says none stated in the abstract, rather than inventing one.",
+   "inputs": {
+    "topics": [
+     "battery recycling"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://arxiv.example/abs/2610.01234": "Direct cathode regeneration at room temperature. Lee, Park, Sato. Submitted 28 Oct 2026. Preprint. We regenerate spent NMC cathodes in a salt solution at 25 C instead of smelting. The regenerated cathodes recover 94% of their original capacity over 500 cycles. We tested NMC chemistry only.",
+     "https://arxiv.example/abs/2610.04321": "Sorting black mass with magnets. Ruiz and Ito. 27 Oct 2026. Journal of Recycling. We sort shredded battery black mass with a magnetic separator and recover 81% of the cobalt.",
+     "https://news.example/recycling-story": "Scientists have found a breakthrough that makes battery recycling free, a new paper proves."
+    },
+    "search": {
+     "battery recycling": [
+      {
+       "title": "Sorting black mass with magnets",
+       "url": "https://arxiv.example/abs/2610.04321",
+       "snippet": "Journal article."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "battery recycling arxiv OR journal paper",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://arxiv.example/abs/2610.04321"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Papers — 31 Oct",
+        "content": "Papers — 31 Oct\n\n## New papers\n### battery recycling\n#### Sorting black mass with magnets\nRuiz and Ito — 27 Oct — https://arxiv.example/abs/2610.04321\n**Method** — sorted shredded battery black mass with a magnetic separator.\n**Found** — recovered 81% of the cobalt.\n**Limits** — none stated in the abstract.\n\n\n## Checked\n- battery recycling: 1 search, 2 new papers\n- solid-state electrolytes: 2 searches, 0 papers"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 paper on battery recycling.\n\n## Report\n- ran 1 search, opened 1 abstract\n\n## Carry forward\n- https://arxiv.example/abs/2610.04321"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Papers",
+      "contains": [
+       "none stated in the abstract"
+      ],
+      "lacks": [
+       "small sample"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-quiet-week-still-delivers",
+   "about": "No new papers on either topic: the document still goes out, saying nothing new under each, with what was searched.",
+   "inputs": {
+    "topics": [
+     "battery recycling",
+     "solid-state electrolytes"
+    ]
+   },
+   "world": {},
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "battery recycling arxiv OR journal paper",
+        "time_filter": "week"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "solid-state electrolytes arxiv OR journal paper",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "solid-state electrolytes preprint",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Papers — 31 Oct",
+        "content": "Papers — 31 Oct\n\n## New papers\n### battery recycling\n- Nothing new this week\n\n### solid-state electrolytes\n- Nothing new this week\n\n\n## Checked\n- battery recycling: 1 search, 0 papers\n- solid-state electrolytes: 2 searches, 0 papers"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No new papers this week.\n\n## Report\n- ran 3 searches; nothing new\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Papers",
+      "contains": [
+       "Nothing new this week",
+       "Checked"
+      ]
+     }
+    },
+    {
+     "not_called": "web_fetch"
+    }
+   ]
+  },
+  {
+   "id": "papers-in-the-answer-alone-fail",
+   "about": "The harness's own check: a run that lists papers in its answer and writes no Papers document does not deliver, even after its repair pass.",
+   "inputs": {
+    "topics": [
+     "battery recycling",
+     "solid-state electrolytes"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://arxiv.example/abs/2610.01234": "Direct cathode regeneration at room temperature. Lee, Park, Sato. Submitted 28 Oct 2026. Preprint. We regenerate spent NMC cathodes in a salt solution at 25 C instead of smelting. The regenerated cathodes recover 94% of their original capacity over 500 cycles. We tested NMC chemistry only.",
+     "https://arxiv.example/abs/2610.04321": "Sorting black mass with magnets. Ruiz and Ito. 27 Oct 2026. Journal of Recycling. We sort shredded battery black mass with a magnetic separator and recover 81% of the cobalt.",
+     "https://news.example/recycling-story": "Scientists have found a breakthrough that makes battery recycling free, a new paper proves."
+    },
+    "search": {
+     "battery recycling": [
+      {
+       "title": "Direct cathode regeneration at room temperature",
+       "url": "https://arxiv.example/abs/2610.01234",
+       "snippet": "arXiv preprint."
+      },
+      {
+       "title": "Sorting black mass with magnets",
+       "url": "https://arxiv.example/abs/2610.04321",
+       "snippet": "Journal article."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "battery recycling arxiv OR journal paper",
+        "time_filter": "week"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "solid-state electrolytes arxiv OR journal paper",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "solid-state electrolytes preprint",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Two papers on battery recycling.\n\n## Report\n- searched\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Two papers."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Papers"
+    }
+   ]
+  }
+ ]
+}

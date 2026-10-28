@@ -1,0 +1,20 @@
+{
+ "case": "three-rules-applied-and-the-quote-left-alone",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Launch note\" and wrote \"Restyled — Launch note\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Restyled”",
+   "ok": true,
+   "detail": "“Restyled — Launch note” is there."
+  }
+ ],
+ "answer": "3 changes: 1 by rule 1, 1 by rule 2, 1 by rule 3; 1 rule not applied.\n\n## Report\n- read \"Launch note\" and wrote \"Restyled — Launch note\""
+}

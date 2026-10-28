@@ -70,6 +70,41 @@ AT_THE_BAR = frozenset({
     # Personal & Home, the whole section.
     "bill-renewal-tracker", "evening-wrap", "family-calendar-keeper", "gift-date-keeper",
     "habit-coach", "home-maintenance", "meal-planner", "price-watcher", "trip-planner",
+    # Second slice (2026-10-28, `wave-ae`). Research & Intelligence and Writing &
+    # Documents, the whole of both sections.
+    "competitor-tracker", "fact-checker", "local-news-digest", "market-mapper", "paper-reader",
+    "standards-watch", "vendor-evaluator",
+    "executive-summary", "meeting-minutes", "newsletter-writer", "report-writer", "style-keeper",
+    "template-filler", "translator",
+    # Knowledge & Memory but Memory Auditor, whose tool answers nothing in an
+    # evaluation's world (`B1602`); Learning & Coaching, the whole section.
+    "archive-sorter", "bookmark-librarian", "decision-log", "faq-builder", "wiki-builder",
+    "course-builder", "flashcard-maker", "homework-helper", "language-partner", "reading-companion",
+    "tutor",
+    # Design & UX but UX Auditor, which walks a browser no evaluation world
+    # answers yet; Product & Projects, the whole section.
+    "brand-guardian", "copy-polisher", "image-optimiser", "mockup-maker", "ux-researcher",
+    "web-performance",
+    "deadline-watcher", "feedback-synthesiser", "planner", "roadmap-keeper", "spec-writer",
+    "sprint-prioritiser", "standup-collector", "status-reporter",
+    # Marketing & Content, the whole section.
+    "ad-copy-writer", "campaign-strategist", "content-calendar", "content-creator",
+    "email-sequence-writer", "press-release-writer", "repurposer",
+    # SEO & Growth but AI Visibility Check (it asks other models, which no
+    # evaluation world answers yet) and Conversion Auditor (a browser);
+    # Social Media, the whole section.
+    "content-gap-finder", "keyword-researcher", "rank-tracker", "review-watcher", "seo-auditor",
+    "trend-spotter",
+    # Sales & CRM and Support, the whole of both sections.
+    "discovery-coach", "lead-researcher", "outbound-writer", "proposal-writer",
+    "help-article-writer", "known-issue-linker", "support-responder",
+    # Finance & Operations but Tax Folder Builder, whose download_attachment
+    # cannot save into a folder yet (`B1600`).
+    "bills-due", "budget-watcher", "expense-tracker", "subscription-auditor", "vendor-reviewer",
+    # Legal & People and E-commerce, the whole of both sections.
+    "applicant-screener", "compliance-checker", "contract-reviewer", "job-post-writer",
+    "notice-date-keeper", "onboarding-buddy", "policy-answerer",
+    "competitor-prices", "listing-writer",
 })
 
 SECTIONS = ("Steps", "Judgement calls", "Edge cases", "Deliverable", "Example")

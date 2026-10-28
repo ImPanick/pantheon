@@ -1,0 +1,20 @@
+{
+ "case": "two-images-get-web-copies",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- listed 4 files, made web copies of 2 in optimised/ with one command",
+ "read": [
+  "ls"
+ ],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Optimised, Skipped, Total."
+  }
+ ],
+ "answer": "**Optimised**\n- hero.jpg — 2,410,112 → 312,540 bytes (optimised/hero.webp, resized to 2400 px) — 87% smaller\n- team.png — 845,330 → 201,004 bytes (optimised/team.webp) — 76% smaller\n\n**Skipped**\n- logo.svg — not a JPEG or PNG\n- icon.png — under 50 KB\n\n**Total**\n- 3,255,442 → 513,544 bytes — 84% smaller\n\n## Report\n- listed 4 files, made web copies of 2 in optimised/ with one command"
+}

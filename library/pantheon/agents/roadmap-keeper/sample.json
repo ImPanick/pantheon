@@ -1,0 +1,22 @@
+{
+ "case": "a-week-of-merges-against-the-roadmap",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the repository's merges and the roadmap; wrote \"Roadmap suggestions — 3 Nov\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "bash",
+  "manage_documents",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Roadmap suggestions”",
+   "ok": true,
+   "detail": "“Roadmap suggestions — 3 Nov” is there."
+  }
+ ],
+ "answer": "1 to mark shipped, 1 overdue, 2 unmatched.\n\n## Report\n- read the repository's merges and the roadmap; wrote \"Roadmap suggestions — 3 Nov\"\n\n## Carry forward\n- 3 Nov: suggested Dark mode shipped; Gift cards overdue"
+}

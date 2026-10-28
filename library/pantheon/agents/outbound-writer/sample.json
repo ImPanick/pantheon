@@ -1,0 +1,25 @@
+{
+ "case": "one-draft-with-a-real-reason",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 2 sites, drafted 1 email",
+ "read": [
+  "web_fetch"
+ ],
+ "wrote": [
+  "draft_email"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "at most 25 drafts",
+   "ok": true,
+   "detail": "It made 2 drafts."
+  },
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Drafted, Nothing specific found."
+  }
+ ],
+ "answer": "**Drafted**\n- Ana Ruiz, Greenleaf Cafés — the York opening in September\n\n**Nothing specific found**\n- Ben Ito, Northwind — the site says he has left; Mia Chen now runs operations\n- Chloe Park, Park Bakery — no address given\n\n## Report\n- read 2 sites, drafted 1 email"
+}

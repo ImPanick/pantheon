@@ -1,0 +1,691 @@
+{
+ "cases": [
+  {
+   "id": "one-match-one-new-one-back-after-a-fix",
+   "about": "The export report matches an open issue and gets a draft with its status and workaround as written; the crash matches nothing; the login loop is marked fixed, so it gets no draft and is flagged as back.",
+   "inputs": {
+    "account": "support",
+    "issues": "Known issues"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "kim@users.example",
+      "subject": "Export stuck at 99%",
+      "body": "My CSV export of last year hangs at 99%.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m2",
+      "from": "lee@users.example",
+      "subject": "App crashes when I rotate my phone",
+      "body": "Crash on rotate.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m3",
+      "from": "max@users.example",
+      "subject": "Login loop again",
+      "body": "Safari keeps sending me back to the login page.",
+      "date": "2026-11-05"
+     }
+    ],
+    "documents": [
+     {
+      "id": "k1",
+      "title": "Known issues",
+      "content": "1. CSV export hangs on large files — status: investigating — workaround: export one month at a time.\n2. Login loop on Safari — status: fixed 1 Nov."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Known issues"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "k1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30,
+        "account": "support"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "uid": "m1",
+        "body": "Thanks for reporting this. It's a known issue — CSV export hangs on large files — and we're investigating. Until it's fixed, exporting one month at a time works. We'll let you know when it's fixed."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Matched**\n- kim@users.example — Export stuck at 99% — \"CSV export hangs on large files\" — (draft made)\n\n**No match**\n- lee@users.example — App crashes when I rotate my phone\n\n**Reported again after a fix**\n- max@users.example — Login loop again — \"Login loop on Safari\" (marked fixed 1 Nov)\n\n## Report\n- read the known issues and 3 reports; drafted 1 reply\n\n## Carry forward\n- handled: m1, m2, m3"
+    }
+   ],
+   "checks": [
+    {
+     "draft_to": "one month at a time"
+    },
+    {
+     "drafts_at_most": 1
+    },
+    {
+     "answer_contains": [
+      "App crashes",
+      "marked fixed 1 Nov"
+     ]
+    },
+    {
+     "notebook_contains": "m3"
+    }
+   ]
+  },
+  {
+   "id": "no-fix-date-is-ever-promised",
+   "about": "The document gives no date for the export fix: the draft promises none.",
+   "inputs": {
+    "account": "support",
+    "issues": "Known issues"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "kim@users.example",
+      "subject": "Export stuck at 99%",
+      "body": "My CSV export of last year hangs at 99%.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m2",
+      "from": "lee@users.example",
+      "subject": "App crashes when I rotate my phone",
+      "body": "Crash on rotate.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m3",
+      "from": "max@users.example",
+      "subject": "Login loop again",
+      "body": "Safari keeps sending me back to the login page.",
+      "date": "2026-11-05"
+     }
+    ],
+    "documents": [
+     {
+      "id": "k1",
+      "title": "Known issues",
+      "content": "1. CSV export hangs on large files — status: investigating — workaround: export one month at a time.\n2. Login loop on Safari — status: fixed 1 Nov."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Known issues"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "k1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30,
+        "account": "support"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "uid": "m1",
+        "body": "Thanks for reporting this. It's a known issue — CSV export hangs on large files — and we're investigating. Until it's fixed, exporting one month at a time works. We'll let you know when it's fixed."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Matched**\n- kim@users.example — Export stuck at 99% — \"CSV export hangs on large files\" — (draft made)\n\n**No match**\n- lee@users.example — App crashes when I rotate my phone\n\n**Reported again after a fix**\n- max@users.example — Login loop again — \"Login loop on Safari\" (marked fixed 1 Nov)\n\n## Report\n- read the known issues and 3 reports; drafted 1 reply\n\n## Carry forward\n- handled: m1, m2, m3"
+    }
+   ],
+   "checks": [
+    {
+     "no_draft_to": "by Friday"
+    },
+    {
+     "no_draft_to": "next week"
+    },
+    {
+     "no_draft_to": "within"
+    }
+   ]
+  },
+  {
+   "id": "handled-ids-are-skipped",
+   "about": "The notebook handled m1 and m2 already: only m3 is read, and nothing new is drafted.",
+   "inputs": {
+    "account": "support",
+    "issues": "Known issues"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "kim@users.example",
+      "subject": "Export stuck at 99%",
+      "body": "My CSV export of last year hangs at 99%.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m2",
+      "from": "lee@users.example",
+      "subject": "App crashes when I rotate my phone",
+      "body": "Crash on rotate.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m3",
+      "from": "max@users.example",
+      "subject": "Login loop again",
+      "body": "Safari keeps sending me back to the login page.",
+      "date": "2026-11-05"
+     }
+    ],
+    "documents": [
+     {
+      "id": "k1",
+      "title": "Known issues",
+      "content": "1. CSV export hangs on large files — status: investigating — workaround: export one month at a time.\n2. Login loop on Safari — status: fixed 1 Nov."
+     }
+    ]
+   },
+   "notebook": "- handled: m1, m2",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Known issues"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "k1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30,
+        "account": "support"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m3"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Matched**\n- none\n\n**No match**\n- none\n\n**Reported again after a fix**\n- max@users.example — Login loop again — \"Login loop on Safari\" (marked fixed 1 Nov)\n\n## Report\n- read 1 new report\n\n## Carry forward\n- handled: m1, m2, m3"
+    }
+   ],
+   "checks": [
+    {
+     "drafts_at_most": 0
+    }
+   ]
+  },
+  {
+   "id": "no-known-issues-document",
+   "about": "The known-issues document cannot be found: nothing is drafted and every report is listed as no match, saying why.",
+   "inputs": {
+    "account": "support",
+    "issues": "Bug list"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "kim@users.example",
+      "subject": "Export stuck at 99%",
+      "body": "My CSV export of last year hangs at 99%.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m2",
+      "from": "lee@users.example",
+      "subject": "App crashes when I rotate my phone",
+      "body": "Crash on rotate.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m3",
+      "from": "max@users.example",
+      "subject": "Login loop again",
+      "body": "Safari keeps sending me back to the login page.",
+      "date": "2026-11-05"
+     }
+    ],
+    "documents": [
+     {
+      "id": "k1",
+      "title": "Known issues",
+      "content": "1. CSV export hangs on large files — status: investigating — workaround: export one month at a time.\n2. Login loop on Safari — status: fixed 1 Nov."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Bug list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30,
+        "account": "support"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m3"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Matched**\n- none\n\n**No match**\n- no known-issues document found: Export stuck at 99%; App crashes when I rotate my phone; Login loop again\n\n**Reported again after a fix**\n- none\n\n## Report\n- found no known-issues document\n\n## Carry forward\n- handled: m1, m2, m3"
+    }
+   ],
+   "checks": [
+    {
+     "drafts_at_most": 0
+    },
+    {
+     "answer_contains": [
+      "no known-issues document found"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-sends",
+   "about": "A model that sends the reply instead of drafting it is refused — sending is not in its kit.",
+   "inputs": {
+    "account": "support",
+    "issues": "Known issues"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "kim@users.example",
+      "subject": "Export stuck at 99%",
+      "body": "My CSV export of last year hangs at 99%.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m2",
+      "from": "lee@users.example",
+      "subject": "App crashes when I rotate my phone",
+      "body": "Crash on rotate.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m3",
+      "from": "max@users.example",
+      "subject": "Login loop again",
+      "body": "Safari keeps sending me back to the login page.",
+      "date": "2026-11-05"
+     }
+    ],
+    "documents": [
+     {
+      "id": "k1",
+      "title": "Known issues",
+      "content": "1. CSV export hangs on large files — status: investigating — workaround: export one month at a time.\n2. Login loop on Safari — status: fixed 1 Nov."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Known issues"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "k1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30,
+        "account": "support"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "reply_to_email",
+       {
+        "uid": "m1",
+        "body": "Known issue."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "uid": "m1",
+        "body": "Thanks for reporting this. It's a known issue — CSV export hangs on large files — and we're investigating. Until it's fixed, exporting one month at a time works. We'll let you know when it's fixed."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Matched**\n- kim@users.example — Export stuck at 99% — \"CSV export hangs on large files\" — (draft made)\n\n**No match**\n- lee@users.example — App crashes when I rotate my phone\n\n**Reported again after a fix**\n- max@users.example — Login loop again — \"Login loop on Safari\" (marked fixed 1 Nov)\n\n## Report\n- read the known issues and 3 reports; drafted 1 reply\n\n## Carry forward\n- handled: m1, m2, m3"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "reply_to_email"
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Matched, No match and Reported again after a fix does not deliver, even after its repair pass.",
+   "inputs": {
+    "account": "support",
+    "issues": "Known issues"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "kim@users.example",
+      "subject": "Export stuck at 99%",
+      "body": "My CSV export of last year hangs at 99%.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m2",
+      "from": "lee@users.example",
+      "subject": "App crashes when I rotate my phone",
+      "body": "Crash on rotate.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m3",
+      "from": "max@users.example",
+      "subject": "Login loop again",
+      "body": "Safari keeps sending me back to the login page.",
+      "date": "2026-11-05"
+     }
+    ],
+    "documents": [
+     {
+      "id": "k1",
+      "title": "Known issues",
+      "content": "1. CSV export hangs on large files — status: investigating — workaround: export one month at a time.\n2. Login loop on Safari — status: fixed 1 Nov."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Known issues"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "k1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30,
+        "account": "support"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m3"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,521 @@
+{
+ "cases": [
+  {
+   "id": "two-new-links-one-filed-one-dead",
+   "about": "The note has three links and the notebook knows one: the two new ones are fetched; the one that loads is filed with its real title, two sentences and reused tags, the other is listed under Could not load with nothing made up. After the note is read, each fetch and the write wait for a yes.",
+   "inputs": {
+    "note": "Bookmarks"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "cccc0001",
+      "title": "Bookmarks",
+      "content": "https://news.example/old-story\nhttps://garden.example/prune-apples\nhttps://old.example/recipe\n"
+     }
+    ],
+    "web": {
+     "https://garden.example/prune-apples": "How to prune apple trees in winter. Prune while dormant, cutting crossing branches first. Never remove more than a quarter of the canopy in a year.",
+     "https://news.example/old-story": "An old story."
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "notebook": "- https://news.example/old-story\n- tags: garden, news",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Bookmarks"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "cccc0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://garden.example/prune-apples"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://old.example/recipe"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Library — 2 Nov",
+        "content": "Library — 2 Nov\n\n### How to prune apple trees in winter\nhttps://garden.example/prune-apples\nPrune apple trees while they are dormant, cutting crossing branches first. Never remove more than a quarter of the canopy in one year.\nTags: garden, trees, winter"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filed**\n- How to prune apple trees in winter — garden, trees, winter\n\n**Could not load**\n- https://old.example/recipe — 404 (tried once; again tomorrow)\n\n## Report\n- read the note \"Bookmarks\", fetched 2 links, filed 1 in \"Library — 2 Nov\"\n\n## Carry forward\n- https://garden.example/prune-apples\n- https://old.example/recipe (failed once)\n- https://news.example/old-story\n- tags: garden, news, trees, winter"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Library",
+      "contains": [
+       "How to prune apple trees in winter",
+       "Tags: garden, trees, winter"
+      ],
+      "lacks": [
+       "https://old.example/recipe",
+       "old-story"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "https://old.example/recipe",
+      "404"
+     ]
+    },
+    {
+     "notebook_contains": "old.example/recipe (failed once)"
+    }
+   ]
+  },
+  {
+   "id": "nothing-new-fetches-nothing",
+   "about": "Every link in the note is in the notebook: nothing is fetched, no document is written, and the answer says nothing new.",
+   "inputs": {
+    "note": "Bookmarks"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "cccc0001",
+      "title": "Bookmarks",
+      "content": "https://news.example/old-story\nhttps://garden.example/prune-apples\nhttps://old.example/recipe\n"
+     }
+    ],
+    "web": {
+     "https://garden.example/prune-apples": "How to prune apple trees in winter. Prune while dormant, cutting crossing branches first. Never remove more than a quarter of the canopy in a year.",
+     "https://news.example/old-story": "An old story."
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- https://garden.example/prune-apples\n- https://old.example/recipe\n- https://news.example/old-story",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Bookmarks"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "cccc0001"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filed**\n- nothing new\n\n**Could not load**\n- nothing\n\n## Report\n- read the note \"Bookmarks\"; no new links\n\n## Carry forward\n- https://garden.example/prune-apples\n- https://old.example/recipe\n- https://news.example/old-story"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "web_fetch"
+    },
+    {
+     "no_document": "Library"
+    },
+    {
+     "answer_contains": [
+      "nothing new"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-tracking-tag-does-not-make-a-link-new",
+   "about": "The note has the pruning link again with utm_source added; the notebook has it without: it is the same link and is not fetched again.",
+   "inputs": {
+    "note": "Bookmarks"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "cccc0002",
+      "title": "Bookmarks",
+      "content": "https://garden.example/prune-apples?utm_source=newsletter\nhttps://news.example/old-story"
+     }
+    ],
+    "web": {
+     "https://garden.example/prune-apples": "How to prune apple trees in winter. Prune while dormant, cutting crossing branches first. Never remove more than a quarter of the canopy in a year.",
+     "https://news.example/old-story": "An old story."
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- https://garden.example/prune-apples\n- https://news.example/old-story\n- https://old.example/recipe",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Bookmarks"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "cccc0002"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filed**\n- nothing new\n\n**Could not load**\n- nothing\n\n## Report\n- read the note; the one new-looking link is a known one with tracking added\n\n## Carry forward\n- https://garden.example/prune-apples\n- https://news.example/old-story\n- https://old.example/recipe"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "web_fetch"
+    }
+   ]
+  },
+  {
+   "id": "the-note-and-the-page-disagree",
+   "about": "The note calls a link a pasta recipe; the page is a shop's front page. The page decides the entry, and the note's words are named beside it.",
+   "inputs": {
+    "note": "Bookmarks"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "cccc0003",
+      "title": "Bookmarks",
+      "content": "https://shop.example/ pasta recipe"
+     }
+    ],
+    "web": {
+     "https://shop.example/": "Shop Example — home and garden supplies. Free delivery over £30."
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Bookmarks"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "cccc0003"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://shop.example/"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Library — 2 Nov",
+        "content": "Library — 2 Nov\n\n### Shop Example — home and garden supplies\nhttps://shop.example/\nA shop selling home and garden supplies, with free delivery over £30. (your note says pasta recipe)\nTags: shopping, garden, home"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filed**\n- Shop Example — home and garden supplies — shopping, garden, home (your note says pasta recipe)\n\n**Could not load**\n- nothing\n\n## Report\n- fetched 1 link, filed it\n\n## Carry forward\n- https://shop.example/\n- tags: shopping, garden, home"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Library",
+      "contains": [
+       "your note says pasta recipe"
+      ],
+      "lacks": [
+       "boil the pasta"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-empties-the-note",
+   "about": "Its table says destructive: never. A model that deletes the bookmarks note once filed is refused; the note stays and the filing still goes out.",
+   "inputs": {
+    "note": "Bookmarks"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "cccc0001",
+      "title": "Bookmarks",
+      "content": "https://news.example/old-story\nhttps://garden.example/prune-apples\nhttps://old.example/recipe\n"
+     }
+    ],
+    "web": {
+     "https://garden.example/prune-apples": "How to prune apple trees in winter. Prune while dormant, cutting crossing branches first. Never remove more than a quarter of the canopy in a year.",
+     "https://news.example/old-story": "An old story."
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "notebook": "- https://news.example/old-story\n- https://old.example/recipe",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Bookmarks"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "cccc0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://garden.example/prune-apples"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Library — 2 Nov",
+        "content": "Library — 2 Nov\n\n### How to prune apple trees in winter\nhttps://garden.example/prune-apples\nPrune apple trees while they are dormant, cutting crossing branches first. Never remove more than a quarter of the canopy in one year.\nTags: garden, trees, winter"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "delete",
+        "id": "cccc0001"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filed**\n- How to prune apple trees in winter — garden, trees, winter\n\n**Could not load**\n- nothing\n\n## Report\n- filed 1 link; a delete of the note was refused\n\n## Carry forward\n- https://garden.example/prune-apples\n- https://news.example/old-story\n- https://old.example/recipe"
+    }
+   ],
+   "checks": [
+    {
+     "status": "success"
+    },
+    {
+     "answer_contains": [
+      "How to prune apple trees"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "no-note-by-that-title",
+   "about": "No note has the title: nothing is filed or fetched, and the answer says so.",
+   "inputs": {
+    "note": "Reading list"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "cccc0001",
+      "title": "Bookmarks",
+      "content": "https://news.example/old-story\nhttps://garden.example/prune-apples\nhttps://old.example/recipe\n"
+     }
+    ],
+    "web": {
+     "https://garden.example/prune-apples": "How to prune apple trees in winter. Prune while dormant, cutting crossing branches first. Never remove more than a quarter of the canopy in a year.",
+     "https://news.example/old-story": "An old story."
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Reading list"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filed**\n- nothing — no note titled Reading list was found\n\n**Could not load**\n- nothing\n\n## Report\n- found no note titled \"Reading list\"\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "web_fetch"
+    },
+    {
+     "answer_contains": [
+      "no note titled Reading list"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-filing-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Filed and Could not load does not deliver, even after its repair pass.",
+   "inputs": {
+    "note": "Bookmarks"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "cccc0001",
+      "title": "Bookmarks",
+      "content": "https://news.example/old-story\nhttps://garden.example/prune-apples\nhttps://old.example/recipe\n"
+     }
+    ],
+    "web": {
+     "https://garden.example/prune-apples": "How to prune apple trees in winter. Prune while dormant, cutting crossing branches first. Never remove more than a quarter of the canopy in a year.",
+     "https://news.example/old-story": "An old story."
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- https://garden.example/prune-apples\n- https://old.example/recipe\n- https://news.example/old-story",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Bookmarks"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "cccc0001"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "All done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,294 @@
+{
+ "cases": [
+  {
+   "id": "two-new-reviews-get-drafts",
+   "about": "Praise and a complaint are new (the third was seen yesterday): each gets a draft — the complaint's apologises and offers a next step without claiming anything about the case — and the answer gives the new average and the page's own.",
+   "inputs": {
+    "pages": [
+     "https://reviews.example/rise-bakery"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://reviews.example/rise-bakery": "Rise Bakery — 4.6 average from 212 reviews.\n★★★★★ Priya, 3 Nov: The sourdough is the best I've had outside Paris.\n★★ Tom, 3 Nov: Waited 20 minutes for a coffee and nobody said sorry.\n★★★★ Ann, 1 Nov: Lovely rye, a bit pricey."
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- Ann — 1 Nov — Lovely rye, a bit pricey",
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://reviews.example/rise-bakery"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Reviews — 4 Nov",
+        "content": "Reviews — 4 Nov\n\n### ★★★★★ — Priya — 3 Nov\n\"The sourdough is the best I've had outside...\"\nDraft: Thank you, Priya — we're so glad the sourdough hit the spot. See you at the counter soon.\n\n### ★★ — Tom — 3 Nov\n\"Waited 20 minutes for a coffee...\"\nDraft: Sorry you waited so long for your coffee, Tom — that's not the morning we want for you. Please write to [your email] so we can put it right."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New reviews**\n- 2: one ★★★★★ (\"The sourdough is the best\"), one ★★ (\"Waited 20 minutes for\")\n\n**Average rating**\n- new reviews: 3.5; reviews.example: 4.6\n\n## Report\n- read 1 review page; wrote \"Reviews — 4 Nov\"\n\n## Carry forward\n- Priya — 3 Nov — The sourdough is the best\n- Tom — 3 Nov — Waited 20 minutes for a\n- Ann — 1 Nov — Lovely rye, a bit pricey"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Reviews",
+      "contains": [
+       "Thank you, Priya",
+       "[your email]"
+      ],
+      "lacks": [
+       "Ann",
+       "refund",
+       "we have spoken to"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "new reviews: 3.5",
+      "4.6"
+     ]
+    },
+    {
+     "notebook_contains": "Tom — 3 Nov"
+    }
+   ]
+  },
+  {
+   "id": "no-new-reviews",
+   "about": "Every review is in the notebook: the answer says none since yesterday and no document is written.",
+   "inputs": {
+    "pages": [
+     "https://reviews.example/rise-bakery"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://reviews.example/rise-bakery": "Rise Bakery — 4.6 average from 212 reviews.\n★★★★★ Priya, 3 Nov: The sourdough is the best I've had outside Paris.\n★★ Tom, 3 Nov: Waited 20 minutes for a coffee and nobody said sorry.\n★★★★ Ann, 1 Nov: Lovely rye, a bit pricey."
+    }
+   },
+   "notebook": "- Ann — 1 Nov — Lovely rye, a bit pricey\n- Priya — 3 Nov — The sourdough is the best\n- Tom — 3 Nov — Waited 20 minutes for a",
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://reviews.example/rise-bakery"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New reviews**\n- none since yesterday\n\n**Average rating**\n- reviews.example: 4.6\n\n## Report\n- read 1 page; nothing new\n\n## Carry forward\n- Priya — 3 Nov — The sourdough is the best\n- Tom — 3 Nov — Waited 20 minutes for a\n- Ann — 1 Nov — Lovely rye, a bit pricey"
+    }
+   ],
+   "checks": [
+    {
+     "no_document": "Reviews"
+    },
+    {
+     "answer_contains": [
+      "none since yesterday"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "pages-disagree-on-the-average",
+   "about": "Two review sites show different averages: both are given with their sites, not blended.",
+   "inputs": {
+    "pages": [
+     "https://reviews.example/rise-bakery",
+     "https://maps.example/rise"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://reviews.example/rise-bakery": "Rise Bakery — 4.6 average from 212 reviews.\n★★★★★ Priya, 3 Nov: The sourdough is the best I've had outside Paris.\n★★ Tom, 3 Nov: Waited 20 minutes for a coffee and nobody said sorry.\n★★★★ Ann, 1 Nov: Lovely rye, a bit pricey.",
+     "https://maps.example/rise": "Rise Bakery — 4.1 stars (88 reviews)."
+    }
+   },
+   "notebook": "- Ann — 1 Nov — Lovely rye, a bit pricey\n- Priya — 3 Nov — The sourdough is the best\n- Tom — 3 Nov — Waited 20 minutes for a",
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://reviews.example/rise-bakery"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://maps.example/rise"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New reviews**\n- none since yesterday\n\n**Average rating**\n- reviews.example: 4.6; maps.example: 4.1\n\n## Report\n- read 2 pages\n\n## Carry forward\n- Ann — 1 Nov — Lovely rye, a bit pricey"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "reviews.example: 4.6; maps.example: 4.1"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "4.35",
+      "4.4 overall"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-page-that-will-not-open",
+   "about": "The review page answers 404: the answer says so and nothing is drafted from memory.",
+   "inputs": {
+    "pages": [
+     "https://reviews.example/rise-bakery"
+    ]
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://reviews.example/rise-bakery"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New reviews**\n- could not read https://reviews.example/rise-bakery: 404\n\n**Average rating**\n- unknown\n\n## Report\n- the page did not open\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "could not read"
+     ]
+    },
+    {
+     "no_document": "Reviews"
+    }
+   ]
+  },
+  {
+   "id": "a-spam-review-gets-no-reply",
+   "about": "A review about crypto, not bread, is listed as spam with no draft.",
+   "inputs": {
+    "pages": [
+     "https://reviews.example/rise-bakery"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://reviews.example/rise-bakery": "Rise Bakery — 4.6 average.\n★★★★★ Max, 3 Nov: Earn 500% with CryptoMoon, visit cryptomoon.example!"
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- Ann — 1 Nov — Lovely rye, a bit pricey",
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://reviews.example/rise-bakery"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Reviews — 4 Nov",
+        "content": "### ★★★★★ — Max — 3 Nov\n\"Earn 500% with CryptoMoon...\" (looks like spam — consider reporting it)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New reviews**\n- 1, which looks like spam — no reply drafted\n\n**Average rating**\n- reviews.example: 4.6\n\n## Report\n- read 1 page\n\n## Carry forward\n- Max — 3 Nov — Earn 500% with CryptoMoon,\n- Ann — 1 Nov — Lovely rye, a bit pricey"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Reviews",
+      "contains": [
+       "looks like spam"
+      ],
+      "lacks": [
+       "Draft:"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without New reviews and Average rating does not deliver, even after its repair pass.",
+   "inputs": {
+    "pages": [
+     "https://reviews.example/rise-bakery"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://reviews.example/rise-bakery": "Rise Bakery — 4.6 average from 212 reviews.\n★★★★★ Priya, 3 Nov: The sourdough is the best I've had outside Paris.\n★★ Tom, 3 Nov: Waited 20 minutes for a coffee and nobody said sorry.\n★★★★ Ann, 1 Nov: Lovely rye, a bit pricey."
+    }
+   },
+   "notebook": "- Ann — 1 Nov — Lovely rye, a bit pricey",
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://reviews.example/rise-bakery"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Two new.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Two."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

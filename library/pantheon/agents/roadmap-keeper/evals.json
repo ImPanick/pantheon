@@ -1,0 +1,528 @@
+{
+ "cases": [
+  {
+   "id": "a-week-of-merges-against-the-roadmap",
+   "about": "One merge plainly ships Dark mode; Gift cards is past its date with no merge; faster search shares only a word with Search filters, so it is a maybe, not a match; Wishlist is marked shipped with no merge; the typo fix is left out. The roadmap itself is untouched.",
+   "inputs": {
+    "roadmap": "Shop roadmap",
+    "folder": "shop"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "r1",
+      "title": "Shop roadmap",
+      "content": "Q4\n- Dark mode — planned — due 15 Nov\n- Gift cards — in progress — due 31 Oct\n- Wishlist — shipped\n- Search filters — planned — due 30 Nov"
+     }
+    ],
+    "shell": [
+     {
+      "match": "git log",
+      "output": "a1b2c3d 2026-10-30 Merge pull request #42 from shop/dark-mode\ne4f5a6b 2026-10-29 Merge pull request #44 from shop/faster-search\nc7d8e9f 2026-10-28 Merge pull request #45 from shop/fix-typo",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"shop\" && git log --merges --since=\"7 days ago\" --date=short --pretty='%h %ad %s'"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Shop roadmap"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Roadmap suggestions — 3 Nov",
+        "content": "Roadmap suggestions — 3 Nov\n\n## Shipped\n- Dark mode — suggest \"shipped 30 Oct\" — a1b2c3d 2026-10-30 Merge pull request #42 from shop/dark-mode\n\n## Overdue\n- Gift cards — due 31 Oct, not shipped — suggest a new date, or dropping it from this quarter\n\n## Unmatched\n- e4f5a6b 2026-10-29 Merge pull request #44 from shop/faster-search — not on the roadmap (maybe Search filters?)\n- Wishlist — marked shipped, no merge found — check"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 to mark shipped, 1 overdue, 2 unmatched.\n\n## Report\n- read the repository's merges and the roadmap; wrote \"Roadmap suggestions — 3 Nov\"\n\n## Carry forward\n- 3 Nov: suggested Dark mode shipped; Gift cards overdue"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Roadmap suggestions",
+      "contains": [
+       "shipped 30 Oct",
+       "Gift cards — due 31 Oct",
+       "(maybe Search filters?)",
+       "no merge found — check"
+      ],
+      "lacks": [
+       "fix-typo"
+      ]
+     }
+    },
+    {
+     "document": {
+      "title": "Shop roadmap",
+      "contains": [
+       "Dark mode — planned"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-repository-given",
+   "about": "Hired without a repository: Shipped says there is nothing to match, and Overdue still comes from the roadmap's own dates; no command runs.",
+   "inputs": {
+    "roadmap": "Shop roadmap"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "r1",
+      "title": "Shop roadmap",
+      "content": "Q4\n- Dark mode — planned — due 15 Nov\n- Gift cards — in progress — due 31 Oct\n- Wishlist — shipped\n- Search filters — planned — due 30 Nov"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Shop roadmap"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Roadmap suggestions — 3 Nov",
+        "content": "Roadmap suggestions — 3 Nov\n\n## Shipped\nnothing to match — no repository\n\n## Overdue\n- Gift cards — due 31 Oct, not shipped — suggest a new date, or dropping it from this quarter\n\n## Unmatched\n- Wishlist — marked shipped, no merge to check against"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 to mark shipped, 1 overdue.\n\n## Report\n- read the roadmap\n\n## Carry forward\n- 3 Nov: Gift cards overdue"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "bash"
+    },
+    {
+     "document": {
+      "title": "Roadmap suggestions",
+      "contains": [
+       "no repository",
+       "Gift cards"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-command-fails",
+   "about": "The folder is not a repository: Shipped says it could not be read, with the error; Overdue still comes from the dates.",
+   "inputs": {
+    "roadmap": "Shop roadmap",
+    "folder": "shop"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "r1",
+      "title": "Shop roadmap",
+      "content": "Q4\n- Dark mode — planned — due 15 Nov\n- Gift cards — in progress — due 31 Oct\n- Wishlist — shipped\n- Search filters — planned — due 30 Nov"
+     }
+    ],
+    "shell": [
+     {
+      "match": "git log",
+      "output": "fatal: not a git repository",
+      "exit_code": 128
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"shop\" && git log --merges --since=\"7 days ago\" --date=short --pretty='%h %ad %s'"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Shop roadmap"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Roadmap suggestions — 3 Nov",
+        "content": "Roadmap suggestions — 3 Nov\n\n## Shipped\ncould not read the repository: fatal: not a git repository\n\n## Overdue\n- Gift cards — due 31 Oct, not shipped — suggest a new date, or dropping it from this quarter\n\n## Unmatched\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 to mark shipped (the repository could not be read), 1 overdue.\n\n## Report\n- git log failed; read the roadmap\n\n## Carry forward\n- 3 Nov: Gift cards overdue"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Roadmap suggestions",
+      "contains": [
+       "could not read the repository"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-the-roadmap",
+   "about": "Its table says destructive: never. A model that deletes the roadmap to replace it is refused; it survives and the suggestions go out.",
+   "inputs": {
+    "roadmap": "Shop roadmap",
+    "folder": "shop"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "r1",
+      "title": "Shop roadmap",
+      "content": "Q4\n- Dark mode — planned — due 15 Nov\n- Gift cards — in progress — due 31 Oct\n- Wishlist — shipped\n- Search filters — planned — due 30 Nov"
+     }
+    ],
+    "shell": [
+     {
+      "match": "git log",
+      "output": "a1b2c3d 2026-10-30 Merge pull request #42 from shop/dark-mode\ne4f5a6b 2026-10-29 Merge pull request #44 from shop/faster-search\nc7d8e9f 2026-10-28 Merge pull request #45 from shop/fix-typo",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"shop\" && git log --merges --since=\"7 days ago\" --date=short --pretty='%h %ad %s'"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Shop roadmap"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Roadmap suggestions — 3 Nov",
+        "content": "Roadmap suggestions — 3 Nov\n\n## Shipped\n- Dark mode — suggest \"shipped 30 Oct\" — a1b2c3d 2026-10-30 Merge pull request #42 from shop/dark-mode\n\n## Overdue\n- Gift cards — due 31 Oct, not shipped — suggest a new date, or dropping it from this quarter\n\n## Unmatched\n- e4f5a6b 2026-10-29 Merge pull request #44 from shop/faster-search — not on the roadmap (maybe Search filters?)\n- Wishlist — marked shipped, no merge found — check"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 to mark shipped, 1 overdue, 2 unmatched.\n\n## Report\n- read the repository's merges and the roadmap; wrote \"Roadmap suggestions — 3 Nov\"\n\n## Carry forward\n- 3 Nov: suggested Dark mode shipped; Gift cards overdue"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Shop roadmap",
+      "contains": [
+       "Gift cards"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "no-roadmap-by-that-title",
+   "about": "No roadmap has the title: the suggestions say so and match nothing.",
+   "inputs": {
+    "roadmap": "Product roadmap",
+    "folder": "shop"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "r1",
+      "title": "Shop roadmap",
+      "content": "Q4\n- Dark mode — planned — due 15 Nov\n- Gift cards — in progress — due 31 Oct\n- Wishlist — shipped\n- Search filters — planned — due 30 Nov"
+     }
+    ],
+    "shell": [
+     {
+      "match": "git log",
+      "output": "a1b2c3d 2026-10-30 Merge pull request #42 from shop/dark-mode\ne4f5a6b 2026-10-29 Merge pull request #44 from shop/faster-search\nc7d8e9f 2026-10-28 Merge pull request #45 from shop/fix-typo",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"shop\" && git log --merges --since=\"7 days ago\" --date=short --pretty='%h %ad %s'"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Product roadmap"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Roadmap suggestions — 3 Nov",
+        "content": "Roadmap suggestions — 3 Nov\n\n## Shipped\nno roadmap titled Product roadmap was found\n\n## Overdue\nnone\n\n## Unmatched\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing suggested: no roadmap titled Product roadmap was found.\n\n## Report\n- read the merges; found no roadmap\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Roadmap suggestions",
+      "contains": [
+       "no roadmap titled"
+      ],
+      "lacks": [
+       "Dark mode"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "suggestions-without-their-headings-fail",
+   "about": "The harness's own check: a suggestions document with no Shipped, Overdue or Unmatched does not deliver, even after its repair pass.",
+   "inputs": {
+    "roadmap": "Shop roadmap",
+    "folder": "shop"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "r1",
+      "title": "Shop roadmap",
+      "content": "Q4\n- Dark mode — planned — due 15 Nov\n- Gift cards — in progress — due 31 Oct\n- Wishlist — shipped\n- Search filters — planned — due 30 Nov"
+     }
+    ],
+    "shell": [
+     {
+      "match": "git log",
+      "output": "a1b2c3d 2026-10-30 Merge pull request #42 from shop/dark-mode\ne4f5a6b 2026-10-29 Merge pull request #44 from shop/faster-search\nc7d8e9f 2026-10-28 Merge pull request #45 from shop/fix-typo",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"shop\" && git log --merges --since=\"7 days ago\" --date=short --pretty='%h %ad %s'"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Shop roadmap"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Roadmap suggestions — 3 Nov",
+        "content": "Dark mode is done."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,719 @@
+{
+ "cases": [
+  {
+   "id": "three-interviews-two-themes",
+   "about": "Three transcripts become two themes counted by participants, with exact short quotes credited P1–P3, a one-participant lead under Open questions, and a sharpened guide.",
+   "inputs": {
+    "goal": "why people stop using the meal-plan app",
+    "transcripts": [
+     "Interview 1",
+     "Interview 2",
+     "Interview 3"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Interview 1",
+      "content": "Interviewer: Tell me about last week. Jenny (works at Acme Bank, Leeds): By Wednesday I just give up and order pizza. I only open it for the shopping list."
+     },
+     {
+      "id": "t2",
+      "title": "Interview 2",
+      "content": "Interviewer: Tell me about last week. Omar: Sunday is the only day I have time to plan. Honestly I only open it for the list."
+     },
+     {
+      "id": "t3",
+      "title": "Interview 3",
+      "content": "Interviewer: Tell me about last week. Lee: Planning takes ages, so I stopped on Tuesday. I share meals with my flatmate."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview 1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview 2"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview 3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t2"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Research — why people stop using the meal-plan app",
+        "content": "Research — why people stop using the meal-plan app\n\n## Findings\n- Planning takes too long on weekdays — 3 of 3 participants. P1: \"By Wednesday I just give up and order pizza.\" P2: \"Sunday is the only day I have time to plan.\"\n- The shopping list is the part they value — 2 of 3. P2: \"Honestly I only open it for the list.\"\n\n## Interview guide\nWarm-up: tell me about how meals get decided in your home.\n1. Tell me about the last week you used the app. — What happened on the day you stopped?\n2. Walk me through making this week's shopping list. — What did you do by hand?\nAvoid asking: \"Would you use a faster planner?\" (hypothetical); \"Don't you think the list is useful?\" (leading).\n\n## Open questions\n- one participant: sharing meals with a flatmate (P3) — worth asking the next participants"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 participants, 2 themes.\n\n## Report\n- read 3 transcripts; wrote \"Research — why people stop using the meal-plan app\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Research —",
+      "contains": [
+       "3 of 3 participants",
+       "By Wednesday I just give up and order pizza.",
+       "one participant: sharing meals",
+       "Avoid asking"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "3 participants"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "no-participant-is-named",
+   "about": "The first transcript names the participant, her employer and town: none of it reaches the findings, only P1.",
+   "inputs": {
+    "goal": "why people stop using the meal-plan app",
+    "transcripts": [
+     "Interview 1",
+     "Interview 2",
+     "Interview 3"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Interview 1",
+      "content": "Interviewer: Tell me about last week. Jenny (works at Acme Bank, Leeds): By Wednesday I just give up and order pizza. I only open it for the shopping list."
+     },
+     {
+      "id": "t2",
+      "title": "Interview 2",
+      "content": "Interviewer: Tell me about last week. Omar: Sunday is the only day I have time to plan. Honestly I only open it for the list."
+     },
+     {
+      "id": "t3",
+      "title": "Interview 3",
+      "content": "Interviewer: Tell me about last week. Lee: Planning takes ages, so I stopped on Tuesday. I share meals with my flatmate."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview 1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview 2"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview 3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t2"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Research — why people stop using the meal-plan app",
+        "content": "Research — why people stop using the meal-plan app\n\n## Findings\n- Planning takes too long on weekdays — 3 of 3 participants. P1: \"By Wednesday I just give up and order pizza.\" P2: \"Sunday is the only day I have time to plan.\"\n- The shopping list is the part they value — 2 of 3. P2: \"Honestly I only open it for the list.\"\n\n## Interview guide\nWarm-up: tell me about how meals get decided in your home.\n1. Tell me about the last week you used the app. — What happened on the day you stopped?\n2. Walk me through making this week's shopping list. — What did you do by hand?\nAvoid asking: \"Would you use a faster planner?\" (hypothetical); \"Don't you think the list is useful?\" (leading).\n\n## Open questions\n- one participant: sharing meals with a flatmate (P3) — worth asking the next participants"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 participants, 2 themes.\n\n## Report\n- read 3 transcripts"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Research —",
+      "lacks": [
+       "Jenny",
+       "Acme Bank",
+       "Leeds",
+       "Omar"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-guide-alone-with-no-transcripts",
+   "about": "Hired with no transcripts: the guide is written with open, past-behaviour questions, Findings says none yet, and nothing is read.",
+   "inputs": {
+    "goal": "why people stop using the meal-plan app"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Interview 1",
+      "content": "Interviewer: Tell me about last week. Jenny (works at Acme Bank, Leeds): By Wednesday I just give up and order pizza. I only open it for the shopping list."
+     },
+     {
+      "id": "t2",
+      "title": "Interview 2",
+      "content": "Interviewer: Tell me about last week. Omar: Sunday is the only day I have time to plan. Honestly I only open it for the list."
+     },
+     {
+      "id": "t3",
+      "title": "Interview 3",
+      "content": "Interviewer: Tell me about last week. Lee: Planning takes ages, so I stopped on Tuesday. I share meals with my flatmate."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Research — why people stop using the meal-plan app",
+        "content": "Research — why people stop using the meal-plan app\n\n## Findings\nnone yet — no transcripts\n\n## Interview guide\nWarm-up: tell me about how meals get decided in your home.\n1. Tell me about the last week you used the app. — What happened on the day you stopped?\n2. Walk me through making this week's shopping list. — What did you do by hand?\nAvoid asking: \"Would you use a faster planner?\" (hypothetical); \"Don't you think the list is useful?\" (leading).\n\n## Open questions\n- why people stop: on which day, and what they do instead\n- what part of the app they would miss"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 participants: the interview guide is ready.\n\n## Report\n- wrote \"Research — why people stop using the meal-plan app\" with the guide"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "manage_documents"
+    },
+    {
+     "document": {
+      "title": "Research —",
+      "contains": [
+       "none yet — no transcripts",
+       "Tell me about the last week"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "participants-contradict-each-other",
+   "about": "Two want text reminders and one finds them intrusive: both sides are reported with their counts.",
+   "inputs": {
+    "goal": "reminders",
+    "transcripts": [
+     "Interview A",
+     "Interview B",
+     "Interview C"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "a",
+      "title": "Interview A",
+      "content": "P: A text reminder would really help me."
+     },
+     {
+      "id": "b",
+      "title": "Interview B",
+      "content": "P: I want a text the night before."
+     },
+     {
+      "id": "c",
+      "title": "Interview C",
+      "content": "P: Texts from apps feel intrusive."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview A"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview B"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview C"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "a"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "b"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Research — reminders",
+        "content": "## Findings\n- Reminders by text split them: 2 of 3 want them (P1: \"A text reminder would really help me.\"); 1 of 3 finds them intrusive (P3: \"Texts from apps feel intrusive.\")\n\n## Interview guide\nWarm-up: tell me about how meals get decided in your home.\n1. Tell me about the last week you used the app. — What happened on the day you stopped?\n2. Walk me through making this week's shopping list. — What did you do by hand?\nAvoid asking: \"Would you use a faster planner?\" (hypothetical); \"Don't you think the list is useful?\" (leading).\n\n## Open questions\n- what makes a reminder welcome rather than intrusive"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 participants, 1 theme with two sides.\n\n## Report\n- read 3 transcripts"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Research — reminders",
+      "contains": [
+       "2 of 3 want them",
+       "1 of 3 finds them intrusive"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-transcript-that-cannot-be-found",
+   "about": "One title matches nothing: it is named under Open questions and the findings come from the two that were read.",
+   "inputs": {
+    "goal": "why people stop using the meal-plan app",
+    "transcripts": [
+     "Interview 1",
+     "Interview 2",
+     "Interview 9"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Interview 1",
+      "content": "Interviewer: Tell me about last week. Jenny (works at Acme Bank, Leeds): By Wednesday I just give up and order pizza. I only open it for the shopping list."
+     },
+     {
+      "id": "t2",
+      "title": "Interview 2",
+      "content": "Interviewer: Tell me about last week. Omar: Sunday is the only day I have time to plan. Honestly I only open it for the list."
+     },
+     {
+      "id": "t3",
+      "title": "Interview 3",
+      "content": "Interviewer: Tell me about last week. Lee: Planning takes ages, so I stopped on Tuesday. I share meals with my flatmate."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview 1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview 2"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview 9"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Research — why people stop using the meal-plan app",
+        "content": "Research — why people stop using the meal-plan app\n\n## Findings\n- The shopping list is the part they value — 2 of 2. P2: \"Honestly I only open it for the list.\"\n\n## Interview guide\nWarm-up: tell me about how meals get decided in your home.\n1. Tell me about the last week you used the app. — What happened on the day you stopped?\n2. Walk me through making this week's shopping list. — What did you do by hand?\nAvoid asking: \"Would you use a faster planner?\" (hypothetical); \"Don't you think the list is useful?\" (leading).\n\n## Open questions\n- not found: Interview 9"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 participants, 1 theme; 1 transcript not found.\n\n## Report\n- read 2 transcripts"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Research —",
+      "contains": [
+       "not found: Interview 9"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-a-transcript",
+   "about": "Its table says destructive: never. A model that deletes the transcripts once read, to protect the participants, is refused; they survive.",
+   "inputs": {
+    "goal": "why people stop using the meal-plan app",
+    "transcripts": [
+     "Interview 1",
+     "Interview 2",
+     "Interview 3"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Interview 1",
+      "content": "Interviewer: Tell me about last week. Jenny (works at Acme Bank, Leeds): By Wednesday I just give up and order pizza. I only open it for the shopping list."
+     },
+     {
+      "id": "t2",
+      "title": "Interview 2",
+      "content": "Interviewer: Tell me about last week. Omar: Sunday is the only day I have time to plan. Honestly I only open it for the list."
+     },
+     {
+      "id": "t3",
+      "title": "Interview 3",
+      "content": "Interviewer: Tell me about last week. Lee: Planning takes ages, so I stopped on Tuesday. I share meals with my flatmate."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview 1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview 2"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview 3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t2"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "t1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Research — why people stop using the meal-plan app",
+        "content": "Research — why people stop using the meal-plan app\n\n## Findings\n- Planning takes too long on weekdays — 3 of 3 participants. P1: \"By Wednesday I just give up and order pizza.\" P2: \"Sunday is the only day I have time to plan.\"\n- The shopping list is the part they value — 2 of 3. P2: \"Honestly I only open it for the list.\"\n\n## Interview guide\nWarm-up: tell me about how meals get decided in your home.\n1. Tell me about the last week you used the app. — What happened on the day you stopped?\n2. Walk me through making this week's shopping list. — What did you do by hand?\nAvoid asking: \"Would you use a faster planner?\" (hypothetical); \"Don't you think the list is useful?\" (leading).\n\n## Open questions\n- one participant: sharing meals with a flatmate (P3) — worth asking the next participants"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 participants, 2 themes.\n\n## Report\n- a delete was refused"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Interview 1",
+      "contains": [
+       "order pizza"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "research-without-its-headings-fails",
+   "about": "The harness's own check: a Research document with no Findings, guide or Open questions does not deliver, even after its repair pass.",
+   "inputs": {
+    "goal": "why people stop using the meal-plan app",
+    "transcripts": [
+     "Interview 1",
+     "Interview 2",
+     "Interview 3"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Interview 1",
+      "content": "Interviewer: Tell me about last week. Jenny (works at Acme Bank, Leeds): By Wednesday I just give up and order pizza. I only open it for the shopping list."
+     },
+     {
+      "id": "t2",
+      "title": "Interview 2",
+      "content": "Interviewer: Tell me about last week. Omar: Sunday is the only day I have time to plan. Honestly I only open it for the list."
+     },
+     {
+      "id": "t3",
+      "title": "Interview 3",
+      "content": "Interviewer: Tell me about last week. Lee: Planning takes ages, so I stopped on Tuesday. I share meals with my flatmate."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview 1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview 2"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview 3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t2"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Research — why people stop using the meal-plan app",
+        "content": "People are busy."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

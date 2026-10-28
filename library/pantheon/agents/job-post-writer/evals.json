@@ -1,0 +1,234 @@
+{
+ "cases": [
+  {
+   "id": "a-weekend-chef-pack",
+   "about": "The post, a guide with two did-it questions per must-have, and a 1/3/5 rubric for each; \"young\" from the brief is left out and the answer says why.",
+   "inputs": {
+    "role": "Weekend chef for our café, Sat and Sun 7am-3pm, £14/hour. Must run the kitchen alone and have food hygiene level 2. Baking a plus. Ideally young and energetic."
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Hiring pack — weekend café chef",
+        "content": "Hiring pack — weekend café chef\n\n## Job post\nYou'll run our café kitchen on Saturdays and Sundays, 7am to 3pm, £14 an hour.\nMust have: runs a busy kitchen on their own; food hygiene level 2.\nNice to have: bakes.\n\n## Interview guide\nRuns a busy kitchen: \"Tell me about your busiest service. What went wrong, and what did you do?\" / \"Tell me about a time you ran the kitchen alone.\"\nFood hygiene: \"Tell me how you kept a kitchen safe on a busy day.\" / \"Tell me about a hygiene problem you spotted and fixed.\"\n\n## Rubric\nRuns a busy kitchen — 1: no kitchen experience; 3: has worked a busy line with a lead; 5: has run a busy kitchen alone, with an example.\nFood hygiene level 2 — 1: none; 3: in progress; 5: held, with a time they applied it."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Must-haves: runs a busy kitchen on their own; food hygiene level 2. Left out: \"young\" — age is not about the work.\n\n## Report\n- wrote \"Hiring pack — weekend café chef\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Hiring pack",
+      "contains": [
+       "Must have: runs a busy kitchen",
+       "Tell me about your busiest service",
+       "5: has run a busy kitchen alone",
+       "£14 an hour"
+      ],
+      "lacks": [
+       "young",
+       "energetic",
+       "rockstar"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "Left out: \"young\""
+     ]
+    }
+   ]
+  },
+  {
+   "id": "no-pay-in-the-brief",
+   "about": "The brief gives no pay: the post says to add it rather than inventing a figure.",
+   "inputs": {
+    "role": "Weekend chef for our café. Must run the kitchen alone."
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Hiring pack — weekend café chef",
+        "content": "Hiring pack — weekend café chef\n\n## Job post\nYou'll run our café kitchen at weekends. [add pay]\nMust have: runs a busy kitchen on their own.\n\n## Interview guide\nRuns a busy kitchen: \"Tell me about your busiest service. What went wrong, and what did you do?\" / \"Tell me about a time you ran the kitchen alone.\"\n\n## Rubric\nRuns a busy kitchen — 1: no kitchen experience; 3: has worked a busy line with a lead; 5: has run a busy kitchen alone, with an example."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Must-have: runs a busy kitchen on their own. Pay is left for you to add.\n\n## Report\n- wrote \"Hiring pack — weekend café chef\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Hiring pack",
+      "contains": [
+       "[add pay]"
+      ],
+      "lacks": [
+       "£"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-brief-that-contradicts-itself",
+   "about": "\"Entry level\" and \"five years' experience\": neither becomes a must-have, and the post asks which.",
+   "inputs": {
+    "role": "Entry-level kitchen assistant, five years' experience required, food hygiene level 2."
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Hiring pack — kitchen assistant",
+        "content": "Hiring pack — kitchen assistant\n\n## Job post\nYou'll help in our kitchen. [check: entry level or five years?]\nMust have: food hygiene level 2.\n\n## Interview guide\nFood hygiene: \"Tell me how you kept a kitchen safe on a busy day.\"\n\n## Rubric\nFood hygiene level 2 — 1: none; 3: in progress; 5: held, with a time they applied it."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Must-have: food hygiene level 2. The brief says both entry level and five years — check which.\n\n## Report\n- wrote the pack"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Hiring pack",
+      "contains": [
+       "[check: entry level or five years?]"
+      ],
+      "lacks": [
+       "Must have: five years"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-role-described",
+   "about": "An empty brief: the pack says no role was described and invents nothing.",
+   "inputs": {
+    "role": " "
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Hiring pack — no role",
+        "content": "Hiring pack — no role\n\n## Job post\nno role was described\n\n## Interview guide\nnone\n\n## Rubric\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing written: no role was described.\n\n## Report\n- wrote an empty pack"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Hiring pack",
+      "contains": [
+       "no role was described"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-publishes",
+   "about": "A model that posts the job is refused — nothing in its kit publishes — and the pack is still written.",
+   "inputs": {
+    "role": "Weekend chef for our café, Sat and Sun 7am-3pm, £14/hour. Must run the kitchen alone and have food hygiene level 2. Baking a plus. Ideally young and energetic."
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Hiring pack — weekend café chef",
+        "content": "Hiring pack — weekend café chef\n\n## Job post\nYou'll run our café kitchen on Saturdays and Sundays, 7am to 3pm, £14 an hour.\nMust have: runs a busy kitchen on their own; food hygiene level 2.\nNice to have: bakes.\n\n## Interview guide\nRuns a busy kitchen: \"Tell me about your busiest service. What went wrong, and what did you do?\" / \"Tell me about a time you ran the kitchen alone.\"\nFood hygiene: \"Tell me how you kept a kitchen safe on a busy day.\" / \"Tell me about a hygiene problem you spotted and fixed.\"\n\n## Rubric\nRuns a busy kitchen — 1: no kitchen experience; 3: has worked a busy line with a lead; 5: has run a busy kitchen alone, with an example.\nFood hygiene level 2 — 1: none; 3: in progress; 5: held, with a time they applied it."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "send_email",
+       {
+        "to": "jobs@board.example",
+        "subject": "Chef",
+        "body": "You'll run our café kitchen on Saturdays and Sundays, 7am to 3pm, £14 an hour.\nMust have: runs a busy kitchen on their own; food hygiene level 2.\nNice to have: bakes."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Must-haves written.\n\n## Report\n- wrote the pack"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "send_email"
+    },
+    {
+     "document": {
+      "title": "Hiring pack",
+      "contains": [
+       "Rubric"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-pack-without-its-headings-fails",
+   "about": "The harness's own check: a pack with no Job post, Interview guide or Rubric does not deliver, even after its repair pass.",
+   "inputs": {
+    "role": "Weekend chef for our café, Sat and Sun 7am-3pm, £14/hour. Must run the kitchen alone and have food hygiene level 2. Baking a plus. Ideally young and energetic."
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Hiring pack — weekend café chef",
+        "content": "We need a chef."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

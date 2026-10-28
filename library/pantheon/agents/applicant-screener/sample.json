@@ -1,0 +1,22 @@
+{
+ "case": "one-scored-one-unreadable",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the rubric and 3 messages (1 not an application); wrote \"Applications — 5 Nov\"",
+ "read": [
+  "manage_documents",
+  "list_emails",
+  "read_email"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Scored, Not scored."
+  }
+ ],
+ "answer": "**Scored**\n- Applicant 1 (jo@mail.example) — 11 of 15\n\n**Not scored**\n- sam@mail.example — the CV attachment could not be read\n\n## Report\n- read the rubric and 3 messages (1 not an application); wrote \"Applications — 5 Nov\"\n\n## Carry forward\n- scored: a1, a2, x1"
+}

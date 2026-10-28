@@ -1,0 +1,680 @@
+{
+ "cases": [
+  {
+   "id": "a-two-week-course-for-office-staff",
+   "about": "Two weeks, each with a goal, readings it opened (title, source, address) and an exercise with what a good answer contains; the week short of readings says so. Writing after reading the web waits for the person's yes.",
+   "inputs": {
+    "subject": "Python for data analysis",
+    "audience": "office staff who use spreadsheets",
+    "weeks": 2
+   },
+   "world": {
+    "web": {
+     "https://docs.python.example/tutorial": "The Python Tutorial. 3. An informal introduction: numbers, text, lists. 4. Control flow.",
+     "https://py4e.example/book/ch1": "Python for Everybody, chapter 1: why should you learn to write programs? Free to read online.",
+     "https://pandas.example/10min": "10 minutes to pandas: read_csv, selecting rows, filtering with conditions.",
+     "https://journal.example/python-guide": "Subscribe to read this article. £9.99 a month."
+    },
+    "search": {
+     "syllabus": [
+      {
+       "title": "The Python Tutorial",
+       "url": "https://docs.python.example/tutorial",
+       "snippet": "Official tutorial."
+      },
+      {
+       "title": "Python for Everybody",
+       "url": "https://py4e.example/book/ch1",
+       "snippet": "Free book."
+      }
+     ],
+     "introduction": [
+      {
+       "title": "A guide to Python (journal)",
+       "url": "https://journal.example/python-guide",
+       "snippet": "Python for analysts."
+      },
+      {
+       "title": "Forum: best way to learn pandas?",
+       "url": "https://forum.example/thread/123",
+       "snippet": "Thread."
+      }
+     ],
+     "documentation": [
+      {
+       "title": "10 minutes to pandas",
+       "url": "https://pandas.example/10min",
+       "snippet": "pandas docs."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Python for data analysis free course syllabus"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Python for data analysis introduction for office staff who use spreadsheets"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Python for data analysis open textbook OR documentation"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://docs.python.example/tutorial"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://py4e.example/book/ch1"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://pandas.example/10min"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://journal.example/python-guide"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Course — Python for data analysis",
+        "content": "Course — Python for data analysis\n\nFor office staff who use spreadsheets and have never programmed. Two weeks, about two hours a week.\n\n## Week 1 — First steps\n**Goal** — run Python and work with numbers, text and lists.\n**Readings** — The Python Tutorial, sections 3–4 — python.org — https://docs.python.example/tutorial; Python for Everybody, chapter 1 — py4e — https://py4e.example/book/ch1\n**Exercise** — write a script that totals a list of five prices. A good answer: uses a list and sum() or a loop, prints the total, runs without errors.\n\n## Week 2 — Reading a spreadsheet\n**Goal** — load a CSV file and pick out rows.\n**Readings** — 10 minutes to pandas — pandas.org — https://pandas.example/10min (only one free reading found)\n**Exercise** — load sales.csv and list the rows over £100. A good answer: reads the file with pandas, filters with a condition, shows the matching rows."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 weeks, 3 readings; week 2 has only one reading.\n\n## Report\n- ran 3 searches, opened 4 pages; wrote \"Course — Python for data analysis\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Course — Python",
+      "contains": [
+       "Week 1",
+       "Week 2",
+       "https://docs.python.example/tutorial",
+       "https://pandas.example/10min",
+       "A good answer",
+       "only one free reading found"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "2 weeks"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-paywalled-page-and-a-forum-thread-are-not-readings",
+   "about": "A subscription-only article and a forum thread come up in the search: neither is listed as a reading.",
+   "inputs": {
+    "subject": "Python for data analysis",
+    "audience": "office staff who use spreadsheets",
+    "weeks": 2
+   },
+   "world": {
+    "web": {
+     "https://docs.python.example/tutorial": "The Python Tutorial. 3. An informal introduction: numbers, text, lists. 4. Control flow.",
+     "https://py4e.example/book/ch1": "Python for Everybody, chapter 1: why should you learn to write programs? Free to read online.",
+     "https://pandas.example/10min": "10 minutes to pandas: read_csv, selecting rows, filtering with conditions.",
+     "https://journal.example/python-guide": "Subscribe to read this article. £9.99 a month."
+    },
+    "search": {
+     "syllabus": [
+      {
+       "title": "The Python Tutorial",
+       "url": "https://docs.python.example/tutorial",
+       "snippet": "Official tutorial."
+      },
+      {
+       "title": "Python for Everybody",
+       "url": "https://py4e.example/book/ch1",
+       "snippet": "Free book."
+      }
+     ],
+     "introduction": [
+      {
+       "title": "A guide to Python (journal)",
+       "url": "https://journal.example/python-guide",
+       "snippet": "Python for analysts."
+      },
+      {
+       "title": "Forum: best way to learn pandas?",
+       "url": "https://forum.example/thread/123",
+       "snippet": "Thread."
+      }
+     ],
+     "documentation": [
+      {
+       "title": "10 minutes to pandas",
+       "url": "https://pandas.example/10min",
+       "snippet": "pandas docs."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Python for data analysis free course syllabus"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Python for data analysis introduction for office staff who use spreadsheets"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Python for data analysis open textbook OR documentation"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://docs.python.example/tutorial"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://py4e.example/book/ch1"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://pandas.example/10min"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://journal.example/python-guide"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Course — Python for data analysis",
+        "content": "Course — Python for data analysis\n\nFor office staff who use spreadsheets and have never programmed. Two weeks, about two hours a week.\n\n## Week 1 — First steps\n**Goal** — run Python and work with numbers, text and lists.\n**Readings** — The Python Tutorial, sections 3–4 — python.org — https://docs.python.example/tutorial; Python for Everybody, chapter 1 — py4e — https://py4e.example/book/ch1\n**Exercise** — write a script that totals a list of five prices. A good answer: uses a list and sum() or a loop, prints the total, runs without errors.\n\n## Week 2 — Reading a spreadsheet\n**Goal** — load a CSV file and pick out rows.\n**Readings** — 10 minutes to pandas — pandas.org — https://pandas.example/10min (only one free reading found)\n**Exercise** — load sales.csv and list the rows over £100. A good answer: reads the file with pandas, filters with a condition, shows the matching rows."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 weeks, 3 readings; week 2 has only one reading.\n\n## Report\n- ran 3 searches, opened 4 pages; wrote \"Course — Python for data analysis\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Course",
+      "lacks": [
+       "https://journal.example/python-guide",
+       "https://forum.example/thread/123"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-reading-it-never-opened-is-never-listed",
+   "about": "The pandas page is never fetched in this run: it is not listed, and week 2 says no free reading was found instead.",
+   "inputs": {
+    "subject": "Python for data analysis",
+    "audience": "office staff who use spreadsheets",
+    "weeks": 2
+   },
+   "world": {
+    "web": {
+     "https://docs.python.example/tutorial": "The Python Tutorial. 3. An informal introduction: numbers, text, lists. 4. Control flow.",
+     "https://py4e.example/book/ch1": "Python for Everybody, chapter 1: why should you learn to write programs? Free to read online.",
+     "https://pandas.example/10min": "10 minutes to pandas: read_csv, selecting rows, filtering with conditions.",
+     "https://journal.example/python-guide": "Subscribe to read this article. £9.99 a month."
+    },
+    "search": {
+     "syllabus": [
+      {
+       "title": "The Python Tutorial",
+       "url": "https://docs.python.example/tutorial",
+       "snippet": "Official tutorial."
+      },
+      {
+       "title": "Python for Everybody",
+       "url": "https://py4e.example/book/ch1",
+       "snippet": "Free book."
+      }
+     ],
+     "introduction": [
+      {
+       "title": "A guide to Python (journal)",
+       "url": "https://journal.example/python-guide",
+       "snippet": "Python for analysts."
+      },
+      {
+       "title": "Forum: best way to learn pandas?",
+       "url": "https://forum.example/thread/123",
+       "snippet": "Thread."
+      }
+     ],
+     "documentation": [
+      {
+       "title": "10 minutes to pandas",
+       "url": "https://pandas.example/10min",
+       "snippet": "pandas docs."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Python for data analysis free course syllabus"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Python for data analysis introduction for office staff who use spreadsheets"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Python for data analysis open textbook OR documentation"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://docs.python.example/tutorial"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://py4e.example/book/ch1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Course — Python for data analysis",
+        "content": "Course — Python for data analysis\n\nFor office staff who use spreadsheets and have never programmed. Two weeks, about two hours a week.\n\n## Week 1 — First steps\n**Goal** — run Python and work with numbers, text and lists.\n**Readings** — The Python Tutorial, sections 3–4 — python.org — https://docs.python.example/tutorial; Python for Everybody, chapter 1 — py4e — https://py4e.example/book/ch1\n**Exercise** — write a script that totals a list of five prices. A good answer: uses a list and sum() or a loop, prints the total, runs without errors.\n\n## Week 2 — Reading a spreadsheet\n**Goal** — load a CSV file and pick out rows.\n**Readings** — none found — searches tried: the three above\n**Exercise** — load sales.csv and list the rows over £100. A good answer: reads the file, filters with a condition, shows the rows."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 weeks, 2 readings; week 2 has none.\n\n## Report\n- ran 3 searches, opened 2 pages"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Course",
+      "contains": [
+       "none found"
+      ],
+      "lacks": [
+       "https://pandas.example/10min"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-found",
+   "about": "The searches find nothing: the outline still has goals and exercises, and each week's readings say none found with the searches tried.",
+   "inputs": {
+    "subject": "Medieval falconry law",
+    "audience": "history students",
+    "weeks": 1
+   },
+   "world": {},
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Medieval falconry law free course syllabus"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Medieval falconry law introduction for history students"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Medieval falconry law open textbook OR documentation"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Course — Medieval falconry law",
+        "content": "For history students. One week.\n\n## Week 1 — Falconry and the law\n**Goal** — explain who could keep which birds.\n**Readings** — none found — searches tried: syllabus, introduction, open textbook\n**Exercise** — write 300 words on why rank mattered. A good answer: names at least two ranks and the birds they could keep, with a source."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 week, 0 readings: none found.\n\n## Report\n- ran 3 searches; nothing found"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Course — Medieval",
+      "contains": [
+       "none found"
+      ],
+      "lacks": [
+       "http"
+      ]
+     }
+    },
+    {
+     "not_called": "web_fetch"
+    }
+   ]
+  },
+  {
+   "id": "a-reading-that-will-not-open",
+   "about": "Python for Everybody answers 404 here: it is not listed, and week 1 keeps the one reading that opened.",
+   "inputs": {
+    "subject": "Python for data analysis",
+    "audience": "office staff who use spreadsheets",
+    "weeks": 2
+   },
+   "world": {
+    "web": {
+     "https://docs.python.example/tutorial": "The Python Tutorial. 3. An informal introduction: numbers, text, lists. 4. Control flow.",
+     "https://pandas.example/10min": "10 minutes to pandas: read_csv, selecting rows, filtering with conditions."
+    },
+    "search": {
+     "syllabus": [
+      {
+       "title": "The Python Tutorial",
+       "url": "https://docs.python.example/tutorial",
+       "snippet": "Official tutorial."
+      },
+      {
+       "title": "Python for Everybody",
+       "url": "https://py4e.example/book/ch1",
+       "snippet": "Free book."
+      }
+     ],
+     "introduction": [
+      {
+       "title": "A guide to Python (journal)",
+       "url": "https://journal.example/python-guide",
+       "snippet": "Python for analysts."
+      },
+      {
+       "title": "Forum: best way to learn pandas?",
+       "url": "https://forum.example/thread/123",
+       "snippet": "Thread."
+      }
+     ],
+     "documentation": [
+      {
+       "title": "10 minutes to pandas",
+       "url": "https://pandas.example/10min",
+       "snippet": "pandas docs."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Python for data analysis free course syllabus"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Python for data analysis introduction for office staff who use spreadsheets"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Python for data analysis open textbook OR documentation"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://docs.python.example/tutorial"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://py4e.example/book/ch1"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://pandas.example/10min"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Course — Python for data analysis",
+        "content": "Course — Python for data analysis\n\nFor office staff who use spreadsheets and have never programmed. Two weeks, about two hours a week.\n\n## Week 1 — First steps\n**Goal** — run Python and work with numbers, text and lists.\n**Readings** — The Python Tutorial, sections 3–4 — python.org — https://docs.python.example/tutorial (only one free reading found)\n**Exercise** — write a script that totals a list of five prices. A good answer: uses a list and sum() or a loop, prints the total, runs without errors.\n\n## Week 2 — Reading a spreadsheet\n**Goal** — load a CSV file and pick out rows.\n**Readings** — 10 minutes to pandas — pandas.org — https://pandas.example/10min (only one free reading found)\n**Exercise** — load sales.csv and list the rows over £100. A good answer: reads the file with pandas, filters with a condition, shows the matching rows."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 weeks, 2 readings; both weeks have only one.\n\n## Report\n- opened 2 pages; 1 did not open"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Course",
+      "lacks": [
+       "https://py4e.example/book/ch1"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-outline-without-its-weeks-fails",
+   "about": "The harness's own check: a course document with no Week 1, Readings or Exercise does not deliver, even after its repair pass.",
+   "inputs": {
+    "subject": "Python for data analysis",
+    "audience": "office staff who use spreadsheets",
+    "weeks": 2
+   },
+   "world": {
+    "web": {
+     "https://docs.python.example/tutorial": "The Python Tutorial. 3. An informal introduction: numbers, text, lists. 4. Control flow.",
+     "https://py4e.example/book/ch1": "Python for Everybody, chapter 1: why should you learn to write programs? Free to read online.",
+     "https://pandas.example/10min": "10 minutes to pandas: read_csv, selecting rows, filtering with conditions.",
+     "https://journal.example/python-guide": "Subscribe to read this article. £9.99 a month."
+    },
+    "search": {
+     "syllabus": [
+      {
+       "title": "The Python Tutorial",
+       "url": "https://docs.python.example/tutorial",
+       "snippet": "Official tutorial."
+      },
+      {
+       "title": "Python for Everybody",
+       "url": "https://py4e.example/book/ch1",
+       "snippet": "Free book."
+      }
+     ],
+     "introduction": [
+      {
+       "title": "A guide to Python (journal)",
+       "url": "https://journal.example/python-guide",
+       "snippet": "Python for analysts."
+      },
+      {
+       "title": "Forum: best way to learn pandas?",
+       "url": "https://forum.example/thread/123",
+       "snippet": "Thread."
+      }
+     ],
+     "documentation": [
+      {
+       "title": "10 minutes to pandas",
+       "url": "https://pandas.example/10min",
+       "snippet": "pandas docs."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Python for data analysis free course syllabus"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Python for data analysis introduction for office staff who use spreadsheets"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Python for data analysis open textbook OR documentation"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Course — Python for data analysis",
+        "content": "Learn Python, then pandas."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

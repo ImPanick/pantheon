@@ -1,0 +1,410 @@
+{
+ "cases": [
+  {
+   "id": "ten-questions-before-the-call",
+   "about": "With no notes yet: the calendar entry is found and ten open questions follow, situation first and timing last, none answerable yes or no.",
+   "inputs": {
+    "call": "Ana Ruiz, Greenleaf Cafés"
+   },
+   "world": {
+    "calendar": [
+     {
+      "summary": "Call: Ana Ruiz, Greenleaf Cafés",
+      "start": "2026-11-04T10:00:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Discovery — Ana Ruiz, Greenleaf Cafés, Tue 4 Nov",
+        "content": "Discovery — Ana Ruiz, Greenleaf Cafés, Tue 4 Nov\n\n## Questions\n1. How do you take stock today?\n2. What happens when something runs out?\n3. How often does that happen?\n4. What does a run-out cost you on a busy day?\n5. Who does the ordering, and how long does it take?\n6. What have you tried already?\n7. How would you decide whether a new way is better?\n8. Who else would be part of that decision?\n9. What would have to be true for you to try something this quarter?\n10. What is the best way to follow up?\n\n## Next steps\nafter the call"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "10 questions written for the call with Ana Ruiz.\n\n## Report\n- read the call in the calendar; wrote \"Discovery — Ana Ruiz, Greenleaf Cafés, Tue 4 Nov\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Discovery",
+      "contains": [
+       "1. How do you take stock today?",
+       "10. What is the best way to follow up?",
+       "after the call"
+      ],
+      "lacks": [
+       "Would you like",
+       "Are you interested"
+      ]
+     }
+    },
+    {
+     "not_called": "manage_notes"
+    }
+   ]
+  },
+  {
+   "id": "a-review-after-the-call",
+   "about": "From the notes: each question with what was learned in their words, the budget contradiction flagged, the uncovered question said, and next steps with owners and dates.",
+   "inputs": {
+    "call": "Ana Ruiz, Greenleaf Cafés",
+    "notes": "Greenleaf call notes"
+   },
+   "world": {
+    "calendar": [
+     {
+      "summary": "Call: Ana Ruiz, Greenleaf Cafés",
+      "start": "2026-11-04T10:00:00"
+     }
+    ],
+    "notes": [
+     {
+      "id": "cccc5001",
+      "title": "Greenleaf call notes",
+      "content": "Stock taken on paper every Sunday, two hours. They run out about twice a month and lose the lunch rush. Budget approved for this quarter. Later: no budget yet, depends on finance. Next: I send a demo video by Friday; Ana asks finance about a trial."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Greenleaf call notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "cccc5001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Discovery — Ana Ruiz, Greenleaf Cafés, Tue 4 Nov",
+        "content": "Discovery — Ana Ruiz, Greenleaf Cafés, Tue 4 Nov\n\n## Questions\n1. How do you take stock today? — paper sheets, every Sunday, two hours\n2. What happens when something runs out? — \"we lose the lunch rush\", about twice a month\n3. Is there a budget? — \"budget approved\", and later \"no budget yet, depends on finance\" (the notes say both — check)\n4. Who else would decide? — not covered\n\n## Next steps\n- Send a short demo video — you — by Fri 7 Nov\n- Ana to ask finance about a trial — Ana — no date"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Review written: 3 of 4 questions covered. First next step: send the demo video by Friday.\n\n## Report\n- read the call and the note; wrote \"Discovery — Ana Ruiz, Greenleaf Cafés, Tue 4 Nov\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Discovery",
+      "contains": [
+       "(the notes say both — check)",
+       "Who else would decide? — not covered",
+       "you — by Fri 7 Nov"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-calendar-entry",
+   "about": "The call is not in the calendar: the questions are written from its description and the document says no entry was found.",
+   "inputs": {
+    "call": "Ben Ito, Northwind"
+   },
+   "world": {
+    "calendar": [
+     {
+      "summary": "Call: Ana Ruiz, Greenleaf Cafés",
+      "start": "2026-11-04T10:00:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Discovery — Ben Ito, Northwind",
+        "content": "Discovery — Ben Ito, Northwind\n\n## Questions\nno calendar entry found\n1. How do you take stock today?\n2. What happens when something runs out?\n3. How often does that happen?\n4. What does a run-out cost you on a busy day?\n5. Who does the ordering, and how long does it take?\n6. What have you tried already?\n7. How would you decide whether a new way is better?\n8. Who else would be part of that decision?\n9. What would have to be true for you to try something this quarter?\n10. What is the best way to follow up?\n\n## Next steps\nafter the call"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "10 questions written; no calendar entry was found for the call.\n\n## Report\n- found no calendar entry"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Discovery — Ben Ito",
+      "contains": [
+       "no calendar entry found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "notes-that-cannot-be-found",
+   "about": "The named notes do not exist: the document says so and gives the before-call questions instead of a review, inventing nothing that was said.",
+   "inputs": {
+    "call": "Ana Ruiz, Greenleaf Cafés",
+    "notes": "Greenleaf notes v2"
+   },
+   "world": {
+    "calendar": [
+     {
+      "summary": "Call: Ana Ruiz, Greenleaf Cafés",
+      "start": "2026-11-04T10:00:00"
+     }
+    ],
+    "notes": [
+     {
+      "id": "cccc5001",
+      "title": "Greenleaf call notes",
+      "content": "Stock taken on paper every Sunday, two hours. They run out about twice a month and lose the lunch rush. Budget approved for this quarter. Later: no budget yet, depends on finance. Next: I send a demo video by Friday; Ana asks finance about a trial."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Greenleaf notes v2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Discovery — Ana Ruiz, Greenleaf Cafés, Tue 4 Nov",
+        "content": "Discovery — Ana Ruiz, Greenleaf Cafés, Tue 4 Nov\n\n## Questions\ncould not read your notes: no note titled Greenleaf notes v2\n1. How do you take stock today?\n2. What happens when something runs out?\n3. How often does that happen?\n4. What does a run-out cost you on a busy day?\n5. Who does the ordering, and how long does it take?\n6. What have you tried already?\n7. How would you decide whether a new way is better?\n8. Who else would be part of that decision?\n9. What would have to be true for you to try something this quarter?\n10. What is the best way to follow up?\n\n## Next steps\nafter the call"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Your notes could not be found, so here are the questions instead.\n\n## Report\n- found no note by that title"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Discovery",
+      "contains": [
+       "could not read your notes"
+      ],
+      "lacks": [
+       "lunch rush"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-the-calendar",
+   "about": "Its table says destructive: never. A model that deletes the call from the calendar after it happened is refused; the review still goes out.",
+   "inputs": {
+    "call": "Ana Ruiz, Greenleaf Cafés",
+    "notes": "Greenleaf call notes"
+   },
+   "world": {
+    "calendar": [
+     {
+      "summary": "Call: Ana Ruiz, Greenleaf Cafés",
+      "start": "2026-11-04T10:00:00"
+     }
+    ],
+    "notes": [
+     {
+      "id": "cccc5001",
+      "title": "Greenleaf call notes",
+      "content": "Stock taken on paper every Sunday, two hours. They run out about twice a month and lose the lunch rush. Budget approved for this quarter. Later: no budget yet, depends on finance. Next: I send a demo video by Friday; Ana asks finance about a trial."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Greenleaf call notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "cccc5001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "delete_event",
+        "uid": "x"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Discovery — Ana Ruiz, Greenleaf Cafés, Tue 4 Nov",
+        "content": "Discovery — Ana Ruiz, Greenleaf Cafés, Tue 4 Nov\n\n## Questions\n1. How do you take stock today? — paper sheets, every Sunday, two hours\n2. What happens when something runs out? — \"we lose the lunch rush\", about twice a month\n3. Is there a budget? — \"budget approved\", and later \"no budget yet, depends on finance\" (the notes say both — check)\n4. Who else would decide? — not covered\n\n## Next steps\n- Send a short demo video — you — by Fri 7 Nov\n- Ana to ask finance about a trial — Ana — no date"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Review written.\n\n## Report\n- a delete was refused"
+    }
+   ],
+   "checks": [
+    {
+     "status": "success"
+    },
+    {
+     "drafts_at_most": 0
+    }
+   ]
+  },
+  {
+   "id": "a-review-without-its-headings-fails",
+   "about": "The harness's own check: a document with no Questions and no Next steps does not deliver, even after its repair pass.",
+   "inputs": {
+    "call": "Ana Ruiz, Greenleaf Cafés"
+   },
+   "world": {
+    "calendar": [
+     {
+      "summary": "Call: Ana Ruiz, Greenleaf Cafés",
+      "start": "2026-11-04T10:00:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Discovery — Ana Ruiz, Greenleaf Cafés, Tue 4 Nov",
+        "content": "Ask about stock."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

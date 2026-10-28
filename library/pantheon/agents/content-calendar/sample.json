@@ -1,0 +1,20 @@
+{
+ "case": "a-month-planned-around-a-market-and-a-launch",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read next month's calendar; wrote \"Content calendar — December 2026\"",
+ "read": [
+  "manage_calendar"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Content calendar”",
+   "ok": true,
+   "detail": "“Content calendar — December 2026” is there."
+  }
+ ],
+ "answer": "Instagram 2 slots, blog 1 slot.\n\n## Report\n- read next month's calendar; wrote \"Content calendar — December 2026\"\n\n## Carry forward\n- Behind the stall: packing 200 mugs\n- The new glazes, in daylight\n- Three glazes that survive the dishwasher"
+}

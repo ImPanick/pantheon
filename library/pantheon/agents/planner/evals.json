@@ -1,0 +1,330 @@
+{
+ "cases": [
+  {
+   "id": "a-website-launch-planned-backwards",
+   "about": "Milestones, tasks with who and what they wait for, a free buffer day before the deadline and the one risk; reminders for the person's three tasks and none for Ben's.",
+   "inputs": {
+    "goal": "Launch the new website, with Ben taking the product photos",
+    "by": "28 November 2026"
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Plan — launch the new website",
+        "content": "Plan — launch the new website\n\n## Milestones\n- Content ready — Fri 14 Nov\n- Site built and tested — Fri 21 Nov\n- Live — Thu 27 Nov (deadline Fri 28 Nov)\n\n## Tasks\n- Mon 10 Nov — Write the home page copy — you\n- Tue 11 Nov — Take product photos — Ben\n- Wed 12 Nov — Write the about page — you — after the home page copy\n- Mon 17 Nov — Build the pages — you — after all copy and photos\n\n## Buffer\n- Fri 28 Nov, kept free\n\n## Risks\n- The photos depend on Ben's week; if they slip, launch with stock images."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Write the home page copy — launch the new website",
+        "due_date": "2026-11-10T09:00:00"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Write the about page — launch the new website",
+        "due_date": "2026-11-12T09:00:00"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Build the pages — launch the new website",
+        "due_date": "2026-11-17T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 tasks; 3 reminders set for your own; first: write the home page copy on Monday.\n\n## Report\n- wrote \"Plan — launch the new website\" and set 3 reminders"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Plan — launch",
+      "contains": [
+       "after all copy and photos",
+       "Take product photos — Ben",
+       "kept free"
+      ],
+      "lacks": [
+       "Sat ",
+       "Sun "
+      ]
+     }
+    },
+    {
+     "called": "manage_notes"
+    }
+   ]
+  },
+  {
+   "id": "only-other-peoples-tasks-get-no-reminders",
+   "about": "A plan whose every task is someone else's: they are in the plan with their names, and not one reminder is set.",
+   "inputs": {
+    "goal": "Ben and Chloe repaint the office",
+    "by": "21 November 2026"
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Plan — repaint the office",
+        "content": "## Milestones\n- Painted — Thu 20 Nov\n\n## Tasks\n- Mon 17 Nov — Buy the paint — Ben\n- Tue 18 Nov — Paint the walls — Chloe — after buying the paint\n\n## Buffer\n- Fri 21 Nov, kept free\n\n## Risks\n- none seen"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 tasks, none yours, so no reminders; first: Ben buys the paint on Monday.\n\n## Report\n- wrote \"Plan — repaint the office\""
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "manage_notes"
+    },
+    {
+     "document": {
+      "title": "Plan — repaint",
+      "contains": [
+       "Buy the paint — Ben"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-deadline-already-passed",
+   "about": "The deadline is in the past: the plan says so first, plans the shortest version, and says what to cut.",
+   "inputs": {
+    "goal": "Launch the new website",
+    "by": "1 October 2026"
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Plan — launch the new website",
+        "content": "The deadline, 1 October 2026, has passed: this is the shortest version.\n\n## Milestones\n- One-page site live — Fri 7 Nov\n\n## Tasks\n- Mon 3 Nov — Write the home page copy — you\n- Wed 5 Nov — Build the one page — you — after the copy\n\n## Buffer\n- Thu 6 Nov, kept free\n\n## Risks\n- cut first: the about page, the blog, the product photos"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Write the home page copy — launch the new website",
+        "due_date": "2026-11-03T09:00:00"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Build the one page — launch the new website",
+        "due_date": "2026-11-05T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 tasks; 2 reminders set; first: the home page copy on Monday. The deadline had passed.\n\n## Report\n- wrote the plan, set 2 reminders"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Plan",
+      "contains": [
+       "has passed",
+       "cut first"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-goal-that-conflicts-with-its-deadline",
+   "about": "Twenty working days of work in eight: the plan says so under Risks, with what to drop to fit.",
+   "inputs": {
+    "goal": "Rebuild the whole shop with a new checkout, blog and app",
+    "by": "7 November 2026"
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Plan — rebuild the shop",
+        "content": "## Milestones\n- New checkout live — Thu 6 Nov\n\n## Tasks\n- Mon 3 Nov — Build the checkout — you\n\n## Buffer\n- Fri 7 Nov, kept free\n\n## Risks\n- it needs about 20 working days; there are 8 — drop the app and the blog to fit, and keep the checkout"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Build the checkout — launch the new website",
+        "due_date": "2026-11-03T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 task; 1 reminder set; first: the checkout. The goal does not fit the deadline.\n\n## Report\n- wrote the plan"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Plan — rebuild",
+      "contains": [
+       "about 20 working days; there are 8"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-a-note",
+   "about": "Its table says destructive: never. A model that clears an old to-do to make room is refused; the plan and reminders still go out.",
+   "inputs": {
+    "goal": "Launch the new website, with Ben taking the product photos",
+    "by": "28 November 2026"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "bbbb9001",
+      "title": "Old launch idea",
+      "content": "From last year."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Plan — launch the new website",
+        "content": "Plan — launch the new website\n\n## Milestones\n- Content ready — Fri 14 Nov\n- Site built and tested — Fri 21 Nov\n- Live — Thu 27 Nov (deadline Fri 28 Nov)\n\n## Tasks\n- Mon 10 Nov — Write the home page copy — you\n- Tue 11 Nov — Take product photos — Ben\n- Wed 12 Nov — Write the about page — you — after the home page copy\n- Mon 17 Nov — Build the pages — you — after all copy and photos\n\n## Buffer\n- Fri 28 Nov, kept free\n\n## Risks\n- The photos depend on Ben's week; if they slip, launch with stock images."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "delete",
+        "id": "bbbb9001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Write the home page copy — launch the new website",
+        "due_date": "2026-11-10T09:00:00"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Write the about page — launch the new website",
+        "due_date": "2026-11-12T09:00:00"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Build the pages — launch the new website",
+        "due_date": "2026-11-17T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 tasks; 3 reminders set for your own; first: write the home page copy on Monday.\n\n## Report\n- wrote \"Plan — launch the new website\" and set 3 reminders"
+    }
+   ],
+   "checks": [
+    {
+     "status": "success"
+    },
+    {
+     "document": {
+      "title": "Plan — launch",
+      "contains": [
+       "Milestones"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-plan-without-its-headings-fails",
+   "about": "The harness's own check: a plan with no Milestones, Tasks, Buffer or Risks does not deliver, even after its repair pass.",
+   "inputs": {
+    "goal": "Launch the new website, with Ben taking the product photos",
+    "by": "28 November 2026"
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Plan — launch the new website",
+        "content": "Do the website."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

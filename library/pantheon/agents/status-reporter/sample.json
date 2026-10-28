@@ -1,0 +1,23 @@
+{
+ "case": "a-week-of-notes-and-commits",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 1 note, searched chats, read 4 commits; wrote \"Status — Website relaunch — week of 3 Nov\"",
+ "read": [
+  "manage_notes",
+  "search_chats"
+ ],
+ "wrote": [
+  "manage_notes",
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Status”",
+   "ok": true,
+   "detail": "“Status — Website relaunch — week of 3 Nov” is there."
+  }
+ ],
+ "answer": "At risk: the logo is blocked and the launch is in nine days.\n\n## Report\n- read 1 note, searched chats, read 4 commits; wrote \"Status — Website relaunch — week of 3 Nov\"\n\n## Carry forward\n- Logo files: waiting on the client — since 3 Nov"
+}

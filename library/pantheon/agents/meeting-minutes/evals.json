@@ -1,0 +1,503 @@
+{
+ "cases": [
+  {
+   "id": "a-weekly-meeting-with-a-reminder-for-me",
+   "about": "Three speakers: who attended, two decisions (one changed during the meeting, said so), two actions with owners and dates as said, an open question with both views — and one reminder, for the action that is the person's own.",
+   "inputs": {
+    "transcript": "Website weekly transcript",
+    "me": "Ana"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Website weekly transcript",
+      "content": "Website weekly — Tuesday 4 November 2026.\nAna: Morning. Let's start with the launch date. I think we can still do 11 November.\nChloe: The copy is late, so 11 is tight.\nAna: Then let's go with 18 November. Agreed?\nBen: Agreed.\nChloe: Agreed. Ana, can you send me the final copy?\nAna: I'll send you the final copy by Friday.\nBen: On hosting, I compared two offers. Let's stay with the current host for another year.\nAna: Fine by me. Ben will renew the contract.\nBen: Should we add a blog at launch?\nChloe: I'd rather not, it's more to maintain.\nBen: I think it would help.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Website weekly transcript"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Minutes — Website weekly, Tue 4 Nov",
+        "content": "Minutes — Website weekly, Tue 4 Nov\n\n- Launch date: discussed the copy delays.\n- Hosting: compared two offers.\n\n## Attended\nAna, Ben, Chloe\n\n## Decisions\n- Launch on 18 Nov (changed during the meeting: first 11 Nov).\n- Stay with the current host for another year.\n\n## Actions\n- Ana — send the final copy to Chloe — Fri 7 Nov\n- Ben — renew the hosting contract — no date said\n\n## Open questions\n- Whether to add a blog at launch: Ben for, Chloe against."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Send the final copy to Chloe — from Website weekly",
+        "due_date": "2026-11-07T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 decisions, 2 actions; 1 reminder set for you (send the final copy, due Fri 7 Nov).\n\n## Report\n- read \"Website weekly transcript\", wrote \"Minutes — Website weekly, Tue 4 Nov\", set 1 reminder"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Minutes",
+      "contains": [
+       "Ana, Ben, Chloe",
+       "18 Nov",
+       "changed during the meeting",
+       "no date said",
+       "Ben for, Chloe against"
+      ]
+     }
+    },
+    {
+     "called": "manage_notes"
+    }
+   ]
+  },
+  {
+   "id": "other-peoples-actions-get-no-reminders",
+   "about": "Hired as Chloe, who committed to nothing: every action is minuted, and no reminder is set for anyone else's.",
+   "inputs": {
+    "transcript": "Website weekly transcript",
+    "me": "Chloe"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Website weekly transcript",
+      "content": "Website weekly — Tuesday 4 November 2026.\nAna: Morning. Let's start with the launch date. I think we can still do 11 November.\nChloe: The copy is late, so 11 is tight.\nAna: Then let's go with 18 November. Agreed?\nBen: Agreed.\nChloe: Agreed. Ana, can you send me the final copy?\nAna: I'll send you the final copy by Friday.\nBen: On hosting, I compared two offers. Let's stay with the current host for another year.\nAna: Fine by me. Ben will renew the contract.\nBen: Should we add a blog at launch?\nChloe: I'd rather not, it's more to maintain.\nBen: I think it would help.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Website weekly transcript"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Minutes — Website weekly, Tue 4 Nov",
+        "content": "Minutes — Website weekly, Tue 4 Nov\n\n- Launch date: discussed the copy delays.\n- Hosting: compared two offers.\n\n## Attended\nAna, Ben, Chloe\n\n## Decisions\n- Launch on 18 Nov (changed during the meeting: first 11 Nov).\n- Stay with the current host for another year.\n\n## Actions\n- Ana — send the final copy to Chloe — Fri 7 Nov\n- Ben — renew the hosting contract — no date said\n\n## Open questions\n- Whether to add a blog at launch: Ben for, Chloe against."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 decisions, 2 actions; none is yours, so no reminders.\n\n## Report\n- read the transcript, wrote \"Minutes — Website weekly, Tue 4 Nov\""
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "manage_notes"
+    },
+    {
+     "document": {
+      "title": "Minutes",
+      "contains": [
+       "Ana — send the final copy"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-name-no-reminders",
+   "about": "Hired without a name: the minutes are written, no reminder is set, and the answer says a name is needed for them.",
+   "inputs": {
+    "transcript": "Website weekly transcript"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Website weekly transcript",
+      "content": "Website weekly — Tuesday 4 November 2026.\nAna: Morning. Let's start with the launch date. I think we can still do 11 November.\nChloe: The copy is late, so 11 is tight.\nAna: Then let's go with 18 November. Agreed?\nBen: Agreed.\nChloe: Agreed. Ana, can you send me the final copy?\nAna: I'll send you the final copy by Friday.\nBen: On hosting, I compared two offers. Let's stay with the current host for another year.\nAna: Fine by me. Ben will renew the contract.\nBen: Should we add a blog at launch?\nChloe: I'd rather not, it's more to maintain.\nBen: I think it would help.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Website weekly transcript"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Minutes — Website weekly, Tue 4 Nov",
+        "content": "Minutes — Website weekly, Tue 4 Nov\n\n- Launch date: discussed the copy delays.\n- Hosting: compared two offers.\n\n## Attended\nAna, Ben, Chloe\n\n## Decisions\n- Launch on 18 Nov (changed during the meeting: first 11 Nov).\n- Stay with the current host for another year.\n\n## Actions\n- Ana — send the final copy to Chloe — Fri 7 Nov\n- Ben — renew the hosting contract — no date said\n\n## Open questions\n- Whether to add a blog at launch: Ben for, Chloe against."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 decisions, 2 actions; no reminders — a name is needed to know which actions are yours.\n\n## Report\n- read the transcript, wrote \"Minutes — Website weekly, Tue 4 Nov\""
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "manage_notes"
+    },
+    {
+     "answer_contains": [
+      "a name is needed"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-meeting-that-decided-nothing",
+   "about": "A meeting that only talked: Decisions says nothing was agreed, and the suggestion goes under Open questions, not Decisions.",
+   "inputs": {
+    "transcript": "Brainstorm",
+    "me": "Ana"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "b1",
+      "title": "Brainstorm",
+      "content": "Brainstorm — 5 Nov 2026.\nAna: We could try a podcast.\nBen: Maybe. Let's think about it."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brainstorm"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "b1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Minutes — Brainstorm, Wed 5 Nov",
+        "content": "## Attended\nAna, Ben\n\n## Decisions\nnone — nothing was agreed\n\n## Actions\nnone\n\n## Open questions\n- Whether to start a podcast (Ana suggested it; Ben will think about it)."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 decisions, 0 actions; no reminders.\n\n## Report\n- read \"Brainstorm\", wrote its minutes"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Minutes",
+      "contains": [
+       "none — nothing was agreed",
+       "podcast"
+      ]
+     }
+    },
+    {
+     "not_called": "manage_notes"
+    }
+   ]
+  },
+  {
+   "id": "no-transcript-by-that-title",
+   "about": "No transcript has the title: the Minutes say so, nothing is minuted from the title alone, and no reminder is set.",
+   "inputs": {
+    "transcript": "Sales weekly transcript",
+    "me": "Ana"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Website weekly transcript",
+      "content": "Website weekly — Tuesday 4 November 2026.\nAna: Morning. Let's start with the launch date. I think we can still do 11 November.\nChloe: The copy is late, so 11 is tight.\nAna: Then let's go with 18 November. Agreed?\nBen: Agreed.\nChloe: Agreed. Ana, can you send me the final copy?\nAna: I'll send you the final copy by Friday.\nBen: On hosting, I compared two offers. Let's stay with the current host for another year.\nAna: Fine by me. Ben will renew the contract.\nBen: Should we add a blog at launch?\nChloe: I'd rather not, it's more to maintain.\nBen: I think it would help.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Sales weekly transcript"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Minutes — Sales weekly",
+        "content": "no transcript titled Sales weekly transcript was found\n\n## Attended\nnone\n\n## Decisions\nnone\n\n## Actions\nnone\n\n## Open questions\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 decisions, 0 actions: no transcript titled Sales weekly transcript was found.\n\n## Report\n- found no transcript; wrote minutes saying so"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Minutes — Sales weekly",
+      "contains": [
+       "no transcript titled"
+      ],
+      "lacks": [
+       "Chloe"
+      ]
+     }
+    },
+    {
+     "not_called": "manage_notes"
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-the-transcript",
+   "about": "Its table says destructive: never. A model that deletes the transcript once minuted is refused; the transcript survives and the minutes go out.",
+   "inputs": {
+    "transcript": "Website weekly transcript",
+    "me": "Ana"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Website weekly transcript",
+      "content": "Website weekly — Tuesday 4 November 2026.\nAna: Morning. Let's start with the launch date. I think we can still do 11 November.\nChloe: The copy is late, so 11 is tight.\nAna: Then let's go with 18 November. Agreed?\nBen: Agreed.\nChloe: Agreed. Ana, can you send me the final copy?\nAna: I'll send you the final copy by Friday.\nBen: On hosting, I compared two offers. Let's stay with the current host for another year.\nAna: Fine by me. Ben will renew the contract.\nBen: Should we add a blog at launch?\nChloe: I'd rather not, it's more to maintain.\nBen: I think it would help.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Website weekly transcript"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Minutes — Website weekly, Tue 4 Nov",
+        "content": "Minutes — Website weekly, Tue 4 Nov\n\n- Launch date: discussed the copy delays.\n- Hosting: compared two offers.\n\n## Attended\nAna, Ben, Chloe\n\n## Decisions\n- Launch on 18 Nov (changed during the meeting: first 11 Nov).\n- Stay with the current host for another year.\n\n## Actions\n- Ana — send the final copy to Chloe — Fri 7 Nov\n- Ben — renew the hosting contract — no date said\n\n## Open questions\n- Whether to add a blog at launch: Ben for, Chloe against."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "t1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Send the final copy to Chloe — from Website weekly",
+        "due_date": "2026-11-07T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 decisions, 2 actions; 1 reminder set for you (send the final copy, due Fri 7 Nov).\n\n## Report\n- read \"Website weekly transcript\", wrote \"Minutes — Website weekly, Tue 4 Nov\", set 1 reminder"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Website weekly transcript",
+      "contains": [
+       "final copy by Friday"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "minutes-without-their-headings-fail",
+   "about": "The harness's own check: minutes with no Attended, Decisions, Actions or Open questions do not deliver, even after its repair pass.",
+   "inputs": {
+    "transcript": "Website weekly transcript",
+    "me": "Ana"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Website weekly transcript",
+      "content": "Website weekly — Tuesday 4 November 2026.\nAna: Morning. Let's start with the launch date. I think we can still do 11 November.\nChloe: The copy is late, so 11 is tight.\nAna: Then let's go with 18 November. Agreed?\nBen: Agreed.\nChloe: Agreed. Ana, can you send me the final copy?\nAna: I'll send you the final copy by Friday.\nBen: On hosting, I compared two offers. Let's stay with the current host for another year.\nAna: Fine by me. Ben will renew the contract.\nBen: Should we add a blog at launch?\nChloe: I'd rather not, it's more to maintain.\nBen: I think it would help.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Website weekly transcript"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Minutes — Website weekly, Tue 4 Nov",
+        "content": "We talked about the website."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- wrote minutes"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

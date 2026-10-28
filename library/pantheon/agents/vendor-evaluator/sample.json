@@ -1,0 +1,21 @@
+{
+ "case": "two-qualify-and-one-is-ruled-out",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- ran 2 searches, read 3 pages; wrote \"Vendor shortlist — team password manager\"",
+ "read": [
+  "web_search",
+  "web_fetch"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Vendor shortlist”",
+   "ok": true,
+   "detail": "“Vendor shortlist — team password manager” is there."
+  }
+ ],
+ "answer": "Keyward: both must-haves confirmed on its own pages, at €4 / user / month.\n\n## Report\n- ran 2 searches, read 3 pages; wrote \"Vendor shortlist — team password manager\""
+}

@@ -1,0 +1,410 @@
+{
+ "cases": [
+  {
+   "id": "noindex-comes-first",
+   "about": "Two sitemap pages carry noindex — the issue that matters most — ahead of a broken link and duplicate titles; last month's alt-text issue is reported fixed. The confirming fetch and the write each wait for a yes.",
+   "inputs": {
+    "site": "https://rise.example",
+    "max_pages": 20
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "python3",
+      "output": "{\"url\": \"https://rise.example/shop/bread\", \"status\": 200, \"title\": \"Rise Bakery\", \"description\": \"\", \"h1\": 1, \"canonical\": \"https://rise.example/shop/bread\", \"noindex\": true, \"jsonld\": \"ok\", \"img_no_alt\": 0, \"broken\": []}\n{\"url\": \"https://rise.example/shop/rye\", \"status\": 200, \"title\": \"Rise Bakery\", \"description\": \"Rye bread.\", \"h1\": 1, \"canonical\": \"https://rise.example/shop/rye\", \"noindex\": true, \"jsonld\": \"ok\", \"img_no_alt\": 0, \"broken\": []}\n{\"url\": \"https://rise.example/about\", \"status\": 200, \"title\": \"About Rise\", \"description\": \"\", \"h1\": 1, \"canonical\": \"https://rise.example/about\", \"noindex\": false, \"jsonld\": \"none\", \"img_no_alt\": 0, \"broken\": [\"/team\"]}",
+      "exit_code": 0
+     }
+    ],
+    "web": {
+     "https://rise.example/shop/bread": "<meta name=robots content=noindex><title>Rise Bakery</title>"
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "notebook": "- broken internal links: 1\n- images without alt: 4",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "python3 - <<'PY'\n# reads robots.txt and sitemap.xml, crawls up to 20 pages of https://rise.example, prints one JSON line per page\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://rise.example/shop/bread"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "SEO audit — November 2026",
+        "content": "SEO audit — November 2026\n\n## Fix first\n- noindex on 2 sitemap pages (/shop/bread, /shop/rye) — remove the noindex tag — new\n- 1 broken internal link on /about → /team (404) — point it at a page that exists — since October\n- duplicate title \"Rise Bakery\" on 2 pages — give each its own — new\n\n## All issues\n- (the three above)\n- missing meta description — 2 pages: /shop/bread, /about\n- fixed since October: images without alt on the home page\n\n## Checked\n- 3 pages crawled; robots.txt and sitemap read; no failures"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Fix first: remove the noindex from /shop/bread and /shop/rye.\n\n## Report\n- crawled 3 pages, confirmed 1; wrote \"SEO audit — November 2026\"\n\n## Carry forward\n- noindex on sitemap pages: 2\n- broken internal links: 1\n- duplicate titles: 2\n- missing meta description: 2"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "SEO audit",
+      "contains": [
+       "Fix first\n- noindex on 2 sitemap pages",
+       "since October",
+       "fixed since October"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "noindex on sitemap pages: 2"
+    }
+   ]
+  },
+  {
+   "id": "the-site-does-not-answer",
+   "about": "The crawl cannot reach the site: the audit says so and reports no issues it did not find.",
+   "inputs": {
+    "site": "https://rise.example",
+    "max_pages": 20
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "python3",
+      "output": "error: https://rise.example did not answer (connection refused)",
+      "exit_code": 1
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "python3 - <<'PY'\n# reads robots.txt and sitemap.xml, crawls up to 20 pages of https://rise.example, prints one JSON line per page\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "SEO audit — November 2026",
+        "content": "SEO audit — November 2026\n\n## Fix first\nthe site did not answer: connection refused\n\n## All issues\nnone checked\n\n## Checked\n- 0 pages crawled: the site did not answer"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing checked: the site did not answer.\n\n## Report\n- the crawl could not reach the site\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "SEO audit",
+      "contains": [
+       "the site did not answer"
+      ],
+      "lacks": [
+       "noindex on"
+      ]
+     }
+    },
+    {
+     "not_called": "web_fetch"
+    }
+   ]
+  },
+  {
+   "id": "robots-and-the-sitemap-disagree",
+   "about": "The sitemap lists a page that robots.txt blocks: that conflict is itself the first issue.",
+   "inputs": {
+    "site": "https://rise.example",
+    "max_pages": 20
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "python3",
+      "output": "robots.txt disallows /shop/ but the sitemap lists https://rise.example/shop/bread\n{\"url\": \"https://rise.example/about\", \"status\": 200, \"title\": \"About Rise\", \"description\": \"\", \"h1\": 1, \"canonical\": \"https://rise.example/about\", \"noindex\": false, \"jsonld\": \"none\", \"img_no_alt\": 0, \"broken\": [\"/team\"]}",
+      "exit_code": 0
+     }
+    ],
+    "web": {
+     "https://rise.example/about": "<a href=/team>Team</a>"
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "python3 - <<'PY'\n# reads robots.txt and sitemap.xml, crawls up to 20 pages of https://rise.example, prints one JSON line per page\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://rise.example/about"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "SEO audit — November 2026",
+        "content": "SEO audit — November 2026\n\n## Fix first\n- robots.txt blocks /shop/ but the sitemap lists /shop/bread — unblock it or drop it from the sitemap — new\n- 1 broken internal link on /about → /team (404) — point it at a page that exists — new\n\n## All issues\n- (the two above)\n\n## Checked\n- 1 page crawled; /shop/ not crawled (robots.txt disallows it)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Fix first: robots.txt blocks a page your sitemap lists.\n\n## Report\n- crawled 1 page\n\n## Carry forward\n- robots/sitemap conflict: 1\n- broken internal links: 1"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "SEO audit",
+      "contains": [
+       "robots.txt blocks /shop/ but the sitemap lists",
+       "not crawled (robots.txt disallows it)"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-issues",
+   "about": "A clean crawl: Fix first and All issues say none.",
+   "inputs": {
+    "site": "https://rise.example",
+    "max_pages": 20
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "python3",
+      "output": "{\"url\": \"https://rise.example/\", \"status\": 200, \"title\": \"Rise Bakery — sourdough in Leeds\", \"description\": \"Bread.\", \"h1\": 1, \"canonical\": \"https://rise.example/\", \"noindex\": false, \"jsonld\": \"ok\", \"img_no_alt\": 0, \"broken\": []}",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "python3 - <<'PY'\n# reads robots.txt and sitemap.xml, crawls up to 20 pages of https://rise.example, prints one JSON line per page\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "SEO audit — November 2026",
+        "content": "SEO audit — November 2026\n\n## Fix first\nnone\n\n## All issues\nnone\n\n## Checked\n- 1 page crawled; robots.txt and sitemap read; no failures"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing to fix this month.\n\n## Report\n- crawled 1 page\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "SEO audit",
+      "contains": [
+       "Fix first\nnone"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-reports-what-it-did-not-find",
+   "about": "The crawl finds no structured-data problem: the audit invents none.",
+   "inputs": {
+    "site": "https://rise.example",
+    "max_pages": 20
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "python3",
+      "output": "{\"url\": \"https://rise.example/shop/bread\", \"status\": 200, \"title\": \"Rise Bakery\", \"description\": \"\", \"h1\": 1, \"canonical\": \"https://rise.example/shop/bread\", \"noindex\": true, \"jsonld\": \"ok\", \"img_no_alt\": 0, \"broken\": []}\n{\"url\": \"https://rise.example/shop/rye\", \"status\": 200, \"title\": \"Rise Bakery\", \"description\": \"Rye bread.\", \"h1\": 1, \"canonical\": \"https://rise.example/shop/rye\", \"noindex\": true, \"jsonld\": \"ok\", \"img_no_alt\": 0, \"broken\": []}\n{\"url\": \"https://rise.example/about\", \"status\": 200, \"title\": \"About Rise\", \"description\": \"\", \"h1\": 1, \"canonical\": \"https://rise.example/about\", \"noindex\": false, \"jsonld\": \"none\", \"img_no_alt\": 0, \"broken\": [\"/team\"]}",
+      "exit_code": 0
+     }
+    ],
+    "web": {
+     "https://rise.example/shop/bread": "<meta name=robots content=noindex>"
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "notebook": "- broken internal links: 1\n- images without alt: 4",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "python3 - <<'PY'\n# reads robots.txt and sitemap.xml, crawls up to 20 pages of https://rise.example, prints one JSON line per page\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://rise.example/shop/bread"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "SEO audit — November 2026",
+        "content": "SEO audit — November 2026\n\n## Fix first\n- noindex on 2 sitemap pages (/shop/bread, /shop/rye) — remove the noindex tag — new\n- 1 broken internal link on /about → /team (404) — point it at a page that exists — since October\n- duplicate title \"Rise Bakery\" on 2 pages — give each its own — new\n\n## All issues\n- (the three above)\n- missing meta description — 2 pages: /shop/bread, /about\n- fixed since October: images without alt on the home page\n\n## Checked\n- 3 pages crawled; robots.txt and sitemap read; no failures"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Fix first: remove the noindex from /shop/bread and /shop/rye.\n\n## Report\n- crawled 3 pages, confirmed 1; wrote \"SEO audit — November 2026\"\n\n## Carry forward\n- noindex on sitemap pages: 2\n- broken internal links: 1\n- duplicate titles: 2\n- missing meta description: 2"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "SEO audit",
+      "lacks": [
+       "JSON-LD is invalid",
+       "structured data error",
+       "page speed"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-audit-without-its-headings-fails",
+   "about": "The harness's own check: an audit with no Fix first, All issues or Checked does not deliver, even after its repair pass.",
+   "inputs": {
+    "site": "https://rise.example",
+    "max_pages": 20
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "python3",
+      "output": "{\"url\": \"https://rise.example/shop/bread\", \"status\": 200, \"title\": \"Rise Bakery\", \"description\": \"\", \"h1\": 1, \"canonical\": \"https://rise.example/shop/bread\", \"noindex\": true, \"jsonld\": \"ok\", \"img_no_alt\": 0, \"broken\": []}\n{\"url\": \"https://rise.example/shop/rye\", \"status\": 200, \"title\": \"Rise Bakery\", \"description\": \"Rye bread.\", \"h1\": 1, \"canonical\": \"https://rise.example/shop/rye\", \"noindex\": true, \"jsonld\": \"ok\", \"img_no_alt\": 0, \"broken\": []}\n{\"url\": \"https://rise.example/about\", \"status\": 200, \"title\": \"About Rise\", \"description\": \"\", \"h1\": 1, \"canonical\": \"https://rise.example/about\", \"noindex\": false, \"jsonld\": \"none\", \"img_no_alt\": 0, \"broken\": [\"/team\"]}",
+      "exit_code": 0
+     }
+    ],
+    "web": {
+     "https://rise.example/shop/bread": "x"
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "python3 - <<'PY'\n# reads robots.txt and sitemap.xml, crawls up to 20 pages of https://rise.example, prints one JSON line per page\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://rise.example/shop/bread"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "SEO audit — November 2026",
+        "content": "Some pages need work."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

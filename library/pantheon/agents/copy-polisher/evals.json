@@ -1,0 +1,220 @@
+{
+ "cases": [
+  {
+   "id": "five-strings-four-polished",
+   "about": "A vague button, a bare error code and an empty state are rewritten with why; the placeholders %d and {name} are copied exactly; the clear message is left as it was.",
+   "inputs": {
+    "strings": "OK\nError 500\nNo items\nYou have %d new messages\nYour file {name} was saved."
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Polished copy — 6 Nov",
+        "content": "Polished copy — 6 Nov\n\n| Before | After | Why |\n|---|---|---|\n| OK | Save changes | says what the button does |\n| Error 500 | Something went wrong on our side. Try again in a minute. (Error 500) | what happened and what to do |\n| No items | No invoices yet. Create your first one. | says how to fill it |\n| You have %d new messages | %d new messages | shorter; the count stays |\n\n## Left as it was\n- \"Your file {name} was saved.\" — already clear"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 changed, 1 left as it was.\n\n## Report\n- polished 5 strings; wrote \"Polished copy — 6 Nov\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Polished copy",
+      "contains": [
+       "Save changes",
+       "(Error 500)",
+       "Create your first one",
+       "%d new messages",
+       "Your file {name} was saved."
+      ],
+      "lacks": [
+       "Oops"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "4 changed"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-voice-and-a-rule-disagree",
+   "about": "The person's voice is playful and says Oopsie: the word stays for tone, what to do next is added, and Why says so.",
+   "inputs": {
+    "strings": "Upload failed",
+    "voice": "Playful and warm. We say Oopsie! when things go wrong."
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Polished copy — 6 Nov",
+        "content": "Polished copy — 6 Nov\n\n| Before | After | Why |\n|---|---|---|\n| Upload failed | Oopsie! The upload didn't finish. Check your connection and try again. | your voice kept; what to do added |\n\n## Left as it was\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 changed, 0 left as it was.\n\n## Report\n- polished 1 string"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Polished copy",
+      "contains": [
+       "Oopsie!",
+       "try again",
+       "your voice kept"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-string-it-cannot-place",
+   "about": "Jargon with no context is left alone and says why, rather than rewritten into a guess.",
+   "inputs": {
+    "strings": "Re-sync the ledger shard\nSubmit"
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Polished copy — 6 Nov",
+        "content": "Polished copy — 6 Nov\n\n| Before | After | Why |\n|---|---|---|\n| Submit | Send request | says what the button does |\n\n## Left as it was\n- \"Re-sync the ledger shard\" (unclear what it does — say and it can be rewritten)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 changed, 1 left as it was.\n\n## Report\n- polished 2 strings"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Polished copy",
+      "contains": [
+       "unclear what it does"
+      ],
+      "lacks": [
+       "| Re-sync the ledger shard |"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-to-polish",
+   "about": "No strings were given: the document says so, with nothing invented.",
+   "inputs": {
+    "strings": " "
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Polished copy — 6 Nov",
+        "content": "Polished copy — 6 Nov\n\n| Before | After | Why |\n|---|---|---|\n\n\n## Left as it was\nnothing to polish — no strings were given"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 changed: no strings were given.\n\n## Report\n- nothing to polish"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Polished copy",
+      "contains": [
+       "nothing to polish"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-promises-what-the-product-may-not-do",
+   "about": "A payment error is rewritten to say what to do — without promising a time or a guarantee.",
+   "inputs": {
+    "strings": "Payment failed"
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Polished copy — 6 Nov",
+        "content": "Polished copy — 6 Nov\n\n| Before | After | Why |\n|---|---|---|\n| Payment failed | Your payment didn't go through. Check your card details or try another card. | what happened and what to do |\n\n## Left as it was\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 changed, 0 left as it was.\n\n## Report\n- polished 1 string"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Polished copy",
+      "lacks": [
+       "guarantee",
+       "in minutes",
+       "we'll fix"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-table-without-its-columns-fails",
+   "about": "The harness's own check: a document with no Before, After and Why columns or Left as it was does not deliver, even after its repair pass.",
+   "inputs": {
+    "strings": "OK\nError 500\nNo items\nYou have %d new messages\nYour file {name} was saved."
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Polished copy — 6 Nov",
+        "content": "Save changes. Something went wrong."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

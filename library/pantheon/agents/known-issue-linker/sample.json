@@ -1,0 +1,27 @@
+{
+ "case": "one-match-one-new-one-back-after-a-fix",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the known issues and 3 reports; drafted 1 reply",
+ "read": [
+  "manage_documents",
+  "list_emails",
+  "read_email"
+ ],
+ "wrote": [
+  "draft_email_reply"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "at most 15 drafts",
+   "ok": true,
+   "detail": "It made 1 draft."
+  },
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Matched, No match, Reported again after a fix."
+  }
+ ],
+ "answer": "**Matched**\n- kim@users.example — Export stuck at 99% — \"CSV export hangs on large files\" — (draft made)\n\n**No match**\n- lee@users.example — App crashes when I rotate my phone\n\n**Reported again after a fix**\n- max@users.example — Login loop again — \"Login loop on Safari\" (marked fixed 1 Nov)\n\n## Report\n- read the known issues and 3 reports; drafted 1 reply\n\n## Carry forward\n- handled: m1, m2, m3"
+}

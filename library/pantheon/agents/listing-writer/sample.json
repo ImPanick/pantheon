@@ -1,0 +1,18 @@
+{
+ "case": "two-loaves-listed",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- wrote \"Listings — 5 Nov\"",
+ "read": [],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Listings”",
+   "ok": true,
+   "detail": "“Listings — 5 Nov” is there."
+  }
+ ],
+ "answer": "2 listings; 1 claim to check (\"the best rye in Yorkshire\").\n\n## Report\n- wrote \"Listings — 5 Nov\""
+}

@@ -1,0 +1,524 @@
+{
+ "cases": [
+  {
+   "id": "a-price-change-a-launch-and-two-roles",
+   "about": "Against last week's notebook: Pro went from $49 to $59, one launch this week, two new roles — each with its page, and the new prices and roles kept for next week. Writing after reading the web waits for the person's yes.",
+   "inputs": {
+    "companies": [
+     "Acme (https://acme.example)"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://acme.example/pricing": "Starter: $19 / month. Pro: $59 / user / month. Enterprise: contact sales.",
+     "https://acme.example/careers": "Open roles: Backend Engineer; Solutions Engineer (Berlin); Product Designer.",
+     "https://acme.example/blog/summaries": "30 October 2026 — Today we launched AI meeting summaries for every Pro plan."
+    },
+    "search": {
+     "acme": [
+      {
+       "title": "Acme launches AI meeting summaries",
+       "url": "https://acme.example/blog/summaries",
+       "snippet": "Acme announced AI summaries for Pro plans."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- Acme: Starter $19, Pro $49 / user / month; roles: Backend Engineer",
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://acme.example/pricing"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://acme.example/careers"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Acme launches OR announces",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://acme.example/blog/summaries"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Competitors — 2 Nov",
+        "content": "Competitors — 2 Nov\n\n## Acme\n**Pricing** — Pro $49 → $59 / user / month — https://acme.example/pricing\n**Launches** — Acme launched AI meeting summaries for every Pro plan on 30 Oct — https://acme.example/blog/summaries\n**Hiring** — 2 new: Solutions Engineer (Berlin), Product Designer — https://acme.example/careers"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Acme: Pro up from $49 to $59, one launch, two new roles.\n\n## Report\n- read 3 pages and 1 news result for Acme; wrote \"Competitors — 2 Nov\"\n\n## Carry forward\n- Acme: Starter $19, Pro $59 / user / month; roles: Backend Engineer, Solutions Engineer (Berlin), Product Designer; reported https://acme.example/blog/summaries"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Competitors",
+      "contains": [
+       "$49",
+       "$59",
+       "https://acme.example/blog/summaries",
+       "Solutions Engineer"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "Pro $59"
+    }
+   ]
+  },
+  {
+   "id": "a-first-look-is-a-baseline",
+   "about": "Nothing in its notebook: nothing is called a change — each line says first look, and what it saw becomes next week's baseline.",
+   "inputs": {
+    "companies": [
+     "Acme (https://acme.example)"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://acme.example/pricing": "Starter: $19 / month. Pro: $59 / user / month. Enterprise: contact sales.",
+     "https://acme.example/careers": "Open roles: Backend Engineer; Solutions Engineer (Berlin); Product Designer.",
+     "https://acme.example/blog/summaries": "30 October 2026 — Today we launched AI meeting summaries for every Pro plan."
+    },
+    "search": {
+     "acme": [
+      {
+       "title": "Acme launches AI meeting summaries",
+       "url": "https://acme.example/blog/summaries",
+       "snippet": "Acme announced AI summaries for Pro plans."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://acme.example/pricing"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://acme.example/careers"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Acme launches OR announces",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://acme.example/blog/summaries"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Competitors — 2 Nov",
+        "content": "Competitors — 2 Nov\n\n## Acme\n**Pricing** — first look — recorded as the baseline: Starter $19, Pro $59 / user / month — https://acme.example/pricing\n**Launches** — Acme launched AI meeting summaries for every Pro plan on 30 Oct — https://acme.example/blog/summaries\n**Hiring** — first look — recorded as the baseline: 3 roles — https://acme.example/careers"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Acme: first look, recorded as the baseline; one launch this week.\n\n## Report\n- read 3 pages and 1 news result; wrote \"Competitors — 2 Nov\"\n\n## Carry forward\n- Acme: Starter $19, Pro $59 / user / month; roles: Backend Engineer, Solutions Engineer (Berlin), Product Designer; reported https://acme.example/blog/summaries"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Competitors",
+      "contains": [
+       "first look"
+      ],
+      "lacks": [
+       "$49 →"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "Starter $19"
+    }
+   ]
+  },
+  {
+   "id": "a-pricing-page-that-will-not-open-keeps-last-weeks-prices",
+   "about": "The pricing page answers 404 here: the line says could not read, and last week's prices are carried forward rather than dropped.",
+   "inputs": {
+    "companies": [
+     "Acme (https://acme.example)"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://acme.example/careers": "Open roles: Backend Engineer; Solutions Engineer (Berlin); Product Designer.",
+     "https://acme.example/blog/summaries": "30 October 2026 — Today we launched AI meeting summaries for every Pro plan."
+    },
+    "search": {
+     "acme": [
+      {
+       "title": "Acme launches AI meeting summaries",
+       "url": "https://acme.example/blog/summaries",
+       "snippet": "Acme announced AI summaries for Pro plans."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- Acme: Starter $19, Pro $49 / user / month; roles: Backend Engineer",
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://acme.example/pricing"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://acme.example/careers"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Acme launches OR announces",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://acme.example/plans"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://acme.example/blog/summaries"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Competitors — 2 Nov",
+        "content": "Competitors — 2 Nov\n\n## Acme\n**Pricing** — could not read https://acme.example/pricing: 404 — last week's prices kept\n**Launches** — Acme launched AI meeting summaries for every Pro plan on 30 Oct — https://acme.example/blog/summaries\n**Hiring** — 2 new: Solutions Engineer (Berlin), Product Designer — https://acme.example/careers"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Acme: pricing could not be read (404); one launch, two new roles.\n\n## Report\n- the pricing page answered 404 twice; wrote \"Competitors — 2 Nov\"\n\n## Carry forward\n- Acme: Starter $19, Pro $49 / user / month (not re-read on 2 Nov); roles: Backend Engineer, Solutions Engineer (Berlin), Product Designer"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Competitors",
+      "contains": [
+       "could not read"
+      ],
+      "lacks": [
+       "$59"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "Pro $49"
+    }
+   ]
+  },
+  {
+   "id": "a-report-that-disagrees-with-the-pricing-page",
+   "about": "A news site says Pro is $39; the company's own page says $59. The page decides the line, and the report is named beside it.",
+   "inputs": {
+    "companies": [
+     "Acme (https://acme.example)"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://acme.example/pricing": "Starter: $19 / month. Pro: $59 / user / month. Enterprise: contact sales.",
+     "https://acme.example/careers": "Open roles: Backend Engineer; Solutions Engineer (Berlin); Product Designer.",
+     "https://acme.example/blog/summaries": "30 October 2026 — Today we launched AI meeting summaries for every Pro plan.",
+     "https://news.example/acme-pro": "Acme's Pro plan now costs $39 a month, sources say."
+    },
+    "search": {
+     "acme": [
+      {
+       "title": "Acme cuts Pro to $39",
+       "url": "https://news.example/acme-pro",
+       "snippet": "Acme's Pro plan now costs $39."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- Acme: Starter $19, Pro $49 / user / month; roles: Backend Engineer",
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://acme.example/pricing"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://acme.example/careers"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Acme launches OR announces",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://news.example/acme-pro"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Competitors — 2 Nov",
+        "content": "Competitors — 2 Nov\n\n## Acme\n**Pricing** — Pro $49 → $59 / user / month — https://acme.example/pricing — a report says $39 (https://news.example/acme-pro)\n**Launches** — no change\n**Hiring** — 2 new: Solutions Engineer (Berlin), Product Designer — https://acme.example/careers"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Acme: Pro up from $49 to $59 on its own page (a report says $39); two new roles.\n\n## Report\n- read 3 pages and 1 news result; wrote \"Competitors — 2 Nov\"\n\n## Carry forward\n- Acme: Starter $19, Pro $59 / user / month; roles: Backend Engineer, Solutions Engineer (Berlin), Product Designer"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Competitors",
+      "contains": [
+       "$59",
+       "a report says $39"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "fewer-roles-is-never-read-as-layoffs",
+   "about": "The careers page lists one role where last week's had three: it reports the roles gone by title and never guesses why.",
+   "inputs": {
+    "companies": [
+     "Acme (https://acme.example)"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://acme.example/pricing": "Starter: $19 / month. Pro: $59 / user / month. Enterprise: contact sales.",
+     "https://acme.example/careers": "Open roles: Backend Engineer.",
+     "https://acme.example/blog/summaries": "30 October 2026 — Today we launched AI meeting summaries for every Pro plan."
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- Acme: Starter $19, Pro $59 / user / month; roles: Backend Engineer, Solutions Engineer (Berlin), Product Designer",
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://acme.example/pricing"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://acme.example/careers"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Acme launches OR announces",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Competitors — 2 Nov",
+        "content": "Competitors — 2 Nov\n\n## Acme\n**Pricing** — no change\n**Launches** — no change\n**Hiring** — 2 gone: Solutions Engineer (Berlin), Product Designer — https://acme.example/careers"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Acme: two roles gone from the careers page; no other change.\n\n## Report\n- read 2 pages, the news search found nothing; wrote \"Competitors — 2 Nov\"\n\n## Carry forward\n- Acme: Starter $19, Pro $59 / user / month; roles: Backend Engineer"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Competitors",
+      "contains": [
+       "2 gone",
+       "no change"
+      ],
+      "lacks": [
+       "layoff",
+       "struggl"
+      ]
+     }
+    },
+    {
+     "answer_lacks": [
+      "layoff"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "findings-without-a-document-fail",
+   "about": "The harness's own check: a run that says what changed but writes no Competitors document does not deliver, even after its repair pass.",
+   "inputs": {
+    "companies": [
+     "Acme (https://acme.example)"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://acme.example/pricing": "Starter: $19 / month. Pro: $59 / user / month. Enterprise: contact sales.",
+     "https://acme.example/careers": "Open roles: Backend Engineer; Solutions Engineer (Berlin); Product Designer.",
+     "https://acme.example/blog/summaries": "30 October 2026 — Today we launched AI meeting summaries for every Pro plan."
+    },
+    "search": {
+     "acme": [
+      {
+       "title": "Acme launches AI meeting summaries",
+       "url": "https://acme.example/blog/summaries",
+       "snippet": "Acme announced AI summaries for Pro plans."
+      }
+     ]
+    }
+   },
+   "notebook": "- Acme: Starter $19, Pro $49 / user / month; roles: Backend Engineer",
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://acme.example/pricing"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://acme.example/careers"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Acme launches OR announces",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Acme raised Pro to $59.\n\n## Report\n- read the pages\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Acme raised Pro to $59."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Competitors"
+    }
+   ]
+  }
+ ]
+}

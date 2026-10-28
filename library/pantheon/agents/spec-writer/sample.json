@@ -1,0 +1,20 @@
+{
+ "case": "a-spec-from-interviews-and-feedback",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 2 sources; wrote \"Spec — weekly meal plan sharing\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Spec”",
+   "ok": true,
+   "detail": "“Spec — weekly meal plan sharing” is there."
+  }
+ ],
+ "answer": "3 requirements: 1 must, 1 should, 1 could; 1 open question.\n\n## Report\n- read 2 sources; wrote \"Spec — weekly meal plan sharing\""
+}

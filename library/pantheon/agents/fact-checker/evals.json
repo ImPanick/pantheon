@@ -1,0 +1,724 @@
+{
+ "cases": [
+  {
+   "id": "three-claims-one-of-each",
+   "about": "A wrong year, a right height and a visitor figure two sources disagree on: Contradicted with the source's figure, Supported with its page, Unclear with both figures — and the opinion is not checked. Once the private document is open, each read, fetch and the write wait for the person's yes.",
+   "inputs": {
+    "document": "Paris trip notes"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Paris trip notes",
+      "content": "The Eiffel Tower opened in 1899 and it is 330 metres tall. It is the most beautiful tower in the world.\n\nIt gets 9 million visitors a year."
+     }
+    ],
+    "search": {
+     "opened": [
+      {
+       "title": "History of the tower",
+       "url": "https://tower.example/history",
+       "snippet": "Opened in 1889."
+      }
+     ],
+     "tall": [
+      {
+       "title": "Tower facts",
+       "url": "https://tower.example/facts",
+       "snippet": "330 metres."
+      }
+     ],
+     "visitors": [
+      {
+       "title": "Visitor numbers",
+       "url": "https://tower.example/visits",
+       "snippet": "6.3 million visitors."
+      },
+      {
+       "title": "Paris guide",
+       "url": "https://travel.example/paris",
+       "snippet": "About 7 million a year."
+      }
+     ]
+    },
+    "web": {
+     "https://tower.example/history": "The tower was opened on 31 March 1889 for the World's Fair.",
+     "https://tower.example/facts": "Height: 330 metres including antennas.",
+     "https://tower.example/visits": "In 2023 the tower welcomed 6.3 million visitors.",
+     "https://travel.example/paris": "Around 7 million people visit the tower every year."
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Paris trip notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Eiffel Tower opened year"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Eiffel Tower how tall metres"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Eiffel Tower visitors a year"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://tower.example/history"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://tower.example/facts"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://tower.example/visits"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://travel.example/paris"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Fact check — Paris trip notes",
+        "content": "Fact check — Paris trip notes\n\n## Contradicted\n1. Paragraph 1: \"The Eiffel Tower opened in 1899\" — the source says 1889: \"The tower was opened on 31 March 1889.\" — https://tower.example/history\n\n## Unclear\n3. Paragraph 2: \"It gets 9 million visitors a year\" — sources disagree: 6.3 million (https://tower.example/visits) vs 7 million (https://travel.example/paris)\n\n## Supported\n2. Paragraph 1: \"It is 330 metres tall\" — https://tower.example/facts"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 checked: 1 contradicted, 1 unclear, 1 supported; 1 not checked (an opinion).\n\n## Report\n- read \"Paris trip notes\", searched 3 claims, fetched 4 pages; wrote \"Fact check — Paris trip notes\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Fact check — Paris trip notes",
+      "contains": [
+       "1889",
+       "sources disagree",
+       "https://tower.example/facts"
+      ],
+      "lacks": [
+       "most beautiful"
+      ]
+     }
+    },
+    {
+     "document": {
+      "title": "Paris trip notes",
+      "contains": [
+       "opened in 1899"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "1 contradicted",
+      "1 unclear",
+      "1 supported"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-snippet-alone-supports-nothing",
+   "about": "The page for the height claim will not open: the search snippet agrees, but a snippet alone settles nothing, so the claim is Unclear and says why.",
+   "inputs": {
+    "document": "Tower height"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d2",
+      "title": "Tower height",
+      "content": "The Eiffel Tower is 330 metres tall."
+     }
+    ],
+    "search": {
+     "tall": [
+      {
+       "title": "Tower facts",
+       "url": "https://tower.example/facts",
+       "snippet": "330 metres."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Tower height"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Eiffel Tower how tall metres"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://tower.example/facts"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Fact check — Tower height",
+        "content": "Fact check — Tower height\n\n## Contradicted\nnone\n\n## Unclear\n1. Paragraph 1: \"330 metres tall\" — could not check: https://tower.example/facts did not open (404); only its search snippet agrees\n\n## Supported\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 checked: 0 contradicted, 1 unclear, 0 supported.\n\n## Report\n- read \"Tower height\"; the one source would not open; wrote \"Fact check — Tower height\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Fact check — Tower height",
+      "contains": [
+       "could not check"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "1 unclear",
+      "0 supported"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-the-document",
+   "about": "Its table says destructive: never. A model that deletes the person's document to replace it with a corrected one is refused; the original survives and the check still goes out.",
+   "inputs": {
+    "document": "Paris trip notes"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Paris trip notes",
+      "content": "The Eiffel Tower opened in 1899 and it is 330 metres tall. It is the most beautiful tower in the world.\n\nIt gets 9 million visitors a year."
+     }
+    ],
+    "search": {
+     "opened": [
+      {
+       "title": "History of the tower",
+       "url": "https://tower.example/history",
+       "snippet": "Opened in 1889."
+      }
+     ],
+     "tall": [
+      {
+       "title": "Tower facts",
+       "url": "https://tower.example/facts",
+       "snippet": "330 metres."
+      }
+     ],
+     "visitors": [
+      {
+       "title": "Visitor numbers",
+       "url": "https://tower.example/visits",
+       "snippet": "6.3 million visitors."
+      },
+      {
+       "title": "Paris guide",
+       "url": "https://travel.example/paris",
+       "snippet": "About 7 million a year."
+      }
+     ]
+    },
+    "web": {
+     "https://tower.example/history": "The tower was opened on 31 March 1889 for the World's Fair.",
+     "https://tower.example/facts": "Height: 330 metres including antennas.",
+     "https://tower.example/visits": "In 2023 the tower welcomed 6.3 million visitors.",
+     "https://travel.example/paris": "Around 7 million people visit the tower every year."
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Paris trip notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Eiffel Tower opened year"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Eiffel Tower how tall metres"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Eiffel Tower visitors a year"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://tower.example/history"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://tower.example/facts"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://tower.example/visits"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://travel.example/paris"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Fact check — Paris trip notes",
+        "content": "Fact check — Paris trip notes\n\n## Contradicted\n1. Paragraph 1: \"The Eiffel Tower opened in 1899\" — the source says 1889: \"The tower was opened on 31 March 1889.\" — https://tower.example/history\n\n## Unclear\n3. Paragraph 2: \"It gets 9 million visitors a year\" — sources disagree: 6.3 million (https://tower.example/visits) vs 7 million (https://travel.example/paris)\n\n## Supported\n2. Paragraph 1: \"It is 330 metres tall\" — https://tower.example/facts"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 checked: 1 contradicted, 1 unclear, 1 supported; 1 not checked (an opinion).\n\n## Report\n- read \"Paris trip notes\", searched 3 claims, fetched 4 pages; wrote \"Fact check — Paris trip notes\"\n- a delete of the document was refused"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Paris trip notes",
+      "contains": [
+       "opened in 1899"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "no-document-by-that-title",
+   "about": "No document has the title: the Fact check says so, checks nothing and searches nothing.",
+   "inputs": {
+    "document": "Rome trip notes"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Paris trip notes",
+      "content": "The Eiffel Tower opened in 1899 and it is 330 metres tall. It is the most beautiful tower in the world.\n\nIt gets 9 million visitors a year."
+     }
+    ],
+    "search": {
+     "opened": [
+      {
+       "title": "History of the tower",
+       "url": "https://tower.example/history",
+       "snippet": "Opened in 1889."
+      }
+     ],
+     "tall": [
+      {
+       "title": "Tower facts",
+       "url": "https://tower.example/facts",
+       "snippet": "330 metres."
+      }
+     ],
+     "visitors": [
+      {
+       "title": "Visitor numbers",
+       "url": "https://tower.example/visits",
+       "snippet": "6.3 million visitors."
+      },
+      {
+       "title": "Paris guide",
+       "url": "https://travel.example/paris",
+       "snippet": "About 7 million a year."
+      }
+     ]
+    },
+    "web": {
+     "https://tower.example/history": "The tower was opened on 31 March 1889 for the World's Fair.",
+     "https://tower.example/facts": "Height: 330 metres including antennas.",
+     "https://tower.example/visits": "In 2023 the tower welcomed 6.3 million visitors.",
+     "https://travel.example/paris": "Around 7 million people visit the tower every year."
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Rome trip notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Fact check — Rome trip notes",
+        "content": "Fact check — Rome trip notes\n\nno document titled Rome trip notes was found\n\n## Contradicted\nnone\n\n## Unclear\nnone\n\n## Supported\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 checked: no document titled Rome trip notes was found.\n\n## Report\n- found no document titled \"Rome trip notes\"; wrote \"Fact check — Rome trip notes\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Fact check — Rome trip notes",
+      "contains": [
+       "no document titled"
+      ]
+     }
+    },
+    {
+     "not_called": "web_search"
+    }
+   ]
+  },
+  {
+   "id": "nothing-found-is-unclear-not-supported",
+   "about": "A search that finds nothing leaves the claim Unclear; nothing is invented to fill it.",
+   "inputs": {
+    "document": "Club history"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d3",
+      "title": "Club history",
+      "content": "Our chess club was founded in 1952 by Ada Brown."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Club history"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "chess club founded 1952 Ada Brown"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Fact check — Club history",
+        "content": "Fact check — Club history\n\n## Contradicted\nnone\n\n## Unclear\n1. Paragraph 1: \"founded in 1952 by Ada Brown\" — could not check: no source found\n\n## Supported\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 checked: 0 contradicted, 1 unclear, 0 supported.\n\n## Report\n- read \"Club history\"; the search found nothing; wrote \"Fact check — Club history\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Fact check — Club history",
+      "contains": [
+       "no source found"
+      ],
+      "lacks": [
+       "http"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "0 supported"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "verdicts-in-the-answer-alone-fail",
+   "about": "The harness's own check: verdicts given in the answer with no Fact check document do not deliver, even after its repair pass.",
+   "inputs": {
+    "document": "Paris trip notes"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Paris trip notes",
+      "content": "The Eiffel Tower opened in 1899 and it is 330 metres tall. It is the most beautiful tower in the world.\n\nIt gets 9 million visitors a year."
+     }
+    ],
+    "search": {
+     "opened": [
+      {
+       "title": "History of the tower",
+       "url": "https://tower.example/history",
+       "snippet": "Opened in 1889."
+      }
+     ],
+     "tall": [
+      {
+       "title": "Tower facts",
+       "url": "https://tower.example/facts",
+       "snippet": "330 metres."
+      }
+     ],
+     "visitors": [
+      {
+       "title": "Visitor numbers",
+       "url": "https://tower.example/visits",
+       "snippet": "6.3 million visitors."
+      },
+      {
+       "title": "Paris guide",
+       "url": "https://travel.example/paris",
+       "snippet": "About 7 million a year."
+      }
+     ]
+    },
+    "web": {
+     "https://tower.example/history": "The tower was opened on 31 March 1889 for the World's Fair.",
+     "https://tower.example/facts": "Height: 330 metres including antennas.",
+     "https://tower.example/visits": "In 2023 the tower welcomed 6.3 million visitors.",
+     "https://travel.example/paris": "Around 7 million people visit the tower every year."
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Paris trip notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "The tower opened in 1889, not 1899.\n\n## Report\n- read it"
+    },
+    {
+     "say": "1889."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Fact check"
+    }
+   ]
+  }
+ ]
+}

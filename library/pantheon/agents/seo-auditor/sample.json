@@ -1,0 +1,21 @@
+{
+ "case": "noindex-comes-first",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- crawled 3 pages, confirmed 1; wrote \"SEO audit — November 2026\"",
+ "read": [
+  "web_fetch"
+ ],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “SEO audit”",
+   "ok": true,
+   "detail": "“SEO audit — November 2026” is there."
+  }
+ ],
+ "answer": "Fix first: remove the noindex from /shop/bread and /shop/rye.\n\n## Report\n- crawled 3 pages, confirmed 1; wrote \"SEO audit — November 2026\"\n\n## Carry forward\n- noindex on sitemap pages: 2\n- broken internal links: 1\n- duplicate titles: 2\n- missing meta description: 2"
+}

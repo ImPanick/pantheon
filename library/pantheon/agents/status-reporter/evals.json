@@ -1,0 +1,565 @@
+{
+ "cases": [
+  {
+   "id": "a-week-of-notes-and-commits",
+   "about": "The ticked item and the week's commits are done, the dated items are next, the logo is blocked with what would unblock it and since when, and the health line says why. Each step after the first may wait for a yes.",
+   "inputs": {
+    "project": "Website relaunch",
+    "folder": "site"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa3001",
+      "title": "Website relaunch — tasks",
+      "content": "[x] Pricing page\n[ ] About page — due 6 Nov\n[ ] Launch checklist — due 14 Nov\n[ ] Logo files — blocked: waiting on the client"
+     }
+    ],
+    "shell": [
+     {
+      "match": "git log",
+      "output": "f1 Add header\nf2 Add footer\nf3 Contact form\nf4 Image fixes",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "notebook": "- Logo files: waiting on the client — since 3 Nov",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Website relaunch"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "aaaa3001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "Website relaunch"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"site\" && git log --since=\"7 days ago\" --no-merges --oneline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Status — Website relaunch — week of 3 Nov",
+        "content": "Status — Website relaunch — week of 3 Nov\n\n## Done\n- Pricing page finished (ticked)\n- 4 commits: header, footer, contact form, image fixes\n- (no chat discussed it this week)\n\n## Next\n- About page — due Thu 6 Nov\n- Launch checklist — due Fri 14 Nov\n\n## Blocked\n- Logo files — waiting on the client; unblocked when they send them (since 3 Nov)\n\n## Health\nAt risk: the logo is blocked and the launch is in nine days."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "At risk: the logo is blocked and the launch is in nine days.\n\n## Report\n- read 1 note, searched chats, read 4 commits; wrote \"Status — Website relaunch — week of 3 Nov\"\n\n## Carry forward\n- Logo files: waiting on the client — since 3 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Status — Website relaunch",
+      "contains": [
+       "Pricing page finished",
+       "4 commits",
+       "(since 3 Nov)",
+       "At risk"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "since 3 Nov"
+    }
+   ]
+  },
+  {
+   "id": "no-repository-no-commits",
+   "about": "Hired without a repository: no command runs and commits are left out.",
+   "inputs": {
+    "project": "Website relaunch"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa3001",
+      "title": "Website relaunch — tasks",
+      "content": "[x] Pricing page\n[ ] About page — due 6 Nov\n[ ] Launch checklist — due 14 Nov\n[ ] Logo files — blocked: waiting on the client"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Website relaunch"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "aaaa3001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "Website relaunch"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Status — Website relaunch — week of 3 Nov",
+        "content": "Status — Website relaunch — week of 3 Nov\n\n## Done\n- Pricing page finished (ticked)\n\n## Next\n- About page — due Thu 6 Nov\n- Launch checklist — due Fri 14 Nov\n\n## Blocked\n- Logo files — waiting on the client; unblocked when they send them (since 3 Nov)\n\n## Health\nAt risk: the logo is blocked and the launch is in nine days."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "At risk: the logo is blocked and the launch is in nine days.\n\n## Report\n- read 1 note and searched chats\n\n## Carry forward\n- Logo files: waiting on the client — since 3 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "bash"
+    },
+    {
+     "document": {
+      "title": "Status",
+      "lacks": [
+       "commits"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-repository-cannot-be-read",
+   "about": "git log fails: Done says the repository could not be read, and the report comes from the notes.",
+   "inputs": {
+    "project": "Website relaunch",
+    "folder": "site"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa3001",
+      "title": "Website relaunch — tasks",
+      "content": "[x] Pricing page\n[ ] About page — due 6 Nov\n[ ] Launch checklist — due 14 Nov\n[ ] Logo files — blocked: waiting on the client"
+     }
+    ],
+    "shell": [
+     {
+      "match": "git log",
+      "output": "fatal: not a git repository",
+      "exit_code": 128
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Website relaunch"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "aaaa3001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "Website relaunch"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"site\" && git log --since=\"7 days ago\" --no-merges --oneline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Status — Website relaunch — week of 3 Nov",
+        "content": "Status — Website relaunch — week of 3 Nov\n\n## Done\n- Pricing page finished (ticked)\n- could not read the repository: fatal: not a git repository\n\n## Next\n- About page — due Thu 6 Nov\n- Launch checklist — due Fri 14 Nov\n\n## Blocked\n- Logo files — waiting on the client; unblocked when they send them (since 3 Nov)\n\n## Health\nAt risk: the logo is blocked and the launch is in nine days."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "At risk: the logo is blocked and the launch is in nine days.\n\n## Report\n- the repository could not be read\n\n## Carry forward\n- Logo files: waiting on the client — since 3 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Status",
+      "contains": [
+       "could not read the repository"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-found-for-the-project",
+   "about": "No note, chat or commit mentions the project: the report says so and its health is unknown.",
+   "inputs": {
+    "project": "Mobile app"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa3001",
+      "title": "Website relaunch — tasks",
+      "content": "[x] Pricing page\n[ ] About page — due 6 Nov\n[ ] Launch checklist — due 14 Nov\n[ ] Logo files — blocked: waiting on the client"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Mobile app"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "Mobile app"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Status — Mobile app — week of 3 Nov",
+        "content": "## Done\nnothing found for Mobile app in your notes, chats or repository\n\n## Next\nnone\n\n## Blocked\nnone\n\n## Health\nunknown"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Health unknown: nothing found for Mobile app.\n\n## Report\n- found nothing\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Status — Mobile app",
+      "contains": [
+       "nothing found for Mobile app",
+       "unknown"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-ticks-or-deletes-a-note",
+   "about": "Its table says destructive: never. A model that deletes the task note to tidy it is refused; the note survives and the report goes out.",
+   "inputs": {
+    "project": "Website relaunch",
+    "folder": "site"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa3001",
+      "title": "Website relaunch — tasks",
+      "content": "[x] Pricing page\n[ ] About page — due 6 Nov\n[ ] Launch checklist — due 14 Nov\n[ ] Logo files — blocked: waiting on the client"
+     }
+    ],
+    "shell": [
+     {
+      "match": "git log",
+      "output": "f1 Add header\nf2 Add footer\nf3 Contact form\nf4 Image fixes",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Website relaunch"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "aaaa3001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "Website relaunch"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"site\" && git log --since=\"7 days ago\" --no-merges --oneline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "delete",
+        "id": "aaaa3001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Status — Website relaunch — week of 3 Nov",
+        "content": "Status — Website relaunch — week of 3 Nov\n\n## Done\n- Pricing page finished (ticked)\n- 4 commits: header, footer, contact form, image fixes\n- (no chat discussed it this week)\n\n## Next\n- About page — due Thu 6 Nov\n- Launch checklist — due Fri 14 Nov\n\n## Blocked\n- Logo files — waiting on the client; unblocked when they send them (since 3 Nov)\n\n## Health\nAt risk: the logo is blocked and the launch is in nine days."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "At risk: the logo is blocked and the launch is in nine days.\n\n## Report\n- a delete was refused\n\n## Carry forward\n- Logo files: waiting on the client — since 3 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "status": "success"
+    },
+    {
+     "document": {
+      "title": "Status — Website",
+      "contains": [
+       "Blocked"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-report-without-its-headings-fails",
+   "about": "The harness's own check: a status with no Done, Next, Blocked or Health does not deliver, even after its repair pass.",
+   "inputs": {
+    "project": "Website relaunch",
+    "folder": "site"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa3001",
+      "title": "Website relaunch — tasks",
+      "content": "[x] Pricing page\n[ ] About page — due 6 Nov\n[ ] Launch checklist — due 14 Nov\n[ ] Logo files — blocked: waiting on the client"
+     }
+    ],
+    "shell": [
+     {
+      "match": "git log",
+      "output": "f1 Add header\nf2 Add footer\nf3 Contact form\nf4 Image fixes",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Website relaunch"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "aaaa3001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "Website relaunch"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"site\" && git log --since=\"7 days ago\" --no-merges --oneline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Status — Website relaunch — week of 3 Nov",
+        "content": "Going fine."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,21 @@
+{
+ "case": "a-price-change-a-launch-and-two-roles",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 3 pages and 1 news result for Acme; wrote \"Competitors — 2 Nov\"",
+ "read": [
+  "web_fetch",
+  "web_search"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Competitors”",
+   "ok": true,
+   "detail": "“Competitors — 2 Nov” is there."
+  }
+ ],
+ "answer": "Acme: Pro up from $49 to $59, one launch, two new roles.\n\n## Report\n- read 3 pages and 1 news result for Acme; wrote \"Competitors — 2 Nov\"\n\n## Carry forward\n- Acme: Starter $19, Pro $59 / user / month; roles: Backend Engineer, Solutions Engineer (Berlin), Product Designer; reported https://acme.example/blog/summaries"
+}

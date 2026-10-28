@@ -1,0 +1,21 @@
+{
+ "case": "two-papers-and-a-quiet-topic",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- ran 3 searches, opened 2 abstracts; wrote \"Papers — 31 Oct\"",
+ "read": [
+  "web_search",
+  "web_fetch"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Papers”",
+   "ok": true,
+   "detail": "“Papers — 31 Oct” is there."
+  }
+ ],
+ "answer": "2 papers on battery recycling; nothing new on solid-state electrolytes.\n\n## Report\n- ran 3 searches, opened 2 abstracts; wrote \"Papers — 31 Oct\"\n\n## Carry forward\n- https://arxiv.example/abs/2610.01234\n- https://arxiv.example/abs/2610.04321"
+}

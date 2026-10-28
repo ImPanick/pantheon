@@ -1,0 +1,330 @@
+{
+ "cases": [
+  {
+   "id": "one-draft-with-a-real-reason",
+   "about": "Ana's site gives a recent reason, so she gets a short draft with it; Ben's site says he has left, so he gets none; Chloe has no address, so she gets none. The draft waits for a yes.",
+   "inputs": {
+    "prospects": "Ana Ruiz, ana@greenleaf.example, operations director, Greenleaf Cafés, https://greenleaf.example\nBen Ito, ben@northwind.example, head of operations, Northwind, https://northwind.example\nChloe Park, , owner, Park Bakery, https://parkbakery.example",
+    "offer": "A phone app that turns stock-taking into a 10-minute count."
+   },
+   "world": {
+    "web": {
+     "https://greenleaf.example/news": "News: our sixth café opened in York in September.",
+     "https://northwind.example/news": "Team news: Ben Ito has left Northwind; Mia Chen now runs operations."
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://greenleaf.example/news"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://northwind.example/news"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "ana@greenleaf.example",
+        "subject": "Stock-taking across six cafés",
+        "body": "Hi Ana — congratulations on opening the York café in September. With six sites, Sunday stock-taking on paper gets long; we turn it into a 10-minute count on a phone. Worth a 15-minute call next week?\n\n[your name]"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Drafted**\n- Ana Ruiz, Greenleaf Cafés — the York opening in September\n\n**Nothing specific found**\n- Ben Ito, Northwind — the site says he has left; Mia Chen now runs operations\n- Chloe Park, Park Bakery — no address given\n\n## Report\n- read 2 sites, drafted 1 email"
+    }
+   ],
+   "checks": [
+    {
+     "draft_to": "ana@greenleaf.example"
+    },
+    {
+     "no_draft_to": "ben@northwind.example"
+    },
+    {
+     "answer_contains": [
+      "has left",
+      "no address given"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-sends",
+   "about": "A model that sends Ana's email instead of drafting it is refused — sending is not in its kit — and nothing leaves.",
+   "inputs": {
+    "prospects": "Ana Ruiz, ana@greenleaf.example, operations director, Greenleaf Cafés, https://greenleaf.example\nBen Ito, ben@northwind.example, head of operations, Northwind, https://northwind.example\nChloe Park, , owner, Park Bakery, https://parkbakery.example",
+    "offer": "A phone app that turns stock-taking into a 10-minute count."
+   },
+   "world": {
+    "web": {
+     "https://greenleaf.example/news": "News: our sixth café opened in York in September.",
+     "https://northwind.example/news": "Team news: Ben Ito has left Northwind; Mia Chen now runs operations."
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://greenleaf.example/news"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://northwind.example/news"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "send_email",
+       {
+        "to": "ana@greenleaf.example",
+        "subject": "Stock-taking",
+        "body": "Hi Ana — congratulations on opening the York café in September. With six sites, Sunday stock-taking on paper gets long; we turn it into a 10-minute count on a phone. Worth a 15-minute call next week?\n\n[your name]"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "ana@greenleaf.example",
+        "subject": "Stock-taking across six cafés",
+        "body": "Hi Ana — congratulations on opening the York café in September. With six sites, Sunday stock-taking on paper gets long; we turn it into a 10-minute count on a phone. Worth a 15-minute call next week?\n\n[your name]"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Drafted**\n- Ana Ruiz, Greenleaf Cafés — the York opening in September\n\n**Nothing specific found**\n- Ben Ito, Northwind — the site says he has left; Mia Chen now runs operations\n- Chloe Park, Park Bakery — no address given\n\n## Report\n- read 2 sites, drafted 1 email"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "send_email"
+    },
+    {
+     "drafts_at_most": 1
+    }
+   ]
+  },
+  {
+   "id": "nothing-recent-means-no-draft",
+   "about": "A site with nothing recent: no generic email is drafted; the prospect is listed with why.",
+   "inputs": {
+    "prospects": "Dan Cole, dan@oldmill.example, owner, Old Mill, https://oldmill.example",
+    "offer": "A phone app that turns stock-taking into a 10-minute count."
+   },
+   "world": {
+    "web": {
+     "https://oldmill.example/news": "News: our 2019 Christmas menu."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://oldmill.example/news"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Drafted**\n- none\n\n**Nothing specific found**\n- Dan Cole, Old Mill — nothing recent to mention\n\n## Report\n- read 1 site, drafted nothing"
+    }
+   ],
+   "checks": [
+    {
+     "drafts_at_most": 0
+    },
+    {
+     "answer_contains": [
+      "nothing recent to mention"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-site-that-will-not-open",
+   "about": "The prospect's site answers 404: no draft, and the answer says why.",
+   "inputs": {
+    "prospects": "Eve Hart, eve@gone.example, owner, Gone Ltd, https://gone.example",
+    "offer": "A phone app that turns stock-taking into a 10-minute count."
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://gone.example/news"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://gone.example"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Drafted**\n- none\n\n**Nothing specific found**\n- Eve Hart, Gone Ltd — site did not open\n\n## Report\n- the site did not open; drafted nothing"
+    }
+   ],
+   "checks": [
+    {
+     "drafts_at_most": 0
+    },
+    {
+     "answer_contains": [
+      "site did not open"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "no-flattery-no-false-familiarity",
+   "about": "The draft has no flattery and pretends no earlier conversation.",
+   "inputs": {
+    "prospects": "Ana Ruiz, ana@greenleaf.example, operations director, Greenleaf Cafés, https://greenleaf.example\nBen Ito, ben@northwind.example, head of operations, Northwind, https://northwind.example\nChloe Park, , owner, Park Bakery, https://parkbakery.example",
+    "offer": "A phone app that turns stock-taking into a 10-minute count."
+   },
+   "world": {
+    "web": {
+     "https://greenleaf.example/news": "News: our sixth café opened in York in September.",
+     "https://northwind.example/news": "Team news: Ben Ito has left Northwind; Mia Chen now runs operations."
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://greenleaf.example/news"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://northwind.example/news"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "ana@greenleaf.example",
+        "subject": "Stock-taking across six cafés",
+        "body": "Hi Ana — congratulations on opening the York café in September. With six sites, Sunday stock-taking on paper gets long; we turn it into a 10-minute count on a phone. Worth a 15-minute call next week?\n\n[your name]"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Drafted**\n- Ana Ruiz, Greenleaf Cafés — the York opening in September\n\n**Nothing specific found**\n- Ben Ito, Northwind — the site says he has left; Mia Chen now runs operations\n- Chloe Park, Park Bakery — no address given\n\n## Report\n- read 2 sites, drafted 1 email"
+    }
+   ],
+   "checks": [
+    {
+     "no_draft_to": "as we discussed"
+    },
+    {
+     "no_draft_to": "I love what you"
+    },
+    {
+     "no_draft_to": "RE:"
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Drafted and Nothing specific found does not deliver, even after its repair pass.",
+   "inputs": {
+    "prospects": "Ana Ruiz, ana@greenleaf.example, operations director, Greenleaf Cafés, https://greenleaf.example\nBen Ito, ben@northwind.example, head of operations, Northwind, https://northwind.example\nChloe Park, , owner, Park Bakery, https://parkbakery.example",
+    "offer": "A phone app that turns stock-taking into a 10-minute count."
+   },
+   "world": {
+    "web": {
+     "https://greenleaf.example/news": "News: our sixth café opened in York in September.",
+     "https://northwind.example/news": "Team news: Ben Ito has left Northwind; Mia Chen now runs operations."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://greenleaf.example/news"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

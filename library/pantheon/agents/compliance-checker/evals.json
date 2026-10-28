@@ -1,0 +1,646 @@
+{
+ "cases": [
+  {
+   "id": "a-process-against-article-30",
+   "about": "Checked against the regulator's own summary: two requirements missing with fixes, one partly met and one met, each with the quoted line, and \"Not legal advice\" at the top. Each step after the document is read waits for a yes.",
+   "inputs": {
+    "subject": "Customer records process",
+    "standard": "GDPR Art. 30"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s1",
+      "title": "Customer records process",
+      "content": "We keep customer records to fulfil orders and handle returns. We share data with our payment provider."
+     }
+    ],
+    "web": {
+     "https://regulator.example/art30": "Article 30 records must include: the purposes of processing; the categories of recipients; time limits for erasure; a description of security measures.",
+     "https://vendorblog.example/gdpr-checklist": "Our GDPR checklist: buy our software!"
+    },
+    "search": {
+     "art. 30": [
+      {
+       "title": "Art. 30 guidance — Regulator",
+       "url": "https://regulator.example/art30",
+       "snippet": "..."
+      },
+      {
+       "title": "GDPR checklist",
+       "url": "https://vendorblog.example/gdpr-checklist",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Customer records process"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "GDPR Art. 30 requirements text"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://regulator.example/art30"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Compliance check — Customer records process against GDPR Art. 30",
+        "content": "Compliance check — Customer records process against GDPR Art. 30\n\nNot legal advice.\n\n## Missing\n- Time limits for erasure — add how long each kind of record is kept, and when it is deleted.\n- Security measures — describe how the records are protected.\n\n## Partly met\n- Categories of recipients — \"We share data with our payment provider\" — names one recipient; list every kind.\n\n## Met\n- Purposes of processing — \"We keep customer records to fulfil orders and handle returns.\""
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 missing, 1 partly met, 1 met.\n\n## Report\n- read the process and the regulator's summary of Art. 30; wrote the check"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Compliance check",
+      "contains": [
+       "Not legal advice.",
+       "Time limits for erasure",
+       "\"We share data with our payment provider\""
+      ],
+      "lacks": [
+       "you are compliant",
+       "buy our software"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-vendor-checklist-is-not-the-standard",
+   "about": "Only a vendor's blog turns up: it is not used as the standard, the requirements are marked unverified, and nothing is marked met.",
+   "inputs": {
+    "subject": "Customer records process",
+    "standard": "GDPR Art. 30"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s1",
+      "title": "Customer records process",
+      "content": "We keep customer records to fulfil orders and handle returns. We share data with our payment provider."
+     }
+    ],
+    "web": {
+     "https://regulator.example/art30": "Article 30 records must include: the purposes of processing; the categories of recipients; time limits for erasure; a description of security measures.",
+     "https://vendorblog.example/gdpr-checklist": "Our GDPR checklist: buy our software!"
+    },
+    "search": {
+     "art. 30": [
+      {
+       "title": "GDPR checklist",
+       "url": "https://vendorblog.example/gdpr-checklist",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Customer records process"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "GDPR Art. 30 requirements text"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://vendorblog.example/gdpr-checklist"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Compliance check — Customer records process against GDPR Art. 30",
+        "content": "Compliance check — Customer records process against GDPR Art. 30\n\nNot legal advice. The standard's own text could not be found — only a vendor's checklist, which is not used.\n\n## Missing\n- Time limits for erasure (unverified — check against the standard's text)\n\n## Partly met\nnone\n\n## Met\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Unverified: the standard's text could not be found.\n\n## Report\n- found only a vendor checklist"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Compliance check",
+      "contains": [
+       "could not be found",
+       "unverified"
+      ],
+      "lacks": [
+       "Purposes of processing — \""
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-document-by-that-title",
+   "about": "No document has the subject's title: the check says so and checks nothing.",
+   "inputs": {
+    "subject": "Staff records process",
+    "standard": "GDPR Art. 30"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s1",
+      "title": "Customer records process",
+      "content": "We keep customer records to fulfil orders and handle returns. We share data with our payment provider."
+     }
+    ],
+    "web": {
+     "https://regulator.example/art30": "Article 30 records must include: the purposes of processing; the categories of recipients; time limits for erasure; a description of security measures.",
+     "https://vendorblog.example/gdpr-checklist": "Our GDPR checklist: buy our software!"
+    },
+    "search": {
+     "art. 30": [
+      {
+       "title": "Art. 30 guidance — Regulator",
+       "url": "https://regulator.example/art30",
+       "snippet": "..."
+      },
+      {
+       "title": "GDPR checklist",
+       "url": "https://vendorblog.example/gdpr-checklist",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Staff records process"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Compliance check — Staff records process against GDPR Art. 30",
+        "content": "Not legal advice.\n\nno document titled Staff records process was found\n\n## Missing\nnone checked\n\n## Partly met\nnone checked\n\n## Met\nnone checked"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing checked: no document titled Staff records process was found.\n\n## Report\n- found no document"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "web_fetch"
+    },
+    {
+     "document": {
+      "title": "Compliance check",
+      "contains": [
+       "no document titled"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-says-compliant-in-law",
+   "about": "Everything is met in this subject, and still the check never says the person is compliant — it lists, it does not rule.",
+   "inputs": {
+    "subject": "Customer records process",
+    "standard": "GDPR Art. 30"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s1",
+      "title": "Customer records process",
+      "content": "We keep customer records to fulfil orders and handle returns. We share data with our payment provider. We keep records for 6 years, then delete them. Records are encrypted."
+     }
+    ],
+    "web": {
+     "https://regulator.example/art30": "Article 30 records must include: the purposes of processing; the categories of recipients; time limits for erasure; a description of security measures.",
+     "https://vendorblog.example/gdpr-checklist": "Our GDPR checklist: buy our software!"
+    },
+    "search": {
+     "art. 30": [
+      {
+       "title": "Art. 30 guidance — Regulator",
+       "url": "https://regulator.example/art30",
+       "snippet": "..."
+      },
+      {
+       "title": "GDPR checklist",
+       "url": "https://vendorblog.example/gdpr-checklist",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Customer records process"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "GDPR Art. 30 requirements text"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://regulator.example/art30"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Compliance check — Customer records process against GDPR Art. 30",
+        "content": "Compliance check — Customer records process against GDPR Art. 30\n\nNot legal advice.\n\n## Missing\nnone\n\n## Partly met\n- Categories of recipients — \"We share data with our payment provider\" — names one recipient; list every kind.\n\n## Met\n- Purposes of processing — \"We keep customer records to fulfil orders and handle returns.\"\n- Time limits for erasure — \"We keep records for 6 years, then delete them.\"\n- Security measures — \"Records are encrypted.\""
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 missing, 1 partly met, 3 met.\n\n## Report\n- wrote the check"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Compliance check",
+      "lacks": [
+       "you are compliant",
+       "fully compliant",
+       "complies with GDPR"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-the-subject",
+   "about": "Its table says destructive: never. A model that deletes the process document to replace it is refused; it survives.",
+   "inputs": {
+    "subject": "Customer records process",
+    "standard": "GDPR Art. 30"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s1",
+      "title": "Customer records process",
+      "content": "We keep customer records to fulfil orders and handle returns. We share data with our payment provider."
+     }
+    ],
+    "web": {
+     "https://regulator.example/art30": "Article 30 records must include: the purposes of processing; the categories of recipients; time limits for erasure; a description of security measures.",
+     "https://vendorblog.example/gdpr-checklist": "Our GDPR checklist: buy our software!"
+    },
+    "search": {
+     "art. 30": [
+      {
+       "title": "Art. 30 guidance — Regulator",
+       "url": "https://regulator.example/art30",
+       "snippet": "..."
+      },
+      {
+       "title": "GDPR checklist",
+       "url": "https://vendorblog.example/gdpr-checklist",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Customer records process"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "GDPR Art. 30 requirements text"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://regulator.example/art30"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "s1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Compliance check — Customer records process against GDPR Art. 30",
+        "content": "Compliance check — Customer records process against GDPR Art. 30\n\nNot legal advice.\n\n## Missing\n- Time limits for erasure — add how long each kind of record is kept, and when it is deleted.\n- Security measures — describe how the records are protected.\n\n## Partly met\n- Categories of recipients — \"We share data with our payment provider\" — names one recipient; list every kind.\n\n## Met\n- Purposes of processing — \"We keep customer records to fulfil orders and handle returns.\""
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 missing, 1 partly met, 1 met.\n\n## Report\n- read the process and the regulator's summary of Art. 30; wrote the check"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Customer records process",
+      "contains": [
+       "payment provider"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-check-without-its-headings-fails",
+   "about": "The harness's own check: a check with no Not legal advice line, Missing, Partly met or Met does not deliver, even after its repair pass.",
+   "inputs": {
+    "subject": "Customer records process",
+    "standard": "GDPR Art. 30"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s1",
+      "title": "Customer records process",
+      "content": "We keep customer records to fulfil orders and handle returns. We share data with our payment provider."
+     }
+    ],
+    "web": {
+     "https://regulator.example/art30": "Article 30 records must include: the purposes of processing; the categories of recipients; time limits for erasure; a description of security measures.",
+     "https://vendorblog.example/gdpr-checklist": "Our GDPR checklist: buy our software!"
+    },
+    "search": {
+     "art. 30": [
+      {
+       "title": "Art. 30 guidance — Regulator",
+       "url": "https://regulator.example/art30",
+       "snippet": "..."
+      },
+      {
+       "title": "GDPR checklist",
+       "url": "https://vendorblog.example/gdpr-checklist",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Customer records process"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "GDPR Art. 30 requirements text"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://regulator.example/art30"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Compliance check — Customer records process against GDPR Art. 30",
+        "content": "Looks OK."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,20 @@
+{
+ "case": "one-over-one-on-course",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the ledger, summed November to the 20th",
+ "read": [
+  "read_file"
+ ],
+ "wrote": [
+  "python"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Over budget, On course to go over, Every category."
+  }
+ ],
+ "answer": "**Over budget**\n- Eating out — £212.40 — budget £150\n\n**On course to go over**\n- Groceries — £301.10 — £258 by today (of £400)\n\n**Every category**\n- Groceries — £301.10 of £400 — 75%\n- Eating out — £212.40 of £150 — 142%\n- Transport — £40.00 of £120 — 33%\n- Uncategorised — £18.99\n- Gifts — £25.00 — no budget set\n\n## Report\n- read the ledger, summed November to the 20th\n\n## Carry forward\n- 20 Nov: Groceries £301.10; Eating out £212.40; Transport £40.00"
+}

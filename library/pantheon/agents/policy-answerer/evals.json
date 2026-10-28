@@ -1,0 +1,329 @@
+{
+ "cases": [
+  {
+   "id": "carry-over-answered-from-two-sections",
+   "about": "The answer in plain words, then the two sections it rests on, quoted exactly with their numbers.",
+   "inputs": {
+    "handbook": "Staff handbook",
+    "question": "Can I carry over unused holiday?"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Staff handbook",
+      "content": "4.2 Up to five days of unused annual leave may be carried over into the next leave year.\n4.3 Carry-over must be agreed with HR by 31 December.\n6.1 Staff may work from home two days a week.\n9.4 Remote working is limited to one day a week.\n9.9 Where policies conflict, the newer section applies; section 9 is dated 2026, section 6 is dated 2023.\n10.1 Questions about pay: the payroll team."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Staff handbook"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Answer**\nYou can carry over up to 5 days of unused holiday into next year; agree it with HR by 31 December.\n\n**From the handbook**\n- 4.2: \"Up to five days of unused annual leave may be carried over into the next leave year.\"\n- 4.3: \"Carry-over must be agreed with HR by 31 December.\"\n\n## Report\n- read \"Staff handbook\" and answered from 4.2 and 4.3"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "4.2: \"Up to five days",
+      "4.3"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "not-covered-says-so",
+   "about": "The handbook says nothing about parental leave: the answer says so and who to ask, and gives no figure from elsewhere.",
+   "inputs": {
+    "handbook": "Staff handbook",
+    "question": "How much parental leave do I get?"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Staff handbook",
+      "content": "4.2 Up to five days of unused annual leave may be carried over into the next leave year.\n4.3 Carry-over must be agreed with HR by 31 December.\n6.1 Staff may work from home two days a week.\n9.4 Remote working is limited to one day a week.\n9.9 Where policies conflict, the newer section applies; section 9 is dated 2026, section 6 is dated 2023.\n10.1 Questions about pay: the payroll team."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Staff handbook"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Answer**\nThe handbook does not cover this — ask your manager.\n\n**From the handbook**\n- nothing\n\n## Report\n- read \"Staff handbook\"; it does not cover parental leave"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "does not cover this"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "weeks",
+      "statutory",
+      "52"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "sections-that-contradict",
+   "about": "One section allows two days at home, another one: both are quoted, and the handbook's own rule that the newer section applies settles it.",
+   "inputs": {
+    "handbook": "Staff handbook",
+    "question": "How many days can I work from home?"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Staff handbook",
+      "content": "4.2 Up to five days of unused annual leave may be carried over into the next leave year.\n4.3 Carry-over must be agreed with HR by 31 December.\n6.1 Staff may work from home two days a week.\n9.4 Remote working is limited to one day a week.\n9.9 Where policies conflict, the newer section applies; section 9 is dated 2026, section 6 is dated 2023.\n10.1 Questions about pay: the payroll team."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Staff handbook"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Answer**\nOne day a week: section 9.4 limits it to one, and the handbook says the newer section (9, from 2026) applies over 6.1.\n\n**From the handbook**\n- 6.1: \"Staff may work from home two days a week.\"\n- 9.4: \"Remote working is limited to one day a week.\"\n- 9.9: \"Where policies conflict, the newer section applies.\"\n\n## Report\n- read the handbook; two sections conflict and 9.9 settles it"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "6.1",
+      "9.4",
+      "newer section"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "no-handbook-by-that-title",
+   "about": "No document has the handbook's title: the answer says so and answers nothing.",
+   "inputs": {
+    "handbook": "Employee guide",
+    "question": "Can I carry over unused holiday?"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Staff handbook",
+      "content": "4.2 Up to five days of unused annual leave may be carried over into the next leave year.\n4.3 Carry-over must be agreed with HR by 31 December.\n6.1 Staff may work from home two days a week.\n9.4 Remote working is limited to one day a week.\n9.9 Where policies conflict, the newer section applies; section 9 is dated 2026, section 6 is dated 2023.\n10.1 Questions about pay: the payroll team."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Employee guide"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Answer**\nNo handbook titled Employee guide was found, so I cannot answer from it.\n\n**From the handbook**\n- nothing\n\n## Report\n- found no handbook by that title"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "No handbook titled"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "five days"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-edits-the-handbook",
+   "about": "Its table says destructive: never. A model that deletes the handbook's old version is refused; the answer still comes.",
+   "inputs": {
+    "handbook": "Staff handbook",
+    "question": "Who do I ask about pay?"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Staff handbook",
+      "content": "4.2 Up to five days of unused annual leave may be carried over into the next leave year.\n4.3 Carry-over must be agreed with HR by 31 December.\n6.1 Staff may work from home two days a week.\n9.4 Remote working is limited to one day a week.\n9.9 Where policies conflict, the newer section applies; section 9 is dated 2026, section 6 is dated 2023.\n10.1 Questions about pay: the payroll team."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Staff handbook"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Answer**\nThe payroll team.\n\n**From the handbook**\n- 10.1: \"Questions about pay: the payroll team.\"\n\n## Report\n- answered from 10.1; a delete was refused"
+    }
+   ],
+   "checks": [
+    {
+     "status": "success"
+    },
+    {
+     "answer_contains": [
+      "payroll team"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-sources-fails",
+   "about": "The harness's own check: an answer without Answer and From the handbook does not deliver, even after its repair pass.",
+   "inputs": {
+    "handbook": "Staff handbook",
+    "question": "Can I carry over holiday?"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Staff handbook",
+      "content": "4.2 Up to five days of unused annual leave may be carried over into the next leave year.\n4.3 Carry-over must be agreed with HR by 31 December.\n6.1 Staff may work from home two days a week.\n9.4 Remote working is limited to one day a week.\n9.9 Where policies conflict, the newer section applies; section 9 is dated 2026, section 6 is dated 2023.\n10.1 Questions about pay: the payroll team."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Staff handbook"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Yes, five days.\n\n## Report\n- done"
+    },
+    {
+     "say": "Five."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,22 @@
+{
+ "case": "octobers-ledger",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 1 statement and 1 receipt, wrote ledger-2026-10.csv with 4 lines",
+ "read": [
+  "ls",
+  "read_file"
+ ],
+ "wrote": [
+  "write_file",
+  "python"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Totals, Uncategorised, Against last month."
+  }
+ ],
+ "answer": "**Totals**\n- food £52.30\n- transport £32.00\n- software £24.99\n\n**Uncategorised**\n- 9 Oct — PAYPAL *XJ29 — £18.00\n- 2 Oct Tesco: the receipt says £52.00; the statement's £52.30 is used\n\n**Against last month**\n- food up £12.30; transport and software new this month\n\n## Report\n- read 1 statement and 1 receipt, wrote ledger-2026-10.csv with 4 lines\n\n## Carry forward\n- Tesco → food\n- Northern Rail → transport\n- GitHub → software"
+}

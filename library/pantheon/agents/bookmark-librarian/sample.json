@@ -1,0 +1,22 @@
+{
+ "case": "two-new-links-one-filed-one-dead",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the note \"Bookmarks\", fetched 2 links, filed 1 in \"Library — 2 Nov\"",
+ "read": [
+  "manage_notes",
+  "web_fetch"
+ ],
+ "wrote": [
+  "manage_notes",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Filed, Could not load."
+  }
+ ],
+ "answer": "**Filed**\n- How to prune apple trees in winter — garden, trees, winter\n\n**Could not load**\n- https://old.example/recipe — 404 (tried once; again tomorrow)\n\n## Report\n- read the note \"Bookmarks\", fetched 2 links, filed 1 in \"Library — 2 Nov\"\n\n## Carry forward\n- https://garden.example/prune-apples\n- https://old.example/recipe (failed once)\n- https://news.example/old-story\n- tags: garden, news, trees, winter"
+}

@@ -1,0 +1,18 @@
+{
+ "case": "a-three-email-trial-sequence",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- wrote \"Email sequence — trial users to paying customers\"",
+ "read": [],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Email sequence”",
+   "ok": true,
+   "detail": "“Email sequence — trial users to paying customers” is there."
+  }
+ ],
+ "answer": "3 emails, on days 0, 4 and 12.\n\n## Report\n- wrote \"Email sequence — trial users to paying customers\""
+}

@@ -1,0 +1,614 @@
+{
+ "cases": [
+  {
+   "id": "one-article-one-already-answered-one-open",
+   "about": "The login fix is drafted from the reply that worked, with no customer details; the password question is already covered by a help document; the slow export is still open.",
+   "inputs": {
+    "account": "support"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "s1",
+      "from": "customer@users.example",
+      "subject": "Re: Can't log in after changing my email",
+      "body": "Kim Lee (order 4471): That worked, thanks! Confirming the new address fixed it. — earlier reply: 1. Open the confirmation email. 2. Click Confirm this address. 3. Log in with the new address.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "s2",
+      "from": "customer@users.example",
+      "subject": "Re: Reset password",
+      "body": "Thanks, the reset link worked.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "s3",
+      "from": "customer@users.example",
+      "subject": "Re: Export is slow",
+      "body": "Thanks for looking — still slow though.",
+      "date": "2026-11-05"
+     }
+    ],
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Help: passwords",
+      "content": "How do I reset my password? Use Settings → Account → Reset password."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "worked",
+        "max_results": 30,
+        "account": "support"
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "thanks",
+        "max_results": 30,
+        "account": "support"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "s1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "s2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "s3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "log in email"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "reset password"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Help article — \"I can't log in after changing my email\"",
+        "content": "Help article — \"I can't log in after changing my email\"\n\n## The problem\nAfter changing the email on an account, the old login stops working.\n\n## Steps\n1. Open the confirmation email sent to the new address.\n2. Click \"Confirm this address\".\n3. Log in with the new address.\n\n## If it still fails\nAsk for a new confirmation email from Settings → Account."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Drafted**\n- \"I can't log in after changing my email\"\n\n**Already answered**\n- \"How do I reset my password?\" — Help: passwords\n\n**Not resolved**\n- \"Export is slow\"\n\n## Report\n- read 3 threads, drafted 1 article\n\n## Carry forward\n- 7 Nov: I can't log in after changing my email"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Help article",
+      "contains": [
+       "Click \"Confirm this address\"",
+       "If it still fails"
+      ],
+      "lacks": [
+       "Kim",
+       "4471",
+       "customer@"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "Help: passwords",
+      "Export is slow"
+     ]
+    },
+    {
+     "notebook_contains": "changing my email"
+    }
+   ]
+  },
+  {
+   "id": "drafted-before-is-skipped",
+   "about": "The notebook drafted the login question last week: no new article.",
+   "inputs": {
+    "account": "support"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "s1",
+      "from": "customer@users.example",
+      "subject": "Re: Can't log in after changing my email",
+      "body": "Kim Lee (order 4471): That worked, thanks! Confirming the new address fixed it. — earlier reply: 1. Open the confirmation email. 2. Click Confirm this address. 3. Log in with the new address.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "s2",
+      "from": "customer@users.example",
+      "subject": "Re: Reset password",
+      "body": "Thanks, the reset link worked.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "s3",
+      "from": "customer@users.example",
+      "subject": "Re: Export is slow",
+      "body": "Thanks for looking — still slow though.",
+      "date": "2026-11-05"
+     }
+    ],
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Help: passwords",
+      "content": "How do I reset my password? Use Settings → Account → Reset password."
+     }
+    ]
+   },
+   "notebook": "- 31 Oct: I can't log in after changing my email",
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "worked",
+        "max_results": 30,
+        "account": "support"
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "thanks",
+        "max_results": 30,
+        "account": "support"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "s1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "s2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "s3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "log in email"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "reset password"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Drafted**\n- none\n\n**Already answered**\n- \"How do I reset my password?\" — Help: passwords\n\n**Not resolved**\n- \"Export is slow\"\n\n## Report\n- read 3 threads; nothing new to draft\n\n## Carry forward\n- 31 Oct: I can't log in after changing my email"
+    }
+   ],
+   "checks": [
+    {
+     "no_document": "Help article"
+    }
+   ]
+  },
+  {
+   "id": "nothing-resolved",
+   "about": "Only an open thread this week: nothing is drafted.",
+   "inputs": {
+    "account": "support"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "s3",
+      "from": "customer@users.example",
+      "subject": "Re: Export is slow",
+      "body": "Thanks for looking — still slow though.",
+      "date": "2026-11-05"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "worked",
+        "max_results": 30,
+        "account": "support"
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "thanks",
+        "max_results": 30,
+        "account": "support"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "s3"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Drafted**\n- none\n\n**Already answered**\n- none\n\n**Not resolved**\n- \"Export is slow\"\n\n## Report\n- read 1 thread\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "no_document": "Help article"
+    },
+    {
+     "answer_contains": [
+      "Drafted**\n- none"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "two-replies-disagree-on-the-fix",
+   "about": "One reply said to clear the cache, a later one to confirm the address, and the customer says the second worked: the steps follow it, and the cache tip goes under If it still fails.",
+   "inputs": {
+    "account": "support"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "s4",
+      "from": "customer@users.example",
+      "subject": "Re: Can't log in after changing my email",
+      "body": "First reply: clear your browser cache. Second reply: confirm the new address from the email. Customer: the second one worked, thanks.",
+      "date": "2026-11-05"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "worked",
+        "max_results": 30,
+        "account": "support"
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "thanks",
+        "max_results": 30,
+        "account": "support"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "s4"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "log in email"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Help article — \"I can't log in after changing my email\"",
+        "content": "Help article — \"I can't log in after changing my email\"\n\n## The problem\nAfter changing the email on an account, the old login stops working.\n\n## Steps\n1. Open the confirmation email sent to the new address.\n2. Click \"Confirm this address\".\n3. Log in with the new address.\n\n## If it still fails\nClear your browser cache and try again; then ask for a new confirmation email."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Drafted**\n- \"I can't log in after changing my email\"\n\n**Already answered**\n- none\n\n**Not resolved**\n- none\n\n## Report\n- read 3 threads, drafted 1 article\n\n## Carry forward\n- 7 Nov: I can't log in after changing my email"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Help article",
+      "contains": [
+       "Click \"Confirm this address\"",
+       "Clear your browser cache"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-a-help-document",
+   "about": "Its table says destructive: never. A model that deletes the old password article is refused; it survives.",
+   "inputs": {
+    "account": "support"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "s1",
+      "from": "customer@users.example",
+      "subject": "Re: Can't log in after changing my email",
+      "body": "Kim Lee (order 4471): That worked, thanks! Confirming the new address fixed it. — earlier reply: 1. Open the confirmation email. 2. Click Confirm this address. 3. Log in with the new address.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "s2",
+      "from": "customer@users.example",
+      "subject": "Re: Reset password",
+      "body": "Thanks, the reset link worked.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "s3",
+      "from": "customer@users.example",
+      "subject": "Re: Export is slow",
+      "body": "Thanks for looking — still slow though.",
+      "date": "2026-11-05"
+     }
+    ],
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Help: passwords",
+      "content": "How do I reset my password? Use Settings → Account → Reset password."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "worked",
+        "max_results": 30,
+        "account": "support"
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "thanks",
+        "max_results": 30,
+        "account": "support"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "s1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "s2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "s3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "log in email"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "reset password"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Help article — \"I can't log in after changing my email\"",
+        "content": "Help article — \"I can't log in after changing my email\"\n\n## The problem\nAfter changing the email on an account, the old login stops working.\n\n## Steps\n1. Open the confirmation email sent to the new address.\n2. Click \"Confirm this address\".\n3. Log in with the new address.\n\n## If it still fails\nAsk for a new confirmation email from Settings → Account."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Drafted**\n- \"I can't log in after changing my email\"\n\n**Already answered**\n- \"How do I reset my password?\" — Help: passwords\n\n**Not resolved**\n- \"Export is slow\"\n\n## Report\n- read 3 threads, drafted 1 article\n\n## Carry forward\n- 7 Nov: I can't log in after changing my email"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Help: passwords",
+      "contains": [
+       "Reset password"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Drafted, Already answered and Not resolved does not deliver, even after its repair pass.",
+   "inputs": {
+    "account": "support"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "s1",
+      "from": "customer@users.example",
+      "subject": "Re: Can't log in after changing my email",
+      "body": "Kim Lee (order 4471): That worked, thanks! Confirming the new address fixed it. — earlier reply: 1. Open the confirmation email. 2. Click Confirm this address. 3. Log in with the new address.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "s2",
+      "from": "customer@users.example",
+      "subject": "Re: Reset password",
+      "body": "Thanks, the reset link worked.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "s3",
+      "from": "customer@users.example",
+      "subject": "Re: Export is slow",
+      "body": "Thanks for looking — still slow though.",
+      "date": "2026-11-05"
+     }
+    ],
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Help: passwords",
+      "content": "How do I reset my password? Use Settings → Account → Reset password."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "worked",
+        "max_results": 30,
+        "account": "support"
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "thanks",
+        "max_results": 30,
+        "account": "support"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "One article.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

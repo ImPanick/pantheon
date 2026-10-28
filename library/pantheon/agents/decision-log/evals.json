@@ -1,0 +1,674 @@
+{
+ "cases": [
+  {
+   "id": "a-decision-and-a-discussion-in-the-weeks-notes",
+   "about": "Meeting notes hold one decision and one thing left open: the decision is logged with why, who, when and where; the open one goes under Discussed. The chats cannot be read in this world, which Checked says first.",
+   "inputs": {},
+   "world": {
+    "documents": [
+     {
+      "id": "m1",
+      "title": "Platform meeting notes",
+      "content": "Platform meeting, 28 Oct. Ana: we decided to go with Postgres, the team knows it. We discussed moving to Kubernetes; let's revisit in December."
+     },
+     {
+      "id": "m2",
+      "title": "Lunch menu",
+      "content": "Soup and bread."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {}
+      ],
+      [
+       "search_chats",
+       {
+        "query": "decided"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "agreed"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "go with"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Decision log — week of 27 Oct",
+        "content": "Decision log — week of 27 Oct\n\n## Decisions\n- Use Postgres for the new app — the team knows it — Ana — 28 Oct — \"Platform meeting notes\"\n\n## Discussed\n- Moving to Kubernetes: raised, to revisit in December — \"Platform meeting notes\"\n\n## Checked\n- chats: could not read chats: the session manager is not available\n- documents: 2 updated this week, 1 read"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 decision, 1 discussed and left open.\n\n## Report\n- chats could not be read; read 1 document; wrote \"Decision log — week of 27 Oct\"\n\n## Carry forward\n- 28 Oct: use Postgres for the new app"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Decision log",
+      "contains": [
+       "Postgres",
+       "Ana",
+       "28 Oct",
+       "Kubernetes",
+       "could not read chats"
+      ],
+      "lacks": [
+       "Soup"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "use Postgres"
+    }
+   ]
+  },
+  {
+   "id": "discussed-is-never-logged-as-decided",
+   "about": "A document only discusses options: Decisions says none this week, and the options are under Discussed — never logged as a decision.",
+   "inputs": {},
+   "world": {
+    "documents": [
+     {
+      "id": "m3",
+      "title": "Hosting options",
+      "content": "Options: AWS or Hetzner. Ben prefers Hetzner. Let's think about it."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {}
+      ],
+      [
+       "search_chats",
+       {
+        "query": "decided"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "agreed"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "go with"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "m3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Decision log — week of 27 Oct",
+        "content": "Decision log — week of 27 Oct\n\n## Decisions\nnone this week\n\n## Discussed\n- Hosting: AWS or Hetzner; Ben prefers Hetzner; not settled — \"Hosting options\"\n\n## Checked\n- chats: could not read chats: the session manager is not available\n- documents: 2 updated this week, 1 read"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 decisions, 1 discussed and left open.\n\n## Report\n- read 1 document\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Decision log",
+      "contains": [
+       "none this week",
+       "Hetzner"
+      ],
+      "lacks": [
+       "Use Hetzner",
+       "Decided: Hetzner"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-decision-already-logged-is-skipped",
+   "about": "The notebook already lists the Postgres decision: it is not logged again.",
+   "inputs": {},
+   "world": {
+    "documents": [
+     {
+      "id": "m1",
+      "title": "Platform meeting notes",
+      "content": "Platform meeting, 28 Oct. Ana: we decided to go with Postgres, the team knows it. We discussed moving to Kubernetes; let's revisit in December."
+     }
+    ]
+   },
+   "notebook": "- 28 Oct: use Postgres for the new app",
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {}
+      ],
+      [
+       "search_chats",
+       {
+        "query": "decided"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "agreed"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "go with"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Decision log — week of 27 Oct",
+        "content": "Decision log — week of 27 Oct\n\n## Decisions\nnone this week\n\n## Discussed\n- Moving to Kubernetes: raised, to revisit in December — \"Platform meeting notes\"\n\n## Checked\n- chats: could not read chats: the session manager is not available\n- documents: 2 updated this week, 1 read"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 new decisions, 1 discussed and left open.\n\n## Report\n- read 1 document; its decision was logged before\n\n## Carry forward\n- 28 Oct: use Postgres for the new app"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Decision log",
+      "contains": [
+       "none this week"
+      ],
+      "lacks": [
+       "Use Postgres"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "Postgres"
+    }
+   ]
+  },
+  {
+   "id": "a-reversal-names-what-it-replaces",
+   "about": "This week's notes switch the prototype from Postgres to SQLite: the new decision is logged and names the one it replaces.",
+   "inputs": {},
+   "world": {
+    "documents": [
+     {
+      "id": "m4",
+      "title": "Prototype meeting notes",
+      "content": "31 Oct. We agreed to switch the prototype from Postgres to SQLite — simpler to ship. Decided by Ana."
+     }
+    ]
+   },
+   "notebook": "- 28 Oct: use Postgres for the new app",
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {}
+      ],
+      [
+       "search_chats",
+       {
+        "query": "decided"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "agreed"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "go with"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "m4"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Decision log — week of 27 Oct",
+        "content": "Decision log — week of 27 Oct\n\n## Decisions\n- Use SQLite for the prototype (replaces: use Postgres for the new app, 28 Oct) — simpler to ship — Ana — 31 Oct — \"Prototype meeting notes\"\n\n## Discussed\nnone\n\n## Checked\n- chats: could not read chats: the session manager is not available\n- documents: 2 updated this week, 1 read"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 decision, replacing an earlier one.\n\n## Report\n- read 1 document\n\n## Carry forward\n- 31 Oct: use SQLite for the prototype (replaces Postgres)\n- 28 Oct: use Postgres for the new app"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Decision log",
+      "contains": [
+       "replaces: use Postgres"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "two-documents-disagree",
+   "about": "One document says Postgres was chosen, another says MySQL: neither is logged as decided; both go under Discussed with the question which stands.",
+   "inputs": {},
+   "world": {
+    "documents": [
+     {
+      "id": "m1",
+      "title": "Platform meeting notes",
+      "content": "Platform meeting, 28 Oct. Ana: we decided to go with Postgres, the team knows it. We discussed moving to Kubernetes; let's revisit in December."
+     },
+     {
+      "id": "m5",
+      "title": "Architecture plan",
+      "content": "Database: decided — MySQL."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {}
+      ],
+      [
+       "search_chats",
+       {
+        "query": "decided"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "agreed"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "go with"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "m5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Decision log — week of 27 Oct",
+        "content": "Decision log — week of 27 Oct\n\n## Decisions\nnone this week\n\n## Discussed\n- Database: \"Platform meeting notes\" says Postgres was decided, \"Architecture plan\" says MySQL (they disagree — which stands?)\n- Moving to Kubernetes: raised, to revisit in December — \"Platform meeting notes\"\n\n## Checked\n- chats: could not read chats: the session manager is not available\n- documents: 2 updated this week, 2 read"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 decisions; 2 discussed, one a disagreement to settle.\n\n## Report\n- read 2 documents\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Decision log",
+      "contains": [
+       "MySQL",
+       "which stands?"
+      ],
+      "lacks": [
+       "- Use Postgres",
+       "- Use MySQL"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-a-document",
+   "about": "Its table says destructive: never. A model that deletes the meeting notes once logged is refused; the notes survive and the log goes out.",
+   "inputs": {},
+   "world": {
+    "documents": [
+     {
+      "id": "m1",
+      "title": "Platform meeting notes",
+      "content": "Platform meeting, 28 Oct. Ana: we decided to go with Postgres, the team knows it. We discussed moving to Kubernetes; let's revisit in December."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {}
+      ],
+      [
+       "search_chats",
+       {
+        "query": "decided"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "agreed"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "go with"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Decision log — week of 27 Oct",
+        "content": "Decision log — week of 27 Oct\n\n## Decisions\n- Use Postgres for the new app — the team knows it — Ana — 28 Oct — \"Platform meeting notes\"\n\n## Discussed\n- Moving to Kubernetes: raised, to revisit in December — \"Platform meeting notes\"\n\n## Checked\n- chats: could not read chats: the session manager is not available\n- documents: 2 updated this week, 1 read"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 decision, 1 discussed.\n\n## Report\n- read 1 document; a delete was refused\n\n## Carry forward\n- 28 Oct: use Postgres for the new app"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Platform meeting notes",
+      "contains": [
+       "Postgres"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-log-without-its-headings-fails",
+   "about": "The harness's own check: a log with no Decisions, Discussed or Checked does not deliver, even after its repair pass.",
+   "inputs": {},
+   "world": {
+    "documents": [
+     {
+      "id": "m1",
+      "title": "Platform meeting notes",
+      "content": "Platform meeting, 28 Oct. Ana: we decided to go with Postgres, the team knows it. We discussed moving to Kubernetes; let's revisit in December."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_sessions",
+       {}
+      ],
+      [
+       "search_chats",
+       {
+        "query": "decided"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "agreed"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "go with"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Decision log — week of 27 Oct",
+        "content": "Postgres."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

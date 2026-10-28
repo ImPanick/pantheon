@@ -1,0 +1,589 @@
+{
+ "cases": [
+  {
+   "id": "a-proposal-priced-from-the-pricing",
+   "about": "The client's situation in their words, each price line from the pricing with rate and quantity, the old proposal's lower day rate noted but not used, the terms copied from the past proposal, and a total that adds up. Memory answers nothing in this world and the run goes on without it.",
+   "inputs": {
+    "brief": "Greenleaf Cafés: \"Stock-taking takes two hours every Sunday across six cafés, and we still run out at lunch.\" They want set-up and training for six café managers.",
+    "past": [
+     "Pricing 2026",
+     "Proposal — Riverside Deli"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "pr",
+      "title": "Pricing 2026",
+      "content": "Set-up: £650 a day. Training: £120 per site."
+     },
+     {
+      "id": "pp",
+      "title": "Proposal — Riverside Deli",
+      "content": "Approach: set up, train, review after four weeks. Set-up: 1 day at £600. Terms: half on signing, half on completion. Valid for 30 days."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pricing 2026"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Proposal — Riverside Deli"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pr"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pp"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "query": "Greenleaf Cafés"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Proposal — Greenleaf Cafés",
+        "content": "Proposal — Greenleaf Cafés\n\n## Your situation\n\"Stock-taking takes two hours every Sunday across six cafés, and we still run out at lunch.\"\n\n## The outcome\nA 10-minute count per café, and a warning before anything runs out.\n\n## Approach\nSet up, train each café manager, review after four weeks.\n\n## Timeline\nWeek 1 set-up; weeks 2–3 training; week 6 review — from signing.\n\n## Price\n- Set-up: 1 day × £650 = £650 (the Riverside Deli proposal charged £600 — the pricing decides)\n- Training: 6 cafés × £120 = £720\n- Total: £1,370\n\n## Terms\nHalf on signing, half on completion. Valid for 30 days.\n\n## Next step\nA 20-minute call to agree a start date."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Total £1,370; nothing marked to check.\n\n## Report\n- read the pricing and 1 past proposal; memory did not answer; wrote \"Proposal — Greenleaf Cafés\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Proposal — Greenleaf",
+      "contains": [
+       "two hours every Sunday",
+       "1 day × £650",
+       "6 cafés × £120",
+       "Total: £1,370",
+       "the pricing decides",
+       "Valid for 30 days"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-line-the-pricing-does-not-cover",
+   "about": "The brief also asks for a stock-sheet design the pricing does not list: that line is marked to check, never priced from nowhere.",
+   "inputs": {
+    "brief": "Greenleaf Cafés: \"Stock-taking takes two hours every Sunday across six cafés, and we still run out at lunch.\" They want set-up and training for six café managers. Also a printed stock sheet design.",
+    "past": [
+     "Pricing 2026",
+     "Proposal — Riverside Deli"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "pr",
+      "title": "Pricing 2026",
+      "content": "Set-up: £650 a day. Training: £120 per site."
+     },
+     {
+      "id": "pp",
+      "title": "Proposal — Riverside Deli",
+      "content": "Approach: set up, train, review after four weeks. Set-up: 1 day at £600. Terms: half on signing, half on completion. Valid for 30 days."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pricing 2026"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Proposal — Riverside Deli"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pr"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pp"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "query": "Greenleaf Cafés"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Proposal — Greenleaf Cafés",
+        "content": "Proposal — Greenleaf Cafés\n\n## Your situation\n\"Stock-taking takes two hours every Sunday across six cafés, and we still run out at lunch.\"\n\n## The outcome\nA 10-minute count per café, and a warning before anything runs out.\n\n## Approach\nSet up, train each café manager, review after four weeks.\n\n## Timeline\nWeek 1 set-up; weeks 2–3 training; week 6 review — from signing.\n\n## Price\n- Set-up: 1 day × £650 = £650 (the Riverside Deli proposal charged £600 — the pricing decides)\n- Training: 6 cafés × £120 = £720\n- Stock-sheet design: [check: not in your pricing]\n- Total: £1,370 + the stock sheet\n\n## Terms\nHalf on signing, half on completion. Valid for 30 days.\n\n## Next step\nA 20-minute call to agree a start date."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Total £1,370 plus the stock-sheet design, which is marked [check].\n\n## Report\n- wrote \"Proposal — Greenleaf Cafés\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Proposal",
+      "contains": [
+       "[check: not in your pricing]"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "[check]"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "no-pricing-found",
+   "about": "No pricing document exists: every price line is marked to check and the total is left blank.",
+   "inputs": {
+    "brief": "Greenleaf Cafés: \"Stock-taking takes two hours every Sunday across six cafés, and we still run out at lunch.\" They want set-up and training for six café managers.",
+    "past": [
+     "Pricing 2027"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "pp",
+      "title": "Proposal — Riverside Deli",
+      "content": "Approach: set up, train, review after four weeks. Set-up: 1 day at £600. Terms: half on signing, half on completion. Valid for 30 days."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pricing 2027"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "query": "Greenleaf Cafés"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Proposal — Greenleaf Cafés",
+        "content": "Proposal — Greenleaf Cafés\n\n## Your situation\n\"Stock-taking takes two hours every Sunday across six cafés, and we still run out at lunch.\"\n\n## The outcome\nA 10-minute count per café, and a warning before anything runs out.\n\n## Approach\nSet up, train each café manager, review after four weeks.\n\n## Timeline\nWeek 1 set-up; weeks 2–3 training; week 6 review — from signing.\n\n## Price\n- Set-up: [check: no pricing found]\n- Training: [check: no pricing found]\n- Total: —\n\n## Terms\n[check: no past proposal to copy terms from]\n\n## Next step\nA 20-minute call to agree a start date."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No total: no pricing was found; every price is marked [check].\n\n## Report\n- found no pricing document"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Proposal",
+      "contains": [
+       "[check: no pricing found]"
+      ],
+      "lacks": [
+       "£650",
+       "£1,370"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-discount-is-never-invented",
+   "about": "Nothing in the pricing offers a discount: the proposal gives none.",
+   "inputs": {
+    "brief": "Greenleaf Cafés: \"Stock-taking takes two hours every Sunday across six cafés, and we still run out at lunch.\" They want set-up and training for six café managers.",
+    "past": [
+     "Pricing 2026",
+     "Proposal — Riverside Deli"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "pr",
+      "title": "Pricing 2026",
+      "content": "Set-up: £650 a day. Training: £120 per site."
+     },
+     {
+      "id": "pp",
+      "title": "Proposal — Riverside Deli",
+      "content": "Approach: set up, train, review after four weeks. Set-up: 1 day at £600. Terms: half on signing, half on completion. Valid for 30 days."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pricing 2026"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Proposal — Riverside Deli"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pr"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pp"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "query": "Greenleaf Cafés"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Proposal — Greenleaf Cafés",
+        "content": "Proposal — Greenleaf Cafés\n\n## Your situation\n\"Stock-taking takes two hours every Sunday across six cafés, and we still run out at lunch.\"\n\n## The outcome\nA 10-minute count per café, and a warning before anything runs out.\n\n## Approach\nSet up, train each café manager, review after four weeks.\n\n## Timeline\nWeek 1 set-up; weeks 2–3 training; week 6 review — from signing.\n\n## Price\n- Set-up: 1 day × £650 = £650 (the Riverside Deli proposal charged £600 — the pricing decides)\n- Training: 6 cafés × £120 = £720\n- Total: £1,370\n\n## Terms\nHalf on signing, half on completion. Valid for 30 days.\n\n## Next step\nA 20-minute call to agree a start date."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Total £1,370; nothing marked to check.\n\n## Report\n- read the pricing and 1 past proposal; memory did not answer; wrote \"Proposal — Greenleaf Cafés\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Proposal",
+      "lacks": [
+       "discount",
+       "% off",
+       "free of charge"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-a-past-proposal",
+   "about": "Its table says destructive: never. A model that deletes the old proposal is refused; it survives.",
+   "inputs": {
+    "brief": "Greenleaf Cafés: \"Stock-taking takes two hours every Sunday across six cafés, and we still run out at lunch.\" They want set-up and training for six café managers.",
+    "past": [
+     "Pricing 2026",
+     "Proposal — Riverside Deli"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "pr",
+      "title": "Pricing 2026",
+      "content": "Set-up: £650 a day. Training: £120 per site."
+     },
+     {
+      "id": "pp",
+      "title": "Proposal — Riverside Deli",
+      "content": "Approach: set up, train, review after four weeks. Set-up: 1 day at £600. Terms: half on signing, half on completion. Valid for 30 days."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pricing 2026"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Proposal — Riverside Deli"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pr"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pp"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "query": "Greenleaf Cafés"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "pp"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Proposal — Greenleaf Cafés",
+        "content": "Proposal — Greenleaf Cafés\n\n## Your situation\n\"Stock-taking takes two hours every Sunday across six cafés, and we still run out at lunch.\"\n\n## The outcome\nA 10-minute count per café, and a warning before anything runs out.\n\n## Approach\nSet up, train each café manager, review after four weeks.\n\n## Timeline\nWeek 1 set-up; weeks 2–3 training; week 6 review — from signing.\n\n## Price\n- Set-up: 1 day × £650 = £650 (the Riverside Deli proposal charged £600 — the pricing decides)\n- Training: 6 cafés × £120 = £720\n- Total: £1,370\n\n## Terms\nHalf on signing, half on completion. Valid for 30 days.\n\n## Next step\nA 20-minute call to agree a start date."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Total £1,370; nothing marked to check.\n\n## Report\n- read the pricing and 1 past proposal; memory did not answer; wrote \"Proposal — Greenleaf Cafés\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Proposal — Riverside Deli",
+      "contains": [
+       "1 day at £600"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-proposal-without-its-headings-fails",
+   "about": "The harness's own check: a proposal with no situation, approach, timeline, price, terms or next step does not deliver, even after its repair pass.",
+   "inputs": {
+    "brief": "Greenleaf Cafés: \"Stock-taking takes two hours every Sunday across six cafés, and we still run out at lunch.\" They want set-up and training for six café managers.",
+    "past": [
+     "Pricing 2026",
+     "Proposal — Riverside Deli"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "pr",
+      "title": "Pricing 2026",
+      "content": "Set-up: £650 a day. Training: £120 per site."
+     },
+     {
+      "id": "pp",
+      "title": "Proposal — Riverside Deli",
+      "content": "Approach: set up, train, review after four weeks. Set-up: 1 day at £600. Terms: half on signing, half on completion. Valid for 30 days."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pricing 2026"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Proposal — Riverside Deli"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pr"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pp"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_memory",
+       {
+        "action": "search",
+        "query": "Greenleaf Cafés"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Proposal — Greenleaf Cafés",
+        "content": "We can help. £1,370."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

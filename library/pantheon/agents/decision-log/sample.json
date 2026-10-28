@@ -1,0 +1,22 @@
+{
+ "case": "a-decision-and-a-discussion-in-the-weeks-notes",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- chats could not be read; read 1 document; wrote \"Decision log — week of 27 Oct\"",
+ "read": [
+  "list_sessions",
+  "search_chats",
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Decision log”",
+   "ok": true,
+   "detail": "“Decision log — week of 27 Oct” is there."
+  }
+ ],
+ "answer": "1 decision, 1 discussed and left open.\n\n## Report\n- chats could not be read; read 1 document; wrote \"Decision log — week of 27 Oct\"\n\n## Carry forward\n- 28 Oct: use Postgres for the new app"
+}

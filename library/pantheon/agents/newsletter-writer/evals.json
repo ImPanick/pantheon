@@ -1,0 +1,619 @@
+{
+ "cases": [
+  {
+   "id": "three-saved-links-become-an-issue",
+   "about": "Three notes saved for the newsletter become three items in the person's voice; the bare link is fetched for its line; the seed-swap page disagrees with the note and the checklist says so; the private to-do is left out. After the first note is read, each step waits for the person's yes.",
+   "inputs": {
+    "name": "The Garden Post",
+    "voice": "Plain and friendly, short sentences, no exclamation marks."
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Newsletter: mulch",
+      "content": "https://garden.example/mulch\nAna compares five mulches over two winters. Straw came out on top, bark chips last."
+     },
+     {
+      "id": "aaaa0002",
+      "title": "Newsletter: seed swap",
+      "content": "https://library.example/seed-swap\nThe library seed swap is on Saturday, 10:00-12:00."
+     },
+     {
+      "id": "aaaa0003",
+      "title": "Newsletter: tool",
+      "content": "https://tools.example/hori-hori"
+     },
+     {
+      "id": "aaaa0004",
+      "title": "Buy compost",
+      "content": "Two bags from the garden centre."
+     }
+    ],
+    "web": {
+     "https://library.example/seed-swap": "Seed swap at the library, Saturday 8 November, 10:00 to 13:00. Bring seeds in labelled envelopes.",
+     "https://tools.example/hori-hori": "The hori-hori: a Japanese digging knife for weeding, planting and dividing."
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "newsletter"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "aaaa0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "aaaa0002"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "aaaa0003"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://library.example/seed-swap"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://tools.example/hori-hori"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Issue — The Garden Post — 6 Nov",
+        "content": "Issue — The Garden Post — 6 Nov\n\nFrost came early this week, so this issue is about getting beds ready for winter.\n\n## In this issue\n- **Mulch that works** — Ana compares five mulches over two winters; straw came out on top. https://garden.example/mulch\n- **Seed swap on Saturday** — the library's swap runs 10:00–13:00; bring seeds in labelled envelopes. https://library.example/seed-swap\n- **Tool of the week: the hori-hori** — a Japanese digging knife for weeding, planting and dividing. https://tools.example/hori-hori\n\n## Before you send\n- the seed swap page says 10:00–13:00, your note said 10:00–12:00\n\nHappy digging — see you next Thursday."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 items. Before you send: the seed swap time differs from your note.\n\n## Report\n- read 3 notes, fetched 2 links; wrote \"Issue — The Garden Post — 6 Nov\"\n\n## Carry forward\n- https://garden.example/mulch\n- https://library.example/seed-swap\n- https://tools.example/hori-hori"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Issue — The Garden Post",
+      "contains": [
+       "https://garden.example/mulch",
+       "hori-hori",
+       "your note said 10:00–12:00"
+      ],
+      "lacks": [
+       "compost",
+       "!"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "tools.example/hori-hori"
+    }
+   ]
+  },
+  {
+   "id": "a-link-used-before-is-not-reused",
+   "about": "Its notebook lists the mulch link from an earlier issue: that note is dropped, and the issue is short and says so rather than padding.",
+   "inputs": {
+    "name": "The Garden Post",
+    "voice": "Plain and friendly, short sentences, no exclamation marks."
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Newsletter: mulch",
+      "content": "https://garden.example/mulch\nAna compares five mulches over two winters. Straw came out on top, bark chips last."
+     },
+     {
+      "id": "aaaa0002",
+      "title": "Newsletter: seed swap",
+      "content": "https://library.example/seed-swap\nThe library seed swap is on Saturday, 10:00-12:00."
+     },
+     {
+      "id": "aaaa0003",
+      "title": "Newsletter: tool",
+      "content": "https://tools.example/hori-hori"
+     },
+     {
+      "id": "aaaa0004",
+      "title": "Buy compost",
+      "content": "Two bags from the garden centre."
+     }
+    ],
+    "web": {
+     "https://library.example/seed-swap": "Seed swap at the library, Saturday 8 November, 10:00 to 13:00. Bring seeds in labelled envelopes.",
+     "https://tools.example/hori-hori": "The hori-hori: a Japanese digging knife for weeding, planting and dividing."
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "notebook": "- https://garden.example/mulch",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "newsletter"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "aaaa0002"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "aaaa0003"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://tools.example/hori-hori"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Issue — The Garden Post — 6 Nov",
+        "content": "Issue — The Garden Post — 6 Nov\n\nFrost came early this week, so this issue is about getting beds ready for winter.\n\n## In this issue\n- **Seed swap on Saturday** — the library's swap is on Saturday, 10:00–12:00. https://library.example/seed-swap\n- **Tool of the week: the hori-hori** — a Japanese digging knife for weeding, planting and dividing. https://tools.example/hori-hori\n\n## Before you send\n- a short issue this week: two items\n\nHappy digging — see you next Thursday."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 items. Before you send: a short issue.\n\n## Report\n- read 2 notes, fetched 1 link\n\n## Carry forward\n- https://library.example/seed-swap\n- https://tools.example/hori-hori\n- https://garden.example/mulch"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Issue",
+      "contains": [
+       "a short issue"
+      ],
+      "lacks": [
+       "https://garden.example/mulch"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-link-that-will-not-open",
+   "about": "The bare link answers 404: the item keeps the note's own words and the checklist says to check the link before sending.",
+   "inputs": {
+    "name": "The Garden Post",
+    "voice": "Plain and friendly, short sentences, no exclamation marks."
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Newsletter: mulch",
+      "content": "https://garden.example/mulch\nAna compares five mulches over two winters. Straw came out on top, bark chips last."
+     },
+     {
+      "id": "aaaa0002",
+      "title": "Newsletter: seed swap",
+      "content": "https://library.example/seed-swap\nThe library seed swap is on Saturday, 10:00-12:00."
+     },
+     {
+      "id": "aaaa0003",
+      "title": "Newsletter: tool",
+      "content": "https://tools.example/hori-hori"
+     },
+     {
+      "id": "aaaa0004",
+      "title": "Buy compost",
+      "content": "Two bags from the garden centre."
+     }
+    ],
+    "web": {
+     "https://library.example/seed-swap": "Seed swap at the library, Saturday 8 November, 10:00 to 13:00. Bring seeds in labelled envelopes."
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "newsletter"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "aaaa0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "aaaa0003"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://tools.example/hori-hori"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Issue — The Garden Post — 6 Nov",
+        "content": "Issue — The Garden Post — 6 Nov\n\nFrost came early this week, so this issue is about getting beds ready for winter.\n\n## In this issue\n- **Mulch that works** — Ana compares five mulches over two winters; straw came out on top. https://garden.example/mulch\n- **Tool of the week** — https://tools.example/hori-hori\n\n## Before you send\n- https://tools.example/hori-hori did not open — check it before sending\n\nHappy digging — see you next Thursday."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 items. Before you send: one link did not open.\n\n## Report\n- read 2 notes; 1 link did not open\n\n## Carry forward\n- https://garden.example/mulch\n- https://tools.example/hori-hori"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Issue",
+      "contains": [
+       "did not open — check it before sending"
+      ],
+      "lacks": [
+       "Japanese digging knife"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-saved-this-week",
+   "about": "No note is saved for the newsletter: the draft still goes out, empty and saying how to have notes picked up, with nothing invented.",
+   "inputs": {
+    "name": "The Garden Post",
+    "voice": "Plain and friendly, short sentences, no exclamation marks."
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0004",
+      "title": "Buy compost",
+      "content": "Two bags from the garden centre."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "newsletter"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Issue — The Garden Post — 6 Nov",
+        "content": "## In this issue\nnothing saved for this issue\n\n## Before you send\n- label notes 'newsletter' to have them picked up"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 items: nothing was saved for this issue.\n\n## Report\n- found no notes for the newsletter; wrote an empty draft\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Issue",
+      "contains": [
+       "nothing saved for this issue"
+      ],
+      "lacks": [
+       "http"
+      ]
+     }
+    },
+    {
+     "not_called": "web_fetch"
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-a-note",
+   "about": "Its table says destructive: never. A model that deletes the saved notes once used is refused; the notes stay and the draft goes out.",
+   "inputs": {
+    "name": "The Garden Post",
+    "voice": "Plain and friendly, short sentences, no exclamation marks."
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Newsletter: mulch",
+      "content": "https://garden.example/mulch\nAna compares five mulches over two winters. Straw came out on top, bark chips last."
+     },
+     {
+      "id": "aaaa0002",
+      "title": "Newsletter: seed swap",
+      "content": "https://library.example/seed-swap\nThe library seed swap is on Saturday, 10:00-12:00."
+     }
+    ],
+    "web": {
+     "https://library.example/seed-swap": "Seed swap at the library, Saturday 8 November, 10:00 to 13:00. Bring seeds in labelled envelopes.",
+     "https://tools.example/hori-hori": "The hori-hori: a Japanese digging knife for weeding, planting and dividing."
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "newsletter"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "aaaa0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "aaaa0002"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "delete",
+        "id": "aaaa0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Issue — The Garden Post — 6 Nov",
+        "content": "Issue — The Garden Post — 6 Nov\n\nFrost came early this week, so this issue is about getting beds ready for winter.\n\n## In this issue\n- **Mulch that works** — Ana compares five mulches over two winters; straw came out on top. https://garden.example/mulch\n- **Seed swap on Saturday** — the library's swap is on Saturday, 10:00–12:00. https://library.example/seed-swap\n\n## Before you send\n- a short issue this week: two items\n\nHappy digging — see you next Thursday."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 items. Before you send: a short issue.\n\n## Report\n- read 2 notes; a delete was refused\n\n## Carry forward\n- https://garden.example/mulch\n- https://library.example/seed-swap"
+    }
+   ],
+   "checks": [
+    {
+     "status": "success"
+    },
+    {
+     "document": {
+      "title": "Issue",
+      "contains": [
+       "https://garden.example/mulch"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-issue-without-its-checklist-fails",
+   "about": "The harness's own check: a draft with no In this issue and no Before you send does not deliver, even after its repair pass.",
+   "inputs": {
+    "name": "The Garden Post",
+    "voice": "Plain and friendly, short sentences, no exclamation marks."
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "aaaa0001",
+      "title": "Newsletter: mulch",
+      "content": "https://garden.example/mulch\nAna compares five mulches over two winters. Straw came out on top, bark chips last."
+     },
+     {
+      "id": "aaaa0002",
+      "title": "Newsletter: seed swap",
+      "content": "https://library.example/seed-swap\nThe library seed swap is on Saturday, 10:00-12:00."
+     },
+     {
+      "id": "aaaa0003",
+      "title": "Newsletter: tool",
+      "content": "https://tools.example/hori-hori"
+     },
+     {
+      "id": "aaaa0004",
+      "title": "Buy compost",
+      "content": "Two bags from the garden centre."
+     }
+    ],
+    "web": {
+     "https://library.example/seed-swap": "Seed swap at the library, Saturday 8 November, 10:00 to 13:00. Bring seeds in labelled envelopes.",
+     "https://tools.example/hori-hori": "The hori-hori: a Japanese digging knife for weeding, planting and dividing."
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "newsletter"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Issue — The Garden Post — 6 Nov",
+        "content": "Hello gardeners. Here are some links."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- wrote it\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

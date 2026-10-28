@@ -1,0 +1,617 @@
+{
+ "cases": [
+  {
+   "id": "three-sources-one-report",
+   "about": "Two documents and a note become a board report: the summary answers the brief, every figure names its source, the one sum says it was calculated, and the two Q2 figures are both given and put under Open questions.",
+   "inputs": {
+    "brief": "A one-page update on Q3 sales for the board, comparing with Q2.",
+    "sources": [
+     "Q3 sales figures",
+     "Q2 recap",
+     "Board prep"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s3",
+      "title": "Q3 sales figures",
+      "content": "Q3 2026. Subscriptions: £18,400. One-off orders: £12,100."
+     },
+     {
+      "id": "s2",
+      "title": "Q2 recap",
+      "content": "Q2 2026 sales were £26,000 in total."
+     }
+    ],
+    "notes": [
+     {
+      "id": "bbbb0001",
+      "title": "Board prep",
+      "content": "Q2 sales were £24,500. Ask about the new plan."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Q3 sales figures"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Q2 recap"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Board prep"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s3"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Board prep"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "bbbb0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Report — Q3 sales for the board",
+        "content": "Report — Q3 sales for the board\n\n## Summary\nQ3 sales were £30,500, up on Q2, carried by subscriptions. One Q2 figure needs checking before the meeting.\n\n## By product\n- Subscriptions: £18,400 (from: Q3 sales figures)\n- One-off orders: £12,100 (from: Q3 sales figures)\n- Total: £30,500 (calculated: 18,400 + 12,100)\n\n## Compared with Q2\n- Q2: £26,000 (from: Q2 recap) or £24,500 (from: Board prep)\n\n## Open questions\n- Q2 sales are £26,000 in \"Q2 recap\" and £24,500 in the note \"Board prep\": which is right?\n\n## Sources\n- Q3 sales figures (document)\n- Q2 recap (document)\n- Board prep (note)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Q3 sales were £30,500, up on Q2; 1 open question.\n\n## Report\n- read 2 documents and 1 note; wrote \"Report — Q3 sales for the board\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Report — Q3 sales",
+      "contains": [
+       "(from: Q3 sales figures)",
+       "calculated: 18,400 + 12,100",
+       "£26,000",
+       "£24,500",
+       "Board prep (note)"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "1 open question"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-source-that-cannot-be-found",
+   "about": "One named source exists nowhere: it is listed as not found, the gap is an open question, and the report is written from the rest.",
+   "inputs": {
+    "brief": "A one-page update on Q3 sales for the board, comparing with Q2.",
+    "sources": [
+     "Q3 sales figures",
+     "Customer survey"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s3",
+      "title": "Q3 sales figures",
+      "content": "Q3 2026. Subscriptions: £18,400. One-off orders: £12,100."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Q3 sales figures"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Customer survey"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Customer survey"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Report — Q3 sales for the board",
+        "content": "## Summary\nQ3 sales were £30,500 (calculated: 18,400 + 12,100); no Q2 figure was in the sources.\n\n## Open questions\n- \"Customer survey\" was not found, so the report says nothing about customers.\n- The sources do not say what Q2 sales were.\n\n## Sources\n- Q3 sales figures (document)\n- Customer survey — not found"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Q3 sales were £30,500; 2 open questions.\n\n## Report\n- read 1 document; 1 source not found"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Report",
+      "contains": [
+       "Customer survey — not found",
+       "The sources do not say"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-brief-asks-what-no-source-says",
+   "about": "The brief asks for next year's forecast, which no source gives: the report says the sources do not say it, and forecasts nothing.",
+   "inputs": {
+    "brief": "Q3 sales for the board, with a forecast for next year.",
+    "sources": [
+     "Q3 sales figures"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s3",
+      "title": "Q3 sales figures",
+      "content": "Q3 2026. Subscriptions: £18,400. One-off orders: £12,100."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Q3 sales figures"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Report — Q3 sales for the board",
+        "content": "## Summary\nQ3 sales were £30,500 (calculated: 18,400 + 12,100).\n\n## Open questions\n- The sources do not say what next year's sales will be, so there is no forecast.\n\n## Sources\n- Q3 sales figures (document)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Q3 sales were £30,500; 1 open question (no forecast in the sources).\n\n## Report\n- read 1 document"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Report",
+      "contains": [
+       "do not say what next year"
+      ],
+      "lacks": [
+       "forecast of £",
+       "expected to reach"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-source-could-be-read",
+   "about": "None of the sources exists: the report says no source could be read, and nothing is written from the brief alone.",
+   "inputs": {
+    "brief": "A one-page update on Q3 sales for the board, comparing with Q2.",
+    "sources": [
+     "Q4 plan"
+    ]
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Q4 plan"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Q4 plan"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Report — Q3 sales for the board",
+        "content": "## Summary\nno source could be read\n\n## Open questions\n- everything the brief asks: no source was found\n\n## Sources\n- Q4 plan — not found"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No source could be read; 1 open question.\n\n## Report\n- found none of the sources"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Report",
+      "contains": [
+       "no source could be read"
+      ],
+      "lacks": [
+       "£"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-a-source",
+   "about": "Its table says destructive: never. A model that deletes the note it used is refused; the note stays and the report goes out.",
+   "inputs": {
+    "brief": "A one-page update on Q3 sales for the board, comparing with Q2.",
+    "sources": [
+     "Q3 sales figures",
+     "Q2 recap",
+     "Board prep"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s3",
+      "title": "Q3 sales figures",
+      "content": "Q3 2026. Subscriptions: £18,400. One-off orders: £12,100."
+     },
+     {
+      "id": "s2",
+      "title": "Q2 recap",
+      "content": "Q2 2026 sales were £26,000 in total."
+     }
+    ],
+    "notes": [
+     {
+      "id": "bbbb0001",
+      "title": "Board prep",
+      "content": "Q2 sales were £24,500. Ask about the new plan."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Q3 sales figures"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Q2 recap"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Board prep"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s3"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Board prep"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "bbbb0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "delete",
+        "id": "bbbb0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Report — Q3 sales for the board",
+        "content": "Report — Q3 sales for the board\n\n## Summary\nQ3 sales were £30,500, up on Q2, carried by subscriptions. One Q2 figure needs checking before the meeting.\n\n## By product\n- Subscriptions: £18,400 (from: Q3 sales figures)\n- One-off orders: £12,100 (from: Q3 sales figures)\n- Total: £30,500 (calculated: 18,400 + 12,100)\n\n## Compared with Q2\n- Q2: £26,000 (from: Q2 recap) or £24,500 (from: Board prep)\n\n## Open questions\n- Q2 sales are £26,000 in \"Q2 recap\" and £24,500 in the note \"Board prep\": which is right?\n\n## Sources\n- Q3 sales figures (document)\n- Q2 recap (document)\n- Board prep (note)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Q3 sales were £30,500, up on Q2; 1 open question.\n\n## Report\n- read 2 documents and 1 note; wrote \"Report — Q3 sales for the board\"\n- a delete was refused"
+    }
+   ],
+   "checks": [
+    {
+     "status": "success"
+    },
+    {
+     "document": {
+      "title": "Report — Q3 sales",
+      "contains": [
+       "Board prep (note)"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-report-without-its-sections-fails",
+   "about": "The harness's own check: a report with no Summary, Open questions or Sources does not deliver, even after its repair pass.",
+   "inputs": {
+    "brief": "A one-page update on Q3 sales for the board, comparing with Q2.",
+    "sources": [
+     "Q3 sales figures",
+     "Q2 recap",
+     "Board prep"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s3",
+      "title": "Q3 sales figures",
+      "content": "Q3 2026. Subscriptions: £18,400. One-off orders: £12,100."
+     },
+     {
+      "id": "s2",
+      "title": "Q2 recap",
+      "content": "Q2 2026 sales were £26,000 in total."
+     }
+    ],
+    "notes": [
+     {
+      "id": "bbbb0001",
+      "title": "Board prep",
+      "content": "Q2 sales were £24,500. Ask about the new plan."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Q3 sales figures"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Q2 recap"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Board prep"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s3"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Board prep"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "bbbb0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Report — Q3 sales for the board",
+        "content": "Sales went up."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- wrote it"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

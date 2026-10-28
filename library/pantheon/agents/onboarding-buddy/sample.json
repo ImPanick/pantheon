@@ -1,0 +1,21 @@
+{
+ "case": "a-chefs-first-week",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Kitchen onboarding\"; wrote \"Onboarding — Jo Park, weekend chef\"; set 2 reminders",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document",
+  "manage_notes"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Onboarding”",
+   "ok": true,
+   "detail": "“Onboarding — Jo Park, weekend chef” is there."
+  }
+ ],
+ "answer": "[View note: Set up the rota app account — for Jo Park](#note-44c3fa29-9eaa-4b10-9009-c44ec6586388)\n\n\n[View note: Order whites in their size — for Jo Park](#note-b96f8f91-7fef-4803-85e0-fcb1b7048d37)\n2 reminders set, due Fri 13 Nov. Day 1: meet Ana, the safety sheet, find the fire exits.\n\n## Report\n- read \"Kitchen onboarding\"; wrote \"Onboarding — Jo Park, weekend chef\"; set 2 reminders"
+}

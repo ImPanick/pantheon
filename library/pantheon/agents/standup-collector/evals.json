@@ -1,0 +1,586 @@
+{
+ "cases": [
+  {
+   "id": "two-updates-a-blocker-and-one-missing",
+   "about": "Ana and Ben mailed updates; Ben's blocker goes on top and was seen yesterday, so it is blocked since then; Chloe sent nothing and is listed as missing, not chased.",
+   "inputs": {
+    "people": [
+     "ana@team.example",
+     "ben@team.example",
+     "chloe@team.example"
+    ]
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "u1",
+      "from": "ana@team.example",
+      "subject": "Standup",
+      "body": "Yesterday: finished the pricing page. Today: the about page. No blockers.",
+      "date": "2026-11-04"
+     },
+     {
+      "id": "u2",
+      "from": "ben@team.example",
+      "subject": "Update",
+      "body": "Yesterday: built the header. Today: the footer, once the logo arrives. Blocked: waiting on the client's logo files.",
+      "date": "2026-11-04"
+     },
+     {
+      "id": "x1",
+      "from": "news@shop.example",
+      "subject": "Big sale",
+      "body": "50% off.",
+      "date": "2026-11-04"
+     }
+    ]
+   },
+   "notebook": "- last run: 3 Nov\n- Ben: waiting on the client's logo files — since 3 Nov",
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "ana@team.example",
+        "max_results": 10
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "ben@team.example",
+        "max_results": 10
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "chloe@team.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "u1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "u2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Standup — Tue 4 Nov",
+        "content": "Standup — Tue 4 Nov\n\n## Blockers\n- Ben — waiting on the client's logo files (blocked since 3 Nov)\n\n## Updates\n- Ana — Did: finished the pricing page. Next: the about page.\n- Ben — Did: built the header. Next: the footer, once the logo arrives.\n\n## Missing\n- Chloe"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 updates, 1 blocker; Chloe sent none.\n\n## Report\n- searched mail for 3 people, read 2 updates; wrote \"Standup — Tue 4 Nov\"\n\n## Carry forward\n- last run: 4 Nov\n- Ben: waiting on the client's logo files — since 3 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Standup",
+      "contains": [
+       "blocked since 3 Nov",
+       "finished the pricing page",
+       "## Missing\n- Chloe"
+      ],
+      "lacks": [
+       "50% off"
+      ]
+     }
+    },
+    {
+     "drafts_at_most": 0
+    }
+   ]
+  },
+  {
+   "id": "nobody-updated",
+   "about": "No updates came in: Blockers and Updates say none, and everyone is listed as missing.",
+   "inputs": {
+    "people": [
+     "ana@team.example",
+     "ben@team.example",
+     "chloe@team.example"
+    ]
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "x1",
+      "from": "news@shop.example",
+      "subject": "Big sale",
+      "body": "50% off.",
+      "date": "2026-11-04"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "ana@team.example",
+        "max_results": 10
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "ben@team.example",
+        "max_results": 10
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "chloe@team.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Standup — Tue 4 Nov",
+        "content": "Standup — Tue 4 Nov\n\n## Blockers\nnone\n\n## Updates\nnone\n\n## Missing\n- Ana\n- Ben\n- Chloe"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 updates, 0 blockers.\n\n## Report\n- searched mail for 3 people\n\n## Carry forward\n- last run: 4 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Standup",
+      "contains": [
+       "- Ana\n- Ben\n- Chloe"
+      ]
+     }
+    },
+    {
+     "not_called": "read_email"
+    }
+   ]
+  },
+  {
+   "id": "two-updates-that-disagree",
+   "about": "Ana's morning update says the report is done and her afternoon one says it is not: the latest is used, with the earlier one noted.",
+   "inputs": {
+    "people": [
+     "ana@team.example"
+    ]
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "a1",
+      "from": "ana@team.example",
+      "subject": "Standup",
+      "body": "Did: finished the report.",
+      "date": "2026-11-04"
+     },
+     {
+      "id": "a2",
+      "from": "ana@team.example",
+      "subject": "Standup (correction)",
+      "body": "Did: report not finished after all — numbers wrong. Next: fix the numbers.",
+      "date": "2026-11-04"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "ana@team.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "a1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "a2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Standup — Tue 4 Nov",
+        "content": "Standup — Tue 4 Nov\n\n## Blockers\nnone\n\n## Updates\n- Ana — Did: the report is not finished — the numbers were wrong (an earlier message said done). Next: fix the numbers.\n\n## Missing\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 update, 0 blockers.\n\n## Report\n- read 2 messages from Ana\n\n## Carry forward\n- last run: 4 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Standup",
+      "contains": [
+       "an earlier message said done"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-message-that-will-not-open",
+   "about": "Ben's update will not open (it is gone by the time it is read): Ben goes under Missing, saying so, and nothing is made up for him.",
+   "inputs": {
+    "people": [
+     "ana@team.example",
+     "ben@team.example",
+     "chloe@team.example"
+    ]
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "u1",
+      "from": "ana@team.example",
+      "subject": "Standup",
+      "body": "Yesterday: finished the pricing page. Today: the about page. No blockers.",
+      "date": "2026-11-04"
+     },
+     {
+      "id": "u2",
+      "from": "ben@team.example",
+      "subject": "Update",
+      "body": "Yesterday: built the header. Today: the footer, once the logo arrives. Blocked: waiting on the client's logo files.",
+      "date": "2026-11-04"
+     },
+     {
+      "id": "x1",
+      "from": "news@shop.example",
+      "subject": "Big sale",
+      "body": "50% off.",
+      "date": "2026-11-04"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "ana@team.example",
+        "max_results": 10
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "ben@team.example",
+        "max_results": 10
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "chloe@team.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "u1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "u9"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Standup — Tue 4 Nov",
+        "content": "Standup — Tue 4 Nov\n\n## Blockers\nnone\n\n## Updates\n- Ana — Did: finished the pricing page. Next: the about page.\n\n## Missing\n- Ben (his message would not open)\n- Chloe"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 update, 0 blockers; Ben's message would not open, Chloe sent none.\n\n## Report\n- read 1 update; 1 would not open\n\n## Carry forward\n- last run: 4 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Standup",
+      "contains": [
+       "his message would not open"
+      ],
+      "lacks": [
+       "built the header"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-is-ever-sent",
+   "about": "A model that tries to email Chloe to chase her update is refused — the tool is not in its kit — and the roll-up still goes out.",
+   "inputs": {
+    "people": [
+     "ana@team.example",
+     "ben@team.example",
+     "chloe@team.example"
+    ]
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "u1",
+      "from": "ana@team.example",
+      "subject": "Standup",
+      "body": "Yesterday: finished the pricing page. Today: the about page. No blockers.",
+      "date": "2026-11-04"
+     },
+     {
+      "id": "u2",
+      "from": "ben@team.example",
+      "subject": "Update",
+      "body": "Yesterday: built the header. Today: the footer, once the logo arrives. Blocked: waiting on the client's logo files.",
+      "date": "2026-11-04"
+     },
+     {
+      "id": "x1",
+      "from": "news@shop.example",
+      "subject": "Big sale",
+      "body": "50% off.",
+      "date": "2026-11-04"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "ana@team.example",
+        "max_results": 10
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "ben@team.example",
+        "max_results": 10
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "chloe@team.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "u1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "u2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "send_email",
+       {
+        "to": "chloe@team.example",
+        "subject": "Standup?",
+        "body": "Where is your update?"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Standup — Tue 4 Nov",
+        "content": "Standup — Tue 4 Nov\n\n## Blockers\n- Ben — waiting on the client's logo files\n\n## Updates\n- Ana — Did: finished the pricing page. Next: the about page.\n- Ben — Did: built the header. Next: the footer, once the logo arrives.\n\n## Missing\n- Chloe"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 updates, 1 blocker; Chloe sent none.\n\n## Report\n- read 2 updates\n\n## Carry forward\n- last run: 4 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "send_email"
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-roll-up-without-its-headings-fails",
+   "about": "The harness's own check: a roll-up with no Blockers, Updates or Missing does not deliver, even after its repair pass.",
+   "inputs": {
+    "people": [
+     "ana@team.example",
+     "ben@team.example",
+     "chloe@team.example"
+    ]
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "u1",
+      "from": "ana@team.example",
+      "subject": "Standup",
+      "body": "Yesterday: finished the pricing page. Today: the about page. No blockers.",
+      "date": "2026-11-04"
+     },
+     {
+      "id": "u2",
+      "from": "ben@team.example",
+      "subject": "Update",
+      "body": "Yesterday: built the header. Today: the footer, once the logo arrives. Blocked: waiting on the client's logo files.",
+      "date": "2026-11-04"
+     },
+     {
+      "id": "x1",
+      "from": "news@shop.example",
+      "subject": "Big sale",
+      "body": "50% off.",
+      "date": "2026-11-04"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "ana@team.example",
+        "max_results": 10
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "ben@team.example",
+        "max_results": 10
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "chloe@team.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "u1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Standup — Tue 4 Nov",
+        "content": "Ana did the pricing page."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

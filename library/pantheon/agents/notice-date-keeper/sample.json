@@ -1,0 +1,20 @@
+{
+ "case": "one-contract-dated-one-without-a-clause",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 2 contracts, added 2 calendar events",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "manage_calendar"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Dates added, Could not work out."
+  }
+ ],
+ "answer": "**Dates added**\n- Fast Fibre contract — last day to give notice Sat 30 Jan 2027 (clause 9: renews 1 Mar 2027, 30 days' notice) — in writing to cancel@fastfibre.example; reminder on 16 Jan\n\n**Could not work out**\n- Window cleaning terms — no notice clause found\n\n## Report\n- read 2 contracts, added 2 calendar events\n\n## Carry forward\n- Fast Fibre contract — notice by 30 Jan 2027"
+}

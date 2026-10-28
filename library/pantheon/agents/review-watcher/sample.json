@@ -1,0 +1,20 @@
+{
+ "case": "two-new-reviews-get-drafts",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 1 review page; wrote \"Reviews — 4 Nov\"",
+ "read": [
+  "web_fetch"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with New reviews, Average rating."
+  }
+ ],
+ "answer": "**New reviews**\n- 2: one ★★★★★ (\"The sourdough is the best\"), one ★★ (\"Waited 20 minutes for\")\n\n**Average rating**\n- new reviews: 3.5; reviews.example: 4.6\n\n## Report\n- read 1 review page; wrote \"Reviews — 4 Nov\"\n\n## Carry forward\n- Priya — 3 Nov — The sourdough is the best\n- Tom — 3 Nov — Waited 20 minutes for a\n- Ann — 1 Nov — Lovely rye, a bit pricey"
+}

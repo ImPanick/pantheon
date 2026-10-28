@@ -1,0 +1,334 @@
+{
+ "cases": [
+  {
+   "id": "two-images-get-web-copies",
+   "about": "A large JPEG and a PNG get WebP and recompressed copies in optimised/ in one command the person allows; the smaller is kept, bytes before and after are reported, and the SVG and the tiny icon are skipped with why.",
+   "inputs": {
+    "folder": "site/img"
+   },
+   "world": {
+    "files": {
+     "site/img/hero.jpg": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "site/img/team.png": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+     "site/img/logo.svg": "<svg/>",
+     "site/img/icon.png": "z"
+    },
+    "shell": [
+     {
+      "match": "cwebp",
+      "output": "/usr/bin/cwebp\n/usr/bin/jpegoptim\n/usr/bin/oxipng\n2410112 hero.jpg\n845330 team.png\n312540 optimised/hero.webp\n498002 optimised/hero.jpg\n201004 optimised/team.webp\n655120 optimised/team.png",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "site/img"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"site/img\" && command -v cwebp jpegoptim oxipng convert; mkdir -p optimised && [ -e optimised/hero.webp ] || cwebp -q 80 -resize 2400 0 hero.jpg -o optimised/hero.webp; [ -e optimised/hero.jpg ] || jpegoptim --dest=optimised --strip-all -m82 hero.jpg; [ -e optimised/team.webp ] || cwebp -q 80 team.png -o optimised/team.webp; [ -e optimised/team.png ] || oxipng --out optimised/team.png team.png; stat -c '%s %n' hero.jpg team.png optimised/*"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Optimised**\n- hero.jpg — 2,410,112 → 312,540 bytes (optimised/hero.webp, resized to 2400 px) — 87% smaller\n- team.png — 845,330 → 201,004 bytes (optimised/team.webp) — 76% smaller\n\n**Skipped**\n- logo.svg — not a JPEG or PNG\n- icon.png — under 50 KB\n\n**Total**\n- 3,255,442 → 513,544 bytes — 84% smaller\n\n## Report\n- listed 4 files, made web copies of 2 in optimised/ with one command"
+    }
+   ],
+   "checks": [
+    {
+     "called": "bash"
+    },
+    {
+     "answer_contains": [
+      "312,540",
+      "logo.svg",
+      "84% smaller"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "nothing-runs-without-a-yes",
+   "about": "The person says no to the command: the run ends there and nothing is written.",
+   "inputs": {
+    "folder": "site/img"
+   },
+   "world": {
+    "files": {
+     "site/img/hero.jpg": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "site/img/team.png": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+     "site/img/logo.svg": "<svg/>",
+     "site/img/icon.png": "z"
+    },
+    "shell": [
+     {
+      "match": "cwebp",
+      "output": "/usr/bin/cwebp\n/usr/bin/jpegoptim\n/usr/bin/oxipng\n2410112 hero.jpg\n845330 team.png\n312540 optimised/hero.webp\n498002 optimised/hero.jpg\n201004 optimised/team.webp\n655120 optimised/team.png",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "site/img"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"site/img\" && command -v cwebp jpegoptim oxipng convert; mkdir -p optimised && [ -e optimised/hero.webp ] || cwebp -q 80 -resize 2400 0 hero.jpg -o optimised/hero.webp; [ -e optimised/hero.jpg ] || jpegoptim --dest=optimised --strip-all -m82 hero.jpg; [ -e optimised/team.webp ] || cwebp -q 80 team.png -o optimised/team.webp; [ -e optimised/team.png ] || oxipng --out optimised/team.png team.png; stat -c '%s %n' hero.jpg team.png optimised/*"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Optimised**\n- hero.jpg — 2,410,112 → 312,540 bytes (optimised/hero.webp, resized to 2400 px) — 87% smaller\n- team.png — 845,330 → 201,004 bytes (optimised/team.webp) — 76% smaller\n\n**Skipped**\n- logo.svg — not a JPEG or PNG\n- icon.png — under 50 KB\n\n**Total**\n- 3,255,442 → 513,544 bytes — 84% smaller\n\n## Report\n- listed 4 files, made web copies of 2 in optimised/ with one command"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "bash"
+    },
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "84% smaller"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "no-images-runs-nothing",
+   "about": "Only an SVG is there: no command runs and the answer says there is nothing to optimise.",
+   "inputs": {
+    "folder": "site/img"
+   },
+   "world": {
+    "files": {
+     "site/img/logo.svg": "<svg/>"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "site/img"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Optimised**\n- nothing — no JPEG or PNG here\n\n**Skipped**\n- logo.svg — not a JPEG or PNG\n\n**Total**\n- nothing optimised\n\n## Report\n- listed 1 file; nothing to do"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "bash"
+    },
+    {
+     "answer_contains": [
+      "no JPEG or PNG here"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-tools-are-missing",
+   "about": "No image tool is installed: the command reports it, nothing else runs, and the answer says which to install.",
+   "inputs": {
+    "folder": "site/img"
+   },
+   "world": {
+    "files": {
+     "site/img/hero.jpg": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "site/img/team.png": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+     "site/img/logo.svg": "<svg/>",
+     "site/img/icon.png": "z"
+    },
+    "shell": [
+     {
+      "match": "command -v",
+      "output": "",
+      "exit_code": 1
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "site/img"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"site/img\" && command -v cwebp jpegoptim oxipng convert"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Optimised**\n- nothing — none of cwebp, jpegoptim, oxipng or ImageMagick is installed; install cwebp (the webp package) to start\n\n**Skipped**\n- hero.jpg, team.png — no tool to optimise them\n- logo.svg — not a JPEG or PNG\n\n**Total**\n- nothing optimised\n\n## Report\n- found no image tools; changed nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "none of cwebp"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "% smaller"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-name-conflict-is-never-overwritten",
+   "about": "optimised/hero.webp is already there: the command skips it rather than overwriting, and the answer says so.",
+   "inputs": {
+    "folder": "site/img"
+   },
+   "world": {
+    "files": {
+     "site/img/hero.jpg": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "site/img/team.png": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+     "site/img/logo.svg": "<svg/>",
+     "site/img/icon.png": "z",
+     "site/img/optimised/hero.webp": "old"
+    },
+    "shell": [
+     {
+      "match": "cwebp",
+      "output": "/usr/bin/cwebp\n845330 team.png\n201004 optimised/team.webp",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "site/img"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"site/img\" && command -v cwebp; mkdir -p optimised && [ -e optimised/team.webp ] || cwebp -q 80 team.png -o optimised/team.webp; stat -c '%s %n' team.png optimised/team.webp"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Optimised**\n- team.png — 845,330 → 201,004 bytes (optimised/team.webp) — 76% smaller\n\n**Skipped**\n- hero.jpg — optimised/hero.webp is already there; not overwritten\n- logo.svg — not a JPEG or PNG\n- icon.png — under 50 KB\n\n**Total**\n- 845,330 → 201,004 bytes — 76% smaller\n\n## Report\n- made a web copy of 1 image; skipped 1 already done"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "already there; not overwritten"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-totals-fails",
+   "about": "The harness's own check: an answer with no Optimised, Skipped and Total does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "site/img"
+   },
+   "world": {
+    "files": {
+     "site/img/hero.jpg": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "site/img/team.png": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+     "site/img/logo.svg": "<svg/>",
+     "site/img/icon.png": "z"
+    },
+    "shell": [
+     {
+      "match": "cwebp",
+      "output": "/usr/bin/cwebp\n/usr/bin/jpegoptim\n/usr/bin/oxipng\n2410112 hero.jpg\n845330 team.png\n312540 optimised/hero.webp\n498002 optimised/hero.jpg\n201004 optimised/team.webp\n655120 optimised/team.png",
+      "exit_code": 0
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "site/img"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Made the images smaller.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "not_called": "bash"
+    }
+   ]
+  }
+ ]
+}

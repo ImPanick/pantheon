@@ -1,0 +1,33 @@
+{
+ "case": "three-directions-for-a-till",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- wrote checkout/a.html, checkout/b.html and checkout/c.html",
+ "read": [],
+ "wrote": [
+  "write_file"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the file checkout/a.html",
+   "ok": true,
+   "detail": "checkout/a.html is there."
+  },
+  {
+   "check": "the file checkout/b.html",
+   "ok": true,
+   "detail": "checkout/b.html is there."
+  },
+  {
+   "check": "the file checkout/c.html",
+   "ok": true,
+   "detail": "checkout/c.html is there."
+  },
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Direction A, Direction B, Direction C."
+  }
+ ],
+ "answer": "**Direction A** — one column, the total first, for a phone at the till: checkout/a.html\n**Direction B** — a sidebar of items beside a big pay button, for a tablet: checkout/b.html\n**Direction C** — dense cards with every discount visible, for a desk: checkout/c.html\n\n## Report\n- wrote checkout/a.html, checkout/b.html and checkout/c.html"
+}

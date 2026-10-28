@@ -1,0 +1,20 @@
+{
+ "case": "five-documents-two-topics-one-merge",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- listed 6 documents, read 5 new ones; wrote \"Wiki index — 1 Nov\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Wiki index”",
+   "ok": true,
+   "detail": "“Wiki index — 1 Nov” is there."
+  }
+ ],
+ "answer": "5 documents in 2 topics, 1 unsorted; 1 merge suggested; none gone.\n\n## Report\n- listed 6 documents, read 5 new ones; wrote \"Wiki index — 1 Nov\"\n\n## Carry forward\n- last run: 1 Nov\n- Garden plan → Garden\n- Seed list → Garden\n- Boiler notes → House\n- Boiler service history → House\n- Tax 2025 → Unsorted"
+}

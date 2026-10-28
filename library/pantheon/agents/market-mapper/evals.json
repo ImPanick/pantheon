@@ -1,0 +1,752 @@
+{
+ "cases": [
+  {
+   "id": "three-players-three-clusters-one-gap",
+   "about": "Three players with their published prices and their own words, clustered by who they serve, and one gap tied to the comparison page that shows it. Writing after reading the web waits for the person's yes.",
+   "inputs": {
+    "market": "invoicing software for freelancers",
+    "region": "UK"
+   },
+   "world": {
+    "web": {
+     "https://billfast.example/pricing": "Billfast — invoices in a minute. Solo plan: £9 / month. Made for UK freelancers.",
+     "https://ledgerpro.example/pricing": "LedgerPro — your whole back office. Invoicing, payroll and VAT. £29 / month. For small firms in the UK.",
+     "https://quotient.example": "Quotient — built for agencies. Quotes and invoices. Talk to sales for pricing.",
+     "https://compare.example/invoicing": "Comparison of UK invoicing tools: Billfast (£9), LedgerPro (£29), Quotient. None of the tools under £20 sends invoices in more than one currency, a common complaint from freelancers."
+    },
+    "search": {
+     "companies": [
+      {
+       "title": "Billfast",
+       "url": "https://billfast.example/pricing",
+       "snippet": "Invoicing for freelancers."
+      },
+      {
+       "title": "LedgerPro",
+       "url": "https://ledgerpro.example/pricing",
+       "snippet": "Accounting suite."
+      },
+      {
+       "title": "Quotient",
+       "url": "https://quotient.example",
+       "snippet": "Quotes and invoices."
+      }
+     ],
+     "comparison": [
+      {
+       "title": "UK invoicing tools compared",
+       "url": "https://compare.example/invoicing",
+       "snippet": "Billfast, LedgerPro, Quotient."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "invoicing software for freelancers UK companies"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "invoicing software for freelancers alternatives comparison"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "invoicing software for freelancers pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://billfast.example/pricing"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://ledgerpro.example/pricing"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://quotient.example"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://compare.example/invoicing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Market map — invoicing software for freelancers",
+        "content": "Market map — invoicing software for freelancers\n\n## Players\n| Player | Sells | For | Price | In their words | Address |\n|---|---|---|---|---|---|\n| Billfast | invoices | UK freelancers | £9 / month | \"invoices in a minute\" | https://billfast.example/pricing |\n| LedgerPro | invoicing, payroll, VAT | small firms | £29 / month | \"your whole back office\" | https://ledgerpro.example/pricing |\n| Quotient | quotes and invoices | agencies | not published | \"built for agencies\" | https://quotient.example |\n\n## Clusters\n- Freelancers under £10: Billfast.\n- Accounting suites: LedgerPro.\n- Agencies: Quotient (price not published).\n\n## Gaps\n- Invoices in more than one currency for freelancers: the comparison says none of the tools under £20 does it — https://compare.example/invoicing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 players, 3 clusters, 1 gap.\n\n## Report\n- ran 3 searches, read 4 pages; wrote \"Market map — invoicing software for freelancers\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Market map",
+      "contains": [
+       "£9 / month",
+       "£29 / month",
+       "built for agencies",
+       "https://compare.example/invoicing"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "3 players"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "contact-sales-is-not-published",
+   "about": "Quotient publishes no price: its row says not published, never a figure the model guessed.",
+   "inputs": {
+    "market": "invoicing software for freelancers",
+    "region": "UK"
+   },
+   "world": {
+    "web": {
+     "https://billfast.example/pricing": "Billfast — invoices in a minute. Solo plan: £9 / month. Made for UK freelancers.",
+     "https://ledgerpro.example/pricing": "LedgerPro — your whole back office. Invoicing, payroll and VAT. £29 / month. For small firms in the UK.",
+     "https://quotient.example": "Quotient — built for agencies. Quotes and invoices. Talk to sales for pricing.",
+     "https://compare.example/invoicing": "Comparison of UK invoicing tools: Billfast (£9), LedgerPro (£29), Quotient. None of the tools under £20 sends invoices in more than one currency, a common complaint from freelancers."
+    },
+    "search": {
+     "companies": [
+      {
+       "title": "Billfast",
+       "url": "https://billfast.example/pricing",
+       "snippet": "Invoicing for freelancers."
+      },
+      {
+       "title": "LedgerPro",
+       "url": "https://ledgerpro.example/pricing",
+       "snippet": "Accounting suite."
+      },
+      {
+       "title": "Quotient",
+       "url": "https://quotient.example",
+       "snippet": "Quotes and invoices."
+      }
+     ],
+     "comparison": [
+      {
+       "title": "UK invoicing tools compared",
+       "url": "https://compare.example/invoicing",
+       "snippet": "Billfast, LedgerPro, Quotient."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "invoicing software for freelancers UK companies"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "invoicing software for freelancers alternatives comparison"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "invoicing software for freelancers pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://billfast.example/pricing"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://ledgerpro.example/pricing"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://quotient.example"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://compare.example/invoicing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Market map — invoicing software for freelancers",
+        "content": "Market map — invoicing software for freelancers\n\n## Players\n| Player | Sells | For | Price | In their words | Address |\n|---|---|---|---|---|---|\n| Billfast | invoices | UK freelancers | £9 / month | \"invoices in a minute\" | https://billfast.example/pricing |\n| LedgerPro | invoicing, payroll, VAT | small firms | £29 / month | \"your whole back office\" | https://ledgerpro.example/pricing |\n| Quotient | quotes and invoices | agencies | not published | \"built for agencies\" | https://quotient.example |\n\n## Clusters\n- Freelancers under £10: Billfast.\n- Accounting suites: LedgerPro.\n- Agencies: Quotient (price not published).\n\n## Gaps\n- Invoices in more than one currency for freelancers: the comparison says none of the tools under £20 does it — https://compare.example/invoicing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 players, 3 clusters, 1 gap.\n\n## Report\n- ran 3 searches, read 4 pages; Quotient publishes no price"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Market map",
+      "contains": [
+       "not published"
+      ],
+      "lacks": [
+       "£15",
+       "about £"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-page-that-will-not-open-is-said",
+   "about": "LedgerPro's page will not open here: its row says could not read and price unknown, filled from nothing else.",
+   "inputs": {
+    "market": "invoicing software for freelancers",
+    "region": "UK"
+   },
+   "world": {
+    "web": {
+     "https://billfast.example/pricing": "Billfast — invoices in a minute. Solo plan: £9 / month. Made for UK freelancers.",
+     "https://quotient.example": "Quotient — built for agencies. Quotes and invoices. Talk to sales for pricing."
+    },
+    "search": {
+     "companies": [
+      {
+       "title": "Billfast",
+       "url": "https://billfast.example/pricing",
+       "snippet": "Invoicing for freelancers."
+      },
+      {
+       "title": "LedgerPro",
+       "url": "https://ledgerpro.example/pricing",
+       "snippet": "Accounting suite."
+      },
+      {
+       "title": "Quotient",
+       "url": "https://quotient.example",
+       "snippet": "Quotes and invoices."
+      }
+     ],
+     "comparison": [
+      {
+       "title": "UK invoicing tools compared",
+       "url": "https://compare.example/invoicing",
+       "snippet": "Billfast, LedgerPro, Quotient."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "invoicing software for freelancers UK companies"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "invoicing software for freelancers alternatives comparison"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "invoicing software for freelancers pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://billfast.example/pricing"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://ledgerpro.example/pricing"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://quotient.example"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Market map — invoicing software for freelancers",
+        "content": "Market map — invoicing software for freelancers\n\n## Players\n| Player | Sells | For | Price | In their words | Address |\n|---|---|---|---|---|---|\n| Billfast | invoices | UK freelancers | £9 / month | \"invoices in a minute\" | https://billfast.example/pricing |\n| LedgerPro | could not read https://ledgerpro.example/pricing: 404 | unknown | unknown | unknown | https://ledgerpro.example/pricing |\n| Quotient | quotes and invoices | agencies | not published | \"built for agencies\" | https://quotient.example |\n\n## Clusters\n- Freelancers under £10: Billfast.\n- Agencies: Quotient.\n\n## Gaps\n- none tied to a page this run"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 players, 2 clusters, 0 gaps; one page would not open.\n\n## Report\n- ran 3 searches, read 2 pages, 1 did not open"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Market map",
+      "contains": [
+       "could not read"
+      ],
+      "lacks": [
+       "£29"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-article-disagrees-with-the-vendor",
+   "about": "A comparison gives Billfast's price as £7; Billfast's own page says £9. The vendor's page decides the row, and the article is named beside it.",
+   "inputs": {
+    "market": "invoicing software for freelancers",
+    "region": "UK"
+   },
+   "world": {
+    "web": {
+     "https://billfast.example/pricing": "Billfast — invoices in a minute. Solo plan: £9 / month. Made for UK freelancers.",
+     "https://ledgerpro.example/pricing": "LedgerPro — your whole back office. Invoicing, payroll and VAT. £29 / month. For small firms in the UK.",
+     "https://quotient.example": "Quotient — built for agencies. Quotes and invoices. Talk to sales for pricing.",
+     "https://compare.example/invoicing": "Comparison: Billfast costs £7 a month; LedgerPro £29."
+    },
+    "search": {
+     "companies": [
+      {
+       "title": "Billfast",
+       "url": "https://billfast.example/pricing",
+       "snippet": "Invoicing for freelancers."
+      },
+      {
+       "title": "LedgerPro",
+       "url": "https://ledgerpro.example/pricing",
+       "snippet": "Accounting suite."
+      },
+      {
+       "title": "Quotient",
+       "url": "https://quotient.example",
+       "snippet": "Quotes and invoices."
+      }
+     ],
+     "comparison": [
+      {
+       "title": "UK invoicing tools compared",
+       "url": "https://compare.example/invoicing",
+       "snippet": "Billfast, LedgerPro, Quotient."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "invoicing software for freelancers UK companies"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "invoicing software for freelancers alternatives comparison"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "invoicing software for freelancers pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://billfast.example/pricing"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://ledgerpro.example/pricing"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://compare.example/invoicing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Market map — invoicing software for freelancers",
+        "content": "Market map — invoicing software for freelancers\n\n## Players\n| Player | Sells | For | Price | In their words | Address |\n|---|---|---|---|---|---|\n| Billfast | invoices | UK freelancers | £9 / month (an article says £7, https://compare.example/invoicing) | \"invoices in a minute\" | https://billfast.example/pricing |\n| LedgerPro | invoicing, payroll, VAT | small firms | £29 / month | \"your whole back office\" | https://ledgerpro.example/pricing |\n\n## Clusters\n- Freelancers under £10: Billfast.\n- Accounting suites: LedgerPro.\n\n## Gaps\n- none tied to a page this run"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 players, 2 clusters, 0 gaps.\n\n## Report\n- ran 3 searches, read 3 pages"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Market map",
+      "contains": [
+       "£9 / month",
+       "an article says £7"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-market-size-from-nowhere",
+   "about": "No page gives a market size: the map states none — a size or share figure no page gave is never written.",
+   "inputs": {
+    "market": "invoicing software for freelancers",
+    "region": "UK"
+   },
+   "world": {
+    "web": {
+     "https://billfast.example/pricing": "Billfast — invoices in a minute. Solo plan: £9 / month. Made for UK freelancers.",
+     "https://ledgerpro.example/pricing": "LedgerPro — your whole back office. Invoicing, payroll and VAT. £29 / month. For small firms in the UK.",
+     "https://quotient.example": "Quotient — built for agencies. Quotes and invoices. Talk to sales for pricing.",
+     "https://compare.example/invoicing": "Comparison of UK invoicing tools: Billfast (£9), LedgerPro (£29), Quotient. None of the tools under £20 sends invoices in more than one currency, a common complaint from freelancers."
+    },
+    "search": {
+     "companies": [
+      {
+       "title": "Billfast",
+       "url": "https://billfast.example/pricing",
+       "snippet": "Invoicing for freelancers."
+      },
+      {
+       "title": "LedgerPro",
+       "url": "https://ledgerpro.example/pricing",
+       "snippet": "Accounting suite."
+      },
+      {
+       "title": "Quotient",
+       "url": "https://quotient.example",
+       "snippet": "Quotes and invoices."
+      }
+     ],
+     "comparison": [
+      {
+       "title": "UK invoicing tools compared",
+       "url": "https://compare.example/invoicing",
+       "snippet": "Billfast, LedgerPro, Quotient."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "invoicing software for freelancers UK companies"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "invoicing software for freelancers alternatives comparison"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "invoicing software for freelancers pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://billfast.example/pricing"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://ledgerpro.example/pricing"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://quotient.example"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://compare.example/invoicing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Market map — invoicing software for freelancers",
+        "content": "Market map — invoicing software for freelancers\n\n## Players\n| Player | Sells | For | Price | In their words | Address |\n|---|---|---|---|---|---|\n| Billfast | invoices | UK freelancers | £9 / month | \"invoices in a minute\" | https://billfast.example/pricing |\n| LedgerPro | invoicing, payroll, VAT | small firms | £29 / month | \"your whole back office\" | https://ledgerpro.example/pricing |\n| Quotient | quotes and invoices | agencies | not published | \"built for agencies\" | https://quotient.example |\n\n## Clusters\n- Freelancers under £10: Billfast.\n- Accounting suites: LedgerPro.\n- Agencies: Quotient (price not published).\n\n## Gaps\n- Invoices in more than one currency for freelancers: the comparison says none of the tools under £20 does it — https://compare.example/invoicing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 players, 3 clusters, 1 gap.\n\n## Report\n- ran 3 searches, read 4 pages"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Market map",
+      "lacks": [
+       "billion",
+       "market share",
+       "% of the market"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "too-few-players-found",
+   "about": "The searches find nothing: the map says too few players were found to cluster, and suggests another wording, rather than inventing a market.",
+   "inputs": {
+    "market": "invoicing for lighthouse keepers"
+   },
+   "world": {},
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "invoicing for lighthouse keepers companies"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "invoicing for lighthouse keepers alternatives comparison"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "invoicing for lighthouse keepers pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Market map — invoicing for lighthouse keepers",
+        "content": "## Players\nnone found\n\n## Clusters\ntoo few players found to cluster\n\n## Gaps\ntoo few players found — try \"invoicing software for sole traders\""
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 players, 0 clusters, 0 gaps: too few players found.\n\n## Report\n- ran 3 searches; nothing found"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Market map",
+      "contains": [
+       "too few players found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-map-in-the-answer-alone-fails",
+   "about": "The harness's own check: a run that describes the market in its answer and writes no Market map document does not deliver, even after its repair pass.",
+   "inputs": {
+    "market": "invoicing software for freelancers",
+    "region": "UK"
+   },
+   "world": {
+    "web": {
+     "https://billfast.example/pricing": "Billfast — invoices in a minute. Solo plan: £9 / month. Made for UK freelancers.",
+     "https://ledgerpro.example/pricing": "LedgerPro — your whole back office. Invoicing, payroll and VAT. £29 / month. For small firms in the UK.",
+     "https://quotient.example": "Quotient — built for agencies. Quotes and invoices. Talk to sales for pricing.",
+     "https://compare.example/invoicing": "Comparison of UK invoicing tools: Billfast (£9), LedgerPro (£29), Quotient. None of the tools under £20 sends invoices in more than one currency, a common complaint from freelancers."
+    },
+    "search": {
+     "companies": [
+      {
+       "title": "Billfast",
+       "url": "https://billfast.example/pricing",
+       "snippet": "Invoicing for freelancers."
+      },
+      {
+       "title": "LedgerPro",
+       "url": "https://ledgerpro.example/pricing",
+       "snippet": "Accounting suite."
+      },
+      {
+       "title": "Quotient",
+       "url": "https://quotient.example",
+       "snippet": "Quotes and invoices."
+      }
+     ],
+     "comparison": [
+      {
+       "title": "UK invoicing tools compared",
+       "url": "https://compare.example/invoicing",
+       "snippet": "Billfast, LedgerPro, Quotient."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "invoicing software for freelancers UK companies"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "invoicing software for freelancers alternatives comparison"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "invoicing software for freelancers pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Billfast and LedgerPro lead the market.\n\n## Report\n- searched"
+    },
+    {
+     "say": "Billfast leads."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Market map"
+    }
+   ]
+  }
+ ]
+}

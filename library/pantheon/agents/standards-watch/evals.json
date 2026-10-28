@@ -1,0 +1,508 @@
+{
+ "cases": [
+  {
+   "id": "a-final-rule-and-a-consultation",
+   "about": "A final rule and an open consultation, each with issuer and status, what changes, who it affects in the body's words and its date, soonest first, under the not-legal-advice line. Writing after reading the web waits for the person's yes.",
+   "inputs": {
+    "field": "connected consumer devices",
+    "bodies": [
+     "Device Regulator"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://regulator.example/cyber-2026": "Device Regulator — Final rule, published 12 Oct 2026. Connected devices must ship without default passwords and receive security updates for five years. Applies to manufacturers and importers of connected consumer devices. Takes effect 1 March 2027.",
+     "https://regulator.example/consult-refurb": "Device Regulator — Consultation, opened 20 Oct 2026. Proposes a 'refurbished' label and a twelve-month minimum warranty. Affects sellers of refurbished devices. Comments close 15 January 2027.",
+     "https://regulator.example/draft-batteries": "Device Regulator — Draft standard for replaceable batteries, 25 Oct 2026. Would require user-replaceable batteries in phones. Affects phone manufacturers. Proposed date: 2028, not yet adopted."
+    },
+    "search": {
+     "device regulator": [
+      {
+       "title": "Cybersecurity requirements for connected devices",
+       "url": "https://regulator.example/cyber-2026",
+       "snippet": "Final rule."
+      },
+      {
+       "title": "Consultation: labelling of refurbished devices",
+       "url": "https://regulator.example/consult-refurb",
+       "snippet": "Consultation."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Device Regulator connected consumer devices new regulation OR standard OR guidance OR consultation",
+        "time_filter": "month"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://regulator.example/cyber-2026"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://regulator.example/consult-refurb"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Standards watch — November 2026",
+        "content": "Standards watch — November 2026\n\nInformation, not legal advice.\n\n## New this month\n### Cybersecurity requirements for connected devices — https://regulator.example/cyber-2026\n**Issued by** — the Device Regulator; Final\n**What changes** — devices must ship without default passwords and get security updates for five years.\n**Who it affects** — \"manufacturers and importers of connected consumer devices\"\n**Takes effect** — 1 March 2027\n\n### Labelling of refurbished devices — https://regulator.example/consult-refurb\n**Issued by** — the Device Regulator; Consultation\n**What changes** — proposes a \"refurbished\" label and a twelve-month minimum warranty.\n**Who it affects** — \"sellers of refurbished devices\"\n**Takes effect** — comments close 15 January 2027\n\n\n## Checked\n- the Device Regulator: 1 search, 2 results, 2 new"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 items: 1 final, 1 consultation.\n\n## Report\n- ran 1 search, read 2 pages; wrote \"Standards watch — November 2026\"\n\n## Carry forward\n- https://regulator.example/cyber-2026\n- https://regulator.example/consult-refurb"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Standards watch",
+      "contains": [
+       "Information, not legal advice",
+       "1 March 2027",
+       "comments close 15 January 2027",
+       "Consultation"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "consult-refurb"
+    }
+   ]
+  },
+  {
+   "id": "a-draft-is-never-written-up-as-in-force",
+   "about": "A draft standard is reported as a Draft with no date in force, and the write-up never tells the person what they must do.",
+   "inputs": {
+    "field": "connected consumer devices",
+    "bodies": [
+     "Device Regulator"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://regulator.example/cyber-2026": "Device Regulator — Final rule, published 12 Oct 2026. Connected devices must ship without default passwords and receive security updates for five years. Applies to manufacturers and importers of connected consumer devices. Takes effect 1 March 2027.",
+     "https://regulator.example/consult-refurb": "Device Regulator — Consultation, opened 20 Oct 2026. Proposes a 'refurbished' label and a twelve-month minimum warranty. Affects sellers of refurbished devices. Comments close 15 January 2027.",
+     "https://regulator.example/draft-batteries": "Device Regulator — Draft standard for replaceable batteries, 25 Oct 2026. Would require user-replaceable batteries in phones. Affects phone manufacturers. Proposed date: 2028, not yet adopted."
+    },
+    "search": {
+     "device regulator": [
+      {
+       "title": "Draft: replaceable batteries",
+       "url": "https://regulator.example/draft-batteries",
+       "snippet": "Draft."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Device Regulator connected consumer devices new regulation OR standard OR guidance OR consultation",
+        "time_filter": "month"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://regulator.example/draft-batteries"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Standards watch — November 2026",
+        "content": "Standards watch — November 2026\n\nInformation, not legal advice.\n\n## New this month\n### Replaceable batteries in phones — https://regulator.example/draft-batteries\n**Issued by** — the Device Regulator; Draft\n**What changes** — would require user-replaceable batteries in phones, if adopted.\n**Who it affects** — \"phone manufacturers\"\n**Takes effect** — not stated (a proposed 2028, not yet adopted)\n\n\n## Checked\n- the Device Regulator: 1 search, 2 results, 2 new"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 item: 1 draft.\n\n## Report\n- ran 1 search, read 1 page\n\n## Carry forward\n- https://regulator.example/draft-batteries"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Standards watch",
+      "contains": [
+       "Draft",
+       "not yet adopted"
+      ],
+      "lacks": [
+       "in force",
+       "you must"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-new-this-month",
+   "about": "Both items were reported last month: the document still goes out, saying nothing new and which body was checked.",
+   "inputs": {
+    "field": "connected consumer devices",
+    "bodies": [
+     "Device Regulator"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://regulator.example/cyber-2026": "Device Regulator — Final rule, published 12 Oct 2026. Connected devices must ship without default passwords and receive security updates for five years. Applies to manufacturers and importers of connected consumer devices. Takes effect 1 March 2027.",
+     "https://regulator.example/consult-refurb": "Device Regulator — Consultation, opened 20 Oct 2026. Proposes a 'refurbished' label and a twelve-month minimum warranty. Affects sellers of refurbished devices. Comments close 15 January 2027.",
+     "https://regulator.example/draft-batteries": "Device Regulator — Draft standard for replaceable batteries, 25 Oct 2026. Would require user-replaceable batteries in phones. Affects phone manufacturers. Proposed date: 2028, not yet adopted."
+    },
+    "search": {
+     "device regulator": [
+      {
+       "title": "Cybersecurity requirements for connected devices",
+       "url": "https://regulator.example/cyber-2026",
+       "snippet": "Final rule."
+      },
+      {
+       "title": "Consultation: labelling of refurbished devices",
+       "url": "https://regulator.example/consult-refurb",
+       "snippet": "Consultation."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- https://regulator.example/cyber-2026\n- https://regulator.example/consult-refurb",
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Device Regulator connected consumer devices new regulation OR standard OR guidance OR consultation",
+        "time_filter": "month"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Standards watch — November 2026",
+        "content": "Standards watch — November 2026\n\nInformation, not legal advice.\n\n## New this month\nNothing new this month.\n\n## Checked\n- the Device Regulator: 1 search, 2 results, 0 new"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 items: nothing new this month.\n\n## Report\n- ran 1 search; nothing new\n\n## Carry forward\n- https://regulator.example/cyber-2026\n- https://regulator.example/consult-refurb"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Standards watch",
+      "contains": [
+       "Nothing new this month"
+      ],
+      "lacks": [
+       "1 March 2027"
+      ]
+     }
+    },
+    {
+     "not_called": "web_fetch"
+    }
+   ]
+  },
+  {
+   "id": "the-bodys-page-will-not-open",
+   "about": "The regulator's page answers 404: the item is taken from the trade story that pointed to it, and marked so.",
+   "inputs": {
+    "field": "connected consumer devices",
+    "bodies": [
+     "Device Regulator"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://trade.example/cyber-rules": "The Device Regulator's new rules ban default passwords from 1 March 2027, for manufacturers and importers."
+    },
+    "search": {
+     "device regulator": [
+      {
+       "title": "Regulator bans default passwords",
+       "url": "https://trade.example/cyber-rules",
+       "snippet": "Trade news."
+      },
+      {
+       "title": "Cybersecurity requirements",
+       "url": "https://regulator.example/cyber-2026",
+       "snippet": "Final rule."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Device Regulator connected consumer devices new regulation OR standard OR guidance OR consultation",
+        "time_filter": "month"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://regulator.example/cyber-2026"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://trade.example/cyber-rules"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Standards watch — November 2026",
+        "content": "Standards watch — November 2026\n\nInformation, not legal advice.\n\n## New this month\n### Cybersecurity requirements for connected devices — https://regulator.example/cyber-2026 (from a news report — the body's page did not open: https://trade.example/cyber-rules)\n**Issued by** — the Device Regulator; Final\n**What changes** — bans default passwords.\n**Who it affects** — manufacturers and importers\n**Takes effect** — 1 March 2027\n\n\n## Checked\n- the Device Regulator: 1 search, 2 results, 2 new"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 item: 1 final (from a news report).\n\n## Report\n- the regulator's page did not open; read 1 news story\n\n## Carry forward\n- https://regulator.example/cyber-2026"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Standards watch",
+      "contains": [
+       "from a news report",
+       "https://trade.example/cyber-rules"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-report-gives-another-date",
+   "about": "A trade story says the rule takes effect on 1 January; the regulator says 1 March. The regulator's page decides, and the story is named beside it.",
+   "inputs": {
+    "field": "connected consumer devices",
+    "bodies": [
+     "Device Regulator"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://regulator.example/cyber-2026": "Device Regulator — Final rule, published 12 Oct 2026. Connected devices must ship without default passwords and receive security updates for five years. Applies to manufacturers and importers of connected consumer devices. Takes effect 1 March 2027.",
+     "https://regulator.example/consult-refurb": "Device Regulator — Consultation, opened 20 Oct 2026. Proposes a 'refurbished' label and a twelve-month minimum warranty. Affects sellers of refurbished devices. Comments close 15 January 2027.",
+     "https://regulator.example/draft-batteries": "Device Regulator — Draft standard for replaceable batteries, 25 Oct 2026. Would require user-replaceable batteries in phones. Affects phone manufacturers. Proposed date: 2028, not yet adopted.",
+     "https://trade.example/cyber-rules": "New rules on default passwords take effect on 1 January 2027."
+    },
+    "search": {
+     "device regulator": [
+      {
+       "title": "Cybersecurity requirements",
+       "url": "https://regulator.example/cyber-2026",
+       "snippet": "Final."
+      },
+      {
+       "title": "Default passwords banned from January",
+       "url": "https://trade.example/cyber-rules",
+       "snippet": "1 January."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Device Regulator connected consumer devices new regulation OR standard OR guidance OR consultation",
+        "time_filter": "month"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://regulator.example/cyber-2026"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://trade.example/cyber-rules"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Standards watch — November 2026",
+        "content": "Standards watch — November 2026\n\nInformation, not legal advice.\n\n## New this month\n### Cybersecurity requirements for connected devices — https://regulator.example/cyber-2026\n**Issued by** — the Device Regulator; Final\n**What changes** — devices must ship without default passwords and get security updates for five years.\n**Who it affects** — \"manufacturers and importers of connected consumer devices\"\n**Takes effect** — 1 March 2027\na report says 1 January 2027 (https://trade.example/cyber-rules)\n\n\n## Checked\n- the Device Regulator: 1 search, 2 results, 2 new"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 item: 1 final.\n\n## Report\n- ran 1 search, read 2 pages\n\n## Carry forward\n- https://regulator.example/cyber-2026"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Standards watch",
+      "contains": [
+       "1 March 2027",
+       "a report says 1 January 2027"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-watch-without-the-disclaimer-fails",
+   "about": "The harness's own check: a document with no not-legal-advice line and no dates does not deliver, even after its repair pass.",
+   "inputs": {
+    "field": "connected consumer devices",
+    "bodies": [
+     "Device Regulator"
+    ]
+   },
+   "world": {
+    "web": {
+     "https://regulator.example/cyber-2026": "Device Regulator — Final rule, published 12 Oct 2026. Connected devices must ship without default passwords and receive security updates for five years. Applies to manufacturers and importers of connected consumer devices. Takes effect 1 March 2027.",
+     "https://regulator.example/consult-refurb": "Device Regulator — Consultation, opened 20 Oct 2026. Proposes a 'refurbished' label and a twelve-month minimum warranty. Affects sellers of refurbished devices. Comments close 15 January 2027.",
+     "https://regulator.example/draft-batteries": "Device Regulator — Draft standard for replaceable batteries, 25 Oct 2026. Would require user-replaceable batteries in phones. Affects phone manufacturers. Proposed date: 2028, not yet adopted."
+    },
+    "search": {
+     "device regulator": [
+      {
+       "title": "Cybersecurity requirements for connected devices",
+       "url": "https://regulator.example/cyber-2026",
+       "snippet": "Final rule."
+      },
+      {
+       "title": "Consultation: labelling of refurbished devices",
+       "url": "https://regulator.example/consult-refurb",
+       "snippet": "Consultation."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Device Regulator connected consumer devices new regulation OR standard OR guidance OR consultation",
+        "time_filter": "month"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Standards watch — November 2026",
+        "content": "There is a new rule about passwords."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 item.\n\n## Report\n- wrote it\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "1 item."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "document": {
+      "title": "Standards watch",
+      "lacks": [
+       "you must"
+      ]
+     }
+    }
+   ]
+  }
+ ]
+}

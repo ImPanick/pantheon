@@ -1,0 +1,1433 @@
+{
+ "cases": [
+  {
+   "id": "a-term-climbs-eight-places",
+   "about": "The www. address counts as the site: it is 6th, up from 14th, and named as the biggest move with the second page noted; the other term is still not in the top 30.",
+   "inputs": {
+    "site": "https://mygarden.example",
+    "terms": [
+     "pruning old apple trees",
+     "winter mulch"
+    ]
+   },
+   "world": {
+    "search": {
+     "pruning old apple trees": [
+      {
+       "title": "Result 1",
+       "url": "https://other1.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 2",
+       "url": "https://other2.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 3",
+       "url": "https://other3.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 4",
+       "url": "https://other4.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 5",
+       "url": "https://other5.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 6",
+       "url": "https://www.mygarden.example/blog/old-orchard",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 7",
+       "url": "https://other6.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 8",
+       "url": "https://other7.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 9",
+       "url": "https://other8.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 10",
+       "url": "https://other9.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 11",
+       "url": "https://other10.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 12",
+       "url": "https://other11.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 13",
+       "url": "https://other12.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 14",
+       "url": "https://other13.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 15",
+       "url": "https://mygarden.example/blog/apples",
+       "snippet": "..."
+      }
+     ],
+     "winter mulch": [
+      {
+       "title": "Result 1",
+       "url": "https://other1.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 2",
+       "url": "https://other2.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 3",
+       "url": "https://other3.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 4",
+       "url": "https://other4.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 5",
+       "url": "https://other5.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 6",
+       "url": "https://other6.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 7",
+       "url": "https://other7.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 8",
+       "url": "https://other8.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 9",
+       "url": "https://other9.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 10",
+       "url": "https://other10.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 11",
+       "url": "https://other11.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 12",
+       "url": "https://other12.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 13",
+       "url": "https://other13.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 14",
+       "url": "https://other14.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 15",
+       "url": "https://other15.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 16",
+       "url": "https://other16.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 17",
+       "url": "https://other17.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 18",
+       "url": "https://other18.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 19",
+       "url": "https://other19.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 20",
+       "url": "https://other20.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 21",
+       "url": "https://other21.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 22",
+       "url": "https://other22.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 23",
+       "url": "https://other23.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 24",
+       "url": "https://other24.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 25",
+       "url": "https://other25.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 26",
+       "url": "https://other26.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 27",
+       "url": "https://other27.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 28",
+       "url": "https://other28.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 29",
+       "url": "https://other29.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 30",
+       "url": "https://other30.example/page",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "notebook": "- pruning old apple trees: 14\n- winter mulch: not in top 30",
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "pruning old apple trees",
+        "max_results": 30
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "winter mulch",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Biggest moves**\n- pruning old apple trees — 14 → 6 — https://www.mygarden.example/blog/old-orchard\n\n**All terms**\n- pruning old apple trees — 6 — last week 14 — up 8 — https://www.mygarden.example/blog/old-orchard (also at 15: https://mygarden.example/blog/apples)\n- winter mulch — not in top 30 — last week not in top 30 — no change\nPositions from a search tool are an indication, not what every person sees.\n\n## Report\n- searched 2 terms\n\n## Carry forward\n- pruning old apple trees: 6\n- winter mulch: not in top 30"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "14 → 6",
+      "also at 15",
+      "not in top 30",
+      "an indication"
+     ]
+    },
+    {
+     "notebook_contains": "pruning old apple trees: 6"
+    }
+   ]
+  },
+  {
+   "id": "the-first-week",
+   "about": "Nothing in the notebook: every change is first check, and no move is invented.",
+   "inputs": {
+    "site": "https://mygarden.example",
+    "terms": [
+     "pruning old apple trees",
+     "winter mulch"
+    ]
+   },
+   "world": {
+    "search": {
+     "pruning old apple trees": [
+      {
+       "title": "Result 1",
+       "url": "https://other1.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 2",
+       "url": "https://other2.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 3",
+       "url": "https://other3.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 4",
+       "url": "https://other4.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 5",
+       "url": "https://other5.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 6",
+       "url": "https://www.mygarden.example/blog/old-orchard",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 7",
+       "url": "https://other6.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 8",
+       "url": "https://other7.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 9",
+       "url": "https://other8.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 10",
+       "url": "https://other9.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 11",
+       "url": "https://other10.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 12",
+       "url": "https://other11.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 13",
+       "url": "https://other12.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 14",
+       "url": "https://other13.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 15",
+       "url": "https://mygarden.example/blog/apples",
+       "snippet": "..."
+      }
+     ],
+     "winter mulch": [
+      {
+       "title": "Result 1",
+       "url": "https://other1.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 2",
+       "url": "https://other2.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 3",
+       "url": "https://other3.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 4",
+       "url": "https://other4.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 5",
+       "url": "https://other5.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 6",
+       "url": "https://other6.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 7",
+       "url": "https://other7.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 8",
+       "url": "https://other8.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 9",
+       "url": "https://other9.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 10",
+       "url": "https://other10.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 11",
+       "url": "https://other11.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 12",
+       "url": "https://other12.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 13",
+       "url": "https://other13.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 14",
+       "url": "https://other14.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 15",
+       "url": "https://other15.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 16",
+       "url": "https://other16.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 17",
+       "url": "https://other17.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 18",
+       "url": "https://other18.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 19",
+       "url": "https://other19.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 20",
+       "url": "https://other20.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 21",
+       "url": "https://other21.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 22",
+       "url": "https://other22.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 23",
+       "url": "https://other23.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 24",
+       "url": "https://other24.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 25",
+       "url": "https://other25.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 26",
+       "url": "https://other26.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 27",
+       "url": "https://other27.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 28",
+       "url": "https://other28.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 29",
+       "url": "https://other29.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 30",
+       "url": "https://other30.example/page",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "pruning old apple trees",
+        "max_results": 30
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "winter mulch",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Biggest moves**\n- no big moves — first check\n\n**All terms**\n- pruning old apple trees — 6 — first check — https://www.mygarden.example/blog/old-orchard\n- winter mulch — not in top 30 — first check\nPositions from a search tool are an indication, not what every person sees.\n\n## Report\n- searched 2 terms\n\n## Carry forward\n- pruning old apple trees: 6\n- winter mulch: not in top 30"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "first check"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "up 8",
+      "14 →"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-big-drop-to-check-again",
+   "about": "Last week 2nd, this week not in the top 30: reported, with a note to check again before acting.",
+   "inputs": {
+    "site": "https://mygarden.example",
+    "terms": [
+     "winter mulch"
+    ]
+   },
+   "world": {
+    "search": {
+     "pruning old apple trees": [
+      {
+       "title": "Result 1",
+       "url": "https://other1.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 2",
+       "url": "https://other2.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 3",
+       "url": "https://other3.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 4",
+       "url": "https://other4.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 5",
+       "url": "https://other5.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 6",
+       "url": "https://www.mygarden.example/blog/old-orchard",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 7",
+       "url": "https://other6.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 8",
+       "url": "https://other7.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 9",
+       "url": "https://other8.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 10",
+       "url": "https://other9.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 11",
+       "url": "https://other10.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 12",
+       "url": "https://other11.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 13",
+       "url": "https://other12.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 14",
+       "url": "https://other13.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 15",
+       "url": "https://mygarden.example/blog/apples",
+       "snippet": "..."
+      }
+     ],
+     "winter mulch": [
+      {
+       "title": "Result 1",
+       "url": "https://other1.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 2",
+       "url": "https://other2.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 3",
+       "url": "https://other3.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 4",
+       "url": "https://other4.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 5",
+       "url": "https://other5.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 6",
+       "url": "https://other6.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 7",
+       "url": "https://other7.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 8",
+       "url": "https://other8.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 9",
+       "url": "https://other9.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 10",
+       "url": "https://other10.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 11",
+       "url": "https://other11.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 12",
+       "url": "https://other12.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 13",
+       "url": "https://other13.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 14",
+       "url": "https://other14.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 15",
+       "url": "https://other15.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 16",
+       "url": "https://other16.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 17",
+       "url": "https://other17.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 18",
+       "url": "https://other18.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 19",
+       "url": "https://other19.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 20",
+       "url": "https://other20.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 21",
+       "url": "https://other21.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 22",
+       "url": "https://other22.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 23",
+       "url": "https://other23.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 24",
+       "url": "https://other24.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 25",
+       "url": "https://other25.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 26",
+       "url": "https://other26.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 27",
+       "url": "https://other27.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 28",
+       "url": "https://other28.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 29",
+       "url": "https://other29.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 30",
+       "url": "https://other30.example/page",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "notebook": "- winter mulch: 2",
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "winter mulch",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Biggest moves**\n- winter mulch — 2 → not in top 30 (a big drop — check again next week before acting)\n\n**All terms**\n- winter mulch — not in top 30 — last week 2 — dropped out\nPositions from a search tool are an indication, not what every person sees.\n\n## Report\n- searched 1 term\n\n## Carry forward\n- winter mulch: not in top 30"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "check again next week"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-search-that-finds-nothing",
+   "about": "A term's search returns no results at all: it says so, and last week's position is not repeated as this week's.",
+   "inputs": {
+    "site": "https://mygarden.example",
+    "terms": [
+     "quince espalier rutland"
+    ]
+   },
+   "world": {},
+   "notebook": "- quince espalier rutland: 4",
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "quince espalier rutland",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Biggest moves**\n- no big moves\n\n**All terms**\n- quince espalier rutland — could not search: no results came back — last week 4\nPositions from a search tool are an indication, not what every person sees.\n\n## Report\n- searched 1 term; no results\n\n## Carry forward\n- quince espalier rutland: 4 (not re-checked)"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "could not search"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "quince espalier rutland — 4 —"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-visits-a-page",
+   "about": "A model that opens its own result to check it is refused — it has no fetch tool — and the report still comes from the search alone.",
+   "inputs": {
+    "site": "https://mygarden.example",
+    "terms": [
+     "pruning old apple trees",
+     "winter mulch"
+    ]
+   },
+   "world": {
+    "search": {
+     "pruning old apple trees": [
+      {
+       "title": "Result 1",
+       "url": "https://other1.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 2",
+       "url": "https://other2.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 3",
+       "url": "https://other3.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 4",
+       "url": "https://other4.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 5",
+       "url": "https://other5.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 6",
+       "url": "https://www.mygarden.example/blog/old-orchard",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 7",
+       "url": "https://other6.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 8",
+       "url": "https://other7.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 9",
+       "url": "https://other8.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 10",
+       "url": "https://other9.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 11",
+       "url": "https://other10.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 12",
+       "url": "https://other11.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 13",
+       "url": "https://other12.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 14",
+       "url": "https://other13.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 15",
+       "url": "https://mygarden.example/blog/apples",
+       "snippet": "..."
+      }
+     ],
+     "winter mulch": [
+      {
+       "title": "Result 1",
+       "url": "https://other1.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 2",
+       "url": "https://other2.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 3",
+       "url": "https://other3.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 4",
+       "url": "https://other4.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 5",
+       "url": "https://other5.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 6",
+       "url": "https://other6.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 7",
+       "url": "https://other7.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 8",
+       "url": "https://other8.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 9",
+       "url": "https://other9.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 10",
+       "url": "https://other10.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 11",
+       "url": "https://other11.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 12",
+       "url": "https://other12.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 13",
+       "url": "https://other13.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 14",
+       "url": "https://other14.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 15",
+       "url": "https://other15.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 16",
+       "url": "https://other16.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 17",
+       "url": "https://other17.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 18",
+       "url": "https://other18.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 19",
+       "url": "https://other19.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 20",
+       "url": "https://other20.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 21",
+       "url": "https://other21.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 22",
+       "url": "https://other22.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 23",
+       "url": "https://other23.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 24",
+       "url": "https://other24.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 25",
+       "url": "https://other25.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 26",
+       "url": "https://other26.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 27",
+       "url": "https://other27.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 28",
+       "url": "https://other28.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 29",
+       "url": "https://other29.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 30",
+       "url": "https://other30.example/page",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "notebook": "- pruning old apple trees: 14\n- winter mulch: not in top 30",
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "pruning old apple trees",
+        "max_results": 30
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "winter mulch",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://www.mygarden.example/blog/old-orchard"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Biggest moves**\n- pruning old apple trees — 14 → 6 — https://www.mygarden.example/blog/old-orchard\n\n**All terms**\n- pruning old apple trees — 6 — last week 14 — up 8 — https://www.mygarden.example/blog/old-orchard (also at 15: https://mygarden.example/blog/apples)\n- winter mulch — not in top 30 — last week not in top 30 — no change\nPositions from a search tool are an indication, not what every person sees.\n\n## Report\n- searched 2 terms\n\n## Carry forward\n- pruning old apple trees: 6\n- winter mulch: not in top 30"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "web_fetch"
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "positions-without-their-headings-fail",
+   "about": "The harness's own check: an answer without Biggest moves, All terms and the indication line does not deliver, even after its repair pass.",
+   "inputs": {
+    "site": "https://mygarden.example",
+    "terms": [
+     "pruning old apple trees",
+     "winter mulch"
+    ]
+   },
+   "world": {
+    "search": {
+     "pruning old apple trees": [
+      {
+       "title": "Result 1",
+       "url": "https://other1.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 2",
+       "url": "https://other2.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 3",
+       "url": "https://other3.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 4",
+       "url": "https://other4.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 5",
+       "url": "https://other5.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 6",
+       "url": "https://www.mygarden.example/blog/old-orchard",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 7",
+       "url": "https://other6.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 8",
+       "url": "https://other7.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 9",
+       "url": "https://other8.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 10",
+       "url": "https://other9.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 11",
+       "url": "https://other10.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 12",
+       "url": "https://other11.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 13",
+       "url": "https://other12.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 14",
+       "url": "https://other13.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 15",
+       "url": "https://mygarden.example/blog/apples",
+       "snippet": "..."
+      }
+     ],
+     "winter mulch": [
+      {
+       "title": "Result 1",
+       "url": "https://other1.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 2",
+       "url": "https://other2.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 3",
+       "url": "https://other3.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 4",
+       "url": "https://other4.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 5",
+       "url": "https://other5.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 6",
+       "url": "https://other6.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 7",
+       "url": "https://other7.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 8",
+       "url": "https://other8.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 9",
+       "url": "https://other9.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 10",
+       "url": "https://other10.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 11",
+       "url": "https://other11.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 12",
+       "url": "https://other12.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 13",
+       "url": "https://other13.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 14",
+       "url": "https://other14.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 15",
+       "url": "https://other15.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 16",
+       "url": "https://other16.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 17",
+       "url": "https://other17.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 18",
+       "url": "https://other18.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 19",
+       "url": "https://other19.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 20",
+       "url": "https://other20.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 21",
+       "url": "https://other21.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 22",
+       "url": "https://other22.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 23",
+       "url": "https://other23.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 24",
+       "url": "https://other24.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 25",
+       "url": "https://other25.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 26",
+       "url": "https://other26.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 27",
+       "url": "https://other27.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 28",
+       "url": "https://other28.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 29",
+       "url": "https://other29.example/page",
+       "snippet": "..."
+      },
+      {
+       "title": "Result 30",
+       "url": "https://other30.example/page",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "pruning old apple trees",
+        "max_results": 30
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "winter mulch",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "say": "You are 6th.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "6th."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

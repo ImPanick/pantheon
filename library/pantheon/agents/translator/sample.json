@@ -1,0 +1,20 @@
+{
+ "case": "a-reminder-into-german-with-the-glossary",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Invoice reminder\" and wrote \"Translation — Invoice reminder — German\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Translation”",
+   "ok": true,
+   "detail": "“Translation — Invoice reminder — German” is there."
+  }
+ ],
+ "answer": "Translated 2 sentences into German; no uncertain words.\n\n## Report\n- read \"Invoice reminder\" and wrote \"Translation — Invoice reminder — German\"\n\n## Carry forward\n- invoice = Rechnung\n- customer portal = Kundenportal\n- due = fällig"
+}

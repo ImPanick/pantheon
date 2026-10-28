@@ -1,0 +1,915 @@
+{
+ "cases": [
+  {
+   "id": "two-questions-reach-three",
+   "about": "Password resets asked by four people (one asking twice counts once) are answered from the help document, with where it came from; shipping to Canada, asked three times with no answer anywhere, is listed as not answered — and nobody who asked is named.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "e1",
+      "from": "kim@clients.example",
+      "subject": "Password",
+      "body": "How do I reset my password?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e2",
+      "from": "lee@clients.example",
+      "subject": "Locked out",
+      "body": "I forgot my password, how do I get back in?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e3",
+      "from": "max@clients.example",
+      "subject": "Login",
+      "body": "How do I reset my password please?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e4",
+      "from": "kim@clients.example",
+      "subject": "Re: Password",
+      "body": "Sorry, how do I reset my password again?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e5",
+      "from": "noor@clients.example",
+      "subject": "Login help",
+      "body": "How do I change my password?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e6",
+      "from": "ali@clients.example",
+      "subject": "Shipping",
+      "body": "Is there shipping to Canada?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e7",
+      "from": "bo@clients.example",
+      "subject": "Canada",
+      "body": "Is there delivery to Canada?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e8",
+      "from": "cy@clients.example",
+      "subject": "Order",
+      "body": "Is there a way to ship to Canada?",
+      "date": "2026-11-03"
+     }
+    ],
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Help — accounts",
+      "content": "Reset your password: go to Settings → Account → Reset password. The link in the email lasts one hour."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "how do I",
+        "max_results": 50
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "where can I",
+        "max_results": 50
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "is there",
+        "max_results": 50
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "e1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "e2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "e3"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "e4"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "e5"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "e6"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "e7"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "e8"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "how do I"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "where can I"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "is there"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "password"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "FAQ — 5 Nov",
+        "content": "FAQ — 5 Nov\n\n## Answered\n### How do I reset my password?\nAsked 4 times.\nGo to Settings → Account → Reset password; the link in the email lasts one hour. — from \"Help — accounts\"\n\n## Not answered yet\n- Do you ship to Canada? — asked 3 times; no answer found\n\n## Checked\n- mail: 3 searches\n- chats: 3 searches, no chats found\n- documents: \"Help — accounts\" read"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 answered, 1 not answered yet.\n\n## Report\n- searched mail and chats, read 1 document; wrote \"FAQ — 5 Nov\"\n\n## Carry forward\n- How do I reset my password? — 4\n- Do you ship to Canada? — 3\n- How do I change my password? — 1"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "FAQ",
+      "contains": [
+       "Asked 4 times",
+       "Settings → Account → Reset password",
+       "from \"Help — accounts\"",
+       "Do you ship to Canada? — asked 3 times"
+      ],
+      "lacks": [
+       "kim@",
+       "lee@",
+       "clients.example"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "Do you ship to Canada? — 3"
+    }
+   ]
+  },
+  {
+   "id": "earlier-weeks-count",
+   "about": "This week Canada is asked once; the notebook carries two from earlier weeks, so it reaches three and is listed.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "e6",
+      "from": "ali@clients.example",
+      "subject": "Shipping",
+      "body": "Is there shipping to Canada?",
+      "date": "2026-11-03"
+     }
+    ]
+   },
+   "notebook": "- Do you ship to Canada? — 2",
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "how do I",
+        "max_results": 50
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "where can I",
+        "max_results": 50
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "is there",
+        "max_results": 50
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "how do I"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "where can I"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "is there"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "FAQ — 5 Nov",
+        "content": "FAQ — 5 Nov\n\n## Answered\nnone yet\n\n## Not answered yet\n- Do you ship to Canada? — asked 3 times (2 in earlier weeks); no answer found\n\n## Checked\n- mail: 3 searches, 1 question\n- chats: 3 searches, no chats found"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 answered, 1 not answered yet.\n\n## Report\n- searched mail and chats\n\n## Carry forward\n- Do you ship to Canada? — 3"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "FAQ",
+      "contains": [
+       "asked 3 times"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "Canada? — 3"
+    }
+   ]
+  },
+  {
+   "id": "answers-that-disagree-are-not-picked",
+   "about": "The returns policy says 30 days and the person's reply said 14: the question goes under Not answered yet with both and where each came from.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "r1",
+      "from": "a@clients.example",
+      "subject": "Returns",
+      "body": "Is there a time limit for returns?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "r2",
+      "from": "b@clients.example",
+      "subject": "Returns",
+      "body": "Is there a deadline to return things?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "r3",
+      "from": "c@clients.example",
+      "subject": "Return",
+      "body": "Is there a limit on returns? Re: you said 14 days last time",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "r4",
+      "from": "me@example.com",
+      "subject": "Re: Returns",
+      "body": "Returns are accepted within 14 days.",
+      "date": "2026-11-03"
+     }
+    ],
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Returns policy",
+      "content": "Returns are accepted within 30 days of delivery."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "how do I",
+        "max_results": 50
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "where can I",
+        "max_results": 50
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "is there",
+        "max_results": 50
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "r2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "r3"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "r4"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "how do I"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "where can I"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "is there"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "returns"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "FAQ — 5 Nov",
+        "content": "FAQ — 5 Nov\n\n## Answered\nnone yet\n\n## Not answered yet\n- Is there a time limit for returns? — asked 3 times; answers disagree: 30 days (\"Returns policy\") vs 14 days (your reply of 3 Nov) — check which is current\n\n## Checked\n- mail: 3 searches, 3 questions\n- chats: 3 searches, no chats found\n- documents: \"Returns policy\" read"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 answered, 1 not answered yet (answers disagree).\n\n## Report\n- searched mail and chats, read 1 document\n\n## Carry forward\n- Is there a time limit for returns? — 3"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "FAQ",
+      "contains": [
+       "answers disagree",
+       "30 days",
+       "14 days"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-reaches-three",
+   "about": "A quiet week: one question asked once. Answered and Not answered yet say none yet, the count is carried forward, and no answer is written.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "e1",
+      "from": "kim@clients.example",
+      "subject": "Password",
+      "body": "How do I reset my password?",
+      "date": "2026-11-03"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "how do I",
+        "max_results": 50
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "where can I",
+        "max_results": 50
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "is there",
+        "max_results": 50
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "how do I"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "where can I"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "is there"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "FAQ — 5 Nov",
+        "content": "FAQ — 5 Nov\n\n## Answered\nnone yet\n\n## Not answered yet\nnone yet\n\n## Checked\n- mail: 3 searches, 1 question\n- chats: 3 searches, no chats found"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 answered, 0 not answered yet.\n\n## Report\n- searched mail and chats; nothing asked three times\n\n## Carry forward\n- How do I reset my password? — 1"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "FAQ",
+      "contains": [
+       "none yet"
+      ],
+      "lacks": [
+       "Settings →"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "reset my password? — 1"
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-a-document",
+   "about": "Its table says destructive: never. A model that deletes the help document after quoting it is refused; the document survives and the FAQ goes out.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "e1",
+      "from": "kim@clients.example",
+      "subject": "Password",
+      "body": "How do I reset my password?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e2",
+      "from": "lee@clients.example",
+      "subject": "Locked out",
+      "body": "I forgot my password, how do I get back in?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e3",
+      "from": "max@clients.example",
+      "subject": "Login",
+      "body": "How do I reset my password please?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e4",
+      "from": "kim@clients.example",
+      "subject": "Re: Password",
+      "body": "Sorry, how do I reset my password again?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e5",
+      "from": "noor@clients.example",
+      "subject": "Login help",
+      "body": "How do I change my password?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e6",
+      "from": "ali@clients.example",
+      "subject": "Shipping",
+      "body": "Is there shipping to Canada?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e7",
+      "from": "bo@clients.example",
+      "subject": "Canada",
+      "body": "Is there delivery to Canada?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e8",
+      "from": "cy@clients.example",
+      "subject": "Order",
+      "body": "Is there a way to ship to Canada?",
+      "date": "2026-11-03"
+     }
+    ],
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Help — accounts",
+      "content": "Reset your password: go to Settings → Account → Reset password. The link in the email lasts one hour."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "how do I",
+        "max_results": 50
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "where can I",
+        "max_results": 50
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "is there",
+        "max_results": 50
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "how do I"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "where can I"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "is there"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "password"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "FAQ — 5 Nov",
+        "content": "FAQ — 5 Nov\n\n## Answered\n### How do I reset my password?\nAsked 4 times.\nGo to Settings → Account → Reset password; the link in the email lasts one hour. — from \"Help — accounts\"\n\n## Not answered yet\n- Do you ship to Canada? — asked 3 times; no answer found\n\n## Checked\n- mail: 3 searches\n- chats: 3 searches, no chats found\n- documents: \"Help — accounts\" read"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 answered, 1 not answered yet.\n\n## Report\n- a delete was refused\n\n## Carry forward\n- How do I reset my password? — 4\n- Do you ship to Canada? — 3\n- How do I change my password? — 1"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Help — accounts",
+      "contains": [
+       "Reset password"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-faq-without-its-headings-fails",
+   "about": "The harness's own check: a FAQ with no Answered, Not answered yet or Checked does not deliver, even after its repair pass.",
+   "inputs": {},
+   "world": {
+    "emails": [
+     {
+      "id": "e1",
+      "from": "kim@clients.example",
+      "subject": "Password",
+      "body": "How do I reset my password?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e2",
+      "from": "lee@clients.example",
+      "subject": "Locked out",
+      "body": "I forgot my password, how do I get back in?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e3",
+      "from": "max@clients.example",
+      "subject": "Login",
+      "body": "How do I reset my password please?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e4",
+      "from": "kim@clients.example",
+      "subject": "Re: Password",
+      "body": "Sorry, how do I reset my password again?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e5",
+      "from": "noor@clients.example",
+      "subject": "Login help",
+      "body": "How do I change my password?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e6",
+      "from": "ali@clients.example",
+      "subject": "Shipping",
+      "body": "Is there shipping to Canada?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e7",
+      "from": "bo@clients.example",
+      "subject": "Canada",
+      "body": "Is there delivery to Canada?",
+      "date": "2026-11-03"
+     },
+     {
+      "id": "e8",
+      "from": "cy@clients.example",
+      "subject": "Order",
+      "body": "Is there a way to ship to Canada?",
+      "date": "2026-11-03"
+     }
+    ],
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Help — accounts",
+      "content": "Reset your password: go to Settings → Account → Reset password. The link in the email lasts one hour."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "how do I",
+        "max_results": 50
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "where can I",
+        "max_results": 50
+       }
+      ],
+      [
+       "search_emails",
+       {
+        "query": "is there",
+        "max_results": 50
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "how do I"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "where can I"
+       }
+      ],
+      [
+       "search_chats",
+       {
+        "query": "is there"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "FAQ — 5 Nov",
+        "content": "People ask about passwords."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

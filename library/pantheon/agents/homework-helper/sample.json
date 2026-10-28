@@ -1,0 +1,18 @@
+{
+ "case": "a-linear-equation-gets-a-ladder-not-the-answer",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- wrote \"Hints — solve 3x + 5 = 20\"",
+ "read": [],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Hints”",
+   "ok": true,
+   "detail": "“Hints — solve 3x + 5 = 20” is there."
+  }
+ ],
+ "answer": "Hints ready: solving a linear equation by undoing each step.\n\n## Report\n- wrote \"Hints — solve 3x + 5 = 20\""
+}

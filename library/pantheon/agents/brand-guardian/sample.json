@@ -1,0 +1,22 @@
+{
+ "case": "three-departures-on-a-page-and-a-document",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the guide, 2 pages and 1 document; wrote \"Brand check — 6 Nov\"",
+ "read": [
+  "manage_documents",
+  "web_fetch"
+ ],
+ "wrote": [
+  "manage_documents",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Brand check”",
+   "ok": true,
+   "detail": "“Brand check — 6 Nov” is there."
+  }
+ ],
+ "answer": "3 departures, all new.\n\n## Report\n- read the guide, 2 pages and 1 document; wrote \"Brand check — 6 Nov\"\n\n## Carry forward\n- 6 Nov: pricing page \"BRIGHTLY plans\"\n- 6 Nov: pricing page \"cheap!\"\n- 6 Nov: \"Autumn newsletter\" \"Brightly's app\""
+}

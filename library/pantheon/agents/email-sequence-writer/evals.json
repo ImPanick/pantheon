@@ -1,0 +1,222 @@
+{
+ "cases": [
+  {
+   "id": "a-three-email-trial-sequence",
+   "about": "Three emails, one job each, spaced through the trial, each with three subject lines, one call to action worded the same throughout, the price from the goal, and an unsubscribe line.",
+   "inputs": {
+    "goal": "Turn new trial users of our invoicing app into paying customers (£9 a month) within 14 days.",
+    "count": 3
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Email sequence — trial users to paying customers",
+        "content": "Email sequence — trial users to paying customers\n\n## Sends\n| Email | Day | Job |\n|---|---|---|\n| 1 | 0 | welcome and first invoice |\n| 2 | 4 | a tip: reminders |\n| 3 | 12 | the offer, before the trial ends |\n\n## Email 1\nSubject lines: Your first invoice in 2 minutes / Welcome to your trial / Start here\nPreview: Welcome to your 14-day trial.\nWelcome to your 14-day trial. Send your first invoice today — it takes two minutes.\nCall to action: Send your first invoice\n[unsubscribe link]\n\n## Email 2\nSubject lines: Get paid faster with reminders / A tip for late payers / Stop chasing invoices\nPreview: Turn on automatic reminders and late payers get a polite nudge without you.\nTurn on automatic reminders and late payers get a polite nudge without you.\nCall to action: Send your first invoice\n[unsubscribe link]\n\n## Email 3\nSubject lines: Keep your invoices going / Your trial ends in 2 days / Stay on for £9 a month\nPreview: Your trial ends on day 14.\nYour trial ends on day 14. Stay on for £9 a month and keep everything you've set up.\nCall to action: Send your first invoice\n[unsubscribe link]"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 emails, on days 0, 4 and 12.\n\n## Report\n- wrote \"Email sequence — trial users to paying customers\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Email sequence",
+      "contains": [
+       "| 3 | 12 |",
+       "Email 3",
+       "£9 a month",
+       "[unsubscribe link]"
+      ],
+      "lacks": [
+       "only 3 left",
+       "Last chance!!",
+       "RE:"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-count-means-three",
+   "about": "No number given: three emails, and the answer says so.",
+   "inputs": {
+    "goal": "Turn new trial users of our invoicing app into paying customers (£9 a month) within 14 days."
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Email sequence — trial users to paying customers",
+        "content": "Email sequence — trial users to paying customers\n\n## Sends\n| Email | Day | Job |\n|---|---|---|\n| 1 | 0 | welcome and first invoice |\n| 2 | 4 | a tip: reminders |\n| 3 | 12 | the offer, before the trial ends |\n\n## Email 1\nSubject lines: Your first invoice in 2 minutes / Welcome to your trial / Start here\nPreview: Welcome to your 14-day trial.\nWelcome to your 14-day trial. Send your first invoice today — it takes two minutes.\nCall to action: Send your first invoice\n[unsubscribe link]\n\n## Email 2\nSubject lines: Get paid faster with reminders / A tip for late payers / Stop chasing invoices\nPreview: Turn on automatic reminders and late payers get a polite nudge without you.\nTurn on automatic reminders and late payers get a polite nudge without you.\nCall to action: Send your first invoice\n[unsubscribe link]\n\n## Email 3\nSubject lines: Keep your invoices going / Your trial ends in 2 days / Stay on for £9 a month\nPreview: Your trial ends on day 14.\nYour trial ends on day 14. Stay on for £9 a month and keep everything you've set up.\nCall to action: Send your first invoice\n[unsubscribe link]"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 emails (no number was given), on days 0, 4 and 12.\n\n## Report\n- wrote \"Email sequence — trial users to paying customers\""
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "no number was given"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-testimonial-is-never-invented",
+   "about": "The goal gives no customer quote: the proof email says what the app does and marks any testimonial for the person to supply, never inventing one.",
+   "inputs": {
+    "goal": "Turn new trial users of our invoicing app into paying customers (£9 a month) within 14 days.",
+    "count": 3
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Email sequence — trial users to paying customers",
+        "content": "Email sequence — trial users to paying customers\n\n## Sends\n| Email | Day | Job |\n|---|---|---|\n| 1 | 0 | welcome and first invoice |\n| 2 | 4 | a tip: reminders |\n| 3 | 12 | the offer, before the trial ends |\n\n## Email 1\nSubject lines: Your first invoice in 2 minutes / Welcome to your trial / Start here\nPreview: Welcome to your 14-day trial.\nWelcome to your 14-day trial. Send your first invoice today — it takes two minutes.\nCall to action: Send your first invoice\n[unsubscribe link]\n\n## Email 2\nSubject lines: Get paid faster with reminders / A tip for late payers / Stop chasing invoices\nPreview: Turn on automatic reminders and late payers get a polite nudge without you. [check: add a real customer quote, if you have one]\nTurn on automatic reminders and late payers get a polite nudge without you. [check: add a real customer quote, if you have one]\nCall to action: Send your first invoice\n[unsubscribe link]\n\n## Email 3\nSubject lines: Keep your invoices going / Your trial ends in 2 days / Stay on for £9 a month\nPreview: Your trial ends on day 14.\nYour trial ends on day 14. Stay on for £9 a month and keep everything you've set up.\nCall to action: Send your first invoice\n[unsubscribe link]"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 emails, on days 0, 4 and 12.\n\n## Report\n- wrote \"Email sequence — trial users to paying customers\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Email sequence",
+      "contains": [
+       "[check: add a real customer quote"
+      ],
+      "lacks": [
+       "\"This app changed",
+       "— Sarah"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "more-than-ten-asked-for",
+   "about": "Fifteen asked for: ten are written, and the answer says why.",
+   "inputs": {
+    "goal": "Turn new trial users of our invoicing app into paying customers (£9 a month) within 14 days.",
+    "count": 15
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Email sequence — trial users to paying customers",
+        "content": "Email sequence — trial users to paying customers\n\n## Sends\n| Email | Day | Job |\n|---|---|---|\n| 1 | 0 | step 1 |\n| 2 | 2 | step 2 |\n| 3 | 4 | step 3 |\n| 4 | 6 | step 4 |\n| 5 | 8 | step 5 |\n| 6 | 10 | step 6 |\n| 7 | 12 | step 7 |\n| 8 | 14 | step 8 |\n| 9 | 16 | step 9 |\n| 10 | 18 | step 10 |\n\n## Email 1\nSubject lines: Step 1 / Day 0 / Tip 1\nPreview: Tip 1 for your trial.\nTip 1 for your trial.\nCall to action: Send your first invoice\n[unsubscribe link]\n\n## Email 2\nSubject lines: Step 2 / Day 2 / Tip 2\nPreview: Tip 2 for your trial.\nTip 2 for your trial.\nCall to action: Send your first invoice\n[unsubscribe link]\n\n## Email 3\nSubject lines: Step 3 / Day 4 / Tip 3\nPreview: Tip 3 for your trial.\nTip 3 for your trial.\nCall to action: Send your first invoice\n[unsubscribe link]\n\n## Email 4\nSubject lines: Step 4 / Day 6 / Tip 4\nPreview: Tip 4 for your trial.\nTip 4 for your trial.\nCall to action: Send your first invoice\n[unsubscribe link]\n\n## Email 5\nSubject lines: Step 5 / Day 8 / Tip 5\nPreview: Tip 5 for your trial.\nTip 5 for your trial.\nCall to action: Send your first invoice\n[unsubscribe link]\n\n## Email 6\nSubject lines: Step 6 / Day 10 / Tip 6\nPreview: Tip 6 for your trial.\nTip 6 for your trial.\nCall to action: Send your first invoice\n[unsubscribe link]\n\n## Email 7\nSubject lines: Step 7 / Day 12 / Tip 7\nPreview: Tip 7 for your trial.\nTip 7 for your trial.\nCall to action: Send your first invoice\n[unsubscribe link]\n\n## Email 8\nSubject lines: Step 8 / Day 14 / Tip 8\nPreview: Tip 8 for your trial.\nTip 8 for your trial.\nCall to action: Send your first invoice\n[unsubscribe link]\n\n## Email 9\nSubject lines: Step 9 / Day 16 / Tip 9\nPreview: Tip 9 for your trial.\nTip 9 for your trial.\nCall to action: Send your first invoice\n[unsubscribe link]\n\n## Email 10\nSubject lines: Step 10 / Day 18 / Tip 10\nPreview: Tip 10 for your trial.\nTip 10 for your trial.\nCall to action: Send your first invoice\n[unsubscribe link]"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "10 emails (15 were asked for: past ten, people stop opening), every two days.\n\n## Report\n- wrote \"Email sequence — trial users to paying customers\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Email sequence",
+      "contains": [
+       "Email 10"
+      ],
+      "lacks": [
+       "Email 11"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "past ten, people stop opening"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-goal-that-contradicts-itself",
+   "about": "\"Evergreen\" and \"ends Friday\": the sequence is written evergreen and the date is flagged to check.",
+   "inputs": {
+    "goal": "An evergreen welcome sequence for subscribers — the launch discount ends Friday.",
+    "count": 2
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Email sequence — welcome subscribers",
+        "content": "Email sequence — welcome subscribers\n\n## Sends\n| Email | Day | Job |\n|---|---|---|\n| 1 | 0 | welcome |\n| 2 | 3 | the discount |\n\n## Email 1\nSubject lines: Welcome / Hello / You're in\nPreview: Welcome aboard.\nWelcome aboard.\nCall to action: Read the first issue\n[unsubscribe link]\n\n## Email 2\nSubject lines: A thank-you discount / For new readers / A small gift\nPreview: Here is a discount for new readers.\nHere is a discount for new readers. [check: the goal says it ends Friday, but an evergreen sequence has no fixed Friday]\nCall to action: Read the first issue\n[unsubscribe link]"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 emails, on days 0 and 3; the Friday deadline is flagged to check.\n\n## Report\n- wrote the sequence"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Email sequence",
+      "contains": [
+       "[check: the goal says it ends Friday"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-sequence-without-its-parts-fails",
+   "about": "The harness's own check: a document with no Sends, Email 1, subject lines, call to action or unsubscribe line does not deliver, even after its repair pass.",
+   "inputs": {
+    "goal": "Turn new trial users of our invoicing app into paying customers (£9 a month) within 14 days.",
+    "count": 3
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Email sequence — trial users to paying customers",
+        "content": "Email them three times."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

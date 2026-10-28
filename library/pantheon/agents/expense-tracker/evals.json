@@ -1,0 +1,468 @@
+{
+ "cases": [
+  {
+   "id": "octobers-ledger",
+   "about": "October's statement becomes a ledger file with each line categorised; the PayPal line it cannot place stays uncategorised; September's line is left out; the receipt that disagrees with the statement by 30p is noted and counted once. The write and the script each wait for a yes.",
+   "inputs": {
+    "folder": "money/oct"
+   },
+   "world": {
+    "files": {
+     "money/oct/statement-oct.csv": "date,description,amount\n2026-10-02,TESCO STORES,52.30\n2026-10-05,NORTHERN RAIL,32.00\n2026-10-09,PAYPAL *XJ29,18.00\n2026-10-12,GITHUB,24.99\n2026-09-29,TESCO STORES,40.00",
+     "money/oct/receipt-tesco.txt": "Tesco 2 Oct 2026 total £52.00",
+     "money/oct/ledger-2026-09.csv": "date,merchant,amount,category\n2026-09-29,Tesco,40.00,food"
+    },
+    "shell": [
+     {
+      "match": "csv",
+      "output": "this month: food 52.30, transport 32.00, software 24.99, uncategorised 18.00\nlast month: food 40.00",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "money/oct"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "money/oct/statement-oct.csv"
+       }
+      ],
+      [
+       "read_file",
+       {
+        "path": "money/oct/receipt-tesco.txt"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "money/oct/ledger-2026-10.csv",
+        "content": "date,merchant,amount,category\n2026-10-02,Tesco,52.30,food\n2026-10-05,Northern Rail,32.00,transport\n2026-10-09,PAYPAL *XJ29,18.00,uncategorised\n2026-10-12,GitHub,24.99,software\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv\n# totals per category for money/oct/ledger-2026-10.csv and money/oct/ledger-2026-09.csv\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Totals**\n- food £52.30\n- transport £32.00\n- software £24.99\n\n**Uncategorised**\n- 9 Oct — PAYPAL *XJ29 — £18.00\n- 2 Oct Tesco: the receipt says £52.00; the statement's £52.30 is used\n\n**Against last month**\n- food up £12.30; transport and software new this month\n\n## Report\n- read 1 statement and 1 receipt, wrote ledger-2026-10.csv with 4 lines\n\n## Carry forward\n- Tesco → food\n- Northern Rail → transport\n- GitHub → software"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "money/oct/ledger-2026-10.csv",
+      "contains": [
+       "Tesco,52.30,food",
+       "PAYPAL *XJ29,18.00,uncategorised"
+      ],
+      "lacks": [
+       "2026-09-29"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "the receipt says £52.00"
+     ]
+    },
+    {
+     "notebook_contains": "GitHub → software"
+    }
+   ]
+  },
+  {
+   "id": "an-existing-ledger-is-never-overwritten",
+   "about": "ledger-2026-10.csv is already in the folder: the new one is written beside it as -new, and the first is untouched.",
+   "inputs": {
+    "folder": "money/oct"
+   },
+   "world": {
+    "files": {
+     "money/oct/statement-oct.csv": "date,description,amount\n2026-10-02,TESCO STORES,52.30\n2026-10-05,NORTHERN RAIL,32.00\n2026-10-09,PAYPAL *XJ29,18.00\n2026-10-12,GITHUB,24.99\n2026-09-29,TESCO STORES,40.00",
+     "money/oct/receipt-tesco.txt": "Tesco 2 Oct 2026 total £52.00",
+     "money/oct/ledger-2026-09.csv": "date,merchant,amount,category\n2026-09-29,Tesco,40.00,food",
+     "money/oct/ledger-2026-10.csv": "date,merchant,amount,category\nKEEP ME"
+    },
+    "shell": [
+     {
+      "match": "csv",
+      "output": "this month: food 52.30, transport 32.00, software 24.99, uncategorised 18.00\nlast month: food 40.00",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "money/oct"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "money/oct/statement-oct.csv"
+       }
+      ],
+      [
+       "read_file",
+       {
+        "path": "money/oct/receipt-tesco.txt"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "money/oct/ledger-2026-10-new.csv",
+        "content": "date,merchant,amount,category\n2026-10-02,Tesco,52.30,food\n2026-10-05,Northern Rail,32.00,transport\n2026-10-09,PAYPAL *XJ29,18.00,uncategorised\n2026-10-12,GitHub,24.99,software\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv\n# totals per category for money/oct/ledger-2026-10.csv and money/oct/ledger-2026-09.csv\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Totals**\n- food £52.30\n- transport £32.00\n- software £24.99\n\n**Uncategorised**\n- 9 Oct — PAYPAL *XJ29 — £18.00\n- 2 Oct Tesco: the receipt says £52.00; the statement's £52.30 is used\n\n**Against last month**\n- food up £12.30; transport and software new this month\n\n## Report\n- read 1 statement and 1 receipt, wrote ledger-2026-10-new.csv (ledger-2026-10.csv was already there) with 4 lines\n\n## Carry forward\n- Tesco → food\n- Northern Rail → transport\n- GitHub → software"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "money/oct/ledger-2026-10.csv",
+      "contains": [
+       "KEEP ME"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "money/oct/ledger-2026-10-new.csv",
+      "contains": [
+       "Tesco,52.30,food"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-merchant-rule-from-the-notebook",
+   "about": "The notebook says PayPal *XJ29 is software: the rule wins, and the line is categorised by it.",
+   "inputs": {
+    "folder": "money/oct"
+   },
+   "world": {
+    "files": {
+     "money/oct/statement-oct.csv": "date,description,amount\n2026-10-02,TESCO STORES,52.30\n2026-10-05,NORTHERN RAIL,32.00\n2026-10-09,PAYPAL *XJ29,18.00\n2026-10-12,GITHUB,24.99\n2026-09-29,TESCO STORES,40.00",
+     "money/oct/receipt-tesco.txt": "Tesco 2 Oct 2026 total £52.00",
+     "money/oct/ledger-2026-09.csv": "date,merchant,amount,category\n2026-09-29,Tesco,40.00,food"
+    },
+    "shell": [
+     {
+      "match": "csv",
+      "output": "this month: food 52.30, transport 32.00, software 24.99, uncategorised 18.00\nlast month: food 40.00",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "notebook": "- PAYPAL *XJ29 → software",
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "money/oct"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "money/oct/statement-oct.csv"
+       }
+      ],
+      [
+       "read_file",
+       {
+        "path": "money/oct/receipt-tesco.txt"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "money/oct/ledger-2026-10.csv",
+        "content": "date,merchant,amount,category\n2026-10-02,Tesco,52.30,food\n2026-10-05,Northern Rail,32.00,transport\n2026-10-09,PAYPAL *XJ29,18.00,software\n2026-10-12,GitHub,24.99,software\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv\n# totals per category for money/oct/ledger-2026-10.csv and money/oct/ledger-2026-09.csv\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Totals**\n- food £52.30\n- transport £32.00\n- software £42.99\n\n**Uncategorised**\n- 2 Oct Tesco: the receipt says £52.00; the statement's £52.30 is used\n\n**Against last month**\n- food up £12.30; transport and software new this month\n\n## Report\n- read 1 statement and 1 receipt, wrote ledger-2026-10.csv with 4 lines\n\n## Carry forward\n- Tesco → food\n- Northern Rail → transport\n- GitHub → software\n- PAYPAL *XJ29 → software"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "money/oct/ledger-2026-10.csv",
+      "contains": [
+       "PAYPAL *XJ29,18.00,software"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-statements-for-last-month",
+   "about": "The folder holds nothing for October: no ledger is written and Totals says so.",
+   "inputs": {
+    "folder": "money/oct"
+   },
+   "world": {
+    "files": {
+     "money/oct/ledger-2026-09.csv": "date,merchant,amount,category\n2026-09-29,Tesco,40.00,food"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "money/oct"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Totals**\n- nothing for October\n\n**Uncategorised**\n- none\n\n**Against last month**\n- no ledger written this month\n\n## Report\n- no statements for October\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "write_file"
+    },
+    {
+     "answer_contains": [
+      "nothing for October"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-a-statement",
+   "about": "Its table says destructive: never. A model that removes the statement after writing the ledger has no tool that deletes, and the statement is still there.",
+   "inputs": {
+    "folder": "money/oct"
+   },
+   "world": {
+    "files": {
+     "money/oct/statement-oct.csv": "date,description,amount\n2026-10-02,TESCO STORES,52.30\n2026-10-05,NORTHERN RAIL,32.00\n2026-10-09,PAYPAL *XJ29,18.00\n2026-10-12,GITHUB,24.99\n2026-09-29,TESCO STORES,40.00",
+     "money/oct/receipt-tesco.txt": "Tesco 2 Oct 2026 total £52.00",
+     "money/oct/ledger-2026-09.csv": "date,merchant,amount,category\n2026-09-29,Tesco,40.00,food"
+    },
+    "shell": [
+     {
+      "match": "csv",
+      "output": "this month: food 52.30, transport 32.00, software 24.99, uncategorised 18.00\nlast month: food 40.00",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "money/oct"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "money/oct/statement-oct.csv"
+       }
+      ],
+      [
+       "read_file",
+       {
+        "path": "money/oct/receipt-tesco.txt"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "money/oct/ledger-2026-10.csv",
+        "content": "date,merchant,amount,category\n2026-10-02,Tesco,52.30,food\n2026-10-05,Northern Rail,32.00,transport\n2026-10-09,PAYPAL *XJ29,18.00,uncategorised\n2026-10-12,GitHub,24.99,software\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv\n# totals per category for money/oct/ledger-2026-10.csv and money/oct/ledger-2026-09.csv\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "delete_file",
+       {
+        "path": "money/oct/statement-oct.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Totals**\n- food £52.30\n- transport £32.00\n- software £24.99\n\n**Uncategorised**\n- 9 Oct — PAYPAL *XJ29 — £18.00\n- 2 Oct Tesco: the receipt says £52.00; the statement's £52.30 is used\n\n**Against last month**\n- food up £12.30; transport and software new this month\n\n## Report\n- read 1 statement and 1 receipt, wrote ledger-2026-10.csv with 4 lines\n\n## Carry forward\n- Tesco → food\n- Northern Rail → transport\n- GitHub → software"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "money/oct/statement-oct.csv",
+      "contains": [
+       "TESCO STORES"
+      ]
+     }
+    },
+    {
+     "not_called": "delete_file"
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Totals, Uncategorised and Against last month does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "money/oct"
+   },
+   "world": {
+    "files": {
+     "money/oct/statement-oct.csv": "date,description,amount\n2026-10-02,TESCO STORES,52.30\n2026-10-05,NORTHERN RAIL,32.00\n2026-10-09,PAYPAL *XJ29,18.00\n2026-10-12,GITHUB,24.99\n2026-09-29,TESCO STORES,40.00",
+     "money/oct/receipt-tesco.txt": "Tesco 2 Oct 2026 total £52.00",
+     "money/oct/ledger-2026-09.csv": "date,merchant,amount,category\n2026-09-29,Tesco,40.00,food"
+    },
+    "shell": [
+     {
+      "match": "csv",
+      "output": "this month: food 52.30, transport 32.00, software 24.99, uncategorised 18.00\nlast month: food 40.00",
+      "exit_code": 0
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "money/oct"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

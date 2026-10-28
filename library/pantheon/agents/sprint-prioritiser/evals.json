@@ -1,0 +1,425 @@
+{
+ "cases": [
+  {
+   "id": "a-backlog-ranked-with-reasons",
+   "about": "High value and small effort first, the dated item pulled in, the huge rewrite deferred, the duplicate pair named to pick one, the item with no estimate left unranked, and the done item ignored.",
+   "inputs": {
+    "backlog": "Backlog"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "b1",
+      "title": "Backlog",
+      "content": "- Fix checkout on Safari — orders lost every day (1d)\n- Export to CSV — asked for 14 times (3d)\n- Gift cards — due 14 Nov (2d)\n- Rewrite the admin in a new framework (15d)\n- Dark mode (2d)\n- Night theme (2d)\n- Loyalty points\n- [done] Newsletter signup"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Backlog"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "b1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Priorities — week of 3 Nov",
+        "content": "Priorities — week of 3 Nov\n\n## Top ten\n1. Fix checkout on Safari — high (orders lost) — small (1d) — urgent — high value, small effort\n2. Export to CSV — high (asked 14 times) — medium (3d) — none — most asked for\n3. Gift cards — medium — medium (2d) — due 14 Nov — dated inside two weeks\n\n## Defer or drop\n- Rewrite the admin in a new framework — low — large (15d) — low value for its size\n- pick one: \"Dark mode\" / \"Night theme\" — the same item twice\n\n## Needs an estimate\n- Loyalty points"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Top three: fix checkout on Safari, export to CSV, gift cards.\n\n## Report\n- read \"Backlog\", ranked 7 items; wrote \"Priorities — week of 3 Nov\"\n\n## Carry forward\n- efforts: Safari fix 1d, CSV export 3d, gift cards 2d, admin rewrite 15d\n- top ten 3 Nov: Safari fix, CSV export, gift cards"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Priorities",
+      "contains": [
+       "1. Fix checkout on Safari",
+       "dated inside two weeks",
+       "pick one: \"Dark mode\" / \"Night theme\"",
+       "Needs an estimate\n- Loyalty points"
+      ],
+      "lacks": [
+       "Newsletter signup"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "CSV export 3d"
+    }
+   ]
+  },
+  {
+   "id": "an-estimate-is-never-guessed",
+   "about": "Loyalty points gives no effort: it is listed as needing an estimate and is not ranked on a guess.",
+   "inputs": {
+    "backlog": "Backlog"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "b1",
+      "title": "Backlog",
+      "content": "- Fix checkout on Safari — orders lost every day (1d)\n- Export to CSV — asked for 14 times (3d)\n- Gift cards — due 14 Nov (2d)\n- Rewrite the admin in a new framework (15d)\n- Dark mode (2d)\n- Night theme (2d)\n- Loyalty points\n- [done] Newsletter signup"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Backlog"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "b1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Priorities — week of 3 Nov",
+        "content": "Priorities — week of 3 Nov\n\n## Top ten\n1. Fix checkout on Safari — high (orders lost) — small (1d) — urgent — high value, small effort\n2. Export to CSV — high (asked 14 times) — medium (3d) — none — most asked for\n3. Gift cards — medium — medium (2d) — due 14 Nov — dated inside two weeks\n\n## Defer or drop\n- Rewrite the admin in a new framework — low — large (15d) — low value for its size\n- pick one: \"Dark mode\" / \"Night theme\" — the same item twice\n\n## Needs an estimate\n- Loyalty points"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Top three: fix checkout on Safari, export to CSV, gift cards.\n\n## Report\n- read \"Backlog\", ranked 7 items; wrote \"Priorities — week of 3 Nov\"\n\n## Carry forward\n- efforts: Safari fix 1d, CSV export 3d, gift cards 2d, admin rewrite 15d\n- top ten 3 Nov: Safari fix, CSV export, gift cards"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Priorities",
+      "lacks": [
+       "Loyalty points — high",
+       "Loyalty points — medium",
+       "Loyalty points — low"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-checklist-note-as-the-backlog",
+   "about": "No document has the title, but a checklist note does: it is read and ranked the same way.",
+   "inputs": {
+    "backlog": "Sprint backlog"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "ffff0001",
+      "title": "Sprint backlog",
+      "content": "Fix login timeout — 30 users locked out (1d)\nNew logo — nice to have (3d)"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Sprint backlog"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Sprint backlog"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "ffff0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Priorities — week of 3 Nov",
+        "content": "Priorities — week of 3 Nov\n\n## Top ten\n1. Fix login timeout — high (30 users locked out) — small (1d) — urgent — high value, small effort\n2. New logo — low — medium (3d) — none — nice to have\n\n## Defer or drop\nnone\n\n## Needs an estimate\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Top: fix the login timeout, then the new logo.\n\n## Report\n- read the note \"Sprint backlog\"\n\n## Carry forward\n- efforts: login fix 1d, logo 3d"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Priorities",
+      "contains": [
+       "Fix login timeout"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-backlog-found",
+   "about": "Neither a document nor a note has the title: the Priorities document says so and ranks nothing.",
+   "inputs": {
+    "backlog": "Ideas"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "b1",
+      "title": "Backlog",
+      "content": "- Fix checkout on Safari — orders lost every day (1d)\n- Export to CSV — asked for 14 times (3d)\n- Gift cards — due 14 Nov (2d)\n- Rewrite the admin in a new framework (15d)\n- Dark mode (2d)\n- Night theme (2d)\n- Loyalty points\n- [done] Newsletter signup"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Ideas"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Ideas"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Priorities — week of 3 Nov",
+        "content": "Priorities — week of 3 Nov\n\n## Top ten\nno backlog titled Ideas was found\n\n## Defer or drop\nnone\n\n## Needs an estimate\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing ranked: no backlog titled Ideas was found.\n\n## Report\n- found no backlog\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Priorities",
+      "contains": [
+       "no backlog titled Ideas"
+      ],
+      "lacks": [
+       "Safari"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-the-backlog",
+   "about": "Its table says destructive: never. A model that deletes the backlog to replace it with the ranked one is refused; the backlog survives in its own order.",
+   "inputs": {
+    "backlog": "Backlog"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "b1",
+      "title": "Backlog",
+      "content": "- Fix checkout on Safari — orders lost every day (1d)\n- Export to CSV — asked for 14 times (3d)\n- Gift cards — due 14 Nov (2d)\n- Rewrite the admin in a new framework (15d)\n- Dark mode (2d)\n- Night theme (2d)\n- Loyalty points\n- [done] Newsletter signup"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Backlog"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "b1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "b1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Priorities — week of 3 Nov",
+        "content": "Priorities — week of 3 Nov\n\n## Top ten\n1. Fix checkout on Safari — high (orders lost) — small (1d) — urgent — high value, small effort\n2. Export to CSV — high (asked 14 times) — medium (3d) — none — most asked for\n3. Gift cards — medium — medium (2d) — due 14 Nov — dated inside two weeks\n\n## Defer or drop\n- Rewrite the admin in a new framework — low — large (15d) — low value for its size\n- pick one: \"Dark mode\" / \"Night theme\" — the same item twice\n\n## Needs an estimate\n- Loyalty points"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Top three: fix checkout on Safari, export to CSV, gift cards.\n\n## Report\n- read \"Backlog\", ranked 7 items; wrote \"Priorities — week of 3 Nov\"\n\n## Carry forward\n- efforts: Safari fix 1d, CSV export 3d, gift cards 2d, admin rewrite 15d\n- top ten 3 Nov: Safari fix, CSV export, gift cards"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Backlog",
+      "contains": [
+       "- Fix checkout on Safari — orders lost"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-ranking-without-its-headings-fails",
+   "about": "The harness's own check: a Priorities document with no Top ten, Defer or drop and Needs an estimate does not deliver, even after its repair pass.",
+   "inputs": {
+    "backlog": "Backlog"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "b1",
+      "title": "Backlog",
+      "content": "- Fix checkout on Safari — orders lost every day (1d)\n- Export to CSV — asked for 14 times (3d)\n- Gift cards — due 14 Nov (2d)\n- Rewrite the admin in a new framework (15d)\n- Dark mode (2d)\n- Night theme (2d)\n- Loyalty points\n- [done] Newsletter signup"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Backlog"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "b1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Priorities — week of 3 Nov",
+        "content": "Do Safari first."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

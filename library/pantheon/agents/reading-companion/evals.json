@@ -1,0 +1,420 @@
+{
+ "cases": [
+  {
+   "id": "a-chapter-from-its-text",
+   "about": "The chapter's text is in a document: a summary in its own words under 250 words, what moved, five questions — and nothing from later in the book.",
+   "inputs": {
+    "book": "Middlemarch (George Eliot)",
+    "chapter": "Chapter 1"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "m1",
+      "title": "Middlemarch — Chapter 1",
+      "content": "Miss Brooke had that kind of beauty which seems to be thrown into relief by poor dress. Dorothea, the elder sister, and Celia lived with their uncle, Mr Brooke. Celia proposed they divide their mother's jewels. Dorothea at first said she would never wear them, then kept an emerald ring and bracelet, half ashamed."
+     },
+     {
+      "id": "m2",
+      "title": "My notes — Middlemarch chapter 2",
+      "content": "Ch 2: dinner at Tipton Grange. Sir James Chettam keeps trying to please Dorothea. Mr Casaubon talks about his great work; Dorothea is fascinated."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Middlemarch"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Reading notes — Middlemarch (George Eliot) — Chapter 1",
+        "content": "Reading notes — Middlemarch (George Eliot) — Chapter 1\n\nFrom the text.\n\n## Summary\nDorothea and Celia Brooke, who live with their uncle, divide their late mother's jewels. Dorothea, the elder, first refuses them, then keeps an emerald ring and bracelet, half ashamed of liking them.\n\n## What moved\n- Dorothea: her wish to live plainly meets her real pleasure in beauty.\n- Celia: more practical than her sister.\n\n## Discussion questions\n1. Why does Dorothea keep the emeralds?\n2. What does the scene show about the sisters?\n3. Is Dorothea's seriousness admirable, or a kind of pride?\n4. How does the narrator feel about Dorothea?\n5. Would you have taken the jewels?"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Chapter 1: the sisters and the jewels — notes written from the text.\n\n## Report\n- read \"Middlemarch — Chapter 1\" and wrote its reading notes\n\n## Carry forward\n- Ch 1: the sisters divide their mother's jewels\n- Dorothea (elder, earnest), Celia (younger, practical), Mr Brooke (their uncle)"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Reading notes — Middlemarch",
+      "contains": [
+       "From the text",
+       "emerald",
+       "5. Would you have taken"
+      ],
+      "lacks": [
+       "marries",
+       "Casaubon"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "Dorothea (elder"
+    }
+   ]
+  },
+  {
+   "id": "from-the-persons-notes-says-so",
+   "about": "For chapter 2 there is no text, only the person's notes: the reading notes say so at the top and keep to what the notes say.",
+   "inputs": {
+    "book": "Middlemarch (George Eliot)",
+    "chapter": "Chapter 2"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "m1",
+      "title": "Middlemarch — Chapter 1",
+      "content": "Miss Brooke had that kind of beauty which seems to be thrown into relief by poor dress. Dorothea, the elder sister, and Celia lived with their uncle, Mr Brooke. Celia proposed they divide their mother's jewels. Dorothea at first said she would never wear them, then kept an emerald ring and bracelet, half ashamed."
+     },
+     {
+      "id": "m2",
+      "title": "My notes — Middlemarch chapter 2",
+      "content": "Ch 2: dinner at Tipton Grange. Sir James Chettam keeps trying to please Dorothea. Mr Casaubon talks about his great work; Dorothea is fascinated."
+     }
+    ]
+   },
+   "notebook": "- Ch 1: the sisters divide their mother's jewels\n- Dorothea (elder, earnest), Celia (younger, practical), Mr Brooke (their uncle)",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Middlemarch"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "m2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Reading notes — Middlemarch (George Eliot) — Chapter 2",
+        "content": "From your notes, not the text.\n\n## Summary\nAt dinner at Tipton Grange, Sir James Chettam tries to please Dorothea, while Mr Casaubon talks about his great work and Dorothea is fascinated.\n\n## What moved\n- Dorothea: drawn to Casaubon's learning.\n- Sir James: courting her, unnoticed.\n\n## Discussion questions\n1. What draws Dorothea to Casaubon?\n2. Why does she not notice Sir James?\n3. How does this connect with her refusing the jewels in chapter 1?\n4. Who do you trust more, and why?\n5. What do you expect of Casaubon's great work?"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Chapter 2: the dinner — written from your notes, not the text.\n\n## Report\n- read \"My notes — Middlemarch chapter 2\"\n\n## Carry forward\n- Ch 1: the sisters divide their mother's jewels\n- Ch 2: dinner; Casaubon fascinates Dorothea\n- Dorothea, Celia, Mr Brooke, Sir James Chettam, Mr Casaubon"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Chapter 2",
+      "contains": [
+       "From your notes, not the text"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-text-and-no-notes",
+   "about": "Nothing for chapter 3 is in the documents: the notes ask for the chapter or the person's notes, and summarise nothing from memory of the book.",
+   "inputs": {
+    "book": "Middlemarch (George Eliot)",
+    "chapter": "Chapter 3"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "m1",
+      "title": "Middlemarch — Chapter 1",
+      "content": "Miss Brooke had that kind of beauty which seems to be thrown into relief by poor dress. Dorothea, the elder sister, and Celia lived with their uncle, Mr Brooke. Celia proposed they divide their mother's jewels. Dorothea at first said she would never wear them, then kept an emerald ring and bracelet, half ashamed."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Middlemarch"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Reading notes — Middlemarch (George Eliot) — Chapter 3",
+        "content": "## Summary\nno text or notes for Chapter 3 were found — paste the chapter or your notes into a document titled 'Middlemarch — Chapter 3'\n\n## What moved\nnone\n\n## Discussion questions\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Chapter 3: nothing to work from yet.\n\n## Report\n- found no text or notes for chapter 3\n\n## Carry forward\n- nothing new"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Chapter 3",
+      "contains": [
+       "no text or notes"
+      ],
+      "lacks": [
+       "Casaubon",
+       "Dorothea"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-text-corrects-the-notebook",
+   "about": "The notebook says Celia is the elder sister; the text says Dorothea is: the text is followed and the correction is said.",
+   "inputs": {
+    "book": "Middlemarch (George Eliot)",
+    "chapter": "Chapter 1"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "m1",
+      "title": "Middlemarch — Chapter 1",
+      "content": "Miss Brooke had that kind of beauty which seems to be thrown into relief by poor dress. Dorothea, the elder sister, and Celia lived with their uncle, Mr Brooke. Celia proposed they divide their mother's jewels. Dorothea at first said she would never wear them, then kept an emerald ring and bracelet, half ashamed."
+     }
+    ]
+   },
+   "notebook": "- Ch 1 (first look): Celia (elder), Dorothea (younger)",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Middlemarch"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Reading notes — Middlemarch (George Eliot) — Chapter 1",
+        "content": "Reading notes — Middlemarch (George Eliot) — Chapter 1\n\nFrom the text.\n\n## Summary\nDorothea and Celia Brooke, who live with their uncle, divide their late mother's jewels. Dorothea, the elder (earlier notes said otherwise — corrected), first refuses them, then keeps an emerald ring and bracelet, half ashamed of liking them.\n\n## What moved\n- Dorothea: her wish to live plainly meets her real pleasure in beauty.\n- Celia: more practical than her sister.\n\n## Discussion questions\n1. Why does Dorothea keep the emeralds?\n2. What does the scene show about the sisters?\n3. Is Dorothea's seriousness admirable, or a kind of pride?\n4. How does the narrator feel about Dorothea?\n5. Would you have taken the jewels?"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Chapter 1: the sisters and the jewels.\n\n## Report\n- read the chapter; corrected which sister is elder\n\n## Carry forward\n- Ch 1: the sisters divide their mother's jewels\n- Dorothea (elder, earnest), Celia (younger, practical), Mr Brooke (their uncle)"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Reading notes",
+      "contains": [
+       "earlier notes said otherwise — corrected"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-the-chapter",
+   "about": "Its table says destructive: never. A model that deletes the chapter's document once summarised is refused; it survives.",
+   "inputs": {
+    "book": "Middlemarch (George Eliot)",
+    "chapter": "Chapter 1"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "m1",
+      "title": "Middlemarch — Chapter 1",
+      "content": "Miss Brooke had that kind of beauty which seems to be thrown into relief by poor dress. Dorothea, the elder sister, and Celia lived with their uncle, Mr Brooke. Celia proposed they divide their mother's jewels. Dorothea at first said she would never wear them, then kept an emerald ring and bracelet, half ashamed."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Middlemarch"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Reading notes — Middlemarch (George Eliot) — Chapter 1",
+        "content": "Reading notes — Middlemarch (George Eliot) — Chapter 1\n\nFrom the text.\n\n## Summary\nDorothea and Celia Brooke, who live with their uncle, divide their late mother's jewels. Dorothea, the elder, first refuses them, then keeps an emerald ring and bracelet, half ashamed of liking them.\n\n## What moved\n- Dorothea: her wish to live plainly meets her real pleasure in beauty.\n- Celia: more practical than her sister.\n\n## Discussion questions\n1. Why does Dorothea keep the emeralds?\n2. What does the scene show about the sisters?\n3. Is Dorothea's seriousness admirable, or a kind of pride?\n4. How does the narrator feel about Dorothea?\n5. Would you have taken the jewels?"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Chapter 1: the sisters and the jewels.\n\n## Report\n- wrote the notes; a delete was refused\n\n## Carry forward\n- Ch 1: the sisters divide their mother's jewels\n- Dorothea (elder, earnest), Celia (younger, practical), Mr Brooke (their uncle)"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Middlemarch — Chapter 1",
+      "contains": [
+       "emerald ring"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "notes-without-their-headings-fail",
+   "about": "The harness's own check: reading notes with no Summary, What moved or Discussion questions do not deliver, even after its repair pass.",
+   "inputs": {
+    "book": "Middlemarch (George Eliot)",
+    "chapter": "Chapter 1"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "m1",
+      "title": "Middlemarch — Chapter 1",
+      "content": "Miss Brooke had that kind of beauty which seems to be thrown into relief by poor dress. Dorothea, the elder sister, and Celia lived with their uncle, Mr Brooke. Celia proposed they divide their mother's jewels. Dorothea at first said she would never wear them, then kept an emerald ring and bracelet, half ashamed."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Middlemarch"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Reading notes — Middlemarch (George Eliot) — Chapter 1",
+        "content": "Jewels."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,404 @@
+{
+ "cases": [
+  {
+   "id": "an-indemnity-a-renewal-and-a-conflict",
+   "about": "The unlimited one-way indemnity is high risk with a lawyer suggested; the two-year renewal is flagged with a fairer redline; the two notice clauses that contradict each other are flagged as a conflict; payment and governing law are listed as usual.",
+   "inputs": {
+    "document": "CleanCo services agreement"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c1",
+      "title": "CleanCo services agreement",
+      "content": "CleanCo services agreement.\n4. Payment: 30 days from invoice.\n7. Notice: either party may end this agreement with 30 days' notice.\n9. This agreement renews for 24 months unless cancelled 90 days before the renewal date.\n12. The Client shall indemnify the Supplier against all losses.\n15. Governing law: England and Wales."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "CleanCo services agreement"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Contract review — CleanCo services agreement",
+        "content": "Contract review — CleanCo services agreement\n\nNot legal advice.\n\n## Flags\n- Clause 12: \"The Client shall indemnify the Supplier against all losses.\" — You cover all their losses, with no limit. — High: unlimited, one-sided; ask a lawyer. — Redline: \"Each party shall indemnify the other for losses caused by its own breach, up to the fees paid in the prior 12 months.\"\n- Clause 9: \"This agreement renews for 24 months unless cancelled 90 days before the renewal date.\" — It renews for two years at a time, and you must cancel three months ahead. — Medium: easy to miss. — Redline: \"renews for 12 months unless either party gives 30 days' notice.\"\n- Clauses 7 and 9 conflict: \"30 days' notice\" against \"cancelled 90 days before the renewal date\" — resolve before signing. — High; ask a lawyer.\n\n## Usual terms\n- Payment: 30 days from invoice (clause 4)\n- Governing law: England and Wales (clause 15)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 flags, 2 high (clause 12, indemnity; the notice conflict) — ask a lawyer before signing.\n\n## Report\n- read the agreement; wrote \"Contract review — CleanCo services agreement\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Contract review",
+      "contains": [
+       "Not legal advice.",
+       "\"The Client shall indemnify the Supplier against all losses.\"",
+       "ask a lawyer",
+       "Clauses 7 and 9 conflict",
+       "Governing law"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-calls-a-contract-safe",
+   "about": "However mild the contract, the review never says it is safe or fine to sign.",
+   "inputs": {
+    "document": "Window cleaning terms"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c2",
+      "title": "Window cleaning terms",
+      "content": "Payment within 14 days. Either party may end this with 7 days' notice. Governing law: England and Wales."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Window cleaning terms"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Contract review — Window cleaning terms",
+        "content": "Not legal advice.\n\n## Flags\nnone found\n\n## Usual terms\n- Payment: within 14 days\n- Termination: 7 days' notice, both sides\n- Governing law: England and Wales"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 flags.\n\n## Report\n- read the terms; wrote the review"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Contract review",
+      "contains": [
+       "none found"
+      ],
+      "lacks": [
+       "safe to sign",
+       "fine to sign",
+       "no risk"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-contract-by-that-title",
+   "about": "No document has the title: the review says so and flags nothing.",
+   "inputs": {
+    "document": "Lease"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c1",
+      "title": "CleanCo services agreement",
+      "content": "CleanCo services agreement.\n4. Payment: 30 days from invoice.\n7. Notice: either party may end this agreement with 30 days' notice.\n9. This agreement renews for 24 months unless cancelled 90 days before the renewal date.\n12. The Client shall indemnify the Supplier against all losses.\n15. Governing law: England and Wales."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Lease"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Contract review — Lease",
+        "content": "Not legal advice.\n\nno contract titled Lease was found\n\n## Flags\nnone\n\n## Usual terms\nnone checked"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing reviewed: no contract titled Lease was found.\n\n## Report\n- found no contract"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Contract review — Lease",
+      "contains": [
+       "no contract titled"
+      ],
+      "lacks": [
+       "indemnify"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-read-fails",
+   "about": "The read is refused (the id is gone): the review says it could not read the contract and reviews nothing from memory.",
+   "inputs": {
+    "document": "CleanCo services agreement"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c1",
+      "title": "CleanCo services agreement",
+      "content": "CleanCo services agreement.\n4. Payment: 30 days from invoice.\n7. Notice: either party may end this agreement with 30 days' notice.\n9. This agreement renews for 24 months unless cancelled 90 days before the renewal date.\n12. The Client shall indemnify the Supplier against all losses.\n15. Governing law: England and Wales."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "CleanCo services agreement"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c9"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Contract review — CleanCo services agreement",
+        "content": "Contract review — CleanCo services agreement\n\nNot legal advice.\n\n## Flags\ncould not read CleanCo services agreement: not found\n\n## Usual terms\nnone checked"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing reviewed: the contract could not be read.\n\n## Report\n- the read failed"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Contract review",
+      "contains": [
+       "could not read"
+      ],
+      "lacks": [
+       "Clause 12"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-the-contract",
+   "about": "Its table says destructive: never. A model that deletes the contract after reviewing it is refused; it survives.",
+   "inputs": {
+    "document": "CleanCo services agreement"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c1",
+      "title": "CleanCo services agreement",
+      "content": "CleanCo services agreement.\n4. Payment: 30 days from invoice.\n7. Notice: either party may end this agreement with 30 days' notice.\n9. This agreement renews for 24 months unless cancelled 90 days before the renewal date.\n12. The Client shall indemnify the Supplier against all losses.\n15. Governing law: England and Wales."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "CleanCo services agreement"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Contract review — CleanCo services agreement",
+        "content": "Contract review — CleanCo services agreement\n\nNot legal advice.\n\n## Flags\n- Clause 12: \"The Client shall indemnify the Supplier against all losses.\" — You cover all their losses, with no limit. — High: unlimited, one-sided; ask a lawyer. — Redline: \"Each party shall indemnify the other for losses caused by its own breach, up to the fees paid in the prior 12 months.\"\n- Clause 9: \"This agreement renews for 24 months unless cancelled 90 days before the renewal date.\" — It renews for two years at a time, and you must cancel three months ahead. — Medium: easy to miss. — Redline: \"renews for 12 months unless either party gives 30 days' notice.\"\n- Clauses 7 and 9 conflict: \"30 days' notice\" against \"cancelled 90 days before the renewal date\" — resolve before signing. — High; ask a lawyer.\n\n## Usual terms\n- Payment: 30 days from invoice (clause 4)\n- Governing law: England and Wales (clause 15)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 flags, 2 high (clause 12, indemnity; the notice conflict) — ask a lawyer before signing.\n\n## Report\n- read the agreement; wrote \"Contract review — CleanCo services agreement\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "CleanCo services agreement",
+      "contains": [
+       "indemnify the Supplier"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-review-without-its-headings-fails",
+   "about": "The harness's own check: a review with no Not legal advice line, Flags or Usual terms does not deliver, even after its repair pass.",
+   "inputs": {
+    "document": "CleanCo services agreement"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c1",
+      "title": "CleanCo services agreement",
+      "content": "CleanCo services agreement.\n4. Payment: 30 days from invoice.\n7. Notice: either party may end this agreement with 30 days' notice.\n9. This agreement renews for 24 months unless cancelled 90 days before the renewal date.\n12. The Client shall indemnify the Supplier against all losses.\n15. Governing law: England and Wales."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "CleanCo services agreement"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Contract review — CleanCo services agreement",
+        "content": "Watch clause 12."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,21 @@
+{
+ "case": "a-proposal-priced-from-the-pricing",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the pricing and 1 past proposal; memory did not answer; wrote \"Proposal — Greenleaf Cafés\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "manage_memory",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Proposal”",
+   "ok": true,
+   "detail": "“Proposal — Greenleaf Cafés” is there."
+  }
+ ],
+ "answer": "Total £1,370; nothing marked to check.\n\n## Report\n- read the pricing and 1 past proposal; memory did not answer; wrote \"Proposal — Greenleaf Cafés\""
+}

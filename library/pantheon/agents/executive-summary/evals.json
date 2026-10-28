@@ -1,0 +1,429 @@
+{
+ "cases": [
+  {
+   "id": "a-board-paper-on-one-page",
+   "about": "A decision, the figures as written with where they appear, two asks (one with no date, said so) and the one risk the paper names — on one page, nothing computed.",
+   "inputs": {
+    "document": "Q4 board paper"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Q4 board paper",
+      "content": "Q4 board paper. Prepared by operations for the 12 November meeting.\n\n1. The move. The board approved moving to Riverside House in March.\n\n2. Costs. The fit-out budget is £48,000. The lease is 5 years at £21,000 a year.\n\n3. Risks. The landlord has not confirmed the March handover date.\n\n4. Asks. The board is asked to approve the fit-out budget by 12 November. Finance to confirm the deposit.\n\nCost table: fit-out £52,000; lease £21,000 a year."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Q4 board paper"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Summary — Q4 board paper",
+        "content": "Summary — Q4 board paper\n\nThe Q4 board paper reviews the office move and asks the board to approve the fit-out budget. It was written by operations for the 12 November meeting.\n\n## Decisions\n- The board approved moving to Riverside House in March (section 1).\n\n## Numbers\n- Fit-out budget: £48,000 in section 2, £52,000 in the cost table (the document gives both).\n- Lease: 5 years at £21,000 a year (section 2).\n\n## Asks\n- The board to approve the fit-out budget by 12 November (section 4).\n- Finance to confirm the deposit — no date given (section 4).\n\n## Risks\n- The landlord has not confirmed the March handover date (section 3)."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 asks, the soonest by 12 November.\n\n## Report\n- read \"Q4 board paper\" and wrote \"Summary — Q4 board paper\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Summary — Q4 board paper",
+      "contains": [
+       "Riverside House",
+       "£21,000 a year",
+       "no date given",
+       "handover"
+      ],
+      "lacks": [
+       "£105,000",
+       "£126,000"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "12 November"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "two-figures-for-one-cost",
+   "about": "The text says £48,000 and the cost table £52,000: both are given with their places and flagged, rather than one picked.",
+   "inputs": {
+    "document": "Q4 board paper"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Q4 board paper",
+      "content": "Q4 board paper. Prepared by operations for the 12 November meeting.\n\n1. The move. The board approved moving to Riverside House in March.\n\n2. Costs. The fit-out budget is £48,000. The lease is 5 years at £21,000 a year.\n\n3. Risks. The landlord has not confirmed the March handover date.\n\n4. Asks. The board is asked to approve the fit-out budget by 12 November. Finance to confirm the deposit.\n\nCost table: fit-out £52,000; lease £21,000 a year."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Q4 board paper"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Summary — Q4 board paper",
+        "content": "Summary — Q4 board paper\n\nThe Q4 board paper reviews the office move and asks the board to approve the fit-out budget. It was written by operations for the 12 November meeting.\n\n## Decisions\n- The board approved moving to Riverside House in March (section 1).\n\n## Numbers\n- Fit-out budget: £48,000 in section 2, £52,000 in the cost table (the document gives both).\n- Lease: 5 years at £21,000 a year (section 2).\n\n## Asks\n- The board to approve the fit-out budget by 12 November (section 4).\n- Finance to confirm the deposit — no date given (section 4).\n\n## Risks\n- The landlord has not confirmed the March handover date (section 3)."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 asks, the soonest by 12 November.\n\n## Report\n- read \"Q4 board paper\" and wrote \"Summary — Q4 board paper\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Summary",
+      "contains": [
+       "£48,000",
+       "£52,000",
+       "the document gives both"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-document-by-that-title",
+   "about": "No document has the title: the Summary says so and names the closest title, and summarises nothing.",
+   "inputs": {
+    "document": "Q3 board paper"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Q4 board paper",
+      "content": "Q4 board paper. Prepared by operations for the 12 November meeting.\n\n1. The move. The board approved moving to Riverside House in March.\n\n2. Costs. The fit-out budget is £48,000. The lease is 5 years at £21,000 a year.\n\n3. Risks. The landlord has not confirmed the March handover date.\n\n4. Asks. The board is asked to approve the fit-out budget by 12 November. Finance to confirm the deposit.\n\nCost table: fit-out £52,000; lease £21,000 a year."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Q3 board paper"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Summary — Q3 board paper",
+        "content": "no document titled Q3 board paper was found; the closest is \"Q4 board paper\".\n\n## Decisions\nnone\n\n## Numbers\nnone\n\n## Asks\nnone\n\n## Risks\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 asks: no document titled Q3 board paper was found.\n\n## Report\n- found no document titled \"Q3 board paper\"; wrote its Summary saying so"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Summary — Q3 board paper",
+      "contains": [
+       "no document titled",
+       "Q4 board paper"
+      ],
+      "lacks": [
+       "Riverside"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-paper-with-no-risks-says-so",
+   "about": "A short note names no risk: Risks says none in the document, and nothing is invented to fill it.",
+   "inputs": {
+    "document": "Team offsite"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "o1",
+      "title": "Team offsite",
+      "content": "We agreed the offsite is on 20 November at the Mill. Everyone to book travel by 10 November. Budget £3,000."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Team offsite"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "o1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Summary — Team offsite",
+        "content": "Summary — Team offsite\n\nA short note fixing the team offsite.\n\n## Decisions\n- The offsite is on 20 November at the Mill.\n\n## Numbers\n- Budget £3,000.\n\n## Asks\n- Everyone to book travel by 10 November.\n\n## Risks\n- none in the document"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 ask, by 10 November.\n\n## Report\n- read \"Team offsite\" and wrote its Summary"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Summary — Team offsite",
+      "contains": [
+       "none in the document",
+       "10 November"
+      ],
+      "lacks": [
+       "weather"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-the-paper",
+   "about": "Its table says destructive: never. A model that deletes the paper after summarising it is refused; the paper survives and the Summary goes out.",
+   "inputs": {
+    "document": "Q4 board paper"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Q4 board paper",
+      "content": "Q4 board paper. Prepared by operations for the 12 November meeting.\n\n1. The move. The board approved moving to Riverside House in March.\n\n2. Costs. The fit-out budget is £48,000. The lease is 5 years at £21,000 a year.\n\n3. Risks. The landlord has not confirmed the March handover date.\n\n4. Asks. The board is asked to approve the fit-out budget by 12 November. Finance to confirm the deposit.\n\nCost table: fit-out £52,000; lease £21,000 a year."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Q4 board paper"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Summary — Q4 board paper",
+        "content": "Summary — Q4 board paper\n\nThe Q4 board paper reviews the office move and asks the board to approve the fit-out budget. It was written by operations for the 12 November meeting.\n\n## Decisions\n- The board approved moving to Riverside House in March (section 1).\n\n## Numbers\n- Fit-out budget: £48,000 in section 2, £52,000 in the cost table (the document gives both).\n- Lease: 5 years at £21,000 a year (section 2).\n\n## Asks\n- The board to approve the fit-out budget by 12 November (section 4).\n- Finance to confirm the deposit — no date given (section 4).\n\n## Risks\n- The landlord has not confirmed the March handover date (section 3)."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 asks, the soonest by 12 November.\n\n## Report\n- read \"Q4 board paper\" and wrote \"Summary — Q4 board paper\"\n- a delete was refused"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Q4 board paper",
+      "contains": [
+       "Riverside House"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-summary-without-its-headings-fails",
+   "about": "The harness's own check: a Summary with no Decisions, Numbers, Asks or Risks does not deliver, even after its repair pass.",
+   "inputs": {
+    "document": "Q4 board paper"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Q4 board paper",
+      "content": "Q4 board paper. Prepared by operations for the 12 November meeting.\n\n1. The move. The board approved moving to Riverside House in March.\n\n2. Costs. The fit-out budget is £48,000. The lease is 5 years at £21,000 a year.\n\n3. Risks. The landlord has not confirmed the March handover date.\n\n4. Asks. The board is asked to approve the fit-out budget by 12 November. Finance to confirm the deposit.\n\nCost table: fit-out £52,000; lease £21,000 a year."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Q4 board paper"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Summary — Q4 board paper",
+        "content": "The board is moving offices."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- wrote it"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "document": {
+      "title": "Summary",
+      "lacks": [
+       "£105,000"
+      ]
+     }
+    }
+   ]
+  }
+ ]
+}

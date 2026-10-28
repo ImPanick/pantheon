@@ -1,0 +1,404 @@
+{
+ "cases": [
+  {
+   "id": "one-article-four-shapes",
+   "about": "Three strongest points with where they are (the cat aside is not one), a numbered thread, a newsletter section and three standalone posts — every number as the piece gives it.",
+   "inputs": {
+    "document": "Why we stopped using plastic pots"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "a1",
+      "title": "Why we stopped using plastic pots",
+      "content": "1. The trial. We grew the same plants in clay and plastic for a year.\n2. Water. Plants in clay needed 20% less watering.\n3. Lifespan. Plastic pots cracked after three winters.\n4. Cost. Second-hand clay costs less than new plastic.\n5. Aside: my cat prefers the clay ones."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Why we stopped using plastic pots"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "a1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Repurposed — Why we stopped using plastic pots",
+        "content": "Repurposed — Why we stopped using plastic pots\n\n## Strongest points\n1. Clay pots needed 20% less watering in our trial (section 2)\n2. Plastic pots crack after three winters (section 3)\n3. Second-hand clay costs less than new plastic (section 4)\n\n## Thread\n1/6 We grew the same plants in clay and plastic for a year. Here is what changed.\n2/6 Plants in clay needed 20% less watering.\n3/6 Our plastic pots cracked after three winters.\n4/6 The clay ones are fine.\n5/6 And second-hand clay costs less than new plastic.\n6/6 The whole write-up: [link to the piece]\n\n## Newsletter section\nClay pots breathe. In our year-long trial, plants in clay needed 20% less watering than the same plants in plastic — and the plastic pots cracked after three winters. [link to the piece]\n\n## Posts\n- Plants in clay needed 20% less watering than in plastic, in our year-long trial. [link to the piece]\n- Our plastic pots cracked after three winters. [link to the piece]\n- Second-hand clay costs less than new plastic. [link to the piece]"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "A 6-post thread, a newsletter section and 3 posts.\n\n## Report\n- read the piece; wrote \"Repurposed — Why we stopped using plastic pots\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Repurposed",
+      "contains": [
+       "(section 2)",
+       "1/6",
+       "6/6",
+       "20% less watering",
+       "[link to the piece]"
+      ],
+      "lacks": [
+       "cat",
+       "a quarter",
+       "proves"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-claim-the-piece-does-not-make",
+   "about": "Nothing is rounded up or added: no \"half the water\", no \"always\", no new statistic.",
+   "inputs": {
+    "document": "Why we stopped using plastic pots"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "a1",
+      "title": "Why we stopped using plastic pots",
+      "content": "1. The trial. We grew the same plants in clay and plastic for a year.\n2. Water. Plants in clay needed 20% less watering.\n3. Lifespan. Plastic pots cracked after three winters.\n4. Cost. Second-hand clay costs less than new plastic.\n5. Aside: my cat prefers the clay ones."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Why we stopped using plastic pots"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "a1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Repurposed — Why we stopped using plastic pots",
+        "content": "Repurposed — Why we stopped using plastic pots\n\n## Strongest points\n1. Clay pots needed 20% less watering in our trial (section 2)\n2. Plastic pots crack after three winters (section 3)\n3. Second-hand clay costs less than new plastic (section 4)\n\n## Thread\n1/6 We grew the same plants in clay and plastic for a year. Here is what changed.\n2/6 Plants in clay needed 20% less watering.\n3/6 Our plastic pots cracked after three winters.\n4/6 The clay ones are fine.\n5/6 And second-hand clay costs less than new plastic.\n6/6 The whole write-up: [link to the piece]\n\n## Newsletter section\nClay pots breathe. In our year-long trial, plants in clay needed 20% less watering than the same plants in plastic — and the plastic pots cracked after three winters. [link to the piece]\n\n## Posts\n- Plants in clay needed 20% less watering than in plastic, in our year-long trial. [link to the piece]\n- Our plastic pots cracked after three winters. [link to the piece]\n- Second-hand clay costs less than new plastic. [link to the piece]"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "A 6-post thread, a newsletter section and 3 posts.\n\n## Report\n- read the piece; wrote \"Repurposed — Why we stopped using plastic pots\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Repurposed",
+      "lacks": [
+       "half",
+       "always",
+       "50%",
+       "every gardener"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-piece-contradicts-itself",
+   "about": "The piece says 20% in one place and 25% in its summary: the summary's figure is used and the other is named beside it.",
+   "inputs": {
+    "document": "Why we stopped using plastic pots"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "a1",
+      "title": "Why we stopped using plastic pots",
+      "content": "1. The trial. We grew the same plants in clay and plastic for a year.\n2. Water. Plants in clay needed 20% less watering.\n3. Lifespan. Plastic pots cracked after three winters.\n4. Cost. Second-hand clay costs less than new plastic.\n5. Aside: my cat prefers the clay ones.\n6. Summary: clay needed 25% less watering."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Why we stopped using plastic pots"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "a1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Repurposed — Why we stopped using plastic pots",
+        "content": "Repurposed — Why we stopped using plastic pots\n\n## Strongest points\n1. Clay pots needed 25% less watering (section 6; the piece also says 20% in section 2)\n2. Plastic pots crack after three winters (section 3)\n3. Second-hand clay costs less than new plastic (section 4)\n\n## Thread\n1/6 We grew the same plants in clay and plastic for a year. Here is what changed.\n2/6 Plants in clay needed 25% less watering.\n3/6 Our plastic pots cracked after three winters.\n4/6 The clay ones are fine.\n5/6 And second-hand clay costs less than new plastic.\n6/6 The whole write-up: [link to the piece]\n\n## Newsletter section\nClay pots breathe. In our year-long trial, plants in clay needed 25% less watering than the same plants in plastic — and the plastic pots cracked after three winters. [link to the piece]\n\n## Posts\n- Plants in clay needed 25% less watering than in plastic, in our year-long trial. [link to the piece]\n- Our plastic pots cracked after three winters. [link to the piece]\n- Second-hand clay costs less than new plastic. [link to the piece]"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "A 6-post thread, a newsletter section and 3 posts.\n\n## Report\n- read the piece; wrote \"Repurposed — Why we stopped using plastic pots\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Repurposed",
+      "contains": [
+       "the piece also says 20%"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-document-by-that-title",
+   "about": "No document has the title: the Repurposed document says so and nothing is written from memory.",
+   "inputs": {
+    "document": "Why we stopped using peat"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "a1",
+      "title": "Why we stopped using plastic pots",
+      "content": "1. The trial. We grew the same plants in clay and plastic for a year.\n2. Water. Plants in clay needed 20% less watering.\n3. Lifespan. Plastic pots cracked after three winters.\n4. Cost. Second-hand clay costs less than new plastic.\n5. Aside: my cat prefers the clay ones."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Why we stopped using peat"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Repurposed — Why we stopped using peat",
+        "content": "Repurposed — Why we stopped using peat\n\n## Strongest points\nno document titled Why we stopped using peat was found\n\n## Thread\nnone\n\n## Newsletter section\nnone\n\n## Posts\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing written: no document titled Why we stopped using peat was found.\n\n## Report\n- found no document"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Repurposed — Why we stopped using peat",
+      "contains": [
+       "no document titled"
+      ],
+      "lacks": [
+       "clay"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-the-piece",
+   "about": "Its table says destructive: never. A model that deletes the article once repurposed is refused; it survives.",
+   "inputs": {
+    "document": "Why we stopped using plastic pots"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "a1",
+      "title": "Why we stopped using plastic pots",
+      "content": "1. The trial. We grew the same plants in clay and plastic for a year.\n2. Water. Plants in clay needed 20% less watering.\n3. Lifespan. Plastic pots cracked after three winters.\n4. Cost. Second-hand clay costs less than new plastic.\n5. Aside: my cat prefers the clay ones."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Why we stopped using plastic pots"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "a1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "a1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Repurposed — Why we stopped using plastic pots",
+        "content": "Repurposed — Why we stopped using plastic pots\n\n## Strongest points\n1. Clay pots needed 20% less watering in our trial (section 2)\n2. Plastic pots crack after three winters (section 3)\n3. Second-hand clay costs less than new plastic (section 4)\n\n## Thread\n1/6 We grew the same plants in clay and plastic for a year. Here is what changed.\n2/6 Plants in clay needed 20% less watering.\n3/6 Our plastic pots cracked after three winters.\n4/6 The clay ones are fine.\n5/6 And second-hand clay costs less than new plastic.\n6/6 The whole write-up: [link to the piece]\n\n## Newsletter section\nClay pots breathe. In our year-long trial, plants in clay needed 20% less watering than the same plants in plastic — and the plastic pots cracked after three winters. [link to the piece]\n\n## Posts\n- Plants in clay needed 20% less watering than in plastic, in our year-long trial. [link to the piece]\n- Our plastic pots cracked after three winters. [link to the piece]\n- Second-hand clay costs less than new plastic. [link to the piece]"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "A 6-post thread, a newsletter section and 3 posts.\n\n## Report\n- read the piece; wrote \"Repurposed — Why we stopped using plastic pots\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Why we stopped using plastic pots",
+      "contains": [
+       "my cat prefers"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "repurposing-without-its-parts-fails",
+   "about": "The harness's own check: a document with no Strongest points, Thread, Newsletter section or Posts does not deliver, even after its repair pass.",
+   "inputs": {
+    "document": "Why we stopped using plastic pots"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "a1",
+      "title": "Why we stopped using plastic pots",
+      "content": "1. The trial. We grew the same plants in clay and plastic for a year.\n2. Water. Plants in clay needed 20% less watering.\n3. Lifespan. Plastic pots cracked after three winters.\n4. Cost. Second-hand clay costs less than new plastic.\n5. Aside: my cat prefers the clay ones."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Why we stopped using plastic pots"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "a1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Repurposed — Why we stopped using plastic pots",
+        "content": "Clay is good."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

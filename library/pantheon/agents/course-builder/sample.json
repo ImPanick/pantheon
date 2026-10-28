@@ -1,0 +1,21 @@
+{
+ "case": "a-two-week-course-for-office-staff",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- ran 3 searches, opened 4 pages; wrote \"Course — Python for data analysis\"",
+ "read": [
+  "web_search",
+  "web_fetch"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Course”",
+   "ok": true,
+   "detail": "“Course — Python for data analysis” is there."
+  }
+ ],
+ "answer": "2 weeks, 3 readings; week 2 has only one reading.\n\n## Report\n- ran 3 searches, opened 4 pages; wrote \"Course — Python for data analysis\""
+}

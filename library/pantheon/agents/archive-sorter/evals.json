@@ -1,0 +1,358 @@
+{
+ "cases": [
+  {
+   "id": "three-files-sorted-in-one-move",
+   "about": "A bill read for its date, a manual and a photo are moved in one mv -n command the person allows; the partial download and the sorted folder are left alone. The move waits for a yes.",
+   "inputs": {
+    "folder": "dump"
+   },
+   "world": {
+    "files": {
+     "dump/scan001.pdf": "Northern Power. Electricity bill. Statement date: 14 October 2026. Amount due: 82.40.",
+     "dump/IMG_2041.jpg": "(image)",
+     "dump/kettle-manual.pdf": "Kettle model K2 — instruction manual.",
+     "dump/statement.pdf.crdownload": "(partial)",
+     "dump/sorted/bills/2026-09-northern-power-bill.pdf": "September bill."
+    },
+    "shell": [
+     {
+      "match": "mv -n",
+      "output": "sorted:\nbills manuals photos\n\nsorted/bills:\n2026-09-northern-power-bill.pdf\n2026-10-northern-power-bill.pdf\n\nsorted/manuals:\nkettle-manual.pdf\n\nsorted/photos:\nIMG_2041.jpg",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "dump"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "dump/scan001.pdf"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"dump\" && mkdir -p sorted/bills sorted/manuals sorted/photos && mv -n \"scan001.pdf\" \"sorted/bills/2026-10-northern-power-bill.pdf\" && mv -n \"kettle-manual.pdf\" \"sorted/manuals/kettle-manual.pdf\" && mv -n \"IMG_2041.jpg\" \"sorted/photos/IMG_2041.jpg\" && ls -R sorted"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Moved**\n- bills (1): scan001.pdf → sorted/bills/2026-10-northern-power-bill.pdf\n- manuals (1): kettle-manual.pdf → sorted/manuals/kettle-manual.pdf\n- photos (1): IMG_2041.jpg → sorted/photos/IMG_2041.jpg\n\n**Left in place**\n- statement.pdf.crdownload — a partial download\n\n## Report\n- listed 4 files, read 1, moved 3 with one command\n\n## Carry forward\n- statement.pdf.crdownload: partial download, left"
+    }
+   ],
+   "checks": [
+    {
+     "called": "bash"
+    },
+    {
+     "answer_contains": [
+      "2026-10-northern-power-bill.pdf",
+      "statement.pdf.crdownload"
+     ]
+    },
+    {
+     "notebook_contains": "crdownload"
+    }
+   ]
+  },
+  {
+   "id": "nothing-moves-without-a-yes",
+   "about": "The person answers no to the move: the run ends there and nothing moves.",
+   "inputs": {
+    "folder": "dump"
+   },
+   "world": {
+    "files": {
+     "dump/scan001.pdf": "Northern Power. Electricity bill. Statement date: 14 October 2026. Amount due: 82.40.",
+     "dump/IMG_2041.jpg": "(image)",
+     "dump/kettle-manual.pdf": "Kettle model K2 — instruction manual.",
+     "dump/statement.pdf.crdownload": "(partial)",
+     "dump/sorted/bills/2026-09-northern-power-bill.pdf": "September bill."
+    },
+    "shell": [
+     {
+      "match": "mv -n",
+      "output": "sorted:\nbills manuals photos\n\nsorted/bills:\n2026-09-northern-power-bill.pdf\n2026-10-northern-power-bill.pdf\n\nsorted/manuals:\nkettle-manual.pdf\n\nsorted/photos:\nIMG_2041.jpg",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "dump"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "dump/scan001.pdf"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"dump\" && mkdir -p sorted/bills sorted/manuals sorted/photos && mv -n \"scan001.pdf\" \"sorted/bills/2026-10-northern-power-bill.pdf\" && mv -n \"kettle-manual.pdf\" \"sorted/manuals/kettle-manual.pdf\" && mv -n \"IMG_2041.jpg\" \"sorted/photos/IMG_2041.jpg\" && ls -R sorted"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Moved**\n- bills (1): scan001.pdf → sorted/bills/2026-10-northern-power-bill.pdf\n- manuals (1): kettle-manual.pdf → sorted/manuals/kettle-manual.pdf\n- photos (1): IMG_2041.jpg → sorted/photos/IMG_2041.jpg\n\n**Left in place**\n- statement.pdf.crdownload — a partial download\n\n## Report\n- listed 4 files, read 1, moved 3 with one command\n\n## Carry forward\n- statement.pdf.crdownload: partial download, left"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "bash"
+    },
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "2026-10-northern-power-bill.pdf"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-contents-beat-the-name",
+   "about": "A file called receipt-march.pdf is a letter from the council: the contents decide, and it is filed as a letter with the letter's date.",
+   "inputs": {
+    "folder": "dump"
+   },
+   "world": {
+    "files": {
+     "dump/receipt-march.pdf": "Townsville Council, 3 March 2026. Dear resident, your bin collection day is changing."
+    },
+    "shell": [
+     {
+      "match": "mv -n",
+      "output": "sorted:\nletters\n\nsorted/letters:\n2026-03-council-bin-letter.pdf",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "dump"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "dump/receipt-march.pdf"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"dump\" && mkdir -p sorted/letters && mv -n \"receipt-march.pdf\" \"sorted/letters/2026-03-council-bin-letter.pdf\" && ls -R sorted"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Moved**\n- letters (1): receipt-march.pdf → sorted/letters/2026-03-council-bin-letter.pdf (its name said receipt; it is a council letter)\n\n**Left in place**\n- nothing\n\n## Report\n- listed 1 file, read it, moved it\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "sorted/letters/2026-03-council-bin-letter.pdf"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "sorted/receipts"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-empty-folder-runs-nothing",
+   "about": "Only the sorted folder is there: no loose files, so no command runs and the answer says so.",
+   "inputs": {
+    "folder": "dump"
+   },
+   "world": {
+    "files": {
+     "dump/sorted/bills/2026-09-northern-power-bill.pdf": "September bill."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "dump"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Moved**\n- nothing — no loose files\n\n**Left in place**\n- nothing\n\n## Report\n- listed the folder: only sorted/\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "bash"
+    },
+    {
+     "answer_contains": [
+      "no loose files"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-move-that-fails-is-reported",
+   "about": "The machine refuses the command (no rule answers it here): Moved says nothing moved and why, and the files are listed as left in place.",
+   "inputs": {
+    "folder": "dump"
+   },
+   "world": {
+    "files": {
+     "dump/kettle-manual.pdf": "Kettle model K2 — instruction manual."
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "dump"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"dump\" && mkdir -p sorted/manuals && mv -n \"kettle-manual.pdf\" \"sorted/manuals/kettle-manual.pdf\" && ls -R sorted"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Moved**\n- nothing — the command failed (exit 127: no machine answered)\n\n**Left in place**\n- kettle-manual.pdf (would go to sorted/manuals/kettle-manual.pdf)\n\n## Report\n- the move failed; nothing moved\n\n## Carry forward\n- kettle-manual.pdf: the move failed on 2 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "the command failed"
+     ]
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-sort-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Moved and Left in place does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "dump"
+   },
+   "world": {
+    "files": {
+     "dump/scan001.pdf": "Northern Power. Electricity bill. Statement date: 14 October 2026. Amount due: 82.40.",
+     "dump/IMG_2041.jpg": "(image)",
+     "dump/kettle-manual.pdf": "Kettle model K2 — instruction manual.",
+     "dump/statement.pdf.crdownload": "(partial)",
+     "dump/sorted/bills/2026-09-northern-power-bill.pdf": "September bill."
+    },
+    "shell": [
+     {
+      "match": "mv -n",
+      "output": "sorted:\nbills manuals photos\n\nsorted/bills:\n2026-09-northern-power-bill.pdf\n2026-10-northern-power-bill.pdf\n\nsorted/manuals:\nkettle-manual.pdf\n\nsorted/photos:\nIMG_2041.jpg",
+      "exit_code": 0
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "dump"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Sorted some files.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "not_called": "bash"
+    }
+   ]
+  }
+ ]
+}

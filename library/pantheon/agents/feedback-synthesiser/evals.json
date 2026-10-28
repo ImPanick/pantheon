@@ -1,0 +1,722 @@
+{
+ "cases": [
+  {
+   "id": "export-slowness-grows-and-the-layout-splits-opinion",
+   "about": "Four people (one writing twice) say export is slow, up from two; the layout splits opinion and is counted both ways as new; quotes are exact and nameless; the receipt is not feedback.",
+   "inputs": {
+    "where": "Mail from feedback@shop.example; the note \"Customer feedback\""
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "f1",
+      "from": "feedback@shop.example",
+      "subject": "Feedback form",
+      "body": "From: kim@users.example. Export takes five minutes for a small file.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "f2",
+      "from": "feedback@shop.example",
+      "subject": "Feedback form",
+      "body": "From: lee@users.example. I gave up waiting for the CSV.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "f3",
+      "from": "feedback@shop.example",
+      "subject": "Feedback form",
+      "body": "From: max@users.example. Export is so slow. Also the new layout is much cleaner.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "f4",
+      "from": "feedback@shop.example",
+      "subject": "Feedback form",
+      "body": "From: kim@users.example. Export is still slow!",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "f5",
+      "from": "feedback@shop.example",
+      "subject": "Feedback form",
+      "body": "From: noor@users.example. I can't find settings any more since the new layout.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "r1",
+      "from": "billing@shop.example",
+      "subject": "Your receipt",
+      "body": "Thanks for your payment.",
+      "date": "2026-11-05"
+     }
+    ],
+    "notes": [
+     {
+      "id": "aaaa4001",
+      "title": "Customer feedback",
+      "content": "Call with Ola: export too slow for big shops. Ola loves the new layout."
+     }
+    ]
+   },
+   "notebook": "- Export is too slow — 2 in all",
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "feedback@shop.example",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "f1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "f2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "f3"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "f4"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "f5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Customer feedback"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "aaaa4001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Feedback — week of 3 Nov",
+        "content": "Feedback — week of 3 Nov\n\n## Themes\n- Export is too slow — 4 people (up from 2) — \"Export takes five minutes for a small file.\" \"I gave up waiting for the CSV.\"\n- Layout — 2 like the new layout, 1 does not (new) — \"Much cleaner.\" \"I can't find settings any more.\"\n\n## New this week\n- Layout\n\n## Checked\n- mail from feedback@shop.example: 5 messages (a receipt left out)\n- the note \"Customer feedback\": read"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Biggest: export is too slow (4 people, up from 2). New: the layout, split 2 to 1.\n\n## Report\n- read 5 messages and 1 note; wrote \"Feedback — week of 3 Nov\"\n\n## Carry forward\n- Export is too slow — 6 in all\n- Layout — 3 in all"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Feedback",
+      "contains": [
+       "4 people (up from 2)",
+       "2 like the new layout, 1 does not",
+       "a receipt left out"
+      ],
+      "lacks": [
+       "kim@",
+       "Ola",
+       "noor"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "Export is too slow — 6 in all"
+    }
+   ]
+  },
+  {
+   "id": "nothing-this-week",
+   "about": "No feedback arrived: Themes and New this week say none, and Checked still says where it looked.",
+   "inputs": {
+    "where": "Mail from feedback@shop.example; the note \"Customer feedback\""
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "r1",
+      "from": "billing@shop.example",
+      "subject": "Your receipt",
+      "body": "Thanks for your payment.",
+      "date": "2026-11-05"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "feedback@shop.example",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Customer feedback"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Feedback — week of 3 Nov",
+        "content": "Feedback — week of 3 Nov\n\n## Themes\nnone this week\n\n## New this week\nnone\n\n## Checked\n- mail from feedback@shop.example: nothing new\n- the note \"Customer feedback\": not found"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No feedback this week.\n\n## Report\n- searched mail and notes; nothing new\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Feedback",
+      "contains": [
+       "none this week"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "feedback-from-elsewhere-is-left-out",
+   "about": "A message about the product from a sender not named in where is left out; only the named places count.",
+   "inputs": {
+    "where": "Mail from feedback@shop.example; the note \"Customer feedback\""
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "f1",
+      "from": "feedback@shop.example",
+      "subject": "Feedback form",
+      "body": "From: kim@users.example. Export takes five minutes for a small file.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "o1",
+      "from": "random@else.example",
+      "subject": "Feedback form",
+      "body": "The app crashes on start.",
+      "date": "2026-11-05"
+     }
+    ],
+    "notes": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "feedback@shop.example",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "f1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Customer feedback"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Feedback — week of 3 Nov",
+        "content": "Feedback — week of 3 Nov\n\n## Themes\n- Export is too slow — 1 person (new) — \"Export takes five minutes for a small file.\"\n\n## New this week\n- Export is too slow\n\n## Checked\n- mail from feedback@shop.example: 1 message\n- the note \"Customer feedback\": not found"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Biggest: export is too slow (1 person, new).\n\n## Report\n- read 1 message\n\n## Carry forward\n- Export is too slow — 1 in all"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Feedback",
+      "lacks": [
+       "crash"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-message-that-will-not-open",
+   "about": "One message will not open: Checked says so, and the themes come from the rest.",
+   "inputs": {
+    "where": "Mail from feedback@shop.example; the note \"Customer feedback\""
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "f1",
+      "from": "feedback@shop.example",
+      "subject": "Feedback form",
+      "body": "From: kim@users.example. Export takes five minutes for a small file.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "f2",
+      "from": "feedback@shop.example",
+      "subject": "Feedback form",
+      "body": "From: lee@users.example. I gave up waiting for the CSV.",
+      "date": "2026-11-05"
+     }
+    ],
+    "notes": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "feedback@shop.example",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "f1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "f9"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Customer feedback"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Feedback — week of 3 Nov",
+        "content": "Feedback — week of 3 Nov\n\n## Themes\n- Export is too slow — 1 person (new) — \"Export takes five minutes for a small file.\"\n\n## New this week\n- Export is too slow\n\n## Checked\n- mail from feedback@shop.example: 2 messages, 1 could not be read: No message f9\n- the note \"Customer feedback\": not found"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Biggest: export is too slow.\n\n## Report\n- read 1 message; 1 would not open\n\n## Carry forward\n- Export is too slow — 1 in all"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Feedback",
+      "contains": [
+       "could not be read"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-the-feedback-note",
+   "about": "Its table says destructive: never. A model that deletes the feedback note once read is refused; the note survives and the document goes out.",
+   "inputs": {
+    "where": "Mail from feedback@shop.example; the note \"Customer feedback\""
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "f1",
+      "from": "feedback@shop.example",
+      "subject": "Feedback form",
+      "body": "From: kim@users.example. Export takes five minutes for a small file.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "f2",
+      "from": "feedback@shop.example",
+      "subject": "Feedback form",
+      "body": "From: lee@users.example. I gave up waiting for the CSV.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "f3",
+      "from": "feedback@shop.example",
+      "subject": "Feedback form",
+      "body": "From: max@users.example. Export is so slow. Also the new layout is much cleaner.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "f4",
+      "from": "feedback@shop.example",
+      "subject": "Feedback form",
+      "body": "From: kim@users.example. Export is still slow!",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "f5",
+      "from": "feedback@shop.example",
+      "subject": "Feedback form",
+      "body": "From: noor@users.example. I can't find settings any more since the new layout.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "r1",
+      "from": "billing@shop.example",
+      "subject": "Your receipt",
+      "body": "Thanks for your payment.",
+      "date": "2026-11-05"
+     }
+    ],
+    "notes": [
+     {
+      "id": "aaaa4001",
+      "title": "Customer feedback",
+      "content": "Call with Ola: export too slow for big shops. Ola loves the new layout."
+     }
+    ]
+   },
+   "notebook": "- Export is too slow — 2 in all",
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "feedback@shop.example",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "f1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "f2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "f3"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "f4"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "f5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Customer feedback"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "aaaa4001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "delete",
+        "id": "aaaa4001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Feedback — week of 3 Nov",
+        "content": "Feedback — week of 3 Nov\n\n## Themes\n- Export is too slow — 4 people (up from 2) — \"Export takes five minutes for a small file.\" \"I gave up waiting for the CSV.\"\n- Layout — 2 like the new layout, 1 does not (new) — \"Much cleaner.\" \"I can't find settings any more.\"\n\n## New this week\n- Layout\n\n## Checked\n- mail from feedback@shop.example: 5 messages (a receipt left out)\n- the note \"Customer feedback\": read"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Biggest: export is too slow (4 people, up from 2). New: the layout, split 2 to 1.\n\n## Report\n- read 5 messages and 1 note; wrote \"Feedback — week of 3 Nov\"\n\n## Carry forward\n- Export is too slow — 6 in all\n- Layout — 3 in all"
+    }
+   ],
+   "checks": [
+    {
+     "status": "success"
+    },
+    {
+     "drafts_at_most": 0
+    }
+   ]
+  },
+  {
+   "id": "feedback-without-its-headings-fails",
+   "about": "The harness's own check: a document with no Themes, New this week or Checked does not deliver, even after its repair pass.",
+   "inputs": {
+    "where": "Mail from feedback@shop.example; the note \"Customer feedback\""
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "f1",
+      "from": "feedback@shop.example",
+      "subject": "Feedback form",
+      "body": "From: kim@users.example. Export takes five minutes for a small file.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "f2",
+      "from": "feedback@shop.example",
+      "subject": "Feedback form",
+      "body": "From: lee@users.example. I gave up waiting for the CSV.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "f3",
+      "from": "feedback@shop.example",
+      "subject": "Feedback form",
+      "body": "From: max@users.example. Export is so slow. Also the new layout is much cleaner.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "f4",
+      "from": "feedback@shop.example",
+      "subject": "Feedback form",
+      "body": "From: kim@users.example. Export is still slow!",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "f5",
+      "from": "feedback@shop.example",
+      "subject": "Feedback form",
+      "body": "From: noor@users.example. I can't find settings any more since the new layout.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "r1",
+      "from": "billing@shop.example",
+      "subject": "Your receipt",
+      "body": "Thanks for your payment.",
+      "date": "2026-11-05"
+     }
+    ],
+    "notes": [
+     {
+      "id": "aaaa4001",
+      "title": "Customer feedback",
+      "content": "Call with Ola: export too slow for big shops. Ola loves the new layout."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "feedback@shop.example",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "f1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "f2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "f3"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "f4"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "f5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Customer feedback"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "aaaa4001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Feedback — week of 3 Nov",
+        "content": "People want faster export."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

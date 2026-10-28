@@ -1,0 +1,23 @@
+{
+ "case": "a-process-against-article-30",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the process and the regulator's summary of Art. 30; wrote the check",
+ "read": [
+  "manage_documents",
+  "web_search",
+  "web_fetch"
+ ],
+ "wrote": [
+  "manage_documents",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Compliance check”",
+   "ok": true,
+   "detail": "“Compliance check — Customer records process against GDPR Art. 30” is there."
+  }
+ ],
+ "answer": "2 missing, 1 partly met, 1 met.\n\n## Report\n- read the process and the regulator's summary of Art. 30; wrote the check"
+}

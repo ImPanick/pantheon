@@ -1,0 +1,416 @@
+{
+ "cases": [
+  {
+   "id": "a-month-planned-around-a-market-and-a-launch",
+   "about": "The market and the launch become dates that matter and slots tied to them; the dentist appointment never appears; titles are kept so next month does not repeat them.",
+   "inputs": {
+    "themes": [
+     "glazes",
+     "studio life"
+    ],
+    "channels": [
+     "Instagram, 2 a month",
+     "Blog, 1 a month"
+    ]
+   },
+   "world": {
+    "calendar": [
+     {
+      "summary": "Christmas pottery market (stall)",
+      "start": "2026-12-05T09:00:00"
+     },
+     {
+      "summary": "Glaze range launch",
+      "start": "2026-12-14T10:00:00"
+     },
+     {
+      "summary": "Dentist",
+      "start": "2026-12-09T15:00:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-12-01",
+        "end": "2026-12-31"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Content calendar — December 2026",
+        "content": "Content calendar — December 2026\n\n## Dates that matter\n- Sat 5 Dec — Christmas pottery market (you have a stall)\n- Mon 14 Dec — new glaze range launches\n\n## Slots\nInstagram\n- Tue 1 Dec — Behind the stall: packing 200 mugs (market)\n- Mon 14 Dec — The new glazes, in daylight (launch)\nBlog\n- Thu 3 Dec — Three glazes that survive the dishwasher (glazes)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Instagram 2 slots, blog 1 slot.\n\n## Report\n- read next month's calendar; wrote \"Content calendar — December 2026\"\n\n## Carry forward\n- Behind the stall: packing 200 mugs\n- The new glazes, in daylight\n- Three glazes that survive the dishwasher"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Content calendar",
+      "contains": [
+       "Christmas pottery market",
+       "(launch)",
+       "(glazes)"
+      ],
+      "lacks": [
+       "Dentist",
+       "dentist"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "Three glazes that survive the dishwasher"
+    }
+   ]
+  },
+  {
+   "id": "an-idea-used-before-is-not-repeated",
+   "about": "The notebook has used the dishwasher glazes title: the blog slot takes another angle on the theme.",
+   "inputs": {
+    "themes": [
+     "glazes",
+     "studio life"
+    ],
+    "channels": [
+     "Instagram, 2 a month",
+     "Blog, 1 a month"
+    ]
+   },
+   "world": {
+    "calendar": [
+     {
+      "summary": "Christmas pottery market (stall)",
+      "start": "2026-12-05T09:00:00"
+     },
+     {
+      "summary": "Glaze range launch",
+      "start": "2026-12-14T10:00:00"
+     },
+     {
+      "summary": "Dentist",
+      "start": "2026-12-09T15:00:00"
+     }
+    ]
+   },
+   "notebook": "- Three glazes that survive the dishwasher",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-12-01",
+        "end": "2026-12-31"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Content calendar — December 2026",
+        "content": "Content calendar — December 2026\n\n## Dates that matter\n- Sat 5 Dec — Christmas pottery market (you have a stall)\n- Mon 14 Dec — new glaze range launches\n\n## Slots\nInstagram\n- Tue 1 Dec — Behind the stall: packing 200 mugs (market)\n- Mon 14 Dec — The new glazes, in daylight (launch)\nBlog\n- Thu 3 Dec — Why our blues crackle: a glaze up close (glazes)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Instagram 2 slots, blog 1 slot.\n\n## Report\n- wrote \"Content calendar — December 2026\"\n\n## Carry forward\n- Behind the stall: packing 200 mugs\n- The new glazes, in daylight\n- Why our blues crackle: a glaze up close\n- Three glazes that survive the dishwasher"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Content calendar",
+      "lacks": [
+       "dishwasher"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-in-the-calendar",
+   "about": "Next month's calendar is empty: Dates that matter says so, and every slot comes from the themes.",
+   "inputs": {
+    "themes": [
+     "glazes",
+     "studio life"
+    ],
+    "channels": [
+     "Instagram, 2 a month",
+     "Blog, 1 a month"
+    ]
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-12-01",
+        "end": "2026-12-31"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Content calendar — December 2026",
+        "content": "Content calendar — December 2026\n\n## Dates that matter\nnone in your calendar\n\n## Slots\nInstagram\n- Tue 1 Dec — A day at the wheel (studio life)\n- Tue 15 Dec — Glaze tests, before and after (glazes)\nBlog\n- Thu 3 Dec — How a mug is made, start to finish (studio life)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Instagram 2 slots, blog 1 slot.\n\n## Report\n- the calendar was empty\n\n## Carry forward\n- A day at the wheel\n- Glaze tests, before and after\n- How a mug is made, start to finish"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Content calendar",
+      "contains": [
+       "none in your calendar",
+       "(studio life)"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "two-dates-that-conflict",
+   "about": "The launch falls on the same day as a shop-wide holiday sale: the person's own launch takes the slot, and the clash is noted.",
+   "inputs": {
+    "themes": [
+     "glazes",
+     "studio life"
+    ],
+    "channels": [
+     "Instagram, 2 a month",
+     "Blog, 1 a month"
+    ]
+   },
+   "world": {
+    "calendar": [
+     {
+      "summary": "Glaze range launch",
+      "start": "2026-12-14T10:00:00"
+     },
+     {
+      "summary": "Holiday sale (whole street)",
+      "start": "2026-12-14T09:00:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-12-01",
+        "end": "2026-12-31"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Content calendar — December 2026",
+        "content": "Content calendar — December 2026\n\n## Dates that matter\n- Mon 14 Dec — new glaze range launches (the street's holiday sale is the same day)\n\n## Slots\nInstagram\n- Mon 14 Dec — The new glazes, in daylight (launch — chosen over the holiday sale)\n- Tue 1 Dec — A day at the wheel (studio life)\nBlog\n- Thu 3 Dec — How a mug is made (studio life)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Instagram 2 slots, blog 1 slot.\n\n## Report\n- wrote \"Content calendar — December 2026\"\n\n## Carry forward\n- The new glazes, in daylight\n- A day at the wheel\n- How a mug is made"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Content calendar",
+      "contains": [
+       "chosen over the holiday sale"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-changes-the-calendar",
+   "about": "Its table says destructive: never. A model that deletes the dentist appointment to clear the month is refused; the plan still goes out.",
+   "inputs": {
+    "themes": [
+     "glazes",
+     "studio life"
+    ],
+    "channels": [
+     "Instagram, 2 a month",
+     "Blog, 1 a month"
+    ]
+   },
+   "world": {
+    "calendar": [
+     {
+      "summary": "Christmas pottery market (stall)",
+      "start": "2026-12-05T09:00:00"
+     },
+     {
+      "summary": "Glaze range launch",
+      "start": "2026-12-14T10:00:00"
+     },
+     {
+      "summary": "Dentist",
+      "start": "2026-12-09T15:00:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-12-01",
+        "end": "2026-12-31"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "delete_event",
+        "uid": "dentist"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Content calendar — December 2026",
+        "content": "Content calendar — December 2026\n\n## Dates that matter\n- Sat 5 Dec — Christmas pottery market (you have a stall)\n- Mon 14 Dec — new glaze range launches\n\n## Slots\nInstagram\n- Tue 1 Dec — Behind the stall: packing 200 mugs (market)\n- Mon 14 Dec — The new glazes, in daylight (launch)\nBlog\n- Thu 3 Dec — Three glazes that survive the dishwasher (glazes)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Instagram 2 slots, blog 1 slot.\n\n## Report\n- read next month's calendar; wrote \"Content calendar — December 2026\"\n\n## Carry forward\n- Behind the stall: packing 200 mugs\n- The new glazes, in daylight\n- Three glazes that survive the dishwasher"
+    }
+   ],
+   "checks": [
+    {
+     "status": "success"
+    },
+    {
+     "document": {
+      "title": "Content calendar",
+      "contains": [
+       "Slots"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-calendar-without-its-headings-fails",
+   "about": "The harness's own check: a document with no Dates that matter and no Slots does not deliver, even after its repair pass.",
+   "inputs": {
+    "themes": [
+     "glazes",
+     "studio life"
+    ],
+    "channels": [
+     "Instagram, 2 a month",
+     "Blog, 1 a month"
+    ]
+   },
+   "world": {
+    "calendar": [
+     {
+      "summary": "Christmas pottery market (stall)",
+      "start": "2026-12-05T09:00:00"
+     },
+     {
+      "summary": "Glaze range launch",
+      "start": "2026-12-14T10:00:00"
+     },
+     {
+      "summary": "Dentist",
+      "start": "2026-12-09T15:00:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-12-01",
+        "end": "2026-12-31"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Content calendar — December 2026",
+        "content": "Post about the market."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

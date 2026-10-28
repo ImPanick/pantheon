@@ -1,0 +1,21 @@
+{
+ "case": "three-sources-one-report",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 2 documents and 1 note; wrote \"Report — Q3 sales for the board\"",
+ "read": [
+  "manage_documents",
+  "manage_notes"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Report”",
+   "ok": true,
+   "detail": "“Report — Q3 sales for the board” is there."
+  }
+ ],
+ "answer": "Q3 sales were £30,500, up on Q2; 1 open question.\n\n## Report\n- read 2 documents and 1 note; wrote \"Report — Q3 sales for the board\""
+}

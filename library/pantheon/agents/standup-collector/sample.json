@@ -1,0 +1,21 @@
+{
+ "case": "two-updates-a-blocker-and-one-missing",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- searched mail for 3 people, read 2 updates; wrote \"Standup — Tue 4 Nov\"",
+ "read": [
+  "search_emails",
+  "read_email"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Standup”",
+   "ok": true,
+   "detail": "“Standup — Tue 4 Nov” is there."
+  }
+ ],
+ "answer": "2 updates, 1 blocker; Chloe sent none.\n\n## Report\n- searched mail for 3 people, read 2 updates; wrote \"Standup — Tue 4 Nov\"\n\n## Carry forward\n- last run: 4 Nov\n- Ben: waiting on the client's logo files — since 3 Nov"
+}

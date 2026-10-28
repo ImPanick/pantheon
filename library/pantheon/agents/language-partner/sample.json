@@ -1,0 +1,20 @@
+{
+ "case": "two-mistakes-and-a-correct-reply",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Language replies\", wrote \"Practice — 2 Nov\"",
+ "read": [
+  "manage_notes"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Practice”",
+   "ok": true,
+   "detail": "“Practice — 2 Nov” is there."
+  }
+ ],
+ "answer": "2 corrections; today's topic: getting around town.\n\n## Report\n- read \"Language replies\", wrote \"Practice — 2 Nov\"\n\n## Carry forward\n- topics: the weather, food, getting around town\n- questions 2 Nov: ¿Cómo vas al trabajo? / ¿Dónde está tu parada de autobús? / ¿Cuánto cuesta un billete en tu ciudad?\n- recurring: ser/estar for place — 2; past tense after ayer — 1"
+}

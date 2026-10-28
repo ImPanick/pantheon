@@ -1,0 +1,22 @@
+{
+ "case": "export-slowness-grows-and-the-layout-splits-opinion",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 5 messages and 1 note; wrote \"Feedback — week of 3 Nov\"",
+ "read": [
+  "search_emails",
+  "read_email",
+  "manage_notes"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Feedback”",
+   "ok": true,
+   "detail": "“Feedback — week of 3 Nov” is there."
+  }
+ ],
+ "answer": "Biggest: export is too slow (4 people, up from 2). New: the layout, split 2 to 1.\n\n## Report\n- read 5 messages and 1 note; wrote \"Feedback — week of 3 Nov\"\n\n## Carry forward\n- Export is too slow — 6 in all\n- Layout — 3 in all"
+}

@@ -1,0 +1,21 @@
+{
+ "case": "three-keywords-judged-by-who-ranks",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- ran 4 searches, read your sitemap; wrote \"Keywords — pruning apple trees\"",
+ "read": [
+  "web_search",
+  "web_fetch"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Keywords”",
+   "ok": true,
+   "detail": "“Keywords — pruning apple trees” is there."
+  }
+ ],
+ "answer": "Easiest: pruning old apple trees.\n\n## Report\n- ran 4 searches, read your sitemap; wrote \"Keywords — pruning apple trees\""
+}

@@ -1,0 +1,19 @@
+{
+ "case": "one-trend-two-sources",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- ran 2 searches, read 1 source and 2 stories",
+ "read": [
+  "web_search",
+  "web_fetch"
+ ],
+ "wrote": [],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Trends, Checked."
+  }
+ ],
+ "answer": "**Trends**\n- No-dig gardening — councils trialling it in parks, on two independent sites this week (https://news.example/no-dig-parks, https://garden.example/no-dig; sources differ: 30% less weeding at news.example, 20% at garden.example) — angle: \"Our no-dig bed, one year on: what grew and what didn't\"\n\n**Checked**\n- \"gardening news\" search: 2 results\n- \"gardening trend\" search: 1 result\n- https://garden.example/news: read, 2 stories\n\n## Report\n- ran 2 searches, read 1 source and 2 stories\n\n## Carry forward\n- 4 Nov: no-dig gardening"
+}

@@ -1,0 +1,224 @@
+{
+ "cases": [
+  {
+   "id": "a-linear-equation-gets-a-ladder-not-the-answer",
+   "about": "Year 8 algebra: the idea, three hints that stop one step short, a worked example with other numbers and a way to check — and x = 5 appears nowhere.",
+   "inputs": {
+    "question": "Solve 3x + 5 = 20",
+    "subject": "Maths, year 8"
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Hints — solve 3x + 5 = 20",
+        "content": "Hints — solve 3x + 5 = 20\n\n## The idea\nThis tests solving a linear equation. You undo what was done to x, in reverse order, doing the same to both sides.\n\n## Hint 1\nSomething was added to 3x. What undoes adding?\n\n## Hint 2\nTake 5 from both sides. What does the equation look like now?\n\n## Hint 3\nNow 3 times x equals your new number. What undoes multiplying by 3?\n\n## Worked example\nSolve 2y + 3 = 11.\n2y + 3 − 3 = 11 − 3, so 2y = 8.\n2y ÷ 2 = 8 ÷ 2, so y = 4.\n\n## Check your answer\nPut your value of x back into 3x + 5. If you get 20, it is right."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Hints ready: solving a linear equation by undoing each step.\n\n## Report\n- wrote \"Hints — solve 3x + 5 = 20\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Hints — solve 3x + 5 = 20",
+      "contains": [
+       "Hint 3",
+       "2y + 3 = 11",
+       "Put your value of x back"
+      ],
+      "lacks": [
+       "x = 5",
+       "x=5"
+      ]
+     }
+    },
+    {
+     "answer_lacks": [
+      "x = 5"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "just-tell-me-the-answer-still-gets-hints",
+   "about": "The question demands the answer outright: the hints open by saying the answer can't be given, and 12 — the answer — is never written.",
+   "inputs": {
+    "question": "Just give me the answer: what is 15% of 80?",
+    "subject": "Maths, year 7"
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Hints — 15% of 80",
+        "content": "Hints — 15% of 80\n\nI can't give you the answer, but these will get you there.\n\n## The idea\nThis tests finding a percentage of an amount. A percentage is a number out of 100.\n\n## Hint 1\n15% means 15 out of every 100. How could you find 10% of 80 first?\n\n## Hint 2\n10% of 80 is 8. How would you find 5%?\n\n## Hint 3\n5% is half of 10%. Add your 10% and your 5% together.\n\n## Worked example\nFind 15% of 60.\n10% of 60 = 6.\n5% of 60 = 3.\n15% of 60 = 6 + 3 = 9.\n\n## Check your answer\n15% is a bit less than a fifth. A fifth of 80 is 16, so your answer should be a little under 16."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Hints ready: finding a percentage by building it from 10% and 5%.\n\n## Report\n- wrote \"Hints — 15% of 80\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Hints — 15% of 80",
+      "contains": [
+       "I can't give you the answer"
+      ],
+      "lacks": [
+       "= 12",
+       "is 12",
+       "80 = 12"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-essay-question-gets-a-plan",
+   "about": "A history essay: the hints are a plan and the evidence to look for, and the worked example is a model paragraph on a different topic.",
+   "inputs": {
+    "question": "Why did the Western Roman Empire fall? (400 words)",
+    "subject": "History, year 9"
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Hints — why the Western Roman Empire fell",
+        "content": "Hints — why the Western Roman Empire fell\n\n## The idea\nThis tests explaining causes and weighing which mattered most. A strong answer gives several causes and argues which was most important.\n\n## Hint 1\nList the kinds of cause: money, the army, invasions, leaders. Which can you find evidence for in your notes?\n\n## Hint 2\nPick three causes and find one fact for each from your textbook.\n\n## Hint 3\nDecide which cause mattered most and why — that is your conclusion. Plan a paragraph per cause.\n\n## Worked example\nA model paragraph on a different question (why the Spanish Armada failed): \"The weather was the decisive cause. Storms scattered the fleet off Scotland and Ireland in 1588, wrecking more ships than English guns did.\"\n\n## Check your answer\nReread the question: does each paragraph explain WHY, not just what happened? Is there a clear conclusion?"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Hints ready: planning a causes essay.\n\n## Report\n- wrote \"Hints — why the Western Roman Empire fell\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Hints — why the Western Roman Empire fell",
+      "contains": [
+       "Spanish Armada",
+       "Plan a paragraph"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-question-that-contradicts-itself",
+   "about": "A triangle whose angles add up to 190°: Hint 1 says what does not add up and asks the student to check the wording, and no hints go past it.",
+   "inputs": {
+    "question": "A triangle has angles of 100°, 50° and 40°. Find its area if the base is 6 cm.",
+    "subject": "Maths, year 8"
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Hints — the triangle's area",
+        "content": "Hints — the triangle's area\n\n## The idea\nThis would test the area of a triangle, but the question does not add up.\n\n## Hint 1\nThe angles of a triangle always add up to 180°. These add up to 190°. Check the question's wording before going on.\n\n## Hint 2\nnone until the question is checked\n\n## Hint 3\nnone until the question is checked\n\n## Worked example\nFind the area of a triangle with base 4 cm and height 3 cm: area = ½ × 4 × 3 = 6 cm².\n\n## Check your answer\nOnce the question is fixed, check your units are cm²."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Hints ready, but the question does not add up: its angles total 190°.\n\n## Report\n- wrote \"Hints — the triangle's area\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Hints — the triangle",
+      "contains": [
+       "190°",
+       "Check the question's wording"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-question-given",
+   "about": "The question is blank: the document says no question was given and asks for it as written; no hints are made up.",
+   "inputs": {
+    "question": " ",
+    "subject": "Science, year 10"
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Hints — no question",
+        "content": "Hints — no question\n\n## The idea\nno question was given — please paste the question as it is written\n\n## Hint 1\nnone\n\n## Hint 2\nnone\n\n## Hint 3\nnone\n\n## Worked example\nnone\n\n## Check your answer\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No hints: no question was given.\n\n## Report\n- wrote \"Hints — no question\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Hints",
+      "contains": [
+       "no question was given"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "hints-without-their-headings-fail",
+   "about": "The harness's own check: a Hints document with no Hint 1, Worked example or Check your answer does not deliver, even after its repair pass.",
+   "inputs": {
+    "question": "Solve 3x + 5 = 20",
+    "subject": "Maths, year 8"
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Hints — solve 3x + 5 = 20",
+        "content": "Take 5 away and divide by 3."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

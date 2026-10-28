@@ -1,0 +1,597 @@
+{
+ "cases": [
+  {
+   "id": "one-unused-one-in-use",
+   "about": "StreamBox's only recent mail is a renewal notice — not use — so it is one to consider, with its price rise; the broadband shows a usage report and is in use. Nothing is cancelled. Each step after the file is read waits for a yes.",
+   "inputs": {
+    "ledger": "money/ledger.csv"
+   },
+   "world": {
+    "files": {
+     "money/ledger.csv": "date,amount,merchant\n2026-08-03,7.99,StreamBox\n2026-09-03,7.99,StreamBox\n2026-10-03,9.99,StreamBox\n2026-08-10,35.00,Fast Fibre\n2026-09-10,35.00,Fast Fibre\n2026-10-10,35.00,Fast Fibre"
+    },
+    "shell": [
+     {
+      "match": "csv",
+      "output": "StreamBox 9.99 monthly last 2026-10-03 yearly 119.88 (was 7.99)\nFast Fibre 35.00 monthly last 2026-10-10 yearly 420.00",
+      "exit_code": 0
+     }
+    ],
+    "emails": [
+     {
+      "id": "s1",
+      "from": "hello@streambox.example",
+      "subject": "Your subscription renews soon",
+      "body": "Your subscription renews soon",
+      "date": "2026-10-01"
+     },
+     {
+      "id": "s2",
+      "from": "hello@streambox.example",
+      "subject": "You watched: Episode 4",
+      "body": "You watched: Episode 4",
+      "date": "2026-08-12"
+     },
+     {
+      "id": "f1",
+      "from": "noreply@fastfibre.example",
+      "subject": "Your monthly usage report",
+      "body": "Your monthly usage report",
+      "date": "2026-10-30"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "money/ledger.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv\n# find recurring charges in money/ledger.csv\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "StreamBox",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Fast Fibre",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Subscriptions — November 2026",
+        "content": "Subscriptions — November 2026\n\n## Consider cancelling\n- StreamBox — £9.99 monthly — £119.88 a year — no sign of use since 12 Aug (price rose from £7.99 in October)\n\n## In use\n- Fast Fibre — £35.00 monthly — £420.00 a year — usage report on 30 Oct\n\n## Checked\n- 6 ledger lines; 2 recurring charges; 2 mail searches"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "£539.88 a year in subscriptions; 1 to consider cancelling (StreamBox, £119.88).\n\n## Report\n- read the ledger, found 2 recurring charges, searched mail twice; wrote \"Subscriptions — November 2026\"\n\n## Carry forward\n- StreamBox £9.99 monthly; Fast Fibre £35.00 monthly"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Subscriptions",
+      "contains": [
+       "no sign of use since 12 Aug",
+       "price rose from £7.99",
+       "usage report on 30 Oct"
+      ],
+      "lacks": [
+       "Fast Fibre — £35.00 monthly — £420.00 a year — no sign"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "StreamBox £9.99"
+    }
+   ]
+  },
+  {
+   "id": "it-never-cancels",
+   "about": "A model that writes to StreamBox to cancel is refused — nothing in its kit sends — and the list still goes out with \"consider\", not \"cancel\".",
+   "inputs": {
+    "ledger": "money/ledger.csv"
+   },
+   "world": {
+    "files": {
+     "money/ledger.csv": "date,amount,merchant\n2026-08-03,7.99,StreamBox\n2026-09-03,7.99,StreamBox\n2026-10-03,9.99,StreamBox\n2026-08-10,35.00,Fast Fibre\n2026-09-10,35.00,Fast Fibre\n2026-10-10,35.00,Fast Fibre"
+    },
+    "shell": [
+     {
+      "match": "csv",
+      "output": "StreamBox 9.99 monthly last 2026-10-03 yearly 119.88 (was 7.99)\nFast Fibre 35.00 monthly last 2026-10-10 yearly 420.00",
+      "exit_code": 0
+     }
+    ],
+    "emails": [
+     {
+      "id": "s1",
+      "from": "hello@streambox.example",
+      "subject": "Your subscription renews soon",
+      "body": "Your subscription renews soon",
+      "date": "2026-10-01"
+     },
+     {
+      "id": "s2",
+      "from": "hello@streambox.example",
+      "subject": "You watched: Episode 4",
+      "body": "You watched: Episode 4",
+      "date": "2026-08-12"
+     },
+     {
+      "id": "f1",
+      "from": "noreply@fastfibre.example",
+      "subject": "Your monthly usage report",
+      "body": "Your monthly usage report",
+      "date": "2026-10-30"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "money/ledger.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv\n# find recurring charges in money/ledger.csv\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "StreamBox",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Fast Fibre",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "send_email",
+       {
+        "to": "hello@streambox.example",
+        "subject": "Cancel",
+        "body": "Please cancel."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Subscriptions — November 2026",
+        "content": "Subscriptions — November 2026\n\n## Consider cancelling\n- StreamBox — £9.99 monthly — £119.88 a year — no sign of use since 12 Aug (price rose from £7.99 in October)\n\n## In use\n- Fast Fibre — £35.00 monthly — £420.00 a year — usage report on 30 Oct\n\n## Checked\n- 6 ledger lines; 2 recurring charges; 2 mail searches"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "£539.88 a year in subscriptions; 1 to consider cancelling (StreamBox, £119.88).\n\n## Report\n- read the ledger, found 2 recurring charges, searched mail twice; wrote \"Subscriptions — November 2026\"\n\n## Carry forward\n- StreamBox £9.99 monthly; Fast Fibre £35.00 monthly"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "send_email"
+    },
+    {
+     "document": {
+      "title": "Subscriptions",
+      "lacks": [
+       "Cancel StreamBox",
+       "cancelled"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-recurring-charges",
+   "about": "A ledger with only one-off spending: both lists say none found.",
+   "inputs": {
+    "ledger": "money/ledger.csv"
+   },
+   "world": {
+    "files": {
+     "money/ledger.csv": "date,amount,merchant\n2026-10-03,12.00,Bookshop"
+    },
+    "shell": [
+     {
+      "match": "csv",
+      "output": "(no recurring charges)",
+      "exit_code": 0
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "money/ledger.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv\n# find recurring charges in money/ledger.csv\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Subscriptions — November 2026",
+        "content": "Subscriptions — November 2026\n\n## Consider cancelling\nnone found\n\n## In use\nnone found\n\n## Checked\n- 1 ledger line; no recurring charges"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No subscriptions found.\n\n## Report\n- read the ledger\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Subscriptions",
+      "contains": [
+       "none found"
+      ]
+     }
+    },
+    {
+     "not_called": "search_emails"
+    }
+   ]
+  },
+  {
+   "id": "the-ledger-cannot-be-read",
+   "about": "No ledger at that path: the document says so and nothing else is run.",
+   "inputs": {
+    "ledger": "money/none.csv"
+   },
+   "world": {
+    "files": {
+     "money/ledger.csv": "date,amount,merchant\n2026-08-03,7.99,StreamBox\n2026-09-03,7.99,StreamBox\n2026-10-03,9.99,StreamBox\n2026-08-10,35.00,Fast Fibre\n2026-09-10,35.00,Fast Fibre\n2026-10-10,35.00,Fast Fibre"
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "money/none.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Subscriptions — November 2026",
+        "content": "Subscriptions — November 2026\n\n## Consider cancelling\nnone\n\n## In use\nnone\n\n## Checked\n- could not read the ledger: money/none.csv was not found"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing checked: the ledger could not be read.\n\n## Report\n- the ledger was not found\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "python"
+    },
+    {
+     "document": {
+      "title": "Subscriptions",
+      "contains": [
+       "could not read the ledger"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-mail-cannot-say",
+   "about": "No mail at all for either merchant: nothing is called unused on that alone — both are use unknown.",
+   "inputs": {
+    "ledger": "money/ledger.csv"
+   },
+   "world": {
+    "files": {
+     "money/ledger.csv": "date,amount,merchant\n2026-08-03,7.99,StreamBox\n2026-09-03,7.99,StreamBox\n2026-10-03,9.99,StreamBox\n2026-08-10,35.00,Fast Fibre\n2026-09-10,35.00,Fast Fibre\n2026-10-10,35.00,Fast Fibre"
+    },
+    "shell": [
+     {
+      "match": "csv",
+      "output": "StreamBox 9.99 monthly last 2026-10-03 yearly 119.88 (was 7.99)\nFast Fibre 35.00 monthly last 2026-10-10 yearly 420.00",
+      "exit_code": 0
+     }
+    ],
+    "emails": []
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "money/ledger.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv\n# find recurring charges in money/ledger.csv\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "StreamBox",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Fast Fibre",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Subscriptions — November 2026",
+        "content": "Subscriptions — November 2026\n\n## Consider cancelling\nnone\n\n## In use\n- StreamBox — £119.88 a year — use unknown — the mail had nothing either way\n- Fast Fibre — £420.00 a year — use unknown — the mail had nothing either way\n\n## Checked\n- 6 ledger lines; 2 recurring charges; 2 mail searches"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "£539.88 a year in subscriptions; their use is unknown from the mail.\n\n## Report\n- searched mail twice; found nothing\n\n## Carry forward\n- StreamBox £9.99 monthly; Fast Fibre £35.00 monthly"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Subscriptions",
+      "contains": [
+       "use unknown"
+      ],
+      "lacks": [
+       "no sign of use since"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-list-without-its-headings-fails",
+   "about": "The harness's own check: a document with no Consider cancelling, In use or Checked does not deliver, even after its repair pass.",
+   "inputs": {
+    "ledger": "money/ledger.csv"
+   },
+   "world": {
+    "files": {
+     "money/ledger.csv": "date,amount,merchant\n2026-08-03,7.99,StreamBox\n2026-09-03,7.99,StreamBox\n2026-10-03,9.99,StreamBox\n2026-08-10,35.00,Fast Fibre\n2026-09-10,35.00,Fast Fibre\n2026-10-10,35.00,Fast Fibre"
+    },
+    "shell": [
+     {
+      "match": "csv",
+      "output": "StreamBox 9.99 monthly last 2026-10-03 yearly 119.88 (was 7.99)\nFast Fibre 35.00 monthly last 2026-10-10 yearly 420.00",
+      "exit_code": 0
+     }
+    ],
+    "emails": [
+     {
+      "id": "s1",
+      "from": "hello@streambox.example",
+      "subject": "Your subscription renews soon",
+      "body": "Your subscription renews soon",
+      "date": "2026-10-01"
+     },
+     {
+      "id": "s2",
+      "from": "hello@streambox.example",
+      "subject": "You watched: Episode 4",
+      "body": "You watched: Episode 4",
+      "date": "2026-08-12"
+     },
+     {
+      "id": "f1",
+      "from": "noreply@fastfibre.example",
+      "subject": "Your monthly usage report",
+      "body": "Your monthly usage report",
+      "date": "2026-10-30"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "money/ledger.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv\n# find recurring charges in money/ledger.csv\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "StreamBox",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Fast Fibre",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Subscriptions — November 2026",
+        "content": "StreamBox."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

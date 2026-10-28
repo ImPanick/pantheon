@@ -1,0 +1,21 @@
+{
+ "case": "three-files-sorted-in-one-move",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- listed 4 files, read 1, moved 3 with one command",
+ "read": [
+  "ls",
+  "read_file"
+ ],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Moved, Left in place."
+  }
+ ],
+ "answer": "**Moved**\n- bills (1): scan001.pdf → sorted/bills/2026-10-northern-power-bill.pdf\n- manuals (1): kettle-manual.pdf → sorted/manuals/kettle-manual.pdf\n- photos (1): IMG_2041.jpg → sorted/photos/IMG_2041.jpg\n\n**Left in place**\n- statement.pdf.crdownload — a partial download\n\n## Report\n- listed 4 files, read 1, moved 3 with one command\n\n## Carry forward\n- statement.pdf.crdownload: partial download, left"
+}

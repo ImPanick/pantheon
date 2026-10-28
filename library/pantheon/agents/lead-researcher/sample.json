@@ -1,0 +1,21 @@
+{
+ "case": "a-brief-before-a-call",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- ran 3 searches, read 4 pages; wrote \"Brief — Ana Ruiz, Greenleaf Cafés\"",
+ "read": [
+  "web_search",
+  "web_fetch"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Brief”",
+   "ok": true,
+   "detail": "“Brief — Ana Ruiz, Greenleaf Cafés” is there."
+  }
+ ],
+ "answer": "Most worth knowing: they opened a sixth café in York in September.\n\n## Report\n- ran 3 searches, read 4 pages; wrote \"Brief — Ana Ruiz, Greenleaf Cafés\""
+}

@@ -1,0 +1,413 @@
+{
+ "cases": [
+  {
+   "id": "two-mistakes-and-a-correct-reply",
+   "about": "Yesterday's three replies: two corrected gently with why, the correct one marked correct and nothing more; a new topic at A2 that uses estar for place once, three new questions, and the recurring ser/estar mistake counted up.",
+   "inputs": {
+    "language": "Spanish",
+    "level": "A2",
+    "at": "19:00"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "dddd0001",
+      "title": "Language replies",
+      "content": "1 Nov answers:\nMi casa es cerca del parque.\nAyer yo como paella.\nMe gusta el café."
+     }
+    ]
+   },
+   "notebook": "- topics: the weather, food\n- questions 1 Nov: ¿Dónde está tu casa? / ¿Qué comiste ayer? / ¿Te gusta el café?\n- recurring: ser/estar for place — 1",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Language replies"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "dddd0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Practice — 2 Nov",
+        "content": "Practice — 2 Nov\n\n## Corrections\n1. \"Mi casa es cerca del parque.\" → \"Mi casa está cerca del parque.\" — estar for where something is.\n2. \"Ayer yo como paella.\" → \"Ayer comí paella.\" — ayer needs the past tense.\n3. \"Me gusta el café.\" — ✓ correct\n\n## Today's conversation\n— ¿Dónde está la estación?\n— Está al final de esta calle.\n— ¿Hay un autobús?\n— Sí, el autobús 12 sale cada diez minutos.\n— ¿Cuánto cuesta el billete?\n— Dos euros.\n\n## Your questions\n1. ¿Cómo vas al trabajo?\n2. ¿Dónde está tu parada de autobús?\n3. ¿Cuánto cuesta un billete en tu ciudad?"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 corrections; today's topic: getting around town.\n\n## Report\n- read \"Language replies\", wrote \"Practice — 2 Nov\"\n\n## Carry forward\n- topics: the weather, food, getting around town\n- questions 2 Nov: ¿Cómo vas al trabajo? / ¿Dónde está tu parada de autobús? / ¿Cuánto cuesta un billete en tu ciudad?\n- recurring: ser/estar for place — 2; past tense after ayer — 1"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Practice",
+      "contains": [
+       "Mi casa está cerca del parque",
+       "Ayer comí paella",
+       "Me gusta el café.\" — ✓ correct",
+       "¿Dónde está la estación?"
+      ],
+      "lacks": [
+       "Me gusta la café",
+       "el tiempo"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "ser/estar for place — 2"
+    }
+   ]
+  },
+  {
+   "id": "no-replies-yet",
+   "about": "No Language replies note exists yet: nothing is corrected, and the conversation and questions still come.",
+   "inputs": {
+    "language": "Spanish",
+    "level": "A2",
+    "at": "19:00"
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Language replies"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Practice — 2 Nov",
+        "content": "Practice — 2 Nov\n\n## Corrections\nnothing to correct — no replies in Language replies yet\n\n## Today's conversation\n— ¿Qué tiempo hace hoy?\n— Hace sol y calor.\n— ¿Vamos a la playa?\n— Sí, después de comer.\n— ¿A qué hora?\n— A las cuatro.\n\n## Your questions\n1. ¿Qué tiempo hace hoy en tu ciudad?\n2. ¿Te gusta el calor?\n3. ¿Qué haces cuando llueve?"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 corrections; today's topic: the weather.\n\n## Report\n- no replies yet; wrote \"Practice — 2 Nov\"\n\n## Carry forward\n- topics: the weather\n- questions 2 Nov: ¿Qué tiempo hace hoy en tu ciudad? / ¿Te gusta el calor? / ¿Qué haces cuando llueve?"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Practice",
+      "contains": [
+       "nothing to correct"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-reply-in-english-and-one-off-topic",
+   "about": "One reply is in English and one answers a different question: the first gets a Spanish version to try, the second has only its language corrected and is told that is fine.",
+   "inputs": {
+    "language": "Spanish",
+    "level": "A2",
+    "at": "19:00"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "dddd0002",
+      "title": "Language replies",
+      "content": "1 Nov answers:\nMy house is near the park.\nMi perro se llama Toby.\nMe gusta el café."
+     }
+    ]
+   },
+   "notebook": "- topics: the weather, food\n- questions 1 Nov: ¿Dónde está tu casa? / ¿Qué comiste ayer? / ¿Te gusta el café?\n- recurring: ser/estar for place — 1",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Language replies"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "dddd0002"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Practice — 2 Nov",
+        "content": "Practice — 2 Nov\n\n## Corrections\n1. \"My house is near the park.\" — you answered in English — try: \"Mi casa está cerca del parque.\"\n2. \"Mi perro se llama Toby.\" — ✓ correct (this answers a different question — that is fine)\n3. \"Me gusta el café.\" — ✓ correct\n\n## Today's conversation\n— ¿Dónde está la estación?\n— Está al final de esta calle.\n— ¿Hay un autobús?\n— Sí, el autobús 12 sale cada diez minutos.\n— ¿Cuánto cuesta el billete?\n— Dos euros.\n\n## Your questions\n1. ¿Cómo vas al trabajo?\n2. ¿Dónde está tu parada de autobús?\n3. ¿Cuánto cuesta un billete en tu ciudad?"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 correction; today's topic: getting around town.\n\n## Report\n- read \"Language replies\", wrote \"Practice — 2 Nov\"\n\n## Carry forward\n- topics: the weather, food, getting around town\n- questions 2 Nov: ¿Cómo vas al trabajo? / ¿Dónde está tu parada de autobús? / ¿Cuánto cuesta un billete en tu ciudad?\n- recurring: ser/estar for place — 2; past tense after ayer — 1"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Practice",
+      "contains": [
+       "you answered in English",
+       "this answers a different question"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-used-topic-is-not-reused",
+   "about": "Its notebook has used the weather and food: today's conversation is on neither.",
+   "inputs": {
+    "language": "Spanish",
+    "level": "A2",
+    "at": "19:00"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "dddd0001",
+      "title": "Language replies",
+      "content": "1 Nov answers:\nMi casa es cerca del parque.\nAyer yo como paella.\nMe gusta el café."
+     }
+    ]
+   },
+   "notebook": "- topics: the weather, food\n- questions 1 Nov: ¿Dónde está tu casa? / ¿Qué comiste ayer? / ¿Te gusta el café?\n- recurring: ser/estar for place — 1",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Language replies"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "dddd0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Practice — 2 Nov",
+        "content": "Practice — 2 Nov\n\n## Corrections\n1. \"Mi casa es cerca del parque.\" → \"Mi casa está cerca del parque.\" — estar for where something is.\n2. \"Ayer yo como paella.\" → \"Ayer comí paella.\" — ayer needs the past tense.\n3. \"Me gusta el café.\" — ✓ correct\n\n## Today's conversation\n— ¿Dónde está la estación?\n— Está al final de esta calle.\n— ¿Hay un autobús?\n— Sí, el autobús 12 sale cada diez minutos.\n— ¿Cuánto cuesta el billete?\n— Dos euros.\n\n## Your questions\n1. ¿Cómo vas al trabajo?\n2. ¿Dónde está tu parada de autobús?\n3. ¿Cuánto cuesta un billete en tu ciudad?"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 corrections; today's topic: getting around town.\n\n## Report\n- wrote \"Practice — 2 Nov\"\n\n## Carry forward\n- topics: the weather, food, getting around town\n- questions 2 Nov: ¿Cómo vas al trabajo? / ¿Dónde está tu parada de autobús? / ¿Cuánto cuesta un billete en tu ciudad?\n- recurring: ser/estar for place — 2; past tense after ayer — 1"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Practice",
+      "lacks": [
+       "¿Qué tiempo hace",
+       "paella?"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "getting around town"
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-the-note",
+   "about": "Its table says destructive: never. A model that clears yesterday's replies from the note by deleting it is refused; the note stays and the practice goes out.",
+   "inputs": {
+    "language": "Spanish",
+    "level": "A2",
+    "at": "19:00"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "dddd0001",
+      "title": "Language replies",
+      "content": "1 Nov answers:\nMi casa es cerca del parque.\nAyer yo como paella.\nMe gusta el café."
+     }
+    ]
+   },
+   "notebook": "- topics: the weather, food\n- questions 1 Nov: ¿Dónde está tu casa? / ¿Qué comiste ayer? / ¿Te gusta el café?\n- recurring: ser/estar for place — 1",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Language replies"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "dddd0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "delete",
+        "id": "dddd0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Practice — 2 Nov",
+        "content": "Practice — 2 Nov\n\n## Corrections\n1. \"Mi casa es cerca del parque.\" → \"Mi casa está cerca del parque.\" — estar for where something is.\n2. \"Ayer yo como paella.\" → \"Ayer comí paella.\" — ayer needs the past tense.\n3. \"Me gusta el café.\" — ✓ correct\n\n## Today's conversation\n— ¿Dónde está la estación?\n— Está al final de esta calle.\n— ¿Hay un autobús?\n— Sí, el autobús 12 sale cada diez minutos.\n— ¿Cuánto cuesta el billete?\n— Dos euros.\n\n## Your questions\n1. ¿Cómo vas al trabajo?\n2. ¿Dónde está tu parada de autobús?\n3. ¿Cuánto cuesta un billete en tu ciudad?"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 corrections; today's topic: getting around town.\n\n## Report\n- a delete was refused\n\n## Carry forward\n- topics: the weather, food, getting around town\n- questions 2 Nov: ¿Cómo vas al trabajo? / ¿Dónde está tu parada de autobús? / ¿Cuánto cuesta un billete en tu ciudad?\n- recurring: ser/estar for place — 2; past tense after ayer — 1"
+    }
+   ],
+   "checks": [
+    {
+     "status": "success"
+    },
+    {
+     "document": {
+      "title": "Practice",
+      "contains": [
+       "Ayer comí paella"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-practice-without-its-headings-fails",
+   "about": "The harness's own check: a Practice document with no Corrections, conversation or questions does not deliver, even after its repair pass.",
+   "inputs": {
+    "language": "Spanish",
+    "level": "A2",
+    "at": "19:00"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "dddd0001",
+      "title": "Language replies",
+      "content": "1 Nov answers:\nMi casa es cerca del parque.\nAyer yo como paella.\nMe gusta el café."
+     }
+    ]
+   },
+   "notebook": "- topics: the weather, food\n- questions 1 Nov: ¿Dónde está tu casa? / ¿Qué comiste ayer? / ¿Te gusta el café?\n- recurring: ser/estar for place — 1",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Language replies"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "dddd0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Practice — 2 Nov",
+        "content": "¡Hola!"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

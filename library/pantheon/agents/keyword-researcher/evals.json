@@ -1,0 +1,657 @@
+{
+ "cases": [
+  {
+   "id": "three-keywords-judged-by-who-ranks",
+   "about": "Each keyword's intent and difficulty with the reason from who ranks, the fitting page from the sitemap or new page, the easiest win named — and no search volume anywhere. Writing after reading waits for a yes.",
+   "inputs": {
+    "topic": "pruning apple trees",
+    "site": "https://mygarden.example"
+   },
+   "world": {
+    "search": {
+     "how to": [
+      {
+       "title": "How to prune apple trees | RHS",
+       "url": "https://rhs.example/prune-apples",
+       "snippet": "..."
+      },
+      {
+       "title": "How to prune apple trees - BigGarden",
+       "url": "https://biggarden.example/apples",
+       "snippet": "..."
+      }
+     ],
+     "old apple": [
+      {
+       "title": "Forum: help with my old apple tree",
+       "url": "https://forum.example/t/123",
+       "snippet": "..."
+      },
+      {
+       "title": "My orchard (blog)",
+       "url": "https://tinyblog.example/orchard",
+       "snippet": "..."
+      }
+     ],
+     "best": [
+      {
+       "title": "Best pruning saws for apple trees — BigShop",
+       "url": "https://bigshop.example/saws",
+       "snippet": "..."
+      },
+      {
+       "title": "Pruning saw reviews (forum)",
+       "url": "https://forum.example/t/456",
+       "snippet": "..."
+      }
+     ]
+    },
+    "web": {
+     "https://mygarden.example/sitemap.xml": "<urlset><url>https://mygarden.example/blog/old-orchard</url><url>https://mygarden.example/blog/winter-mulch</url></urlset>"
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "pruning apple trees"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "how to prune apple trees"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "pruning old apple trees"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "best saw for pruning apple trees"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://mygarden.example/sitemap.xml"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Keywords — pruning apple trees",
+        "content": "Keywords — pruning apple trees\n\n## Keywords\n| Keyword | Intent | Difficulty | Your page |\n|---|---|---|---|\n| how to prune apple trees | learn | high — the RHS and BigGarden rank with the exact phrase | new page |\n| pruning old apple trees | learn | low — a forum thread and a small blog rank | https://mygarden.example/blog/old-orchard |\n| best saw for pruning apple trees | compare | medium — BigShop ranks, but so does a forum | new page |\n\n## Easiest wins\n- pruning old apple trees\n\n## Notes\n- No search-volume data: difficulty is judged from who ranks."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Easiest: pruning old apple trees.\n\n## Report\n- ran 4 searches, read your sitemap; wrote \"Keywords — pruning apple trees\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Keywords",
+      "contains": [
+       "high — the RHS",
+       "low — a forum thread",
+       "https://mygarden.example/blog/old-orchard",
+       "No search-volume data"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-search-volume-is-never-invented",
+   "about": "No search-volume data exists: no monthly number or score appears.",
+   "inputs": {
+    "topic": "pruning apple trees",
+    "site": "https://mygarden.example"
+   },
+   "world": {
+    "search": {
+     "how to": [
+      {
+       "title": "How to prune apple trees | RHS",
+       "url": "https://rhs.example/prune-apples",
+       "snippet": "..."
+      },
+      {
+       "title": "How to prune apple trees - BigGarden",
+       "url": "https://biggarden.example/apples",
+       "snippet": "..."
+      }
+     ],
+     "old apple": [
+      {
+       "title": "Forum: help with my old apple tree",
+       "url": "https://forum.example/t/123",
+       "snippet": "..."
+      },
+      {
+       "title": "My orchard (blog)",
+       "url": "https://tinyblog.example/orchard",
+       "snippet": "..."
+      }
+     ],
+     "best": [
+      {
+       "title": "Best pruning saws for apple trees — BigShop",
+       "url": "https://bigshop.example/saws",
+       "snippet": "..."
+      },
+      {
+       "title": "Pruning saw reviews (forum)",
+       "url": "https://forum.example/t/456",
+       "snippet": "..."
+      }
+     ]
+    },
+    "web": {
+     "https://mygarden.example/sitemap.xml": "<urlset><url>https://mygarden.example/blog/old-orchard</url><url>https://mygarden.example/blog/winter-mulch</url></urlset>"
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "pruning apple trees"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "how to prune apple trees"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "pruning old apple trees"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "best saw for pruning apple trees"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://mygarden.example/sitemap.xml"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Keywords — pruning apple trees",
+        "content": "Keywords — pruning apple trees\n\n## Keywords\n| Keyword | Intent | Difficulty | Your page |\n|---|---|---|---|\n| how to prune apple trees | learn | high — the RHS and BigGarden rank with the exact phrase | new page |\n| pruning old apple trees | learn | low — a forum thread and a small blog rank | https://mygarden.example/blog/old-orchard |\n| best saw for pruning apple trees | compare | medium — BigShop ranks, but so does a forum | new page |\n\n## Easiest wins\n- pruning old apple trees\n\n## Notes\n- No search-volume data: difficulty is judged from who ranks."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Easiest: pruning old apple trees.\n\n## Report\n- ran 4 searches, read your sitemap; wrote \"Keywords — pruning apple trees\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Keywords",
+      "lacks": [
+       "searches a month",
+       "/mo",
+       "volume:",
+       "KD "
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "results-that-disagree",
+   "about": "The saw keyword shows a big shop and a forum: medium, with both reasons.",
+   "inputs": {
+    "topic": "pruning apple trees",
+    "site": "https://mygarden.example"
+   },
+   "world": {
+    "search": {
+     "how to": [
+      {
+       "title": "How to prune apple trees | RHS",
+       "url": "https://rhs.example/prune-apples",
+       "snippet": "..."
+      },
+      {
+       "title": "How to prune apple trees - BigGarden",
+       "url": "https://biggarden.example/apples",
+       "snippet": "..."
+      }
+     ],
+     "old apple": [
+      {
+       "title": "Forum: help with my old apple tree",
+       "url": "https://forum.example/t/123",
+       "snippet": "..."
+      },
+      {
+       "title": "My orchard (blog)",
+       "url": "https://tinyblog.example/orchard",
+       "snippet": "..."
+      }
+     ],
+     "best": [
+      {
+       "title": "Best pruning saws for apple trees — BigShop",
+       "url": "https://bigshop.example/saws",
+       "snippet": "..."
+      },
+      {
+       "title": "Pruning saw reviews (forum)",
+       "url": "https://forum.example/t/456",
+       "snippet": "..."
+      }
+     ]
+    },
+    "web": {
+     "https://mygarden.example/sitemap.xml": "<urlset><url>https://mygarden.example/blog/old-orchard</url><url>https://mygarden.example/blog/winter-mulch</url></urlset>"
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "pruning apple trees"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "how to prune apple trees"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "pruning old apple trees"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "best saw for pruning apple trees"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://mygarden.example/sitemap.xml"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Keywords — pruning apple trees",
+        "content": "Keywords — pruning apple trees\n\n## Keywords\n| Keyword | Intent | Difficulty | Your page |\n|---|---|---|---|\n| how to prune apple trees | learn | high — the RHS and BigGarden rank with the exact phrase | new page |\n| pruning old apple trees | learn | low — a forum thread and a small blog rank | https://mygarden.example/blog/old-orchard |\n| best saw for pruning apple trees | compare | medium — BigShop ranks, but so does a forum | new page |\n\n## Easiest wins\n- pruning old apple trees\n\n## Notes\n- No search-volume data: difficulty is judged from who ranks."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Easiest: pruning old apple trees.\n\n## Report\n- ran 4 searches, read your sitemap; wrote \"Keywords — pruning apple trees\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Keywords",
+      "contains": [
+       "medium — BigShop ranks, but so does a forum"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-site-will-not-open",
+   "about": "The person's site answers 404: every page is unknown, said under Notes.",
+   "inputs": {
+    "topic": "pruning apple trees",
+    "site": "https://mygarden.example"
+   },
+   "world": {
+    "search": {
+     "how to": [
+      {
+       "title": "How to prune apple trees | RHS",
+       "url": "https://rhs.example/prune-apples",
+       "snippet": "..."
+      },
+      {
+       "title": "How to prune apple trees - BigGarden",
+       "url": "https://biggarden.example/apples",
+       "snippet": "..."
+      }
+     ],
+     "old apple": [
+      {
+       "title": "Forum: help with my old apple tree",
+       "url": "https://forum.example/t/123",
+       "snippet": "..."
+      },
+      {
+       "title": "My orchard (blog)",
+       "url": "https://tinyblog.example/orchard",
+       "snippet": "..."
+      }
+     ],
+     "best": [
+      {
+       "title": "Best pruning saws for apple trees — BigShop",
+       "url": "https://bigshop.example/saws",
+       "snippet": "..."
+      },
+      {
+       "title": "Pruning saw reviews (forum)",
+       "url": "https://forum.example/t/456",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "pruning apple trees"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "how to prune apple trees"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "pruning old apple trees"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "best saw for pruning apple trees"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://mygarden.example/sitemap.xml"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Keywords — pruning apple trees",
+        "content": "Keywords — pruning apple trees\n\n## Keywords\n| Keyword | Intent | Difficulty | Your page |\n|---|---|---|---|\n| how to prune apple trees | learn | high — the RHS and BigGarden rank with the exact phrase | unknown |\n| pruning old apple trees | learn | low — a forum thread and a small blog rank | unknown |\n| best saw for pruning apple trees | compare | medium — BigShop ranks, but so does a forum | unknown |\n\n## Easiest wins\n- pruning old apple trees\n\n## Notes\n- No search-volume data: difficulty is judged from who ranks.\n- your site did not open (404), so every page is unknown"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Easiest: pruning old apple trees.\n\n## Report\n- ran 4 searches, read your sitemap; wrote \"Keywords — pruning apple trees\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Keywords",
+      "contains": [
+       "your site did not open"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-found",
+   "about": "The searches return nothing: the document says so and suggests a broader wording.",
+   "inputs": {
+    "topic": "espaliered quince in Rutland",
+    "site": "https://mygarden.example"
+   },
+   "world": {
+    "web": {
+     "https://mygarden.example/sitemap.xml": "<urlset><url>https://mygarden.example/blog/old-orchard</url><url>https://mygarden.example/blog/winter-mulch</url></urlset>"
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "espaliered quince in Rutland"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://mygarden.example/sitemap.xml"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Keywords — espaliered quince in Rutland",
+        "content": "## Keywords\nno keywords found — try a broader wording, such as \"training fruit trees\"\n\n## Easiest wins\nnone\n\n## Notes\n- No search-volume data: difficulty is judged from who ranks."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No keywords found; try a broader wording.\n\n## Report\n- ran 1 search"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Keywords",
+      "contains": [
+       "no keywords found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "keywords-without-their-headings-fail",
+   "about": "The harness's own check: a document with no Keywords table, Easiest wins, Notes or the no-volume line does not deliver, even after its repair pass.",
+   "inputs": {
+    "topic": "pruning apple trees",
+    "site": "https://mygarden.example"
+   },
+   "world": {
+    "search": {
+     "how to": [
+      {
+       "title": "How to prune apple trees | RHS",
+       "url": "https://rhs.example/prune-apples",
+       "snippet": "..."
+      },
+      {
+       "title": "How to prune apple trees - BigGarden",
+       "url": "https://biggarden.example/apples",
+       "snippet": "..."
+      }
+     ],
+     "old apple": [
+      {
+       "title": "Forum: help with my old apple tree",
+       "url": "https://forum.example/t/123",
+       "snippet": "..."
+      },
+      {
+       "title": "My orchard (blog)",
+       "url": "https://tinyblog.example/orchard",
+       "snippet": "..."
+      }
+     ],
+     "best": [
+      {
+       "title": "Best pruning saws for apple trees — BigShop",
+       "url": "https://bigshop.example/saws",
+       "snippet": "..."
+      },
+      {
+       "title": "Pruning saw reviews (forum)",
+       "url": "https://forum.example/t/456",
+       "snippet": "..."
+      }
+     ]
+    },
+    "web": {
+     "https://mygarden.example/sitemap.xml": "<urlset><url>https://mygarden.example/blog/old-orchard</url><url>https://mygarden.example/blog/winter-mulch</url></urlset>"
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "pruning apple trees"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "how to prune apple trees"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "pruning old apple trees"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "best saw for pruning apple trees"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://mygarden.example/sitemap.xml"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Keywords — pruning apple trees",
+        "content": "apple pruning, prune apples"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

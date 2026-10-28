@@ -1,0 +1,20 @@
+{
+ "case": "a-backlog-ranked-with-reasons",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Backlog\", ranked 7 items; wrote \"Priorities — week of 3 Nov\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Priorities”",
+   "ok": true,
+   "detail": "“Priorities — week of 3 Nov” is there."
+  }
+ ],
+ "answer": "Top three: fix checkout on Safari, export to CSV, gift cards.\n\n## Report\n- read \"Backlog\", ranked 7 items; wrote \"Priorities — week of 3 Nov\"\n\n## Carry forward\n- efforts: Safari fix 1d, CSV export 3d, gift cards 2d, admin rewrite 15d\n- top ten 3 Nov: Safari fix, CSV export, gift cards"
+}

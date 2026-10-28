@@ -1,0 +1,20 @@
+{
+ "case": "three-interviews-two-themes",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 3 transcripts; wrote \"Research — why people stop using the meal-plan app\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Research”",
+   "ok": true,
+   "detail": "“Research — why people stop using the meal-plan app” is there."
+  }
+ ],
+ "answer": "3 participants, 2 themes.\n\n## Report\n- read 3 transcripts; wrote \"Research — why people stop using the meal-plan app\""
+}

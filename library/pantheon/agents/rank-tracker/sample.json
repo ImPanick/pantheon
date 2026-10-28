@@ -1,0 +1,18 @@
+{
+ "case": "a-term-climbs-eight-places",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- searched 2 terms",
+ "read": [
+  "web_search"
+ ],
+ "wrote": [],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Biggest moves, All terms, an indication."
+  }
+ ],
+ "answer": "**Biggest moves**\n- pruning old apple trees — 14 → 6 — https://www.mygarden.example/blog/old-orchard\n\n**All terms**\n- pruning old apple trees — 6 — last week 14 — up 8 — https://www.mygarden.example/blog/old-orchard (also at 15: https://mygarden.example/blog/apples)\n- winter mulch — not in top 30 — last week not in top 30 — no change\nPositions from a search tool are an indication, not what every person sees.\n\n## Report\n- searched 2 terms\n\n## Carry forward\n- pruning old apple trees: 6\n- winter mulch: not in top 30"
+}

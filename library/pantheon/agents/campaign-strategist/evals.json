@@ -1,0 +1,549 @@
+{
+ "cases": [
+  {
+   "id": "a-two-week-plan-for-a-course",
+   "about": "Two channels each with its reason and source, a week-by-week calendar, a budget that adds up to £800 with some held back, and one number per channel — the £6 benchmark cited to the page that gave it. Writing after the reading waits for a yes.",
+   "inputs": {
+    "goal": "200 signups for the spring pottery course among local adults",
+    "budget": "£800",
+    "weeks": 2
+   },
+   "world": {
+    "web": {
+     "https://study.example/local-courses": "Local hobby courses: most signups come from local Facebook groups; returning students book first when emailed.",
+     "https://blog.example/pottery-case": "Case study: a pottery studio filled 40 places with two weeks of local ads and an email to past students; cost per signup £6.",
+     "https://social.example/report": "Social media drives most signups for hobby courses; email lags behind."
+    },
+    "search": {
+     "marketing channels": [
+      {
+       "title": "Where local courses get found",
+       "url": "https://study.example/local-courses",
+       "snippet": "..."
+      },
+      {
+       "title": "Social media report",
+       "url": "https://social.example/report",
+       "snippet": "..."
+      }
+     ],
+     "case study": [
+      {
+       "title": "Pottery studio case",
+       "url": "https://blog.example/pottery-case",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "local adults hobby course marketing channels"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "pottery course campaign case study"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://study.example/local-courses"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://blog.example/pottery-case"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Campaign plan — 200 signups for the spring pottery course",
+        "content": "Campaign plan — 200 signups for the spring pottery course\n\n## Audience\nAdults within 10 miles who want a hands-on hobby; message: \"Make your first bowl in six weeks.\"\n\n## Channels\n- Local Facebook groups and ads — where local hobby courses get found (https://study.example/local-courses)\n- Email to past students — returning students book first (https://study.example/local-courses)\n\n## Calendar\n- Week 1: announce to past students; first ads\n- Week 2: early-bird ends; second ad set\n\n## Budget\n- £600 ads, £120 printed flyers, £80 held back (£800 in all)\n\n## Measuring\n- Ads: cost per signup; a similar studio paid £6 (https://blog.example/pottery-case); shift spend if over £8 after week one\n- Email: bookings from the link"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Channels: local ads, email to past students; budget £600 / £120 / £80 held back.\n\n## Report\n- ran 2 searches, read 2 pages; wrote \"Campaign plan — 200 signups for the spring pottery course\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Campaign plan",
+      "contains": [
+       "https://study.example/local-courses",
+       "£80 held back (£800 in all)",
+       "£6 (https://blog.example/pottery-case)",
+       "Week 2"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "sources-disagree-on-the-channel",
+   "about": "One page says social drives signups, another that returning students book first by email: both are named with their addresses and the choice is made by the goal.",
+   "inputs": {
+    "goal": "200 signups for the spring pottery course among local adults",
+    "budget": "£800",
+    "weeks": 2
+   },
+   "world": {
+    "web": {
+     "https://study.example/local-courses": "Local hobby courses: most signups come from local Facebook groups; returning students book first when emailed.",
+     "https://blog.example/pottery-case": "Case study: a pottery studio filled 40 places with two weeks of local ads and an email to past students; cost per signup £6.",
+     "https://social.example/report": "Social media drives most signups for hobby courses; email lags behind."
+    },
+    "search": {
+     "marketing channels": [
+      {
+       "title": "Where local courses get found",
+       "url": "https://study.example/local-courses",
+       "snippet": "..."
+      },
+      {
+       "title": "Social media report",
+       "url": "https://social.example/report",
+       "snippet": "..."
+      }
+     ],
+     "case study": [
+      {
+       "title": "Pottery studio case",
+       "url": "https://blog.example/pottery-case",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "local adults hobby course marketing channels"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "pottery course campaign case study"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://study.example/local-courses"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://social.example/report"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Campaign plan — 200 signups for the spring pottery course",
+        "content": "Campaign plan — 200 signups for the spring pottery course\n\n## Audience\nAdults within 10 miles who want a hands-on hobby; message: \"Make your first bowl in six weeks.\"\n\n## Channels\n- Local Facebook groups and ads — where local hobby courses get found (https://study.example/local-courses)\n- Email to past students — returning students book first (https://study.example/local-courses)\n- Sources disagree on email: https://social.example/report says it lags; https://study.example/local-courses says past students book first — kept for the returning students\n\n## Calendar\n- Week 1: announce to past students; first ads\n- Week 2: early-bird ends; second ad set\n\n## Budget\n- £600 ads, £120 printed flyers, £80 held back (£800 in all)\n\n## Measuring\n- Ads: cost per signup; shift spend if over £8 after week one\n- Email: bookings from the link"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Channels: local ads, email to past students; budget £600 / £120 / £80 held back.\n\n## Report\n- ran 2 searches, read 2 pages; wrote \"Campaign plan — 200 signups for the spring pottery course\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Campaign plan",
+      "contains": [
+       "Sources disagree",
+       "https://social.example/report"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-found-plans-from-the-goal",
+   "about": "The searches find nothing: the plan says it is built from the goal alone and marks its channel choices as the person's call, citing nothing.",
+   "inputs": {
+    "goal": "200 signups for the spring pottery course among local adults",
+    "budget": "£800",
+    "weeks": 2
+   },
+   "world": {},
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "local adults hobby course marketing channels"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "pottery course campaign case study"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Campaign plan — 200 signups for the spring pottery course",
+        "content": "Campaign plan — 200 signups for the spring pottery course\n\nPlanned from the goal alone — the searches found nothing to go on.\n\n## Audience\nAdults within 10 miles who want a hands-on hobby; message: \"Make your first bowl in six weeks.\"\n\n## Channels\n- Local ads (no source — your call)\n- Email to past students (no source — your call)\n\n## Calendar\n- Week 1: announce to past students; first ads\n- Week 2: early-bird ends; second ad set\n\n## Budget\n- £600 ads, £120 printed flyers, £80 held back (£800 in all)\n\n## Measuring\n- Ads: cost per signup\n- Email: bookings from the link"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Channels: local ads, email; budget £600 / £120 / £80 held back.\n\n## Report\n- ran 2 searches; found nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Campaign plan",
+      "contains": [
+       "from the goal alone",
+       "no source — your call"
+      ],
+      "lacks": [
+       "http"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-benchmark-no-source-gave-is-never-used",
+   "about": "With no page giving a cost per signup, none is quoted as a benchmark.",
+   "inputs": {
+    "goal": "200 signups for the spring pottery course among local adults",
+    "budget": "£800",
+    "weeks": 2
+   },
+   "world": {
+    "web": {
+     "https://study.example/local-courses": "Local hobby courses: most signups come from local Facebook groups; returning students book first when emailed."
+    },
+    "search": {
+     "marketing channels": [
+      {
+       "title": "Where local courses get found",
+       "url": "https://study.example/local-courses",
+       "snippet": "..."
+      },
+      {
+       "title": "Social media report",
+       "url": "https://social.example/report",
+       "snippet": "..."
+      }
+     ],
+     "case study": [
+      {
+       "title": "Pottery studio case",
+       "url": "https://blog.example/pottery-case",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "local adults hobby course marketing channels"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "pottery course campaign case study"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://study.example/local-courses"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Campaign plan — 200 signups for the spring pottery course",
+        "content": "Campaign plan — 200 signups for the spring pottery course\n\n## Audience\nAdults within 10 miles who want a hands-on hobby; message: \"Make your first bowl in six weeks.\"\n\n## Channels\n- Local Facebook groups and ads — where local hobby courses get found (https://study.example/local-courses)\n- Email to past students — returning students book first (https://study.example/local-courses)\n\n## Calendar\n- Week 1: announce to past students; first ads\n- Week 2: early-bird ends; second ad set\n\n## Budget\n- £600 ads, £120 printed flyers, £80 held back (£800 in all)\n\n## Measuring\n- Ads: cost per signup; set your own limit after week one\n- Email: bookings from the link"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Channels: local ads, email to past students; budget £600 / £120 / £80 held back.\n\n## Report\n- ran 2 searches, read 2 pages; wrote \"Campaign plan — 200 signups for the spring pottery course\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Campaign plan",
+      "lacks": [
+       "paid £6",
+       "industry average",
+       "benchmark of"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-budget-too-small",
+   "about": "£50 for 200 signups: the plan says what it can realistically do and puts it all into one channel.",
+   "inputs": {
+    "goal": "200 signups for the spring pottery course among local adults",
+    "budget": "£50",
+    "weeks": 2
+   },
+   "world": {
+    "web": {
+     "https://study.example/local-courses": "Local hobby courses: most signups come from local Facebook groups; returning students book first when emailed.",
+     "https://blog.example/pottery-case": "Case study: a pottery studio filled 40 places with two weeks of local ads and an email to past students; cost per signup £6.",
+     "https://social.example/report": "Social media drives most signups for hobby courses; email lags behind."
+    },
+    "search": {
+     "marketing channels": [
+      {
+       "title": "Where local courses get found",
+       "url": "https://study.example/local-courses",
+       "snippet": "..."
+      },
+      {
+       "title": "Social media report",
+       "url": "https://social.example/report",
+       "snippet": "..."
+      }
+     ],
+     "case study": [
+      {
+       "title": "Pottery studio case",
+       "url": "https://blog.example/pottery-case",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "local adults hobby course marketing channels"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "pottery course campaign case study"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://study.example/local-courses"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://blog.example/pottery-case"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Campaign plan — 200 signups for the spring pottery course",
+        "content": "Campaign plan — 200 signups for the spring pottery course\n\n£50 will not reach 200 signups; this plan does one channel well.\n\n## Audience\nAdults within 10 miles who want a hands-on hobby; message: \"Make your first bowl in six weeks.\"\n\n## Channels\n- Email to past students only — £50 cannot fund ads that reach 200 people (https://study.example/local-courses)\n\n## Calendar\n- Week 1: announce to past students; first ads\n- Week 2: early-bird ends; second ad set\n\n## Budget\n- £50 for printed flyers to past students' area (£50 in all)\n\n## Measuring\n- Email: bookings from the link; expect tens of signups, not 200"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Channel: email to past students; budget £50 on flyers.\n\n## Report\n- read 2 pages"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Campaign plan",
+      "contains": [
+       "will not reach 200 signups"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-plan-without-its-headings-fails",
+   "about": "The harness's own check: a plan with no Audience, Channels, Calendar, Budget or Measuring does not deliver, even after its repair pass.",
+   "inputs": {
+    "goal": "200 signups for the spring pottery course among local adults",
+    "budget": "£800",
+    "weeks": 2
+   },
+   "world": {
+    "web": {
+     "https://study.example/local-courses": "Local hobby courses: most signups come from local Facebook groups; returning students book first when emailed.",
+     "https://blog.example/pottery-case": "Case study: a pottery studio filled 40 places with two weeks of local ads and an email to past students; cost per signup £6.",
+     "https://social.example/report": "Social media drives most signups for hobby courses; email lags behind."
+    },
+    "search": {
+     "marketing channels": [
+      {
+       "title": "Where local courses get found",
+       "url": "https://study.example/local-courses",
+       "snippet": "..."
+      },
+      {
+       "title": "Social media report",
+       "url": "https://social.example/report",
+       "snippet": "..."
+      }
+     ],
+     "case study": [
+      {
+       "title": "Pottery studio case",
+       "url": "https://blog.example/pottery-case",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "local adults hobby course marketing channels"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "pottery course campaign case study"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://study.example/local-courses"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://blog.example/pottery-case"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Campaign plan — 200 signups for the spring pottery course",
+        "content": "Run some ads."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

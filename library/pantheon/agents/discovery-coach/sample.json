@@ -1,0 +1,20 @@
+{
+ "case": "ten-questions-before-the-call",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the call in the calendar; wrote \"Discovery — Ana Ruiz, Greenleaf Cafés, Tue 4 Nov\"",
+ "read": [
+  "manage_calendar"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Discovery”",
+   "ok": true,
+   "detail": "“Discovery — Ana Ruiz, Greenleaf Cafés, Tue 4 Nov” is there."
+  }
+ ],
+ "answer": "10 questions written for the call with Ana Ruiz.\n\n## Report\n- read the call in the calendar; wrote \"Discovery — Ana Ruiz, Greenleaf Cafés, Tue 4 Nov\""
+}

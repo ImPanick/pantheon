@@ -1,0 +1,346 @@
+{
+ "cases": [
+  {
+   "id": "three-directions-for-a-till",
+   "about": "Three self-contained pages that differ in layout and emphasis, each naming its direction and assumption at the top, and an answer saying what each bets on.",
+   "inputs": {
+    "brief": "A checkout screen for a small café's till: the staff member sees the order and takes payment.",
+    "folder": "checkout"
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "checkout/a.html",
+        "content": "<!-- Direction A: one column, the total first. Assumes a phone, used standing at the till. -->\n<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">\n<style>body{font-family:system-ui,sans-serif;margin:0;padding:16px;color:#1a1a1a;background:#fff}</style>\n</head><body><main><h1>£24.50</h1><ul><li>Flat white £3.20</li></ul><button type=\"button\">Take payment</button></main></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "checkout/b.html",
+        "content": "<!-- Direction B: a sidebar of items beside a big pay button. Assumes a tablet on the counter. -->\n<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">\n<style>body{font-family:system-ui,sans-serif;margin:0;padding:16px;color:#1a1a1a;background:#fff}</style>\n</head><body><aside><ul><li>Flat white £3.20</li></ul></aside><main><button type=\"button\">Pay £24.50</button></main></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "checkout/c.html",
+        "content": "<!-- Direction C: dense cards, every discount visible. Assumes a desk screen. -->\n<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">\n<style>body{font-family:system-ui,sans-serif;margin:0;padding:16px;color:#1a1a1a;background:#fff}</style>\n</head><body><section class=\"cards\"><article>Flat white £3.20 <small>loyalty −10%</small></article></section><button type=\"button\">Charge £24.50</button></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Direction A** — one column, the total first, for a phone at the till: checkout/a.html\n**Direction B** — a sidebar of items beside a big pay button, for a tablet: checkout/b.html\n**Direction C** — dense cards with every discount visible, for a desk: checkout/c.html\n\n## Report\n- wrote checkout/a.html, checkout/b.html and checkout/c.html"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "checkout/a.html",
+      "contains": [
+       "Direction A",
+       "<button",
+       "system-ui"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "checkout/c.html",
+      "contains": [
+       "Direction C",
+       "cards"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "checkout/b.html"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "nothing-loads-from-the-internet",
+   "about": "Every page is self-contained: no web font, stylesheet, script or image address.",
+   "inputs": {
+    "brief": "A checkout screen for a small café's till: the staff member sees the order and takes payment.",
+    "folder": "checkout"
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "checkout/a.html",
+        "content": "<!-- Direction A: one column, the total first. Assumes a phone, used standing at the till. -->\n<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">\n<style>body{font-family:system-ui,sans-serif;margin:0;padding:16px;color:#1a1a1a;background:#fff}</style>\n</head><body><main><h1>£24.50</h1><ul><li>Flat white £3.20</li></ul><button type=\"button\">Take payment</button></main></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "checkout/b.html",
+        "content": "<!-- Direction B: a sidebar of items beside a big pay button. Assumes a tablet on the counter. -->\n<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">\n<style>body{font-family:system-ui,sans-serif;margin:0;padding:16px;color:#1a1a1a;background:#fff}</style>\n</head><body><aside><ul><li>Flat white £3.20</li></ul></aside><main><button type=\"button\">Pay £24.50</button></main></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "checkout/c.html",
+        "content": "<!-- Direction C: dense cards, every discount visible. Assumes a desk screen. -->\n<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">\n<style>body{font-family:system-ui,sans-serif;margin:0;padding:16px;color:#1a1a1a;background:#fff}</style>\n</head><body><section class=\"cards\"><article>Flat white £3.20 <small>loyalty −10%</small></article></section><button type=\"button\">Charge £24.50</button></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Direction A** — one column, the total first, for a phone at the till: checkout/a.html\n**Direction B** — a sidebar of items beside a big pay button, for a tablet: checkout/b.html\n**Direction C** — dense cards with every discount visible, for a desk: checkout/c.html\n\n## Report\n- wrote checkout/a.html, checkout/b.html and checkout/c.html"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "checkout/a.html",
+      "lacks": [
+       "http://",
+       "https://",
+       "<script src",
+       "<link"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "checkout/b.html",
+      "lacks": [
+       "https://"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-brief-that-names-another-site",
+   "about": "The brief says to copy a famous shop's checkout: the directions take the idea, and no other company's name or words appear.",
+   "inputs": {
+    "brief": "A checkout like MegaShop's one-click page, for our café till.",
+    "folder": "checkout"
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "checkout/a.html",
+        "content": "<!-- Direction A: one column, the total first. Assumes a phone, used standing at the till. -->\n<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">\n<style>body{font-family:system-ui,sans-serif;margin:0;padding:16px;color:#1a1a1a;background:#fff}</style>\n</head><body><main><h1>£24.50</h1><ul><li>Flat white £3.20</li></ul><button type=\"button\">Take payment</button></main></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "checkout/b.html",
+        "content": "<!-- Direction B: a sidebar of items beside a big pay button. Assumes a tablet on the counter. -->\n<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">\n<style>body{font-family:system-ui,sans-serif;margin:0;padding:16px;color:#1a1a1a;background:#fff}</style>\n</head><body><aside><ul><li>Flat white £3.20</li></ul></aside><main><button type=\"button\">Pay £24.50</button></main></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "checkout/c.html",
+        "content": "<!-- Direction C: dense cards, every discount visible. Assumes a desk screen. -->\n<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">\n<style>body{font-family:system-ui,sans-serif;margin:0;padding:16px;color:#1a1a1a;background:#fff}</style>\n</head><body><section class=\"cards\"><article>Flat white £3.20 <small>loyalty −10%</small></article></section><button type=\"button\">Charge £24.50</button></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Direction A** — one column, the total first, for a phone at the till: checkout/a.html\n**Direction B** — a sidebar of items beside a big pay button, for a tablet: checkout/b.html\n**Direction C** — dense cards with every discount visible, for a desk: checkout/c.html\nEach takes the idea of a one-step payment, not MegaShop's design.\n\n## Report\n- wrote checkout/a.html, checkout/b.html and checkout/c.html"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "checkout/a.html",
+      "lacks": [
+       "MegaShop"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "not MegaShop's design"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-brief-that-contradicts-itself",
+   "about": "\"Minimal, but show every option\": each direction settles it differently, and the answer says how.",
+   "inputs": {
+    "brief": "A minimal settings screen that shows every option at once.",
+    "folder": "settings"
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "settings/a.html",
+        "content": "<!-- Direction A: minimal — five common options, the rest behind More. -->\n<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">\n<style>body{font-family:system-ui,sans-serif;margin:0;padding:16px;color:#1a1a1a;background:#fff}</style>\n</head><body><main><h1>Settings</h1><button type=\"button\">More</button></main></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "settings/b.html",
+        "content": "<!-- Direction B: every option, grouped under headings that fold. -->\n<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">\n<style>body{font-family:system-ui,sans-serif;margin:0;padding:16px;color:#1a1a1a;background:#fff}</style>\n</head><body><main><details><summary>Account</summary></details></main></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "settings/c.html",
+        "content": "<!-- Direction C: every option on one dense page with a search box. -->\n<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">\n<style>body{font-family:system-ui,sans-serif;margin:0;padding:16px;color:#1a1a1a;background:#fff}</style>\n</head><body><main><label for=\"q\">Find a setting</label><input id=\"q\"></main></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Direction A** — minimal first: five options, the rest behind More: settings/a.html\n**Direction B** — every option, folded into groups: settings/b.html\n**Direction C** — every option on one page, with search: settings/c.html\nThe brief asks for both minimal and everything; each direction settles that differently.\n\n## Report\n- wrote three files"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "settings/c.html",
+      "contains": [
+       "<label",
+       "Direction C"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "settles that differently"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-file-that-will-not-write",
+   "about": "The third write is refused (its path leaves the projects folder): the answer says which direction failed and why, and because a page it promised is missing the run ends unfinished rather than delivered; the two pages written stand.",
+   "inputs": {
+    "brief": "A checkout screen for a small café's till: the staff member sees the order and takes payment.",
+    "folder": "checkout"
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "checkout/a.html",
+        "content": "<!-- Direction A: one column, the total first. Assumes a phone, used standing at the till. -->\n<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">\n<style>body{font-family:system-ui,sans-serif;margin:0;padding:16px;color:#1a1a1a;background:#fff}</style>\n</head><body><main><h1>£24.50</h1><ul><li>Flat white £3.20</li></ul><button type=\"button\">Take payment</button></main></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "checkout/b.html",
+        "content": "<!-- Direction B: a sidebar of items beside a big pay button. Assumes a tablet on the counter. -->\n<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">\n<style>body{font-family:system-ui,sans-serif;margin:0;padding:16px;color:#1a1a1a;background:#fff}</style>\n</head><body><aside><ul><li>Flat white £3.20</li></ul></aside><main><button type=\"button\">Pay £24.50</button></main></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "../../outside/c.html",
+        "content": "<!-- Direction C: dense cards, every discount visible. Assumes a desk screen. -->\n<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">\n<style>body{font-family:system-ui,sans-serif;margin:0;padding:16px;color:#1a1a1a;background:#fff}</style>\n</head><body><section class=\"cards\"><article>Flat white £3.20 <small>loyalty −10%</small></article></section><button type=\"button\">Charge £24.50</button></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Direction A** — one column, the total first: checkout/a.html\n**Direction B** — a sidebar beside a big pay button: checkout/b.html\n**Direction C** — could not be written: the path was outside the projects folder\n\n## Report\n- wrote 2 of 3 files"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "file": {
+      "path": "checkout/b.html",
+      "contains": [
+       "Direction B"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "mockups-without-their-directions-fail",
+   "about": "The harness's own check: an answer that names no directions and writes no pages does not deliver, even after its repair pass.",
+   "inputs": {
+    "brief": "A checkout screen for a small café's till: the staff member sees the order and takes payment.",
+    "folder": "checkout"
+   },
+   "script": [
+    {
+     "say": "Here are some ideas for the till.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

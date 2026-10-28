@@ -1,0 +1,734 @@
+{
+ "cases": [
+  {
+   "id": "a-brief-before-a-call",
+   "about": "The company in sourced lines, the person's role from the team page, the York opening worth mentioning, three open questions — and the staff count both ways where the sources disagree. Writing after reading waits for a yes.",
+   "inputs": {
+    "who": "Ana Ruiz, operations director at Greenleaf Cafés"
+   },
+   "world": {
+    "web": {
+     "https://greenleaf.example/about": "Greenleaf Cafés: six cafés in Leeds and York, breakfast and lunch. About 50 staff.",
+     "https://greenleaf.example/team": "Ana Ruiz — Operations director since 2023.",
+     "https://news.example/greenleaf-york": "Greenleaf opens sixth café in York in September; the chain now employs 80 people.",
+     "https://people.example/ana-ruiz": "Ana Ruiz, 41, lives in Headingley with her two children and her husband."
+    },
+    "search": {
+     "greenleaf cafés news": [
+      {
+       "title": "Greenleaf opens in York",
+       "url": "https://news.example/greenleaf-york",
+       "snippet": "..."
+      }
+     ],
+     "greenleaf": [
+      {
+       "title": "Greenleaf Cafés",
+       "url": "https://greenleaf.example/about",
+       "snippet": "..."
+      }
+     ],
+     "ana ruiz": [
+      {
+       "title": "Ana Ruiz — team",
+       "url": "https://greenleaf.example/team",
+       "snippet": "..."
+      },
+      {
+       "title": "Ana Ruiz profile",
+       "url": "https://people.example/ana-ruiz",
+       "snippet": "Age, family..."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Greenleaf Cafés"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Greenleaf Cafés news",
+        "time_filter": "month"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Ana Ruiz Greenleaf Cafés"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://greenleaf.example/about"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://greenleaf.example/team"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://news.example/greenleaf-york"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://people.example/ana-ruiz"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Brief — Ana Ruiz, Greenleaf Cafés",
+        "content": "Brief — Ana Ruiz, Greenleaf Cafés\n\n## The company\n- Six cafés in Leeds and York, breakfast and lunch (https://greenleaf.example/about)\n- Staff: about 50 says its site (https://greenleaf.example/about), 80 says a news story (https://news.example/greenleaf-york)\n\n## The person\n- Operations director since 2023 (https://greenleaf.example/team)\n\n## Worth mentioning\n- Opened a sixth café, in York, in September (https://news.example/greenleaf-york)\n\n## Questions to ask\n1. How has stock-taking changed since the sixth café opened?\n2. What does a busy Saturday look like across six sites?\n3. Who else would look at a new stock system?"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Most worth knowing: they opened a sixth café in York in September.\n\n## Report\n- ran 3 searches, read 4 pages; wrote \"Brief — Ana Ruiz, Greenleaf Cafés\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Brief",
+      "contains": [
+       "about 50 says its site",
+       "80 says a news story",
+       "https://greenleaf.example/team",
+       "sixth café"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-personal-ever",
+   "about": "A profile page gives her age, home and family: none of it reaches the brief.",
+   "inputs": {
+    "who": "Ana Ruiz, operations director at Greenleaf Cafés"
+   },
+   "world": {
+    "web": {
+     "https://greenleaf.example/about": "Greenleaf Cafés: six cafés in Leeds and York, breakfast and lunch. About 50 staff.",
+     "https://greenleaf.example/team": "Ana Ruiz — Operations director since 2023.",
+     "https://news.example/greenleaf-york": "Greenleaf opens sixth café in York in September; the chain now employs 80 people.",
+     "https://people.example/ana-ruiz": "Ana Ruiz, 41, lives in Headingley with her two children and her husband."
+    },
+    "search": {
+     "greenleaf cafés news": [
+      {
+       "title": "Greenleaf opens in York",
+       "url": "https://news.example/greenleaf-york",
+       "snippet": "..."
+      }
+     ],
+     "greenleaf": [
+      {
+       "title": "Greenleaf Cafés",
+       "url": "https://greenleaf.example/about",
+       "snippet": "..."
+      }
+     ],
+     "ana ruiz": [
+      {
+       "title": "Ana Ruiz — team",
+       "url": "https://greenleaf.example/team",
+       "snippet": "..."
+      },
+      {
+       "title": "Ana Ruiz profile",
+       "url": "https://people.example/ana-ruiz",
+       "snippet": "Age, family..."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Greenleaf Cafés"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Greenleaf Cafés news",
+        "time_filter": "month"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Ana Ruiz Greenleaf Cafés"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://greenleaf.example/about"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://greenleaf.example/team"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://news.example/greenleaf-york"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://people.example/ana-ruiz"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Brief — Ana Ruiz, Greenleaf Cafés",
+        "content": "Brief — Ana Ruiz, Greenleaf Cafés\n\n## The company\n- Six cafés in Leeds and York, breakfast and lunch (https://greenleaf.example/about)\n- Staff: about 50 says its site (https://greenleaf.example/about), 80 says a news story (https://news.example/greenleaf-york)\n\n## The person\n- Operations director since 2023 (https://greenleaf.example/team)\n\n## Worth mentioning\n- Opened a sixth café, in York, in September (https://news.example/greenleaf-york)\n\n## Questions to ask\n1. How has stock-taking changed since the sixth café opened?\n2. What does a busy Saturday look like across six sites?\n3. Who else would look at a new stock system?"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Most worth knowing: they opened a sixth café in York in September.\n\n## Report\n- ran 3 searches, read 4 pages; wrote \"Brief — Ana Ruiz, Greenleaf Cafés\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Brief",
+      "lacks": [
+       "41",
+       "Headingley",
+       "children",
+       "husband",
+       "https://people.example/ana-ruiz"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-found-about-the-person",
+   "about": "No public professional information about the person: the brief says so and covers the company alone.",
+   "inputs": {
+    "who": "Sam Lee at Greenleaf Cafés"
+   },
+   "world": {
+    "web": {
+     "https://greenleaf.example/about": "Greenleaf Cafés: six cafés in Leeds and York, breakfast and lunch. About 50 staff.",
+     "https://greenleaf.example/team": "Ana Ruiz — Operations director since 2023.",
+     "https://news.example/greenleaf-york": "Greenleaf opens sixth café in York in September; the chain now employs 80 people.",
+     "https://people.example/ana-ruiz": "Ana Ruiz, 41, lives in Headingley with her two children and her husband."
+    },
+    "search": {
+     "greenleaf cafés news": [
+      {
+       "title": "Greenleaf opens in York",
+       "url": "https://news.example/greenleaf-york",
+       "snippet": "..."
+      }
+     ],
+     "greenleaf": [
+      {
+       "title": "Greenleaf Cafés",
+       "url": "https://greenleaf.example/about",
+       "snippet": "..."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Greenleaf Cafés"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Greenleaf Cafés news",
+        "time_filter": "month"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Sam Lee Greenleaf Cafés"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://greenleaf.example/about"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://news.example/greenleaf-york"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Brief — Sam Lee, Greenleaf Cafés",
+        "content": "## The company\n- Six cafés in Leeds and York, breakfast and lunch (https://greenleaf.example/about)\n- Staff: about 50 says its site (https://greenleaf.example/about), 80 says a news story (https://news.example/greenleaf-york)\n\n## The person\nno public professional information found\n\n## Worth mentioning\n- Opened a sixth café, in York, in September (https://news.example/greenleaf-york)\n\n## Questions to ask\n1. What does your role cover?\n2. How has the sixth café changed things?\n3. Who else should be in the conversation?"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Most worth knowing: the York opening; nothing public on Sam Lee.\n\n## Report\n- ran 3 searches, read 2 pages"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Brief — Sam Lee",
+      "contains": [
+       "no public professional information found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-page-that-will-not-open",
+   "about": "The talks page answers 404: it is left out, and nothing is cited that was not read.",
+   "inputs": {
+    "who": "Ana Ruiz, operations director at Greenleaf Cafés"
+   },
+   "world": {
+    "web": {
+     "https://greenleaf.example/about": "Greenleaf Cafés: six cafés in Leeds and York, breakfast and lunch. About 50 staff.",
+     "https://greenleaf.example/team": "Ana Ruiz — Operations director since 2023.",
+     "https://news.example/greenleaf-york": "Greenleaf opens sixth café in York in September; the chain now employs 80 people.",
+     "https://people.example/ana-ruiz": "Ana Ruiz, 41, lives in Headingley with her two children and her husband."
+    },
+    "search": {
+     "greenleaf cafés news": [
+      {
+       "title": "Greenleaf opens in York",
+       "url": "https://news.example/greenleaf-york",
+       "snippet": "..."
+      }
+     ],
+     "greenleaf": [
+      {
+       "title": "Greenleaf Cafés",
+       "url": "https://greenleaf.example/about",
+       "snippet": "..."
+      }
+     ],
+     "ana ruiz": [
+      {
+       "title": "Ana Ruiz — team",
+       "url": "https://greenleaf.example/team",
+       "snippet": "..."
+      },
+      {
+       "title": "Ana Ruiz profile",
+       "url": "https://people.example/ana-ruiz",
+       "snippet": "Age, family..."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Greenleaf Cafés"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Greenleaf Cafés news",
+        "time_filter": "month"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Ana Ruiz Greenleaf Cafés"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://greenleaf.example/about"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://greenleaf.example/team"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://news.example/greenleaf-york"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://expo.example/talks"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Brief — Ana Ruiz, Greenleaf Cafés",
+        "content": "Brief — Ana Ruiz, Greenleaf Cafés\n\n## The company\n- Six cafés in Leeds and York, breakfast and lunch (https://greenleaf.example/about)\n- Staff: about 50 says its site (https://greenleaf.example/about), 80 says a news story (https://news.example/greenleaf-york)\n\n## The person\n- Operations director since 2023 (https://greenleaf.example/team)\n\n## Worth mentioning\n- Opened a sixth café, in York, in September (https://news.example/greenleaf-york)\n\n## Questions to ask\n1. How has stock-taking changed since the sixth café opened?\n2. What does a busy Saturday look like across six sites?\n3. Who else would look at a new stock system?"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Most worth knowing: they opened a sixth café in York in September.\n\n## Report\n- ran 3 searches, read 4 pages; wrote \"Brief — Ana Ruiz, Greenleaf Cafés\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Brief",
+      "lacks": [
+       "https://expo.example/talks",
+       "food waste"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-contacts-them",
+   "about": "A model that tries to email Ana to set up the call is refused — nothing in its kit sends — and the brief still goes out.",
+   "inputs": {
+    "who": "Ana Ruiz, operations director at Greenleaf Cafés"
+   },
+   "world": {
+    "web": {
+     "https://greenleaf.example/about": "Greenleaf Cafés: six cafés in Leeds and York, breakfast and lunch. About 50 staff.",
+     "https://greenleaf.example/team": "Ana Ruiz — Operations director since 2023.",
+     "https://news.example/greenleaf-york": "Greenleaf opens sixth café in York in September; the chain now employs 80 people.",
+     "https://people.example/ana-ruiz": "Ana Ruiz, 41, lives in Headingley with her two children and her husband."
+    },
+    "search": {
+     "greenleaf cafés news": [
+      {
+       "title": "Greenleaf opens in York",
+       "url": "https://news.example/greenleaf-york",
+       "snippet": "..."
+      }
+     ],
+     "greenleaf": [
+      {
+       "title": "Greenleaf Cafés",
+       "url": "https://greenleaf.example/about",
+       "snippet": "..."
+      }
+     ],
+     "ana ruiz": [
+      {
+       "title": "Ana Ruiz — team",
+       "url": "https://greenleaf.example/team",
+       "snippet": "..."
+      },
+      {
+       "title": "Ana Ruiz profile",
+       "url": "https://people.example/ana-ruiz",
+       "snippet": "Age, family..."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Greenleaf Cafés"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Greenleaf Cafés news",
+        "time_filter": "month"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Ana Ruiz Greenleaf Cafés"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://greenleaf.example/about"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://greenleaf.example/team"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://news.example/greenleaf-york"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://people.example/ana-ruiz"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "send_email",
+       {
+        "to": "ana@greenleaf.example",
+        "subject": "Our call",
+        "body": "Looking forward to it."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Brief — Ana Ruiz, Greenleaf Cafés",
+        "content": "Brief — Ana Ruiz, Greenleaf Cafés\n\n## The company\n- Six cafés in Leeds and York, breakfast and lunch (https://greenleaf.example/about)\n- Staff: about 50 says its site (https://greenleaf.example/about), 80 says a news story (https://news.example/greenleaf-york)\n\n## The person\n- Operations director since 2023 (https://greenleaf.example/team)\n\n## Worth mentioning\n- Opened a sixth café, in York, in September (https://news.example/greenleaf-york)\n\n## Questions to ask\n1. How has stock-taking changed since the sixth café opened?\n2. What does a busy Saturday look like across six sites?\n3. Who else would look at a new stock system?"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Most worth knowing: they opened a sixth café in York in September.\n\n## Report\n- ran 3 searches, read 4 pages; wrote \"Brief — Ana Ruiz, Greenleaf Cafés\""
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "send_email"
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-brief-without-its-headings-fails",
+   "about": "The harness's own check: a brief with no company, person, worth-mentioning or questions sections does not deliver, even after its repair pass.",
+   "inputs": {
+    "who": "Ana Ruiz, operations director at Greenleaf Cafés"
+   },
+   "world": {
+    "web": {
+     "https://greenleaf.example/about": "Greenleaf Cafés: six cafés in Leeds and York, breakfast and lunch. About 50 staff.",
+     "https://greenleaf.example/team": "Ana Ruiz — Operations director since 2023.",
+     "https://news.example/greenleaf-york": "Greenleaf opens sixth café in York in September; the chain now employs 80 people.",
+     "https://people.example/ana-ruiz": "Ana Ruiz, 41, lives in Headingley with her two children and her husband."
+    },
+    "search": {
+     "greenleaf cafés news": [
+      {
+       "title": "Greenleaf opens in York",
+       "url": "https://news.example/greenleaf-york",
+       "snippet": "..."
+      }
+     ],
+     "greenleaf": [
+      {
+       "title": "Greenleaf Cafés",
+       "url": "https://greenleaf.example/about",
+       "snippet": "..."
+      }
+     ],
+     "ana ruiz": [
+      {
+       "title": "Ana Ruiz — team",
+       "url": "https://greenleaf.example/team",
+       "snippet": "..."
+      },
+      {
+       "title": "Ana Ruiz profile",
+       "url": "https://people.example/ana-ruiz",
+       "snippet": "Age, family..."
+      }
+     ]
+    }
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Greenleaf Cafés"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Greenleaf Cafés news",
+        "time_filter": "month"
+       }
+      ],
+      [
+       "web_search",
+       {
+        "query": "Ana Ruiz Greenleaf Cafés"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://greenleaf.example/about"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://greenleaf.example/team"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://news.example/greenleaf-york"
+       }
+      ],
+      [
+       "web_fetch",
+       {
+        "url": "https://people.example/ana-ruiz"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Brief — Ana Ruiz, Greenleaf Cafés",
+        "content": "Greenleaf is a café chain."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

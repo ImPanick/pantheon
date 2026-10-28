@@ -1,0 +1,20 @@
+{
+ "case": "a-caption-in-the-studios-voice",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"About the studio\"; wrote \"Content — the spring pottery course\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Content”",
+   "ok": true,
+   "detail": "“Content — the spring pottery course” is there."
+  }
+ ],
+ "answer": "1 Instagram caption written; 1 claim to check.\n\n## Report\n- read \"About the studio\"; wrote \"Content — the spring pottery course\"\n\n## Carry forward\n- voice: short sentences, no exclamation marks, a dry joke near the end\n- covered: the spring pottery course"
+}

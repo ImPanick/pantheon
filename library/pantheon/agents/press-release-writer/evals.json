@@ -1,0 +1,496 @@
+{
+ "cases": [
+  {
+   "id": "a-second-shop-announced",
+   "about": "The lead has who, what, when and where from the news; the quote is marked to approve, not said; the newest boilerplate is copied word for word, and the answer says which of the two it was.",
+   "inputs": {
+    "news": "Rise Bakery opens its second shop, on Otley Road in Headingley, Leeds, on 15 November 2026. Open 7am to 3pm, Tuesday to Sunday.",
+    "past": [
+     "Rise Bakery opens",
+     "Rise Bakery turns one"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Rise Bakery opens",
+      "content": "For immediate release\n\nLEEDS, 1 March 2022 — ...\n\nAbout Rise Bakery\nRise Bakery bakes sourdough in Leeds.\n\nMedia contact: Ana, press@rise.example"
+     },
+     {
+      "id": "p2",
+      "title": "Rise Bakery turns one",
+      "content": "For immediate release\n\nLEEDS, 1 March 2023 — ...\n\nAbout Rise Bakery\nRise Bakery bakes sourdough and rye in Leeds, by hand, every night since 2022.\n\nMedia contact: [name, email, phone]"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Rise Bakery opens"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Rise Bakery turns one"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Press release — Leeds bakery opens second shop in Headingley",
+        "content": "For immediate release\n\nLeeds bakery opens second shop in Headingley\nFresh bread by 7am now reaches north Leeds\n\nLEEDS, 10 November 2026 — Rise Bakery opens its second shop on Otley Road, Headingley, on 15 November.\n\n[quote to approve: \"Our regulars kept asking for a shop nearer home. Now there is one.\"] — founder\n\nThe shop opens 7am to 3pm, Tuesday to Sunday.\n\nAbout Rise Bakery\nRise Bakery bakes sourdough and rye in Leeds, by hand, every night since 2022.\n\nMedia contact: [name, email, phone]"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "\"Leeds bakery opens second shop in Headingley\" — 1 quote to approve; nothing to check. Used the boilerplate from \"Rise Bakery turns one\", the newer of two.\n\n## Report\n- read 2 past releases; wrote \"Press release — Leeds bakery opens second shop in Headingley\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Press release",
+      "contains": [
+       "on 15 November",
+       "[quote to approve:",
+       "by hand, every night since 2022",
+       "Media contact"
+      ],
+      "lacks": [
+       "revolutionary",
+       "world-class",
+       "said the founder"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "the newer of two"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-quote-is-never-invented-as-said",
+   "about": "The founder's words are a suggestion in brackets for approval, never presented as something she said.",
+   "inputs": {
+    "news": "Rise Bakery opens its second shop, on Otley Road in Headingley, Leeds, on 15 November 2026. Open 7am to 3pm, Tuesday to Sunday.",
+    "past": [
+     "Rise Bakery opens",
+     "Rise Bakery turns one"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Rise Bakery opens",
+      "content": "For immediate release\n\nLEEDS, 1 March 2022 — ...\n\nAbout Rise Bakery\nRise Bakery bakes sourdough in Leeds.\n\nMedia contact: Ana, press@rise.example"
+     },
+     {
+      "id": "p2",
+      "title": "Rise Bakery turns one",
+      "content": "For immediate release\n\nLEEDS, 1 March 2023 — ...\n\nAbout Rise Bakery\nRise Bakery bakes sourdough and rye in Leeds, by hand, every night since 2022.\n\nMedia contact: [name, email, phone]"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Rise Bakery opens"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Rise Bakery turns one"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Press release — Leeds bakery opens second shop in Headingley",
+        "content": "For immediate release\n\nLeeds bakery opens second shop in Headingley\nFresh bread by 7am now reaches north Leeds\n\nLEEDS, 10 November 2026 — Rise Bakery opens its second shop on Otley Road, Headingley, on 15 November.\n\n[quote to approve: \"Our regulars kept asking for a shop nearer home. Now there is one.\"] — founder\n\nThe shop opens 7am to 3pm, Tuesday to Sunday.\n\nAbout Rise Bakery\nRise Bakery bakes sourdough and rye in Leeds, by hand, every night since 2022.\n\nMedia contact: [name, email, phone]"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "\"Leeds bakery opens second shop in Headingley\" — 1 quote to approve; nothing to check. Used the boilerplate from \"Rise Bakery turns one\", the newer of two.\n\n## Report\n- read 2 past releases; wrote \"Press release — Leeds bakery opens second shop in Headingley\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Press release",
+      "lacks": [
+       "\" said ",
+       "she said",
+       "founder said"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-past-releases-found",
+   "about": "No past release exists: the standard order is used and the boilerplate is left for the person to add.",
+   "inputs": {
+    "news": "Rise Bakery opens its second shop, on Otley Road in Headingley, Leeds, on 15 November 2026. Open 7am to 3pm, Tuesday to Sunday.",
+    "past": [
+     "Old news"
+    ]
+   },
+   "world": {
+    "documents": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Old news"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Press release — Leeds bakery opens second shop in Headingley",
+        "content": "For immediate release\n\nLeeds bakery opens second shop in Headingley\nFresh bread by 7am now reaches north Leeds\n\nLEEDS, 10 November 2026 — Rise Bakery opens its second shop on Otley Road, Headingley, on 15 November.\n\n[quote to approve: \"Our regulars kept asking for a shop nearer home. Now there is one.\"] — founder\n\nThe shop opens 7am to 3pm, Tuesday to Sunday.\n\n[About Rise Bakery: add your boilerplate]\n\nMedia contact: [name, email, phone]"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "\"Leeds bakery opens second shop in Headingley\" — 1 quote to approve; no past release was found, so the boilerplate is yours to add.\n\n## Report\n- found no past releases; wrote the release"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Press release",
+      "contains": [
+       "add your boilerplate"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-news-leaves-out-the-date",
+   "about": "The news gives no date or place: the dateline asks for both rather than guessing.",
+   "inputs": {
+    "news": "Rise Bakery is opening a second shop.",
+    "past": [
+     "Rise Bakery turns one"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p2",
+      "title": "Rise Bakery turns one",
+      "content": "For immediate release\n\nLEEDS, 1 March 2023 — ...\n\nAbout Rise Bakery\nRise Bakery bakes sourdough and rye in Leeds, by hand, every night since 2022.\n\nMedia contact: [name, email, phone]"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Rise Bakery turns one"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Press release — Rise Bakery opens a second shop",
+        "content": "For immediate release\n\nRise Bakery opens a second shop\n\n[check: city], [check: date] — Rise Bakery is opening a second shop.\n\n[quote to approve: \"…\"] — founder\n\nAbout Rise Bakery\nRise Bakery bakes sourdough and rye in Leeds, by hand, every night since 2022.\n\nMedia contact: [name, email, phone]"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "\"Rise Bakery opens a second shop\" — check the city and date; 1 quote to approve.\n\n## Report\n- read 1 past release"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Press release",
+      "contains": [
+       "[check: city], [check: date]"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-a-past-release",
+   "about": "Its table says destructive: never. A model that deletes an old release is refused; it survives.",
+   "inputs": {
+    "news": "Rise Bakery opens its second shop, on Otley Road in Headingley, Leeds, on 15 November 2026. Open 7am to 3pm, Tuesday to Sunday.",
+    "past": [
+     "Rise Bakery opens",
+     "Rise Bakery turns one"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Rise Bakery opens",
+      "content": "For immediate release\n\nLEEDS, 1 March 2022 — ...\n\nAbout Rise Bakery\nRise Bakery bakes sourdough in Leeds.\n\nMedia contact: Ana, press@rise.example"
+     },
+     {
+      "id": "p2",
+      "title": "Rise Bakery turns one",
+      "content": "For immediate release\n\nLEEDS, 1 March 2023 — ...\n\nAbout Rise Bakery\nRise Bakery bakes sourdough and rye in Leeds, by hand, every night since 2022.\n\nMedia contact: [name, email, phone]"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Rise Bakery opens"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Rise Bakery turns one"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Press release — Leeds bakery opens second shop in Headingley",
+        "content": "For immediate release\n\nLeeds bakery opens second shop in Headingley\nFresh bread by 7am now reaches north Leeds\n\nLEEDS, 10 November 2026 — Rise Bakery opens its second shop on Otley Road, Headingley, on 15 November.\n\n[quote to approve: \"Our regulars kept asking for a shop nearer home. Now there is one.\"] — founder\n\nThe shop opens 7am to 3pm, Tuesday to Sunday.\n\nAbout Rise Bakery\nRise Bakery bakes sourdough and rye in Leeds, by hand, every night since 2022.\n\nMedia contact: [name, email, phone]"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "\"Leeds bakery opens second shop in Headingley\" — 1 quote to approve; nothing to check. Used the boilerplate from \"Rise Bakery turns one\", the newer of two.\n\n## Report\n- read 2 past releases; wrote \"Press release — Leeds bakery opens second shop in Headingley\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Rise Bakery opens",
+      "contains": [
+       "1 March 2022"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-release-without-its-parts-fails",
+   "about": "The harness's own check: a release with no For immediate release line, quote to approve, About or Media contact does not deliver, even after its repair pass.",
+   "inputs": {
+    "news": "Rise Bakery opens its second shop, on Otley Road in Headingley, Leeds, on 15 November 2026. Open 7am to 3pm, Tuesday to Sunday.",
+    "past": [
+     "Rise Bakery opens",
+     "Rise Bakery turns one"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Rise Bakery opens",
+      "content": "For immediate release\n\nLEEDS, 1 March 2022 — ...\n\nAbout Rise Bakery\nRise Bakery bakes sourdough in Leeds.\n\nMedia contact: Ana, press@rise.example"
+     },
+     {
+      "id": "p2",
+      "title": "Rise Bakery turns one",
+      "content": "For immediate release\n\nLEEDS, 1 March 2023 — ...\n\nAbout Rise Bakery\nRise Bakery bakes sourdough and rye in Leeds, by hand, every night since 2022.\n\nMedia contact: [name, email, phone]"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Rise Bakery opens"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Rise Bakery turns one"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Press release — Leeds bakery opens second shop in Headingley",
+        "content": "We are opening a new shop!"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

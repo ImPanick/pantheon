@@ -1,0 +1,21 @@
+{
+ "case": "a-weekly-meeting-with-a-reminder-for-me",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Website weekly transcript\", wrote \"Minutes — Website weekly, Tue 4 Nov\", set 1 reminder",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document",
+  "manage_notes"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Minutes”",
+   "ok": true,
+   "detail": "“Minutes — Website weekly, Tue 4 Nov” is there."
+  }
+ ],
+ "answer": "[View note: Send the final copy to Chloe — from Website weekly](#note-75c83032-dd4b-451d-9efc-3112300d509a)\n2 decisions, 2 actions; 1 reminder set for you (send the final copy, due Fri 7 Nov).\n\n## Report\n- read \"Website weekly transcript\", wrote \"Minutes — Website weekly, Tue 4 Nov\", set 1 reminder"
+}

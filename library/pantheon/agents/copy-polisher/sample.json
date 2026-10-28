@@ -1,0 +1,18 @@
+{
+ "case": "five-strings-four-polished",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- polished 5 strings; wrote \"Polished copy — 6 Nov\"",
+ "read": [],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Polished copy”",
+   "ok": true,
+   "detail": "“Polished copy — 6 Nov” is there."
+  }
+ ],
+ "answer": "4 changed, 1 left as it was.\n\n## Report\n- polished 5 strings; wrote \"Polished copy — 6 Nov\""
+}

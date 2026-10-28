@@ -1,0 +1,18 @@
+{
+ "case": "one-product-above-everyone",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 3 pages",
+ "read": [
+  "web_fetch"
+ ],
+ "wrote": [],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Most expensive first, Could not read."
+  }
+ ],
+ "answer": "**Most expensive first**\n- Sourdough loaf — you £4.50 — Crumb & Co £4.00 (was £4.20 yesterday) — Daily Bread £4.25 (no change)\n- Rye loaf — you £4.00 — Daily Bread £4.10 (no change)\n\n**Could not read**\n- none\n\n## Report\n- read 3 pages\n\n## Carry forward\n- https://crumb.example/sourdough — £4.00\n- https://dailybread.example/sourdough — £4.25\n- https://dailybread.example/rye — £4.10"
+}

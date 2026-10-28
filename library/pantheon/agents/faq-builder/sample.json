@@ -1,0 +1,23 @@
+{
+ "case": "two-questions-reach-three",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- searched mail and chats, read 1 document; wrote \"FAQ — 5 Nov\"",
+ "read": [
+  "search_emails",
+  "read_email",
+  "search_chats",
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “FAQ”",
+   "ok": true,
+   "detail": "“FAQ — 5 Nov” is there."
+  }
+ ],
+ "answer": "1 answered, 1 not answered yet.\n\n## Report\n- searched mail and chats, read 1 document; wrote \"FAQ — 5 Nov\"\n\n## Carry forward\n- How do I reset my password? — 4\n- Do you ship to Canada? — 3\n- How do I change my password? — 1"
+}

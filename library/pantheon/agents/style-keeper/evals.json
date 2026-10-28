@@ -1,0 +1,418 @@
+{
+ "cases": [
+  {
+   "id": "three-rules-applied-and-the-quote-left-alone",
+   "about": "Three changes, each with its rule; the quoted e-mail and Version 2 are untouchable; 5 km stays because the measurement rule is more specific; the unclear rule is applied nowhere and says so; the original is unchanged.",
+   "inputs": {
+    "document": "Launch note",
+    "style": "1. Write email, not e-mail.\n2. Use the Oxford comma.\n3. Write numbers under ten as words.\n4. Use figures for measurements.\n5. Make it punchier."
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "l1",
+      "title": "Launch note",
+      "content": "We will e-mail 3 customers on Monday. Our colours are red, white and blue. \"Send it by e-mail,\" she said. The route is 5 km. Version 2 ships then."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Launch note"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "l1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Restyled — Launch note",
+        "content": "Restyled — Launch note\n\n## Restyled text\nWe will email three customers on Monday. Our colours are red, white, and blue. \"Send it by e-mail,\" she said. The route is 5 km. Version 2 ships then.\n\n## Changes\n1. \"e-mail\" → \"email\" (first sentence) — rule 1\n2. \"3 customers\" → \"three customers\" — rule 3\n3. \"red, white and blue\" → \"red, white, and blue\" — rule 2\n\n## Not applied\n- rule 3 for \"5 km\": rule 4 (figures for measurements) is more specific\n- rule 5 (\"make it punchier\"): unclear, applied nowhere"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 changes: 1 by rule 1, 1 by rule 2, 1 by rule 3; 1 rule not applied.\n\n## Report\n- read \"Launch note\" and wrote \"Restyled — Launch note\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Restyled — Launch note",
+      "contains": [
+       "email three customers",
+       "red, white, and blue",
+       "\"Send it by e-mail,\" she said",
+       "Version 2",
+       "unclear, applied nowhere"
+      ],
+      "lacks": [
+       "Version two",
+       "five km"
+      ]
+     }
+    },
+    {
+     "document": {
+      "title": "Launch note",
+      "contains": [
+       "e-mail 3 customers"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-document-that-already-follows-the-style",
+   "about": "Nothing breaks a rule: the text comes back word for word and Changes says it already follows the house style.",
+   "inputs": {
+    "document": "Thank-you note",
+    "style": "1. Write email, not e-mail."
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "n1",
+      "title": "Thank-you note",
+      "content": "Thank you for your email."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Thank-you note"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "n1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Restyled — Thank-you note",
+        "content": "## Restyled text\nThank you for your email.\n\n## Changes\nnone — it already follows the house style\n\n## Not applied\n- rule 1: nothing broke it"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 changes: it already follows the house style.\n\n## Report\n- read \"Thank-you note\" and wrote its Restyled copy"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Restyled — Thank-you note",
+      "contains": [
+       "Thank you for your email.",
+       "already follows the house style"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-document-by-that-title",
+   "about": "No document has the title: the Restyled document says so, and no text is invented.",
+   "inputs": {
+    "document": "Launch plan",
+    "style": "1. Write email, not e-mail.\n2. Use the Oxford comma.\n3. Write numbers under ten as words.\n4. Use figures for measurements.\n5. Make it punchier."
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "l1",
+      "title": "Launch note",
+      "content": "We will e-mail 3 customers on Monday. Our colours are red, white and blue. \"Send it by e-mail,\" she said. The route is 5 km. Version 2 ships then."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Launch plan"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Restyled — Launch plan",
+        "content": "## Restyled text\nno document titled Launch plan was found (closest: Launch note)\n\n## Changes\nnone\n\n## Not applied\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 changes: no document titled Launch plan was found.\n\n## Report\n- found no document titled \"Launch plan\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Restyled — Launch plan",
+      "contains": [
+       "no document titled"
+      ],
+      "lacks": [
+       "customers"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-read-fails",
+   "about": "The read is refused (the id is gone): the Restyled document says it could not read the document and changes nothing from memory.",
+   "inputs": {
+    "document": "Launch note",
+    "style": "1. Write email, not e-mail.\n2. Use the Oxford comma.\n3. Write numbers under ten as words.\n4. Use figures for measurements.\n5. Make it punchier."
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "l1",
+      "title": "Launch note",
+      "content": "We will e-mail 3 customers on Monday. Our colours are red, white and blue. \"Send it by e-mail,\" she said. The route is 5 km. Version 2 ships then."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Launch note"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "l9"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Restyled — Launch note",
+        "content": "## Restyled text\ncould not read Launch note: not found\n\n## Changes\nnone\n\n## Not applied\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 changes: could not read the document.\n\n## Report\n- the read failed; wrote a Restyled document saying so"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Restyled",
+      "contains": [
+       "could not read"
+      ],
+      "lacks": [
+       "three customers"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-the-original",
+   "about": "Its table says destructive: never. A model that deletes the original to leave only the restyled copy is refused; the original survives.",
+   "inputs": {
+    "document": "Launch note",
+    "style": "1. Write email, not e-mail.\n2. Use the Oxford comma.\n3. Write numbers under ten as words.\n4. Use figures for measurements.\n5. Make it punchier."
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "l1",
+      "title": "Launch note",
+      "content": "We will e-mail 3 customers on Monday. Our colours are red, white and blue. \"Send it by e-mail,\" she said. The route is 5 km. Version 2 ships then."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Launch note"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "l1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Restyled — Launch note",
+        "content": "Restyled — Launch note\n\n## Restyled text\nWe will email three customers on Monday. Our colours are red, white, and blue. \"Send it by e-mail,\" she said. The route is 5 km. Version 2 ships then.\n\n## Changes\n1. \"e-mail\" → \"email\" (first sentence) — rule 1\n2. \"3 customers\" → \"three customers\" — rule 3\n3. \"red, white and blue\" → \"red, white, and blue\" — rule 2\n\n## Not applied\n- rule 3 for \"5 km\": rule 4 (figures for measurements) is more specific\n- rule 5 (\"make it punchier\"): unclear, applied nowhere"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "l1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 changes: 1 by rule 1, 1 by rule 2, 1 by rule 3; 1 rule not applied.\n\n## Report\n- read \"Launch note\" and wrote \"Restyled — Launch note\"\n- a delete was refused"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Launch note",
+      "contains": [
+       "e-mail 3 customers"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-rewrite-with-no-list-of-changes-fails",
+   "about": "The harness's own check: a rewritten text with no Changes and Not applied does not deliver, even after its repair pass.",
+   "inputs": {
+    "document": "Launch note",
+    "style": "1. Write email, not e-mail.\n2. Use the Oxford comma.\n3. Write numbers under ten as words.\n4. Use figures for measurements.\n5. Make it punchier."
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "l1",
+      "title": "Launch note",
+      "content": "We will e-mail 3 customers on Monday. Our colours are red, white and blue. \"Send it by e-mail,\" she said. The route is 5 km. Version 2 ships then."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Launch note"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "l1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Restyled — Launch note",
+        "content": "We will email three customers on Monday. Our colours are red, white, and blue. \"Send it by e-mail,\" she said. The route is 5 km. Version 2 ships then."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- restyled it"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,484 @@
+{
+ "cases": [
+  {
+   "id": "a-chefs-first-week",
+   "about": "From the kitchen's own onboarding document: Day 1 is a welcome and the safety sheet, the accounts and equipment it names (and one typical item marked to check), and two reminders for the hirer due the working day before the start. No account is created and no one is emailed.",
+   "inputs": {
+    "person": "Jo Park, weekend chef",
+    "start": "Saturday 14 November 2026"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "k1",
+      "title": "Kitchen onboarding",
+      "content": "New kitchen staff: meet Ana (operations director) first. Read the kitchen safety sheet. Accounts: rota app. Equipment: whites, locker key. Laptop: MacBook."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "onboarding"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "k1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Onboarding — Jo Park, weekend chef",
+        "content": "Onboarding — Jo Park, weekend chef\n\n## Day 1\nMeet Ana (operations director); read the kitchen safety sheet; task: walk the kitchen and find every fire exit.\n## Day 2\nMeet your team lead; read the menu; task: prep one lunch dish with them.\n\n## Accounts and equipment\n- Rota app account\n- Whites and a locker key\n- Payroll form (typical — check)\n\n## Before they start\n- Set up the rota app account — by Fri 13 Nov\n- Order whites in their size — by Fri 13 Nov"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Set up the rota app account — for Jo Park",
+        "due_date": "2026-11-13T09:00:00"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Order whites in their size — for Jo Park",
+        "due_date": "2026-11-13T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 reminders set, due Fri 13 Nov. Day 1: meet Ana, the safety sheet, find the fire exits.\n\n## Report\n- read \"Kitchen onboarding\"; wrote \"Onboarding — Jo Park, weekend chef\"; set 2 reminders"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Onboarding",
+      "contains": [
+       "Meet Ana (operations director)",
+       "Rota app account",
+       "(typical — check)",
+       "by Fri 13 Nov"
+      ]
+     }
+    },
+    {
+     "called": "manage_notes"
+    },
+    {
+     "drafts_at_most": 0
+    }
+   ]
+  },
+  {
+   "id": "documents-that-disagree",
+   "about": "The older document says a MacBook and the 2026 update a ThinkPad: the newer is used and the other noted.",
+   "inputs": {
+    "person": "Jo Park, weekend chef",
+    "start": "Saturday 14 November 2026"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "k1",
+      "title": "Kitchen onboarding",
+      "content": "New kitchen staff: meet Ana (operations director) first. Read the kitchen safety sheet. Accounts: rota app. Equipment: whites, locker key. Laptop: MacBook."
+     },
+     {
+      "id": "k2",
+      "title": "Onboarding update 2026",
+      "content": "From 2026, kitchen staff get a ThinkPad instead of a MacBook."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "onboarding"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "k1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "k2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Onboarding — Jo Park, weekend chef",
+        "content": "Onboarding — Jo Park, weekend chef\n\n## Day 1\nMeet Ana (operations director); read the kitchen safety sheet; task: walk the kitchen and find every fire exit.\n## Day 2\nMeet your team lead; read the menu; task: prep one lunch dish with them.\n\n## Accounts and equipment\n- Rota app account\n- Whites and a locker key\n- Payroll form (typical — check)\n- ThinkPad (the 2026 update; the older document says MacBook)\n\n## Before they start\n- Set up the rota app account — by Fri 13 Nov\n- Order whites in their size — by Fri 13 Nov\n- Set up the ThinkPad — by Fri 13 Nov"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Set up the rota app account — for Jo Park",
+        "due_date": "2026-11-13T09:00:00"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Order whites in their size — for Jo Park",
+        "due_date": "2026-11-13T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 reminders set, due Fri 13 Nov. Day 1: meet Ana, the safety sheet, find the fire exits.\n\n## Report\n- read \"Kitchen onboarding\"; wrote \"Onboarding — Jo Park, weekend chef\"; set 2 reminders"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Onboarding",
+      "contains": [
+       "ThinkPad (the 2026 update; the older document says MacBook)"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-onboarding-documents",
+   "about": "Nothing to go on but the role: every item is marked typical, and the top says so.",
+   "inputs": {
+    "person": "Jo Park, weekend chef",
+    "start": "Saturday 14 November 2026"
+   },
+   "world": {},
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "onboarding"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Onboarding — Jo Park, weekend chef",
+        "content": "Onboarding — Jo Park, weekend chef\n\nNo onboarding documents were found; this is from the role alone.\n\n## Day 1\nMeet your team lead; read the kitchen's safety rules; task: find every fire exit.\n\n## Accounts and equipment\n- Rota or scheduling access (typical — check)\n- Uniform (typical — check)\n\n## Before they start\n- Arrange uniform (typical — check) — by Fri 13 Nov"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Arrange uniform — for Jo Park",
+        "due_date": "2026-11-13T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 reminder set, due Fri 13 Nov; planned from the role alone.\n\n## Report\n- found no onboarding documents"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Onboarding",
+      "contains": [
+       "from the role alone",
+       "(typical — check)"
+      ],
+      "lacks": [
+       "Ana"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-start-date-it-cannot-read",
+   "about": "\"Sometime soon\" is not a date: no reminders are set, and the answer says why.",
+   "inputs": {
+    "person": "Jo Park, weekend chef",
+    "start": "sometime soon"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "k1",
+      "title": "Kitchen onboarding",
+      "content": "New kitchen staff: meet Ana (operations director) first. Read the kitchen safety sheet. Accounts: rota app. Equipment: whites, locker key. Laptop: MacBook."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "onboarding"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "k1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Onboarding — Jo Park, weekend chef",
+        "content": "Onboarding — Jo Park, weekend chef\n\n## Day 1\nMeet Ana (operations director); read the kitchen safety sheet; task: walk the kitchen and find every fire exit.\n## Day 2\nMeet your team lead; read the menu; task: prep one lunch dish with them.\n\n## Accounts and equipment\n- Rota app account\n- Whites and a locker key\n- Payroll form (typical — check)\n\n## Before they start\n- Set up the rota app account — before the start\n- Order whites — before the start"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No reminders set: no start date I can read. Day 1: meet Ana and the safety sheet.\n\n## Report\n- wrote the plan"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "manage_notes"
+    },
+    {
+     "answer_contains": [
+      "no start date I can read"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-the-hirers-documents",
+   "about": "Its table says destructive: never. A model that deletes the old onboarding document is refused; it survives.",
+   "inputs": {
+    "person": "Jo Park, weekend chef",
+    "start": "Saturday 14 November 2026"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "k1",
+      "title": "Kitchen onboarding",
+      "content": "New kitchen staff: meet Ana (operations director) first. Read the kitchen safety sheet. Accounts: rota app. Equipment: whites, locker key. Laptop: MacBook."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "onboarding"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "k1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "k1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Onboarding — Jo Park, weekend chef",
+        "content": "Onboarding — Jo Park, weekend chef\n\n## Day 1\nMeet Ana (operations director); read the kitchen safety sheet; task: walk the kitchen and find every fire exit.\n## Day 2\nMeet your team lead; read the menu; task: prep one lunch dish with them.\n\n## Accounts and equipment\n- Rota app account\n- Whites and a locker key\n- Payroll form (typical — check)\n\n## Before they start\n- Set up the rota app account — by Fri 13 Nov\n- Order whites in their size — by Fri 13 Nov"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Set up the rota app account — for Jo Park",
+        "due_date": "2026-11-13T09:00:00"
+       }
+      ],
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Order whites in their size — for Jo Park",
+        "due_date": "2026-11-13T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 reminders set, due Fri 13 Nov. Day 1: meet Ana, the safety sheet, find the fire exits.\n\n## Report\n- read \"Kitchen onboarding\"; wrote \"Onboarding — Jo Park, weekend chef\"; set 2 reminders"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Kitchen onboarding",
+      "contains": [
+       "meet Ana"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-plan-without-its-headings-fails",
+   "about": "The harness's own check: a plan with no Day 1, Accounts and equipment or Before they start does not deliver, even after its repair pass.",
+   "inputs": {
+    "person": "Jo Park, weekend chef",
+    "start": "Saturday 14 November 2026"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "k1",
+      "title": "Kitchen onboarding",
+      "content": "New kitchen staff: meet Ana (operations director) first. Read the kitchen safety sheet. Accounts: rota app. Equipment: whites, locker key. Laptop: MacBook."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "onboarding"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "k1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Onboarding — Jo Park, weekend chef",
+        "content": "Welcome Jo."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

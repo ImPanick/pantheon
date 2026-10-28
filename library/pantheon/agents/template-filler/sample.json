@@ -1,0 +1,20 @@
+{
+ "case": "a-submission-fills-the-letter",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- filled \"Welcome letter\" from the webhook's values; wrote \"Filled — Welcome letter — M-0412\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Filled”",
+   "ok": true,
+   "detail": "“Filled — Welcome letter — M-0412” is there."
+  }
+ ],
+ "answer": "Missing: start_date.\n\n## Report\n- filled \"Welcome letter\" from the webhook's values; wrote \"Filled — Welcome letter — M-0412\""
+}

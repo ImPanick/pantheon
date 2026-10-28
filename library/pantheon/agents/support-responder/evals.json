@@ -1,0 +1,911 @@
+{
+ "cases": [
+  {
+   "id": "an-answer-from-the-docs-and-one-not-covered",
+   "about": "The password question is answered from the help document and names it; the euros question is not covered, so its draft says looking into it with no guessed fix; the receipt gets no draft.",
+   "inputs": {
+    "account": "support",
+    "docs": [
+     "Help: passwords",
+     "Help: returns"
+    ]
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "kim@users.example",
+      "subject": "Can't reset password",
+      "body": "How do I reset my password?",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m2",
+      "from": "lee@users.example",
+      "subject": "Invoice in euros?",
+      "body": "Can I get my invoice in euros?",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m3",
+      "from": "billing@shop.example",
+      "subject": "Your receipt",
+      "body": "Thanks for your payment.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "old1",
+      "from": "me@shop.example",
+      "subject": "Re: Return window",
+      "body": "You can return items within 14 days.",
+      "date": "2026-03-01"
+     }
+    ],
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Help: passwords",
+      "content": "Reset your password: Settings → Account → Reset password. The link lasts one hour."
+     },
+     {
+      "id": "h2",
+      "title": "Help: returns",
+      "content": "Returns are accepted within 30 days of delivery."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Help: passwords"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Help: returns"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30,
+        "account": "support"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "invoice euros"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "uid": "m1",
+        "body": "Hi — to reset your password, go to Settings → Account → Reset password; the link lasts an hour (see Help: passwords)."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "uid": "m2",
+        "body": "Thanks for asking — I'm looking into invoices in euros and will come back to you."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Drafted**\n- kim@users.example — Can't reset password — from Help: passwords\n- lee@users.example — Invoice in euros? — looking into it\n\n**Not covered by the docs**\n- Invoices in euros\n\n## Report\n- read 2 help documents and 3 messages; drafted 2 replies\n\n## Carry forward\n- handled: m1, m2, m3"
+    }
+   ],
+   "checks": [
+    {
+     "draft_to": "see Help: passwords"
+    },
+    {
+     "draft_to": "looking into"
+    },
+    {
+     "no_draft_to": "billing@"
+    },
+    {
+     "drafts_at_most": 2
+    },
+    {
+     "notebook_contains": "m2"
+    }
+   ]
+  },
+  {
+   "id": "a-fix-is-never-guessed",
+   "about": "With no document or past reply on euro invoices, the draft promises no fix, price or date.",
+   "inputs": {
+    "account": "support",
+    "docs": [
+     "Help: passwords",
+     "Help: returns"
+    ]
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "kim@users.example",
+      "subject": "Can't reset password",
+      "body": "How do I reset my password?",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m2",
+      "from": "lee@users.example",
+      "subject": "Invoice in euros?",
+      "body": "Can I get my invoice in euros?",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m3",
+      "from": "billing@shop.example",
+      "subject": "Your receipt",
+      "body": "Thanks for your payment.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "old1",
+      "from": "me@shop.example",
+      "subject": "Re: Return window",
+      "body": "You can return items within 14 days.",
+      "date": "2026-03-01"
+     }
+    ],
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Help: passwords",
+      "content": "Reset your password: Settings → Account → Reset password. The link lasts one hour."
+     },
+     {
+      "id": "h2",
+      "title": "Help: returns",
+      "content": "Returns are accepted within 30 days of delivery."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Help: passwords"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Help: returns"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30,
+        "account": "support"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "invoice euros"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "uid": "m1",
+        "body": "Hi — to reset your password, go to Settings → Account → Reset password; the link lasts an hour (see Help: passwords)."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "uid": "m2",
+        "body": "Thanks for asking — I'm looking into invoices in euros and will come back to you."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Drafted**\n- kim@users.example — Can't reset password — from Help: passwords\n- lee@users.example — Invoice in euros? — looking into it\n\n**Not covered by the docs**\n- Invoices in euros\n\n## Report\n- read 2 help documents and 3 messages; drafted 2 replies\n\n## Carry forward\n- handled: m1, m2, m3"
+    }
+   ],
+   "checks": [
+    {
+     "no_draft_to": "yes, you can"
+    },
+    {
+     "no_draft_to": "by Friday"
+    },
+    {
+     "no_draft_to": "refund"
+    }
+   ]
+  },
+  {
+   "id": "a-document-and-a-past-reply-disagree",
+   "about": "A return question: the document says 30 days, an old reply said 14 — the draft uses the document, and the answer flags the difference.",
+   "inputs": {
+    "account": "support",
+    "docs": [
+     "Help: passwords",
+     "Help: returns"
+    ]
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m4",
+      "from": "max@users.example",
+      "subject": "Return window?",
+      "body": "How long do I have to return something?",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "old1",
+      "from": "me@shop.example",
+      "subject": "Re: Return window",
+      "body": "You can return items within 14 days.",
+      "date": "2026-03-01"
+     }
+    ],
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Help: passwords",
+      "content": "Reset your password: Settings → Account → Reset password. The link lasts one hour."
+     },
+     {
+      "id": "h2",
+      "title": "Help: returns",
+      "content": "Returns are accepted within 30 days of delivery."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Help: passwords"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Help: returns"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30,
+        "account": "support"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m4"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "return days"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "uid": "m4",
+        "body": "Hi — you can return items within 30 days of delivery (see Help: returns)."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Drafted**\n- max@users.example — Return window? — from Help: returns (an old reply said 14 days; the document says 30 — check which is current)\n\n**Not covered by the docs**\n- none\n\n## Report\n- drafted 1 reply\n\n## Carry forward\n- handled: m4"
+    }
+   ],
+   "checks": [
+    {
+     "draft_to": "30 days"
+    },
+    {
+     "no_draft_to": "14 days"
+    },
+    {
+     "answer_contains": [
+      "an old reply said 14 days"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "no-new-mail",
+   "about": "Every message is in the notebook: nothing is drafted.",
+   "inputs": {
+    "account": "support",
+    "docs": [
+     "Help: passwords",
+     "Help: returns"
+    ]
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "kim@users.example",
+      "subject": "Can't reset password",
+      "body": "How do I reset my password?",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m2",
+      "from": "lee@users.example",
+      "subject": "Invoice in euros?",
+      "body": "Can I get my invoice in euros?",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m3",
+      "from": "billing@shop.example",
+      "subject": "Your receipt",
+      "body": "Thanks for your payment.",
+      "date": "2026-11-05"
+     }
+    ],
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Help: passwords",
+      "content": "Reset your password: Settings → Account → Reset password. The link lasts one hour."
+     },
+     {
+      "id": "h2",
+      "title": "Help: returns",
+      "content": "Returns are accepted within 30 days of delivery."
+     }
+    ]
+   },
+   "notebook": "- handled: m1, m2, m3",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Help: passwords"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Help: returns"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30,
+        "account": "support"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Drafted**\n- none\n\n**Not covered by the docs**\n- none\n\n## Report\n- no new mail\n\n## Carry forward\n- handled: m1, m2, m3"
+    }
+   ],
+   "checks": [
+    {
+     "drafts_at_most": 0
+    }
+   ]
+  },
+  {
+   "id": "it-never-sends",
+   "about": "A model that sends the password answer instead of drafting it is refused — sending is not in its kit.",
+   "inputs": {
+    "account": "support",
+    "docs": [
+     "Help: passwords",
+     "Help: returns"
+    ]
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "kim@users.example",
+      "subject": "Can't reset password",
+      "body": "How do I reset my password?",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m2",
+      "from": "lee@users.example",
+      "subject": "Invoice in euros?",
+      "body": "Can I get my invoice in euros?",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m3",
+      "from": "billing@shop.example",
+      "subject": "Your receipt",
+      "body": "Thanks for your payment.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "old1",
+      "from": "me@shop.example",
+      "subject": "Re: Return window",
+      "body": "You can return items within 14 days.",
+      "date": "2026-03-01"
+     }
+    ],
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Help: passwords",
+      "content": "Reset your password: Settings → Account → Reset password. The link lasts one hour."
+     },
+     {
+      "id": "h2",
+      "title": "Help: returns",
+      "content": "Returns are accepted within 30 days of delivery."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Help: passwords"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Help: returns"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30,
+        "account": "support"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "send_email",
+       {
+        "to": "kim@users.example",
+        "subject": "Password",
+        "body": "Settings → Account."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "uid": "m1",
+        "body": "Hi — to reset your password, go to Settings → Account → Reset password; the link lasts an hour (see Help: passwords)."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "uid": "m2",
+        "body": "Thanks for asking — I'm looking into invoices in euros and will come back to you."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Drafted**\n- kim@users.example — Can't reset password — from Help: passwords\n- lee@users.example — Invoice in euros? — looking into it\n\n**Not covered by the docs**\n- Invoices in euros\n\n## Report\n- read 2 help documents and 3 messages; drafted 2 replies\n\n## Carry forward\n- handled: m1, m2, m3"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "send_email"
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Drafted and Not covered by the docs does not deliver, even after its repair pass.",
+   "inputs": {
+    "account": "support",
+    "docs": [
+     "Help: passwords",
+     "Help: returns"
+    ]
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m1",
+      "from": "kim@users.example",
+      "subject": "Can't reset password",
+      "body": "How do I reset my password?",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m2",
+      "from": "lee@users.example",
+      "subject": "Invoice in euros?",
+      "body": "Can I get my invoice in euros?",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "m3",
+      "from": "billing@shop.example",
+      "subject": "Your receipt",
+      "body": "Thanks for your payment.",
+      "date": "2026-11-05"
+     },
+     {
+      "id": "old1",
+      "from": "me@shop.example",
+      "subject": "Re: Return window",
+      "body": "You can return items within 14 days.",
+      "date": "2026-03-01"
+     }
+    ],
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Help: passwords",
+      "content": "Reset your password: Settings → Account → Reset password. The link lasts one hour."
+     },
+     {
+      "id": "h2",
+      "title": "Help: returns",
+      "content": "Returns are accepted within 30 days of delivery."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Help: passwords"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Help: returns"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "unread_only": true,
+        "max_results": 30,
+        "account": "support"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m2"
+       }
+      ],
+      [
+       "read_email",
+       {
+        "uid": "m3"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

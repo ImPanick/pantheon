@@ -1,0 +1,19 @@
+{
+ "case": "a-website-launch-planned-backwards",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- wrote \"Plan — launch the new website\" and set 3 reminders",
+ "read": [],
+ "wrote": [
+  "create_document",
+  "manage_notes"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Plan”",
+   "ok": true,
+   "detail": "“Plan — launch the new website” is there."
+  }
+ ],
+ "answer": "[View note: Write the home page copy — launch the new website](#note-90448b0c-8216-4aea-90ab-4509a65ae869)\n\n\n[View note: Write the about page — launch the new website](#note-34a7a415-aa4b-4f87-a746-5357eb495122)\n\n\n[View note: Build the pages — launch the new website](#note-443b84fd-c59f-43da-999b-1448e711ae03)\n4 tasks; 3 reminders set for your own; first: write the home page copy on Monday.\n\n## Report\n- wrote \"Plan — launch the new website\" and set 3 reminders"
+}

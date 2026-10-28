@@ -1,0 +1,377 @@
+{
+ "cases": [
+  {
+   "id": "a-caption-in-the-studios-voice",
+   "about": "The voice document's short sentences and dry humour are kept, the dates and price come from the brief, and the unsupported \"most popular\" claim goes to Claims to check, not into the caption.",
+   "inputs": {
+    "brief": "An Instagram caption for the spring pottery course: six Tuesdays from 3 March, £180, booking opens Monday. Maybe say it's the most popular course in Leeds.",
+    "voice": "About the studio"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "v1",
+      "title": "About the studio",
+      "content": "We make pots. Mostly bowls. Some of them are even round. Come and get your hands dirty."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "About the studio"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "v1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Content — the spring pottery course",
+        "content": "Content — the spring pottery course\n\n## In your voice\nFrom \"About the studio\": short sentences, no exclamation marks, a dry joke near the end.\n\n## Instagram caption\nSix Tuesdays from 3 March. One wheel each. You leave with a bowl, and clay under your nails for a week. £180. Booking opens Monday. #pottery #leeds\n\n## Claims to check\n- Is the course really \"the most popular in Leeds\"? The brief does not say."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 Instagram caption written; 1 claim to check.\n\n## Report\n- read \"About the studio\"; wrote \"Content — the spring pottery course\"\n\n## Carry forward\n- voice: short sentences, no exclamation marks, a dry joke near the end\n- covered: the spring pottery course"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Content —",
+      "contains": [
+       "3 March",
+       "£180",
+       "From \"About the studio\"",
+       "most popular in Leeds\"? The brief does not say"
+      ],
+      "lacks": [
+       "!",
+       "Leeds' most popular course"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "no exclamation marks"
+    }
+   ]
+  },
+  {
+   "id": "no-voice-document-by-that-title",
+   "about": "The voice names a document that does not exist: the caption is written in a plain, warm voice and the document says the voice was not found.",
+   "inputs": {
+    "brief": "An Instagram caption for the spring pottery course: six Tuesdays from 3 March, £180, booking opens Monday. Maybe say it's the most popular course in Leeds.",
+    "voice": "Brand voice"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "v1",
+      "title": "About the studio",
+      "content": "We make pots. Mostly bowls. Some of them are even round. Come and get your hands dirty."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Content — the spring pottery course",
+        "content": "Content — the spring pottery course\n\n## In your voice\nPlain and warm — no document titled \"Brand voice\" was found.\n\n## Instagram caption\nSpring pottery: six Tuesdays from 3 March, £180. Booking opens Monday. #pottery\n\n## Claims to check\n- Is the course really \"the most popular in Leeds\"? The brief does not say."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 caption written in a plain voice; 1 claim to check.\n\n## Report\n- found no voice document\n\n## Carry forward\n- voice: plain and warm (no voice document found)"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Content —",
+      "contains": [
+       "was found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-brief-and-the-voice-disagree",
+   "about": "The brief asks for a formal note to a council; the studio's voice is joking: the brief's register wins for this piece, and the document says so.",
+   "inputs": {
+    "brief": "A formal email to the council asking to use the hall on 3 March for the pottery course.",
+    "voice": "About the studio"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "v1",
+      "title": "About the studio",
+      "content": "We make pots. Mostly bowls. Some of them are even round. Come and get your hands dirty."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "About the studio"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "v1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Content — the spring pottery course",
+        "content": "Content — the spring pottery course\n\n## In your voice\nFormal, as the brief asks — the studio's joking voice set aside for this piece.\n\n## Email\nDear Hall Bookings Team,\nWe would like to book the community hall on 3 March for our pottery course. Please let us know if it is available.\nKind regards\n\n## Claims to check\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 email written, formal as the brief asks.\n\n## Report\n- read the voice document; wrote the email\n\n## Carry forward\n- voice: short sentences, dry jokes (set aside for formal pieces)"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Content —",
+      "contains": [
+       "set aside for this piece"
+      ],
+      "lacks": [
+       "Some of them are even round"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-to-say-yet",
+   "about": "A brief with no subject: no piece is written, and Claims to check asks what it is about.",
+   "inputs": {
+    "brief": "Write something for Instagram.",
+    "voice": "Short and friendly."
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Content — no subject yet",
+        "content": "## In your voice\nShort and friendly, as described.\n\n## Claims to check\n- What should the post be about? The brief gives no subject."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing written: the brief gives no subject.\n\n## Report\n- asked for a subject\n\n## Carry forward\n- voice: short and friendly"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Content —",
+      "contains": [
+       "gives no subject"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-the-voice-document",
+   "about": "Its table says destructive: never. A model that deletes the voice document once learned is refused; it survives.",
+   "inputs": {
+    "brief": "An Instagram caption for the spring pottery course: six Tuesdays from 3 March, £180, booking opens Monday. Maybe say it's the most popular course in Leeds.",
+    "voice": "About the studio"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "v1",
+      "title": "About the studio",
+      "content": "We make pots. Mostly bowls. Some of them are even round. Come and get your hands dirty."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "About the studio"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "v1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "v1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Content — the spring pottery course",
+        "content": "Content — the spring pottery course\n\n## In your voice\nFrom \"About the studio\": short sentences, no exclamation marks, a dry joke near the end.\n\n## Instagram caption\nSix Tuesdays from 3 March. One wheel each. You leave with a bowl, and clay under your nails for a week. £180. Booking opens Monday. #pottery #leeds\n\n## Claims to check\n- Is the course really \"the most popular in Leeds\"? The brief does not say."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 Instagram caption written; 1 claim to check.\n\n## Report\n- read \"About the studio\"; wrote \"Content — the spring pottery course\"\n\n## Carry forward\n- voice: short sentences, no exclamation marks, a dry joke near the end\n- covered: the spring pottery course"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "About the studio",
+      "contains": [
+       "Mostly bowls"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "content-without-its-headings-fails",
+   "about": "The harness's own check: a document with no In your voice and no Claims to check does not deliver, even after its repair pass.",
+   "inputs": {
+    "brief": "An Instagram caption for the spring pottery course: six Tuesdays from 3 March, £180, booking opens Monday. Maybe say it's the most popular course in Leeds.",
+    "voice": "About the studio"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "v1",
+      "title": "About the studio",
+      "content": "We make pots. Mostly bowls. Some of them are even round. Come and get your hands dirty."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "About the studio"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "v1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Content — the spring pottery course",
+        "content": "Pottery! Book now!"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

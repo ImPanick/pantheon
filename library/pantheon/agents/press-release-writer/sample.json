@@ -1,0 +1,20 @@
+{
+ "case": "a-second-shop-announced",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 2 past releases; wrote \"Press release — Leeds bakery opens second shop in Headingley\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Press release”",
+   "ok": true,
+   "detail": "“Press release — Leeds bakery opens second shop in Headingley” is there."
+  }
+ ],
+ "answer": "\"Leeds bakery opens second shop in Headingley\" — 1 quote to approve; nothing to check. Used the boilerplate from \"Rise Bakery turns one\", the newer of two.\n\n## Report\n- read 2 past releases; wrote \"Press release — Leeds bakery opens second shop in Headingley\""
+}

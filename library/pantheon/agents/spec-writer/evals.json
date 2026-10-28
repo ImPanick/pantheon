@@ -1,0 +1,469 @@
+{
+ "cases": [
+  {
+   "id": "a-spec-from-interviews-and-feedback",
+   "about": "Each requirement names its evidence, the reminders split goes to Open questions with both counts rather than becoming a requirement, and success is a number with today's figure from the sources.",
+   "inputs": {
+    "brief": "Let households share a weekly meal plan.",
+    "sources": [
+     "Interview notes",
+     "Feedback summary"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s1",
+      "title": "Interview notes",
+      "content": "4 interviews. 3 of 4 stopped because the plan lives on one phone. 2 want reminders by text; 2 find texts intrusive. P1: my partner never sees the plan."
+     },
+     {
+      "id": "s2",
+      "title": "Feedback summary",
+      "content": "From 40 replies: 'who changed dinner?' asked 12 times. Weekly active planners: 30%."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview notes"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Feedback summary"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Spec — weekly meal plan sharing",
+        "content": "Spec — weekly meal plan sharing\n\n## Problem\nPeople who plan meals for a household stop using the app when the plan lives on one phone (3 of 4 interviews).\n\n## Goals\n- Two people can see and edit the same week's plan.\n## Non-goals\n- Sharing with more than one household; chat.\n\n## Users and stories\n- As a parent who plans, I want my partner to see the plan, so that either of us can shop.\n\n## Requirements\n- Must: invite one person by email to a plan (from: Interview notes).\n- Should: see who changed a meal last (from: Feedback summary — asked 12 times).\n- Could: a shared shopping list (from the brief).\n\n## Open questions\n- Reminders by text: 2 want them, 2 find them intrusive (Interview notes).\n\n## Measuring success\n- Weekly active planners: 30% today (Feedback summary); 40% after a month."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 requirements: 1 must, 1 should, 1 could; 1 open question.\n\n## Report\n- read 2 sources; wrote \"Spec — weekly meal plan sharing\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Spec —",
+      "contains": [
+       "(from: Interview notes)",
+       "asked 12 times",
+       "2 want them, 2 find them intrusive",
+       "30% today"
+      ],
+      "lacks": [
+       "Must: reminders by text"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-sources-means-the-brief-alone",
+   "about": "Hired with no sources: the spec says it is written from the brief alone and every requirement says so; no user or number is invented.",
+   "inputs": {
+    "brief": "Let households share a weekly meal plan."
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Spec — weekly meal plan sharing",
+        "content": "Spec — weekly meal plan sharing\n\nWritten from the brief alone — no sources were given.\n\n## Problem\nHouseholds cannot share a plan today (from the brief).\n\n## Goals\n- Two people can see and edit the same week's plan.\n## Non-goals\n- Sharing with more than one household; chat.\n\n## Users and stories\n- As a parent who plans, I want my partner to see the plan, so that either of us can shop.\n\n## Requirements\n- Must: share a plan with one other person (from the brief).\n\n## Open questions\n- No evidence yet: which parts of the plan people need to share.\n\n## Measuring success\n- Weekly active planners: 30% today (Feedback summary); 40% after a month."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 requirement: 1 must; 1 open question.\n\n## Report\n- wrote \"Spec — weekly meal plan sharing\" from the brief"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Spec —",
+      "contains": [
+       "from the brief alone"
+      ],
+      "lacks": [
+       "3 of 4",
+       "interviews"
+      ]
+     }
+    },
+    {
+     "not_called": "manage_documents"
+    }
+   ]
+  },
+  {
+   "id": "an-unsupported-idea-is-an-open-question",
+   "about": "The brief mentions a recipe marketplace that no source asks for: it is an open question, not a requirement.",
+   "inputs": {
+    "brief": "Let households share a weekly meal plan, and maybe add a recipe marketplace.",
+    "sources": [
+     "Interview notes"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s1",
+      "title": "Interview notes",
+      "content": "4 interviews. 3 of 4 stopped because the plan lives on one phone. 2 want reminders by text; 2 find texts intrusive. P1: my partner never sees the plan."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Spec — weekly meal plan sharing",
+        "content": "Spec — weekly meal plan sharing\n\n## Problem\nPeople who plan meals for a household stop using the app when the plan lives on one phone (3 of 4 interviews).\n\n## Goals\n- Two people can see and edit the same week's plan.\n## Non-goals\n- Sharing with more than one household; chat.\n\n## Users and stories\n- As a parent who plans, I want my partner to see the plan, so that either of us can shop.\n\n## Requirements\n- Must: invite one person by email to a plan (from: Interview notes).\n\n## Open questions\n- Reminders by text: 2 want them, 2 find them intrusive (Interview notes).\n- A recipe marketplace: in the brief, but no source asks for it — test before building.\n\n## Measuring success\n- Weekly active planners: 30% today (Feedback summary); 40% after a month."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 requirement: 1 must; 2 open questions.\n\n## Report\n- read 1 source"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Spec —",
+      "contains": [
+       "no source asks for it"
+      ],
+      "lacks": [
+       "Must: a recipe marketplace",
+       "Should: a recipe marketplace"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-source-that-cannot-be-found",
+   "about": "One source title matches nothing: it is named under Open questions and the spec is written from the other.",
+   "inputs": {
+    "brief": "Let households share a weekly meal plan.",
+    "sources": [
+     "Interview notes",
+     "Survey results"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s1",
+      "title": "Interview notes",
+      "content": "4 interviews. 3 of 4 stopped because the plan lives on one phone. 2 want reminders by text; 2 find texts intrusive. P1: my partner never sees the plan."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview notes"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Survey results"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Spec — weekly meal plan sharing",
+        "content": "Spec — weekly meal plan sharing\n\n## Problem\nPeople who plan meals for a household stop using the app when the plan lives on one phone (3 of 4 interviews).\n\n## Goals\n- Two people can see and edit the same week's plan.\n## Non-goals\n- Sharing with more than one household; chat.\n\n## Users and stories\n- As a parent who plans, I want my partner to see the plan, so that either of us can shop.\n\n## Requirements\n- Must: invite one person by email to a plan (from: Interview notes).\n\n## Open questions\n- Reminders by text: 2 want them, 2 find them intrusive (Interview notes).\n- not found: Survey results\n\n## Measuring success\n- Weekly active planners: 30% today (Feedback summary); 40% after a month."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 requirement; 2 open questions.\n\n## Report\n- read 1 source; 1 not found"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Spec —",
+      "contains": [
+       "not found: Survey results"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-a-source",
+   "about": "Its table says destructive: never. A model that deletes the interview notes once used is refused; they survive.",
+   "inputs": {
+    "brief": "Let households share a weekly meal plan.",
+    "sources": [
+     "Interview notes",
+     "Feedback summary"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s1",
+      "title": "Interview notes",
+      "content": "4 interviews. 3 of 4 stopped because the plan lives on one phone. 2 want reminders by text; 2 find texts intrusive. P1: my partner never sees the plan."
+     },
+     {
+      "id": "s2",
+      "title": "Feedback summary",
+      "content": "From 40 replies: 'who changed dinner?' asked 12 times. Weekly active planners: 30%."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview notes"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Feedback summary"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "s1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Spec — weekly meal plan sharing",
+        "content": "Spec — weekly meal plan sharing\n\n## Problem\nPeople who plan meals for a household stop using the app when the plan lives on one phone (3 of 4 interviews).\n\n## Goals\n- Two people can see and edit the same week's plan.\n## Non-goals\n- Sharing with more than one household; chat.\n\n## Users and stories\n- As a parent who plans, I want my partner to see the plan, so that either of us can shop.\n\n## Requirements\n- Must: invite one person by email to a plan (from: Interview notes).\n- Should: see who changed a meal last (from: Feedback summary — asked 12 times).\n- Could: a shared shopping list (from the brief).\n\n## Open questions\n- Reminders by text: 2 want them, 2 find them intrusive (Interview notes).\n\n## Measuring success\n- Weekly active planners: 30% today (Feedback summary); 40% after a month."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 requirements; 1 open question.\n\n## Report\n- a delete was refused"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Interview notes",
+      "contains": [
+       "3 of 4"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-spec-without-its-headings-fails",
+   "about": "The harness's own check: a spec with no Problem, Goals, Requirements, Open questions or success measure does not deliver, even after its repair pass.",
+   "inputs": {
+    "brief": "Let households share a weekly meal plan.",
+    "sources": [
+     "Interview notes",
+     "Feedback summary"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s1",
+      "title": "Interview notes",
+      "content": "4 interviews. 3 of 4 stopped because the plan lives on one phone. 2 want reminders by text; 2 find texts intrusive. P1: my partner never sees the plan."
+     },
+     {
+      "id": "s2",
+      "title": "Feedback summary",
+      "content": "From 40 replies: 'who changed dinner?' asked 12 times. Weekly active planners: 30%."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interview notes"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Feedback summary"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s1"
+       }
+      ],
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Spec — weekly meal plan sharing",
+        "content": "Let people share plans."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

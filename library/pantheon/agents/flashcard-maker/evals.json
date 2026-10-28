@@ -1,0 +1,617 @@
+{
+ "cases": [
+  {
+   "id": "a-chapter-becomes-cards-and-four-reviews",
+   "about": "Four ideas become four cards in the chapter's own words (the photo aside is not a card), and four 15-minute review sessions go on the calendar, spaced 1, 3, 7 and 21 days out.",
+   "inputs": {
+    "document": "Chapter 3: the water cycle"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c3",
+      "title": "Chapter 3: the water cycle",
+      "content": "Chapter 3: the water cycle. Evaporation is water turning from liquid to vapour, mostly from the oceans. Clouds form when water vapour cools and condenses into droplets. Precipitation is water falling as rain, snow or hail. Infiltration is water soaking into the ground. (Page 42 has a nice photo.)"
+     }
+    ],
+    "calendar": [
+     {
+      "summary": "Dentist",
+      "start": "tomorrow 09:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Chapter 3: the water cycle"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Flashcards — Chapter 3: the water cycle",
+        "content": "Flashcards — Chapter 3: the water cycle\n\n## Cards\n1. Q: What is evaporation? — A: Water turning from liquid to vapour, mostly from the oceans.\n2. Q: How do clouds form? — A: Water vapour cools and condenses into droplets.\n3. Q: What is precipitation? — A: Water falling as rain, snow or hail.\n4. Q: What is infiltration? — A: Water soaking into the ground.\n\n## Review dates\n- Thu 29 Oct, Sat 31 Oct, Wed 4 Nov, Wed 18 Nov — 18:00 for 15 minutes, on your calendar"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Review flashcards: Chapter 3: the water cycle",
+        "dtstart": "2026-10-29T18:00:00",
+        "dtend": "2026-10-29T18:15:00",
+        "description": "Open the document Flashcards — Chapter 3: the water cycle"
+       }
+      ],
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Review flashcards: Chapter 3: the water cycle",
+        "dtstart": "2026-10-31T18:00:00",
+        "dtend": "2026-10-31T18:15:00",
+        "description": "Open the document Flashcards — Chapter 3: the water cycle"
+       }
+      ],
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Review flashcards: Chapter 3: the water cycle",
+        "dtstart": "2026-11-04T18:00:00",
+        "dtend": "2026-11-04T18:15:00",
+        "description": "Open the document Flashcards — Chapter 3: the water cycle"
+       }
+      ],
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Review flashcards: Chapter 3: the water cycle",
+        "dtstart": "2026-11-18T18:00:00",
+        "dtend": "2026-11-18T18:15:00",
+        "description": "Open the document Flashcards — Chapter 3: the water cycle"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 cards; reviews on 29 Oct, 31 Oct, 4 Nov and 18 Nov at 18:00.\n\n## Report\n- read the chapter, wrote its flashcards, added 4 review sessions\n\n## Carry forward\n- Chapter 3: the water cycle — reviews 29 Oct, 31 Oct, 4 Nov, 18 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Flashcards — Chapter 3",
+      "contains": [
+       "Q: What is infiltration?",
+       "Water soaking into the ground",
+       "18:00"
+      ],
+      "lacks": [
+       "Page 42",
+       "photo"
+      ]
+     }
+    },
+    {
+     "called": "manage_calendar"
+    },
+    {
+     "notebook_contains": "reviews 29 Oct"
+    }
+   ]
+  },
+  {
+   "id": "already-carded-adds-no-sessions",
+   "about": "The notebook says this chapter already has review sessions: the cards are rewritten and no new sessions are added.",
+   "inputs": {
+    "document": "Chapter 3: the water cycle"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c3",
+      "title": "Chapter 3: the water cycle",
+      "content": "Chapter 3: the water cycle. Evaporation is water turning from liquid to vapour, mostly from the oceans. Clouds form when water vapour cools and condenses into droplets. Precipitation is water falling as rain, snow or hail. Infiltration is water soaking into the ground. (Page 42 has a nice photo.)"
+     }
+    ]
+   },
+   "notebook": "- Chapter 3: the water cycle — reviews 22 Oct, 24 Oct, 28 Oct, 11 Nov",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Chapter 3: the water cycle"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Flashcards — Chapter 3: the water cycle",
+        "content": "Flashcards — Chapter 3: the water cycle\n\n## Cards\n1. Q: What is evaporation? — A: Water turning from liquid to vapour, mostly from the oceans.\n2. Q: How do clouds form? — A: Water vapour cools and condenses into droplets.\n3. Q: What is precipitation? — A: Water falling as rain, snow or hail.\n4. Q: What is infiltration? — A: Water soaking into the ground.\n\n## Review dates\n- 22 Oct, 24 Oct, 28 Oct, 11 Nov — already on your calendar"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 cards; the existing review sessions stand.\n\n## Report\n- rewrote the flashcards; no new sessions\n\n## Carry forward\n- Chapter 3: the water cycle — reviews 22 Oct, 24 Oct, 28 Oct, 11 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "manage_calendar"
+    },
+    {
+     "document": {
+      "title": "Flashcards",
+      "contains": [
+       "already on your calendar"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "too-little-to-card",
+   "about": "A shopping list has nothing worth learning: it says too little to card, writes no padding cards and adds no sessions.",
+   "inputs": {
+    "document": "Shopping"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s1",
+      "title": "Shopping",
+      "content": "Milk, eggs, bread."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Shopping"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Flashcards — Shopping",
+        "content": "## Cards\ntoo little to card\n\n## Review dates\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 cards: too little to card.\n\n## Report\n- read \"Shopping\"; nothing to card\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "manage_calendar"
+    },
+    {
+     "document": {
+      "title": "Flashcards — Shopping",
+      "contains": [
+       "too little to card"
+      ],
+      "lacks": [
+       "Q: What is milk"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-chapter-gives-two-dates",
+   "about": "The chapter dates the treaty 1648 and later 1649: the card uses the one it uses last and names the other on the back.",
+   "inputs": {
+    "document": "Chapter 5"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c5",
+      "title": "Chapter 5",
+      "content": "The Peace of Westphalia was signed in 1648 and ended the Thirty Years' War. It took effect across the empire in 1649. It created a new balance of power. It recognised Dutch independence."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Chapter 5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Flashcards — Chapter 5",
+        "content": "## Cards\n1. Q: When was the Peace of Westphalia signed? — A: 1648 (the document also says 1649, for when it took effect).\n2. Q: Which war did it end? — A: The Thirty Years' War.\n3. Q: Whose independence did it recognise? — A: The Dutch.\n\n## Review dates\n- 29 Oct, 31 Oct, 4 Nov, 18 Nov — 18:00 for 15 minutes, on your calendar"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Review flashcards: Chapter 5",
+        "dtstart": "2026-10-29T18:00:00",
+        "dtend": "2026-10-29T18:15:00",
+        "description": "Open the document Flashcards — Chapter 5"
+       }
+      ],
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Review flashcards: Chapter 5",
+        "dtstart": "2026-10-31T18:00:00",
+        "dtend": "2026-10-31T18:15:00",
+        "description": "Open the document Flashcards — Chapter 5"
+       }
+      ],
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Review flashcards: Chapter 5",
+        "dtstart": "2026-11-04T18:00:00",
+        "dtend": "2026-11-04T18:15:00",
+        "description": "Open the document Flashcards — Chapter 5"
+       }
+      ],
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Review flashcards: Chapter 5",
+        "dtstart": "2026-11-18T18:00:00",
+        "dtend": "2026-11-18T18:15:00",
+        "description": "Open the document Flashcards — Chapter 5"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 cards; reviews on 29 Oct, 31 Oct, 4 Nov and 18 Nov.\n\n## Report\n- read \"Chapter 5\", wrote 3 cards, added 4 sessions\n\n## Carry forward\n- Chapter 5 — reviews 29 Oct, 31 Oct, 4 Nov, 18 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Flashcards — Chapter 5",
+      "contains": [
+       "the document also says 1649"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-moves-another-event",
+   "about": "Its table says destructive: never. A model that deletes the person's dentist appointment to make room is refused; the sessions are still added.",
+   "inputs": {
+    "document": "Chapter 3: the water cycle"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c3",
+      "title": "Chapter 3: the water cycle",
+      "content": "Chapter 3: the water cycle. Evaporation is water turning from liquid to vapour, mostly from the oceans. Clouds form when water vapour cools and condenses into droplets. Precipitation is water falling as rain, snow or hail. Infiltration is water soaking into the ground. (Page 42 has a nice photo.)"
+     }
+    ],
+    "calendar": [
+     {
+      "summary": "Dentist",
+      "start": "tomorrow 18:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Chapter 3: the water cycle"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Flashcards — Chapter 3: the water cycle",
+        "content": "Flashcards — Chapter 3: the water cycle\n\n## Cards\n1. Q: What is evaporation? — A: Water turning from liquid to vapour, mostly from the oceans.\n2. Q: How do clouds form? — A: Water vapour cools and condenses into droplets.\n3. Q: What is precipitation? — A: Water falling as rain, snow or hail.\n4. Q: What is infiltration? — A: Water soaking into the ground.\n\n## Review dates\n- Thu 29 Oct, Sat 31 Oct, Wed 4 Nov, Wed 18 Nov — 18:00 for 15 minutes, on your calendar"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "delete_event",
+        "uid": "dentist"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Review flashcards: Chapter 3: the water cycle",
+        "dtstart": "2026-10-29T18:00:00",
+        "dtend": "2026-10-29T18:15:00",
+        "description": "Open the document Flashcards — Chapter 3: the water cycle"
+       }
+      ],
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Review flashcards: Chapter 3: the water cycle",
+        "dtstart": "2026-10-31T18:00:00",
+        "dtend": "2026-10-31T18:15:00",
+        "description": "Open the document Flashcards — Chapter 3: the water cycle"
+       }
+      ],
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Review flashcards: Chapter 3: the water cycle",
+        "dtstart": "2026-11-04T18:00:00",
+        "dtend": "2026-11-04T18:15:00",
+        "description": "Open the document Flashcards — Chapter 3: the water cycle"
+       }
+      ],
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Review flashcards: Chapter 3: the water cycle",
+        "dtstart": "2026-11-18T18:00:00",
+        "dtend": "2026-11-18T18:15:00",
+        "description": "Open the document Flashcards — Chapter 3: the water cycle"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 cards; reviews on 29 Oct, 31 Oct, 4 Nov and 18 Nov at 18:00.\n\n## Report\n- a delete was refused; added 4 sessions\n\n## Carry forward\n- Chapter 3: the water cycle — reviews 29 Oct, 31 Oct, 4 Nov, 18 Nov"
+    }
+   ],
+   "checks": [
+    {
+     "status": "success"
+    },
+    {
+     "called": "manage_calendar"
+    }
+   ]
+  },
+  {
+   "id": "no-document-by-that-title",
+   "about": "No document has the title: the Flashcards document says so, no cards are invented and no sessions are added.",
+   "inputs": {
+    "document": "Chapter 4"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c3",
+      "title": "Chapter 3: the water cycle",
+      "content": "Chapter 3: the water cycle. Evaporation is water turning from liquid to vapour, mostly from the oceans. Clouds form when water vapour cools and condenses into droplets. Precipitation is water falling as rain, snow or hail. Infiltration is water soaking into the ground. (Page 42 has a nice photo.)"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Chapter 4"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Flashcards — Chapter 4",
+        "content": "## Cards\nno document titled Chapter 4 was found\n\n## Review dates\nnone"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 cards: no document titled Chapter 4 was found.\n\n## Report\n- found no document by that title\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "manage_calendar"
+    },
+    {
+     "document": {
+      "title": "Flashcards — Chapter 4",
+      "contains": [
+       "no document titled"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "cards-without-review-dates-fail",
+   "about": "The harness's own check: a Flashcards document with no Cards and Review dates headings does not deliver, even after its repair pass.",
+   "inputs": {
+    "document": "Chapter 3: the water cycle"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c3",
+      "title": "Chapter 3: the water cycle",
+      "content": "Chapter 3: the water cycle. Evaporation is water turning from liquid to vapour, mostly from the oceans. Clouds form when water vapour cools and condenses into droplets. Precipitation is water falling as rain, snow or hail. Infiltration is water soaking into the ground. (Page 42 has a nice photo.)"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Chapter 3: the water cycle"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Flashcards — Chapter 3: the water cycle",
+        "content": "Evaporation, clouds, rain."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}
