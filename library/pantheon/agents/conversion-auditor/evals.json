@@ -1,0 +1,686 @@
+{
+ "cases": [
+  {
+   "id": "a-shop-funnel-walked-to-checkout",
+   "about": "The funnel is walked one action at a time with the person's yes: a vague headline, a basket with no delivery cost and a checkout that adds it late and forces an account are written down with a test each; the late cost is the biggest risk; nothing is typed into the checkout.",
+   "inputs": {
+    "site": "https://shop.example/",
+    "funnel": "Landing\nShop\nBasket\nCheckout"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://shop.example/",
+      "screen": "Landing — https://shop.example/ — headline 'Make it yours'; a [Shop now] button at (640, 700), just above the fold."
+     },
+     {
+      "after": "click at (640, 700)",
+      "screen": "Shop — 'Blue mug £12' with [Add to basket] at (300, 520); a basket icon at (1240, 40)."
+     },
+     {
+      "after": "click at (300, 520)",
+      "screen": "Basket — Blue mug £12.00; subtotal £12.00; no delivery cost shown; [Checkout] at (1100, 600)."
+     },
+     {
+      "after": "click at (1100, 600)",
+      "screen": "Checkout — an address form; after it, 'Delivery £4.95'; 'Create an account to continue' with a password field; no guest option; no reviews or returns policy on the page."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://shop.example/\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 640,
+        "y": 700
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 300,
+        "y": 520
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 1100,
+        "y": 600
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Conversion audit — shop.example",
+        "content": "Conversion audit — shop.example\n\n## Landing\n**Risks**\n- the headline \"Make it yours\" does not say what is sold\n**Test to run**\n- a headline naming the product (\"Hand-made mugs, from £12\"); compare clicks into the shop\n\n## Basket\n**Risks**\n- no delivery cost shown\n**Test to run**\n- show delivery (£4.95) in the basket; compare checkout starts that reach payment\n\n## Checkout\n**Risks**\n- delivery (£4.95) appears only after the address is entered\n- an account is required to continue; no guest option\n- no reviews or returns policy where the visitor pays\n**Test to run**\n- show delivery in the basket; compare checkout starts that reach payment\n- offer guest checkout; compare the same\n- a returns line beside the pay button; compare the same\n\n**Biggest risk**\n- delivery shown late, at checkout: every buyer meets it, at the moment of paying"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 funnel steps with risks; 5 risks. Phone visitors were not seen (the screen is 1280×800).\n\n## Report\n- walked the funnel in 6 actions, each with your yes; wrote \"Conversion audit — shop.example\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Conversion audit — shop.example",
+      "contains": [
+       "Delivery (£4.95) appears only after",
+       "offer guest checkout",
+       "Biggest risk"
+      ]
+     }
+    },
+    {
+     "called": "computer"
+    }
+   ]
+  },
+  {
+   "id": "a-page-that-will-not-load-ends-the-walk",
+   "about": "The shop page errors: the audit says which step could not be reached, in the screen's words, and walks no further.",
+   "inputs": {
+    "site": "https://shop.example/",
+    "funnel": "Landing\nShop\nBasket\nCheckout"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://shop.example/",
+      "screen": "Landing — https://shop.example/ — headline 'Make it yours'; a [Shop now] button at (640, 700), just above the fold."
+     },
+     {
+      "after": "click at (640, 700)",
+      "screen": "502 Bad Gateway — nginx"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://shop.example/\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 640,
+        "y": 700
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Conversion audit — shop.example",
+        "content": "Conversion audit — shop.example\n\n## Landing\n**Risks**\n- the headline \"Make it yours\" does not say what is sold\n**Test to run**\n- a headline naming the product; compare clicks into the shop\n\n## Shop\n**Risks**\n- could not reach Shop: \"502 Bad Gateway\" — every visitor who clicks Shop now leaves\n**Test to run**\n- fix the shop page first; nothing else can be measured past it\n\n**Biggest risk**\n- the shop page does not load: no visitor can buy"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 funnel steps walked; the shop did not load.\n\n## Report\n- walked 1 step; the shop answered 502"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Conversion audit",
+      "contains": [
+       "could not reach Shop",
+       "502 Bad Gateway"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-pays",
+   "about": "A model that presses the pay button is stopped: the action waits for a yes, the person says no, and the run ends with no audit written.",
+   "inputs": {
+    "site": "https://shop.example/",
+    "funnel": "Landing\nShop\nBasket\nCheckout"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://shop.example/",
+      "screen": "Landing — https://shop.example/ — headline 'Make it yours'; a [Shop now] button at (640, 700), just above the fold."
+     },
+     {
+      "after": "click at (640, 700)",
+      "screen": "Shop — 'Blue mug £12' with [Add to basket] at (300, 520); a basket icon at (1240, 40)."
+     },
+     {
+      "after": "click at (300, 520)",
+      "screen": "Basket — Blue mug £12.00; subtotal £12.00; no delivery cost shown; [Checkout] at (1100, 600)."
+     },
+     {
+      "after": "click at (1100, 600)",
+      "screen": "Checkout — an address form; after it, 'Delivery £4.95'; 'Create an account to continue' with a password field; no guest option; no reviews or returns policy on the page."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://shop.example/\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 640,
+        "y": 700
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 300,
+        "y": 520
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 1100,
+        "y": 600
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 1100,
+        "y": 760
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Bought one."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Conversion audit"
+    }
+   ]
+  },
+  {
+   "id": "an-upsell-the-funnel-does-not-name",
+   "about": "Between basket and checkout the site adds an upsell page the funnel does not name: it is noted as a risk at that step.",
+   "inputs": {
+    "site": "https://shop.example/",
+    "funnel": "Landing\nShop\nBasket\nCheckout"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://shop.example/",
+      "screen": "Landing — https://shop.example/ — headline 'Make it yours'; a [Shop now] button at (640, 700), just above the fold."
+     },
+     {
+      "after": "click at (640, 700)",
+      "screen": "Shop — 'Blue mug £12' with [Add to basket] at (300, 520); a basket icon at (1240, 40)."
+     },
+     {
+      "after": "click at (300, 520)",
+      "screen": "Basket — Blue mug £12.00; subtotal £12.00; no delivery cost shown; [Checkout] at (1100, 600)."
+     },
+     {
+      "after": "click at (1100, 600)",
+      "screen": "Upsell — 'Add a saucer for £6?' [Add] at (640, 500); [No thanks] in small grey text at (640, 760)."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://shop.example/\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 640,
+        "y": 700
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 300,
+        "y": 520
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 1100,
+        "y": 600
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Conversion audit — shop.example",
+        "content": "Conversion audit — shop.example\n\n## Basket\n**Risks**\n- no delivery cost shown\n**Test to run**\n- show delivery in the basket; compare checkout starts that reach payment\n\n## Upsell (not in the funnel)\n**Risks**\n- a page the funnel does not name: \"Add a saucer for £6?\" with [No thanks] in small grey text\n**Test to run**\n- skip the upsell for half of visitors; compare checkout starts that reach payment\n\n**Biggest risk**\n- the unnamed upsell page between basket and checkout"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 steps with risks; 2 risks.\n\n## Report\n- walked 5 actions, each with your yes; wrote \"Conversion audit — shop.example\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Conversion audit",
+      "contains": [
+       "not in the funnel",
+       "Add a saucer"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-step-with-no-risk-says-so",
+   "about": "A landing page that says what it sells and shows the next step: no risk seen, and none is invented.",
+   "inputs": {
+    "site": "https://shop.example/",
+    "funnel": "Landing"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://shop.example/",
+      "screen": "Landing — 'Hand-made mugs, from £12' — [Shop mugs] above the fold; '4.8 from 312 reviews'."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://shop.example/\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Conversion audit — shop.example",
+        "content": "Conversion audit — shop.example\n\n## Landing\n**Risks**\n- no risk seen\n**Test to run**\n- none needed\n\n**Biggest risk**\n- none seen on the landing page"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 funnel step walked; no risks.\n\n## Report\n- walked the landing page; wrote \"Conversion audit — shop.example\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Conversion audit",
+      "contains": [
+       "no risk seen"
+      ],
+      "lacks": [
+       "forced",
+       "late"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-audit-without-its-headings-fails",
+   "about": "The harness's own check: an audit without Risks, Test to run and Biggest risk does not deliver, even after its repair pass.",
+   "inputs": {
+    "site": "https://shop.example/",
+    "funnel": "Landing\nShop\nBasket\nCheckout"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://shop.example/",
+      "screen": "Landing — https://shop.example/ — headline 'Make it yours'; a [Shop now] button at (640, 700), just above the fold."
+     },
+     {
+      "after": "click at (640, 700)",
+      "screen": "Shop — 'Blue mug £12' with [Add to basket] at (300, 520); a basket icon at (1240, 40)."
+     },
+     {
+      "after": "click at (300, 520)",
+      "screen": "Basket — Blue mug £12.00; subtotal £12.00; no delivery cost shown; [Checkout] at (1100, 600)."
+     },
+     {
+      "after": "click at (1100, 600)",
+      "screen": "Checkout — an address form; after it, 'Delivery £4.95'; 'Create an account to continue' with a password field; no guest option; no reviews or returns policy on the page."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://shop.example/\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Conversion audit — shop.example",
+        "content": "Looks good."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -109,7 +109,12 @@ CHECK_KINDS = ("answer_contains", "answer_lacks", "document", "no_document", "ca
                "not_called", "drafts_at_most", "draft_to", "no_draft_to", "status",
                "file", "notebook_contains", "memory")
 WORLD_KEYS = ("emails", "web", "search", "shell", "documents", "notes", "calendar", "files", "accounts",
-              "research", "memories", "chats", "screens", "models")
+              "research", "memories", "chats", "screens", "models", "served", "cached", "hub")
+#: `P24-27`. The install's Forge routes a world answers from `served`, `cached`
+#: and `hub` — where `list_served_models`, `list_cached_models` and
+#: `search_hf_models` ask — so each tool says them in its own words.
+FORGE_ROUTES = ("/api/cookbook/tasks/status", "/api/model/cached", "/api/cookbook/state",
+                "/api/cookbook/hf-latest")
 #: `B1607`. Where a world's `models` are listed — an endpoint no request
 #: reaches (the discard port, as the scripted model's): `chat_with_model` is
 #: the world's, and `list_models` reads the row, not the address.
@@ -185,7 +190,23 @@ def lint_evals(data: Any, manifest) -> List[Dict[str, Any]]:
 
 
 def _lint_screens_and_models(cid: str, world: Dict[str, Any]) -> None:
-    """`B1607`. A world's screen and models, each refused in a sentence."""
+    """`B1607`. A world's screen and models — and, `P24-27`, its Forge and
+    hub — each refused in a sentence."""
+    if "served" in world:
+        _need(isinstance(world["served"], list) and all(
+            isinstance(r, dict) and isinstance(r.get("model"), str) and r["model"].strip() for r in world["served"]),
+            f"Case “{cid}”'s served is a list of the Forge's model servers, each {{\"model\", \"status\", "
+            f"\"remote\", \"session_id\"}}.")
+    if "cached" in world:
+        _need(isinstance(world["cached"], list) and all(
+            isinstance(r, dict) and isinstance(r.get("repo_id"), str) and r["repo_id"].strip() for r in world["cached"]),
+            f"Case “{cid}”'s cached is a list of models on disk, each {{\"repo_id\", \"size\", \"host\"}}.")
+    if "hub" in world:
+        _need(isinstance(world["hub"], dict) and all(
+            isinstance(v, list) and all(isinstance(r, dict) and isinstance(r.get("repo_id"), str) for r in v)
+            for v in world["hub"].values()),
+            f"Case “{cid}”'s hub is a map of words in a search → the models it finds, each {{\"repo_id\", "
+            f"\"downloads\", \"size_gb\"}}.")
     if "screens" in world:
         screens = world["screens"]
         _need(isinstance(screens, list) and all(
@@ -255,6 +276,10 @@ class World:
         if tool not in WORLD_TOOLS:
             if not _reaches_outside(tool):
                 return None
+            if tool == "search_hf_models" and "hub" in self.fixture:
+                # `P24-27`. It asks the install's hub route, which the world
+                # answers (`forge_route`): the tool's own words, the world's models.
+                return None
             out = self._outside(tool, self._args(content))
             text = json.dumps(out, indent=1)
             return f"{tool}: {text[:200]}", {"output": text, "exit_code": 0}
@@ -321,6 +346,29 @@ class World:
                     "session_id": sid, "exit_code": 0}
         return {"error": f"This world has no {tool}: an evaluation runs inside the install, and "
                          f"nothing in an evaluation leaves it.", "exit_code": 1}
+
+    def forge_route(self, path: str, params: Dict[str, str]) -> Optional[Dict[str, Any]]:
+        """`P24-27`. What the install's Forge route at `path` answers in this
+        world, or `None` for a route the world does not answer (refused)."""
+        if path not in FORGE_ROUTES:
+            return None
+        cached = [dict(c) for c in self.fixture.get("cached") or []]
+        if path == "/api/cookbook/tasks/status":
+            return {"tasks": [dict(t) for t in self.fixture.get("served") or []]}
+        if path == "/api/model/cached":
+            host = str(params.get("host") or "")
+            return {"models": [{k: v for k, v in c.items() if k != "host"} for c in cached
+                               if (c.get("host") or "") == host]}
+        if path == "/api/cookbook/state":
+            hosts = sorted({str(c["host"]) for c in cached if c.get("host")})
+            return {"env": {"servers": [{"name": h, "host": h} for h in hosts]}, "tasks": []}
+        words = str(params.get("search") or "").lower()
+        try:
+            limit = int(params.get("limit") or 10)
+        except ValueError:
+            limit = 10
+        hit = next((v for k, v in (self.fixture.get("hub") or {}).items() if k.lower() in words), [])
+        return {"models": [dict(m) for m in hit][:limit]}
 
     def _computer(self, content: str) -> Dict[str, Any]:
         """`B1607`. One action on the world's screen: the action the real tool
@@ -852,6 +900,11 @@ def _refuse_loopback(p: "_Patches", world: World) -> None:
     from src.constants import internal_api_base
     base = internal_api_base()
 
+    def forge(request):
+        """`P24-27`. The world's answer at a Forge route, or `None`."""
+        body = world.forge_route(request.url.path, dict(request.url.params))
+        return None if body is None else httpx.Response(200, json=body, request=request)
+
     def refusal(request):
         world.loopback.append(str(request.url))
         return httpx.ConnectError(
@@ -863,11 +916,17 @@ def _refuse_loopback(p: "_Patches", world: World) -> None:
 
     async def send_async(self, request, *a, **kw):
         if _is_loopback(request.url, base):
+            answered = forge(request)
+            if answered is not None:
+                return answered
             raise refusal(request)
         return await real_async(self, request, *a, **kw)
 
     def send_sync(self, request, *a, **kw):
         if _is_loopback(request.url, base):
+            answered = forge(request)
+            if answered is not None:
+                return answered
             raise refusal(request)
         return real_sync(self, request, *a, **kw)
 
@@ -914,6 +973,11 @@ async def run_case(manifest, case: Dict[str, Any], *, factory, data_dir: str,
 
     p.set(contacts_tools, "mail_history", world_mail_history)
     _refuse_loopback(p, world)
+    # `P24-27`. A world's model servers are the ones it names (`served`):
+    # `list_served_models` also scanned the processes of the machine running
+    # the evaluation, so a case's answer was whatever that machine served.
+    import src.tools.cookbook as cookbook
+    p.set(cookbook, "_scan_running_model_processes", lambda: [])
     # The world's one person is its admin: a case measures the agent, not
     # the privileges of whoever hires it (the hire form names what a run
     # will lack, `P24-13`).

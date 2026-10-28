@@ -108,6 +108,8 @@ AT_THE_BAR = frozenset({
     # Third slice (2026-10-28, `wave-ag`). The three the world now answers:
     # Memory Auditor (`B1602`), Attachment Filer and Tax Folder Builder (`B1600`).
     "memory-auditor", "attachment-filer", "tax-folder-builder",
+    # The three a browser or other models blocked (`B1607`).
+    "ux-auditor", "conversion-auditor", "ai-visibility-check",
 })
 
 SECTIONS = ("Steps", "Judgement calls", "Edge cases", "Deliverable", "Example")

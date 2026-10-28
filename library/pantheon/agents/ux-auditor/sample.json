@@ -1,0 +1,25 @@
+{
+ "case": "a-checkout-flow-with-friction",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- walked \"Buy a mug\" in 5 actions, each with your yes; wrote \"UX audit — shop.example\"",
+ "read": [],
+ "wrote": [
+  "computer",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “UX audit”",
+   "ok": true,
+   "detail": "“UX audit — shop.example” is there."
+  }
+ ],
+ "answer": "1 flow walked; 3 issues, 1 high. Phone layouts were not seen (the screen is 1280×800).\n\n## Report\n- walked \"Buy a mug\" in 5 actions, each with your yes; wrote \"UX audit — shop.example\"",
+ "documents": [
+  {
+   "title": "UX audit — shop.example",
+   "content": "UX audit — shop.example\n\n## Buy a mug\n**Steps walked**\n1. Home — product grid; the basket icon has no label\n2. Add to basket on \"Blue mug £12\" — the count turns to 1; no message\n3. Basket — Blue mug £12.00, a Checkout button\n4. Checkout — \"Create an account to continue\"; no guest option; no delivery cost\n\n**Friction**\n- high — step 4 — an account is required before the delivery cost is shown — offer guest checkout and show delivery in the basket\n- medium — step 2 — nothing says the mug was added — say \"Added to basket\" beside the button\n- low — step 1 — the basket icon has no label — add the word \"Basket\"\n\n**Fix first**\n- Offer guest checkout, and show the delivery cost before an account is asked for\n- Say \"Added to basket\" when something is added\n- Label the basket icon"
+  }
+ ]
+}

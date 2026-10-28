@@ -49,7 +49,9 @@ def _spy(monkeypatch):
 
 
 INPUTS = {"ux-auditor": {"site": "https://shop.example/", "flows": "Buy one thing"},
-          "ai-visibility-check": {"name": "Rosa's Bakery", "questions": ["Which bakery in Leeds is best?"]}}
+          "ai-visibility-check": {"name": "Rosa's Bakery", "questions": ["Which bakery in Leeds is best?"],
+                                  "models": ["qwen3-8b", "llama-3.1-8b", "mistral-7b"]},
+          "model-steward": {}}
 
 
 def _case(world, calls, checks=None, agent="ux-auditor"):
@@ -109,8 +111,31 @@ def test_a_world_without_screens_still_answers_by_its_shell_rules():
     assert not [x for x in first.report.get("refused") or [] if x.get("tool") == "computer"], first.report
 
 
-def test_a_model_answers_from_the_world_and_is_listed(monkeypatch):
+WORLD_MODELS = {
+    "qwen3-8b": [{"match": "bakery", "reply": "Rosa's Bakery on Mill Street is well liked."}],
+    "llama-3.1-8b": "I don't know of a bakery by that name.",
+    "mistral-7b": [{"match": "bakery", "error": "the endpoint timed out"}],
+}
+
+
+def test_a_model_answers_from_the_world(monkeypatch):
     seen = _spy(monkeypatch)
+    m = get_agent(None, "ai-visibility-check")
+    calls = [["chat_with_model", {"model": "qwen3-8b", "message": "Which bakery in Leeds is best?"}],
+             ["chat_with_model", {"model": "llama-3.1-8b@World models", "message": "Which bakery in Leeds is best?"}],
+             ["chat_with_model", {"model": "mistral-7b", "message": "Which bakery in Leeds is best?"}],
+             ["chat_with_model", {"model": "gpt-9", "message": "Which bakery in Leeds is best?"}]]
+    asyncio.run(E.run_agent(m, cases=[_case({"models": WORLD_MODELS}, calls, agent="ai-visibility-check")]))
+    replies = [out for tool, out in seen if tool == "chat_with_model"]
+    assert len(replies) == 4, replies
+    assert "Rosa's Bakery" in replies[0] and "qwen3-8b" in replies[0]
+    assert "don't know of a bakery" in replies[1], "model@endpoint is the same model"
+    assert "Failed to get response from mistral-7b" in replies[2] and "timed out" in replies[2]
+    assert "is not listed by any endpoint now" in replies[3], "an unknown model is refused as the tool refuses it"
+    assert "This world has no chat_with_model" not in " ".join(replies)
+
+
+def test_the_worlds_models_are_listed_as_an_endpoints_are(monkeypatch):
     import src.tool_execution as tool_execution
     own = []
     real = tool_execution._execute_tool_block_impl
@@ -121,30 +146,11 @@ def test_a_model_answers_from_the_world_and_is_listed(monkeypatch):
         return out
 
     monkeypatch.setattr(tool_execution, "_execute_tool_block_impl", spy_own)
-    m = get_agent(None, "ai-visibility-check")
-    world = {"models": {
-        "qwen3-8b": [{"match": "bakery", "reply": "Rosa's Bakery on Mill Street is well liked."}],
-        "llama-3.1-8b": "I don't know of a bakery by that name.",
-        "mistral-7b": [{"match": "bakery", "error": "the endpoint timed out"}],
-    }}
-    calls = [["chat_with_model", {"model": "qwen3-8b", "message": "Which bakery in Leeds is best?"}],
-             ["chat_with_model", {"model": "llama-3.1-8b@World models", "message": "Which bakery in Leeds is best?"}],
-             ["chat_with_model", {"model": "mistral-7b", "message": "Which bakery in Leeds is best?"}],
-             ["chat_with_model", {"model": "gpt-9", "message": "Which bakery in Leeds is best?"}]]
-    if "list_models" in m.tools:
-        calls.insert(0, ["list_models", {}])
-    asyncio.run(E.run_agent(m, cases=[_case(world, calls, agent="ai-visibility-check")]))
-    replies = [out for tool, out in seen if tool == "chat_with_model"]
-    assert len(replies) == 4, replies
-    assert "Rosa's Bakery" in replies[0] and "qwen3-8b" in replies[0]
-    assert "don't know of a bakery" in replies[1], "model@endpoint is the same model"
-    assert "Failed to get response from mistral-7b" in replies[2] and "timed out" in replies[2]
-    assert "is not listed by any endpoint now" in replies[3], "an unknown model is refused as the tool refuses it"
-    assert "This world has no chat_with_model" not in " ".join(replies)
-    if "list_models" in m.tools:
-        listed = next(out for tool, out in own if tool == "list_models")
-        for name in ("qwen3-8b", "llama-3.1-8b", "mistral-7b"):
-            assert name in listed, listed
+    m = get_agent(None, "model-steward")
+    asyncio.run(E.run_agent(m, cases=[_case({"models": WORLD_MODELS}, [["list_models", {}]], agent="model-steward")]))
+    listed = next(out for tool, out in own if tool == "list_models")
+    for name in WORLD_MODELS:
+        assert name in listed, listed
 
 
 def test_without_models_a_model_is_still_refused(monkeypatch):

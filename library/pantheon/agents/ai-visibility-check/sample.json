@@ -1,0 +1,27 @@
+{
+ "case": "a-month-of-visibility",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 1 search and 3 asks; wrote \"AI visibility — Oct 2026\"",
+ "read": [
+  "web_search",
+  "chat_with_model"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “AI visibility”",
+   "ok": true,
+   "detail": "“AI visibility — Oct 2026” is there."
+  }
+ ],
+ "answer": "best bakery in Leeds: search 2; 2 of 3 models name you, 1 wrongly.\n\n## Report\n- 1 search and 3 asks; wrote \"AI visibility — Oct 2026\"\n\n## Carry forward\n- best bakery in Leeds: search 2; qwen3-8b yes; llama-3.1-8b no; mistral-7b wrong",
+ "documents": [
+  {
+   "title": "AI visibility — Oct 2026",
+   "content": "AI visibility — Oct 2026\n\n## best bakery in Leeds\n**Search** — position 2 (last month 4)\n**Models**\n- qwen3-8b — yes — \"Rosa's Bakery on Mill Street\" (last month no)\n- llama-3.1-8b — no — recommends Crumbs and Co (last month no)\n- mistral-7b — wrong — \"Rosa's Bakery on Park Road\" (last month no)\n\n## To correct\n- mistral-7b says Park Road; your site says 3 Mill Street — put the address in words on the home page and the contact page"
+  }
+ ]
+}

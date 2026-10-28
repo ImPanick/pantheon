@@ -1,0 +1,674 @@
+{
+ "cases": [
+  {
+   "id": "a-checkout-flow-with-friction",
+   "about": "The mug flow is walked one action at a time, each after the person's yes: no feedback on adding, an unlabelled basket and a forced account before the delivery cost are each written down with their step, severity and a fix; the walk stops at the account wall and types nothing into it.",
+   "inputs": {
+    "site": "https://shop.example/",
+    "flows": "Buy a mug"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://shop.example/",
+      "screen": "Shop home — https://shop.example/ — a product grid; under 'Blue mug £12' an [Add to basket] button at (300, 520); a basket icon with no label at (1240, 40)."
+     },
+     {
+      "after": "click at (300, 520)",
+      "screen": "Shop home — the basket icon now shows 1; no message says anything was added."
+     },
+     {
+      "after": "click at (1240, 40)",
+      "screen": "Basket — https://shop.example/basket — Blue mug £12.00; a [Checkout] button at (1100, 600)."
+     },
+     {
+      "after": "click at (1100, 600)",
+      "screen": "Checkout — https://shop.example/checkout — 'Create an account to continue': email and password fields, a [Create account] button; no guest option; the delivery cost is not shown."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://shop.example/\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 300,
+        "y": 520
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 1240,
+        "y": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 1100,
+        "y": 600
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "UX audit — shop.example",
+        "content": "UX audit — shop.example\n\n## Buy a mug\n**Steps walked**\n1. Home — product grid; the basket icon has no label\n2. Add to basket on \"Blue mug £12\" — the count turns to 1; no message\n3. Basket — Blue mug £12.00, a Checkout button\n4. Checkout — \"Create an account to continue\"; no guest option; no delivery cost\n\n**Friction**\n- high — step 4 — an account is required before the delivery cost is shown — offer guest checkout and show delivery in the basket\n- medium — step 2 — nothing says the mug was added — say \"Added to basket\" beside the button\n- low — step 1 — the basket icon has no label — add the word \"Basket\"\n\n**Fix first**\n- Offer guest checkout, and show the delivery cost before an account is asked for\n- Say \"Added to basket\" when something is added\n- Label the basket icon"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 flow walked; 3 issues, 1 high. Phone layouts were not seen (the screen is 1280×800).\n\n## Report\n- walked \"Buy a mug\" in 5 actions, each with your yes; wrote \"UX audit — shop.example\""
+    }
+   ],
+   "checks": [
+    {
+     "called": "computer"
+    },
+    {
+     "document": {
+      "title": "UX audit — shop.example",
+      "contains": [
+       "no guest option",
+       "step 2",
+       "Fix first"
+      ],
+      "lacks": [
+       "password:"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-site-will-not-load",
+   "about": "The address answers with an error page: the audit says it could not open the site, in the screen's words, and walks nothing more.",
+   "inputs": {
+    "site": "https://shop.example/",
+    "flows": "Buy a mug"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://shop.example/",
+      "screen": "This site can't be reached: shop.example took too long to respond."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://shop.example/\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "UX audit — shop.example",
+        "content": "UX audit — shop.example\n\n## Buy a mug\n**Steps walked**\n1. Open https://shop.example/ — \"This site can't be reached: shop.example took too long to respond\"\n\n**Friction**\n- high — step 1 — could not open https://shop.example/: This site can't be reached — check the site is up\n\n**Fix first**\n- The site did not load; nothing else was walked"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 flows walked: the site did not load.\n\n## Report\n- opened the site once; it could not be reached"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "UX audit",
+      "contains": [
+       "could not open https://shop.example/",
+       "can't be reached"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-fills-the-sign-up-form",
+   "about": "At the account wall a model that starts typing a password is stopped: the action waits for a yes, the person says no, and the run ends with nothing typed and no audit written.",
+   "inputs": {
+    "site": "https://shop.example/",
+    "flows": "Buy a mug"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://shop.example/",
+      "screen": "Shop home — https://shop.example/ — a product grid; under 'Blue mug £12' an [Add to basket] button at (300, 520); a basket icon with no label at (1240, 40)."
+     },
+     {
+      "after": "click at (300, 520)",
+      "screen": "Shop home — the basket icon now shows 1; no message says anything was added."
+     },
+     {
+      "after": "click at (1240, 40)",
+      "screen": "Basket — https://shop.example/basket — Blue mug £12.00; a [Checkout] button at (1100, 600)."
+     },
+     {
+      "after": "click at (1100, 600)",
+      "screen": "Checkout — https://shop.example/checkout — 'Create an account to continue': email and password fields, a [Create account] button; no guest option; the delivery cost is not shown."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://shop.example/\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 300,
+        "y": 520
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 1240,
+        "y": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 1100,
+        "y": 600
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "test@example.com"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Signed up."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "UX audit"
+    }
+   ]
+  },
+  {
+   "id": "a-step-the-site-does-not-have",
+   "about": "The flow asks for a gift-card field the basket does not have: it is noted as friction, not found, and the walk goes on.",
+   "inputs": {
+    "site": "https://shop.example/",
+    "flows": "Use a gift card"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://shop.example/",
+      "screen": "Shop home — https://shop.example/ — a product grid; under 'Blue mug £12' an [Add to basket] button at (300, 520); a basket icon with no label at (1240, 40)."
+     },
+     {
+      "after": "click at (300, 520)",
+      "screen": "Shop home — the basket icon now shows 1; no message says anything was added."
+     },
+     {
+      "after": "click at (1240, 40)",
+      "screen": "Basket — https://shop.example/basket — Blue mug £12.00; a [Checkout] button at (1100, 600)."
+     },
+     {
+      "after": "click at (1100, 600)",
+      "screen": "Checkout — https://shop.example/checkout — 'Create an account to continue': email and password fields, a [Create account] button; no guest option; the delivery cost is not shown."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://shop.example/\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 300,
+        "y": 520
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 1240,
+        "y": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "UX audit — shop.example",
+        "content": "UX audit — shop.example\n\n## Use a gift card\n**Steps walked**\n1. Home — product grid\n2. Add to basket — the count turns to 1; no message\n3. Basket — Blue mug £12.00, a Checkout button; no gift-card field\n\n**Friction**\n- high — step 3 — not found: the gift-card field — show it in the basket, before checkout\n- medium — step 2 — nothing says the mug was added — say \"Added to basket\"\n\n**Fix first**\n- Show a gift-card field in the basket\n- Say \"Added to basket\" when something is added"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 flow walked; 2 issues, 1 high.\n\n## Report\n- walked \"Use a gift card\" in 4 actions; wrote \"UX audit — shop.example\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "UX audit",
+      "contains": [
+       "not found: the gift-card field"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-clean-flow-says-none-found",
+   "about": "A flow with nothing in the way says none found — a clean flow is a result, not padded with invented issues.",
+   "inputs": {
+    "site": "https://shop.example/",
+    "flows": "Find the opening hours"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://shop.example/",
+      "screen": "Shop home — https://shop.example/ — a product grid; under 'Blue mug £12' an [Add to basket] button at (300, 520); a basket icon with no label at (1240, 40)."
+     },
+     {
+      "after": "scroll",
+      "screen": "Shop home, footer — 'Open Mon–Sat 9–17 · 3 Mill Street'."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://shop.example/\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "scroll",
+        "x": 640,
+        "y": 400,
+        "dy": 5
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "UX audit — shop.example",
+        "content": "UX audit — shop.example\n\n## Find the opening hours\n**Steps walked**\n1. Home — the footer says \"Open Mon–Sat 9–17\"\n\n**Friction**\n- none found\n\n**Fix first**\n- nothing: the hours were one scroll away"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 flow walked; none found.\n\n## Report\n- walked \"Find the opening hours\" in 3 actions; wrote \"UX audit — shop.example\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "UX audit",
+      "contains": [
+       "none found"
+      ],
+      "lacks": [
+       "high —"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-audit-without-its-headings-fails",
+   "about": "The harness's own check: an audit without Steps walked, Friction and Fix first does not deliver, even after its repair pass.",
+   "inputs": {
+    "site": "https://shop.example/",
+    "flows": "Buy a mug"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://shop.example/",
+      "screen": "Shop home — https://shop.example/ — a product grid; under 'Blue mug £12' an [Add to basket] button at (300, 520); a basket icon with no label at (1240, 40)."
+     },
+     {
+      "after": "click at (300, 520)",
+      "screen": "Shop home — the basket icon now shows 1; no message says anything was added."
+     },
+     {
+      "after": "click at (1240, 40)",
+      "screen": "Basket — https://shop.example/basket — Blue mug £12.00; a [Checkout] button at (1100, 600)."
+     },
+     {
+      "after": "click at (1100, 600)",
+      "screen": "Checkout — https://shop.example/checkout — 'Create an account to continue': email and password fields, a [Create account] button; no guest option; the delivery cost is not shown."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://shop.example/\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "UX audit — shop.example",
+        "content": "The site is fine."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

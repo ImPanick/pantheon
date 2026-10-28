@@ -1,0 +1,25 @@
+{
+ "case": "a-shop-funnel-walked-to-checkout",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- walked the funnel in 6 actions, each with your yes; wrote \"Conversion audit — shop.example\"",
+ "read": [],
+ "wrote": [
+  "computer",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Conversion audit”",
+   "ok": true,
+   "detail": "“Conversion audit — shop.example” is there."
+  }
+ ],
+ "answer": "3 funnel steps with risks; 5 risks. Phone visitors were not seen (the screen is 1280×800).\n\n## Report\n- walked the funnel in 6 actions, each with your yes; wrote \"Conversion audit — shop.example\"",
+ "documents": [
+  {
+   "title": "Conversion audit — shop.example",
+   "content": "Conversion audit — shop.example\n\n## Landing\n**Risks**\n- the headline \"Make it yours\" does not say what is sold\n**Test to run**\n- a headline naming the product (\"Hand-made mugs, from £12\"); compare clicks into the shop\n\n## Basket\n**Risks**\n- no delivery cost shown\n**Test to run**\n- show delivery (£4.95) in the basket; compare checkout starts that reach payment\n\n## Checkout\n**Risks**\n- delivery (£4.95) appears only after the address is entered\n- an account is required to continue; no guest option\n- no reviews or returns policy where the visitor pays\n**Test to run**\n- show delivery in the basket; compare checkout starts that reach payment\n- offer guest checkout; compare the same\n- a returns line beside the pay button; compare the same\n\n**Biggest risk**\n- delivery shown late, at checkout: every buyer meets it, at the moment of paying"
+  }
+ ]
+}
