@@ -1,0 +1,18 @@
+{
+ "case": "a-daily-download-done",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 3 steps in 5 actions, each with your yes",
+ "read": [],
+ "wrote": [
+  "computer"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Done, Stopped at, Last screen."
+  }
+ ],
+ "answer": "**Done**\n1. Opened https://reports.example/\n2. Clicked \"Daily sales\"\n3. Clicked \"Download CSV\" (daily-sales-2026-10-28.csv, in the browser's downloads)\n\n**Stopped at**\n- nothing — every step done\n\n**Last screen**\n- \"Daily sales — 28 Oct — downloaded: daily-sales-2026-10-28.csv\"\n\n## Report\n- 3 steps in 5 actions, each with your yes\n\n## Carry forward\n- ended: every step done (28 Oct)"
+}

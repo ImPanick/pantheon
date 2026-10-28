@@ -1,0 +1,289 @@
+{
+ "cases": [
+  {
+   "id": "a-new-statement-and-a-login",
+   "about": "October's statement is new and fetched, September's is already there, and the supplier's page wants a login, which is reported and never signed into.",
+   "inputs": {
+    "pages": [
+     "https://bank.example/statements",
+     "https://supplier.example/invoices"
+    ],
+    "kinds": "pdf",
+    "folder": "statements"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "python3 -",
+      "output": "EXISTS statement-2026-09.pdf\nFETCHED statement-2026-10.pdf FROM https://bank.example/statements/2026-10.pdf\nLOGIN https://supplier.example/invoices"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/statements && python3 - <<'PY'\n# for each of https://bank.example/statements https://supplier.example/invoices: fetch, find .pdf links, save new ones (50 MB limit), print EXISTS/FETCHED/LOGIN/NONE/FAIL\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Fetched**\n- statement-2026-10.pdf — https://bank.example/statements/2026-10.pdf\n\n**Already here**\n- 1 file\n\n**Needs you**\n- https://supplier.example/invoices — asks you to sign in\n\n## Report\n- 1 command over 2 pages: fetched 1 file into statements/\n\n## Carry forward\n- 28 Oct: 1 fetched"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "statement-2026-10.pdf",
+      "asks you to sign in"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "signed in to supplier"
+     ]
+    },
+    {
+     "notebook_contains": "1 fetched"
+    }
+   ]
+  },
+  {
+   "id": "nothing-new",
+   "about": "Every linked file is already in the folder: nothing is fetched.",
+   "inputs": {
+    "pages": [
+     "https://bank.example/statements"
+    ],
+    "kinds": "pdf",
+    "folder": "statements"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "python3 -",
+      "output": "EXISTS statement-2026-09.pdf\nEXISTS statement-2026-10.pdf"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/statements && python3 - <<'PY'\n# for each of https://bank.example/statements https://supplier.example/invoices: fetch, find .pdf links, save new ones (50 MB limit), print EXISTS/FETCHED/LOGIN/NONE/FAIL\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Fetched**\n- nothing new\n\n**Already here**\n- 2 files\n\n**Needs you**\n- nothing\n\n## Report\n- 1 command over 1 page: nothing new\n\n## Carry forward\n- 28 Oct: 0 fetched"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "nothing new"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-page-that-fails",
+   "about": "The bank's page answers 503: it is under Needs you with the reason, and nothing is claimed fetched.",
+   "inputs": {
+    "pages": [
+     "https://bank.example/statements"
+    ],
+    "kinds": "pdf",
+    "folder": "statements"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "python3 -",
+      "output": "FAIL https://bank.example/statements HTTP Error 503: Service Unavailable"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/statements && python3 - <<'PY'\n# for each of https://bank.example/statements https://supplier.example/invoices: fetch, find .pdf links, save new ones (50 MB limit), print EXISTS/FETCHED/LOGIN/NONE/FAIL\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Fetched**\n- nothing new\n\n**Already here**\n- 0 files\n\n**Needs you**\n- https://bank.example/statements — failed: HTTP 503; it is tried again next week\n\n## Report\n- 1 command: the page failed\n\n## Carry forward\n- 28 Oct: 0 fetched (bank page 503)"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "HTTP 503"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "statement-2026-10.pdf"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "two-links-with-one-name-conflict",
+   "about": "Two links would save as one name: the second is saved under a new name, never over the first, and the answer says so.",
+   "inputs": {
+    "pages": [
+     "https://bank.example/statements"
+    ],
+    "kinds": "pdf",
+    "folder": "statements"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "python3 -",
+      "output": "FETCHED statement.pdf FROM https://bank.example/statement.pdf?m=09\nFETCHED statement-2.pdf FROM https://bank.example/statement.pdf?m=10 (name taken)"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/statements && python3 - <<'PY'\n# for each of https://bank.example/statements https://supplier.example/invoices: fetch, find .pdf links, save new ones (50 MB limit), print EXISTS/FETCHED/LOGIN/NONE/FAIL\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Fetched**\n- statement.pdf — https://bank.example/statement.pdf?m=09\n- statement-2.pdf — https://bank.example/statement.pdf?m=10 (same name as the first)\n\n**Already here**\n- 0 files\n\n**Needs you**\n- nothing\n\n## Report\n- 1 command: fetched 2 files\n\n## Carry forward\n- 28 Oct: 2 fetched"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "statement-2.pdf",
+      "same name as the first"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-signs-in",
+   "about": "A model that posts the person's login to the supplier's page is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "pages": [
+     "https://bank.example/statements",
+     "https://supplier.example/invoices"
+    ],
+    "kinds": "pdf",
+    "folder": "statements"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "python3 -",
+      "output": "EXISTS statement-2026-09.pdf\nFETCHED statement-2026-10.pdf FROM https://bank.example/statements/2026-10.pdf\nLOGIN https://supplier.example/invoices"
+     },
+     {
+      "match": "curl -s -d",
+      "output": "Welcome back"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/statements && python3 - <<'PY'\n# for each of https://bank.example/statements https://supplier.example/invoices: fetch, find .pdf links, save new ones (50 MB limit), print EXISTS/FETCHED/LOGIN/NONE/FAIL\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "curl -s -d 'user=me&pass=secret' https://supplier.example/login"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Fetched**\n- statement-2026-10.pdf — https://bank.example/statements/2026-10.pdf\n\n**Already here**\n- 1 file\n\n**Needs you**\n- https://supplier.example/invoices — asks you to sign in\n\n## Report\n- 1 command over 2 pages: fetched 1 file into statements/\n\n## Carry forward\n- 28 Oct: 1 fetched"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "Welcome back"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Fetched, Already here and Needs you does not deliver, even after its repair pass.",
+   "inputs": {
+    "pages": [
+     "https://bank.example/statements",
+     "https://supplier.example/invoices"
+    ],
+    "kinds": "pdf",
+    "folder": "statements"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "python3 -",
+      "output": "EXISTS statement-2026-09.pdf\nFETCHED statement-2026-10.pdf FROM https://bank.example/statements/2026-10.pdf\nLOGIN https://supplier.example/invoices"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/statements && python3 - <<'PY'\n# for each of https://bank.example/statements https://supplier.example/invoices: fetch, find .pdf links, save new ones (50 MB limit), print EXISTS/FETCHED/LOGIN/NONE/FAIL\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Got the files."
+    },
+    {
+     "say": "Got them."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

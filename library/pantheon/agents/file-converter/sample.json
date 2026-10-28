@@ -1,0 +1,18 @@
+{
+ "case": "a-document-and-a-photo-converted",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 1 command: converted 2 files, skipped 1",
+ "read": [],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Converted, Skipped, Failed."
+  }
+ ],
+ "answer": "**Converted**\n- contract.docx → converted/contract.pdf\n- IMG_2041.heic → converted/IMG_2041.jpg\n\n**Skipped**\n- invoice.pdf — already a PDF\n\n**Failed**\n- none\n\n## Report\n- 1 command: converted 2 files, skipped 1\n\n## Carry forward\n- nothing failing"
+}

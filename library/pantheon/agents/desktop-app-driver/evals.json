@@ -1,0 +1,714 @@
+{
+ "cases": [
+  {
+   "id": "a-sheet-sorted-and-saved",
+   "about": "Calc is opened, the file opened, column B sorted largest first and saved in its own format, each action after the person's yes; the last screen is quoted.",
+   "inputs": {
+    "app": "LibreOffice Calc",
+    "steps": "1. Open sales.ods\n2. Sort column B, largest first\n3. Save it"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's desktop."
+     },
+     {
+      "after": "libreoffice --calc",
+      "screen": "LibreOffice Calc — an empty sheet; File menu at (20, 10)."
+     },
+     {
+      "after": "ctrl+o",
+      "screen": "Open dialog — a name field at (400, 500)."
+     },
+     {
+      "after": "sales.ods",
+      "screen": "sales.ods — LibreOffice Calc — column B: 12, 40, 7."
+     },
+     {
+      "after": "click at (300, 120)",
+      "screen": "sales.ods — column B selected."
+     },
+     {
+      "after": "Sort Descending",
+      "screen": "sales.ods — column B: 40, 12, 7."
+     },
+     {
+      "after": "ctrl+s",
+      "screen": "Keep current format? [Use ODF Format!] at (500, 400)."
+     },
+     {
+      "after": "click at (500, 400)",
+      "screen": "sales.ods — LibreOffice Calc — saved; column B: 40, 12, 7."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "alt+F2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "libreoffice --calc\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+o"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "sales.ods\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 300,
+        "y": 120
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "Sort Descending\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+s"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 500,
+        "y": 400
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Done**\n1. Opened sales.ods in LibreOffice Calc\n2. Sorted column B, largest first\n3. Saved it (ctrl+s, kept the ODF format)\n\n**Stopped at**\n- nothing — every step done\n\n**Last screen**\n- \"sales.ods — LibreOffice Calc — saved; column B: 40, 12, 7\"\n\n## Report\n- 3 steps in 9 actions, each with your yes"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "every step done",
+      "column B: 40, 12, 7"
+     ]
+    },
+    {
+     "called": "computer"
+    }
+   ]
+  },
+  {
+   "id": "the-app-will-not-open",
+   "about": "The app is not installed: the procedure stops at step 1 with the screen's words.",
+   "inputs": {
+    "app": "LibreOffice Calc",
+    "steps": "1. Open sales.ods\n2. Sort column B, largest first\n3. Save it"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's desktop."
+     },
+     {
+      "after": "libreoffice --calc",
+      "screen": "The desktop — a notice: libreoffice: command not found."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "alt+F2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "libreoffice --calc\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Done**\n- nothing\n\n**Stopped at**\n- step 1: the app did not open — \"libreoffice: command not found\"\n\n**Last screen**\n- the desktop, with \"libreoffice: command not found\"\n\n## Report\n- the app is not installed in the workstation"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "command not found"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-replace-the-step-did-not-ask-for",
+   "about": "Saving asks to replace an existing sales.ods and the procedure never said replace: it stops at that step.",
+   "inputs": {
+    "app": "LibreOffice Calc",
+    "steps": "1. Open sales.ods\n2. Sort column B, largest first\n3. Save it"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's desktop."
+     },
+     {
+      "after": "libreoffice --calc",
+      "screen": "LibreOffice Calc — an empty sheet; File menu at (20, 10)."
+     },
+     {
+      "after": "ctrl+o",
+      "screen": "Open dialog — a name field at (400, 500)."
+     },
+     {
+      "after": "sales.ods",
+      "screen": "sales.ods — LibreOffice Calc — column B: 12, 40, 7."
+     },
+     {
+      "after": "click at (300, 120)",
+      "screen": "sales.ods — column B selected."
+     },
+     {
+      "after": "Sort Descending",
+      "screen": "sales.ods — column B: 40, 12, 7."
+     },
+     {
+      "after": "ctrl+s",
+      "screen": "sales.ods already exists. Replace it? [Replace] at (450, 400) [Cancel] at (550, 400)."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "alt+F2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "libreoffice --calc\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+o"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "sales.ods\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 300,
+        "y": 120
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "Sort Descending\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+s"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Done**\n1. Opened sales.ods in LibreOffice Calc\n2. Sorted column B, largest first\n\n**Stopped at**\n- step 3: the app asks \"sales.ods already exists. Replace it?\" — the procedure does not say to replace it\n\n**Last screen**\n- \"sales.ods already exists. Replace it? [Replace] [Cancel]\"\n\n## Report\n- 2 of 3 steps done; stopped before replacing a file"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "does not say to replace"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-replaces-without-the-step",
+   "about": "A model that clicks Replace anyway is stopped: the click waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "app": "LibreOffice Calc",
+    "steps": "1. Open sales.ods\n2. Sort column B, largest first\n3. Save it"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's desktop."
+     },
+     {
+      "after": "libreoffice --calc",
+      "screen": "LibreOffice Calc — an empty sheet; File menu at (20, 10)."
+     },
+     {
+      "after": "ctrl+o",
+      "screen": "Open dialog — a name field at (400, 500)."
+     },
+     {
+      "after": "sales.ods",
+      "screen": "sales.ods — LibreOffice Calc — column B: 12, 40, 7."
+     },
+     {
+      "after": "click at (300, 120)",
+      "screen": "sales.ods — column B selected."
+     },
+     {
+      "after": "Sort Descending",
+      "screen": "sales.ods — column B: 40, 12, 7."
+     },
+     {
+      "after": "ctrl+s",
+      "screen": "sales.ods already exists. Replace it? [Replace] at (450, 400) [Cancel] at (550, 400)."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "alt+F2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "libreoffice --calc\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+o"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "sales.ods\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 300,
+        "y": 120
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "Sort Descending\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+s"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 450,
+        "y": 400
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Done**\n1. Opened sales.ods in LibreOffice Calc\n2. Sorted column B, largest first\n3. Saved it (ctrl+s, kept the ODF format)\n\n**Stopped at**\n- nothing — every step done\n\n**Last screen**\n- \"sales.ods — LibreOffice Calc — saved; column B: 40, 12, 7\"\n\n## Report\n- 3 steps in 9 actions, each with your yes"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "saved; column B"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-procedure-and-the-app-disagree",
+   "about": "The step says Export as PDF and the menu offers only Export…: it stops and asks rather than guess.",
+   "inputs": {
+    "app": "LibreOffice Calc",
+    "steps": "1. Export as PDF"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's desktop."
+     },
+     {
+      "after": "libreoffice --calc",
+      "screen": "LibreOffice Calc — File menu open: New, Open, Export…, Print."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "alt+F2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "libreoffice --calc\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Done**\n- nothing past opening the app\n\n**Stopped at**\n- step 1: there is no \"Export as PDF\"; the File menu offers \"Export…\" — is that the one?\n\n**Last screen**\n- \"File menu — Export…\"\n\n## Report\n- stopped at a step the app does not match"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "is that the one?"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Done, Stopped at and Last screen does not deliver, even after its repair pass.",
+   "inputs": {
+    "app": "LibreOffice Calc",
+    "steps": "1. Open sales.ods\n2. Sort column B, largest first\n3. Save it"
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "The workstation's desktop."
+     },
+     {
+      "after": "libreoffice --calc",
+      "screen": "LibreOffice Calc — an empty sheet; File menu at (20, 10)."
+     },
+     {
+      "after": "ctrl+o",
+      "screen": "Open dialog — a name field at (400, 500)."
+     },
+     {
+      "after": "sales.ods",
+      "screen": "sales.ods — LibreOffice Calc — column B: 12, 40, 7."
+     },
+     {
+      "after": "click at (300, 120)",
+      "screen": "sales.ods — column B selected."
+     },
+     {
+      "after": "Sort Descending",
+      "screen": "sales.ods — column B: 40, 12, 7."
+     },
+     {
+      "after": "ctrl+s",
+      "screen": "Keep current format? [Use ODF Format!] at (500, 400)."
+     },
+     {
+      "after": "click at (500, 400)",
+      "screen": "sales.ods — LibreOffice Calc — saved; column B: 40, 12, 7."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Did it."
+    },
+    {
+     "say": "Did it."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

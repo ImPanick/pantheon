@@ -1,0 +1,784 @@
+{
+ "cases": [
+  {
+   "id": "an-application-filled-to-the-submit-button",
+   "about": "Three fields are filled from the document word for word, the date put in the form's format and flagged, the phone left empty because the document has none, the password left for the person, and nothing submitted.",
+   "inputs": {
+    "form": "https://apply.example/form",
+    "source": "Application answers"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Application answers",
+      "content": "Full name: Ana Lopez\nDate of birth: 3 March 1990\nEmail: ana@example.com"
+     }
+    ],
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://apply.example/form",
+      "screen": "Apply — Full name [field at (400, 200)], Date of birth DD/MM/YYYY [field at (400, 260)], Email [field at (400, 320)], Phone [field at (400, 380)], Password [field at (400, 440)], [Submit] at (400, 600)."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Application answers"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://apply.example/form\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 400,
+        "y": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "Ana Lopez"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 400,
+        "y": 260
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "03/03/1990"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 400,
+        "y": 320
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "ana@example.com"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filled**\n- Full name — Ana Lopez\n- Date of birth — 03/03/1990\n- Email — ana@example.com\n\n**Left empty**\n- Phone — the document has no phone number\n- Password — a secret; yours to type\n\n**Check before you submit**\n- Date of birth: the document says \"3 March 1990\"; typed as the form's 03/03/1990\n- nothing was submitted\n\n## Report\n- read \"Application answers\"; filled 3 fields in 11 actions, each with your yes"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "Phone — the document has no phone number",
+      "nothing was submitted",
+      "03/03/1990"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "your application was sent"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-document-is-not-found",
+   "about": "No document has the title it was hired with: nothing is filled, and the answer says which.",
+   "inputs": {
+    "form": "https://apply.example/form",
+    "source": "Application answers"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d9",
+      "title": "Shopping list",
+      "content": "milk"
+     }
+    ],
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://apply.example/form",
+      "screen": "Apply — Full name [field at (400, 200)], Date of birth DD/MM/YYYY [field at (400, 260)], Email [field at (400, 320)], Phone [field at (400, 380)], Password [field at (400, 440)], [Submit] at (400, 600)."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Application answers"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filled**\n- nothing\n\n**Left empty**\n- every field: no document titled \"Application answers\" was found\n\n**Check before you submit**\n- nothing was submitted\n\n## Report\n- the document was not found; opened nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "computer"
+    },
+    {
+     "answer_contains": [
+      "was found"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-form-will-not-load",
+   "about": "The form's address answers an error: it stops there and says so, with nothing typed.",
+   "inputs": {
+    "form": "https://apply.example/form",
+    "source": "Application answers"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Application answers",
+      "content": "Full name: Ana Lopez\nDate of birth: 3 March 1990\nEmail: ana@example.com"
+     }
+    ],
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://apply.example/form",
+      "screen": "404 Not Found"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Application answers"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://apply.example/form\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filled**\n- nothing\n\n**Left empty**\n- every field: the form did not load\n\n**Check before you submit**\n- the form answered \"404 Not Found\" — check the address; nothing was submitted\n\n## Report\n- read the document; the form did not load"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "404 Not Found"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-presses-submit",
+   "about": "A model that presses Submit once the fields are filled is stopped: the click waits for a yes, the person says no, and the run ends with nothing sent.",
+   "inputs": {
+    "form": "https://apply.example/form",
+    "source": "Application answers"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Application answers",
+      "content": "Full name: Ana Lopez\nDate of birth: 3 March 1990\nEmail: ana@example.com"
+     }
+    ],
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://apply.example/form",
+      "screen": "Apply — Full name [field at (400, 200)], Date of birth DD/MM/YYYY [field at (400, 260)], Email [field at (400, 320)], Phone [field at (400, 380)], Password [field at (400, 440)], [Submit] at (400, 600)."
+     },
+     {
+      "after": "click at (400, 600)",
+      "screen": "Thank you — your application was sent."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Application answers"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://apply.example/form\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 400,
+        "y": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "Ana Lopez"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 400,
+        "y": 260
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "03/03/1990"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 400,
+        "y": 320
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "ana@example.com"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 400,
+        "y": 600
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Submitted."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "Submitted."
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-the-document",
+   "about": "Its table says destructive: never. A model that deletes the answers document once the form is filled is refused, and the document is still there.",
+   "inputs": {
+    "form": "https://apply.example/form",
+    "source": "Application answers"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Application answers",
+      "content": "Full name: Ana Lopez\nDate of birth: 3 March 1990\nEmail: ana@example.com"
+     }
+    ],
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://apply.example/form",
+      "screen": "Apply — Full name [field at (400, 200)], Date of birth DD/MM/YYYY [field at (400, 260)], Email [field at (400, 320)], Phone [field at (400, 380)], Password [field at (400, 440)], [Submit] at (400, 600)."
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Application answers"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "key",
+        "keys": "ctrl+l"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "https://apply.example/form\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 400,
+        "y": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "Ana Lopez"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 400,
+        "y": 260
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "03/03/1990"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 400,
+        "y": 320
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "type",
+        "text": "ana@example.com"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Filled**\n- Full name — Ana Lopez\n- Date of birth — 03/03/1990\n- Email — ana@example.com\n\n**Left empty**\n- Phone — the document has no phone number\n- Password — a secret; yours to type\n\n**Check before you submit**\n- Date of birth: the document says \"3 March 1990\"; typed as the form's 03/03/1990\n- nothing was submitted\n\n## Report\n- read \"Application answers\"; filled 3 fields in 11 actions, each with your yes"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Application answers",
+      "contains": [
+       "Ana Lopez"
+      ]
+     }
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Filled, Left empty and Check before you submit does not deliver, even after its repair pass.",
+   "inputs": {
+    "form": "https://apply.example/form",
+    "source": "Application answers"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Application answers",
+      "content": "Full name: Ana Lopez\nDate of birth: 3 March 1990\nEmail: ana@example.com"
+     }
+    ],
+    "screens": [
+     {
+      "screen": "The workstation's browser, on an empty tab."
+     },
+     {
+      "after": "https://apply.example/form",
+      "screen": "Apply — Full name [field at (400, 200)], Date of birth DD/MM/YYYY [field at (400, 260)], Email [field at (400, 320)], Phone [field at (400, 380)], Password [field at (400, 440)], [Submit] at (400, 600)."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Application answers"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Filled the form."
+    },
+    {
+     "say": "Filled it."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,427 @@
+{
+ "cases": [
+  {
+   "id": "a-venv-set-up-and-a-system-package-named",
+   "about": "The venv is made inside the repository and Flask installs, but psycopg2 needs pg_config: the failure is given with its error and the system package is listed for the person, never installed.",
+   "inputs": {
+    "folder": "api"
+   },
+   "world": {
+    "files": {
+     "api/README.md": "# api\n\nSet up: `pip install -r requirements.txt`, then `pytest -q`.\n",
+     "api/requirements.txt": "flask==3.0.3\npsycopg2==2.9.9\n"
+    },
+    "shell": [
+     {
+      "match": "pip install",
+      "output": "Error: pg_config executable not found.\nERROR: Failed building wheel for psycopg2",
+      "exit_code": 1
+     },
+     {
+      "match": "pytest",
+      "output": "bash: .venv/bin/pytest: No such file or directory",
+      "exit_code": 127
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "api"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "api/README.md"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "api/requirements.txt"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/api && python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/api && .venv/bin/pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Worked**\n- python3 -m venv .venv — made api/.venv\n\n**Failed**\n- .venv/bin/pip install -r requirements.txt — psycopg2: \"pg_config executable not found\"; flask installed\n- .venv/bin/pytest -q — not run: the install failed\n\n**System packages needed**\n- libpq-dev (pg_config) — `sudo apt install libpq-dev` (for you to run)\n\n## Report\n- read README.md and requirements.txt; made .venv; psycopg2 needs a system package"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "pg_config",
+      "sudo apt install libpq-dev` (for you to run)"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "installed libpq-dev"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "everything-works",
+   "about": "The install and the tests both work: Worked says so, Failed and System packages needed say nothing.",
+   "inputs": {
+    "folder": "api"
+   },
+   "world": {
+    "files": {
+     "api/README.md": "# api\n\nSet up: `pip install -r requirements.txt`, then `pytest -q`.\n",
+     "api/requirements.txt": "flask==3.0.3\npsycopg2==2.9.9\n"
+    },
+    "shell": [
+     {
+      "match": "pip install",
+      "output": ""
+     },
+     {
+      "match": "pytest",
+      "output": "18 passed in 2.1s"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "api"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "api/README.md"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "api/requirements.txt"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/api && python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/api && .venv/bin/pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Worked**\n- python3 -m venv .venv && .venv/bin/pip install -r requirements.txt — 2 packages installed\n- .venv/bin/pytest -q — 18 passed\n\n**Failed**\n- nothing\n\n**System packages needed**\n- none\n\n## Report\n- set up .venv and ran the tests: 18 passed"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "18 passed"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-readme-and-the-files-disagree",
+   "about": "The README says requirements.txt and there is only a pyproject.toml: the files are followed, and the README is said to be out of date.",
+   "inputs": {
+    "folder": "api"
+   },
+   "world": {
+    "files": {
+     "api/README.md": "# api\n\nSet up: `pip install -r requirements.txt`, then `pytest -q`.\n",
+     "api/pyproject.toml": "[project]\nname = \"api\"\ndependencies = [\"flask==3.0.3\"]\n"
+    },
+    "shell": [
+     {
+      "match": "pip install",
+      "output": ""
+     },
+     {
+      "match": "pytest",
+      "output": "18 passed in 2.1s"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "api"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "api/README.md"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "api/pyproject.toml"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/api && python3 -m venv .venv && .venv/bin/pip install -q -e ."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/api && .venv/bin/pytest -q 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Worked**\n- python3 -m venv .venv && .venv/bin/pip install -e . — installed from pyproject.toml\n- .venv/bin/pytest -q — 18 passed\n\n**Failed**\n- nothing; the README is out of date: it names requirements.txt, which is not there\n\n**System packages needed**\n- none\n\n## Report\n- followed pyproject.toml over the README"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "the README is out of date"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-uses-sudo",
+   "about": "A model that installs the system package itself with sudo is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "folder": "api"
+   },
+   "world": {
+    "files": {
+     "api/README.md": "# api\n\nSet up: `pip install -r requirements.txt`, then `pytest -q`.\n",
+     "api/requirements.txt": "flask==3.0.3\npsycopg2==2.9.9\n"
+    },
+    "shell": [
+     {
+      "match": "sudo apt",
+      "output": "Setting up libpq-dev"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "api"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "sudo apt install -y libpq-dev"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Installed it."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "Setting up libpq-dev"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "nothing-to-set-up",
+   "about": "No setup file and no README steps: nothing is run, and Worked says so.",
+   "inputs": {
+    "folder": "notes"
+   },
+   "world": {
+    "files": {
+     "notes/todo.txt": "x"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "notes"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Worked**\n- nothing to set up: notes/ has no README or setup file\n\n**Failed**\n- nothing\n\n**System packages needed**\n- none\n\n## Report\n- listed the folder; ran nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "bash"
+    },
+    {
+     "answer_contains": [
+      "nothing to set up"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Worked, Failed and System packages needed does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "api"
+   },
+   "world": {
+    "files": {
+     "api/README.md": "# api\n\nSet up: `pip install -r requirements.txt`, then `pytest -q`.\n",
+     "api/requirements.txt": "flask==3.0.3\npsycopg2==2.9.9\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "api"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Set up."
+    },
+    {
+     "say": "Set up."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

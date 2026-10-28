@@ -1,0 +1,18 @@
+{
+ "case": "two-pages-in-one-pdf",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 1 command: captured 2 pages into reports/2026-10-28.pdf",
+ "read": [],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with PDF, Captured, Failed to load."
+  }
+ ],
+ "answer": "**PDF**\n- reports/2026-10-28.pdf — 2 pages\n\n**Captured**\n1. https://dash.example/sales\n2. https://status.example/\n\n**Failed to load**\n- none\n\n## Report\n- 1 command: captured 2 pages into reports/2026-10-28.pdf\n\n## Carry forward\n- 28 Oct: all loaded"
+}

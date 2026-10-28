@@ -1,0 +1,18 @@
+{
+ "case": "a-sheet-sorted-and-saved",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 3 steps in 9 actions, each with your yes",
+ "read": [],
+ "wrote": [
+  "computer"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Done, Stopped at, Last screen."
+  }
+ ],
+ "answer": "**Done**\n1. Opened sales.ods in LibreOffice Calc\n2. Sorted column B, largest first\n3. Saved it (ctrl+s, kept the ODF format)\n\n**Stopped at**\n- nothing — every step done\n\n**Last screen**\n- \"sales.ods — LibreOffice Calc — saved; column B: 40, 12, 7\"\n\n## Report\n- 3 steps in 9 actions, each with your yes"
+}

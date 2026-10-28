@@ -1,0 +1,292 @@
+{
+ "cases": [
+  {
+   "id": "two-pages-in-one-pdf",
+   "about": "Both pages are captured in order into one dated PDF, in one command that waits for nobody.",
+   "inputs": {
+    "pages": [
+     "https://dash.example/sales",
+     "https://status.example/"
+    ],
+    "folder": "reports"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "chromium --headless",
+      "output": "OK 1 https://dash.example/sales\nOK 2 https://status.example/\nPDF 2026-10-28.pdf"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/reports && d=$(date +%F) && mkdir -p .shots-$d && i=0; for u in https://dash.example/sales https://status.example/; do i=$((i+1)); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=.shots-$d/$i.png \"$u\" >/dev/null 2>&1 && echo \"OK $i $u\" || echo \"FAILED $u\"; done; ls .shots-$d/*.png >/dev/null 2>&1 && img2pdf .shots-$d/*.png -o $d.pdf && echo \"PDF $d.pdf\" || echo \"NO PDF\"; rm -rf .shots-$d"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**PDF**\n- reports/2026-10-28.pdf — 2 pages\n\n**Captured**\n1. https://dash.example/sales\n2. https://status.example/\n\n**Failed to load**\n- none\n\n## Report\n- 1 command: captured 2 pages into reports/2026-10-28.pdf\n\n## Carry forward\n- 28 Oct: all loaded"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "reports/2026-10-28.pdf — 2 pages",
+      "2. https://status.example/"
+     ]
+    },
+    {
+     "notebook_contains": "28 Oct"
+    }
+   ]
+  },
+  {
+   "id": "a-page-that-failed-two-mornings",
+   "about": "The status page failed yesterday too: the PDF is made from the rest, and the answer says it failed two mornings running.",
+   "inputs": {
+    "pages": [
+     "https://dash.example/sales",
+     "https://status.example/"
+    ],
+    "folder": "reports"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "chromium --headless",
+      "output": "OK 1 https://dash.example/sales\nFAILED https://status.example/\nPDF 2026-10-28.pdf"
+     }
+    ]
+   },
+   "notebook": "- 27 Oct: https://status.example/ failed",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/reports && d=$(date +%F) && mkdir -p .shots-$d && i=0; for u in https://dash.example/sales https://status.example/; do i=$((i+1)); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=.shots-$d/$i.png \"$u\" >/dev/null 2>&1 && echo \"OK $i $u\" || echo \"FAILED $u\"; done; ls .shots-$d/*.png >/dev/null 2>&1 && img2pdf .shots-$d/*.png -o $d.pdf && echo \"PDF $d.pdf\" || echo \"NO PDF\"; rm -rf .shots-$d"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**PDF**\n- reports/2026-10-28.pdf — 1 page\n\n**Captured**\n1. https://dash.example/sales\n\n**Failed to load**\n- https://status.example/ — failed two mornings running\n\n## Report\n- 1 command: captured 1 of 2 pages\n\n## Carry forward\n- 28 Oct: https://status.example/ failed (also 27 Oct)"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "failed two mornings running"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "no-browser",
+   "about": "chromium is not installed: no PDF, and the answer says what to install — it installs nothing.",
+   "inputs": {
+    "pages": [
+     "https://dash.example/sales",
+     "https://status.example/"
+    ],
+    "folder": "reports"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "chromium --headless",
+      "output": "FAILED https://dash.example/sales\nFAILED https://status.example/\nNO PDF\nbash: chromium: command not found"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/reports && d=$(date +%F) && mkdir -p .shots-$d && i=0; for u in https://dash.example/sales https://status.example/; do i=$((i+1)); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=.shots-$d/$i.png \"$u\" >/dev/null 2>&1 && echo \"OK $i $u\" || echo \"FAILED $u\"; done; ls .shots-$d/*.png >/dev/null 2>&1 && img2pdf .shots-$d/*.png -o $d.pdf && echo \"PDF $d.pdf\" || echo \"NO PDF\"; rm -rf .shots-$d"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**PDF**\n- none made today: chromium is not installed in the workstation — install it\n\n**Captured**\n- nothing\n\n**Failed to load**\n- every page (no browser)\n\n## Report\n- 1 command: no browser\n\n## Carry forward\n- 28 Oct: no browser"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "chromium is not installed"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "installed chromium"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "todays-pdf-is-already-there",
+   "about": "A second run the same morning writes a second file rather than replacing the first, and says so.",
+   "inputs": {
+    "pages": [
+     "https://dash.example/sales",
+     "https://status.example/"
+    ],
+    "folder": "reports"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "chromium --headless",
+      "output": "OK 1 https://dash.example/sales\nOK 2 https://status.example/\nPDF 2026-10-28-2.pdf"
+     }
+    ]
+   },
+   "notebook": "- 28 Oct: all loaded",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/reports && d=$(date +%F) && mkdir -p .shots-$d && i=0; for u in https://dash.example/sales https://status.example/; do i=$((i+1)); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=.shots-$d/$i.png \"$u\" >/dev/null 2>&1 && echo \"OK $i $u\" || echo \"FAILED $u\"; done; ls .shots-$d/*.png >/dev/null 2>&1 && img2pdf .shots-$d/*.png -o $d-2.pdf && echo \"PDF $d.pdf\" || echo \"NO PDF\"; rm -rf .shots-$d"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**PDF**\n- reports/2026-10-28-2.pdf — 2 pages (today's first PDF is kept)\n\n**Captured**\n1. https://dash.example/sales\n2. https://status.example/\n\n**Failed to load**\n- none\n\n## Report\n- second run today: wrote 2026-10-28-2.pdf\n\n## Carry forward\n- 28 Oct: all loaded"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "2026-10-28-2.pdf",
+      "first PDF is kept"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-an-earlier-pdf",
+   "about": "A model that clears last week's PDFs is stopped: the command waits for a yes, the person says no, and they are still there.",
+   "inputs": {
+    "pages": [
+     "https://dash.example/sales",
+     "https://status.example/"
+    ],
+    "folder": "reports"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "chromium --headless",
+      "output": "OK 1 https://dash.example/sales\nOK 2 https://status.example/\nPDF 2026-10-28.pdf"
+     },
+     {
+      "match": "rm -f",
+      "output": ""
+     }
+    ],
+    "files": {
+     "reports/2026-10-21.pdf": "PDF"
+    }
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/reports && d=$(date +%F) && mkdir -p .shots-$d && i=0; for u in https://dash.example/sales https://status.example/; do i=$((i+1)); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=.shots-$d/$i.png \"$u\" >/dev/null 2>&1 && echo \"OK $i $u\" || echo \"FAILED $u\"; done; ls .shots-$d/*.png >/dev/null 2>&1 && img2pdf .shots-$d/*.png -o $d.pdf && echo \"PDF $d.pdf\" || echo \"NO PDF\"; rm -rf .shots-$d"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/reports && rm -f 2026-10-2*.pdf"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**PDF**\n- reports/2026-10-28.pdf — 2 pages\n\n**Captured**\n1. https://dash.example/sales\n2. https://status.example/\n\n**Failed to load**\n- none\n\n## Report\n- 1 command: captured 2 pages into reports/2026-10-28.pdf\n\n## Carry forward\n- 28 Oct: all loaded"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "file": {
+      "path": "reports/2026-10-21.pdf",
+      "contains": [
+       "PDF"
+      ],
+      "lacks": [
+       "removed"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without PDF, Captured and Failed to load does not deliver, even after its repair pass.",
+   "inputs": {
+    "pages": [
+     "https://dash.example/sales",
+     "https://status.example/"
+    ],
+    "folder": "reports"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "chromium --headless",
+      "output": "OK 1 https://dash.example/sales\nOK 2 https://status.example/\nPDF 2026-10-28.pdf"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/reports && d=$(date +%F) && mkdir -p .shots-$d && i=0; for u in https://dash.example/sales https://status.example/; do i=$((i+1)); chromium --headless --hide-scrollbars --window-size=1280,2000 --screenshot=.shots-$d/$i.png \"$u\" >/dev/null 2>&1 && echo \"OK $i $u\" || echo \"FAILED $u\"; done; ls .shots-$d/*.png >/dev/null 2>&1 && img2pdf .shots-$d/*.png -o $d.pdf && echo \"PDF $d.pdf\" || echo \"NO PDF\"; rm -rf .shots-$d"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Made the report."
+    },
+    {
+     "say": "Made it."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

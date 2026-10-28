@@ -1,0 +1,21 @@
+{
+ "case": "a-venv-set-up-and-a-system-package-named",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read README.md and requirements.txt; made .venv; psycopg2 needs a system package",
+ "read": [
+  "ls",
+  "read_file"
+ ],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Worked, Failed, System packages needed."
+  }
+ ],
+ "answer": "**Worked**\n- python3 -m venv .venv — made api/.venv\n\n**Failed**\n- .venv/bin/pip install -r requirements.txt — psycopg2: \"pg_config executable not found\"; flask installed\n- .venv/bin/pytest -q — not run: the install failed\n\n**System packages needed**\n- libpq-dev (pg_config) — `sudo apt install libpq-dev` (for you to run)\n\n## Report\n- read README.md and requirements.txt; made .venv; psycopg2 needs a system package"
+}

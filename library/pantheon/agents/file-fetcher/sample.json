@@ -1,0 +1,18 @@
+{
+ "case": "a-new-statement-and-a-login",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 1 command over 2 pages: fetched 1 file into statements/",
+ "read": [],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Fetched, Already here, Needs you."
+  }
+ ],
+ "answer": "**Fetched**\n- statement-2026-10.pdf — https://bank.example/statements/2026-10.pdf\n\n**Already here**\n- 1 file\n\n**Needs you**\n- https://supplier.example/invoices — asks you to sign in\n\n## Report\n- 1 command over 2 pages: fetched 1 file into statements/\n\n## Carry forward\n- 28 Oct: 1 fetched"
+}

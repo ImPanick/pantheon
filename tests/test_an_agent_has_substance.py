@@ -120,6 +120,10 @@ AT_THE_BAR = frozenset({
     # Testing & QA, the whole section; nothing fetched to run a check (`Law 16`).
     "accessibility-auditor", "browser-qa", "flaky-test-hunter", "link-checker", "load-tester",
     "test-writer", "visual-regression",
+    # Workstation & Desktop, the whole section: the browser ones on the world's
+    # screens; the scheduled ones in one command, so a run waits for nobody.
+    "browser-runner", "desktop-app-driver", "environment-setter", "file-converter", "file-fetcher",
+    "form-filler", "screenshot-reporter",
 })
 
 SECTIONS = ("Steps", "Judgement calls", "Edge cases", "Deliverable", "Example")
