@@ -149,6 +149,12 @@ def app_routes() -> list:
     A flat `app.routes` returns 69 on this codebase because included routers are
     kept nested; recursion returns ~505. The audit's note about that is the
     single most load-bearing sentence in `P3-15`.
+
+    `B1633`: a test that calls this in its own process imports the app first
+    through `tests/helpers/fresh_import.import_app_in_this_test` — the
+    `import app` below then finds that one, and the test gives it back. Called
+    bare, the app and the `McpManager` its body installs stayed for every
+    later file in the session.
     """
     sys.path.insert(0, str(ROOT))
     import app as app_module                                   # noqa: F401
