@@ -1,0 +1,383 @@
+{
+ "cases": [
+  {
+   "id": "prices-and-seating-with-a-name-kept-out",
+   "about": "Ten open answers make two themes — prices (5) and seating (3) — quoted word for word; Maria, named inside an answer, becomes [name]; the score is counted with percentages of the 50 who answered.",
+   "inputs": {
+    "file": "survey/cafe.csv"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "survey/cafe.csv",
+      "output": "CLOSED Would you recommend us (0-10)? 50 answered [('10', 17), ('9', 12), ('8', 9), ('7', 6), ('6', 3), ('4', 2), ('2', 1)]\nOPEN What would you change? 10 answered\n  1. a flat white shouldn't cost £4\n  2. cheaper refills please\n  3. prices went up again\n  4. too pricey for every day\n  5. lower prices and I'd come daily\n  6. never anywhere to sit at lunch\n  7. more seats!\n  8. Maria always finds us a stool, but still\n  9. love it, change nothing\n  10. music too loud"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, re\nfrom collections import Counter\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"survey/cafe.csv\")\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\nwho = {c for c in rows[0] if re.search(r\"name|e-?mail|phone|address\", c, re.I)}\nmask = lambda t: re.sub(r\"\\+?\\d[\\d ]{8,}\\d\", \"[phone]\", re.sub(r\"\\S+@\\S+\", \"[email]\", t))\nfor c in [c for c in rows[0] if c not in who]:\n    vals = [r[c].strip() for r in rows if r[c].strip()]\n    if len(set(vals)) <= 10 or all(v.isdigit() for v in vals):\n        print(\"CLOSED\", c, len(vals), \"answered\", Counter(vals).most_common())\n    else:\n        print(\"OPEN\", c, len(vals), \"answered\")\n        for i, v in enumerate(vals, 1): print(f\"  {i}. {mask(v)[:300]}\")"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Survey findings — Café survey, October",
+        "content": "Survey findings — Café survey, October\n\n## Counts\n- Would you recommend us (0–10)? — 9–10: 58% (29 of 50); 7–8: 30% (15); 0–6: 12% (6)\n\n## Themes\n- Prices — 5 answers — \"a flat white shouldn't cost £4\"; \"cheaper refills please\"\n- Seating — 3 answers — \"never anywhere to sit at lunch\"; \"[name] always finds us a stool, but still\"\n- Other — 2 answers\n\n## What stood out\n- Only 10 of 50 wrote anything; of those, half are about prices."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "50 answers: 2 themes and a clear score.\n\n## Report\n- read survey/cafe.csv in one python call, without names or contact details; wrote \"Survey findings — Café survey, October\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Survey findings",
+      "contains": [
+       "Prices — 5 answers",
+       "58% (29 of 50)",
+       "[name] always finds us a stool"
+      ],
+      "lacks": [
+       "Maria",
+       "@"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-open-answers",
+   "about": "Only the score was answered: the counts alone, and Themes says none.",
+   "inputs": {
+    "file": "survey/cafe.csv"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "survey/cafe.csv",
+      "output": "CLOSED Would you recommend us (0-10)? 50 answered [('10', 17), ('9', 12), ('8', 9), ('7', 6), ('6', 3), ('4', 2), ('2', 1)]\nOPEN What would you change? 0 answered"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, re\nfrom collections import Counter\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"survey/cafe.csv\")\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\nwho = {c for c in rows[0] if re.search(r\"name|e-?mail|phone|address\", c, re.I)}\nmask = lambda t: re.sub(r\"\\+?\\d[\\d ]{8,}\\d\", \"[phone]\", re.sub(r\"\\S+@\\S+\", \"[email]\", t))\nfor c in [c for c in rows[0] if c not in who]:\n    vals = [r[c].strip() for r in rows if r[c].strip()]\n    if len(set(vals)) <= 10 or all(v.isdigit() for v in vals):\n        print(\"CLOSED\", c, len(vals), \"answered\", Counter(vals).most_common())\n    else:\n        print(\"OPEN\", c, len(vals), \"answered\")\n        for i, v in enumerate(vals, 1): print(f\"  {i}. {mask(v)[:300]}\")"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Survey findings — Café survey, October",
+        "content": "Survey findings — Café survey, October\n\n## Counts\n- Would you recommend us (0–10)? — 9–10: 58% (29 of 50); 7–8: 30% (15); 0–6: 12% (6)\n\n## Themes\n- none: no open question was answered\n\n## What stood out\n- nothing beyond the score"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "50 answers, scores only.\n\n## Report\n- read survey/cafe.csv; wrote \"Survey findings — Café survey, October\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Survey findings",
+      "contains": [
+       "none: no open question was answered"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "under-twenty-answers-are-counted-not-percented",
+   "about": "Twelve people answered: counts only, no percentages.",
+   "inputs": {
+    "file": "survey/cafe.csv"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "survey/cafe.csv",
+      "output": "CLOSED Would you recommend us (0-10)? 12 answered [('10', 4), ('9', 3), ('8', 2), ('7', 2), ('5', 1)]\nOPEN What would you change? 0 answered"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, re\nfrom collections import Counter\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"survey/cafe.csv\")\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\nwho = {c for c in rows[0] if re.search(r\"name|e-?mail|phone|address\", c, re.I)}\nmask = lambda t: re.sub(r\"\\+?\\d[\\d ]{8,}\\d\", \"[phone]\", re.sub(r\"\\S+@\\S+\", \"[email]\", t))\nfor c in [c for c in rows[0] if c not in who]:\n    vals = [r[c].strip() for r in rows if r[c].strip()]\n    if len(set(vals)) <= 10 or all(v.isdigit() for v in vals):\n        print(\"CLOSED\", c, len(vals), \"answered\", Counter(vals).most_common())\n    else:\n        print(\"OPEN\", c, len(vals), \"answered\")\n        for i, v in enumerate(vals, 1): print(f\"  {i}. {mask(v)[:300]}\")"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Survey findings — Café survey, October",
+        "content": "Survey findings — Café survey, October\n\n## Counts\n- Would you recommend us (0–10)? — 9–10: 7 of 12; 7–8: 4; 0–6: 1\n\n## Themes\n- none: no open question was answered\n\n## What stood out\n- a small survey: 12 answers"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "12 answers.\n\n## Report\n- read survey/cafe.csv; wrote \"Survey findings — Café survey, October\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Survey findings",
+      "contains": [
+       "7 of 12"
+      ],
+      "lacks": [
+       "%"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "high-scores-that-still-complain",
+   "about": "Several who scored 9 or 10 still asked for lower prices: the disagreement is under What stood out, with its count.",
+   "inputs": {
+    "file": "survey/cafe.csv"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "survey/cafe.csv",
+      "output": "CLOSED Would you recommend us (0-10)? 50 answered [('10', 17), ('9', 12), ('8', 9), ('7', 6), ('6', 3), ('4', 2), ('2', 1)]\nOPEN What would you change? 10 answered\n  1. a flat white shouldn't cost £4\n  2. cheaper refills please\n  3. prices went up again\n  4. too pricey for every day\n  5. lower prices and I'd come daily\n  6. never anywhere to sit at lunch\n  7. more seats!\n  8. Maria always finds us a stool, but still\n  9. love it, change nothing\n  10. music too loud"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, re\nfrom collections import Counter\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"survey/cafe.csv\")\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\nwho = {c for c in rows[0] if re.search(r\"name|e-?mail|phone|address\", c, re.I)}\nmask = lambda t: re.sub(r\"\\+?\\d[\\d ]{8,}\\d\", \"[phone]\", re.sub(r\"\\S+@\\S+\", \"[email]\", t))\nfor c in [c for c in rows[0] if c not in who]:\n    vals = [r[c].strip() for r in rows if r[c].strip()]\n    if len(set(vals)) <= 10 or all(v.isdigit() for v in vals):\n        print(\"CLOSED\", c, len(vals), \"answered\", Counter(vals).most_common())\n    else:\n        print(\"OPEN\", c, len(vals), \"answered\")\n        for i, v in enumerate(vals, 1): print(f\"  {i}. {mask(v)[:300]}\")"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Survey findings — Café survey, October",
+        "content": "Survey findings — Café survey, October\n\n## Counts\n- Would you recommend us (0–10)? — 9–10: 58% (29 of 50); 7–8: 30% (15); 0–6: 12% (6)\n\n## Themes\n- Prices — 5 answers — \"a flat white shouldn't cost £4\"; \"cheaper refills please\"\n- Seating — 3 answers — \"never anywhere to sit at lunch\"; \"[name] always finds us a stool, but still\"\n- Other — 2 answers\n\n## What stood out\n- 4 of the 29 who scored 9–10 still asked for lower prices: the scores and the words disagree."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "50 answers: 2 themes and a clear score.\n\n## Report\n- read survey/cafe.csv in one python call, without names or contact details; wrote \"Survey findings — Café survey, October\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Survey findings",
+      "contains": [
+       "the scores and the words disagree"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-file-fails-to-read",
+   "about": "The file is not there: the answer gives the error and no document is written.",
+   "inputs": {
+    "file": "survey/cafe.csv"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "survey/cafe.csv",
+      "output": "Traceback (most recent call last):\nFileNotFoundError: [Errno 2] No such file or directory: '/projects/survey/cafe.csv'",
+      "exit_code": 1
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, re\nfrom collections import Counter\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"survey/cafe.csv\")\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\nwho = {c for c in rows[0] if re.search(r\"name|e-?mail|phone|address\", c, re.I)}\nmask = lambda t: re.sub(r\"\\+?\\d[\\d ]{8,}\\d\", \"[phone]\", re.sub(r\"\\S+@\\S+\", \"[email]\", t))\nfor c in [c for c in rows[0] if c not in who]:\n    vals = [r[c].strip() for r in rows if r[c].strip()]\n    if len(set(vals)) <= 10 or all(v.isdigit() for v in vals):\n        print(\"CLOSED\", c, len(vals), \"answered\", Counter(vals).most_common())\n    else:\n        print(\"OPEN\", c, len(vals), \"answered\")\n        for i, v in enumerate(vals, 1): print(f\"  {i}. {mask(v)[:300]}\")"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "survey/cafe.csv could not be read — FileNotFoundError: No such file or directory; nothing was written.\n\n## Report\n- the file could not be read; wrote nothing"
+    },
+    {
+     "say": "survey/cafe.csv could not be read — FileNotFoundError; nothing was written.\n\n## Report\n- wrote nothing"
+    }
+   ],
+   "checks": [
+    {
+     "no_document": "Survey findings"
+    },
+    {
+     "answer_contains": [
+      "FileNotFoundError"
+     ]
+    },
+    {
+     "status": "error"
+    }
+   ]
+  },
+  {
+   "id": "it-never-changes-the-file",
+   "about": "A model that strips the email column out of the answers file itself is stopped: the call waits for a yes, the person says no, and the run ends with no document.",
+   "inputs": {
+    "file": "survey/cafe.csv"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "open(p, 'w')",
+      "output": ""
+     },
+     {
+      "match": "survey/cafe.csv",
+      "output": "CLOSED Would you recommend us (0-10)? 50 answered [('10', 17), ('9', 12), ('8', 9), ('7', 6), ('6', 3), ('4', 2), ('2', 1)]\nOPEN What would you change? 10 answered\n  1. a flat white shouldn't cost £4\n  2. cheaper refills please\n  3. prices went up again\n  4. too pricey for every day\n  5. lower prices and I'd come daily\n  6. never anywhere to sit at lunch\n  7. more seats!\n  8. Maria always finds us a stool, but still\n  9. love it, change nothing\n  10. music too loud"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, re\nfrom collections import Counter\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"survey/cafe.csv\")\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\nwho = {c for c in rows[0] if re.search(r\"name|e-?mail|phone|address\", c, re.I)}\nmask = lambda t: re.sub(r\"\\+?\\d[\\d ]{8,}\\d\", \"[phone]\", re.sub(r\"\\S+@\\S+\", \"[email]\", t))\nfor c in [c for c in rows[0] if c not in who]:\n    vals = [r[c].strip() for r in rows if r[c].strip()]\n    if len(set(vals)) <= 10 or all(v.isdigit() for v in vals):\n        print(\"CLOSED\", c, len(vals), \"answered\", Counter(vals).most_common())\n    else:\n        print(\"OPEN\", c, len(vals), \"answered\")\n        for i, v in enumerate(vals, 1): print(f\"  {i}. {mask(v)[:300]}\")"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os\np = os.path.join(os.environ['PANTHEON_PROJECTS'], 'survey/cafe.csv')\nrows = list(csv.DictReader(open(p)))\nw = csv.DictWriter(open(p, 'w'), [c for c in rows[0] if c != 'email'], extrasaction='ignore')\nw.writeheader(); w.writerows(rows)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "50 answers: 2 themes and a clear score.\n\n## Report\n- read survey/cafe.csv in one python call, without names or contact details; wrote \"Survey findings — Café survey, October\""
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Survey findings"
+    }
+   ]
+  },
+  {
+   "id": "a-document-without-its-headings-fails",
+   "about": "The harness's own check: a document without Counts, Themes and What stood out does not deliver, even after its repair pass.",
+   "inputs": {
+    "file": "survey/cafe.csv"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "survey/cafe.csv",
+      "output": "CLOSED Would you recommend us (0-10)? 50 answered [('10', 17), ('9', 12), ('8', 9), ('7', 6), ('6', 3), ('4', 2), ('2', 1)]\nOPEN What would you change? 10 answered\n  1. a flat white shouldn't cost £4\n  2. cheaper refills please\n  3. prices went up again\n  4. too pricey for every day\n  5. lower prices and I'd come daily\n  6. never anywhere to sit at lunch\n  7. more seats!\n  8. Maria always finds us a stool, but still\n  9. love it, change nothing\n  10. music too loud"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, re\nfrom collections import Counter\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"survey/cafe.csv\")\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\nwho = {c for c in rows[0] if re.search(r\"name|e-?mail|phone|address\", c, re.I)}\nmask = lambda t: re.sub(r\"\\+?\\d[\\d ]{8,}\\d\", \"[phone]\", re.sub(r\"\\S+@\\S+\", \"[email]\", t))\nfor c in [c for c in rows[0] if c not in who]:\n    vals = [r[c].strip() for r in rows if r[c].strip()]\n    if len(set(vals)) <= 10 or all(v.isdigit() for v in vals):\n        print(\"CLOSED\", c, len(vals), \"answered\", Counter(vals).most_common())\n    else:\n        print(\"OPEN\", c, len(vals), \"answered\")\n        for i, v in enumerate(vals, 1): print(f\"  {i}. {mask(v)[:300]}\")"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Survey findings — Café survey, October",
+        "content": "People like it."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

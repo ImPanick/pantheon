@@ -423,6 +423,22 @@ def run_started_at(db, run_id: Optional[str]):
     return row[0] if row else None
 
 
+def _written_before(path: str, since) -> bool:
+    """`P24-27`. Whether the file at `path` was last written before `since`
+    (naive UTC, as `TaskRun.started_at`), with a document's five seconds' grace.
+    A folder counts as written when anything in it was."""
+    from datetime import datetime, timezone
+    try:
+        stamps = [os.path.getmtime(path)]
+        if os.path.isdir(path):
+            stamps += [os.path.getmtime(os.path.join(base, n))
+                       for base, dirs, names in os.walk(path) for n in dirs + names]
+    except OSError:
+        return False
+    when = datetime.fromtimestamp(max(stamps), timezone.utc).replace(tzinfo=None)
+    return when < since - timedelta(seconds=5)
+
+
 def check_contract(db, plan: "RunPlan", answer: str, steps: List[dict], *,
                    since=None) -> List[Dict[str, Any]]:
     """Every `delivers` entry, checked. Empty when the manifest declares none."""
@@ -480,6 +496,12 @@ def check_contract(db, plan: "RunPlan", answer: str, steps: List[dict], *,
             if not rel or not inside or not os.path.exists(path):
                 out.append({"check": f"the file {rel or '(unnamed)'}", "ok": False,
                             "detail": f"There is no {rel or 'file'} in the projects folder."})
+                continue
+            if since is not None and _written_before(path, since):
+                # `P24-27`. As a document must be written since the run began,
+                # so must a file: one that was already there is not this run's.
+                out.append({"check": f"the file {rel}", "ok": False,
+                            "detail": f"{rel} was not written in this run."})
                 continue
             text = ""
             if words and os.path.isfile(path):

@@ -1,0 +1,18 @@
+{
+ "case": "by-month-and-by-store-for-by-region",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read shop/sales.csv; drew 2 charts in one python call; the table is unchanged",
+ "read": [],
+ "wrote": [
+  "python"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Charts, What they show, What they do not show."
+  }
+ ],
+ "answer": "**Charts**\n- shop/charts/sales-by-month.svg — a line — revenue by month, Jan to Sep 2026\n- shop/charts/sales-by-store.svg — bars — revenue by store, largest first\n\n**What they show**\n- sales-by-month: revenue rose from 8,200 in January to 14,900 in July, then fell to 12,400 in September.\n- sales-by-store: Leeds brings in 41% of revenue; the three smallest stores together bring 12%.\n\n**What they do not show**\n- sales-by-month: why revenue fell after July; the table has no costs or campaigns.\n- sales-by-store: you asked by region; the table has stores, not regions, so these are stores.\n\n## Report\n- read shop/sales.csv; drew 2 charts in one python call; the table is unchanged"
+}

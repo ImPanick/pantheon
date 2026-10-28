@@ -1,0 +1,18 @@
+{
+ "case": "a-huge-amount-and-a-new-payment-method",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 30 exports in one python call; changed nothing",
+ "read": [],
+ "wrote": [
+  "python"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Unusual rows, Compared against, Files read."
+  }
+ ],
+ "answer": "**Unusual rows**\n- row 118 (order 50211) — amount — 4,800.00 — beyond the usual: median 42.00, MAD 5.00\n- payment — \"crypto\" — a new category, 3 rows\n\n**Compared against**\n- 29 exports, 29 Sep to 27 Oct; amount median 42.00, MAD 5.00; payment 4 known values\n\n**Files read**\n- orders-2026-10-28.csv\n\n## Report\n- read 30 exports in one python call; changed nothing\n\n## Carry forward\n- read: orders-2026-10-28.csv"
+}

@@ -1,0 +1,26 @@
+{
+ "case": "two-questions-answered-and-one-that-cannot-be",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read shop/sales.csv; wrote dashboard/index.html with 2 charts; the data is unchanged",
+ "read": [
+  "read_file"
+ ],
+ "wrote": [
+  "python",
+  "write_file"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the file dashboard/index.html",
+   "ok": true,
+   "detail": "dashboard/index.html is there."
+  },
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Dashboard, Answered, Could not answer."
+  }
+ ],
+ "answer": "**Dashboard**\n- dashboard/index.html — open it in any browser from your projects folder; it needs no server and fetches nothing\n\n**Answered**\n- How are sales trending month by month? — up from 8,200 in January to 14,900 in July, 12,400 in September\n- Which store sells most? — Leeds, 43,900 (41%)\n\n**Could not answer**\n- What is our profit margin? — the file has no cost column\n\n## Report\n- read shop/sales.csv; wrote dashboard/index.html with 2 charts; the data is unchanged"
+}

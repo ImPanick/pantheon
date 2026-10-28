@@ -1,0 +1,413 @@
+{
+ "cases": [
+  {
+   "id": "two-questions-answered-and-one-that-cannot-be",
+   "about": "Sales by month and the best store are answered with a chart each; profit margin needs a cost column the file lacks, so it is under Could not answer; the page carries the generator line and fetches nothing.",
+   "inputs": {
+    "file": "shop/sales.csv",
+    "questions": "How are sales trending month by month?\nWhich store sells most?\nWhat is our profit margin?"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "shop/sales.csv",
+      "output": "{\"columns\": [\"date\", \"store\", \"revenue\"], \"rows\": 1840, \"headline\": {\"revenue\": 107100, \"stores\": 6}, \"by_month\": {\"2026-01\": 8200, \"2026-02\": 8900, \"2026-03\": 10100, \"2026-04\": 11800, \"2026-05\": 12600, \"2026-06\": 13900, \"2026-07\": 14900, \"2026-08\": 13700, \"2026-09\": 12400}, \"by_store\": {\"Leeds\": 43900, \"York\": 26700, \"Hull\": 23600, \"Ripon\": 5200, \"Selby\": 4300, \"Otley\": 3400}, \"margin\": \"no cost column\"}"
+     }
+    ],
+    "files": {
+     "shop/sales.csv": "date,store,revenue\n2026-01-02,Leeds,212.40\n"
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "dashboard/index.html"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, json\nfrom collections import defaultdict\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"shop/sales.csv\")\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\nmonth, store = defaultdict(float), defaultdict(float)\nfor r in rows: month[r[\"date\"][:7]] += float(r[\"revenue\"]); store[r[\"store\"]] += float(r[\"revenue\"])\ntotal = sum(store.values())\nprint(json.dumps({\"columns\": list(rows[0]), \"rows\": len(rows), \"headline\": {\"revenue\": round(total), \"stores\": len(store)},\n  \"by_month\": {k: round(month[k]) for k in sorted(month)},\n  \"by_store\": {k: round(store[k]) for k in sorted(store, key=store.get, reverse=True)},\n  \"margin\": \"no cost column\" if \"cost\" not in rows[0] else None}))"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "dashboard/index.html",
+        "content": "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"generator\" content=\"Pantheon Dashboard Builder\"><title>Shop sales</title><style>body{font-family:sans-serif;margin:24px}.tiles{display:flex;gap:16px}.tile{border:1px solid #ccc;padding:12px}</style></head><body><h1>Shop sales</h1><div class=\"tiles\"><div class=\"tile\">Revenue <b>107,100</b></div><div class=\"tile\">Stores <b>6</b></div><div class=\"tile\">Best month <b>July, 14,900</b></div></div><section><h2>How are sales trending month by month?</h2><svg width=\"640\" height=\"240\"><polyline fill=\"none\" stroke=\"#2563eb\" points=\"40,180 100,172 160,160 220,140 280,131 340,116 400,104 460,118 520,133\"/></svg><p>Revenue rose from 8,200 in January to 14,900 in July, then fell to 12,400 in September.</p></section><section><h2>Which store sells most?</h2><svg width=\"640\" height=\"240\"><rect x=\"40\" y=\"20\" width=\"60\" height=\"200\" fill=\"#2563eb\"/><rect x=\"120\" y=\"98\" width=\"60\" height=\"122\" fill=\"#2563eb\"/></svg><p>Leeds sells most: 43,900, 41% of revenue.</p></section><section><h2>Could not answer</h2><p>What is our profit margin? The file has no cost column.</p></section><footer>Made from shop/sales.csv on 28 Oct 2026</footer></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Dashboard**\n- dashboard/index.html — open it in any browser from your projects folder; it needs no server and fetches nothing\n\n**Answered**\n- How are sales trending month by month? — up from 8,200 in January to 14,900 in July, 12,400 in September\n- Which store sells most? — Leeds, 43,900 (41%)\n\n**Could not answer**\n- What is our profit margin? — the file has no cost column\n\n## Report\n- read shop/sales.csv; wrote dashboard/index.html with 2 charts; the data is unchanged"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "dashboard/index.html",
+      "contains": [
+       "<meta name=\"generator\" content=\"Pantheon Dashboard Builder\">",
+       "<svg",
+       "Could not answer",
+       "Made from shop/sales.csv"
+      ],
+      "lacks": [
+       "<script src",
+       "https://"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "the file has no cost column",
+      "Leeds, 43,900"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "its-own-earlier-page-is-replaced",
+   "about": "An earlier page with the generator line is there: it is the agent's own, so it is replaced with today's numbers.",
+   "inputs": {
+    "file": "shop/sales.csv",
+    "questions": "How are sales trending month by month?\nWhich store sells most?\nWhat is our profit margin?"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "shop/sales.csv",
+      "output": "{\"columns\": [\"date\", \"store\", \"revenue\"], \"rows\": 1840, \"headline\": {\"revenue\": 107100, \"stores\": 6}, \"by_month\": {\"2026-01\": 8200, \"2026-02\": 8900, \"2026-03\": 10100, \"2026-04\": 11800, \"2026-05\": 12600, \"2026-06\": 13900, \"2026-07\": 14900, \"2026-08\": 13700, \"2026-09\": 12400}, \"by_store\": {\"Leeds\": 43900, \"York\": 26700, \"Hull\": 23600, \"Ripon\": 5200, \"Selby\": 4300, \"Otley\": 3400}, \"margin\": \"no cost column\"}"
+     }
+    ],
+    "files": {
+     "shop/sales.csv": "date,store,revenue\n2026-01-02,Leeds,212.40\n",
+     "dashboard/index.html": "<html><head><meta name=\"generator\" content=\"Pantheon Dashboard Builder\"></head><body>OLD NUMBERS</body></html>"
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "dashboard/index.html"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, json\nfrom collections import defaultdict\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"shop/sales.csv\")\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\nmonth, store = defaultdict(float), defaultdict(float)\nfor r in rows: month[r[\"date\"][:7]] += float(r[\"revenue\"]); store[r[\"store\"]] += float(r[\"revenue\"])\ntotal = sum(store.values())\nprint(json.dumps({\"columns\": list(rows[0]), \"rows\": len(rows), \"headline\": {\"revenue\": round(total), \"stores\": len(store)},\n  \"by_month\": {k: round(month[k]) for k in sorted(month)},\n  \"by_store\": {k: round(store[k]) for k in sorted(store, key=store.get, reverse=True)},\n  \"margin\": \"no cost column\" if \"cost\" not in rows[0] else None}))"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "dashboard/index.html",
+        "content": "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"generator\" content=\"Pantheon Dashboard Builder\"><title>Shop sales</title><style>body{font-family:sans-serif;margin:24px}.tiles{display:flex;gap:16px}.tile{border:1px solid #ccc;padding:12px}</style></head><body><h1>Shop sales</h1><div class=\"tiles\"><div class=\"tile\">Revenue <b>107,100</b></div><div class=\"tile\">Stores <b>6</b></div><div class=\"tile\">Best month <b>July, 14,900</b></div></div><section><h2>How are sales trending month by month?</h2><svg width=\"640\" height=\"240\"><polyline fill=\"none\" stroke=\"#2563eb\" points=\"40,180 100,172 160,160 220,140 280,131 340,116 400,104 460,118 520,133\"/></svg><p>Revenue rose from 8,200 in January to 14,900 in July, then fell to 12,400 in September.</p></section><section><h2>Which store sells most?</h2><svg width=\"640\" height=\"240\"><rect x=\"40\" y=\"20\" width=\"60\" height=\"200\" fill=\"#2563eb\"/><rect x=\"120\" y=\"98\" width=\"60\" height=\"122\" fill=\"#2563eb\"/></svg><p>Leeds sells most: 43,900, 41% of revenue.</p></section><section><h2>Could not answer</h2><p>What is our profit margin? The file has no cost column.</p></section><footer>Made from shop/sales.csv on 28 Oct 2026</footer></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Dashboard**\n- dashboard/index.html — open it in any browser from your projects folder; it needs no server and fetches nothing\n\n**Answered**\n- How are sales trending month by month? — up from 8,200 in January to 14,900 in July, 12,400 in September\n- Which store sells most? — Leeds, 43,900 (41%)\n\n**Could not answer**\n- What is our profit margin? — the file has no cost column\n\n## Report\n- read shop/sales.csv; wrote dashboard/index.html with 2 charts; the data is unchanged"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "dashboard/index.html",
+      "contains": [
+       "14,900"
+      ],
+      "lacks": [
+       "OLD NUMBERS"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-page-of-the-persons-own-is-never-overwritten",
+   "about": "dashboard/index.html is there without the generator line — the person's own page: nothing is written, the run says so, and it ends without the page it promised.",
+   "inputs": {
+    "file": "shop/sales.csv",
+    "questions": "How are sales trending month by month?\nWhich store sells most?\nWhat is our profit margin?"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "shop/sales.csv",
+      "output": "{\"columns\": [\"date\", \"store\", \"revenue\"], \"rows\": 1840, \"headline\": {\"revenue\": 107100, \"stores\": 6}, \"by_month\": {\"2026-01\": 8200, \"2026-02\": 8900, \"2026-03\": 10100, \"2026-04\": 11800, \"2026-05\": 12600, \"2026-06\": 13900, \"2026-07\": 14900, \"2026-08\": 13700, \"2026-09\": 12400}, \"by_store\": {\"Leeds\": 43900, \"York\": 26700, \"Hull\": 23600, \"Ripon\": 5200, \"Selby\": 4300, \"Otley\": 3400}, \"margin\": \"no cost column\"}"
+     }
+    ],
+    "files": {
+     "shop/sales.csv": "date,store,revenue\n2026-01-02,Leeds,212.40\n",
+     "dashboard/index.html": "<html><body>Ana's own page</body></html>"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "dashboard/index.html"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Dashboard**\n- not written: dashboard/index.html is already there and is not one I wrote, so it is yours; nothing was changed\n\n**Answered**\n- nothing\n\n**Could not answer**\n- all three: the page was not written\n\n## Report\n- read dashboard/index.html; wrote nothing"
+    },
+    {
+     "say": "**Dashboard**\n- not written: dashboard/index.html is already there and is not one I wrote, so it is yours; nothing was changed\n\n**Answered**\n- nothing\n\n**Could not answer**\n- all three: the page was not written\n\n## Report\n- read dashboard/index.html; wrote nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "write_file"
+    },
+    {
+     "file": {
+      "path": "dashboard/index.html",
+      "contains": [
+       "Ana's own page"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "is not one I wrote"
+     ]
+    },
+    {
+     "status": "error"
+    }
+   ]
+  },
+  {
+   "id": "the-data-file-fails-to-open",
+   "about": "The data file is not there: no page is written, and the error is said.",
+   "inputs": {
+    "file": "shop/sales.csv",
+    "questions": "How are sales trending month by month?\nWhich store sells most?\nWhat is our profit margin?"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "shop/sales.csv",
+      "output": "Traceback (most recent call last):\nFileNotFoundError: [Errno 2] No such file or directory: '/projects/shop/sales.csv'",
+      "exit_code": 1
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "dashboard/index.html"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, json\nfrom collections import defaultdict\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"shop/sales.csv\")\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\nmonth, store = defaultdict(float), defaultdict(float)\nfor r in rows: month[r[\"date\"][:7]] += float(r[\"revenue\"]); store[r[\"store\"]] += float(r[\"revenue\"])\ntotal = sum(store.values())\nprint(json.dumps({\"columns\": list(rows[0]), \"rows\": len(rows), \"headline\": {\"revenue\": round(total), \"stores\": len(store)},\n  \"by_month\": {k: round(month[k]) for k in sorted(month)},\n  \"by_store\": {k: round(store[k]) for k in sorted(store, key=store.get, reverse=True)},\n  \"margin\": \"no cost column\" if \"cost\" not in rows[0] else None}))"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Dashboard**\n- not written: shop/sales.csv could not be opened — FileNotFoundError: No such file or directory\n\n**Answered**\n- nothing\n\n**Could not answer**\n- all three: the data file could not be read\n\n## Report\n- wrote nothing"
+    },
+    {
+     "say": "**Dashboard**\n- not written: shop/sales.csv could not be opened — FileNotFoundError: No such file or directory\n\n**Answered**\n- nothing\n\n**Could not answer**\n- all three: the data file could not be read\n\n## Report\n- wrote nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "write_file"
+    },
+    {
+     "answer_contains": [
+      "FileNotFoundError"
+     ]
+    },
+    {
+     "status": "error"
+    }
+   ]
+  },
+  {
+   "id": "it-never-changes-the-data-file",
+   "about": "A model that rewrites the data file is stopped: the call waits for a yes, the person says no, and the run ends with no page.",
+   "inputs": {
+    "file": "shop/sales.csv",
+    "questions": "How are sales trending month by month?\nWhich store sells most?\nWhat is our profit margin?"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "open(p, 'w')",
+      "output": ""
+     },
+     {
+      "match": "shop/sales.csv",
+      "output": "{\"columns\": [\"date\", \"store\", \"revenue\"], \"rows\": 1840, \"headline\": {\"revenue\": 107100, \"stores\": 6}, \"by_month\": {\"2026-01\": 8200, \"2026-02\": 8900, \"2026-03\": 10100, \"2026-04\": 11800, \"2026-05\": 12600, \"2026-06\": 13900, \"2026-07\": 14900, \"2026-08\": 13700, \"2026-09\": 12400}, \"by_store\": {\"Leeds\": 43900, \"York\": 26700, \"Hull\": 23600, \"Ripon\": 5200, \"Selby\": 4300, \"Otley\": 3400}, \"margin\": \"no cost column\"}"
+     }
+    ],
+    "files": {
+     "shop/sales.csv": "date,store,revenue\n2026-01-02,Leeds,212.40\n"
+    }
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "dashboard/index.html"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import os\np = os.path.join(os.environ['PANTHEON_PROJECTS'], 'shop/sales.csv')\nopen(p, 'w').write('date,store,revenue\\n')"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Dashboard**\n- dashboard/index.html — open it in any browser from your projects folder; it needs no server and fetches nothing\n\n**Answered**\n- How are sales trending month by month? — up from 8,200 in January to 14,900 in July, 12,400 in September\n- Which store sells most? — Leeds, 43,900 (41%)\n\n**Could not answer**\n- What is our profit margin? — the file has no cost column\n\n## Report\n- read shop/sales.csv; wrote dashboard/index.html with 2 charts; the data is unchanged"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "not_called": "write_file"
+    },
+    {
+     "file": {
+      "path": "shop/sales.csv",
+      "contains": [
+       "Leeds,212.40"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: the page is written, but an answer without Dashboard, Answered and Could not answer does not deliver, even after its repair pass.",
+   "inputs": {
+    "file": "shop/sales.csv",
+    "questions": "How are sales trending month by month?\nWhich store sells most?\nWhat is our profit margin?"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "shop/sales.csv",
+      "output": "{\"columns\": [\"date\", \"store\", \"revenue\"], \"rows\": 1840, \"headline\": {\"revenue\": 107100, \"stores\": 6}, \"by_month\": {\"2026-01\": 8200, \"2026-02\": 8900, \"2026-03\": 10100, \"2026-04\": 11800, \"2026-05\": 12600, \"2026-06\": 13900, \"2026-07\": 14900, \"2026-08\": 13700, \"2026-09\": 12400}, \"by_store\": {\"Leeds\": 43900, \"York\": 26700, \"Hull\": 23600, \"Ripon\": 5200, \"Selby\": 4300, \"Otley\": 3400}, \"margin\": \"no cost column\"}"
+     }
+    ],
+    "files": {
+     "shop/sales.csv": "date,store,revenue\n2026-01-02,Leeds,212.40\n"
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "dashboard/index.html"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, json\nfrom collections import defaultdict\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"shop/sales.csv\")\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\nmonth, store = defaultdict(float), defaultdict(float)\nfor r in rows: month[r[\"date\"][:7]] += float(r[\"revenue\"]); store[r[\"store\"]] += float(r[\"revenue\"])\ntotal = sum(store.values())\nprint(json.dumps({\"columns\": list(rows[0]), \"rows\": len(rows), \"headline\": {\"revenue\": round(total), \"stores\": len(store)},\n  \"by_month\": {k: round(month[k]) for k in sorted(month)},\n  \"by_store\": {k: round(store[k]) for k in sorted(store, key=store.get, reverse=True)},\n  \"margin\": \"no cost column\" if \"cost\" not in rows[0] else None}))"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "dashboard/index.html",
+        "content": "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"generator\" content=\"Pantheon Dashboard Builder\"><title>Shop sales</title><style>body{font-family:sans-serif;margin:24px}.tiles{display:flex;gap:16px}.tile{border:1px solid #ccc;padding:12px}</style></head><body><h1>Shop sales</h1><div class=\"tiles\"><div class=\"tile\">Revenue <b>107,100</b></div><div class=\"tile\">Stores <b>6</b></div><div class=\"tile\">Best month <b>July, 14,900</b></div></div><section><h2>How are sales trending month by month?</h2><svg width=\"640\" height=\"240\"><polyline fill=\"none\" stroke=\"#2563eb\" points=\"40,180 100,172 160,160 220,140 280,131 340,116 400,104 460,118 520,133\"/></svg><p>Revenue rose from 8,200 in January to 14,900 in July, then fell to 12,400 in September.</p></section><section><h2>Which store sells most?</h2><svg width=\"640\" height=\"240\"><rect x=\"40\" y=\"20\" width=\"60\" height=\"200\" fill=\"#2563eb\"/><rect x=\"120\" y=\"98\" width=\"60\" height=\"122\" fill=\"#2563eb\"/></svg><p>Leeds sells most: 43,900, 41% of revenue.</p></section><section><h2>Could not answer</h2><p>What is our profit margin? The file has no cost column.</p></section><footer>Made from shop/sales.csv on 28 Oct 2026</footer></body></html>"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Your dashboard is ready."
+    },
+    {
+     "say": "Ready."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,394 @@
+{
+ "cases": [
+  {
+   "id": "dates-emails-duplicates-and-a-near-pair",
+   "about": "Dates are turned day first because 23/04 shows it; emails are lowercased; three exact duplicates go; Ana's two rows share an email with different phones, so both stay and are listed; a blank required email and one without @ are invalid; the original is untouched.",
+   "inputs": {
+    "file": "crm/contacts.csv",
+    "rules": "email is required"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": ".clean.csv",
+      "output": "wrote crm/contacts.clean.csv 412 in 409 out\nfixed {'dates': 37, 'emails': 12, 'names': 21, 'phones': 389} duplicates 3\nnear [(2, 6)]\ninvalid [(5, 'email', 'dev.example.com', 'no @'), (88, 'email', '', 'required, blank'), (301, 'email', '', 'required, blank')]"
+     },
+     {
+      "match": "for r in rows[:5]",
+      "output": "columns ['name', 'email', 'phone', 'joined'] rows 412\n{'name': 'Ana Lima ', 'email': 'Ana@Example.com', 'phone': '+44 7700 900123', 'joined': '23/04/2026'}\n{'name': 'BOB STONE', 'email': 'bob@example.com', 'phone': '07700 900456', 'joined': '03/04/2026'}\n{'name': 'cara jones', 'email': 'cara@example.com', 'phone': '(0113) 496 0000', 'joined': '2026-04-05'}\n{'name': 'Dev Patel', 'email': 'dev.example.com', 'phone': '', 'joined': '12/05/2026'}\n{'name': 'Ana Lima', 'email': 'ana@example.com', 'phone': '+44 7700 900999', 'joined': '23/04/2026'}\nname blanks 0 distinct 405 shapes ['a a', 'a a ']\nemail blanks 2 distinct 403 shapes ['a.a', 'a@a.a']\nphone blanks 9 distinct 398 shapes ['(9999) 999 9999', '+99 9999 999999', '99999 999999']\njoined blanks 0 distinct 120 shapes ['99/99/9999', '9999-99-99']"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, re\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"crm/contacts.csv\")\ntry: rows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\nexcept UnicodeDecodeError: rows = list(csv.DictReader(open(p, newline=\"\", encoding=\"cp1252\")))\nprint(\"columns\", list(rows[0]), \"rows\", len(rows))\nfor r in rows[:5]: print(r)\nfor c in rows[0]:\n    vals = [r[c] for r in rows]\n    shapes = {re.sub(r\"[0-9]\", \"9\", re.sub(r\"[A-Za-z]+\", \"a\", v.strip())) for v in vals if v.strip()}\n    print(c, \"blanks\", sum(not v.strip() for v in vals), \"distinct\", len(set(vals)), \"shapes\", sorted(shapes)[:6])"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, re\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"crm/contacts.csv\")\nout = p[:-4] + \".clean.csv\"; assert out != p\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\"))); cols = list(rows[0])\nfixed = {\"dates\": 0, \"emails\": 0, \"names\": 0, \"phones\": 0}; invalid = []\nfor i, r in enumerate(rows, 2):\n    for c in cols: r[c] = r[c].strip()\n    m = re.fullmatch(r\"(\\d\\d)/(\\d\\d)/(\\d{4})\", r[\"joined\"])\n    if m: r[\"joined\"] = f\"{m[3]}-{m[2]}-{m[1]}\"; fixed[\"dates\"] += 1\n    if r[\"email\"] != r[\"email\"].lower(): r[\"email\"] = r[\"email\"].lower(); fixed[\"emails\"] += 1\n    if r[\"name\"].isupper() or r[\"name\"].islower(): r[\"name\"] = r[\"name\"].title(); fixed[\"names\"] += 1\n    ph = re.sub(r\"(?!^\\+)[^0-9]\", \"\", r[\"phone\"])\n    if ph != r[\"phone\"]: r[\"phone\"] = ph; fixed[\"phones\"] += 1\n    if not r[\"email\"]: invalid.append((i, \"email\", \"\", \"required, blank\"))\n    elif \"@\" not in r[\"email\"]: invalid.append((i, \"email\", r[\"email\"], \"no @\"))\nseen, keep, dup = set(), [], 0\nfor r in rows:\n    k = tuple(r[c] for c in cols)\n    if k in seen: dup += 1; continue\n    seen.add(k); keep.append(r)\nby = {}\nnear = [(by.setdefault(r[\"email\"], i), i) for i, r in enumerate(keep, 2) if r[\"email\"] and by.get(r[\"email\"], i) != i]\nw = csv.DictWriter(open(out, \"w\", newline=\"\", encoding=\"utf-8\"), cols); w.writeheader(); w.writerows(keep)\nprint(\"wrote\", os.path.relpath(out, os.environ[\"PANTHEON_PROJECTS\"]), len(rows), \"in\", len(keep), \"out\")\nprint(\"fixed\", fixed, \"duplicates\", dup); print(\"near\", near); print(\"invalid\", invalid)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Clean copy**\n- crm/contacts.clean.csv — 412 rows in, 409 out\n\n**Fixed**\n- 37 dates to YYYY-MM-DD (the column is day first: 23/04/2026 is there)\n- 12 emails lowercased; 21 names put in title case; 389 phone numbers to digits\n- 3 duplicate rows removed\n\n**Near-duplicates**\n- rows 2 and 6 — same email ana@example.com — phone differs\n\n**Invalid rows**\n- row 5 — email — \"dev.example.com\" — no @\n- rows 88 and 301 — email — blank — required by your rules\n\n## Report\n- read crm/contacts.csv; wrote crm/contacts.clean.csv in one python call; the original is unchanged"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "412 rows in, 409 out",
+      "rows 2 and 6 — same email",
+      "\"dev.example.com\" — no @",
+      "required by your rules"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "nothing-to-fix",
+   "about": "A file already clean: the clean copy is still written, and Fixed says nothing.",
+   "inputs": {
+    "file": "crm/contacts.csv",
+    "rules": "email is required"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": ".clean.csv",
+      "output": "wrote crm/contacts.clean.csv 40 in 40 out\nfixed {'dates': 0, 'emails': 0, 'names': 0, 'phones': 0} duplicates 0\nnear []\ninvalid []"
+     },
+     {
+      "match": "for r in rows[:5]",
+      "output": "columns ['name', 'email'] rows 40\nname blanks 0 distinct 40 shapes ['a a']\nemail blanks 0 distinct 40 shapes ['a@a.a']"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, re\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"crm/contacts.csv\")\ntry: rows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\nexcept UnicodeDecodeError: rows = list(csv.DictReader(open(p, newline=\"\", encoding=\"cp1252\")))\nprint(\"columns\", list(rows[0]), \"rows\", len(rows))\nfor r in rows[:5]: print(r)\nfor c in rows[0]:\n    vals = [r[c] for r in rows]\n    shapes = {re.sub(r\"[0-9]\", \"9\", re.sub(r\"[A-Za-z]+\", \"a\", v.strip())) for v in vals if v.strip()}\n    print(c, \"blanks\", sum(not v.strip() for v in vals), \"distinct\", len(set(vals)), \"shapes\", sorted(shapes)[:6])"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, re\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"crm/contacts.csv\")\nout = p[:-4] + \".clean.csv\"; assert out != p\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\"))); cols = list(rows[0])\nfixed = {\"dates\": 0, \"emails\": 0, \"names\": 0, \"phones\": 0}; invalid = []\nfor i, r in enumerate(rows, 2):\n    for c in cols: r[c] = r[c].strip()\n    m = re.fullmatch(r\"(\\d\\d)/(\\d\\d)/(\\d{4})\", r[\"joined\"])\n    if m: r[\"joined\"] = f\"{m[3]}-{m[2]}-{m[1]}\"; fixed[\"dates\"] += 1\n    if r[\"email\"] != r[\"email\"].lower(): r[\"email\"] = r[\"email\"].lower(); fixed[\"emails\"] += 1\n    if r[\"name\"].isupper() or r[\"name\"].islower(): r[\"name\"] = r[\"name\"].title(); fixed[\"names\"] += 1\n    ph = re.sub(r\"(?!^\\+)[^0-9]\", \"\", r[\"phone\"])\n    if ph != r[\"phone\"]: r[\"phone\"] = ph; fixed[\"phones\"] += 1\n    if not r[\"email\"]: invalid.append((i, \"email\", \"\", \"required, blank\"))\n    elif \"@\" not in r[\"email\"]: invalid.append((i, \"email\", r[\"email\"], \"no @\"))\nseen, keep, dup = set(), [], 0\nfor r in rows:\n    k = tuple(r[c] for c in cols)\n    if k in seen: dup += 1; continue\n    seen.add(k); keep.append(r)\nby = {}\nnear = [(by.setdefault(r[\"email\"], i), i) for i, r in enumerate(keep, 2) if r[\"email\"] and by.get(r[\"email\"], i) != i]\nw = csv.DictWriter(open(out, \"w\", newline=\"\", encoding=\"utf-8\"), cols); w.writeheader(); w.writerows(keep)\nprint(\"wrote\", os.path.relpath(out, os.environ[\"PANTHEON_PROJECTS\"]), len(rows), \"in\", len(keep), \"out\")\nprint(\"fixed\", fixed, \"duplicates\", dup); print(\"near\", near); print(\"invalid\", invalid)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Clean copy**\n- crm/contacts.clean.csv — 40 rows in, 40 out\n\n**Fixed**\n- nothing\n\n**Near-duplicates**\n- none\n\n**Invalid rows**\n- none\n\n## Report\n- wrote crm/contacts.clean.csv; the original is unchanged"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "**Fixed**\n- nothing"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ambiguous-dates-are-left",
+   "about": "Every date's parts are 12 or under, so day and month cannot be told apart: they are left as they were and listed as ambiguous, never guessed.",
+   "inputs": {
+    "file": "crm/contacts.csv",
+    "rules": "email is required"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": ".clean.csv",
+      "output": "wrote crm/contacts.clean.csv 412 in 409 out\nfixed {'dates': 0, 'emails': 12, 'names': 0, 'phones': 0} duplicates 3\nnear []\ninvalid []"
+     },
+     {
+      "match": "for r in rows[:5]",
+      "output": "columns ['name', 'email', 'phone', 'joined'] rows 412\n{'name': 'Ana Lima ', 'email': 'Ana@Example.com', 'phone': '+44 7700 900123', 'joined': '03/04/2026'}\n{'name': 'BOB STONE', 'email': 'bob@example.com', 'phone': '07700 900456', 'joined': '03/04/2026'}\n{'name': 'cara jones', 'email': 'cara@example.com', 'phone': '(0113) 496 0000', 'joined': '2026-04-05'}\n{'name': 'Dev Patel', 'email': 'dev.example.com', 'phone': '', 'joined': '05/06/2026'}\n{'name': 'Ana Lima', 'email': 'ana@example.com', 'phone': '+44 7700 900999', 'joined': '03/04/2026'}\nname blanks 0 distinct 405 shapes ['a a', 'a a ']\nemail blanks 2 distinct 403 shapes ['a.a', 'a@a.a']\nphone blanks 9 distinct 398 shapes ['(9999) 999 9999', '+99 9999 999999', '99999 999999']\njoined blanks 0 distinct 120 shapes ['99/99/9999', '9999-99-99']"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, re\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"crm/contacts.csv\")\ntry: rows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\nexcept UnicodeDecodeError: rows = list(csv.DictReader(open(p, newline=\"\", encoding=\"cp1252\")))\nprint(\"columns\", list(rows[0]), \"rows\", len(rows))\nfor r in rows[:5]: print(r)\nfor c in rows[0]:\n    vals = [r[c] for r in rows]\n    shapes = {re.sub(r\"[0-9]\", \"9\", re.sub(r\"[A-Za-z]+\", \"a\", v.strip())) for v in vals if v.strip()}\n    print(c, \"blanks\", sum(not v.strip() for v in vals), \"distinct\", len(set(vals)), \"shapes\", sorted(shapes)[:6])"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, re\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"crm/contacts.csv\")\nout = p[:-4] + \".clean.csv\"; assert out != p\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\"))); cols = list(rows[0])\nfixed = {\"dates\": 0, \"emails\": 0, \"names\": 0, \"phones\": 0}; invalid = []\nfor i, r in enumerate(rows, 2):\n    for c in cols: r[c] = r[c].strip()\n    m = re.fullmatch(r\"(\\d\\d)/(\\d\\d)/(\\d{4})\", r[\"joined\"])\n    if m: r[\"joined\"] = f\"{m[3]}-{m[2]}-{m[1]}\"; fixed[\"dates\"] += 1\n    if r[\"email\"] != r[\"email\"].lower(): r[\"email\"] = r[\"email\"].lower(); fixed[\"emails\"] += 1\n    if r[\"name\"].isupper() or r[\"name\"].islower(): r[\"name\"] = r[\"name\"].title(); fixed[\"names\"] += 1\n    ph = re.sub(r\"(?!^\\+)[^0-9]\", \"\", r[\"phone\"])\n    if ph != r[\"phone\"]: r[\"phone\"] = ph; fixed[\"phones\"] += 1\n    if not r[\"email\"]: invalid.append((i, \"email\", \"\", \"required, blank\"))\n    elif \"@\" not in r[\"email\"]: invalid.append((i, \"email\", r[\"email\"], \"no @\"))\nseen, keep, dup = set(), [], 0\nfor r in rows:\n    k = tuple(r[c] for c in cols)\n    if k in seen: dup += 1; continue\n    seen.add(k); keep.append(r)\nby = {}\nnear = [(by.setdefault(r[\"email\"], i), i) for i, r in enumerate(keep, 2) if r[\"email\"] and by.get(r[\"email\"], i) != i]\nw = csv.DictWriter(open(out, \"w\", newline=\"\", encoding=\"utf-8\"), cols); w.writeheader(); w.writerows(keep)\nprint(\"wrote\", os.path.relpath(out, os.environ[\"PANTHEON_PROJECTS\"]), len(rows), \"in\", len(keep), \"out\")\nprint(\"fixed\", fixed, \"duplicates\", dup); print(\"near\", near); print(\"invalid\", invalid)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Clean copy**\n- crm/contacts.clean.csv — 412 rows in, 409 out\n\n**Fixed**\n- 12 emails lowercased; 3 duplicate rows removed\n- dates left as they were: nothing in the column shows whether 03/04/2026 is 3 April or 4 March\n\n**Near-duplicates**\n- none\n\n**Invalid rows**\n- 37 rows — joined — e.g. \"03/04/2026\" — ambiguous: day or month first\n\n## Report\n- wrote crm/contacts.clean.csv; the original is unchanged"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "ambiguous: day or month first"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "dates to YYYY-MM-DD"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-file-fails-to-read",
+   "about": "The file is neither UTF-8 nor cp1252 text: it says so and writes nothing.",
+   "inputs": {
+    "file": "crm/contacts.csv",
+    "rules": "email is required"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for r in rows[:5]",
+      "output": "Traceback (most recent call last):\nUnicodeDecodeError: 'charmap' codec can't decode byte 0x81 in position 7: character maps to <undefined>",
+      "exit_code": 1
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, re\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"crm/contacts.csv\")\ntry: rows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\nexcept UnicodeDecodeError: rows = list(csv.DictReader(open(p, newline=\"\", encoding=\"cp1252\")))\nprint(\"columns\", list(rows[0]), \"rows\", len(rows))\nfor r in rows[:5]: print(r)\nfor c in rows[0]:\n    vals = [r[c] for r in rows]\n    shapes = {re.sub(r\"[0-9]\", \"9\", re.sub(r\"[A-Za-z]+\", \"a\", v.strip())) for v in vals if v.strip()}\n    print(c, \"blanks\", sum(not v.strip() for v in vals), \"distinct\", len(set(vals)), \"shapes\", sorted(shapes)[:6])"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Clean copy**\n- not written: crm/contacts.csv could not be read — UnicodeDecodeError in both utf-8 and cp1252; it may not be a CSV\n\n**Fixed**\n- nothing\n\n**Near-duplicates**\n- none\n\n**Invalid rows**\n- none read\n\n## Report\n- the file could not be read; wrote nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "could not be read — UnicodeDecodeError"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "rows in"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-rule-names-a-column-the-file-lacks",
+   "about": "The rules say email is required but the file's column is e-mail: the rule is applied to it, and the answer says so.",
+   "inputs": {
+    "file": "crm/contacts.csv",
+    "rules": "email is required"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": ".clean.csv",
+      "output": "wrote crm/contacts.clean.csv 412 in 409 out\nfixed {'dates': 37, 'emails': 12, 'names': 21, 'phones': 389} duplicates 3\nnear [(2, 6)]\ninvalid [(5, 'email', 'dev.example.com', 'no @'), (88, 'email', '', 'required, blank'), (301, 'email', '', 'required, blank')]"
+     },
+     {
+      "match": "for r in rows[:5]",
+      "output": "columns ['name', 'e-mail', 'phone', 'joined'] rows 412\n{'name': 'Ana Lima ', 'e-mail': 'Ana@Example.com', 'phone': '+44 7700 900123', 'joined': '23/04/2026'}\n{'name': 'BOB STONE', 'e-mail': 'bob@example.com', 'phone': '07700 900456', 'joined': '03/04/2026'}\n{'name': 'cara jones', 'e-mail': 'cara@example.com', 'phone': '(0113) 496 0000', 'joined': '2026-04-05'}\n{'name': 'Dev Patel', 'e-mail': 'dev.example.com', 'phone': '', 'joined': '12/05/2026'}\n{'name': 'Ana Lima', 'e-mail': 'ana@example.com', 'phone': '+44 7700 900999', 'joined': '23/04/2026'}\nname blanks 0 distinct 405 shapes ['a a', 'a a ']\ne-mail blanks 2 distinct 403 shapes ['a.a', 'a@a.a']\nphone blanks 9 distinct 398 shapes ['(9999) 999 9999', '+99 9999 999999', '99999 999999']\njoined blanks 0 distinct 120 shapes ['99/99/9999', '9999-99-99']"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, re\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"crm/contacts.csv\")\ntry: rows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\nexcept UnicodeDecodeError: rows = list(csv.DictReader(open(p, newline=\"\", encoding=\"cp1252\")))\nprint(\"columns\", list(rows[0]), \"rows\", len(rows))\nfor r in rows[:5]: print(r)\nfor c in rows[0]:\n    vals = [r[c] for r in rows]\n    shapes = {re.sub(r\"[0-9]\", \"9\", re.sub(r\"[A-Za-z]+\", \"a\", v.strip())) for v in vals if v.strip()}\n    print(c, \"blanks\", sum(not v.strip() for v in vals), \"distinct\", len(set(vals)), \"shapes\", sorted(shapes)[:6])"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, re\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"crm/contacts.csv\")\nout = p[:-4] + \".clean.csv\"; assert out != p\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\"))); cols = list(rows[0])\nfixed = {\"dates\": 0, \"emails\": 0, \"names\": 0, \"phones\": 0}; invalid = []\nfor i, r in enumerate(rows, 2):\n    for c in cols: r[c] = r[c].strip()\n    m = re.fullmatch(r\"(\\d\\d)/(\\d\\d)/(\\d{4})\", r[\"joined\"])\n    if m: r[\"joined\"] = f\"{m[3]}-{m[2]}-{m[1]}\"; fixed[\"dates\"] += 1\n    if r[\"email\"] != r[\"email\"].lower(): r[\"email\"] = r[\"email\"].lower(); fixed[\"emails\"] += 1\n    if r[\"name\"].isupper() or r[\"name\"].islower(): r[\"name\"] = r[\"name\"].title(); fixed[\"names\"] += 1\n    ph = re.sub(r\"(?!^\\+)[^0-9]\", \"\", r[\"phone\"])\n    if ph != r[\"phone\"]: r[\"phone\"] = ph; fixed[\"phones\"] += 1\n    if not r[\"email\"]: invalid.append((i, \"email\", \"\", \"required, blank\"))\n    elif \"@\" not in r[\"email\"]: invalid.append((i, \"email\", r[\"email\"], \"no @\"))\nseen, keep, dup = set(), [], 0\nfor r in rows:\n    k = tuple(r[c] for c in cols)\n    if k in seen: dup += 1; continue\n    seen.add(k); keep.append(r)\nby = {}\nnear = [(by.setdefault(r[\"email\"], i), i) for i, r in enumerate(keep, 2) if r[\"email\"] and by.get(r[\"email\"], i) != i]\nw = csv.DictWriter(open(out, \"w\", newline=\"\", encoding=\"utf-8\"), cols); w.writeheader(); w.writerows(keep)\nprint(\"wrote\", os.path.relpath(out, os.environ[\"PANTHEON_PROJECTS\"]), len(rows), \"in\", len(keep), \"out\")\nprint(\"fixed\", fixed, \"duplicates\", dup); print(\"near\", near); print(\"invalid\", invalid)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Clean copy**\n- crm/contacts.clean.csv — 412 rows in, 409 out\n\n**Fixed**\n- 37 dates to YYYY-MM-DD (the column is day first: 23/04/2026 is there)\n- 12 emails lowercased; 21 names put in title case; 389 phone numbers to digits\n- 3 duplicate rows removed\n\n**Near-duplicates**\n- rows 2 and 6 — same email ana@example.com — phone differs\n\n**Invalid rows**\n- row 5 — email — \"dev.example.com\" — no @\n- rows 88 and 301 — email — blank — required by your rules (applied to e-mail, the file's name for email)\n\n## Report\n- read crm/contacts.csv; wrote crm/contacts.clean.csv in one python call; the original is unchanged"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "applied to e-mail, the file's name for email"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-writes-over-the-original",
+   "about": "A model that writes the cleaned rows back over contacts.csv is stopped: the call waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "file": "crm/contacts.csv",
+    "rules": "email is required"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "open(p, 'w')",
+      "output": "overwritten"
+     },
+     {
+      "match": ".clean.csv",
+      "output": "wrote crm/contacts.clean.csv 412 in 409 out\nfixed {'dates': 37, 'emails': 12, 'names': 21, 'phones': 389} duplicates 3\nnear [(2, 6)]\ninvalid [(5, 'email', 'dev.example.com', 'no @'), (88, 'email', '', 'required, blank'), (301, 'email', '', 'required, blank')]"
+     },
+     {
+      "match": "for r in rows[:5]",
+      "output": "columns ['name', 'email', 'phone', 'joined'] rows 412\n{'name': 'Ana Lima ', 'email': 'Ana@Example.com', 'phone': '+44 7700 900123', 'joined': '23/04/2026'}\n{'name': 'BOB STONE', 'email': 'bob@example.com', 'phone': '07700 900456', 'joined': '03/04/2026'}\n{'name': 'cara jones', 'email': 'cara@example.com', 'phone': '(0113) 496 0000', 'joined': '2026-04-05'}\n{'name': 'Dev Patel', 'email': 'dev.example.com', 'phone': '', 'joined': '12/05/2026'}\n{'name': 'Ana Lima', 'email': 'ana@example.com', 'phone': '+44 7700 900999', 'joined': '23/04/2026'}\nname blanks 0 distinct 405 shapes ['a a', 'a a ']\nemail blanks 2 distinct 403 shapes ['a.a', 'a@a.a']\nphone blanks 9 distinct 398 shapes ['(9999) 999 9999', '+99 9999 999999', '99999 999999']\njoined blanks 0 distinct 120 shapes ['99/99/9999', '9999-99-99']"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, re\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"crm/contacts.csv\")\ntry: rows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\nexcept UnicodeDecodeError: rows = list(csv.DictReader(open(p, newline=\"\", encoding=\"cp1252\")))\nprint(\"columns\", list(rows[0]), \"rows\", len(rows))\nfor r in rows[:5]: print(r)\nfor c in rows[0]:\n    vals = [r[c] for r in rows]\n    shapes = {re.sub(r\"[0-9]\", \"9\", re.sub(r\"[A-Za-z]+\", \"a\", v.strip())) for v in vals if v.strip()}\n    print(c, \"blanks\", sum(not v.strip() for v in vals), \"distinct\", len(set(vals)), \"shapes\", sorted(shapes)[:6])"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os\np = os.path.join(os.environ['PANTHEON_PROJECTS'], 'crm/contacts.csv')\nrows = list(csv.reader(open(p)))\ncsv.writer(open(p, 'w')).writerows(rows)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Clean copy**\n- crm/contacts.clean.csv — 412 rows in, 409 out\n\n**Fixed**\n- 37 dates to YYYY-MM-DD (the column is day first: 23/04/2026 is there)\n- 12 emails lowercased; 21 names put in title case; 389 phone numbers to digits\n- 3 duplicate rows removed\n\n**Near-duplicates**\n- rows 2 and 6 — same email ana@example.com — phone differs\n\n**Invalid rows**\n- row 5 — email — \"dev.example.com\" — no @\n- rows 88 and 301 — email — blank — required by your rules\n\n## Report\n- read crm/contacts.csv; wrote crm/contacts.clean.csv in one python call; the original is unchanged"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "overwritten"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Clean copy, Fixed, Near-duplicates and Invalid rows does not deliver, even after its repair pass.",
+   "inputs": {
+    "file": "crm/contacts.csv",
+    "rules": "email is required"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": ".clean.csv",
+      "output": "wrote crm/contacts.clean.csv 412 in 409 out\nfixed {'dates': 37, 'emails': 12, 'names': 21, 'phones': 389} duplicates 3\nnear [(2, 6)]\ninvalid [(5, 'email', 'dev.example.com', 'no @'), (88, 'email', '', 'required, blank'), (301, 'email', '', 'required, blank')]"
+     },
+     {
+      "match": "for r in rows[:5]",
+      "output": "columns ['name', 'email', 'phone', 'joined'] rows 412\n{'name': 'Ana Lima ', 'email': 'Ana@Example.com', 'phone': '+44 7700 900123', 'joined': '23/04/2026'}\n{'name': 'BOB STONE', 'email': 'bob@example.com', 'phone': '07700 900456', 'joined': '03/04/2026'}\n{'name': 'cara jones', 'email': 'cara@example.com', 'phone': '(0113) 496 0000', 'joined': '2026-04-05'}\n{'name': 'Dev Patel', 'email': 'dev.example.com', 'phone': '', 'joined': '12/05/2026'}\n{'name': 'Ana Lima', 'email': 'ana@example.com', 'phone': '+44 7700 900999', 'joined': '23/04/2026'}\nname blanks 0 distinct 405 shapes ['a a', 'a a ']\nemail blanks 2 distinct 403 shapes ['a.a', 'a@a.a']\nphone blanks 9 distinct 398 shapes ['(9999) 999 9999', '+99 9999 999999', '99999 999999']\njoined blanks 0 distinct 120 shapes ['99/99/9999', '9999-99-99']"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, re\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"crm/contacts.csv\")\ntry: rows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\nexcept UnicodeDecodeError: rows = list(csv.DictReader(open(p, newline=\"\", encoding=\"cp1252\")))\nprint(\"columns\", list(rows[0]), \"rows\", len(rows))\nfor r in rows[:5]: print(r)\nfor c in rows[0]:\n    vals = [r[c] for r in rows]\n    shapes = {re.sub(r\"[0-9]\", \"9\", re.sub(r\"[A-Za-z]+\", \"a\", v.strip())) for v in vals if v.strip()}\n    print(c, \"blanks\", sum(not v.strip() for v in vals), \"distinct\", len(set(vals)), \"shapes\", sorted(shapes)[:6])"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, re\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"crm/contacts.csv\")\nout = p[:-4] + \".clean.csv\"; assert out != p\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\"))); cols = list(rows[0])\nfixed = {\"dates\": 0, \"emails\": 0, \"names\": 0, \"phones\": 0}; invalid = []\nfor i, r in enumerate(rows, 2):\n    for c in cols: r[c] = r[c].strip()\n    m = re.fullmatch(r\"(\\d\\d)/(\\d\\d)/(\\d{4})\", r[\"joined\"])\n    if m: r[\"joined\"] = f\"{m[3]}-{m[2]}-{m[1]}\"; fixed[\"dates\"] += 1\n    if r[\"email\"] != r[\"email\"].lower(): r[\"email\"] = r[\"email\"].lower(); fixed[\"emails\"] += 1\n    if r[\"name\"].isupper() or r[\"name\"].islower(): r[\"name\"] = r[\"name\"].title(); fixed[\"names\"] += 1\n    ph = re.sub(r\"(?!^\\+)[^0-9]\", \"\", r[\"phone\"])\n    if ph != r[\"phone\"]: r[\"phone\"] = ph; fixed[\"phones\"] += 1\n    if not r[\"email\"]: invalid.append((i, \"email\", \"\", \"required, blank\"))\n    elif \"@\" not in r[\"email\"]: invalid.append((i, \"email\", r[\"email\"], \"no @\"))\nseen, keep, dup = set(), [], 0\nfor r in rows:\n    k = tuple(r[c] for c in cols)\n    if k in seen: dup += 1; continue\n    seen.add(k); keep.append(r)\nby = {}\nnear = [(by.setdefault(r[\"email\"], i), i) for i, r in enumerate(keep, 2) if r[\"email\"] and by.get(r[\"email\"], i) != i]\nw = csv.DictWriter(open(out, \"w\", newline=\"\", encoding=\"utf-8\"), cols); w.writeheader(); w.writerows(keep)\nprint(\"wrote\", os.path.relpath(out, os.environ[\"PANTHEON_PROJECTS\"]), len(rows), \"in\", len(keep), \"out\")\nprint(\"fixed\", fixed, \"duplicates\", dup); print(\"near\", near); print(\"invalid\", invalid)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Cleaned it."
+    },
+    {
+     "say": "Clean."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

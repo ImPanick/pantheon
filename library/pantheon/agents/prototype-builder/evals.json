@@ -84,7 +84,7 @@
   },
   {
    "id": "a-page-already-there-is-kept",
-   "about": "plant-swap/index.html already exists: it is read, nothing is written, and the person is told.",
+   "about": "plant-swap/index.html already exists: it is read, nothing is written, and the person is told — and the run, which wrote no page, is not recorded as having delivered one.",
    "inputs": {
     "idea": "A plant swap for my street: see the plants on offer, ask for one, and see your requests.",
     "folder": "plant-swap"
@@ -120,6 +120,9 @@
     },
     {
      "say": "**Screens**\n- nothing new: plant-swap/index.html is already there — pick another folder\n\n**Open it**\n- the existing page: `python3 -m http.server 8081` in plant-swap/\n\n**Checked**\n- nothing run\n\n## Report\n- read the existing page; wrote nothing"
+    },
+    {
+     "say": "**Screens**\n- nothing new: plant-swap/index.html is already there — pick another folder\n\n**Open it**\n- the existing page: `python3 -m http.server 8081` in plant-swap/\n\n**Checked**\n- nothing run\n\n## Report\n- read the existing page; wrote nothing"
     }
    ],
    "checks": [
@@ -133,6 +136,9 @@
        "the person's own page"
       ]
      }
+    },
+    {
+     "status": "error"
     }
    ]
   },

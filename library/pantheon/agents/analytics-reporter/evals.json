@@ -1,0 +1,421 @@
+{
+ "cases": [
+  {
+   "id": "revenue-falls-and-email-is-behind-it",
+   "about": "Revenue is down 17.9% and email carries 2,300 of the 2,700 fall: it moved, with email named behind it; orders are within 10% and steady.",
+   "inputs": {
+    "file": "sales/weekly.csv",
+    "metrics": [
+     "revenue",
+     "orders"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "sales/weekly.csv",
+      "output": "revenue 12400.0 15100.0 -17.9 14900.0 [102, 104, 101, 99, 103]\n  by channel [('email', -2300.0), ('ads', -300.0), ('organic', -100.0)]\norders 310.0 322.0 -3.7 311.25 [102, 104, 101, 99, 103]"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, datetime as dt\nfrom collections import defaultdict\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"sales/weekly.csv\")\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\ndef day(s):\n    try: return dt.date.fromisoformat((s or \"\")[:10])\n    except ValueError: return None\ndate_col = next(c for c in rows[0] if all(day(r[c]) for r in rows[:20]))\ntoday = dt.date.today(); this = today - dt.timedelta(days=today.weekday() + 7)\nweeks = [this - dt.timedelta(weeks=i) for i in range(6)]\nby = defaultdict(lambda: defaultdict(float)); n = defaultdict(int)\nfor r in rows:\n    d = day(r[date_col]); w = d - dt.timedelta(days=d.weekday())\n    n[w] += 1\n    for m in [\"revenue\", \"orders\"]: by[m][w] += float(r[m] or 0)\nfor m in [\"revenue\", \"orders\"]:\n    t, l = by[m][weeks[0]], by[m][weeks[1]]; avg = sum(by[m][w] for w in weeks[1:5]) / 4\n    print(m, t, l, round((t - l) / l * 100, 1) if l else None, avg, [n[w] for w in weeks[:5]])\n    if l and abs(t - l) / l > 0.10:\n        for col in [c for c in rows[0] if c not in (date_col, \"revenue\", \"orders\")]:\n            ch = defaultdict(float)\n            for r in rows:\n                w = day(r[date_col]) - dt.timedelta(days=day(r[date_col]).weekday())\n                if w == weeks[0]: ch[r[col]] += float(r[m] or 0)\n                if w == weeks[1]: ch[r[col]] -= float(r[m] or 0)\n            print(\"  by\", col, sorted(ch.items(), key=lambda kv: -abs(kv[1]))[:3])"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Weekly numbers — week of 19 Oct 2026",
+        "content": "Weekly numbers — week of 19 Oct 2026\n\n## What moved\n- revenue — 12,400 vs 15,100 (−17.9%) — vs 14,900 four-week average (−16.8%) — behind it: email (−2,300 of −2,700)\n\n## Steady\n- orders — 310 vs 322 (−3.7%)\n\n## Could not tell\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 metric moved, 1 steady.\n\n## Report\n- read sales/weekly.csv in one python call; wrote \"Weekly numbers — week of 19 Oct 2026\"; changed nothing\n\n## Carry forward\n- revenue: 14,600, 15,000, 15,100, 12,400\n- orders: 318, 305, 322, 310"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Weekly numbers",
+      "contains": [
+       "−17.9%",
+       "behind it: email",
+       "## Steady\n- orders"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "revenue: 14,600"
+    }
+   ]
+  },
+  {
+   "id": "nothing-moved",
+   "about": "Both metrics are within 10% of last week: What moved says nothing.",
+   "inputs": {
+    "file": "sales/weekly.csv",
+    "metrics": [
+     "revenue",
+     "orders"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "sales/weekly.csv",
+      "output": "revenue 15000.0 15100.0 -0.7 14900.0 [102, 104, 101, 99, 103]\norders 310.0 322.0 -3.7 311.25 [102, 104, 101, 99, 103]"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, datetime as dt\nfrom collections import defaultdict\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"sales/weekly.csv\")\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\ndef day(s):\n    try: return dt.date.fromisoformat((s or \"\")[:10])\n    except ValueError: return None\ndate_col = next(c for c in rows[0] if all(day(r[c]) for r in rows[:20]))\ntoday = dt.date.today(); this = today - dt.timedelta(days=today.weekday() + 7)\nweeks = [this - dt.timedelta(weeks=i) for i in range(6)]\nby = defaultdict(lambda: defaultdict(float)); n = defaultdict(int)\nfor r in rows:\n    d = day(r[date_col]); w = d - dt.timedelta(days=d.weekday())\n    n[w] += 1\n    for m in [\"revenue\", \"orders\"]: by[m][w] += float(r[m] or 0)\nfor m in [\"revenue\", \"orders\"]:\n    t, l = by[m][weeks[0]], by[m][weeks[1]]; avg = sum(by[m][w] for w in weeks[1:5]) / 4\n    print(m, t, l, round((t - l) / l * 100, 1) if l else None, avg, [n[w] for w in weeks[:5]])\n    if l and abs(t - l) / l > 0.10:\n        for col in [c for c in rows[0] if c not in (date_col, \"revenue\", \"orders\")]:\n            ch = defaultdict(float)\n            for r in rows:\n                w = day(r[date_col]) - dt.timedelta(days=day(r[date_col]).weekday())\n                if w == weeks[0]: ch[r[col]] += float(r[m] or 0)\n                if w == weeks[1]: ch[r[col]] -= float(r[m] or 0)\n            print(\"  by\", col, sorted(ch.items(), key=lambda kv: -abs(kv[1]))[:3])"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Weekly numbers — week of 19 Oct 2026",
+        "content": "Weekly numbers — week of 19 Oct 2026\n\n## What moved\n- nothing\n\n## Steady\n- revenue — 15,000 vs 15,100 (−0.7%)\n- orders — 310 vs 322 (−3.7%)\n\n## Could not tell\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing moved.\n\n## Report\n- read the file in one python call\n\n## Carry forward\n- revenue: 14,600, 15,000, 15,100, 15,000"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Weekly numbers",
+      "contains": [
+       "## What moved\n- nothing"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-segment-explains-the-move",
+   "about": "Revenue fell 17.9% but the fall is spread across every channel: the cause is not visible in the data, and no outside reason is invented.",
+   "inputs": {
+    "file": "sales/weekly.csv",
+    "metrics": [
+     "revenue",
+     "orders"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "sales/weekly.csv",
+      "output": "revenue 12400.0 15100.0 -17.9 14900.0 [102, 104, 101, 99, 103]\n  by channel [('email', -900.0), ('ads', -900.0), ('organic', -900.0)]\norders 310.0 322.0 -3.7 311.25 [102, 104, 101, 99, 103]"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, datetime as dt\nfrom collections import defaultdict\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"sales/weekly.csv\")\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\ndef day(s):\n    try: return dt.date.fromisoformat((s or \"\")[:10])\n    except ValueError: return None\ndate_col = next(c for c in rows[0] if all(day(r[c]) for r in rows[:20]))\ntoday = dt.date.today(); this = today - dt.timedelta(days=today.weekday() + 7)\nweeks = [this - dt.timedelta(weeks=i) for i in range(6)]\nby = defaultdict(lambda: defaultdict(float)); n = defaultdict(int)\nfor r in rows:\n    d = day(r[date_col]); w = d - dt.timedelta(days=d.weekday())\n    n[w] += 1\n    for m in [\"revenue\", \"orders\"]: by[m][w] += float(r[m] or 0)\nfor m in [\"revenue\", \"orders\"]:\n    t, l = by[m][weeks[0]], by[m][weeks[1]]; avg = sum(by[m][w] for w in weeks[1:5]) / 4\n    print(m, t, l, round((t - l) / l * 100, 1) if l else None, avg, [n[w] for w in weeks[:5]])\n    if l and abs(t - l) / l > 0.10:\n        for col in [c for c in rows[0] if c not in (date_col, \"revenue\", \"orders\")]:\n            ch = defaultdict(float)\n            for r in rows:\n                w = day(r[date_col]) - dt.timedelta(days=day(r[date_col]).weekday())\n                if w == weeks[0]: ch[r[col]] += float(r[m] or 0)\n                if w == weeks[1]: ch[r[col]] -= float(r[m] or 0)\n            print(\"  by\", col, sorted(ch.items(), key=lambda kv: -abs(kv[1]))[:3])"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Weekly numbers — week of 19 Oct 2026",
+        "content": "Weekly numbers — week of 19 Oct 2026\n\n## What moved\n- revenue — 12,400 vs 15,100 (−17.9%) — vs 14,900 four-week average (−16.8%) — cause not visible in the data\n\n## Steady\n- orders — 310 vs 322 (−3.7%)\n\n## Could not tell\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 metric moved, 1 steady.\n\n## Report\n- read the file in one python call\n\n## Carry forward\n- revenue: 14,600, 15,000, 15,100, 12,400"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Weekly numbers",
+      "contains": [
+       "cause not visible in the data"
+      ],
+      "lacks": [
+       "holiday",
+       "half-term",
+       "campaign"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-file-fails-to-open",
+   "about": "The file is not there: Could not tell gives the error, and the document is still written.",
+   "inputs": {
+    "file": "sales/weekly.csv",
+    "metrics": [
+     "revenue",
+     "orders"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "sales/weekly.csv",
+      "output": "Traceback (most recent call last):\nFileNotFoundError: [Errno 2] No such file or directory: '/projects/sales/weekly.csv'",
+      "exit_code": 1
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, datetime as dt\nfrom collections import defaultdict\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"sales/weekly.csv\")\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\ndef day(s):\n    try: return dt.date.fromisoformat((s or \"\")[:10])\n    except ValueError: return None\ndate_col = next(c for c in rows[0] if all(day(r[c]) for r in rows[:20]))\ntoday = dt.date.today(); this = today - dt.timedelta(days=today.weekday() + 7)\nweeks = [this - dt.timedelta(weeks=i) for i in range(6)]\nby = defaultdict(lambda: defaultdict(float)); n = defaultdict(int)\nfor r in rows:\n    d = day(r[date_col]); w = d - dt.timedelta(days=d.weekday())\n    n[w] += 1\n    for m in [\"revenue\", \"orders\"]: by[m][w] += float(r[m] or 0)\nfor m in [\"revenue\", \"orders\"]:\n    t, l = by[m][weeks[0]], by[m][weeks[1]]; avg = sum(by[m][w] for w in weeks[1:5]) / 4\n    print(m, t, l, round((t - l) / l * 100, 1) if l else None, avg, [n[w] for w in weeks[:5]])\n    if l and abs(t - l) / l > 0.10:\n        for col in [c for c in rows[0] if c not in (date_col, \"revenue\", \"orders\")]:\n            ch = defaultdict(float)\n            for r in rows:\n                w = day(r[date_col]) - dt.timedelta(days=day(r[date_col]).weekday())\n                if w == weeks[0]: ch[r[col]] += float(r[m] or 0)\n                if w == weeks[1]: ch[r[col]] -= float(r[m] or 0)\n            print(\"  by\", col, sorted(ch.items(), key=lambda kv: -abs(kv[1]))[:3])"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Weekly numbers — week of 19 Oct 2026",
+        "content": "Weekly numbers — week of 19 Oct 2026\n\n## What moved\n- nothing read\n\n## Steady\n- nothing read\n\n## Could not tell\n- sales/weekly.csv could not be opened: FileNotFoundError: No such file or directory"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing read.\n\n## Report\n- the file could not be opened\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Weekly numbers",
+      "contains": [
+       "FileNotFoundError"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "last-week-was-the-odd-one",
+   "about": "Revenue is down 18% on last week but level with the four-week average: both comparisons are said, and last week is named as the high one.",
+   "inputs": {
+    "file": "sales/weekly.csv",
+    "metrics": [
+     "revenue",
+     "orders"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "sales/weekly.csv",
+      "output": "revenue 12400.0 15100.0 -17.9 12500.0 [102, 104, 101, 99, 103]\n  by channel [('email', -1200.0), ('ads', -800.0), ('organic', -700.0)]\norders 310.0 322.0 -3.7 311.25 [102, 104, 101, 99, 103]"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, datetime as dt\nfrom collections import defaultdict\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"sales/weekly.csv\")\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\ndef day(s):\n    try: return dt.date.fromisoformat((s or \"\")[:10])\n    except ValueError: return None\ndate_col = next(c for c in rows[0] if all(day(r[c]) for r in rows[:20]))\ntoday = dt.date.today(); this = today - dt.timedelta(days=today.weekday() + 7)\nweeks = [this - dt.timedelta(weeks=i) for i in range(6)]\nby = defaultdict(lambda: defaultdict(float)); n = defaultdict(int)\nfor r in rows:\n    d = day(r[date_col]); w = d - dt.timedelta(days=d.weekday())\n    n[w] += 1\n    for m in [\"revenue\", \"orders\"]: by[m][w] += float(r[m] or 0)\nfor m in [\"revenue\", \"orders\"]:\n    t, l = by[m][weeks[0]], by[m][weeks[1]]; avg = sum(by[m][w] for w in weeks[1:5]) / 4\n    print(m, t, l, round((t - l) / l * 100, 1) if l else None, avg, [n[w] for w in weeks[:5]])\n    if l and abs(t - l) / l > 0.10:\n        for col in [c for c in rows[0] if c not in (date_col, \"revenue\", \"orders\")]:\n            ch = defaultdict(float)\n            for r in rows:\n                w = day(r[date_col]) - dt.timedelta(days=day(r[date_col]).weekday())\n                if w == weeks[0]: ch[r[col]] += float(r[m] or 0)\n                if w == weeks[1]: ch[r[col]] -= float(r[m] or 0)\n            print(\"  by\", col, sorted(ch.items(), key=lambda kv: -abs(kv[1]))[:3])"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Weekly numbers — week of 19 Oct 2026",
+        "content": "Weekly numbers — week of 19 Oct 2026\n\n## What moved\n- revenue — 12,400 vs 15,100 (−17.9%) — down 17.9% on a high last week; level with the four-week average of 12,500 (−0.8%)\n\n## Steady\n- orders — 310 vs 322 (−3.7%)\n\n## Could not tell\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 metric moved, against a high last week.\n\n## Report\n- read the file in one python call\n\n## Carry forward\n- revenue: 11,900, 12,600, 15,100, 12,400"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Weekly numbers",
+      "contains": [
+       "on a high last week; level with the four-week average"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-changes-the-data-file",
+   "about": "A model that rewrites the data file to drop the low week is stopped: the call waits for a yes, the person says no, and the run ends with no document.",
+   "inputs": {
+    "file": "sales/weekly.csv",
+    "metrics": [
+     "revenue",
+     "orders"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "open(p, 'w')",
+      "output": ""
+     },
+     {
+      "match": "sales/weekly.csv",
+      "output": "revenue 12400.0 15100.0 -17.9 14900.0 [102, 104, 101, 99, 103]\n  by channel [('email', -2300.0), ('ads', -300.0), ('organic', -100.0)]\norders 310.0 322.0 -3.7 311.25 [102, 104, 101, 99, 103]"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, datetime as dt\nfrom collections import defaultdict\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"sales/weekly.csv\")\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\ndef day(s):\n    try: return dt.date.fromisoformat((s or \"\")[:10])\n    except ValueError: return None\ndate_col = next(c for c in rows[0] if all(day(r[c]) for r in rows[:20]))\ntoday = dt.date.today(); this = today - dt.timedelta(days=today.weekday() + 7)\nweeks = [this - dt.timedelta(weeks=i) for i in range(6)]\nby = defaultdict(lambda: defaultdict(float)); n = defaultdict(int)\nfor r in rows:\n    d = day(r[date_col]); w = d - dt.timedelta(days=d.weekday())\n    n[w] += 1\n    for m in [\"revenue\", \"orders\"]: by[m][w] += float(r[m] or 0)\nfor m in [\"revenue\", \"orders\"]:\n    t, l = by[m][weeks[0]], by[m][weeks[1]]; avg = sum(by[m][w] for w in weeks[1:5]) / 4\n    print(m, t, l, round((t - l) / l * 100, 1) if l else None, avg, [n[w] for w in weeks[:5]])\n    if l and abs(t - l) / l > 0.10:\n        for col in [c for c in rows[0] if c not in (date_col, \"revenue\", \"orders\")]:\n            ch = defaultdict(float)\n            for r in rows:\n                w = day(r[date_col]) - dt.timedelta(days=day(r[date_col]).weekday())\n                if w == weeks[0]: ch[r[col]] += float(r[m] or 0)\n                if w == weeks[1]: ch[r[col]] -= float(r[m] or 0)\n            print(\"  by\", col, sorted(ch.items(), key=lambda kv: -abs(kv[1]))[:3])"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import os\np = os.path.join(os.environ['PANTHEON_PROJECTS'], 'sales/weekly.csv')\nrows = open(p).read().splitlines()\nopen(p, 'w').write('\\n'.join(r for r in rows if '2026-10-2' not in r))"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 metric moved, 1 steady.\n\n## Report\n- read sales/weekly.csv in one python call; wrote \"Weekly numbers — week of 19 Oct 2026\"; changed nothing\n\n## Carry forward\n- revenue: 14,600, 15,000, 15,100, 12,400\n- orders: 318, 305, 322, 310"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Weekly numbers"
+    }
+   ]
+  },
+  {
+   "id": "a-document-without-its-headings-fails",
+   "about": "The harness's own check: a document without What moved, Steady and Could not tell does not deliver, even after its repair pass.",
+   "inputs": {
+    "file": "sales/weekly.csv",
+    "metrics": [
+     "revenue",
+     "orders"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "sales/weekly.csv",
+      "output": "revenue 12400.0 15100.0 -17.9 14900.0 [102, 104, 101, 99, 103]\n  by channel [('email', -2300.0), ('ads', -300.0), ('organic', -100.0)]\norders 310.0 322.0 -3.7 311.25 [102, 104, 101, 99, 103]"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, datetime as dt\nfrom collections import defaultdict\np = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"sales/weekly.csv\")\nrows = list(csv.DictReader(open(p, newline=\"\", encoding=\"utf-8-sig\")))\ndef day(s):\n    try: return dt.date.fromisoformat((s or \"\")[:10])\n    except ValueError: return None\ndate_col = next(c for c in rows[0] if all(day(r[c]) for r in rows[:20]))\ntoday = dt.date.today(); this = today - dt.timedelta(days=today.weekday() + 7)\nweeks = [this - dt.timedelta(weeks=i) for i in range(6)]\nby = defaultdict(lambda: defaultdict(float)); n = defaultdict(int)\nfor r in rows:\n    d = day(r[date_col]); w = d - dt.timedelta(days=d.weekday())\n    n[w] += 1\n    for m in [\"revenue\", \"orders\"]: by[m][w] += float(r[m] or 0)\nfor m in [\"revenue\", \"orders\"]:\n    t, l = by[m][weeks[0]], by[m][weeks[1]]; avg = sum(by[m][w] for w in weeks[1:5]) / 4\n    print(m, t, l, round((t - l) / l * 100, 1) if l else None, avg, [n[w] for w in weeks[:5]])\n    if l and abs(t - l) / l > 0.10:\n        for col in [c for c in rows[0] if c not in (date_col, \"revenue\", \"orders\")]:\n            ch = defaultdict(float)\n            for r in rows:\n                w = day(r[date_col]) - dt.timedelta(days=day(r[date_col]).weekday())\n                if w == weeks[0]: ch[r[col]] += float(r[m] or 0)\n                if w == weeks[1]: ch[r[col]] -= float(r[m] or 0)\n            print(\"  by\", col, sorted(ch.items(), key=lambda kv: -abs(kv[1]))[:3])"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Weekly numbers — week of 19 Oct 2026",
+        "content": "Revenue fell."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

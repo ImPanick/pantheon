@@ -867,6 +867,11 @@ def _seed(db, owner: str, world: Dict[str, Any], data_dir: str) -> Dict[str, str
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 with open(path, "w", encoding="utf-8") as fh:
                     fh.write(text)
+                # `P24-27`. A world's files were there before the run, so they
+                # are dated a day back (in the order they were given): a file
+                # the run promises counts only when the run wrote it.
+                st = os.stat(path)
+                os.utime(path, (st.st_atime - 86400, st.st_mtime - 86400))
     return seeded
 
 

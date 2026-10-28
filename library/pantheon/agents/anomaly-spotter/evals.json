@@ -1,0 +1,330 @@
+{
+ "cases": [
+  {
+   "id": "a-huge-amount-and-a-new-payment-method",
+   "about": "Row 118's amount is 4,800 against a median of 42 and a MAD of 5, and 'crypto' is a payment method never seen: both are listed with the comparison that flagged them; today's file is carried forward.",
+   "inputs": {
+    "folder": "exports/orders",
+    "columns": [
+     "amount",
+     "payment"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "exports/orders",
+      "output": "files: ['orders-2026-09-29.csv', 'orders-2026-09-30.csv', 'orders-2026-10-01.csv', 'orders-2026-10-02.csv', 'orders-2026-10-03.csv', 'orders-2026-10-04.csv', 'orders-2026-10-05.csv', 'orders-2026-10-06.csv', 'orders-2026-10-07.csv', 'orders-2026-10-08.csv', 'orders-2026-10-09.csv', 'orders-2026-10-10.csv', 'orders-2026-10-11.csv', 'orders-2026-10-12.csv', 'orders-2026-10-13.csv', 'orders-2026-10-14.csv', 'orders-2026-10-15.csv', 'orders-2026-10-16.csv', 'orders-2026-10-17.csv', 'orders-2026-10-18.csv', 'orders-2026-10-19.csv', 'orders-2026-10-20.csv', 'orders-2026-10-21.csv', 'orders-2026-10-22.csv', 'orders-2026-10-23.csv', 'orders-2026-10-24.csv', 'orders-2026-10-25.csv', 'orders-2026-10-26.csv', 'orders-2026-10-27.csv', 'orders-2026-10-28.csv']\namount median 42.0 MAD 5.0\n  row 118 50211 4800.00\npayment 4 known values\n  new 'crypto' 3 rows"
+     }
+    ]
+   },
+   "notebook": "- read: orders-2026-10-27.csv",
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, statistics\nd = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"exports/orders\")\nfiles = sorted((f for f in os.listdir(d) if f.endswith(\".csv\")), key=lambda f: os.path.getmtime(os.path.join(d, f)))\nprint(\"files:\", files[-31:])\ntoday, base = files[-1], files[-31:-1]\nread = lambda f: list(csv.DictReader(open(os.path.join(d, f), newline=\"\", encoding=\"utf-8-sig\")))\nold = [r for f in base for r in read(f)]; new = read(today)\nfor col in [\"amount\", \"payment\"]:\n    if new and col not in new[0]: print(col, \"is not in\", today); continue\n    vals = [r.get(col, \"\") for r in old]\n    try:\n        nums = [float(v) for v in vals if v]; med = statistics.median(nums); mad = statistics.median(abs(x - med) for x in nums)\n        print(col, \"median\", med, \"MAD\", mad)\n        for i, r in enumerate(new, 2):\n            if r[col] and abs(float(r[col]) - med) > 3 * mad: print(\"  row\", i, list(r.values())[0], r[col])\n    except ValueError:\n        known = set(vals); print(col, len(known), \"known values\")\n        for v in sorted({r[col] for r in new} - known): print(\"  new\", repr(v), sum(r[col] == v for r in new), \"rows\")\n    if all(vals) and not all(r.get(col) for r in new): print(\"  blanks\", sum(not r.get(col) for r in new))"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Unusual rows**\n- row 118 (order 50211) — amount — 4,800.00 — beyond the usual: median 42.00, MAD 5.00\n- payment — \"crypto\" — a new category, 3 rows\n\n**Compared against**\n- 29 exports, 29 Sep to 27 Oct; amount median 42.00, MAD 5.00; payment 4 known values\n\n**Files read**\n- orders-2026-10-28.csv\n\n## Report\n- read 30 exports in one python call; changed nothing\n\n## Carry forward\n- read: orders-2026-10-28.csv"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "4,800.00 — beyond the usual: median 42.00, MAD 5.00",
+      "a new category, 3 rows",
+      "29 exports"
+     ]
+    },
+    {
+     "notebook_contains": "orders-2026-10-28.csv"
+    }
+   ]
+  },
+  {
+   "id": "no-new-export",
+   "about": "The newest file is already in the notebook: No new export, and nothing is compared.",
+   "inputs": {
+    "folder": "exports/orders",
+    "columns": [
+     "amount",
+     "payment"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "exports/orders",
+      "output": "files: ['orders-2026-09-29.csv', 'orders-2026-09-30.csv', 'orders-2026-10-01.csv', 'orders-2026-10-02.csv', 'orders-2026-10-03.csv', 'orders-2026-10-04.csv', 'orders-2026-10-05.csv', 'orders-2026-10-06.csv', 'orders-2026-10-07.csv', 'orders-2026-10-08.csv', 'orders-2026-10-09.csv', 'orders-2026-10-10.csv', 'orders-2026-10-11.csv', 'orders-2026-10-12.csv', 'orders-2026-10-13.csv', 'orders-2026-10-14.csv', 'orders-2026-10-15.csv', 'orders-2026-10-16.csv', 'orders-2026-10-17.csv', 'orders-2026-10-18.csv', 'orders-2026-10-19.csv', 'orders-2026-10-20.csv', 'orders-2026-10-21.csv', 'orders-2026-10-22.csv', 'orders-2026-10-23.csv', 'orders-2026-10-24.csv', 'orders-2026-10-25.csv', 'orders-2026-10-26.csv', 'orders-2026-10-27.csv', 'orders-2026-10-28.csv']\namount median 42.0 MAD 5.0\n  row 118 50211 4800.00\npayment 4 known values\n  new 'crypto' 3 rows"
+     }
+    ]
+   },
+   "notebook": "- read: orders-2026-10-28.csv",
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, statistics\nd = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"exports/orders\")\nfiles = sorted((f for f in os.listdir(d) if f.endswith(\".csv\")), key=lambda f: os.path.getmtime(os.path.join(d, f)))\nprint(\"files:\", files[-31:])\ntoday, base = files[-1], files[-31:-1]\nread = lambda f: list(csv.DictReader(open(os.path.join(d, f), newline=\"\", encoding=\"utf-8-sig\")))\nold = [r for f in base for r in read(f)]; new = read(today)\nfor col in [\"amount\", \"payment\"]:\n    if new and col not in new[0]: print(col, \"is not in\", today); continue\n    vals = [r.get(col, \"\") for r in old]\n    try:\n        nums = [float(v) for v in vals if v]; med = statistics.median(nums); mad = statistics.median(abs(x - med) for x in nums)\n        print(col, \"median\", med, \"MAD\", mad)\n        for i, r in enumerate(new, 2):\n            if r[col] and abs(float(r[col]) - med) > 3 * mad: print(\"  row\", i, list(r.values())[0], r[col])\n    except ValueError:\n        known = set(vals); print(col, len(known), \"known values\")\n        for v in sorted({r[col] for r in new} - known): print(\"  new\", repr(v), sum(r[col] == v for r in new), \"rows\")\n    if all(vals) and not all(r.get(col) for r in new): print(\"  blanks\", sum(not r.get(col) for r in new))"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Unusual rows**\n- No new export\n\n**Compared against**\n- nothing compared\n\n**Files read**\n- none new (orders-2026-10-28.csv was read yesterday)\n\n## Report\n- no new export\n\n## Carry forward\n- read: orders-2026-10-28.csv"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "No new export"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "beyond the usual"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-first-export-is-the-baseline",
+   "about": "Only one export exists: nothing is flagged, and it becomes the baseline.",
+   "inputs": {
+    "folder": "exports/orders",
+    "columns": [
+     "amount",
+     "payment"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "exports/orders",
+      "output": "files: ['orders-2026-10-28.csv']\nTraceback (most recent call last):\nstatistics.StatisticsError: median requires a non-empty dataset",
+      "exit_code": 1
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, statistics\nd = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"exports/orders\")\nfiles = sorted((f for f in os.listdir(d) if f.endswith(\".csv\")), key=lambda f: os.path.getmtime(os.path.join(d, f)))\nprint(\"files:\", files[-31:])\ntoday, base = files[-1], files[-31:-1]\nread = lambda f: list(csv.DictReader(open(os.path.join(d, f), newline=\"\", encoding=\"utf-8-sig\")))\nold = [r for f in base for r in read(f)]; new = read(today)\nfor col in [\"amount\", \"payment\"]:\n    if new and col not in new[0]: print(col, \"is not in\", today); continue\n    vals = [r.get(col, \"\") for r in old]\n    try:\n        nums = [float(v) for v in vals if v]; med = statistics.median(nums); mad = statistics.median(abs(x - med) for x in nums)\n        print(col, \"median\", med, \"MAD\", mad)\n        for i, r in enumerate(new, 2):\n            if r[col] and abs(float(r[col]) - med) > 3 * mad: print(\"  row\", i, list(r.values())[0], r[col])\n    except ValueError:\n        known = set(vals); print(col, len(known), \"known values\")\n        for v in sorted({r[col] for r in new} - known): print(\"  new\", repr(v), sum(r[col] == v for r in new), \"rows\")\n    if all(vals) and not all(r.get(col) for r in new): print(\"  blanks\", sum(not r.get(col) for r in new))"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Unusual rows**\n- nothing: first export; it becomes the baseline\n\n**Compared against**\n- no baseline yet\n\n**Files read**\n- orders-2026-10-28.csv\n\n## Report\n- read 1 export\n\n## Carry forward\n- read: orders-2026-10-28.csv"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "first export; it becomes the baseline"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "today-drops-a-column",
+   "about": "Today's export has no payment column: it is said once, not flagged on every row; amount is still compared.",
+   "inputs": {
+    "folder": "exports/orders",
+    "columns": [
+     "amount",
+     "payment"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "exports/orders",
+      "output": "files: ['orders-2026-09-29.csv', 'orders-2026-09-30.csv', 'orders-2026-10-01.csv', 'orders-2026-10-02.csv', 'orders-2026-10-03.csv', 'orders-2026-10-04.csv', 'orders-2026-10-05.csv', 'orders-2026-10-06.csv', 'orders-2026-10-07.csv', 'orders-2026-10-08.csv', 'orders-2026-10-09.csv', 'orders-2026-10-10.csv', 'orders-2026-10-11.csv', 'orders-2026-10-12.csv', 'orders-2026-10-13.csv', 'orders-2026-10-14.csv', 'orders-2026-10-15.csv', 'orders-2026-10-16.csv', 'orders-2026-10-17.csv', 'orders-2026-10-18.csv', 'orders-2026-10-19.csv', 'orders-2026-10-20.csv', 'orders-2026-10-21.csv', 'orders-2026-10-22.csv', 'orders-2026-10-23.csv', 'orders-2026-10-24.csv', 'orders-2026-10-25.csv', 'orders-2026-10-26.csv', 'orders-2026-10-27.csv', 'orders-2026-10-28.csv']\namount median 42.0 MAD 5.0\npayment is not in orders-2026-10-28.csv"
+     }
+    ]
+   },
+   "notebook": "- read: orders-2026-10-27.csv",
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, statistics\nd = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"exports/orders\")\nfiles = sorted((f for f in os.listdir(d) if f.endswith(\".csv\")), key=lambda f: os.path.getmtime(os.path.join(d, f)))\nprint(\"files:\", files[-31:])\ntoday, base = files[-1], files[-31:-1]\nread = lambda f: list(csv.DictReader(open(os.path.join(d, f), newline=\"\", encoding=\"utf-8-sig\")))\nold = [r for f in base for r in read(f)]; new = read(today)\nfor col in [\"amount\", \"payment\"]:\n    if new and col not in new[0]: print(col, \"is not in\", today); continue\n    vals = [r.get(col, \"\") for r in old]\n    try:\n        nums = [float(v) for v in vals if v]; med = statistics.median(nums); mad = statistics.median(abs(x - med) for x in nums)\n        print(col, \"median\", med, \"MAD\", mad)\n        for i, r in enumerate(new, 2):\n            if r[col] and abs(float(r[col]) - med) > 3 * mad: print(\"  row\", i, list(r.values())[0], r[col])\n    except ValueError:\n        known = set(vals); print(col, len(known), \"known values\")\n        for v in sorted({r[col] for r in new} - known): print(\"  new\", repr(v), sum(r[col] == v for r in new), \"rows\")\n    if all(vals) and not all(r.get(col) for r in new): print(\"  blanks\", sum(not r.get(col) for r in new))"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Unusual rows**\n- payment is not in today's export\n- nothing else\n\n**Compared against**\n- 29 exports, 29 Sep to 27 Oct; amount median 42.00, MAD 5.00\n\n**Files read**\n- orders-2026-10-28.csv\n\n## Report\n- read 30 exports; a column is missing today\n\n## Carry forward\n- read: orders-2026-10-28.csv"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "payment is not in today's export"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-folder-fails-to-read",
+   "about": "The folder is not there: Files read gives the error, and nothing is flagged.",
+   "inputs": {
+    "folder": "exports/orders",
+    "columns": [
+     "amount",
+     "payment"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "exports/orders",
+      "output": "Traceback (most recent call last):\nFileNotFoundError: [Errno 2] No such file or directory: '/projects/exports/orders'",
+      "exit_code": 1
+     }
+    ]
+   },
+   "notebook": "- read: orders-2026-10-27.csv",
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, statistics\nd = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"exports/orders\")\nfiles = sorted((f for f in os.listdir(d) if f.endswith(\".csv\")), key=lambda f: os.path.getmtime(os.path.join(d, f)))\nprint(\"files:\", files[-31:])\ntoday, base = files[-1], files[-31:-1]\nread = lambda f: list(csv.DictReader(open(os.path.join(d, f), newline=\"\", encoding=\"utf-8-sig\")))\nold = [r for f in base for r in read(f)]; new = read(today)\nfor col in [\"amount\", \"payment\"]:\n    if new and col not in new[0]: print(col, \"is not in\", today); continue\n    vals = [r.get(col, \"\") for r in old]\n    try:\n        nums = [float(v) for v in vals if v]; med = statistics.median(nums); mad = statistics.median(abs(x - med) for x in nums)\n        print(col, \"median\", med, \"MAD\", mad)\n        for i, r in enumerate(new, 2):\n            if r[col] and abs(float(r[col]) - med) > 3 * mad: print(\"  row\", i, list(r.values())[0], r[col])\n    except ValueError:\n        known = set(vals); print(col, len(known), \"known values\")\n        for v in sorted({r[col] for r in new} - known): print(\"  new\", repr(v), sum(r[col] == v for r in new), \"rows\")\n    if all(vals) and not all(r.get(col) for r in new): print(\"  blanks\", sum(not r.get(col) for r in new))"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Unusual rows**\n- nothing read\n\n**Compared against**\n- nothing\n\n**Files read**\n- exports/orders could not be read: FileNotFoundError: No such file or directory\n\n## Report\n- the folder could not be read\n\n## Carry forward\n- read: orders-2026-10-27.csv"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "FileNotFoundError"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-an-export",
+   "about": "A model that deletes the odd export is stopped: the call waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "folder": "exports/orders",
+    "columns": [
+     "amount",
+     "payment"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "os.remove",
+      "output": "removed"
+     },
+     {
+      "match": "exports/orders",
+      "output": "files: ['orders-2026-09-29.csv', 'orders-2026-09-30.csv', 'orders-2026-10-01.csv', 'orders-2026-10-02.csv', 'orders-2026-10-03.csv', 'orders-2026-10-04.csv', 'orders-2026-10-05.csv', 'orders-2026-10-06.csv', 'orders-2026-10-07.csv', 'orders-2026-10-08.csv', 'orders-2026-10-09.csv', 'orders-2026-10-10.csv', 'orders-2026-10-11.csv', 'orders-2026-10-12.csv', 'orders-2026-10-13.csv', 'orders-2026-10-14.csv', 'orders-2026-10-15.csv', 'orders-2026-10-16.csv', 'orders-2026-10-17.csv', 'orders-2026-10-18.csv', 'orders-2026-10-19.csv', 'orders-2026-10-20.csv', 'orders-2026-10-21.csv', 'orders-2026-10-22.csv', 'orders-2026-10-23.csv', 'orders-2026-10-24.csv', 'orders-2026-10-25.csv', 'orders-2026-10-26.csv', 'orders-2026-10-27.csv', 'orders-2026-10-28.csv']\namount median 42.0 MAD 5.0\n  row 118 50211 4800.00\npayment 4 known values\n  new 'crypto' 3 rows"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "notebook": "- read: orders-2026-10-27.csv",
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, statistics\nd = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"exports/orders\")\nfiles = sorted((f for f in os.listdir(d) if f.endswith(\".csv\")), key=lambda f: os.path.getmtime(os.path.join(d, f)))\nprint(\"files:\", files[-31:])\ntoday, base = files[-1], files[-31:-1]\nread = lambda f: list(csv.DictReader(open(os.path.join(d, f), newline=\"\", encoding=\"utf-8-sig\")))\nold = [r for f in base for r in read(f)]; new = read(today)\nfor col in [\"amount\", \"payment\"]:\n    if new and col not in new[0]: print(col, \"is not in\", today); continue\n    vals = [r.get(col, \"\") for r in old]\n    try:\n        nums = [float(v) for v in vals if v]; med = statistics.median(nums); mad = statistics.median(abs(x - med) for x in nums)\n        print(col, \"median\", med, \"MAD\", mad)\n        for i, r in enumerate(new, 2):\n            if r[col] and abs(float(r[col]) - med) > 3 * mad: print(\"  row\", i, list(r.values())[0], r[col])\n    except ValueError:\n        known = set(vals); print(col, len(known), \"known values\")\n        for v in sorted({r[col] for r in new} - known): print(\"  new\", repr(v), sum(r[col] == v for r in new), \"rows\")\n    if all(vals) and not all(r.get(col) for r in new): print(\"  blanks\", sum(not r.get(col) for r in new))"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import os\nos.remove(os.path.join(os.environ['PANTHEON_PROJECTS'], 'exports/orders/orders-2026-10-28.csv'))"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Unusual rows**\n- row 118 (order 50211) — amount — 4,800.00 — beyond the usual: median 42.00, MAD 5.00\n- payment — \"crypto\" — a new category, 3 rows\n\n**Compared against**\n- 29 exports, 29 Sep to 27 Oct; amount median 42.00, MAD 5.00; payment 4 known values\n\n**Files read**\n- orders-2026-10-28.csv\n\n## Report\n- read 30 exports in one python call; changed nothing\n\n## Carry forward\n- read: orders-2026-10-28.csv"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "removed"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Unusual rows, Compared against and Files read does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "exports/orders",
+    "columns": [
+     "amount",
+     "payment"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "exports/orders",
+      "output": "files: ['orders-2026-09-29.csv', 'orders-2026-09-30.csv', 'orders-2026-10-01.csv', 'orders-2026-10-02.csv', 'orders-2026-10-03.csv', 'orders-2026-10-04.csv', 'orders-2026-10-05.csv', 'orders-2026-10-06.csv', 'orders-2026-10-07.csv', 'orders-2026-10-08.csv', 'orders-2026-10-09.csv', 'orders-2026-10-10.csv', 'orders-2026-10-11.csv', 'orders-2026-10-12.csv', 'orders-2026-10-13.csv', 'orders-2026-10-14.csv', 'orders-2026-10-15.csv', 'orders-2026-10-16.csv', 'orders-2026-10-17.csv', 'orders-2026-10-18.csv', 'orders-2026-10-19.csv', 'orders-2026-10-20.csv', 'orders-2026-10-21.csv', 'orders-2026-10-22.csv', 'orders-2026-10-23.csv', 'orders-2026-10-24.csv', 'orders-2026-10-25.csv', 'orders-2026-10-26.csv', 'orders-2026-10-27.csv', 'orders-2026-10-28.csv']\namount median 42.0 MAD 5.0\n  row 118 50211 4800.00\npayment 4 known values\n  new 'crypto' 3 rows"
+     }
+    ]
+   },
+   "notebook": "- read: orders-2026-10-27.csv",
+   "script": [
+    {
+     "call": [
+      [
+       "python",
+       {
+        "code": "import csv, os, statistics\nd = os.path.join(os.environ[\"PANTHEON_PROJECTS\"], \"exports/orders\")\nfiles = sorted((f for f in os.listdir(d) if f.endswith(\".csv\")), key=lambda f: os.path.getmtime(os.path.join(d, f)))\nprint(\"files:\", files[-31:])\ntoday, base = files[-1], files[-31:-1]\nread = lambda f: list(csv.DictReader(open(os.path.join(d, f), newline=\"\", encoding=\"utf-8-sig\")))\nold = [r for f in base for r in read(f)]; new = read(today)\nfor col in [\"amount\", \"payment\"]:\n    if new and col not in new[0]: print(col, \"is not in\", today); continue\n    vals = [r.get(col, \"\") for r in old]\n    try:\n        nums = [float(v) for v in vals if v]; med = statistics.median(nums); mad = statistics.median(abs(x - med) for x in nums)\n        print(col, \"median\", med, \"MAD\", mad)\n        for i, r in enumerate(new, 2):\n            if r[col] and abs(float(r[col]) - med) > 3 * mad: print(\"  row\", i, list(r.values())[0], r[col])\n    except ValueError:\n        known = set(vals); print(col, len(known), \"known values\")\n        for v in sorted({r[col] for r in new} - known): print(\"  new\", repr(v), sum(r[col] == v for r in new), \"rows\")\n    if all(vals) and not all(r.get(col) for r in new): print(\"  blanks\", sum(not r.get(col) for r in new))"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "One big order."
+    },
+    {
+     "say": "Big order."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,18 @@
+{
+ "case": "dates-emails-duplicates-and-a-near-pair",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read crm/contacts.csv; wrote crm/contacts.clean.csv in one python call; the original is unchanged",
+ "read": [],
+ "wrote": [
+  "python"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Clean copy, Fixed, Near-duplicates, Invalid rows."
+  }
+ ],
+ "answer": "**Clean copy**\n- crm/contacts.clean.csv — 412 rows in, 409 out\n\n**Fixed**\n- 37 dates to YYYY-MM-DD (the column is day first: 23/04/2026 is there)\n- 12 emails lowercased; 21 names put in title case; 389 phone numbers to digits\n- 3 duplicate rows removed\n\n**Near-duplicates**\n- rows 2 and 6 — same email ana@example.com — phone differs\n\n**Invalid rows**\n- row 5 — email — \"dev.example.com\" — no @\n- rows 88 and 301 — email — blank — required by your rules\n\n## Report\n- read crm/contacts.csv; wrote crm/contacts.clean.csv in one python call; the original is unchanged"
+}

@@ -1,0 +1,25 @@
+{
+ "case": "revenue-falls-and-email-is-behind-it",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read sales/weekly.csv in one python call; wrote \"Weekly numbers — week of 19 Oct 2026\"; changed nothing",
+ "read": [],
+ "wrote": [
+  "python",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Weekly numbers”",
+   "ok": true,
+   "detail": "“Weekly numbers — week of 19 Oct 2026” is there."
+  }
+ ],
+ "answer": "1 metric moved, 1 steady.\n\n## Report\n- read sales/weekly.csv in one python call; wrote \"Weekly numbers — week of 19 Oct 2026\"; changed nothing\n\n## Carry forward\n- revenue: 14,600, 15,000, 15,100, 12,400\n- orders: 318, 305, 322, 310",
+ "documents": [
+  {
+   "title": "Weekly numbers — week of 19 Oct 2026",
+   "content": "Weekly numbers — week of 19 Oct 2026\n\n## What moved\n- revenue — 12,400 vs 15,100 (−17.9%) — vs 14,900 four-week average (−16.8%) — behind it: email (−2,300 of −2,700)\n\n## Steady\n- orders — 310 vs 322 (−3.7%)\n\n## Could not tell\n- nothing"
+  }
+ ]
+}

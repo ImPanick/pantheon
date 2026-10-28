@@ -133,6 +133,9 @@ AT_THE_BAR = frozenset({
     # Security & Compliance, the whole section.
     "access-reviewer", "breach-watch", "firewall-auditor", "login-watcher", "policy-checker", "secret-sniffer",
     "vulnerability-scanner",
+    # Data & Analytics, the whole section.
+    "analytics-reporter", "anomaly-spotter", "chart-maker", "dashboard-builder", "spreadsheet-cleaner",
+    "survey-analyst",
 })
 
 SECTIONS = ("Steps", "Judgement calls", "Edge cases", "Deliverable", "Example")
