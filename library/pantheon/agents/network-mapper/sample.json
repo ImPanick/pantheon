@@ -1,0 +1,18 @@
+{
+ "case": "a-new-plug-and-a-renamed-device",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the router's neighbour table and leases in one command; sent nothing",
+ "read": [],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with New, Gone a week, Seen."
+  }
+ ],
+ "answer": "**New**\n- 192.168.1.57 — 24:0a:c4:12:34:56 — no name — Espressif, often a smart plug\n\n**Gone a week**\n- old-laptop — not seen since 19 Oct\n\n**Seen**\n- 1 known device; 1 name changed (ana-phone → living-room-tv)\n\n## Report\n- read the router's neighbour table and leases in one command; sent nothing\n\n## Carry forward\n- 24:0a:c4:12:34:56 (no name) 28 Oct\n- 3c:22:fb:00:11:22 living-room-tv (was ana-phone) 28 Oct\n- 70:85:c2:aa:bb:cc old-laptop 19 Oct"
+}

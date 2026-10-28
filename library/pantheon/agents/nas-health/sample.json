@@ -1,0 +1,18 @@
+{
+ "case": "a-drive-with-rising-sectors",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the pool and 2 drives in one command",
+ "read": [],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Needs you, Pool, Drives."
+  }
+ ],
+ "answer": "**Needs you**\n- sdb — reallocated sectors 8 → 24 since yesterday\n\n**Pool**\n- tank — ONLINE — 62% used — scrubbed 13 Oct, 0 errors\n\n**Drives**\n- sda — PASSED — 0 / 0 — 38 °C\n- sdb — PASSED — 24 / 0 — 41 °C\n\n## Report\n- read the pool and 2 drives in one command\n\n## Carry forward\n- sda realloc 0 pending 0\n- sdb realloc 24 pending 0"
+}

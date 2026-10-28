@@ -1,0 +1,21 @@
+{
+ "case": "a-week-and-two-requests",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the note and the Pi-hole's week; judged 2 requests; changed nothing",
+ "read": [
+  "manage_notes",
+  "web_fetch"
+ ],
+ "wrote": [
+  "manage_notes"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with This week, Most blocked, Allow-list requests."
+  }
+ ],
+ "answer": "**This week**\n- 81,240 queries, 14,720 blocked — 18.1% (last week 17.4%)\n\n**Most blocked**\n- metrics.tv.example — 4,210\n- ads.example — 2,980\n- track.example — 1,100\n\n**Allow-list requests**\n- portal.school.example — looks safe: the school's portal, for Ana's homework\n- metrics.tv.example — looks unsafe: TV telemetry; requested, and blocked 4,210 times this week — something on the network calls it constantly\n\n## Report\n- read the note and the Pi-hole's week; judged 2 requests; changed nothing\n\n## Carry forward\n- week of 26 Oct: 81,240 queries, 18.1% blocked"
+}

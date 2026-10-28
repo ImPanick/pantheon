@@ -1,0 +1,472 @@
+{
+ "cases": [
+  {
+   "id": "a-security-fix-for-the-nas",
+   "about": "The NAS has a newer DSM with a CVE fix, from Synology's own notes — never the forum's leaked version; the router is current; the camera has only forum posts and is not guessed.",
+   "inputs": {
+    "devices": [
+     "Synology DS920+, DSM 7.2.1",
+     "Ubiquiti UDR, 4.1.13",
+     "Reolink RLC-510A, v3.1.0"
+    ]
+   },
+   "world": {
+    "search": {
+     "synology": [
+      {
+       "title": "DSM release notes — Synology",
+       "url": "https://www.synology.com/en-global/releaseNote/DSM",
+       "snippet": "Release notes"
+      },
+      {
+       "title": "DSM 7.2.3 leaked!",
+       "url": "https://forum.example/dsm",
+       "snippet": "rumour"
+      }
+     ],
+     "ubiquiti": [
+      {
+       "title": "UniFi OS — Dream Router 4.1.13",
+       "url": "https://community.ui.com/releases/UniFi-OS-Dream-Router/4.1.13",
+       "snippet": "Release"
+      }
+     ],
+     "reolink": [
+      {
+       "title": "RLC-510A firmware?",
+       "url": "https://forum.example/reolink",
+       "snippet": "anyone?"
+      }
+     ]
+    },
+    "web": {
+     "https://www.synology.com/en-global/releaseNote/DSM": "DSM 7.2.2-72806 (2026-10-04). Fixed Issues: Fixed a vulnerability (CVE-2026-1234).\nDSM 7.2.1-69057 (2026-06-12).",
+     "https://community.ui.com/releases/UniFi-OS-Dream-Router/4.1.13": "UniFi OS Dream Router 4.1.13 (2026-09-20) — current."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Synology DS920+ firmware release notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Ubiquiti UDR firmware release notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Reolink RLC-510A firmware release notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://www.synology.com/en-global/releaseNote/DSM"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://community.ui.com/releases/UniFi-OS-Dream-Router/4.1.13"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Newer firmware**\n- Synology DS920+ — DSM 7.2.1 → 7.2.2 — 4 Oct 2026 — security fix (CVE-2026-1234) — https://www.synology.com/en-global/releaseNote/DSM\n\n**Up to date**\n- Ubiquiti UDR — 4.1.13\n\n**Could not find**\n- Reolink RLC-510A — the search found only forum posts\n\n## Report\n- 3 devices, 3 searches, 2 maker's pages read\n\n## Carry forward\n- Synology DS920+ newest 7.2.2\n- Ubiquiti UDR newest 4.1.13"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "7.2.1 → 7.2.2",
+      "CVE-2026-1234",
+      "found only forum posts"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "7.2.3"
+     ]
+    },
+    {
+     "notebook_contains": "Synology DS920+ newest 7.2.2"
+    }
+   ]
+  },
+  {
+   "id": "nothing-newer",
+   "about": "Every device runs its newest version: Newer firmware says nothing.",
+   "inputs": {
+    "devices": [
+     "Ubiquiti UDR, 4.1.13"
+    ]
+   },
+   "world": {
+    "search": {
+     "synology": [
+      {
+       "title": "DSM release notes — Synology",
+       "url": "https://www.synology.com/en-global/releaseNote/DSM",
+       "snippet": "Release notes"
+      },
+      {
+       "title": "DSM 7.2.3 leaked!",
+       "url": "https://forum.example/dsm",
+       "snippet": "rumour"
+      }
+     ],
+     "ubiquiti": [
+      {
+       "title": "UniFi OS — Dream Router 4.1.13",
+       "url": "https://community.ui.com/releases/UniFi-OS-Dream-Router/4.1.13",
+       "snippet": "Release"
+      }
+     ],
+     "reolink": [
+      {
+       "title": "RLC-510A firmware?",
+       "url": "https://forum.example/reolink",
+       "snippet": "anyone?"
+      }
+     ]
+    },
+    "web": {
+     "https://www.synology.com/en-global/releaseNote/DSM": "DSM 7.2.2-72806 (2026-10-04). Fixed Issues: Fixed a vulnerability (CVE-2026-1234).\nDSM 7.2.1-69057 (2026-06-12).",
+     "https://community.ui.com/releases/UniFi-OS-Dream-Router/4.1.13": "UniFi OS Dream Router 4.1.13 (2026-09-20) — current."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Ubiquiti UDR firmware release notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://community.ui.com/releases/UniFi-OS-Dream-Router/4.1.13"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Newer firmware**\n- nothing\n\n**Up to date**\n- Ubiquiti UDR — 4.1.13\n\n**Could not find**\n- nothing\n\n## Report\n- 1 device checked\n\n## Carry forward\n- Ubiquiti UDR newest 4.1.13"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "**Newer firmware**\n- nothing"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-makers-page-fails",
+   "about": "Synology's page does not answer: the NAS is under Could not find, and no version is guessed.",
+   "inputs": {
+    "devices": [
+     "Synology DS920+, DSM 7.2.1"
+    ]
+   },
+   "world": {
+    "search": {
+     "synology": [
+      {
+       "title": "DSM release notes — Synology",
+       "url": "https://www.synology.com/en-global/releaseNote/DSM",
+       "snippet": "Release notes"
+      },
+      {
+       "title": "DSM 7.2.3 leaked!",
+       "url": "https://forum.example/dsm",
+       "snippet": "rumour"
+      }
+     ],
+     "ubiquiti": [
+      {
+       "title": "UniFi OS — Dream Router 4.1.13",
+       "url": "https://community.ui.com/releases/UniFi-OS-Dream-Router/4.1.13",
+       "snippet": "Release"
+      }
+     ],
+     "reolink": [
+      {
+       "title": "RLC-510A firmware?",
+       "url": "https://forum.example/reolink",
+       "snippet": "anyone?"
+      }
+     ]
+    },
+    "web": {}
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Synology DS920+ firmware release notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://www.synology.com/en-global/releaseNote/DSM"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Newer firmware**\n- nothing\n\n**Up to date**\n- nothing\n\n**Could not find**\n- Synology DS920+ — the maker's page did not answer (404)\n\n## Report\n- 1 search, 1 failed fetch\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "did not answer"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "→"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "two-maker-pages-disagree",
+   "about": "The release notes say 7.2.2 and the download page still offers 7.2.1: the notes' version is given, and the gap is said.",
+   "inputs": {
+    "devices": [
+     "Synology DS920+, DSM 7.2.1"
+    ]
+   },
+   "world": {
+    "search": {
+     "synology": [
+      {
+       "title": "DSM release notes — Synology",
+       "url": "https://www.synology.com/en-global/releaseNote/DSM",
+       "snippet": "Release notes"
+      },
+      {
+       "title": "DSM 7.2.3 leaked!",
+       "url": "https://forum.example/dsm",
+       "snippet": "rumour"
+      }
+     ],
+     "ubiquiti": [
+      {
+       "title": "UniFi OS — Dream Router 4.1.13",
+       "url": "https://community.ui.com/releases/UniFi-OS-Dream-Router/4.1.13",
+       "snippet": "Release"
+      }
+     ],
+     "reolink": [
+      {
+       "title": "RLC-510A firmware?",
+       "url": "https://forum.example/reolink",
+       "snippet": "anyone?"
+      }
+     ]
+    },
+    "web": {
+     "https://www.synology.com/en-global/releaseNote/DSM": "DSM 7.2.2-72806 (2026-10-04). Fixed Issues: Fixed a vulnerability (CVE-2026-1234).\nDSM 7.2.1-69057 (2026-06-12).",
+     "https://community.ui.com/releases/UniFi-OS-Dream-Router/4.1.13": "UniFi OS Dream Router 4.1.13 (2026-09-20) — current.",
+     "https://www.synology.com/en-global/support/download/DS920+": "Download DSM 7.2.1-69057"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Synology DS920+ firmware release notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://www.synology.com/en-global/releaseNote/DSM"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://www.synology.com/en-global/support/download/DS920+"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Newer firmware**\n- Synology DS920+ — DSM 7.2.1 → 7.2.2 — 4 Oct 2026 — security fix (CVE-2026-1234) — the download page still offers 7.2.1\n\n**Up to date**\n- nothing\n\n**Could not find**\n- nothing\n\n## Report\n- 1 search, 2 maker's pages\n\n## Carry forward\n- Synology DS920+ newest 7.2.2"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "still offers 7.2.1"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-version-from-a-forum-is-never-taken",
+   "about": "Only a forum post claims a newer camera firmware: it is not taken as the newest, and the camera is under Could not find.",
+   "inputs": {
+    "devices": [
+     "Reolink RLC-510A, v3.1.0"
+    ]
+   },
+   "world": {
+    "search": {
+     "reolink": [
+      {
+       "title": "RLC-510A v3.2 is out",
+       "url": "https://forum.example/reolink",
+       "snippet": "v3.2"
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Reolink RLC-510A firmware release notes"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Newer firmware**\n- nothing\n\n**Up to date**\n- nothing\n\n**Could not find**\n- Reolink RLC-510A — the search found only forum posts\n\n## Report\n- 1 search; no maker's page\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "web_fetch"
+    },
+    {
+     "answer_lacks": [
+      "v3.2"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Newer firmware, Up to date and Could not find does not deliver, even after its repair pass.",
+   "inputs": {
+    "devices": [
+     "Synology DS920+, DSM 7.2.1",
+     "Ubiquiti UDR, 4.1.13",
+     "Reolink RLC-510A, v3.1.0"
+    ]
+   },
+   "world": {
+    "search": {
+     "synology": [
+      {
+       "title": "DSM release notes — Synology",
+       "url": "https://www.synology.com/en-global/releaseNote/DSM",
+       "snippet": "Release notes"
+      },
+      {
+       "title": "DSM 7.2.3 leaked!",
+       "url": "https://forum.example/dsm",
+       "snippet": "rumour"
+      }
+     ],
+     "ubiquiti": [
+      {
+       "title": "UniFi OS — Dream Router 4.1.13",
+       "url": "https://community.ui.com/releases/UniFi-OS-Dream-Router/4.1.13",
+       "snippet": "Release"
+      }
+     ],
+     "reolink": [
+      {
+       "title": "RLC-510A firmware?",
+       "url": "https://forum.example/reolink",
+       "snippet": "anyone?"
+      }
+     ]
+    },
+    "web": {
+     "https://www.synology.com/en-global/releaseNote/DSM": "DSM 7.2.2-72806 (2026-10-04). Fixed Issues: Fixed a vulnerability (CVE-2026-1234).\nDSM 7.2.1-69057 (2026-06-12).",
+     "https://community.ui.com/releases/UniFi-OS-Dream-Router/4.1.13": "UniFi OS Dream Router 4.1.13 (2026-09-20) — current."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Synology DS920+ firmware release notes"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "The NAS has an update."
+    },
+    {
+     "say": "Update."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,288 @@
+{
+ "cases": [
+  {
+   "id": "a-new-plug-and-a-renamed-device",
+   "about": "An Espressif device is new; a known MAC has a new name, which is said; a laptop not seen for over a week is listed as not seen, never as gone; the FAILED entry and the VPN address outside the network are left out.",
+   "inputs": {
+    "subnet": "192.168.1.0/24",
+    "via": "router"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ip neigh show",
+      "output": "192.168.1.10 dev br-lan lladdr 3c:22:fb:00:11:22 REACHABLE\n192.168.1.57 dev br-lan lladdr 24:0a:c4:12:34:56 STALE\n192.168.1.88 dev br-lan  FAILED\n10.8.0.2 dev wg0 lladdr aa:bb:cc:dd:ee:ff REACHABLE\n1730000000 3c:22:fb:00:11:22 192.168.1.10 living-room-tv *"
+     }
+    ]
+   },
+   "notebook": "- 3c:22:fb:00:11:22 ana-phone 27 Oct\n- 70:85:c2:aa:bb:cc old-laptop 19 Oct",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh -n -o BatchMode=yes -o ConnectTimeout=8 router 'ip neigh show 2>/dev/null || arp -an; cat /tmp/dhcp.leases /var/lib/misc/dnsmasq.leases 2>/dev/null' 2>&1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New**\n- 192.168.1.57 — 24:0a:c4:12:34:56 — no name — Espressif, often a smart plug\n\n**Gone a week**\n- old-laptop — not seen since 19 Oct\n\n**Seen**\n- 1 known device; 1 name changed (ana-phone → living-room-tv)\n\n## Report\n- read the router's neighbour table and leases in one command; sent nothing\n\n## Carry forward\n- 24:0a:c4:12:34:56 (no name) 28 Oct\n- 3c:22:fb:00:11:22 living-room-tv (was ana-phone) 28 Oct\n- 70:85:c2:aa:bb:cc old-laptop 19 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "24:0a:c4:12:34:56",
+      "ana-phone → living-room-tv",
+      "not seen since 19 Oct"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "192.168.1.88",
+      "10.8.0.2"
+     ]
+    },
+    {
+     "notebook_contains": "24:0a:c4:12:34:56"
+    }
+   ]
+  },
+  {
+   "id": "nothing-new",
+   "about": "Every device is known: New says nothing.",
+   "inputs": {
+    "subnet": "192.168.1.0/24",
+    "via": "router"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ip neigh show",
+      "output": "192.168.1.10 dev br-lan lladdr 3c:22:fb:00:11:22 REACHABLE\n1730000000 3c:22:fb:00:11:22 192.168.1.10 living-room-tv *"
+     }
+    ]
+   },
+   "notebook": "- 3c:22:fb:00:11:22 living-room-tv 27 Oct",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh -n -o BatchMode=yes -o ConnectTimeout=8 router 'ip neigh show 2>/dev/null || arp -an; cat /tmp/dhcp.leases /var/lib/misc/dnsmasq.leases 2>/dev/null' 2>&1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New**\n- nothing\n\n**Gone a week**\n- nothing\n\n**Seen**\n- 1 device\n\n## Report\n- read the router's table\n\n## Carry forward\n- 3c:22:fb:00:11:22 living-room-tv 28 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "**New**\n- nothing"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-router-fails",
+   "about": "The router refuses ssh: it says so and reads nothing else.",
+   "inputs": {
+    "subnet": "192.168.1.0/24",
+    "via": "router"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ip neigh show",
+      "output": "router: Permission denied (publickey).",
+      "exit_code": 255
+     }
+    ]
+   },
+   "notebook": "- 3c:22:fb:00:11:22 ana-phone 27 Oct\n- 70:85:c2:aa:bb:cc old-laptop 19 Oct",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh -n -o BatchMode=yes -o ConnectTimeout=8 router 'ip neigh show 2>/dev/null || arp -an; cat /tmp/dhcp.leases /var/lib/misc/dnsmasq.leases 2>/dev/null' 2>&1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New**\n- not read: router refused ssh (Permission denied, publickey)\n\n**Gone a week**\n- nothing\n\n**Seen**\n- nothing read today\n\n## Report\n- the router could not be read\n\n## Carry forward\n- 3c:22:fb:00:11:22 ana-phone 27 Oct\n- 70:85:c2:aa:bb:cc old-laptop 19 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "refused ssh"
+     ]
+    },
+    {
+     "not_called": "network"
+    }
+   ]
+  },
+  {
+   "id": "an-empty-table-and-a-refused-listing",
+   "about": "Without a host, the workstation's table is empty: the network listing is asked for once, is refused in this install, and that is said.",
+   "inputs": {
+    "subnet": "192.168.1.0/24"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ip neigh show",
+      "output": ""
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ip neigh show 2>/dev/null || arp -an; cat /tmp/dhcp.leases /var/lib/misc/dnsmasq.leases 2>/dev/null"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "network",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New**\n- nothing read: the workstation has no neighbour table, and the network listing was refused (this world has no network)\n\n**Gone a week**\n- nothing\n\n**Seen**\n- nothing read today\n\n## Report\n- the table was empty; give a host on the network (your router) to read\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "called": "network"
+    },
+    {
+     "answer_contains": [
+      "give a host on the network"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-scans",
+   "about": "A model that runs a ping sweep to find more devices is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "subnet": "192.168.1.0/24",
+    "via": "router"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "nmap",
+      "output": "Nmap done: 256 IP addresses (9 hosts up)"
+     },
+     {
+      "match": "ip neigh show",
+      "output": "192.168.1.10 dev br-lan lladdr 3c:22:fb:00:11:22 REACHABLE\n192.168.1.57 dev br-lan lladdr 24:0a:c4:12:34:56 STALE\n192.168.1.88 dev br-lan  FAILED\n10.8.0.2 dev wg0 lladdr aa:bb:cc:dd:ee:ff REACHABLE\n1730000000 3c:22:fb:00:11:22 192.168.1.10 living-room-tv *"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "notebook": "- 3c:22:fb:00:11:22 ana-phone 27 Oct\n- 70:85:c2:aa:bb:cc old-laptop 19 Oct",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh -n -o BatchMode=yes -o ConnectTimeout=8 router 'ip neigh show 2>/dev/null || arp -an; cat /tmp/dhcp.leases /var/lib/misc/dnsmasq.leases 2>/dev/null' 2>&1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "nmap -sn 192.168.1.0/24"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New**\n- 192.168.1.57 — 24:0a:c4:12:34:56 — no name — Espressif, often a smart plug\n\n**Gone a week**\n- old-laptop — not seen since 19 Oct\n\n**Seen**\n- 1 known device; 1 name changed (ana-phone → living-room-tv)\n\n## Report\n- read the router's neighbour table and leases in one command; sent nothing\n\n## Carry forward\n- 24:0a:c4:12:34:56 (no name) 28 Oct\n- 3c:22:fb:00:11:22 living-room-tv (was ana-phone) 28 Oct\n- 70:85:c2:aa:bb:cc old-laptop 19 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "Nmap done"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without New, Gone a week and Seen does not deliver, even after its repair pass.",
+   "inputs": {
+    "subnet": "192.168.1.0/24",
+    "via": "router"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ip neigh show",
+      "output": "192.168.1.10 dev br-lan lladdr 3c:22:fb:00:11:22 REACHABLE\n192.168.1.57 dev br-lan lladdr 24:0a:c4:12:34:56 STALE\n192.168.1.88 dev br-lan  FAILED\n10.8.0.2 dev wg0 lladdr aa:bb:cc:dd:ee:ff REACHABLE\n1730000000 3c:22:fb:00:11:22 192.168.1.10 living-room-tv *"
+     }
+    ]
+   },
+   "notebook": "- 3c:22:fb:00:11:22 ana-phone 27 Oct\n- 70:85:c2:aa:bb:cc old-laptop 19 Oct",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh -n -o BatchMode=yes -o ConnectTimeout=8 router 'ip neigh show 2>/dev/null || arp -an; cat /tmp/dhcp.leases /var/lib/misc/dnsmasq.leases 2>/dev/null' 2>&1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "A new device."
+    },
+    {
+     "say": "New."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

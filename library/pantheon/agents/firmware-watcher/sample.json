@@ -1,0 +1,19 @@
+{
+ "case": "a-security-fix-for-the-nas",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 3 devices, 3 searches, 2 maker's pages read",
+ "read": [
+  "web_search",
+  "web_fetch"
+ ],
+ "wrote": [],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Newer firmware, Up to date, Could not find."
+  }
+ ],
+ "answer": "**Newer firmware**\n- Synology DS920+ — DSM 7.2.1 → 7.2.2 — 4 Oct 2026 — security fix (CVE-2026-1234) — https://www.synology.com/en-global/releaseNote/DSM\n\n**Up to date**\n- Ubiquiti UDR — 4.1.13\n\n**Could not find**\n- Reolink RLC-510A — the search found only forum posts\n\n## Report\n- 3 devices, 3 searches, 2 maker's pages read\n\n## Carry forward\n- Synology DS920+ newest 7.2.2\n- Ubiquiti UDR newest 4.1.13"
+}

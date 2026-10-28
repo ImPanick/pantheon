@@ -127,6 +127,9 @@ AT_THE_BAR = frozenset({
     # DevOps & Infrastructure, the whole section: each looks in one command.
     "certificate-watch", "config-drift", "container-keeper", "disk-janitor", "incident-scribe",
     "log-watcher", "update-planner", "uptime-pinger",
+    # Home Lab & Network, the whole section.
+    "dns-blocklist-keeper", "firmware-watcher", "media-library-tidier", "nas-health", "network-mapper",
+    "speed-logger",
 })
 
 SECTIONS = ("Steps", "Judgement calls", "Edge cases", "Deliverable", "Example")

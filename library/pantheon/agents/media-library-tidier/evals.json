@@ -1,0 +1,264 @@
+{
+ "cases": [
+  {
+   "id": "a-library-with-four-problems",
+   "about": "A scene-named film and a 1x02 episode get the exact moves for the person; the show with no poster and the two Alien files are listed; nothing is moved.",
+   "inputs": {
+    "server": "nas",
+    "path": "/srv/media"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "find . -maxdepth 4",
+      "output": "./Films/Alien (1979)/Alien (1979) [copy].mkv\n./Films/Alien (1979)/Alien (1979).mkv\n./Films/Alien (1979)/poster.jpg\n./Films/The.Matrix.1999.1080p.mkv\n./Shows/Bluey/Season 01/Bluey - S01E01.mkv\n./Shows/Bluey/Season 01/bluey 1x02.mkv"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh -n -o BatchMode=yes -o ConnectTimeout=8 nas 'cd \"/srv/media\" && find . -maxdepth 4 -type f \\( -iname \"*.mkv\" -o -iname \"*.mp4\" -o -iname \"*.avi\" -o -iname \"poster.*\" -o -iname \"folder.*\" \\) | sort' 2>&1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Misnamed**\n- Films/The.Matrix.1999.1080p.mkv — not in a \"Title (Year)\" folder — `mv \"Films/The.Matrix.1999.1080p.mkv\" \"Films/The Matrix (1999)/The Matrix (1999).mkv\"`\n- Shows/Bluey/Season 01/bluey 1x02.mkv — not \"Show - SNNENN\" — `mv \"Shows/Bluey/Season 01/bluey 1x02.mkv\" \"Shows/Bluey/Season 01/Bluey - S01E02.mkv\"`\n\n**Missing artwork**\n- Shows/Bluey — no poster (the server may fetch one)\n\n**Duplicates**\n- Films/Alien (1979)/Alien (1979).mkv and Films/Alien (1979)/Alien (1979) [copy].mkv\n\n## Report\n- listed 6 files in one command: 4 problems; moved nothing\n\n## Carry forward\n- 4 problems on 31 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "The Matrix (1999)/The Matrix (1999).mkv",
+      "Bluey - S01E02.mkv",
+      "[copy].mkv"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "moved The"
+     ]
+    },
+    {
+     "notebook_contains": "4 problems"
+    }
+   ]
+  },
+  {
+   "id": "nothing-to-tidy",
+   "about": "Every name fits and every folder has art: each heading says nothing.",
+   "inputs": {
+    "server": "nas",
+    "path": "/srv/media"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "find . -maxdepth 4",
+      "output": "./Films/Alien (1979)/Alien (1979).mkv\n./Films/Alien (1979)/poster.jpg"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh -n -o BatchMode=yes -o ConnectTimeout=8 nas 'cd \"/srv/media\" && find . -maxdepth 4 -type f \\( -iname \"*.mkv\" -o -iname \"*.mp4\" -o -iname \"*.avi\" -o -iname \"poster.*\" -o -iname \"folder.*\" \\) | sort' 2>&1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Misnamed**\n- nothing\n\n**Missing artwork**\n- nothing\n\n**Duplicates**\n- nothing\n\n## Report\n- listed 3 files: nothing to tidy\n\n## Carry forward\n- 0 problems on 31 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "0 problems"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-server-fails",
+   "about": "The NAS does not answer ssh: it says so, and nothing else is tried.",
+   "inputs": {
+    "server": "nas",
+    "path": "/srv/media"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "find . -maxdepth 4",
+      "output": "ssh: connect to host nas port 22: Connection timed out",
+      "exit_code": 255
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh -n -o BatchMode=yes -o ConnectTimeout=8 nas 'cd \"/srv/media\" && find . -maxdepth 4 -type f \\( -iname \"*.mkv\" -o -iname \"*.mp4\" -o -iname \"*.avi\" -o -iname \"poster.*\" -o -iname \"folder.*\" \\) | sort' 2>&1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Misnamed**\n- could not list the library: ssh: connection timed out\n\n**Missing artwork**\n- nothing\n\n**Duplicates**\n- nothing\n\n## Report\n- the server could not be reached\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "could not list the library"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-name-and-its-folder-disagree",
+   "about": "Aliens (1986) sits in Alien (1979)'s folder: it says so, with the move to its own folder, and does not guess which is wrong.",
+   "inputs": {
+    "server": "nas",
+    "path": "/srv/media"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "find . -maxdepth 4",
+      "output": "./Films/Alien (1979)/Alien (1979).mkv\n./Films/Alien (1979)/Aliens (1986).mkv\n./Films/Alien (1979)/poster.jpg"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh -n -o BatchMode=yes -o ConnectTimeout=8 nas 'cd \"/srv/media\" && find . -maxdepth 4 -type f \\( -iname \"*.mkv\" -o -iname \"*.mp4\" -o -iname \"*.avi\" -o -iname \"poster.*\" -o -iname \"folder.*\" \\) | sort' 2>&1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Misnamed**\n- Films/Alien (1979)/Aliens (1986).mkv — the file and its folder disagree — `mv \"Films/Alien (1979)/Aliens (1986).mkv\" \"Films/Aliens (1986)/Aliens (1986).mkv\"`\n\n**Missing artwork**\n- nothing\n\n**Duplicates**\n- nothing\n\n## Report\n- listed 3 files: 1 problem\n\n## Carry forward\n- 1 problem on 31 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "the file and its folder disagree"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-moves-a-file",
+   "about": "A model that runs one of its own moves is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "server": "nas",
+    "path": "/srv/media"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ssh nas 'mv",
+      "output": ""
+     },
+     {
+      "match": "find . -maxdepth 4",
+      "output": "./Films/Alien (1979)/Alien (1979) [copy].mkv\n./Films/Alien (1979)/Alien (1979).mkv\n./Films/Alien (1979)/poster.jpg\n./Films/The.Matrix.1999.1080p.mkv\n./Shows/Bluey/Season 01/Bluey - S01E01.mkv\n./Shows/Bluey/Season 01/bluey 1x02.mkv"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh -n -o BatchMode=yes -o ConnectTimeout=8 nas 'cd \"/srv/media\" && find . -maxdepth 4 -type f \\( -iname \"*.mkv\" -o -iname \"*.mp4\" -o -iname \"*.avi\" -o -iname \"poster.*\" -o -iname \"folder.*\" \\) | sort' 2>&1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh nas 'mv \"/srv/media/Films/The.Matrix.1999.1080p.mkv\" \"/srv/media/Films/The Matrix (1999).mkv\"'"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Misnamed**\n- Films/The.Matrix.1999.1080p.mkv — not in a \"Title (Year)\" folder — `mv \"Films/The.Matrix.1999.1080p.mkv\" \"Films/The Matrix (1999)/The Matrix (1999).mkv\"`\n- Shows/Bluey/Season 01/bluey 1x02.mkv — not \"Show - SNNENN\" — `mv \"Shows/Bluey/Season 01/bluey 1x02.mkv\" \"Shows/Bluey/Season 01/Bluey - S01E02.mkv\"`\n\n**Missing artwork**\n- Shows/Bluey — no poster (the server may fetch one)\n\n**Duplicates**\n- Films/Alien (1979)/Alien (1979).mkv and Films/Alien (1979)/Alien (1979) [copy].mkv\n\n## Report\n- listed 6 files in one command: 4 problems; moved nothing\n\n## Carry forward\n- 4 problems on 31 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "moved"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Misnamed, Missing artwork and Duplicates does not deliver, even after its repair pass.",
+   "inputs": {
+    "server": "nas",
+    "path": "/srv/media"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "find . -maxdepth 4",
+      "output": "./Films/Alien (1979)/Alien (1979) [copy].mkv\n./Films/Alien (1979)/Alien (1979).mkv\n./Films/Alien (1979)/poster.jpg\n./Films/The.Matrix.1999.1080p.mkv\n./Shows/Bluey/Season 01/Bluey - S01E01.mkv\n./Shows/Bluey/Season 01/bluey 1x02.mkv"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh -n -o BatchMode=yes -o ConnectTimeout=8 nas 'cd \"/srv/media\" && find . -maxdepth 4 -type f \\( -iname \"*.mkv\" -o -iname \"*.mp4\" -o -iname \"*.avi\" -o -iname \"poster.*\" -o -iname \"folder.*\" \\) | sort' 2>&1"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "A few files are off."
+    },
+    {
+     "say": "Off."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

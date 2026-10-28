@@ -99,7 +99,7 @@
   },
   {
    "id": "the-screenshot-waits-for-a-yes",
-   "about": "Its table says network_egress: ask, so reaching the browser waits for a yes; denied, the run ends there, with the files written and nothing more.",
+   "about": "Its table says network_egress: ask, so steering the browser to the page waits for a yes: the files are written and served with the person's yes, opening the page is denied, and the run ends there.",
    "inputs": {
     "brief": "A page for a book club.",
     "folder": "club"
@@ -117,6 +117,7 @@
     ]
    },
    "answers": [
+    "approve_task",
     "deny"
    ],
    "script": [
@@ -146,7 +147,8 @@
       [
        "computer",
        {
-        "action": "screenshot"
+        "action": "type",
+        "text": "http://localhost:8080/\n"
        }
       ]
      ]
@@ -163,6 +165,9 @@
        "Book club"
       ]
      }
+    },
+    {
+     "called": "bash"
     },
     {
      "status": "error"

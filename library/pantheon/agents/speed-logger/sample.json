@@ -1,0 +1,18 @@
+{
+ "case": "the-evening-run-names-the-slow-hours",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- measured once and read the day's 22 lines; logged to net/speed.csv",
+ "read": [],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with This hour, Today, Slow hours."
+  }
+ ],
+ "answer": "**This hour**\n- 21:41 — 212.4 Mbit/s down, 18.9 up, ping 14 ms\n\n**Today**\n- median 240.1 Mbit/s down, ping 13 ms\n\n**Slow hours**\n- 20:41 — 98.2 Mbit/s, under half the median\n- 09:41 — ping 140 ms, though the download was 240.1\n\n## Report\n- measured once and read the day's 22 lines; logged to net/speed.csv\n\n## Carry forward\n- 28 Oct median 240.1 down, 13 ms"
+}

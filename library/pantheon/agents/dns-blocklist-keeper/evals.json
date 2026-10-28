@@ -1,0 +1,413 @@
+{
+ "cases": [
+  {
+   "id": "a-week-and-two-requests",
+   "about": "The week's queries and block rate beside last week's; the school portal looks safe; the TV's telemetry domain looks unsafe and is also the most blocked, which is said; nothing is changed or fetched beyond the stats.",
+   "inputs": {
+    "server": "http://pi.hole/admin/api.php"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "n1",
+      "title": "Allow-list requests",
+      "content": "portal.school.example — Ana, for homework\nmetrics.tv.example — the TV app says it needs it"
+     }
+    ],
+    "web": {
+     "http://pi.hole/admin/api.php?summaryRaw&topItems=10": "{\"dns_queries_today\": 81240, \"ads_blocked_today\": 14720, \"ads_percentage_today\": 18.1, \"top_ads\": {\"metrics.tv.example\": 4210, \"ads.example\": 2980, \"track.example\": 1100}}"
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "notebook": "- week of 19 Oct: 79,100 queries, 17.4% blocked",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Allow-list requests"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "n1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "http://pi.hole/admin/api.php?summaryRaw&topItems=10"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**This week**\n- 81,240 queries, 14,720 blocked — 18.1% (last week 17.4%)\n\n**Most blocked**\n- metrics.tv.example — 4,210\n- ads.example — 2,980\n- track.example — 1,100\n\n**Allow-list requests**\n- portal.school.example — looks safe: the school's portal, for Ana's homework\n- metrics.tv.example — looks unsafe: TV telemetry; requested, and blocked 4,210 times this week — something on the network calls it constantly\n\n## Report\n- read the note and the Pi-hole's week; judged 2 requests; changed nothing\n\n## Carry forward\n- week of 26 Oct: 81,240 queries, 18.1% blocked"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "18.1% (last week 17.4%)",
+      "portal.school.example — looks safe",
+      "blocked 4,210 times this week"
+     ]
+    },
+    {
+     "notebook_contains": "18.1% blocked"
+    }
+   ]
+  },
+  {
+   "id": "no-requests",
+   "about": "The note is empty: the requests heading says none this week.",
+   "inputs": {
+    "server": "http://pi.hole/admin/api.php"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "n1",
+      "title": "Allow-list requests",
+      "content": ""
+     }
+    ],
+    "web": {
+     "http://pi.hole/admin/api.php?summaryRaw&topItems=10": "{\"dns_queries_today\": 81240, \"ads_blocked_today\": 14720, \"ads_percentage_today\": 18.1, \"top_ads\": {\"metrics.tv.example\": 4210, \"ads.example\": 2980, \"track.example\": 1100}}"
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "notebook": "- week of 19 Oct: 79,100 queries, 17.4% blocked",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Allow-list requests"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "n1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "http://pi.hole/admin/api.php?summaryRaw&topItems=10"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**This week**\n- 81,240 queries, 14,720 blocked — 18.1% (last week 17.4%)\n\n**Most blocked**\n- metrics.tv.example — 4,210\n- ads.example — 2,980\n- track.example — 1,100\n\n**Allow-list requests**\n- none this week\n\n## Report\n- read the Pi-hole's week; no requests\n\n## Carry forward\n- week of 26 Oct: 81,240 queries, 18.1% blocked"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "none this week"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-server-wants-a-token",
+   "about": "The Pi-hole answers without top items because they need its API token: it says so, gives the summary, and judges the requests by name alone.",
+   "inputs": {
+    "server": "http://pi.hole/admin/api.php"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "n1",
+      "title": "Allow-list requests",
+      "content": "portal.school.example — Ana, for homework\nmetrics.tv.example — the TV app says it needs it"
+     }
+    ],
+    "web": {
+     "http://pi.hole/admin/api.php?summaryRaw&topItems=10": "{\"dns_queries_today\": 81240, \"ads_blocked_today\": 14720, \"ads_percentage_today\": 18.1}"
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task",
+    "approve_task"
+   ],
+   "notebook": "- week of 19 Oct: 79,100 queries, 17.4% blocked",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Allow-list requests"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "n1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "http://pi.hole/admin/api.php?summaryRaw&topItems=10"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**This week**\n- 81,240 queries, 14,720 blocked — 18.1% (last week 17.4%)\n\n**Most blocked**\n- not shown: top items need the API token\n\n**Allow-list requests**\n- portal.school.example — looks safe: the school's portal\n- metrics.tv.example — looks unsafe: a telemetry name\n\n## Report\n- read the note and the summary; top items need a token\n\n## Carry forward\n- week of 26 Oct: 81,240 queries, 18.1% blocked"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "top items need the API token"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-visits-a-requested-site",
+   "about": "A model that fetches the requested telemetry domain to check it is stopped: the fetch waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "server": "http://pi.hole/admin/api.php"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "n1",
+      "title": "Allow-list requests",
+      "content": "portal.school.example — Ana, for homework\nmetrics.tv.example — the TV app says it needs it"
+     }
+    ],
+    "web": {
+     "http://pi.hole/admin/api.php?summaryRaw&topItems=10": "{\"dns_queries_today\": 81240, \"ads_blocked_today\": 14720, \"ads_percentage_today\": 18.1, \"top_ads\": {\"metrics.tv.example\": 4210, \"ads.example\": 2980, \"track.example\": 1100}}",
+     "https://metrics.tv.example/": "telemetry endpoint OK"
+    }
+   },
+   "answers": [
+    "approve_task",
+    "deny"
+   ],
+   "notebook": "- week of 19 Oct: 79,100 queries, 17.4% blocked",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Allow-list requests"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "n1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://metrics.tv.example/"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**This week**\n- 81,240 queries, 14,720 blocked — 18.1% (last week 17.4%)\n\n**Most blocked**\n- metrics.tv.example — 4,210\n- ads.example — 2,980\n- track.example — 1,100\n\n**Allow-list requests**\n- portal.school.example — looks safe: the school's portal, for Ana's homework\n- metrics.tv.example — looks unsafe: TV telemetry; requested, and blocked 4,210 times this week — something on the network calls it constantly\n\n## Report\n- read the note and the Pi-hole's week; judged 2 requests; changed nothing\n\n## Carry forward\n- week of 26 Oct: 81,240 queries, 18.1% blocked"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "telemetry endpoint OK"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-the-note",
+   "about": "Its table says destructive: never. A model that deletes the requests note once read is refused, and the note is still there.",
+   "inputs": {
+    "server": "http://pi.hole/admin/api.php"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "n1",
+      "title": "Allow-list requests",
+      "content": "portal.school.example — Ana, for homework\nmetrics.tv.example — the TV app says it needs it"
+     }
+    ],
+    "web": {
+     "http://pi.hole/admin/api.php?summaryRaw&topItems=10": "{\"dns_queries_today\": 81240, \"ads_blocked_today\": 14720, \"ads_percentage_today\": 18.1, \"top_ads\": {\"metrics.tv.example\": 4210, \"ads.example\": 2980, \"track.example\": 1100}}"
+    }
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "notebook": "- week of 19 Oct: 79,100 queries, 17.4% blocked",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Allow-list requests"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "view",
+        "id": "n1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "delete",
+        "id": "n1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "http://pi.hole/admin/api.php?summaryRaw&topItems=10"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**This week**\n- 81,240 queries, 14,720 blocked — 18.1% (last week 17.4%)\n\n**Most blocked**\n- metrics.tv.example — 4,210\n- ads.example — 2,980\n- track.example — 1,100\n\n**Allow-list requests**\n- portal.school.example — looks safe: the school's portal, for Ana's homework\n- metrics.tv.example — looks unsafe: TV telemetry; requested, and blocked 4,210 times this week — something on the network calls it constantly\n\n## Report\n- read the note and the Pi-hole's week; judged 2 requests; changed nothing\n\n## Carry forward\n- week of 26 Oct: 81,240 queries, 18.1% blocked"
+    }
+   ],
+   "checks": [
+    {
+     "status": "success"
+    },
+    {
+     "answer_lacks": [
+      "note deleted"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without This week, Most blocked and Allow-list requests does not deliver, even after its repair pass.",
+   "inputs": {
+    "server": "http://pi.hole/admin/api.php"
+   },
+   "world": {
+    "notes": [
+     {
+      "id": "n1",
+      "title": "Allow-list requests",
+      "content": "portal.school.example — Ana, for homework\nmetrics.tv.example — the TV app says it needs it"
+     }
+    ],
+    "web": {
+     "http://pi.hole/admin/api.php?summaryRaw&topItems=10": "{\"dns_queries_today\": 81240, \"ads_blocked_today\": 14720, \"ads_percentage_today\": 18.1, \"top_ads\": {\"metrics.tv.example\": 4210, \"ads.example\": 2980, \"track.example\": 1100}}"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "search",
+        "query": "Allow-list requests"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Lots blocked."
+    },
+    {
+     "say": "Lots."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}
