@@ -8,6 +8,7 @@ import time
 import urllib.parse
 import html
 from pathlib import Path
+from typing import Optional
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse, HTMLResponse
 import logging
@@ -1433,12 +1434,13 @@ def setup_mcp_routes(mcp_manager: McpManager):
             db.close()
 
     @router.get("/oauth/callback")
-    async def oauth_callback(code: str, state: str, request: Request):
+    async def oauth_callback(code: str, state: str, request: Request, iss: Optional[str] = None):
         """Handle OAuth callback. Generic MCP OAuth flows resolve via the
-        pending-state registry; Google flows fall through to the legacy path."""
+        pending-state registry; Google flows fall through to the legacy path.
+        `B621`: `iss` (RFC 9207) is passed on — see `resolve_pending`."""
         require_admin(request)
         from src.mcp_oauth import resolve_pending
-        if resolve_pending(state, code):
+        if resolve_pending(state, code, iss):
             return HTMLResponse(_oauth_result_page(
                 "Authorization Successful",
                 "The MCP server is connecting. You can close this window and return to Pantheon.",
@@ -1464,7 +1466,7 @@ def setup_mcp_routes(mcp_manager: McpManager):
         # resolve it directly (the background connect finishes the handshake).
         state = params.get("state", [None])[0]
         from src.mcp_oauth import resolve_pending
-        if state and resolve_pending(state, code):
+        if state and resolve_pending(state, code, params.get("iss", [None])[0]):
             return HTMLResponse(_oauth_result_page(
                 "Authorization Successful",
                 "The MCP server is connecting. You can close this window and return to Pantheon.",

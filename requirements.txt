@@ -54,9 +54,10 @@ httpcore==1.0.9
 # Floor before pinning: >=2.13.4 (pydantic) and >=2.14.1 (pydantic-settings).
 # Do not pin below those.
 pydantic==2.13.5
-# Not imported: `mcp` (>=2.5.2) and `chromadb-client` (>=2.0) require it. The
-# product's own `BaseSettings` went with `B550`; the pin stays so the image
-# resolves one version of a package two pins pull in (`B1548`).
+# Not imported: `chromadb-client` (>=2.0) requires it — and `mcp` (>=2.5.2)
+# did until 2.x (`B621`). The product's own `BaseSettings` went with `B550`;
+# the pin stays so the image resolves the version this tree is tested with
+# (`B1548`).
 pydantic-settings==2.15.0
 SQLAlchemy==2.1.1
 pypdf==6.19.0
@@ -90,29 +91,31 @@ python-dateutil==2.9.0.post0
 caldav==3.3.1
 cryptography==50.0.1
 bcrypt==5.0.0
-# Built-in servers use the v1 low-level Server decorator API. MCP SDK v2 is a
-# breaking rewrite, so keep fresh installs on the maintained v1 line until the
-# servers are migrated together.
-# Ceiling before pinning: <2. That ceiling is still the rule — a Dependabot PR
-# that moves this pin to 2.x is a migration, not a bump, and is refused until
-# the built-in servers move together.
+# MCP SDK. A major version of it is a migration, not a bump: Dependabot ignores
+# semver-major for `mcp` (`.github/dependabot.yml`), and
+# `tests/test_mcp_dependency_compatibility.py` holds this pin to one major line.
 #
-# `B621`. That refusal is now a measurement rather than a position. mcp 2.2.0
-# was installed on 2026-09-18 and the MCP-touching tests run against it:
-# **23 failed and 8 errored, against 1283 passed and nothing failing on the
-# installed 1.27.0.** `mcp.server.Server` in 2.x has no `list_tools` decorator
-# — the v1 low-level API named above — so all four servers under
-# `mcp_servers/` die at import, and `builtin_mcp.py` would log "failed to
-# connect" and carry on. On the client side `streamablehttp_client` is now
-# `streamable_http_client` and has lost its `auth=` parameter, which is the
-# only way `src/mcp_manager.py:358` attaches the OAuth provider, and 2.x moves
-# the client onto `httpx2` — the package pinned nine lines below this one and
-# declared there for the test client only.
-# This pin is not staleness: 1.30.0 is the highest release on the 1.x line
-# (PyPI, read 2026-09-18), and installed here on the same day it gives 1283
-# passed and nothing failing across the same tests. It is current for the line
-# the product is written against.
-mcp==1.30.0
+# `B621`. 1.x -> 2.x was exactly that, and the ceiling that stood here (`<2`)
+# refused it "until the built-in servers move together". They moved together
+# on 2026-10-28, from 1.30.0 (the last 1.x release) to 2.3.0 (the newest), with
+# `mcp-types` 2.3.0 the one new package it brings:
+#   * the servers' registration — `@server.list_tools()` / `@server.call_tool()`
+#     are gone, so all four under `mcp_servers/` and the workstation relay died
+#     at import; `src/mcp_tool_server.py` hands the same two functions to 2.x's
+#     constructor and keeps what the decorator did (input validation, a raised
+#     exception as an error result, a list of content as a result);
+#   * the authenticated streamable-HTTP connect — `streamable_http_client` has
+#     no `auth=`; `src/mcp_manager.py` builds the httpx2 client the OAuth
+#     provider rides on, and the provider gets RFC 9207's `iss` back;
+#   * the models' snake_case attributes (`is_error`, `input_schema`, ...): read
+#     the 1.x way, every failing tool reached the model as a success; and the
+#     read timeout, now float seconds and code -32001 rather than 408.
+# Measured 2026-10-28 with only `mcp` and `mcp-types` moved (a venv over the
+# installed packages): of the 152 test files that name `mcp_manager`,
+# `mcp_oauth`, `mcp_servers` or import `mcp`, the tree before this change
+# failed 81 tests and errored 19 on 2.3.0 (7 files would not collect), where
+# 1.30.0 passed all of them; after it, those files and five more pass on 2.3.0.
+mcp==2.3.0
 pyotp==2.10.0
 qrcode[pil]==8.2
 croniter==6.2.4
@@ -120,10 +123,11 @@ pytest==9.1.1
 # Not imported: pytest loads it by entry point as a plugin; `asyncio_mode =
 # "auto"` in pyproject.toml is the setting it reads.
 pytest-asyncio==1.4.0
-# starlette.testclient prefers httpx2 since Starlette 1.2.0 and warns on every
-# TestClient import when only classic httpx is present. Runtime code keeps
-# using `httpx` above; this is test-client only.
-# Not imported: starlette.testclient imports it.
+# The MCP SDK's HTTP transports run on httpx2 since mcp 2.x, and
+# `src/mcp_manager.py` builds the client a streamable-HTTP MCP session runs on
+# (`B621`); everything else at runtime uses `httpx` above. starlette.testclient
+# prefers it too, since Starlette 1.2.0, and warns on every TestClient import
+# when only classic httpx is present.
 httpx2==2.13.1
 # DATABASE_URL defaults to sqlite (core/database.py), but when pointed at an
 # external Postgres, SQLAlchemy's postgresql dialect imports psycopg2 inside

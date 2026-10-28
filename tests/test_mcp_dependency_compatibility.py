@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Regression coverage for the built-in MCP servers' SDK compatibility line.
 
-The built-in servers use the v1 low-level `Server` decorator API. MCP SDK v2 is
-a breaking rewrite, so a fresh install must land on the maintained v1 line until
-the servers are migrated together.
+A major version of the MCP SDK is a breaking rewrite, so the pin stays on one
+major line and moves to the next only with the built-in servers and the client.
+`B621` was that move, 1.x -> 2.x: the servers register through
+`src/mcp_tool_server.py` on 2.x's constructor handlers, and the ceiling here
+moved with the pin, from `<2` to `<3`.
 
 This used to assert the literal string `mcp<2` appeared in `requirements.txt`.
 `B320` pinned every dependency to an exact version, which is a strictly tighter
@@ -40,26 +42,28 @@ def _mcp_specifier() -> str:
     return found[0]
 
 
-def test_mcp_requirement_excludes_breaking_v2_sdk():
+def test_mcp_requirement_excludes_breaking_v3_sdk():
     specifier = SpecifierSet(_mcp_specifier())
-    # The v1 line is what the built-in servers are written against.
-    assert specifier.contains(Version("1.30.0")) or any(
-        Version(s.version).major == 1 for s in specifier if s.operator in ("==", "===")
-    ), f"`mcp{specifier}` does not select the v1 SDK line"
-    # And no v2, whether by a pin or by a range that leaves the door open.
-    for rejected in ("2.0.0", "2.1.0", "3.0.0"):
+    # The 2.x line is what the built-in servers are written against (`B621`).
+    assert any(
+        Version(s.version).major == 2 for s in specifier if s.operator in ("==", "===")
+    ), f"`mcp{specifier}` does not select the 2.x SDK line"
+    # Not back to 1.x, whose decorators the servers no longer use — and no 3.x,
+    # whether by a pin or by a range that leaves the door open.
+    for rejected in ("1.30.0", "3.0.0", "3.1.0", "4.0.0"):
         assert not specifier.contains(Version(rejected)), (
-            f"`mcp{specifier}` admits {rejected} — the built-in servers use the v1 "
-            f"low-level Server decorator API and have not been migrated")
+            f"`mcp{specifier}` admits {rejected} — the built-in servers are written "
+            f"against the 2.x low-level Server, and a major is a migration")
 
 
 def test_the_reason_for_the_ceiling_is_still_written_down():
     """`Law 1`. The pin is enforceable; the paragraph above it is why anyone
-    would keep it. A Dependabot pull request moving `mcp` to 2.x is a migration,
+    would keep it. A Dependabot pull request moving `mcp` to a new major is a migration,
     not a bump, and that sentence is the only thing that says so."""
     text = REQUIREMENTS.read_text(encoding="utf-8")
-    assert "MCP SDK v2 is a" in text
-    assert "servers are migrated together" in text
+    # `B621`: the sentence moved with the pin — it is about any major now.
+    assert "A major version of it is a migration, not a bump" in text
+    assert "moved together" in text
 
 
 def test_dependabot_does_not_group_an_mcp_major_with_safe_bumps():
@@ -71,4 +75,4 @@ def test_dependabot_does_not_group_an_mcp_major_with_safe_bumps():
     assert re.search(
         r"(?m)^    ignore:\n      - dependency-name: [\"']?mcp[\"']?\n"
         r"        update-types: \[[\"']version-update:semver-major[\"']\]$",
-        pip_block.group(1)), "MCP v2 must wait for a coordinated server/client migration"
+        pip_block.group(1)), "an MCP major must wait for a coordinated server/client migration"

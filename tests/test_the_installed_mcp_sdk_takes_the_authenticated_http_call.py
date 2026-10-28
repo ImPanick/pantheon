@@ -1,101 +1,145 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""The installed `mcp` SDK accepts the authenticated HTTP call `mcp_manager` makes.
+"""The installed `mcp` SDK carries the OAuth provider to a remote MCP server.
 
-`B626`. `McpManager._connect_http` imports
-`mcp.client.streamable_http.streamablehttp_client` inside the function and
-calls it `streamablehttp_client(url, auth=provider)`, where `provider` is the
-`OAuthClientProvider` `src/mcp_oauth.py` builds. Measured 2026-09-18: under
-`mcp` 2.2.0 that symbol is gone (it is `streamable_http_client`) and its
-replacement has no `auth` parameter (`(url, *, http_client,
-terminate_on_close)`) — two hard breaks on the only remote transport OAuth runs
-on, and no test failed on either, because the import is lazy and the one test
-that fakes the symbol takes `**k`.
+`B626`, then `B621`. `McpManager._connect_http` is the only remote transport
+OAuth runs on, and the provider `src/mcp_oauth.py` builds is the only way a
+token reaches the server. On mcp 1.x it went in as
+`streamablehttp_client(url, auth=provider)`; mcp 2.x renamed the transport
+`streamable_http_client` and **dropped `auth=`** — it takes the HTTP client,
+and the provider rides on that. Measured 2026-09-18 on 2.2.0: no test failed
+on either break, because the import is lazy and the one test that faked the
+symbol took `**k`.
 
-So the call is read out of `src/mcp_manager.py` — the module and symbol it
-imports, and the arguments it passes — rather than written down here, and
-bound against the installed SDK's own signature. A rename or a dropped keyword
-on either side is a red case naming which.
+`B626`'s version of this file read the call out of the source with `ast` and
+bound it against the installed signature. That proved the call *binds*; it
+could not prove the token *arrives* — a client built and never handed the
+provider binds perfectly. So this drives it (`Law 20`): a real streamable-HTTP
+MCP server on loopback, built with the installed SDK, that answers 401 to any
+request without `Authorization: Bearer <token>`; the manager's real
+`_connect_http`; and the real `build_provider`, whose storage holds that token.
+Connected with the server's one tool listed means the provider was on the wire.
 """
-import ast
-import importlib
-import inspect
-import types
-import typing
-from pathlib import Path
+import asyncio
+import socket
+import threading
+import time
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-_MANAGER = ROOT / "src" / "mcp_manager.py"
+TOKEN = "b621-the-token-the-server-wants"
 
 
-def _the_call():
-    """`(module, symbol, positional count, keyword names)` from `_connect_http`."""
-    tree = ast.parse(_MANAGER.read_text(encoding="utf-8"))
-    fn = next(n for n in ast.walk(tree)
-              if isinstance(n, ast.AsyncFunctionDef) and n.name == "_connect_http")
-    imported = next(n for n in ast.walk(fn)
-                    if isinstance(n, ast.ImportFrom)
-                    and (n.module or "").startswith("mcp.client.streamable_http"))
-    symbol = imported.names[0]
-    local = symbol.asname or symbol.name
-    call = next(n for n in ast.walk(fn)
-                if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == local)
-    return imported.module, symbol.name, len(call.args), [k.arg for k in call.keywords]
+class _RequireBearer:
+    """ASGI middleware: 401 unless the request carries the bearer token. Records
+    what each request carried, so a failure can say what arrived instead."""
+
+    def __init__(self, app):
+        self.app = app
+        self.seen = []
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            header = dict(scope.get("headers") or []).get(b"authorization", b"").decode()
+            self.seen.append(header)
+            if header != f"Bearer {TOKEN}":
+                from starlette.responses import JSONResponse
+                await JSONResponse({"error": "invalid_token"}, status_code=401)(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
 
 
-def _problems(module, symbol, positional, keywords) -> list:
-    """What stops the call `_connect_http` makes from binding on `module`."""
-    fn = getattr(module, symbol, None)
-    if fn is None:
-        return [f"{module.__name__} has no `{symbol}` (it exports "
-                f"{sorted(n for n in dir(module) if 'client' in n)})"]
-    sig = inspect.signature(fn)
-    out = []
+@pytest.fixture
+def remote_server():
+    import uvicorn
+    import mcp.types as types
+    from mcp.server.lowlevel import Server
+
+    async def on_list_tools(ctx, params):
+        return types.ListToolsResult(tools=[types.Tool(
+            name="whoami", description="Says who the server thinks you are.",
+            input_schema={"type": "object", "properties": {}})])
+
+    server = Server("authed-probe", on_list_tools=on_list_tools)
+    app = _RequireBearer(server.streamable_http_app())
+
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    sock.listen(16)
+    port = sock.getsockname()[1]
+    live = uvicorn.Server(uvicorn.Config(app, log_level="warning", access_log=False))
+    thread = threading.Thread(target=lambda: asyncio.run(live.serve(sockets=[sock])), daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 15
+    while not live.started:
+        assert thread.is_alive() and time.monotonic() < deadline, "the MCP server did not start"
+        time.sleep(0.02)
     try:
-        sig.bind(*(["https://mcp.example/mcp"] * positional), **{k: None for k in keywords})
-    except TypeError as e:
-        out.append(f"`{symbol}{sig}` does not take the call: {e}")
-    if "auth" in keywords and "auth" in sig.parameters:
-        import httpx
-        annotation = sig.parameters["auth"].annotation
-        if httpx.Auth not in (typing.get_args(annotation) or (annotation,)):
-            out.append(f"`auth` is annotated {annotation!r}, not an httpx.Auth")
-    return out
+        yield f"http://127.0.0.1:{port}/mcp", app
+    finally:
+        live.should_exit = True
+        thread.join(timeout=10)
+        sock.close()
 
 
-def test_the_call_is_read_from_the_manager():
-    module, symbol, positional, keywords = _the_call()
-    assert module == "mcp.client.streamable_http"
-    assert "auth" in keywords, "the OAuth provider is passed by keyword"
-    assert positional == 1
+def _storage(monkeypatch, token):
+    """`build_provider`'s storage. Only the database read is replaced; the
+    provider, and everything it does with what storage holds, is real."""
+    from mcp.shared.auth import OAuthToken
+    from src import mcp_oauth
+
+    async def get_tokens(self):
+        return OAuthToken(access_token=token, token_type="Bearer") if token else None
+
+    async def nothing(self, *_):
+        return None
+
+    monkeypatch.setattr(mcp_oauth.DbTokenStorage, "get_tokens", get_tokens)
+    for name in ("get_client_info", "set_tokens", "set_client_info"):
+        monkeypatch.setattr(mcp_oauth.DbTokenStorage, name, nothing)
 
 
-def test_the_installed_sdk_takes_the_call_the_manager_makes():
-    module_name, symbol, positional, keywords = _the_call()
-    module = importlib.import_module(module_name)
-    assert _problems(module, symbol, positional, keywords) == []
+def test_the_oauth_provider_reaches_a_streamable_http_server(remote_server, monkeypatch):
+    """A token already granted — the state after a person has signed in once —
+    is what the server sees on every request, and the session comes up."""
+    from src.mcp_manager import McpManager
+
+    _storage(monkeypatch, TOKEN)
+    url, app = remote_server
+
+    async def go():
+        mgr = McpManager()
+        try:
+            ok = await asyncio.wait_for(mgr._connect_http("b621srv", "authed", url), timeout=30)
+            return ok, dict(mgr._connections.get("b621srv") or {}), list(mgr._tools.get("b621srv") or [])
+        finally:
+            await mgr.disconnect_server("b621srv")
+
+    ok, status, tools = asyncio.run(go())
+    assert ok is True, (status, app.seen)
+    assert status["status"] == "connected" and status["transport"] == "http", status
+    assert [t["name"] for t in tools] == ["whoami"]
+    assert app.seen and all(h == f"Bearer {TOKEN}" for h in app.seen), app.seen
 
 
-def test_the_provider_the_manager_passes_is_what_auth_takes():
-    import httpx
-    from mcp.client.auth import OAuthClientProvider
+def test_without_the_token_the_server_refuses(remote_server, monkeypatch):
+    """The control: the same server, a provider with nothing stored, and the
+    first request goes out with no `Authorization` — so the 401 is real, and
+    the test above passing is the token's doing. The flow then waits on a
+    person to sign in; it is cancelled rather than waited out."""
+    from src.mcp_manager import McpManager
 
-    assert issubclass(OAuthClientProvider, httpx.Auth)
+    _storage(monkeypatch, None)
+    url, app = remote_server
 
+    async def go():
+        mgr = McpManager()
+        task = asyncio.ensure_future(mgr._connect_http("b621none", "authed", url))
+        deadline = time.monotonic() + 10
+        while not app.seen and time.monotonic() < deadline:
+            await asyncio.sleep(0.05)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await mgr.disconnect_server("b621none")
 
-@pytest.mark.parametrize("shape", ["renamed", "no_auth"])
-def test_the_check_fails_on_the_2_2_0_shape(shape):
-    """The SDK this row measured, as a stand-in: the check is not a tautology."""
-    _, symbol, positional, keywords = _the_call()
-    fake = types.ModuleType("mcp.client.streamable_http")
-
-    def streamable_http_client(url, *, http_client=None, terminate_on_close=True):
-        raise AssertionError("never called")
-
-    fake.streamable_http_client = streamable_http_client
-    if shape == "no_auth":
-        setattr(fake, symbol, streamable_http_client)
-    found = _problems(fake, symbol, positional, keywords)
-    assert found, shape
-    assert (symbol in found[0]) if shape == "renamed" else ("auth" in found[0]), found
+    asyncio.run(go())
+    assert app.seen and app.seen[0] == "", app.seen

@@ -435,11 +435,14 @@ class ProbeEndpoint:
 # ── a real MCP server, in three states ──────────────────────────────────────
 
 MCP_SERVER_SOURCE = '''# SPDX-License-Identifier: AGPL-3.0-or-later
-"""A real stdio MCP server for the tool-suite probe. Two read-only tools."""
-import sys
-from mcp.server.fastmcp import FastMCP
+"""A real stdio MCP server for the tool-suite probe. Two read-only tools.
 
-mcp = FastMCP("suite-probe")
+`B621`: mcp 2.x renamed `FastMCP` to `MCPServer`; `mcp.server.fastmcp` now
+raises on import, pointing at the migration guide."""
+import sys
+from mcp.server.mcpserver import MCPServer
+
+mcp = MCPServer("suite-probe")
 
 
 @mcp.tool()

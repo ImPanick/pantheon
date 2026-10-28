@@ -61,27 +61,30 @@ class _Hangs:
 class _HangsLikeTheSdk:
     """A server that honours `read_timeout_seconds` the way the SDK does.
 
-    On expiry the SDK raises `McpError(ErrorData(code=408, ...))` rather than
-    cancelling the caller, which is what keeps the session usable afterwards.
+    On expiry the SDK raises its own `MCPError` carrying `REQUEST_TIMEOUT`
+    rather than cancelling the caller, which is what keeps the session usable
+    afterwards. `B621`: mcp 2.x takes the deadline as float seconds (1.x took a
+    `timedelta`) and spells the timeout -32001 (1.x: 408), so the error raised
+    here is the installed SDK's own rather than a look-alike — a look-alike
+    carrying 408 kept passing while the manager stopped recognising the real one.
     """
 
     def __init__(self):
         self.deadline_seen = None
 
     async def call_tool(self, name, args, read_timeout_seconds=None):
-        self.deadline_seen = (
-            read_timeout_seconds.total_seconds() if read_timeout_seconds else None
-        )
+        assert read_timeout_seconds is None or isinstance(read_timeout_seconds, float), (
+            f"the SDK adds read_timeout_seconds to a float clock; got {read_timeout_seconds!r}")
+        self.deadline_seen = read_timeout_seconds
         await asyncio.sleep(self.deadline_seen or 3600)
-        raise _McpErrorLike()
+        raise _sdk_timeout()
 
 
-class _McpErrorLike(Exception):
-    """Shaped like `mcp.shared.exceptions.McpError` — `.error.code == 408`."""
-
-    def __init__(self):
-        super().__init__("Timed out while waiting for response to CallToolRequest.")
-        self.error = type("ErrorData", (), {"code": 408, "message": "timeout"})()
+def _sdk_timeout():
+    from mcp.shared.exceptions import MCPError
+    from mcp.types import REQUEST_TIMEOUT
+    return MCPError(code=REQUEST_TIMEOUT,
+                    message="Timed out while waiting for response to CallToolRequest.")
 
 
 class _Answers:
@@ -130,7 +133,8 @@ def test_a_server_that_never_answers_no_longer_hangs_the_caller():
 def test_the_sdks_own_timeout_is_used_and_fires_first():
     """`Law 14`: the SDK already has this, so it is what gets the deadline.
 
-    The graceful layer stops waiting on the response stream and raises 408; the
+    The graceful layer stops waiting on the response stream and raises its
+    `REQUEST_TIMEOUT` (-32001 on mcp 2.x, `B621`); the
     hard bound is `deadline + grace` behind it and only exists for sessions the
     SDK's timer cannot reach. So an SDK-shaped session returns AT the deadline,
     not after the grace.
@@ -214,7 +218,7 @@ def test_the_default_applies_when_nobody_asks():
 
     class _Recording:
         async def call_tool(self, name, args, read_timeout_seconds=None):
-            seen["deadline"] = read_timeout_seconds.total_seconds()
+            seen["deadline"] = read_timeout_seconds   # `B621`: float seconds on mcp 2.x
             return type("R", (), {"content": [], "isError": False})()
 
     mgr, sid = _manager(_Recording())

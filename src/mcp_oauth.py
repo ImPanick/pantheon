@@ -11,7 +11,7 @@ import json
 import logging
 import os
 import time
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 from urllib.parse import urlparse, parse_qs
 
 logger = logging.getLogger(__name__)
@@ -58,7 +58,7 @@ REDIRECT_URI = f"{_REDIRECT_BASE}/api/mcp/oauth/callback"
 # How long the background connect waits for the user to authorize before giving up.
 AUTH_WAIT_SECONDS = 300
 
-_pending: Dict[str, asyncio.Future] = {}   # state -> Future[(code, state)]
+_pending: Dict[str, asyncio.Future] = {}   # state -> Future[(code, state, iss)]
 _pending_ts: Dict[str, float] = {}         # state -> monotonic timestamp, for pruning
 _auth_urls: Dict[str, str] = {}            # server_id -> authorization URL
 
@@ -90,10 +90,18 @@ def register_pending(state: str) -> asyncio.Future:
     return fut
 
 
-def resolve_pending(state: str, code: str) -> bool:
+def resolve_pending(state: str, code: str, iss: Optional[str] = None) -> bool:
+    """Hand a browser's redirect to the flow waiting on *state*.
+
+    `B621`: *iss* is RFC 9207's authorization-response issuer, read from the
+    same redirect. mcp 2.x checks it against the authorization server's
+    metadata, and refuses a response **without** it from a server that
+    advertises `authorization_response_iss_parameter_supported` — so a callback
+    that dropped it would fail every sign-in to such a server at the last step.
+    """
     fut = _pending.get(state)
     if fut is not None and not fut.done():
-        fut.set_result((code, state))
+        fut.set_result((code, state, iss or None))
         return True
     return False
 
@@ -201,15 +209,18 @@ def build_provider(server_id: str, url: str, on_redirect=None):
                 logger.warning(f"MCP OAuth on_redirect callback failed: {e}")
         logger.info(f"MCP OAuth: server {server_id} awaiting authorization (state={state})")
 
-    async def callback_handler() -> Tuple[str, Optional[str]]:
+    async def callback_handler():
+        # `B621`: mcp 2.x takes an `AuthorizationCodeResult` here, where 1.x took
+        # a `(code, state)` tuple — and it carries RFC 9207's `iss`.
+        from mcp.client.auth import AuthorizationCodeResult
         auth_url = _auth_urls.get(server_id)
         state = (parse_qs(urlparse(auth_url).query).get("state") or [None])[0] if auth_url else None
         fut = _pending.get(state)
         if fut is None:
             raise RuntimeError("No pending OAuth flow for this server")
         try:
-            code, ret_state = await asyncio.wait_for(fut, timeout=AUTH_WAIT_SECONDS)
-            return code, ret_state
+            code, ret_state, iss = await asyncio.wait_for(fut, timeout=AUTH_WAIT_SECONDS)
+            return AuthorizationCodeResult(code=code, state=ret_state, iss=iss)
         finally:
             _discard_pending(state)
             _auth_urls.pop(server_id, None)

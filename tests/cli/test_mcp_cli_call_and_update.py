@@ -11,7 +11,7 @@ MEASURED BEFORE: `pantheon-mcp --help` offered seven subcommands and not one of
 them could change a stored server or call a tool. The only edit was
 delete-and-re-add, which mints a new id.
 
-These tests RUN A REAL MCP SERVER — a five-line FastMCP stdio server written
+These tests RUN A REAL MCP SERVER — a five-line `MCPServer` stdio server written
 into `tmp_path` — and drive the CLI functions against it (`Law 20`). The hang
 test uses a server that really does sleep, so the deadline is measured, not
 mocked.
@@ -29,10 +29,11 @@ pytest.importorskip("mcp", reason="the MCP SDK is optional; these drive a real s
 
 from tests.helpers.cli_loader import load_script  # noqa: E402
 
+# `B621`: `MCPServer`, which mcp 2.x renamed `FastMCP` to.
 TINY_SERVER = '''
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
-mcp = FastMCP("tiny")
+mcp = MCPServer("tiny")
 
 
 @mcp.tool()

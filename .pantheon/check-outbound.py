@@ -145,7 +145,7 @@ def _root_chain(node) -> str:
     return ".".join(reversed(names))
 
 
-_HTTP_LIBRARIES = ("httpx", "requests", "aiohttp")
+_HTTP_LIBRARIES = ("httpx", "httpx2", "requests", "aiohttp")
 
 
 def _library_aliases(tree) -> dict:
@@ -318,8 +318,14 @@ def _is_paced(node, call=None) -> bool:
     return False
 
 
+# `B621`: and `httpx2`, the fork the MCP SDK's transports moved onto in mcp 2.x.
+# `src/mcp_manager.py` builds one for every streamable-HTTP MCP session, and a
+# rule reading the word `httpx` exactly could not see it.
+_HTTPX_FAMILY = frozenset({"httpx", "httpx2"})
+
+
 def _is_httpx(chain: str) -> bool:
-    return chain.rsplit(".", 1)[-1].lstrip("_") == "httpx"
+    return chain.rsplit(".", 1)[-1].lstrip("_") in _HTTPX_FAMILY
 
 
 def _said(call) -> bool:

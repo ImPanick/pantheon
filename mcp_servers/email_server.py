@@ -27,13 +27,12 @@ import uuid
 from contextvars import ContextVar
 from urllib.parse import parse_qs, unquote, urlparse
 
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-server = Server("email")
+from src.mcp_tool_server import serve_stdio, tool_server  # noqa: E402
+
 EMAIL_SOCKET_TIMEOUT = float(os.environ.get("EMAIL_SOCKET_TIMEOUT", "20"))
 # `B1230`. How long OPENING a mail connection may take — the TCP connect, the
 # TLS handshake (or the STARTTLS upgrade) and the server's greeting — apart from
@@ -2201,7 +2200,6 @@ def _download_attachment(uid, index, folder="INBOX", account=None, destination=N
 # ── MCP Tool Registration ──
 
 
-@server.list_tools()
 async def list_tools() -> list[Tool]:
     # `B74`, finished by `B1357` / `D-2026-10-14-01` §1. All sixteen now
     # derive from `src/tool_schemas.FUNCTION_TOOL_SCHEMAS`. Eleven already did;
@@ -2249,7 +2247,6 @@ async def list_tools() -> list[Tool]:
     ]
 
 
-@server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     arguments = dict(arguments) if isinstance(arguments, dict) else {}
     owner = str(arguments.pop(_MCP_OWNER_ARG, "") or "").strip()
@@ -2702,11 +2699,13 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
 # ── Main ──
 
+# `B621`: mcp 2.x has no `@server.list_tools()` / `@server.call_tool()`; the
+# two functions above are handed to the SDK in `src/mcp_tool_server.py`.
+server = tool_server("email", list_tools, call_tool)
+
+
 async def run():
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream, write_stream, server.create_initialization_options()
-        )
+    await serve_stdio(server)
 
 
 if __name__ == "__main__":

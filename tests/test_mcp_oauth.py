@@ -9,9 +9,49 @@ def test_registry_resolve_returns_code_and_state():
         fut = mcp_oauth.register_pending("st-1")
         assert mcp_oauth.resolve_pending("st-1", "the-code") is True
         return await asyncio.wait_for(fut, timeout=1)
-    code, state = asyncio.run(go())
+    # `B621`: and the redirect's RFC 9207 `iss`, `None` when it carried none.
+    code, state, iss = asyncio.run(go())
     assert code == "the-code"
     assert state == "st-1"
+    assert iss is None
+
+
+def test_the_issuer_on_the_redirect_reaches_the_sdk():
+    """`B621`. mcp 2.x's provider takes an `AuthorizationCodeResult` from the
+    callback, and checks its `iss` against the authorization server's metadata
+    — refusing one **without** it from a server that advertises
+    `authorization_response_iss_parameter_supported`. Driven through the real
+    provider's own two handlers, the way the SDK calls them."""
+    async def go():
+        p = mcp_oauth.build_provider("srv-iss", "https://example.com/mcp")
+        await p.context.redirect_handler("https://as.example/authorize?state=st-iss&x=1")
+        assert mcp_oauth.resolve_pending("st-iss", "the-code", "https://as.example") is True
+        return await p.context.callback_handler()
+
+    result = asyncio.run(go())
+    assert (result.code, result.state, result.iss) == ("the-code", "st-iss", "https://as.example")
+
+
+def test_the_callback_route_reads_the_issuer_from_the_query():
+    """`B621`. The route the browser lands on declares `iss` as an optional
+    query parameter — read from FastAPI's own parse of the handler, which is
+    what decides whether `?iss=` reaches it — and hands it on."""
+    import unittest.mock as mock
+    from types import SimpleNamespace
+
+    from routes.mcp.mcp_routes import setup_mcp_routes
+
+    router = setup_mcp_routes(SimpleNamespace())
+    route = next(r for r in router.routes if r.path == "/api/mcp/oauth/callback")
+    query = {p.name: p for p in route.dependant.query_params}
+    assert set(query) >= {"code", "state", "iss"} and not query["iss"].field_info.is_required()
+
+    handed = []
+    with mock.patch("routes.mcp.mcp_routes.require_admin", lambda request: None), \
+            mock.patch("src.mcp_oauth.resolve_pending",
+                       lambda state, code, iss=None: handed.append((state, code, iss)) or True):
+        asyncio.run(route.endpoint(code="c", state="s", request=None, iss="https://as.example"))
+    assert handed == [("s", "c", "https://as.example")]
 
 
 def test_resolve_unknown_state_is_false():

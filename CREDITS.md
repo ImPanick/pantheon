@@ -807,7 +807,7 @@ below were re-read from each distribution's own published metadata on
 | python-dotenv | core | BSD-3-Clause |
 | HTTPX | core | BSD-3-Clause |
 | **httpcore** | core | BSD-3-Clause |
-| **httpx2** | core (test client only) | BSD-3-Clause |
+| **httpx2** | core — the MCP SDK's HTTP transports and `src/mcp_manager.py`'s MCP client (`B621`), and the test client | BSD-3-Clause |
 | Pydantic / pydantic-settings | core | MIT |
 | SQLAlchemy | core | MIT |
 | pypdf | core | BSD-3-Clause |
@@ -824,7 +824,8 @@ below were re-read from each distribution's own published metadata on
 | caldav | core | GPL-3.0-or-later OR Apache-2.0 (dual; used under Apache-2.0) |
 | cryptography | core | Apache-2.0 OR BSD-3-Clause |
 | bcrypt | core | Apache-2.0 |
-| MCP (Model Context Protocol SDK, pinned `<2`) | core | MIT |
+| MCP (Model Context Protocol SDK, on the 2.x line since `B621`) | core | MIT |
+| **mcp-types** | core — installed by the MCP SDK 2.x, which pins it to its own version | MIT |
 | pyotp | core | MIT |
 | qrcode\[pil] | core | BSD-3-Clause |
 | croniter | core | MIT |

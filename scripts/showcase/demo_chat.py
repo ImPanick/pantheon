@@ -18,11 +18,13 @@ import json
 import sys
 import time
 
-from mcp.server.fastmcp import FastMCP
+# `B621`: mcp 2.x renamed `FastMCP` to `MCPServer` (`mcp.server.fastmcp` now
+# raises on import).
+from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
 POSTS = sys.argv[1] if len(sys.argv) > 1 else None
-mcp = FastMCP("chat")
+mcp = MCPServer("chat")
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False))

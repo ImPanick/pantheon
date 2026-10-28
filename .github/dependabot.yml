@@ -32,8 +32,9 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
-    # The built-in servers still use the MCP v1 Server decorator API. Keep
-    # Dependabot on that line until the servers and client migrate together.
+    # A new major of the MCP SDK is a migration of the built-in servers and the
+    # client together, not a bump — `B621` was 1.x -> 2.x. Keep Dependabot to
+    # minors and patches on the current line.
     ignore:
       - dependency-name: mcp
         update-types: ["version-update:semver-major"]

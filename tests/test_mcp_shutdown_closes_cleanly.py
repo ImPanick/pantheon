@@ -54,18 +54,21 @@ pytest.importorskip("mcp")
 import src.mcp_manager as mcp_manager  # noqa: E402
 from src.mcp_manager import McpManager  # noqa: E402
 
+# `B621`: written against mcp 2.x's low-level server, which takes its handlers
+# in the constructor — 1.x's `@app.list_tools()` decorator is gone.
 SERVER_SOURCE = '''\
 import asyncio
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 import mcp.types as types
 
-app = Server("probe")
+
+async def list_tools(ctx, params):
+    return types.ListToolsResult(
+        tools=[types.Tool(name="echo", description="echo", inputSchema={"type": "object"})])
 
 
-@app.list_tools()
-async def list_tools():
-    return [types.Tool(name="echo", description="echo", inputSchema={"type": "object"})]
+app = Server("probe", on_list_tools=list_tools)
 
 
 async def main():

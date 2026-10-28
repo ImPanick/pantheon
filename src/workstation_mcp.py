@@ -1105,13 +1105,10 @@ def build_relay(owner: str, slug: str, pin: str):
     fingerprint the admin registered (`pin`). Built separately from `main` so a
     test can drive it in-process as well as through `McpManager.connect_server`."""
     import mcp.types as types
-    from mcp.server.lowlevel import Server
 
+    from src.mcp_tool_server import tool_server
     from src.workstation_client import WorkstationError
 
-    server = Server(f"{slug} (in a workstation)")
-
-    @server.list_tools()
     async def _list_tools() -> List[Any]:
         try:
             found = await ws_verify(owner, slug, pin=pin)
@@ -1124,10 +1121,6 @@ def build_relay(owner: str, slug: str, pin: str):
         return [types.Tool(name=o["name"], description=o["description"],
                            inputSchema=o["input_schema"]) for o in found["offers"]]
 
-    # `validate_input=False`: the server in the workstation enforces its own
-    # schema, as every MCP server does (`D-2026-09-27-02`); a second judge
-    # here would refuse what the server itself might accept.
-    @server.call_tool(validate_input=False)
     async def _call_tool(name: str, arguments: Dict[str, Any]):
         try:
             result = await ws_try(owner, slug, name, arguments or {}, pin=pin)
@@ -1137,16 +1130,20 @@ def build_relay(owner: str, slug: str, pin: str):
             result = {"ok": False, "error": str(exc)}
         text, failed = _relay_text(result)
         return types.CallToolResult(content=[types.TextContent(type="text", text=text)],
-                                    isError=failed)
+                                    is_error=failed)
 
-    return server
+    # `validate_input=False`: the server in the workstation enforces its own
+    # schema, as every MCP server does (`D-2026-09-27-02`); a second judge
+    # here would refuse what the server itself might accept. `B621`: handed to
+    # the SDK through `src/mcp_tool_server.py`, which mcp 2.x's constructor
+    # handlers need in place of the 1.x decorators this used.
+    return tool_server(f"{slug} (in a workstation)", _list_tools, _call_tool,
+                       validate_input=False)
 
 
 async def _serve(owner: str, slug: str, pin: str) -> None:
-    from mcp.server.stdio import stdio_server
-    server = build_relay(owner, slug, pin)
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream, server.create_initialization_options())
+    from src.mcp_tool_server import serve_stdio
+    await serve_stdio(build_relay(owner, slug, pin))
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

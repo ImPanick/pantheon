@@ -164,6 +164,36 @@ def test_an_embedding_server_in_a_range_is_reached_direct(proxy, lan):
     assert proxy.lines == []
 
 
+# ── a remote MCP server (`B621`) ─────────────────────────────────────────────
+
+def _mcp_get(lan):
+    """A request on the client a streamable-HTTP MCP session runs on. Since
+    mcp 2.x Pantheon builds that client — an httpx2 one — rather than the SDK."""
+    from src.mcp_manager import _mcp_http_client
+
+    async def go():
+        async with _mcp_http_client(f"{lan.base}/mcp") as client:
+            return (await client.get(f"{lan.base}/mcp")).status_code
+
+    return asyncio.run(go())
+
+
+def test_a_remote_mcp_server_in_a_range_is_reached_direct(proxy, lan):
+    assert _mcp_get(lan) == 200
+    assert [(m, p) for m, p, _ in lan.RequestHandlerClass.seen] == [("GET", "/mcp")]
+    assert proxy.lines == []
+
+
+def test_control_without_the_range_the_proxy_is_handed_the_mcp_session(proxy, lan, monkeypatch):
+    _no_range(monkeypatch)
+    try:
+        _mcp_get(lan)
+    except Exception:  # noqa: BLE001 — what the recorder answers is not the question
+        pass
+    assert proxy.lines and proxy.lines[0].startswith(f"GET {lan.base}/mcp")
+    assert lan.RequestHandlerClass.seen == []
+
+
 # ── a third party, paced as well as routed ───────────────────────────────────
 
 def _remind(lan, monkeypatch):
@@ -276,7 +306,12 @@ def repo(tmp_path):
     ("httpx.AsyncClient(timeout=5, transport=t)", True),
     ("httpx.AsyncClient(timeout=5, trust_env=False)", True),
     ("httpx.AsyncClient(timeout=5, trust_env=True)", False),
-], ids=["nothing", "mounts-none", "direct-mounts", "transport", "no-env", "env"])
+    # `B621`: the MCP SDK's transports moved onto httpx2, and so did a client
+    # this product builds; the rule is about routing, not about one spelling.
+    ("httpx2.AsyncClient(timeout=5)", False),
+    ("httpx2.AsyncClient(timeout=5, mounts=paced_http.direct_mounts(url))", True),
+], ids=["nothing", "mounts-none", "direct-mounts", "transport", "no-env", "env",
+        "httpx2-nothing", "httpx2-direct-mounts"])
 def test_a_construction_that_says_nothing_fails_with_no_budget(repo, construction, said):
     (repo / "src" / "thing.py").write_text(
         "import httpx\nfrom src import paced_http\n"
