@@ -116,6 +116,11 @@ async function open(browser, mode, size, theme) {
   const phone = size[0] < 500;
   const ctx = await browser.newContext({ viewport: { width: size[0], height: size[1] }, isMobile: phone,
     hasTouch: phone, serviceWorkers: 'block' });
+  // `B1638`: Playwright's own 30 s defaults are a fixed pause too; a loaded
+  // machine takes longer to load the page than that, and every step below
+  // waits on its own named condition.
+  ctx.setDefaultTimeout(60000);
+  ctx.setDefaultNavigationTimeout(120000);
   await ctx.addInitScript((a) => {
     try {
       localStorage.setItem('pantheon-theme', a.theme);
@@ -124,37 +129,71 @@ async function open(browser, mode, size, theme) {
       localStorage.setItem('pantheon-toggles', JSON.stringify({ mode: a.mode }));
     } catch (_) {}
   }, { theme: JSON.stringify({ name: theme, colors: COLOURS[theme] }), mode });
-  const r = await ctx.request.post(C.base + '/api/auth/login',
-    { data: { username: C.user, password: C.password, remember: true } });
-  if (!r.ok()) throw new Error('login ' + r.status());
-  const page = await ctx.newPage();
-  page.__errors = [];
-  page.on('pageerror', (e) => page.__errors.push(String(e.message || e)));
-  await page.goto(C.base + '/', { waitUntil: 'load' });
-  await page.waitForFunction(() => window.__pantheonAppStarted === true, null, { timeout: 90000 });
-  await page.waitForTimeout(1500);
-  return { ctx, page };
+  try {
+    const r = await ctx.request.post(C.base + '/api/auth/login',
+      { data: { username: C.user, password: C.password, remember: true }, timeout: 120000 });
+    if (!r.ok()) throw new Error('login ' + r.status());
+    const page = await ctx.newPage();
+    page.__errors = [];
+    page.on('pageerror', (e) => page.__errors.push(String(e.message || e)));
+    await page.goto(C.base + '/', { waitUntil: 'load' });
+    await until(page, 'the app started', () => window.__pantheonAppStarted === true, 120000);
+    return { ctx, page };
+  } catch (e) {
+    await ctx.close().catch(() => {});
+    throw e;
+  }
 }
+
+// `B1638`. Every wait is on a condition with a name, as `B1521`'s drives
+// wait: a loaded machine makes any fixed pause too short somewhere, and a
+// step that times out says which condition never came, not "not visible".
+async function until(page, what, fn, ms = 60000, arg = null) {
+  try { await page.waitForFunction(fn, arg, { timeout: ms, polling: 100 }); }
+  catch (e) { throw new Error(`${what}: not within ${ms / 1000} s`); }
+}
+
+const menuOpen = () => {
+  const m = document.getElementById('model-picker-menu');
+  return !!m && !m.classList.contains('hidden') && !m.classList.contains('closing');
+};
 
 async function pick(page, model) {
   await page.evaluate(() => document.activeElement && document.activeElement.blur && document.activeElement.blur());
-  await page.waitForTimeout(300);
-  try { await page.click('#model-picker-btn', { timeout: 4000 }); }
-  catch (_) { await page.evaluate(() => document.getElementById('model-picker-btn').click()); }
-  await page.waitForTimeout(1000);
-  await page.locator('.model-switch-item', { hasText: model }).first().click();
-  await page.waitForTimeout(1000);
+  // The button toggles the menu, so it is pressed once, and only while the
+  // menu is shut — a second press (the old JS-click fallback after a slow
+  // click) shut what the first had opened.
+  if (!(await page.evaluate(menuOpen))) await page.click('#model-picker-btn', { timeout: 60000 });
+  await until(page, 'the model picker opened', menuOpen);
+  const item = page.locator('.model-switch-item', { hasText: model }).first();
+  try { await item.waitFor({ state: 'visible', timeout: 60000 }); }
+  catch (_) {
+    const open = await page.evaluate(menuOpen);
+    throw new Error(`the picker's ${model} row was not shown within 60 s (menu ${open ? 'open' : 'shut'})`);
+  }
+  await item.click();
+  await until(page, `${model} chosen and the picker shut`, (m) => {
+    const label = document.getElementById('model-picker-label');
+    const menu = document.getElementById('model-picker-menu');
+    return !window.__pantheonModelSwitchPromise && !!label && label.textContent.includes(m)
+      && menu.classList.contains('hidden');
+  }, 60000, model);
 }
 
+const trayCount = (page) => page.evaluate(() => document.querySelectorAll('#attach-strip .thumb').length);
+
 async function attach(page, paths) {
+  const want = (await trayCount(page)) + [].concat(paths).length;
   await page.setInputFiles('#file-input', paths);
-  for (let i = 0; i < 6; i++) {   // a phone crops each picture first: keep the original
-    await page.waitForTimeout(600);
+  // A phone crops each picture first: keep the original, each time it asks,
+  // until every file is in the tray.
+  const t0 = Date.now();
+  while ((await trayCount(page)) < want) {
+    if (Date.now() - t0 > 60000) throw new Error(`the tray never held ${want} file(s) within 60 s`);
     const keep = page.locator('.attach-crop-overlay .attach-crop-btn[data-action="original"]').first();
-    if (await keep.isVisible().catch(() => false)) { await keep.click(); continue; }
-    break;
+    if (await keep.isVisible().catch(() => false)) await keep.click().catch(() => {});
+    await page.waitForTimeout(150);
   }
-  await page.waitForTimeout(400);
 }
 
 async function carry(page, files, how) {
@@ -174,7 +213,8 @@ async function carry(page, files, how) {
       zone.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
     }
   }, { files, how });
-  await page.waitForTimeout(900);
+  await until(page, `the tray held the ${how}d file(s)`, (n) =>
+    document.querySelectorAll('#attach-strip .thumb').length >= n, 60000, files.length);
 }
 
 const lastReply = (page) => page.evaluate(() => {
@@ -183,7 +223,7 @@ const lastReply = (page) => page.evaluate(() => {
   return (err ? 'ERROR ' + err.textContent : '') || (body ? body.textContent.trim() : '');
 });
 
-async function send(page, text, until = /Sent (no|\d+) picture|^ERROR /, ms = 30000) {
+async function send(page, text, done = /Sent (no|\d+) picture|^ERROR /, ms = 90000) {
   const before = await page.evaluate(() => document.querySelectorAll('.msg-ai').length);
   await page.fill('#message', text);
   // `B1558`: at phone width an idle composer's Enter breaks the line, as a
@@ -192,12 +232,15 @@ async function send(page, text, until = /Sent (no|\d+) picture|^ERROR /, ms = 30
   if (phone) await page.click('.send-btn');
   else await page.press('#message', 'Enter');
   const t0 = Date.now();
-  while (Date.now() - t0 < ms) {
-    await page.waitForTimeout(400);
+  for (;;) {
+    if (Date.now() - t0 > ms) throw new Error(`no reply to "${text}" matching ${done} within ${ms / 1000} s`);
+    await page.waitForTimeout(250);
     const n = await page.evaluate(() => document.querySelectorAll('.msg-ai').length);
-    if (n > before && until.test(await lastReply(page))) break;
+    if (n > before && done.test(await lastReply(page))) break;
   }
-  await page.waitForTimeout(900);
+  // The turn is over when the composer is idle again (`B1638`).
+  await until(page, 'the composer idle after the reply', () => !document.querySelector('.steer-bar-btn')
+    && !window.__pantheonChatBusy);
 }
 
 const state = (page) => page.evaluate(() => {
@@ -210,7 +253,12 @@ const state = (page) => page.evaluate(() => {
 });
 
 async function scenario(browser, name, { mode = 'chat', size = [1440, 900], theme = 'dark' }, body) {
-  const { ctx, page } = await open(browser, mode, size, theme);
+  let ctx, page;
+  try { ({ ctx, page } = await open(browser, mode, size, theme)); }
+  catch (e) {   // one scenario that could not open is its own failure, named
+    out[name] = { crash: 'opening the app: ' + String(e && e.message || e), errors: [] };
+    return;
+  }
   const o = {};
   try { Object.assign(o, (await body(page)) || {}); } catch (e) { o.crash = String(e && e.message || e); }
   o.reply = await lastReply(page).catch(() => '');
@@ -269,7 +317,8 @@ async function scenario(browser, name, { mode = 'chat', size = [1440, 900], them
     await attach(page, C.cat);
     const before = await state(page);
     await page.locator('#sidebar-new-chat-btn').first().click();
-    await page.waitForTimeout(1200);
+    await until(page, 'the new chat open, with no message in it',
+      () => document.querySelectorAll('.msg-user, .msg-ai').length === 0);
     const inNew = await state(page);
     await send(page, C.words.m);
     return { trayBefore: before.tray, trayInNew: inNew.tray };
@@ -282,15 +331,46 @@ async function scenario(browser, name, { mode = 'chat', size = [1440, 900], them
     await attach(page, C.cat);
     await page.fill('#message', C.words.l2);
     await page.locator('.steer-bar-btn').first().click();
-    await page.waitForTimeout(800);
+    await until(page, "the steer's toast", () => [...document.querySelectorAll('.toast, .error-toast, .ui-toast')]
+      .some((t) => t.textContent.includes("A picture can't steer")), 30000).catch(() => {});
     const steered = await state(page);
-    const t0 = Date.now();
-    while (Date.now() - t0 < 60000) {
-      await page.waitForTimeout(500);
-      if (/Sent (no|\d+) picture/.test(await lastReply(page))) break;
-    }
-    await page.waitForTimeout(800);
+    await until(page, 'the queued message answered', () => {
+      const body = [...document.querySelectorAll('.msg-ai .body')].pop();
+      return !!body && /Sent (no|\d+) picture/.test(body.textContent);
+    }, 120000);
+    await until(page, 'the composer idle after the queued reply', () => !document.querySelector('.steer-bar-btn')
+      && !window.__pantheonChatBusy);
     return { toastsAtSteer: steered.toasts };
+  });
+
+  // `B1638`. The picker shut by its fallback timer, as a starved frame shuts
+  // it: the closing animation is held so it never reports its end (the menu's
+  // inline style, which a CSP allows where a style tag is not), the 200 ms
+  // fallback hides the menu, and the picker is opened again. Before the fix
+  // the listener the fallback left armed fired at the end of that opening
+  // animation and shut the menu — the drive's `.model-switch-item` "not
+  // visible" for 30 s on its second pick in one page ('i').
+  await scenario(browser, 'o', { mode: 'chat' }, async (page) => {
+    const hold = (on) => page.evaluate((v) => {
+      document.getElementById('model-picker-menu').style.animationName = v ? 'none' : '';
+    }, on);
+    await page.click('#model-picker-btn');
+    await until(page, 'the model picker opened', menuOpen);
+    await hold(true);
+    await page.locator('.model-switch-item', { hasText: C.vision }).first().click();
+    await until(page, 'the picker shut by its fallback', () =>
+      document.getElementById('model-picker-menu').classList.contains('hidden'), 30000);
+    await hold(false);
+    await page.click('#model-picker-btn');
+    await until(page, 'the model picker opened again', menuOpen);
+    // Past the opening animation's end, which is when the old listener fired.
+    await until(page, "the picker's opening animation over",
+      () => document.getElementById('model-picker-menu').getAnimations().length === 0, 30000);
+    await page.waitForTimeout(300);
+    const stillOpen = await page.evaluate(menuOpen);
+    const row = await page.locator('.model-switch-item', { hasText: C.unknown }).first().isVisible();
+    await pick(page, C.unknown);
+    return { stillOpen, rowVisible: row };
   });
 
   // fx5-vision wave 2 — a PDF on the first message of a new chat, Agent mode.
@@ -302,8 +382,7 @@ async function scenario(browser, name, { mode = 'chat', size = [1440, 900], them
   // A zip and a long text: each card says what the model did not get, live and after a reload.
   await scenario(browser, 'n', { mode: 'chat' }, async (page) => {
     await pick(page, C.vision);
-    await page.setInputFiles('#file-input', [C.zip, C.big]);
-    await page.waitForTimeout(600);
+    await attach(page, [C.zip, C.big]);
     await send(page, C.words.n);
     const notes = () => page.evaluate(() => {
       const u = [...document.querySelectorAll('.msg-user')].pop();
@@ -312,21 +391,25 @@ async function scenario(browser, name, { mode = 'chat', size = [1440, 900], them
     });
     const live = await notes();
     await page.reload({ waitUntil: 'load' });
-    await page.waitForFunction(() => window.__pantheonAppStarted === true, null, { timeout: 90000 });
-    await page.waitForTimeout(3000);
+    await until(page, 'the app started again', () => window.__pantheonAppStarted === true, 90000);
+    await until(page, "the reloaded chat's cards drawn", () => {
+      const u = [...document.querySelectorAll('.msg-user')].pop();
+      return !!u && u.querySelectorAll('.attach-reach-note').length >= 2;
+    }).catch(() => {});
     return { live, reloaded: await notes() };
   });
   // A Library document dragged onto the chat beside the Library window.
   await scenario(browser, 'g', { mode: 'chat' }, async (page) => {
     await pick(page, C.vision);
     await page.evaluate(() => document.getElementById('tool-library-btn').click());
-    await page.waitForTimeout(2500);
     const card = page.locator(`.doclib-card[data-doc-id="${C.libraryDoc}"]`).first();
+    await card.waitFor({ state: 'visible', timeout: 60000 });
     await card.dragTo(page.locator('#chat-container'), { force: true, targetPosition: { x: 110, y: 420 } });
-    await page.waitForTimeout(1200);
+    await until(page, 'the dropped document in the tray',
+      () => document.querySelectorAll('#attach-strip .thumb').length >= 1, 30000).catch(() => {});
     const afterDrop = await state(page);
     await page.keyboard.press('Escape');
-    await page.waitForTimeout(600);
+    await until(page, 'the Library shut', () => !document.getElementById('doclib-modal'), 30000).catch(() => {});
     await send(page, C.words.g);
     return { trayAfterDrop: afterDrop.tray, toastsAfterDrop: afterDrop.toasts };
   });
@@ -334,22 +417,20 @@ async function scenario(browser, name, { mode = 'chat', size = [1440, 900], them
   await scenario(browser, 'h', { mode: 'chat' }, async (page) => {
     await pick(page, C.vision);
     await page.evaluate(() => document.getElementById('tool-gallery-btn').click());
-    await page.waitForTimeout(3000);
-    await page.locator(`.gallery-card[data-id="${C.galleryId}"]`).first().click();
-    await page.waitForTimeout(1500);
-    await page.locator('#gallery-chat-photo-btn').click();
-    await page.waitForTimeout(2500);
+    await page.locator(`.gallery-card[data-id="${C.galleryId}"]`).first().click({ timeout: 60000 });
+    await page.locator('#gallery-chat-photo-btn').click({ timeout: 60000 });
+    await until(page, 'the composer prefilled with the photo in the tray', () =>
+      !!document.getElementById('message').value
+      && document.querySelectorAll('#attach-strip .thumb').length >= 1, 60000).catch(() => {});
     const prefilled = await page.evaluate(() => document.getElementById('message').value);
     const before = await state(page);
     const n0 = await page.evaluate(() => document.querySelectorAll('.msg-ai').length);
     await page.press('#message', 'Enter');
-    const t0 = Date.now();
-    while (Date.now() - t0 < 30000) {
-      await page.waitForTimeout(400);
-      const n = await page.evaluate(() => document.querySelectorAll('.msg-ai').length);
-      if (n > n0 && /Sent (no|\d+) picture/.test(await lastReply(page))) break;
-    }
-    await page.waitForTimeout(800);
+    await until(page, 'the photo answered', (n) => {
+      const body = [...document.querySelectorAll('.msg-ai .body')].pop();
+      return document.querySelectorAll('.msg-ai').length > n && !!body
+        && /Sent (no|\d+) picture/.test(body.textContent);
+    }, 90000, n0);
     return { prefilled, trayBefore: before.tray };
   });
 
@@ -372,7 +453,7 @@ def drive(tmp_path_factory):
         # The drive attaches nine times in a few minutes from one address.
         "PANTHEON_UPLOAD_BURST_LIMIT": "100"})
     try:
-        server.start(timeout=150)
+        server.start(timeout=300)   # `B1638`: a loaded machine boots slower
     except RuntimeError as e:
         server.stop()
         pytest.fail(f"{e}\n{server.log_path.read_text(encoding='utf-8', errors='replace')[-3000:]}")
@@ -513,6 +594,18 @@ def test_a_model_that_cannot_see_says_so_in_the_chat(drive):
     asked = _asked(drive, "r", model=REFUSING)
     assert asked and _pictures_in_turn(asked[0]) == [drive["sha"]["cat"]]
     assert seen["reply"] == f"ERROR {REFUSING} refused the picture (HTTP 400).", seen["reply"]
+
+
+# ── `B1638`: the picker a starved frame shut opens again and stays open ─────
+
+def test_the_picker_its_fallback_shut_opens_again_and_stays_open(drive):
+    """The product race under the drive's load flake: `modelPicker.js`
+    `_close` raced an `animationend` listener against a 200 ms timer; when the
+    timer won, the listener stayed armed and the menu's next opening
+    animation shut it (`B1567`'s defect, in the one closer it missed)."""
+    seen = _ok(drive, "o")
+    assert seen["stillOpen"] is True, "the picker shut itself after opening again"
+    assert seen["rowVisible"] is True
 
 
 # ── the strip shows what the send will take ─────────────────────────────────

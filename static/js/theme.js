@@ -6,7 +6,7 @@ import Storage from './storage.js';
 import uiModule from './ui.js';
 import { initColorPickers, attachColorPicker } from './colorPicker.js';
 import { hexToRgb } from './color/hex.js';
-import { prefersReducedMotion } from './motion.js';
+import { prefersReducedMotion, whenShut } from './motion.js';
 import { makeWindowDraggable } from './windowDrag.js';
 
 export const THEMES = {
@@ -2054,11 +2054,13 @@ export function closePopup() {
   const content = modal.querySelector('.modal-content');
   if (content && !content.classList.contains('modal-closing')) {
     content.classList.add('modal-closing');
-    content.addEventListener('animationend', () => {
+    // `B1638`. Once, whichever of the animation's end and the 250 ms fallback
+    // comes first (`whenShut`, `B1567`): a fallback that won left the
+    // listener armed, and the popup's next opening animation shut it.
+    whenShut(content, () => {
       modal.classList.add('hidden');
       content.classList.remove('modal-closing');
-    }, { once: true });
-    setTimeout(() => { if (!modal.classList.contains('hidden')) { modal.classList.add('hidden'); content.classList.remove('modal-closing'); } }, 250);
+    });
   } else {
     modal.classList.add('hidden');
   }

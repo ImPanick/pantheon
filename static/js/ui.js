@@ -10,7 +10,7 @@ import * as Modals from './modalManager.js?v=20261009census';
 import spinnerModule from './spinner.js';
 import { registerMenuDismiss, dismissTopMenu, dismissOrRemove } from './escMenuStack.js';
 import { nextToolWindowZ, topToolWindowZ, toolWindowZ } from './toolWindowZOrder.js';
-import { prefersReducedMotion, scrollBehavior } from './motion.js';
+import { prefersReducedMotion, scrollBehavior, whenShut } from './motion.js';
 import { esc } from './util/escapeHtml.js';
 import backStack from './backStack.js';
 
@@ -1515,22 +1515,21 @@ if ('ontouchstart' in window) {
     const modal = e.target;
     if (modal.classList.contains('hidden')) return;
     const content = modal.querySelector('.modal-content');
-    if (content) {
-      content.classList.add('modal-closing');
-      content.addEventListener('animationend', () => {
-        modal.classList.add('hidden');
-        content.classList.remove('modal-closing');
-      }, { once: true });
-      setTimeout(() => {
-        if (!modal.classList.contains('hidden')) {
-          modal.classList.add('hidden');
-          content.classList.remove('modal-closing');
-        }
-      }, 300);
-    } else {
-      modal.classList.add('hidden');
-    }
+    if (content) closeFromBackdrop(modal, content);
+    else modal.classList.add('hidden');
   });
+
+  /** `B1638`. A backdrop tap shuts its window once, whichever of the closing
+   *  animation's end and the 300 ms fallback comes first (`whenShut`,
+   *  `B1567`): a fallback that won left the `animationend` listener armed,
+   *  and the window's next opening animation shut it again. */
+  function closeFromBackdrop(modal, content) {
+    content.classList.add('modal-closing');
+    whenShut(content, () => {
+      modal.classList.add('hidden');
+      content.classList.remove('modal-closing');
+    }, 300);
+  }
 }
 
 // ── Mobile: keep focused inputs visible above the keyboard ──

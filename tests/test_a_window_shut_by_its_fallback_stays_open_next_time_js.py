@@ -94,13 +94,23 @@ def test_a_childs_animation_is_not_the_windows(tmp_path):
     assert out == {"early": 0, "shut": 1}
 
 
-@pytest.mark.parametrize("path,signature", [
-    ("static/app.js", "function dismissModal("),
-    ("static/js/skills.js", "export function closeSkillsWindow("),
+@pytest.mark.parametrize("path,signature,element", [
+    ("static/app.js", "function dismissModal(", "content"),
+    ("static/js/skills.js", "export function closeSkillsWindow(", "content"),
+    # `B1638`: the three closers `B1567` missed, each the same race — the
+    # model picker's (the picture drive's load flake), the Theme popup's, and
+    # the backdrop tap every modal shares. Found by the shape (an
+    # `animationend` listener that adds `hidden`, beside a timer), measured
+    # 2026-10-28: five sites, of which the Forge's `_doClose` (its opening
+    # bumps `_closeGen`) and Settings' `hideSettingsModal` (its own `finish`,
+    # once) already answer once.
+    ("static/js/modelPicker.js", "function _close(", "menu"),
+    ("static/js/theme.js", "export function closePopup(", "content"),
+    ("static/js/ui.js", "function closeFromBackdrop(", "content"),
 ])
-def test_both_closers_that_hide_a_window_use_it(path, signature):
-    """Scoped to each closer's own body (`Law 20`): neither keeps a bare
+def test_every_closer_that_hides_a_window_uses_it(path, signature, element):
+    """Scoped to each closer's own body (`Law 20`): none keeps a bare
     `animationend` listener of its own beside a timer."""
     body = js_function((ROOT / path).read_text(encoding="utf-8"), signature)
-    assert "whenShut(content" in body
+    assert f"whenShut({element}" in body
     assert "addEventListener('animationend'" not in body

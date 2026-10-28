@@ -213,7 +213,9 @@ def test_one_module_owns_the_media_query_string():
 
 
 def test_theme_js_asks_before_starting_a_canvas_animator():
-    assert "import { prefersReducedMotion } from './motion.js';" in THEME
+    # `B1638`: theme.js imports `whenShut` from the same module now (its
+    # popup's closer), so the guard is one name in the import, not the line.
+    assert re.search(r"import \{[^}]*\bprefersReducedMotion\b[^}]*\} from './motion\.js';", THEME)
     body = THEME.split("export function applyBgPattern", 1)[1].split("\nexport ", 1)[0]
     assert "prefersReducedMotion()" in body
     # The claim is that the guard is *consulted*, not that it is written on one

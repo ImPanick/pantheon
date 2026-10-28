@@ -9,6 +9,7 @@ import { sortModelObjects } from './modelSort.js';
 import spinnerModule from './spinner.js';
 import { chevronIcon } from './icons.js';
 import { getDefaultChat } from './appConfig.js';   // `B1228`
+import { whenShut } from './motion.js';   // `B1638`
 
 const API_BASE = window.location.origin;
 
@@ -267,19 +268,19 @@ function _initModelPickerDropdown() {
     const _scrollBtn = document.getElementById('scroll-bottom-btn');
     if (_scrollBtn) _scrollBtn.style.display = '';
     menu.classList.add('closing');
-    menu.addEventListener('animationend', function _onDone() {
-      menu.removeEventListener('animationend', _onDone);
+    // `B1638`. One answer, run once (`motion.whenShut`, `B1567`'s fix): this
+    // was an `animationend` listener and a 200 ms fallback, each hiding the
+    // menu. When the fallback won — a starved frame — `display:none` cut the
+    // closing animation and the listener stayed armed, so the menu's next
+    // OPENING animation fired it and the picker shut itself as it appeared:
+    // the picture drive's second pick in one page timed out on a row that was
+    // "not visible". And a menu opened again before the fallback ran was shut
+    // by it; reopening takes `closing` away, so the finish below leaves it be.
+    whenShut(menu, () => {
+      if (!menu.classList.contains('closing')) return;
       menu.classList.remove('closing');
       menu.classList.add('hidden');
       search.value = '';
-    }, { once: true });
-    // Fallback if animationend doesn't fire
-    setTimeout(() => {
-      if (!menu.classList.contains('hidden')) {
-        menu.classList.remove('closing');
-        menu.classList.add('hidden');
-        search.value = '';
-      }
     }, 200);
   }
 
