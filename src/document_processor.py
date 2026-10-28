@@ -384,7 +384,7 @@ _MIN_MULTIBYTE_SAMPLE = 24
 # regressions** (709 right → 731, 179 wrong → 157, refusals unchanged at 3), and
 # the three symbol-heavy control files above keep the answer they had.
 #
-# **What it does not fix, measured rather than hoped.** The Big5→johab case is a
+# **What it did not fix, measured rather than hoped.** The Big5→johab case is a
 # *multi-byte* confusion: both readings are 100% letters with nothing inside a
 # word, so this is blind to it. Three rules were built and measured against the
 # same sweep and all three were rejected — see `B402`. A rule that refuses when
@@ -392,7 +392,52 @@ _MIN_MULTIBYTE_SAMPLE = 24
 # answers to buy 16**, because the margin between the wrong top answer and the
 # right runner-up (0.062–0.071 for Big5/johab) sits *inside* the margin range of
 # the cases where the top answer is right (0.000–0.100). There is no threshold
-# there, and saying so is the finding.
+# there, and saying so is the finding. `B402`/`B1514` below reach it another way.
+#
+# ── `B402` / `B1514`: a Korean reading that is not Korean ──────────────────────
+#
+# The CJK cases this module still got wrong were nearly all one shape: bytes of
+# another CJK script answered with a **Korean** codec. Re-measured 2026-10-28
+# over 3,017 cuts (24–160 bytes) of hand-written prose in nine CJK encodings —
+# several registers each, Korean including chat slang (`ㅋㅋ`, `ㅠㅠ`) and
+# Hanja-mixed text — **502 were read wrongly**: EUC-JP as cp949 197 times,
+# Shift-JIS and cp932 as cp949 94 times each, Big5 and cp950 as johab 12 times
+# each. Genuine Korean was right 968 of 968. Two things a Korean reading of
+# those bytes does that Korean writing does not, neither of them a language
+# model:
+#
+# 1. **Syllables outside KS X 1001.** Every Korean legacy codec is built around
+#    KS X 1001's 2,350 syllables — the set chosen *because* it is the syllables
+#    Korean is written in; the other 8,822 exist for completeness. Johab's
+#    reading of Big5 lands in them (58–71% of its distinct syllables), and
+#    cp949's reading of Shift-JIS lands in cp949's extension rows (100%).
+#    Genuine Korean: 0% over the 968, and a deliberately rare line of
+#    onomatopoeia (`햏햏햏 뷁뷁 똠똠 쌰쌰쌰`) 33%. **`B402`'s third rejected rule
+#    asked exactly this and was measured wrongly**: it tested membership with
+#    `ch.encode("euc_kr")`, which succeeds for *every* syllable — CPython's
+#    EUC-KR writes a syllable outside the 2,350 as an 8-byte KS X 1001 Annex 3
+#    make-up sequence. Membership is a 2-byte encoding (`_in_ks_x_1001`).
+# 2. **Jamo standing alone after a word.** EUC-JP's hiragana row is KS X 1001's
+#    compatibility-jamo row, so EUC-JP read as cp949 scatters jamo through the
+#    text, glued to the syllables around them (Japanese has no spaces). Korean
+#    writes a jamo alone for its consonant abbreviations and its crying and
+#    laughing vowels (`_JAMO_WRITTEN_ALONE`), and names any other letter after
+#    a space, a quote or a comma — measured on grammar sentences (`ㅚ와 ㅟ는`,
+#    `'ㅢ'는`) that a looser count misread as Japanese.
+#
+# A Korean answer showing either is not taken: the detector's own runner-up is,
+# under the same filters as `B280`'s, and failing that the bytes are refused as
+# unidentified. Over the sweep: **452 corrected, 0 regressed, 0 refused**; the
+# 50 left are Japanese read as GB18030 (16; GB2312 has the kana rows too) and
+# GB read as cp949 (30), which neither signal touches.
+#
+# **CJK punctuation is not a symbol inside a word.** `、。，：` sit between
+# characters with no space because CJK writing has none, so `_word_interior_
+# symbols` counted every correctly decoded Japanese or Chinese sentence as
+# mojibake — that is what let `B280`'s lever trade a right cp932 answer for a
+# wrong cp949 one (the Shift-JIS cases above), and what kept a right Big5
+# reading from beating a half-width-katakana one. Those two blocks are skipped
+# there and in `_prose_plausibility`; no single-byte codec produces them.
 # Unicode general categories that a letter of some script has. Combining marks
 # are letters for this purpose — a Vietnamese or Devanagari decode is letters
 # plus marks and must not be scored down for it.
@@ -420,6 +465,15 @@ def _is_letterish(ch: str) -> bool:
     return unicodedata.category(ch) in _LETTER_CATEGORIES
 
 
+def _is_cjk_punctuation(ch: str) -> bool:
+    """`B402`/`B1514`. The CJK Symbols and Punctuation block and the full-width
+    forms of ASCII punctuation — what CJK prose separates words with, written
+    with no space. The half-width katakana forms (U+FF61 on) are not in it:
+    that is what Big5 read as cp932 is made of."""
+    o = ord(ch)
+    return 0x3000 <= o <= 0x303F or 0xFF01 <= o <= 0xFF60
+
+
 def _word_interior_symbols(decoded: str) -> int:
     """How many non-ASCII non-letters sit **inside** a word.
 
@@ -440,7 +494,7 @@ def _word_interior_symbols(decoded: str) -> int:
     """
     count = 0
     for i, ch in enumerate(decoded):
-        if ord(ch) <= 0x7F or _is_letterish(ch):
+        if ord(ch) <= 0x7F or _is_letterish(ch) or _is_cjk_punctuation(ch):
             continue
         before = decoded[i - 1] if i else ""
         after = decoded[i + 1] if i + 1 < len(decoded) else ""
@@ -459,11 +513,55 @@ def _prose_plausibility(decoded: str) -> float:
 
     A decode with no non-ASCII characters at all scores 1.0: there is nothing to
     be implausible about, and it is the same answer every candidate gives.
+    CJK punctuation is neither letter nor symbol here (`_is_cjk_punctuation`):
+    a Korean misreading swallows those bytes into syllables, and counting them
+    against the right reading scored the mojibake higher.
     """
-    high = [ch for ch in decoded if ord(ch) > 0x7F]
+    high = [ch for ch in decoded if ord(ch) > 0x7F and not _is_cjk_punctuation(ch)]
     if not high:
         return 1.0
     return sum(1 for ch in high if _is_letterish(ch)) / len(high)
+
+
+#: `B402`/`B1514`. The Korean codecs, as `_canonical_codec` spells them.
+_KOREAN_CODECS = frozenset({"cp949", "euc_kr", "johab"})
+
+#: The compatibility jamo Korean writes standing alone: the consonants of its
+#: initial-consonant abbreviations (`ㅋㅋ`, `ㅇㅇ`, `ㄱㄱ`, `ㅂㅂ`, `ㄳ`) and the
+#: vowels of its faces (`ㅠㅠ`, `ㅜㅜ`, `ㅡㅡ`, `ㅗ`).
+_JAMO_WRITTEN_ALONE = frozenset("ㄱㄲㄳㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎㅗㅜㅠㅡ")
+
+
+def _in_ks_x_1001(ch: str) -> bool:
+    """One of KS X 1001's 2,350 syllables. A **2-byte** EUC-KR encoding: CPython
+    encodes any other syllable too, as an 8-byte Annex 3 make-up sequence,
+    which is why asking only whether it encodes measured nothing (`B402`)."""
+    try:
+        return len(ch.encode("euc_kr")) == 2
+    except UnicodeEncodeError:
+        return False
+
+
+def _not_korean(decoded: str) -> int:
+    """How much of a Hangul reading Korean writing does not do (`B402`,
+    `B1514`, the block above): compatibility jamo outside
+    `_JAMO_WRITTEN_ALONE` glued after a syllable or an ideograph, two or more;
+    and the syllables outside KS X 1001, when they are at least half of the
+    distinct syllables and at least two. ``0`` for anything that is not Hangul.
+    """
+    def _word(ch: str) -> bool:
+        return "\uac00" <= ch <= "\ud7a3" or unicodedata.name(ch, "").startswith("CJK UNIFIED")
+    glued = sum(
+        1 for i, ch in enumerate(decoded)
+        if "\u3131" <= ch <= "\u318e" and ch not in _JAMO_WRITTEN_ALONE
+        and i and _word(decoded[i - 1])
+    )
+    syllables = {ch for ch in decoded if "\uac00" <= ch <= "\ud7a3"}
+    rare = sum(1 for ch in syllables if not _in_ks_x_1001(ch))
+    evidence = glued if glued >= 2 else 0
+    if rare >= 2 and rare * 2 >= len(syllables):
+        evidence += rare
+    return evidence
 
 
 def _canonical_codec(name: str) -> str | None:
@@ -558,7 +656,9 @@ def _more_plausible_alternative(head: bytes, detected: str) -> str | None:
         baseline_text = head.decode(canonical_detected, errors="replace")
     except (LookupError, UnicodeError):
         return None
-    if _word_interior_symbols(baseline_text) == 0:
+    symbols = _word_interior_symbols(baseline_text)
+    not_korean = _not_korean(baseline_text)
+    if symbols == 0 and not_korean == 0:
         # Nothing about this reading says mojibake. Whatever else is true of it,
         # this rule has no evidence and does not get an opinion.
         return None
@@ -573,6 +673,20 @@ def _more_plausible_alternative(head: bytes, detected: str) -> str | None:
         try:
             decoded = head.decode(name, errors="replace")
         except (LookupError, UnicodeError):
+            continue
+        if _not_korean(decoded):
+            continue   # `B1514`: never trade one misreading for another
+        if not_korean:
+            # `B402`/`B1514`. A Korean answer that is not Korean, against a
+            # rival reading that is clean — not one replacement character —
+            # and no worse in either of `B280`'s measures. Both readings can be
+            # all letters, so "more letter-like" is not asked of it.
+            if (_replacement_ratio(decoded) == 0.0
+                    and _word_interior_symbols(decoded) <= symbols
+                    and _prose_plausibility(decoded) >= baseline):
+                logger.debug("preferring %s over %s: the Korean reading is not Korean",
+                             name, detected)
+                return name
             continue
         if _word_interior_symbols(decoded) == 0 \
                 and _prose_plausibility(decoded) > baseline:
@@ -730,6 +844,17 @@ def describe_text_encoding(head: bytes) -> tuple[str | None, str]:
         try:
             decoded = head.decode(detected, errors="replace")
         except (LookupError, UnicodeError):
+            decoded = None
+        if (
+            decoded is not None
+            and _canonical_codec(detected) in _KOREAN_CODECS
+            and _not_korean(decoded)
+        ):
+            # `B402`: a Korean reading that is not Korean, and no reading the
+            # detector proposed to put in its place. Not handed on as text: the
+            # file is text in an encoding this cannot name, and says so.
+            logger.debug("refusing %s: the Korean reading is not Korean", detected)
+            unsupported_guess = detected
             decoded = None
         if (
             decoded is not None

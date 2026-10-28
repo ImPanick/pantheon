@@ -49,7 +49,9 @@ multi-byte rival sits within ε chaos of the winner was built and measured
 against the same sweep and **costs 98 correct answers to buy 16** — the margin
 between the wrong top answer and the right runner-up (0.062–0.071 for
 Big5/johab) sits inside the margin range of the cases where the top answer is
-right (0.000–0.100). There is no threshold there. `B402` carries it.
+right (0.000–0.100). There is no threshold there. `B402` carried it, and
+`B402`/`B1514` closed it another way — the section at the foot of this file:
+a Korean reading of another CJK script writes Hangul Korean does not.
 """
 import pytest
 
@@ -365,40 +367,41 @@ def test_a_legitimately_symbol_heavy_file_is_not_touched(label, body):
 # ── what this row did NOT fix, pinned so it cannot be mistaken for fixed ────
 
 
-def test_the_big5_case_is_still_wrong_and_the_margin_is_why():
-    """`B280`'s `Verify:` second clause, **not met**, driven so the next agent
-    inherits a measurement rather than a surprise.
+def test_the_big5_case_reads_as_big5_and_the_margin_was_never_the_lever():
+    """`B402`'s `Verify:`, met. These 34 bytes were answered **johab** and arrived
+    as Hangul; they are Big5 now.
 
-    Both readings of these bytes are 100% letters — Hangul and Han — so the
-    lever that fixes the Polish case is blind here. The margin between the wrong
-    winner and the right runner-up is inside the margin range of the cases where
-    the winner is right, measured over the same sweep, so no threshold separates
-    them. `B402` carries it.
+    What was measured before stands: both readings are 100% letters, the wrong
+    winner scores a perfect zero on the detector's own chaos (`B859`: assert
+    that the numbers relate, never which number), so no threshold on
+    cleanliness reaches the case. What reaches it is the Hangul itself
+    (`_not_korean`): most of the johab reading's syllables are outside KS X
+    1001's 2,350, which Korean is written in.
     """
     body = BIG5.encode("big5")
     assert len(body) == 34
-    answer = sniff_text_encoding(body)
-    assert answer == "johab", (
-        "the Big5/johab case changed; re-measure B402 before ticking it")
+    assert dp._canonical_codec(sniff_text_encoding(body)) == "big5"
     both = [body.decode(c, errors="replace") for c in ("johab", "big5")]
     assert all(dp._prose_plausibility(d) == 1.0 for d in both)
 
     from charset_normalizer import from_bytes
     ranked = [(m.encoding, float(m.chaos)) for m in from_bytes(body)]
-    names = [n for n, _ in ranked]
-    assert names[:2] == ["johab", "big5"]
-    # `B859`. This used to assert `0.06 <= margin <= 0.08`, which is a pin on
-    # `charset-normalizer`'s internal score: measured **0.071 on 3.4.7** and
-    # **0.141 on 3.5.1**, the version `requirements.txt` pins. The band is the
-    # `B651` shape — a test may assert that the numbers relate, it may not
-    # assert which one. What the row actually claims is stated instead, and it
-    # is the stronger statement: **the wrong winner scores a perfect zero**, so
-    # no threshold on cleanliness can reach this case at all.
-    assert ranked[0][1] == 0.0, (
-        f"the wrong winner is no longer perfectly clean ({ranked[0][1]}); "
-        "re-measure B402 before ticking it")
-    margin = abs(ranked[1][1] - ranked[0][1])
-    assert margin > 0.0, margin
+    assert [n for n, _ in ranked][:2] == ["johab", "big5"]
+    assert ranked[0][1] == 0.0, "the wrong winner is still the cleaner one"
+    assert dp._not_korean(both[0]) > 0 and dp._not_korean(both[1]) == 0
+
+
+def test_the_rule_b402_rejected_was_measured_with_an_encoder_that_says_yes():
+    """`B402`'s third rejected rule — prefer the reading whose characters are in
+    the script's primary repertoire — was refuted because "the johab soup
+    encodes cleanly in euc_kr". It does, and so does every syllable: CPython's
+    EUC-KR writes one outside KS X 1001 as an 8-byte Annex 3 make-up sequence.
+    The membership the rule needed is a 2-byte encoding."""
+    soup = BIG5.encode("big5").decode("johab")
+    assert all(ch.encode("euc_kr") for ch in soup)
+    outside = [ch for ch in set(soup) if not dp._in_ks_x_1001(ch)]
+    assert len(outside) * 2 >= len(set(soup))
+    assert len("뷪".encode("euc_kr")) == 8 and len("가".encode("euc_kr")) == 2
 
 
 def test_the_same_big5_text_with_more_bytes_is_still_identified():
@@ -431,3 +434,78 @@ def test_a_wrong_accent_is_a_different_defect_and_is_left_where_it_was():
     # Same words, same length, different accents — never a different script.
     assert len(decoded) == len(turkish)
     assert dp._prose_plausibility(decoded) == 1.0
+
+
+# ── `B402` / `B1514`: a Korean reading that is not Korean ───────────────────
+
+#: Hand-written, several registers; the sweep in `src/document_processor.py`'s
+#: `B402`/`B1514` block cut prose like this at every length from the floor.
+JAPANESE = "雨が降っていたので、私たちは駅の近くの小さな喫茶店で一時間ほど休みました。"
+JAPANESE_KANA = "子どもの頃、祖母の家の庭でよく遊んだことを今でも覚えている。"
+KOREAN = [
+    "어제 오후 회의에서 내년 예산에 대해 오랫동안 이야기를 나눴지만 아직 결론이 나지 않았습니다.",
+    "大韓民國은 民主共和國이다. 大韓民國의 主權은 國民에게 있고, 모든 權力은 國民으로부터 나온다.",
+    "닭볶음탕이랑 떡볶이 먹고 싶다. 삶은 달걀도 넣어서 맛있게 끓여 줘.",
+    # Chat, with the jamo Korean writes alone — glued to the words, too.
+    "아ㅋㅋ진짜웃기네ㅋㅋㅋ너무좋아ㅋㅋ내일또보자",
+    "아니왜그래ㅠㅠ나도가고싶었는데ㅠㅠ너무해",
+    "ㅇㅇ알았어ㅇㅇ그럼내일보자ㅂㅂ잘자",
+    # Text about the letters themselves, which names them after a space.
+    "ㅐ와 ㅔ는 발음이 비슷하고 ㅚ와 ㅞ와 ㅙ도 비슷하게 들린다",
+    "'ㅢ'는 이중모음이고 ㅚ와 ㅟ는 단모음으로도 발음한다",
+    "받침 ㄳ, ㄵ, ㄶ, ㄺ, ㄻ은 겹받침이고 ㄼ과 ㄾ도 그렇다",
+    # Rare syllables, as many as prose would ever hold and then some.
+    "똠방각하가 쌰쌰 하고 웃었다 햏햏 뷁 하는 소리가 났다",
+    "햏햏햏 뷁뷁 똠똠 쌰쌰쌰 퓌퓌 하는 의성어 모음",
+]
+
+
+def test_an_euc_jp_sentence_above_the_floor_reads_as_japanese(tmp_path):
+    """`B1514`'s `Verify:`. EUC-JP's hiragana row is KS X 1001's jamo row, so
+    the cp949 reading scatters jamo Korean never writes alone through the text,
+    glued to the syllables round them; it was the answer, and arrived as
+    Hangul soup."""
+    body = JAPANESE.encode("euc_jp")
+    assert len(body) > dp._MIN_MULTIBYTE_SAMPLE
+    misread = body.decode("cp949", errors="replace")
+    assert dp._not_korean(misread) > 0
+    assert decode_text_file(_write(tmp_path, "notes.txt", body)) == JAPANESE
+    for n in range(12, len(JAPANESE_KANA) + 1):
+        chunk = JAPANESE_KANA[:n].encode("euc_jp")
+        if len(chunk) < 30:
+            continue
+        assert chunk.decode(sniff_text_encoding(chunk)) == JAPANESE_KANA[:n], n
+
+
+def test_shift_jis_is_not_traded_for_cp949_over_its_own_punctuation():
+    """`B280`'s lever took a right cp932 answer and gave back cp949, because
+    `、` sits between two characters with no space and was counted as a symbol
+    inside a word. CJK punctuation is not, and cp949's reading of Shift-JIS is
+    all extension-row syllables, outside KS X 1001."""
+    body = JAPANESE_KANA.encode("shift_jis")
+    answer = sniff_text_encoding(body)
+    assert body.decode(answer) == JAPANESE_KANA
+    assert dp._word_interior_symbols(JAPANESE_KANA) == 0
+    assert dp._not_korean(body.decode("cp949", errors="replace")) > 0
+
+
+@pytest.mark.parametrize("text", KOREAN, ids=[f"korean{i}" for i in range(len(KOREAN))])
+@pytest.mark.parametrize("encoding", ["euc_kr", "cp949"])
+def test_korean_stays_korean(encoding, text):
+    """`Law 1`, and the cases the signals were tuned *against*: chat glued to
+    its `ㅋㅋ`, a grammar sentence about `ㅚ` and `ㅟ`, a line of the rarest
+    onomatopoeia. Every one was read right before and still is."""
+    body = text.encode(encoding)
+    assert dp._not_korean(text) == 0
+    assert body.decode(sniff_text_encoding(body)) == text
+
+
+def test_a_korean_reading_that_is_not_korean_and_has_no_rival_is_refused(monkeypatch):
+    """`B402`'s other permitted answer, for when the detector proposes nothing
+    clean to put in the Korean reading's place: the reason that names the
+    encoding as unidentifiable, never the soup."""
+    body = BIG5.encode("big5")
+    monkeypatch.setattr(dp, "_rank_encodings", lambda head: ["johab"])
+    monkeypatch.setattr(dp, "_detect_encoding", lambda head: "johab")
+    assert describe_text_encoding(body) == (None, dp.ENCODING_UNIDENTIFIED)
+
