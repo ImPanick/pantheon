@@ -404,6 +404,14 @@ def scripted_model(script: List[Dict[str, Any]]):
     return model
 
 
+def scripted_window(endpoint_url: str, model: str):
+    """`P24-27`. The scripted model's context window: what asking its endpoint
+    (the discard port) always answers — the default, as a fallback — without
+    the request. A case reaches no host; a real endpoint is asked as ever."""
+    from src import model_context as mc
+    return mc.DEFAULT_CONTEXT, False, mc.BASIS_FALLBACK
+
+
 # ── A run ───────────────────────────────────────────────────────────────────
 
 def _trigger(spec: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -507,6 +515,10 @@ def _check(kind: str, want: Any, *, db, owner, answer, status, world: World, not
         title = want["title"] if isinstance(want, dict) else str(want)
         docs = [d for d in db.query(Document).filter(Document.owner == owner).all()
                 if title.lower() in (d.title or "").lower()]
+        # `P24-27`. A document with exactly the title named is the one read:
+        # an agent that writes "Restyled — Launch note" beside "Launch note"
+        # left a check on the original reading the copy.
+        docs = [d for d in docs if (d.title or "").strip().lower() == title.strip().lower()] or docs
         if kind == "no_document":
             return {"check": f"no document titled “{title}”", "ok": not docs,
                     "detail": "None was written." if not docs else f"“{docs[0].title}” was written."}
@@ -540,9 +552,13 @@ def _check(kind: str, want: Any, *, db, owner, answer, status, world: World, not
         exists = path.startswith(project_root + os.sep) and os.path.isfile(path)
         text = open(path, encoding="utf-8", errors="replace").read() if exists else ""
         miss = [w for w in want.get("contains", []) if w.lower() not in text.lower()]
-        return {"check": f"the file {want['path']}", "ok": exists and not miss,
-                "detail": "It is right." if exists and not miss else
-                ("It is not there." if not exists else f"It has no {', '.join(miss)}.")}
+        # `P24-27`. What the file must lack, as a document's check may say:
+        # a mockup that loads a font from the internet breaks a *never*.
+        bad = [w for w in want.get("lacks", []) if w.lower() in text.lower()]
+        detail = "; ".join(filter(None, [miss and f"it has no {', '.join(miss)}", bad and f"it says {', '.join(bad)}"]))
+        return {"check": f"the file {want['path']}", "ok": exists and not miss and not bad,
+                "detail": "It is right." if exists and not detail else
+                ("It is not there." if not exists else detail.capitalize() + ".")}
     if kind == "notebook_contains":
         return {"check": f"its notebook keeps {want}", "ok": want.lower() in (notebook or "").lower(),
                 "detail": "It does." if want.lower() in (notebook or "").lower() else "It does not."}
@@ -594,6 +610,13 @@ async def run_case(manifest, case: Dict[str, Any], *, factory, data_dir: str,
               lambda url, model, owner=None, headers=None: (True, False, False))
         import src.task_endpoint as task_endpoint
         p.set(task_endpoint, "resolve_task_candidates", lambda **kw: [])
+        # `P24-27`. The run asked the scripted endpoint for its window about
+        # twice a case — a loopback request each, 45% of an evaluation's time.
+        import src.model_context as model_context
+        real_window = model_context._query_context_length
+        p.set(model_context, "_query_context_length",
+              lambda u, m: scripted_window(u, m) if str(u).startswith(SCRIPTED_URL) and m == SCRIPTED_MODEL
+              else real_window(u, m))
     try:
         db = factory()
         if not db.query(ModelEndpoint).filter(ModelEndpoint.base_url == url).first():

@@ -105,10 +105,10 @@ def fenced(text: str) -> str:
 
 
 def _negative(check: dict) -> bool:
-    """A check of what must never happen: a never-kind, or a document that
-    must lack something."""
+    """A check of what must never happen: a never-kind, or a document or file
+    that must lack something."""
     kind, want = next(iter(check.items()))
-    return kind in NEGATIVE_CHECKS or (kind == "document" and isinstance(want, dict) and bool(want.get("lacks")))
+    return kind in NEGATIVE_CHECKS or (kind in ("document", "file") and isinstance(want, dict) and bool(want.get("lacks")))
 
 
 def _named(body: str):

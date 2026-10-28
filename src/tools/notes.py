@@ -64,7 +64,7 @@ async def do_manage_notes(content: str, owner: Optional[str] = None) -> Dict:
             q = q.filter(Note.owner == owner)
         return q.first()
 
-    def _format_note_list(notes) -> str:
+    def _format_note_list(notes, whole: bool = False) -> str:
         lines = []
         for n in notes:
             pin = " [PINNED]" if n.pinned else ""
@@ -84,6 +84,8 @@ async def do_manage_notes(content: str, owner: Optional[str] = None) -> Dict:
                         lines.append(f"  [{mark}] {i}: {item.get('text', '')}")
                 except (json.JSONDecodeError, TypeError):
                     pass
+            elif n.content and whole:
+                lines.append(n.content)
             elif n.content:
                 snippet = n.content[:80].replace("\n", " ")
                 lines.append(f"  {snippet}")
@@ -129,7 +131,12 @@ async def do_manage_notes(content: str, owner: Optional[str] = None) -> Dict:
                 return {"error": f"Note '{note_id}' not found", "exit_code": 1}
             if not _note_visible_to_owner(note, owner):
                 return {"error": "Note not found", "exit_code": 1}
-            return {"results": _format_note_list([note]), "exit_code": 0}
+            # `P24-27`. The schema sends a model here "when you need the full
+            # body", and this printed the listing's 80-character snippet: a
+            # hired Bookmark Librarian saw the first of its links, Tutor the
+            # first line of the person's answers. A listing is a snippet; a
+            # note opened is all of itself.
+            return {"results": _format_note_list([note], whole=True), "exit_code": 0}
 
         elif action == "add":
             # Accept the various field names models emit: `text` is the most
