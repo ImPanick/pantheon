@@ -22,11 +22,12 @@ sets them.
 
 **Found by this drive, on `f3a9150e`:** the + menu at 390 px ran 64 px past the
 screen's right edge, and its *Git ›* page 7 px; *+ → Browser* left the menu
-open over the chat (fixed; held in `tests/test_the_plus_menu_nests.py`). Two
-are the owner's to decide and stand here as strict `xfail`s that turn red when
-they change: a push in a clean chat on the default trust rung goes out without
-a card, though the menu says *it asks first*; and the browser window, open
-while the agent asks to open a page, lies over the chat's card.
+open over the chat (fixed; held in `tests/test_the_plus_menu_nests.py`). One
+is the owner's to decide and stands here as a strict `xfail` that turns red
+when it changes: a push in a clean chat on the default trust rung goes out
+without a card, though the menu says *it asks first*. The other — the browser
+window, open while the agent asks to open a page, lay over the chat's card —
+is `B1586`'s: the window steps aside for the question and comes back.
 
 Driven (`Law 20`): this checkout's `app.py` out of process (`capture.Server`),
 headless Chromium, the real workstation daemon (`workstation/agentd.py`, the
@@ -203,6 +204,7 @@ async function send(page, until, { allow = false, ms = 60000 } = {}) {
   const t0 = Date.now();
   let asked = 0;
   const covered = [];
+  const lowered = [];
   while (Date.now() - t0 < ms) {
     await page.waitForTimeout(700);
     if (allow) {
@@ -210,6 +212,9 @@ async function send(page, until, { allow = false, ms = 60000 } = {}) {
       if (await card.isVisible().catch(() => false)) {
         asked += 1;
         await page.waitForTimeout(400);
+        // `B1586`: what the card says about a window that stepped aside for it.
+        lowered.push(...await page.evaluate(() => [...document.querySelectorAll('.ask-user-lowered-note')]
+          .map((n) => n.textContent)));
         // What is on top where the person would press: the card, or a window over it.
         const top = await card.evaluate((b) => { const r = b.getBoundingClientRect();
           const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
@@ -229,7 +234,7 @@ async function send(page, until, { allow = false, ms = 60000 } = {}) {
     if (until.test(said) || /^ERROR /.test(said)) break;
   }
   await page.waitForTimeout(800);
-  return { reply: await lastReply(page), asked, covered,
+  return { reply: await lastReply(page), asked, covered, lowered,
     tools: await page.evaluate(() => [...document.querySelectorAll('.msg-ai')].pop().innerText) };
 }
 
@@ -554,15 +559,20 @@ def test_the_browser_finds_a_page_is_watched_taken_over_and_handed_back(drive):
     assert b["afterMessage"]["take"] and not b["afterMessage"]["give"], b["afterMessage"]
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "P25-00: with the browser window open the agent's open asks (the window's page is in the "
-    "turn's context), and at 1440x900 the 1040x780 window lies over the chat's card: Chromium "
-    "reported the window's page intercepting the press on Allow. The person lowers the window "
-    "to answer (this drive minimises it). Filed as a new row."))
 def test_the_agents_question_is_not_under_the_window_it_is_watched_in(drive):
+    """`B1586`. With the browser window open the agent's open asks (the window's
+    page is in the turn's context), and at 1440x900 the 1040x780 window lay over
+    the chat's card: Chromium reported the window's page intercepting the press
+    on Allow. The window manager lowers a window that lies over the agent's
+    question and brings it back when the question is answered
+    (`modalManager.questionAsked`), and the card says so."""
     b = drive["seen"]["browser"]
     assert b["find"]["asked"] >= 1
     assert b["find"]["covered"] == [], b["find"]["covered"]
+    assert any("is lowered so you can answer this" in n for n in b["find"]["lowered"]), b["find"]
+    # It came back when the question was answered: the rest of this drive
+    # watches, takes over and hands back in that window.
+    assert b["watching"]["frame"], b["watching"]
 
 
 def test_every_size_and_palette_fits_settings_stays_shut_and_nothing_threw(drive):

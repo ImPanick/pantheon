@@ -3723,6 +3723,18 @@ export function approvalTitle(aq) {
   return `Let it ${words.join(' ')}?`;
 }
 
+/** `B1586`. The line a question card carries when windows stepped aside for
+ *  it: `labels` are the windows' names (`modalManager.labelOf`). */
+export function loweredForAQuestion(labels) {
+  const names = (labels || []).map((l) => `“${l}”`);
+  if (!names.length) return '';
+  const list = names.length === 1 ? names[0]
+    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  return names.length === 1
+    ? `${list} is lowered so you can answer this; it comes back when you do.`
+    : `${list} are lowered so you can answer this; they come back when you do.`;
+}
+
 export function renderAskUserCard(payload, options) {
   const aq = payload || {};
   if (aq.resolved) return null;
@@ -3990,6 +4002,19 @@ export function renderAskUserCard(payload, options) {
   if (!isToolApproval) card.appendChild(other);
 
   chatBox.appendChild(card);
+  // `B1586`. The question is announced to the window manager, which lowers any
+  // window lying over it (`modalManager.questionAsked`) and brings it back when
+  // the card goes; the card says which, so a window that vanished is
+  // explained where the person is looking.
+  const asked = new CustomEvent('pantheon:question-asked', { detail: { card, lowered: [] } });
+  document.dispatchEvent(asked);
+  const lowered = asked.detail.lowered;
+  if (lowered.length) {
+    const note = document.createElement('div');
+    note.className = 'ask-user-scope-note ask-user-lowered-note';
+    note.textContent = loweredForAQuestion(lowered);
+    card.appendChild(note);
+  }
   if (renderOptions.scroll !== false) {
     card.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
   }

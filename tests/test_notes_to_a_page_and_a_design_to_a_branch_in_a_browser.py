@@ -21,9 +21,9 @@ The row's flow, at both sizes and in both palettes:
     the base branch where it was.
 
 **Nothing in the flow failed on `f3a9150e`** once the + menu's own defects were
-fixed (`P25-00`'s commit). What it found stands as a strict `xfail`: the agent's
-questions — its write after reading the notes, a variant's write — land under
-the window the person is working in. Two things the drive itself had to learn,
+fixed (`P25-00`'s commit). What it found — the agent's questions, its write
+after reading the notes and a variant's write, landed under the window the
+person is working in — is `B1586`'s: the window steps aside for the question. Two things the drive itself had to learn,
 said so the next one need not: a model that states no window is budgeted 6,000
 tokens and the notes message is cut in its middle (the scripted model here
 states one, as vLLM, llama-server and Ollama do), and git lists a branch
@@ -629,13 +629,15 @@ def test_handed_off_it_lands_as_a_branch_with_the_notes_and_tokens_beside_it(dri
     assert seen["baseNow"] == seen["base"], "nothing reached the base branch"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "P26-00: after the notes are read, the agent's write asks, and so does a variant's — and at "
-    "1440x900 the card lands under the window the person is working in (the browser window, the "
-    "Design window): the press on Allow hits the window. The drive lowers the window to answer. "
-    "The same finding as P25-00's; filed as one new row."))
 def test_the_agents_questions_are_not_under_the_windows_they_are_asked_from(drive):
+    """`B1586`. After the notes are read the agent's write asks, and so does a
+    variant's — and at 1440x900 the card landed under the window the person is
+    working in (the browser window, the Design window): the press on Allow hit
+    the window. The window manager lowers it for the question and brings it
+    back when it is answered (`modalManager.questionAsked`); the rest of this
+    drive works in both windows after, so they came back."""
     seen = drive["seen"]
+    assert seen["notes"]["sent"]["asked"] >= 1 and seen["design"]["variantsAsked"]["asked"] >= 1
     assert seen["notes"]["sent"]["covered"] == [] and seen["design"]["variantsAsked"]["covered"] == [], (
         seen["notes"]["sent"]["covered"], seen["design"]["variantsAsked"]["covered"])
 

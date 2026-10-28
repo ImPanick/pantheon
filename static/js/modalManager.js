@@ -2227,8 +2227,130 @@ document.addEventListener('click', (e) => {
   }
 }, true);
 
+// ── `B1586`: the agent's question is never under a window ────────────────
+//
+// At 1440×900 the agent browser (1040×780) and the Design window (980×820)
+// lie over the chat column, and the agent asks its questions — may it open
+// this page, write this file — in a card at the foot of that column: measured
+// in Chromium, the window took the press on *Allow*. The person had to find
+// the window's `_` to answer a question they could not see.
+//
+// So a question asked in the chat (`chatRenderer.renderAskUserCard`
+// announces it, `pantheon:question-asked`) is answered here, by the one module
+// that decides what is on screen: every window lying over the card — what
+// `elementFromPoint` finds where the person would press, the test Chromium's
+// own click makes — is minimised, the way its `_` does, and restored when the
+// card goes (answered, dismissed or replaced). Nothing is restacked: the
+// z-order stays the counter's (`toolWindowZOrder.js`). A window the person
+// restores or closes in the meantime is theirs again and is not touched.
+// The card is told which windows stepped aside (`detail.lowered`), so it can
+// say so.
+
+/** Window id -> the question element it was lowered for. */
+const _loweredFor = new Map();
+
+/** Where `el` will sit once `scrollIntoView({ block: 'nearest' })` settles:
+ *  the chat scrolls smoothly, so the rect read now can still be on its way. */
+function _settledRect(el) {
+  const r = el.getBoundingClientRect();
+  let dy = 0;
+  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    const cs = getComputedStyle(p);
+    if (!/(auto|scroll|overlay)/.test(cs.overflowY) || p.scrollHeight <= p.clientHeight) continue;
+    const c = p.getBoundingClientRect();
+    if (r.bottom > c.bottom) dy = Math.min(r.bottom - c.bottom, r.top - c.top);
+    else if (r.top < c.top) dy = r.top - c.top;
+    break;
+  }
+  return { left: r.left, right: r.right, top: r.top - dy, bottom: r.bottom - dy, dy };
+}
+
+/** The window `node` is in, as this manager knows windows: a child of the
+ *  body it has registered or wires itself — so only a window it can lower. */
+function _windowOf(node) {
+  for (let n = node; n && n !== document.body; n = n.parentElement) {
+    if (n.parentElement === document.body) {
+      return (n.id && (_state.has(n.id) || Object.prototype.hasOwnProperty.call(_AUTO_WIRE, n.id))) ? n : null;
+    }
+  }
+  return null;
+}
+
+/** The ids of the windows lying over `el` where a person would press it: its
+ *  buttons, and its middle. */
+export function windowsOver(el) {
+  if (!el || !el.isConnected || typeof document.elementFromPoint !== 'function') return [];
+  const settled = _settledRect(el);
+  const points = [];
+  const add = (r) => points.push([(r.left + r.right) / 2, (r.top + r.bottom) / 2 - settled.dy]);
+  el.querySelectorAll('button').forEach((b) => add(b.getBoundingClientRect()));
+  points.push([(settled.left + settled.right) / 2, (settled.top + settled.bottom) / 2]);
+  const ids = [];
+  for (const [x, y] of points) {
+    if (!(x >= 0 && y >= 0 && x < window.innerWidth && y < window.innerHeight)) continue;
+    const hit = document.elementFromPoint(x, y);
+    const win = hit && !el.contains(hit) && _windowOf(hit);
+    // The window the question is asked in (a Compare pane's) is not over it.
+    if (win && win.id && !win.contains(el) && !ids.includes(win.id)) ids.push(win.id);
+  }
+  return ids;
+}
+
+function _restoreWhatStoodAsideFor(question) {
+  for (const [id, q] of [..._loweredFor]) {
+    if (q !== question) continue;
+    _loweredFor.delete(id);
+    if (isMinimized(id)) restore(id);
+  }
+}
+
+function _watchTheQuestion(question) {
+  const parent = question.parentNode;
+  if (!parent || typeof MutationObserver === 'undefined') return;
+  const obs = new MutationObserver(() => {
+    if (question.isConnected) return;
+    obs.disconnect();
+    // A card replaced by the agent's next question hands its windows on
+    // (`questionAsked` below ran first); what is left was lowered for this one.
+    _restoreWhatStoodAsideFor(question);
+  });
+  obs.observe(parent, { childList: true });
+}
+
+/** `B1586`. A question was put on screen: lower what lies over it.
+ *  Returns the labels of the windows lowered, for the card to say. */
+export function questionAsked(question) {
+  if (!question || !question.isConnected) return [];
+  // A window still lowered for a question that has gone stays lowered for
+  // this one: the agent is still asking (one card replaces the last).
+  for (const [id, q] of _loweredFor) {
+    if (!q.isConnected) _loweredFor.set(id, question);
+  }
+  for (const id of windowsOver(question)) {
+    if (minimize(id)) _loweredFor.set(id, question);
+  }
+  const mine = [..._loweredFor].filter(([, q]) => q === question).map(([id]) => id);
+  if (mine.length) _watchTheQuestion(question);
+  return mine.map(labelOf);
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('pantheon:question-asked', (e) => {
+    const d = e && e.detail;
+    if (!d || !d.card) return;
+    const lowered = questionAsked(d.card);
+    if (Array.isArray(d.lowered)) d.lowered.push(...lowered);
+  });
+  // Restored by the person (its chip, its door) while the question waits:
+  // it is theirs again, and answering the question leaves it where it is.
+  window.addEventListener('pantheon:modal-opened', (e) => {
+    const id = e && e.detail && e.detail.id;
+    if (id) _loweredFor.delete(id);
+  });
+}
+
 export default { register, unregister, isRegistered, isMinimized, minimize, restore, toggle, close,
   injectMinimizeButton, setBackgroundWork, getBackgroundWork, listBackgroundWork, onBackgroundWork,
   openClosedWindow,
   listWindows, showWindow, windowState, doorShown, closeWindow, raiseWindow, drawBackButton,
-  focusWindowHandle, tabHooks, setTabHooks, labelOf };
+  focusWindowHandle, tabHooks, setTabHooks, labelOf, questionAsked, windowsOver };
