@@ -283,6 +283,10 @@ Re-measured 2026-10-28, after the fourteenth wave: **78 filed, 192 closed**, ope
 
 **Direction as of 2026-10-28, after the fourteenth wave: the open count is level; the window's is falling.**
 
+Re-measured 2026-10-28, after the fifteenth wave: **82 filed, 166 closed**, open **138 → 54** — the open count rose by three in the wave (eight closed, eleven filed, one closed in it), and the window's still falls. The eleven are what finishing the agent audit and its encodings found; one is a security reading the gate did not need to adjudicate — `B1622`, a shell `rm` the destructive gate does not count, which an agent's own `destructive` declaration would rely on — and it is tracked rather than a gate: it weakens a promise an agent's file makes (`destructive: ask` on a shell), not the person's own controls — a hire shows its kit and runbook before anyone summons it, and the agents that delete say so in their runbooks — and it is the next wave's first row. The window moved on, so its start reads 138. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1586`–`B1625`) block.
+
+**Direction as of 2026-10-28, after the fifteenth wave: the open count rose by three in the wave; over the window it is falling.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus

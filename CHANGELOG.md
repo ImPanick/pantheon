@@ -247,6 +247,14 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **The remaining 69 shipped agents have new runbooks** (1.1.0) — every agent now has decided
+  judgement calls, edge cases and evaluation cases — and summoned ones pause until *Update*.
+  Several shell agents now do their work in one command; Chart Maker writes SVG; Restore Drill
+  restores into a scratch database instead of a container; Secret Sniffer masks secrets and Survey
+  Analyst leaves out names and emails before the model reads them (`P24-27`).
+- **A hired agent that read no document cannot update or edit one** — it is refused in a
+  sentence instead of writing the person's most recent document (`B1606`).
+- **`manage_rag` refuses a relative folder** instead of indexing it from the install (`P24-27`).
 - **73 more shipped agents have new runbooks** (version 1.1.0) with evaluation cases; summoned
   ones pause until their person chooses *Update*. Seven that kept to-dos as scheduled AI tasks
   now keep them as notes with due dates, and Web Performance no longer downloads Lighthouse on
@@ -448,6 +456,9 @@ the next one is cut.
 
 ### Fixed
 
+- **The service worker retries a failed precache** and names a file it never could fetch
+  (`B1612`); a local model endpoint is asked for its context window over one kept connection
+  (`B1608`); the mail routes no longer hold the event loop (`B1609`).
 - **A hired agent's suggestions and edits land on the document it read** (`B1599`); a run's answer
   no longer starts with the note link a chat shows (`B1603`); Settings opened before the sign-in
   status answered shows an admin's panels when it does (`B1595`).
