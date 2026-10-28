@@ -5920,6 +5920,11 @@ class TaskScheduler:
                     if "delta" in data:
                         if data.get("thinking"):
                             continue
+                        if data.get("link"):
+                            # `B1603`. A link the loop adds for a chat to
+                            # click (a new note, a research job) — not the
+                            # model's words, so not the run's answer.
+                            continue
                         full_text += data["delta"]
                     elif data.get("type") == "tool_start":
                         # `P8-25`. The run's step log. These events already

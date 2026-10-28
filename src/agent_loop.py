@@ -11719,7 +11719,9 @@ async def stream_agent_loop(
             _rsid = result.get("research_session_id")
             if _rsid:
                 _anchor = f"\n\n[Open in Deep Research](#research-{_rsid})\n"
-                yield 'data: ' + json.dumps({"delta": _anchor}) + '\n\n'
+                # `B1603`: marked as the loop's link, not the model's words —
+                # a chat draws it; a task's answer leaves it out.
+                yield 'data: ' + json.dumps({"delta": _anchor, "link": "research"}) + '\n\n'
 
             # Same pattern for notes: when manage_notes creates a note
             # and returns note_id, drop a `[View note](#note-<id>)` link
@@ -11733,7 +11735,13 @@ async def stream_agent_loop(
                 _label = f"View note: {_title}" if _title else "View note"
                 _anchor = f"\n\n[{_label}](#note-{_nid})\n"
                 full_response = (full_response.rstrip() + _anchor).strip()
-                yield 'data: ' + json.dumps({"delta": _anchor}) + '\n\n'
+                # `B1603`. A sibling of `B1435`: the link is the loop's, for a
+                # chat to click, and a task's run summed it into its answer —
+                # a hired Gift & Date Keeper's report began "[View note: Gift
+                # for Ana …](#note-…)" before a word of its own. Marked, so a
+                # reader that keeps only the model's words (`task_scheduler`)
+                # can leave it out; a chat renders it as before.
+                yield 'data: ' + json.dumps({"delta": _anchor, "link": "note"}) + '\n\n'
 
             # Save for history persistence
             tool_event = {
