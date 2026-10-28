@@ -17,5 +17,11 @@
    "detail": "“Bills due — 3 Nov” is there."
   }
  ],
- "answer": "£357.40 due in the next three weeks, £82.40 of it overdue (Northern Power).\n\n## Report\n- searched mail 4 times, read 5 messages; wrote \"Bills due — 3 Nov\"\n\n## Carry forward\n- Northern Power NP-5521 — due 30 Oct\n- Fast Fibre — due 10 Nov\n- Smith & Co INV-221 — due 21 Nov"
+ "answer": "£357.40 due in the next three weeks, £82.40 of it overdue (Northern Power).\n\n## Report\n- searched mail 4 times, read 5 messages; wrote \"Bills due — 3 Nov\"\n\n## Carry forward\n- Northern Power NP-5521 — due 30 Oct\n- Fast Fibre — due 10 Nov\n- Smith & Co INV-221 — due 21 Nov",
+ "documents": [
+  {
+   "title": "Bills due — 3 Nov",
+   "content": "Bills due — 3 Nov\n\n## Overdue\n- Northern Power — £82.40 — was due 30 Oct — bank transfer, reference NP-5521\n\n## Due in the next three weeks\n- Fast Fibre — £35.00 — due 10 Nov — direct debit\n- Smith & Co — £240.00 — due 21 Nov — bank transfer, reference INV-221\n\n## Checked\n- 4 searches; 5 messages read: 3 bills listed, 1 already paid (W-9)"
+  }
+ ]
 }

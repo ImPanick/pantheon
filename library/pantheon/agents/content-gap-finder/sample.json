@@ -16,5 +16,11 @@
    "detail": "“Content gaps — November 2026” is there."
   }
  ],
- "answer": "1 gap: pruning apple trees.\n\n## Report\n- read 3 sites; wrote \"Content gaps — November 2026\"\n\n## Carry forward\n- Nov 2026: pruning apple trees"
+ "answer": "1 gap: pruning apple trees.\n\n## Report\n- read 3 sites; wrote \"Content gaps — November 2026\"\n\n## Carry forward\n- Nov 2026: pruning apple trees",
+ "documents": [
+  {
+   "title": "Content gaps — November 2026",
+   "content": "Content gaps — November 2026\n\n## Gaps\n- Pruning apple trees — https://growwell.example/blog/prune-apples, https://greenthumb.example/pruning — your angle: the old orchard you rescued\n\n## Watching\n- Seed swaps — only https://greenthumb.example/seed-swap\n\n## Checked\n- https://mygarden.example/sitemap.xml — 2 pages\n- https://growwell.example/sitemap.xml — 2 pages\n- https://greenthumb.example/blog — sitemap 404, blog index read"
+  }
+ ]
 }

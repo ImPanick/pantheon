@@ -14,5 +14,11 @@
    "detail": "“Listings — 5 Nov” is there."
   }
  ],
- "answer": "2 listings; 1 claim to check (\"the best rye in Yorkshire\").\n\n## Report\n- wrote \"Listings — 5 Nov\""
+ "answer": "2 listings; 1 claim to check (\"the best rye in Yorkshire\").\n\n## Report\n- wrote \"Listings — 5 Nov\"",
+ "documents": [
+  {
+   "title": "Listings — 5 Nov",
+   "content": "Listings — 5 Nov\n\n## Sourdough loaf\nTitle: Sourdough Loaf 800g — Slow-Fermented, Baked Daily in Leeds\nBullets:\n- 800g loaf — enough for a family for two days\n- 24-hour ferment — a deeper flavour and an open crumb\n- Baked daily in Leeds — fresh every morning\n- Keeps 3 days in a bread bag\n- £4.50 a loaf\nDescription: Our sourdough rises slowly for a full day before it meets the oven. It keeps for three days in a bread bag.\n\n## Rye loaf\nTitle: Rye Loaf 750g — 100% Rye, Dense and Long-Keeping\nBullets:\n- 100% rye — nothing else in the flour\n- Dense crumb — slices thin\n- Keeps 5 days\n- 750g loaf\n- £4.00 a loaf\nDescription: A proper rye: dense, dark and honest. It keeps five days, so one loaf sees you through the week.\n\n## Specs to check\n- \"The best rye in Yorkshire\" — a customer's words, not a spec; use it only as a quoted review, if at all."
+  }
+ ]
 }

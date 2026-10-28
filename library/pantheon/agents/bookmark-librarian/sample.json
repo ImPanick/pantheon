@@ -18,5 +18,11 @@
    "detail": "It answered, with Filed, Could not load."
   }
  ],
- "answer": "**Filed**\n- How to prune apple trees in winter — garden, trees, winter\n\n**Could not load**\n- https://old.example/recipe — 404 (tried once; again tomorrow)\n\n## Report\n- read the note \"Bookmarks\", fetched 2 links, filed 1 in \"Library — 2 Nov\"\n\n## Carry forward\n- https://garden.example/prune-apples\n- https://old.example/recipe (failed once)\n- https://news.example/old-story\n- tags: garden, news, trees, winter"
+ "answer": "**Filed**\n- How to prune apple trees in winter — garden, trees, winter\n\n**Could not load**\n- https://old.example/recipe — 404 (tried once; again tomorrow)\n\n## Report\n- read the note \"Bookmarks\", fetched 2 links, filed 1 in \"Library — 2 Nov\"\n\n## Carry forward\n- https://garden.example/prune-apples\n- https://old.example/recipe (failed once)\n- https://news.example/old-story\n- tags: garden, news, trees, winter",
+ "documents": [
+  {
+   "title": "Library — 2 Nov",
+   "content": "Library — 2 Nov\n\n### How to prune apple trees in winter\nhttps://garden.example/prune-apples\nPrune apple trees while they are dormant, cutting crossing branches first. Never remove more than a quarter of the canopy in one year.\nTags: garden, trees, winter"
+  }
+ ]
 }

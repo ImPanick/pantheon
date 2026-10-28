@@ -29,6 +29,18 @@ from test_the_command_palette_in_a_browser import NODE, _SKIP  # noqa: E402
 pytestmark = pytest.mark.skipif(NODE is None, reason=_SKIP or "")
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _modal_manager_specifier() -> str:
+    """`modalManager.js` as the page imports it — the one `?v=` every importer
+    carries (`check-specifiers.py`), read and never written down here
+    (`test_no_test_writes_down_a_cache_buster.py`): it is a stateful module, and
+    a second specifier would load a second manager beside the page's."""
+    import re
+    hit = re.search(r"modalManager\.js(\?v=[A-Za-z0-9._-]+)?['\"]",
+                    (ROOT / "static" / "app.js").read_text(encoding="utf-8"))
+    assert hit, "app.js no longer imports modalManager.js — re-aim this test"
+    return "modalManager.js" + (hit.group(1) or "")
 STATIC = ROOT / "static"
 
 _SCRIPT = r"""
@@ -65,7 +77,7 @@ const PAGE = '<!doctype html><html><head><link rel="stylesheet" href="/static/st
   // The end state is the subject, not a window's opening animation.
   await page.addStyleTag({ content: '*, *::before, *::after { animation: none !important; transition: none !important; }' });
   await page.evaluate(async () => {
-    window.__mm = await import('/static/js/modalManager.js?v=20261009census');
+    window.__mm = await import('/static/js/__MODAL_MANAGER__');
     window.__cr = await import('/static/js/chatRenderer.js');
   });
   const ask = (id) => page.evaluate((id) => {
@@ -147,7 +159,7 @@ const PAGE = '<!doctype html><html><head><link rel="stylesheet" href="/static/st
 @pytest.fixture(scope="module")
 def drove(tmp_path_factory):
     d = tmp_path_factory.mktemp("b1586")
-    (d / "run.cjs").write_text(_SCRIPT, encoding="utf-8")
+    (d / "run.cjs").write_text(_SCRIPT.replace("__MODAL_MANAGER__", _modal_manager_specifier()), encoding="utf-8")
     proc = subprocess.run([NODE, str(d / "run.cjs"), str(STATIC)], capture_output=True, text=True,
                           timeout=180)
     assert proc.returncode == 0, proc.stderr[-3000:]

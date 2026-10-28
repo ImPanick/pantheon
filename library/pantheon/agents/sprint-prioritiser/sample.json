@@ -16,5 +16,11 @@
    "detail": "“Priorities — week of 3 Nov” is there."
   }
  ],
- "answer": "Top three: fix checkout on Safari, export to CSV, gift cards.\n\n## Report\n- read \"Backlog\", ranked 7 items; wrote \"Priorities — week of 3 Nov\"\n\n## Carry forward\n- efforts: Safari fix 1d, CSV export 3d, gift cards 2d, admin rewrite 15d\n- top ten 3 Nov: Safari fix, CSV export, gift cards"
+ "answer": "Top three: fix checkout on Safari, export to CSV, gift cards.\n\n## Report\n- read \"Backlog\", ranked 7 items; wrote \"Priorities — week of 3 Nov\"\n\n## Carry forward\n- efforts: Safari fix 1d, CSV export 3d, gift cards 2d, admin rewrite 15d\n- top ten 3 Nov: Safari fix, CSV export, gift cards",
+ "documents": [
+  {
+   "title": "Priorities — week of 3 Nov",
+   "content": "Priorities — week of 3 Nov\n\n## Top ten\n1. Fix checkout on Safari — high (orders lost) — small (1d) — urgent — high value, small effort\n2. Export to CSV — high (asked 14 times) — medium (3d) — none — most asked for\n3. Gift cards — medium — medium (2d) — due 14 Nov — dated inside two weeks\n\n## Defer or drop\n- Rewrite the admin in a new framework — low — large (15d) — low value for its size\n- pick one: \"Dark mode\" / \"Night theme\" — the same item twice\n\n## Needs an estimate\n- Loyalty points"
+  }
+ ]
 }

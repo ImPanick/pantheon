@@ -17,5 +17,11 @@
    "detail": "“Market map — invoicing software for freelancers” is there."
   }
  ],
- "answer": "3 players, 3 clusters, 1 gap.\n\n## Report\n- ran 3 searches, read 4 pages; wrote \"Market map — invoicing software for freelancers\""
+ "answer": "3 players, 3 clusters, 1 gap.\n\n## Report\n- ran 3 searches, read 4 pages; wrote \"Market map — invoicing software for freelancers\"",
+ "documents": [
+  {
+   "title": "Market map — invoicing software for freelancers",
+   "content": "Market map — invoicing software for freelancers\n\n## Players\n| Player | Sells | For | Price | In their words | Address |\n|---|---|---|---|---|---|\n| Billfast | invoices | UK freelancers | £9 / month | \"invoices in a minute\" | https://billfast.example/pricing |\n| LedgerPro | invoicing, payroll, VAT | small firms | £29 / month | \"your whole back office\" | https://ledgerpro.example/pricing |\n| Quotient | quotes and invoices | agencies | not published | \"built for agencies\" | https://quotient.example |\n\n## Clusters\n- Freelancers under £10: Billfast.\n- Accounting suites: LedgerPro.\n- Agencies: Quotient (price not published).\n\n## Gaps\n- Invoices in more than one currency for freelancers: the comparison says none of the tools under £20 does it — https://compare.example/invoicing"
+  }
+ ]
 }

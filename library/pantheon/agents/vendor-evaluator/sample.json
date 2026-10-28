@@ -17,5 +17,11 @@
    "detail": "“Vendor shortlist — team password manager” is there."
   }
  ],
- "answer": "Keyward: both must-haves confirmed on its own pages, at €4 / user / month.\n\n## Report\n- ran 2 searches, read 3 pages; wrote \"Vendor shortlist — team password manager\""
+ "answer": "Keyward: both must-haves confirmed on its own pages, at €4 / user / month.\n\n## Report\n- ran 2 searches, read 3 pages; wrote \"Vendor shortlist — team password manager\"",
+ "documents": [
+  {
+   "title": "Vendor shortlist — team password manager",
+   "content": "Vendor shortlist — team password manager\n\n## Comparison\n| Vendor | Plan and price | SSO | EU hosting | Limits | Address |\n|---|---|---|---|---|---|\n| Keyward | Teams, €4 / user / month | yes | yes | no offline vault | https://keyward.example/pricing |\n| Lockbox | Business, $6 / user / month | yes | not stated | | https://lockbox.example/pricing |\n| Vaultly | Pro, $3 / user / month | no (Enterprise only) | yes | | https://vaultly.example/pricing |\n\n## Top three\n1. Keyward — the only one that shows both must-haves on its own pages, and the cheapest that does.\n2. Lockbox — SSO on Business; ask them where data is hosted, their pages do not say.\n\nOnly two qualify.\n\n## Ruled out\n- Vaultly — SSO only on Enterprise, which publishes no price."
+  }
+ ]
 }

@@ -15,5 +15,11 @@
    "detail": "“Web performance — 3 Nov” is there."
   }
  ],
- "answer": "Worst: the home page, LCP 4.8 s — compress hero.jpg (2.4 MB).\n\n## Report\n- measured 2 pages with Lighthouse; wrote \"Web performance — 3 Nov\"\n\n## Carry forward\n- https://shop.example/ — LCP 4.8 s, CLS 0.02, TBT 340 ms, 3.9 MB\n- https://shop.example/about — LCP 1.9 s, CLS 0.00, TBT 80 ms, 0.8 MB"
+ "answer": "Worst: the home page, LCP 4.8 s — compress hero.jpg (2.4 MB).\n\n## Report\n- measured 2 pages with Lighthouse; wrote \"Web performance — 3 Nov\"\n\n## Carry forward\n- https://shop.example/ — LCP 4.8 s, CLS 0.02, TBT 340 ms, 3.9 MB\n- https://shop.example/about — LCP 1.9 s, CLS 0.00, TBT 80 ms, 0.8 MB",
+ "documents": [
+  {
+   "title": "Web performance — 3 Nov",
+   "content": "Web performance — 3 Nov\n\n## Pages\n- https://shop.example/ — LCP 4.8 s (last week 3.1 s, poor) — CLS 0.02 — blocking 340 ms — 3.9 MB\n- https://shop.example/about — LCP 1.9 s — CLS 0.00 — blocking 80 ms — 0.8 MB — no change\n\n## One fix each\n- https://shop.example/ — compress hero.jpg (2.4 MB): it is 60% of the page\n- https://shop.example/about — nothing pressing\n\n## Checked\n- 2 pages measured, 0 failed"
+  }
+ ]
 }

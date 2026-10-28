@@ -70,7 +70,11 @@ def registered(monkeypatch):
     """Endpoints a person registered, in a database of our own — the one
     `is_local_endpoint` reads the endpoint kind from, and the one the composer's
     route resolves a selection against."""
-    engine = create_engine("sqlite:///:memory:")
+    # `B1580`: the agent-limits route reads on a worker thread, and an
+    # in-memory database's tables live on one connection — one for every thread.
+    from sqlalchemy.pool import StaticPool
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False},
+                           poolclass=StaticPool)
     Base.metadata.create_all(bind=engine)
     TestSession = sessionmaker(bind=engine, autoflush=False)
     db = TestSession()

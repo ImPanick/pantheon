@@ -16,5 +16,11 @@
    "detail": "“Restyled — Launch note” is there."
   }
  ],
- "answer": "3 changes: 1 by rule 1, 1 by rule 2, 1 by rule 3; 1 rule not applied.\n\n## Report\n- read \"Launch note\" and wrote \"Restyled — Launch note\""
+ "answer": "3 changes: 1 by rule 1, 1 by rule 2, 1 by rule 3; 1 rule not applied.\n\n## Report\n- read \"Launch note\" and wrote \"Restyled — Launch note\"",
+ "documents": [
+  {
+   "title": "Restyled — Launch note",
+   "content": "Restyled — Launch note\n\n## Restyled text\nWe will email three customers on Monday. Our colours are red, white, and blue. \"Send it by e-mail,\" she said. The route is 5 km. Version 2 ships then.\n\n## Changes\n1. \"e-mail\" → \"email\" (first sentence) — rule 1\n2. \"3 customers\" → \"three customers\" — rule 3\n3. \"red, white and blue\" → \"red, white, and blue\" — rule 2\n\n## Not applied\n- rule 3 for \"5 km\": rule 4 (figures for measurements) is more specific\n- rule 5 (\"make it punchier\"): unclear, applied nowhere"
+  }
+ ]
 }

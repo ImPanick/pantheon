@@ -16,5 +16,11 @@
    "detail": "“Research — why people stop using the meal-plan app” is there."
   }
  ],
- "answer": "3 participants, 2 themes.\n\n## Report\n- read 3 transcripts; wrote \"Research — why people stop using the meal-plan app\""
+ "answer": "3 participants, 2 themes.\n\n## Report\n- read 3 transcripts; wrote \"Research — why people stop using the meal-plan app\"",
+ "documents": [
+  {
+   "title": "Research — why people stop using the meal-plan app",
+   "content": "Research — why people stop using the meal-plan app\n\n## Findings\n- Planning takes too long on weekdays — 3 of 3 participants. P1: \"By Wednesday I just give up and order pizza.\" P2: \"Sunday is the only day I have time to plan.\"\n- The shopping list is the part they value — 2 of 3. P2: \"Honestly I only open it for the list.\"\n\n## Interview guide\nWarm-up: tell me about how meals get decided in your home.\n1. Tell me about the last week you used the app. — What happened on the day you stopped?\n2. Walk me through making this week's shopping list. — What did you do by hand?\nAvoid asking: \"Would you use a faster planner?\" (hypothetical); \"Don't you think the list is useful?\" (leading).\n\n## Open questions\n- one participant: sharing meals with a flatmate (P3) — worth asking the next participants"
+  }
+ ]
 }

@@ -16,5 +16,11 @@
    "detail": "“Spec — weekly meal plan sharing” is there."
   }
  ],
- "answer": "3 requirements: 1 must, 1 should, 1 could; 1 open question.\n\n## Report\n- read 2 sources; wrote \"Spec — weekly meal plan sharing\""
+ "answer": "3 requirements: 1 must, 1 should, 1 could; 1 open question.\n\n## Report\n- read 2 sources; wrote \"Spec — weekly meal plan sharing\"",
+ "documents": [
+  {
+   "title": "Spec — weekly meal plan sharing",
+   "content": "Spec — weekly meal plan sharing\n\n## Problem\nPeople who plan meals for a household stop using the app when the plan lives on one phone (3 of 4 interviews).\n\n## Goals\n- Two people can see and edit the same week's plan.\n## Non-goals\n- Sharing with more than one household; chat.\n\n## Users and stories\n- As a parent who plans, I want my partner to see the plan, so that either of us can shop.\n\n## Requirements\n- Must: invite one person by email to a plan (from: Interview notes).\n- Should: see who changed a meal last (from: Feedback summary — asked 12 times).\n- Could: a shared shopping list (from the brief).\n\n## Open questions\n- Reminders by text: 2 want them, 2 find them intrusive (Interview notes).\n\n## Measuring success\n- Weekly active planners: 30% today (Feedback summary); 40% after a month."
+  }
+ ]
 }

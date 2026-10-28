@@ -17,5 +17,11 @@
    "detail": "“Papers — 31 Oct” is there."
   }
  ],
- "answer": "2 papers on battery recycling; nothing new on solid-state electrolytes.\n\n## Report\n- ran 3 searches, opened 2 abstracts; wrote \"Papers — 31 Oct\"\n\n## Carry forward\n- https://arxiv.example/abs/2610.01234\n- https://arxiv.example/abs/2610.04321"
+ "answer": "2 papers on battery recycling; nothing new on solid-state electrolytes.\n\n## Report\n- ran 3 searches, opened 2 abstracts; wrote \"Papers — 31 Oct\"\n\n## Carry forward\n- https://arxiv.example/abs/2610.01234\n- https://arxiv.example/abs/2610.04321",
+ "documents": [
+  {
+   "title": "Papers — 31 Oct",
+   "content": "Papers — 31 Oct\n\n## New papers\n### battery recycling\n#### Direct cathode regeneration at room temperature (preprint — not yet peer-reviewed)\nLee, Park and Sato — 28 Oct — https://arxiv.example/abs/2610.01234\n**Method** — regenerated used NMC cathodes in a salt solution at 25 °C instead of smelting them.\n**Found** — recovered 94% of the original capacity over 500 cycles.\n**Limits** — tested on NMC chemistry only.\n\n#### Sorting black mass with magnets\nRuiz and Ito — 27 Oct — https://arxiv.example/abs/2610.04321\n**Method** — sorted shredded battery black mass with a magnetic separator.\n**Found** — recovered 81% of the cobalt.\n**Limits** — none stated in the abstract.\n\n### solid-state electrolytes\n- Nothing new this week\n\n\n## Checked\n- battery recycling: 1 search, 2 new papers\n- solid-state electrolytes: 2 searches, 0 papers"
+  }
+ ]
 }

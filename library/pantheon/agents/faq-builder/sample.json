@@ -19,5 +19,11 @@
    "detail": "“FAQ — 5 Nov” is there."
   }
  ],
- "answer": "1 answered, 1 not answered yet.\n\n## Report\n- searched mail and chats, read 1 document; wrote \"FAQ — 5 Nov\"\n\n## Carry forward\n- How do I reset my password? — 4\n- Do you ship to Canada? — 3\n- How do I change my password? — 1"
+ "answer": "1 answered, 1 not answered yet.\n\n## Report\n- searched mail and chats, read 1 document; wrote \"FAQ — 5 Nov\"\n\n## Carry forward\n- How do I reset my password? — 4\n- Do you ship to Canada? — 3\n- How do I change my password? — 1",
+ "documents": [
+  {
+   "title": "FAQ — 5 Nov",
+   "content": "FAQ — 5 Nov\n\n## Answered\n### How do I reset my password?\nAsked 4 times.\nGo to Settings → Account → Reset password; the link in the email lasts one hour. — from \"Help — accounts\"\n\n## Not answered yet\n- Do you ship to Canada? — asked 3 times; no answer found\n\n## Checked\n- mail: 3 searches\n- chats: 3 searches, no chats found\n- documents: \"Help — accounts\" read"
+  }
+ ]
 }

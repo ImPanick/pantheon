@@ -35,6 +35,8 @@ def saved_report():
         "result": "## Findings\nShort-form Geometry Nodes tutorials are trending.",
         "sources": [{"title": "Example", "url": "https://example.com"}],
         "completed_at": 123,
+        # `B1601`: a report is read by its owner; the agent runs for one.
+        "owner": "alice",
     }), encoding="utf-8")
     try:
         yield rid
@@ -43,7 +45,7 @@ def saved_report():
 
 
 async def test_manage_research_read_returns_report_text(saved_report):
-    res = await do_manage_research(json.dumps({"action": "read", "id": saved_report}))
+    res = await do_manage_research(json.dumps({"action": "read", "id": saved_report}), owner="alice")
     out = res.get("output", "")
     # The agent must get the actual report body (not HTML, not an error).
     assert "Geometry Nodes tutorials are trending" in out
@@ -54,7 +56,7 @@ async def test_manage_research_read_returns_report_text(saved_report):
 async def test_panel_launched_rp_id_is_valid_for_read(saved_report):
     # rp-* ids (panel-launched research) contain a hyphen; the read path's id
     # guard must accept them, not reject them as invalid.
-    res = await do_manage_research(json.dumps({"action": "read", "id": saved_report}))
+    res = await do_manage_research(json.dumps({"action": "read", "id": saved_report}), owner="alice")
     assert "error" not in res, res
 
 

@@ -14,5 +14,11 @@
    "detail": "“Polished copy — 6 Nov” is there."
   }
  ],
- "answer": "4 changed, 1 left as it was.\n\n## Report\n- polished 5 strings; wrote \"Polished copy — 6 Nov\""
+ "answer": "4 changed, 1 left as it was.\n\n## Report\n- polished 5 strings; wrote \"Polished copy — 6 Nov\"",
+ "documents": [
+  {
+   "title": "Polished copy — 6 Nov",
+   "content": "Polished copy — 6 Nov\n\n| Before | After | Why |\n|---|---|---|\n| OK | Save changes | says what the button does |\n| Error 500 | Something went wrong on our side. Try again in a minute. (Error 500) | what happened and what to do |\n| No items | No invoices yet. Create your first one. | says how to fill it |\n| You have %d new messages | %d new messages | shorter; the count stays |\n\n## Left as it was\n- \"Your file {name} was saved.\" — already clear"
+  }
+ ]
 }

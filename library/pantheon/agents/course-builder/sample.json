@@ -17,5 +17,11 @@
    "detail": "“Course — Python for data analysis” is there."
   }
  ],
- "answer": "2 weeks, 3 readings; week 2 has only one reading.\n\n## Report\n- ran 3 searches, opened 4 pages; wrote \"Course — Python for data analysis\""
+ "answer": "2 weeks, 3 readings; week 2 has only one reading.\n\n## Report\n- ran 3 searches, opened 4 pages; wrote \"Course — Python for data analysis\"",
+ "documents": [
+  {
+   "title": "Course — Python for data analysis",
+   "content": "Course — Python for data analysis\n\nFor office staff who use spreadsheets and have never programmed. Two weeks, about two hours a week.\n\n## Week 1 — First steps\n**Goal** — run Python and work with numbers, text and lists.\n**Readings** — The Python Tutorial, sections 3–4 — python.org — https://docs.python.example/tutorial; Python for Everybody, chapter 1 — py4e — https://py4e.example/book/ch1\n**Exercise** — write a script that totals a list of five prices. A good answer: uses a list and sum() or a loop, prints the total, runs without errors.\n\n## Week 2 — Reading a spreadsheet\n**Goal** — load a CSV file and pick out rows.\n**Readings** — 10 minutes to pandas — pandas.org — https://pandas.example/10min (only one free reading found)\n**Exercise** — load sales.csv and list the rows over £100. A good answer: reads the file with pandas, filters with a condition, shows the matching rows."
+  }
+ ]
 }

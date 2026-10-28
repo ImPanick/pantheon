@@ -19,5 +19,11 @@
    "detail": "“Compliance check — Customer records process against GDPR Art. 30” is there."
   }
  ],
- "answer": "2 missing, 1 partly met, 1 met.\n\n## Report\n- read the process and the regulator's summary of Art. 30; wrote the check"
+ "answer": "2 missing, 1 partly met, 1 met.\n\n## Report\n- read the process and the regulator's summary of Art. 30; wrote the check",
+ "documents": [
+  {
+   "title": "Compliance check — Customer records process against GDPR Art. 30",
+   "content": "Compliance check — Customer records process against GDPR Art. 30\n\nNot legal advice.\n\n## Missing\n- Time limits for erasure — add how long each kind of record is kept, and when it is deleted.\n- Security measures — describe how the records are protected.\n\n## Partly met\n- Categories of recipients — \"We share data with our payment provider\" — names one recipient; list every kind.\n\n## Met\n- Purposes of processing — \"We keep customer records to fulfil orders and handle returns.\""
+  }
+ ]
 }

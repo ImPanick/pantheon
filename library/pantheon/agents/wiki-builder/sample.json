@@ -16,5 +16,11 @@
    "detail": "“Wiki index — 1 Nov” is there."
   }
  ],
- "answer": "5 documents in 2 topics, 1 unsorted; 1 merge suggested; none gone.\n\n## Report\n- listed 6 documents, read 5 new ones; wrote \"Wiki index — 1 Nov\"\n\n## Carry forward\n- last run: 1 Nov\n- Garden plan → Garden\n- Seed list → Garden\n- Boiler notes → House\n- Boiler service history → House\n- Tax 2025 → Unsorted"
+ "answer": "5 documents in 2 topics, 1 unsorted; 1 merge suggested; none gone.\n\n## Report\n- listed 6 documents, read 5 new ones; wrote \"Wiki index — 1 Nov\"\n\n## Carry forward\n- last run: 1 Nov\n- Garden plan → Garden\n- Seed list → Garden\n- Boiler notes → House\n- Boiler service history → House\n- Tax 2025 → Unsorted",
+ "documents": [
+  {
+   "title": "Wiki index — 1 Nov",
+   "content": "Wiki index — 1 Nov\n\n## Garden\n- [Garden plan](#document-a1) — what goes in each bed next spring.\n- [Seed list](#document-a2) — seeds to order, with suppliers.\n\n## House\n- [Boiler notes](#document-b1) — the boiler's model and its last service.\n- [Boiler service history](#document-b2) — every service since 2021.\n\n## Unsorted\n- [Tax 2025](#document-c1) — receipts to claim this year.\n\n## Suggested merges\n- Boiler notes + Boiler service history — both record the boiler's services (they disagree on the last service date: May vs June)"
+  }
+ ]
 }

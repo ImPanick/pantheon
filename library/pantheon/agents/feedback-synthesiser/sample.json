@@ -18,5 +18,11 @@
    "detail": "“Feedback — week of 3 Nov” is there."
   }
  ],
- "answer": "Biggest: export is too slow (4 people, up from 2). New: the layout, split 2 to 1.\n\n## Report\n- read 5 messages and 1 note; wrote \"Feedback — week of 3 Nov\"\n\n## Carry forward\n- Export is too slow — 6 in all\n- Layout — 3 in all"
+ "answer": "Biggest: export is too slow (4 people, up from 2). New: the layout, split 2 to 1.\n\n## Report\n- read 5 messages and 1 note; wrote \"Feedback — week of 3 Nov\"\n\n## Carry forward\n- Export is too slow — 6 in all\n- Layout — 3 in all",
+ "documents": [
+  {
+   "title": "Feedback — week of 3 Nov",
+   "content": "Feedback — week of 3 Nov\n\n## Themes\n- Export is too slow — 4 people (up from 2) — \"Export takes five minutes for a small file.\" \"I gave up waiting for the CSV.\"\n- Layout — 2 like the new layout, 1 does not (new) — \"Much cleaner.\" \"I can't find settings any more.\"\n\n## New this week\n- Layout\n\n## Checked\n- mail from feedback@shop.example: 5 messages (a receipt left out)\n- the note \"Customer feedback\": read"
+  }
+ ]
 }

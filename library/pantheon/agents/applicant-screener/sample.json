@@ -18,5 +18,11 @@
    "detail": "It answered, with Scored, Not scored."
   }
  ],
- "answer": "**Scored**\n- Applicant 1 (jo@mail.example) — 11 of 15\n\n**Not scored**\n- sam@mail.example — the CV attachment could not be read\n\n## Report\n- read the rubric and 3 messages (1 not an application); wrote \"Applications — 5 Nov\"\n\n## Carry forward\n- scored: a1, a2, x1"
+ "answer": "**Scored**\n- Applicant 1 (jo@mail.example) — 11 of 15\n\n**Not scored**\n- sam@mail.example — the CV attachment could not be read\n\n## Report\n- read the rubric and 3 messages (1 not an application); wrote \"Applications — 5 Nov\"\n\n## Carry forward\n- scored: a1, a2, x1",
+ "documents": [
+  {
+   "title": "Applications — 5 Nov",
+   "content": "Applications — 5 Nov\n\n## Applicant 1 (jo@mail.example)\n1. Has run a café kitchen — 5 — \"Head chef at a 40-cover café for three years\"\n2. Food hygiene level 2 — 5 — \"Level 2 food hygiene, renewed 2025\"\n3. Can open at 6am — 1 — no evidence\nTotal: 11 of 15"
+  }
+ ]
 }

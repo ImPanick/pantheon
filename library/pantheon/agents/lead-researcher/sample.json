@@ -17,5 +17,11 @@
    "detail": "“Brief — Ana Ruiz, Greenleaf Cafés” is there."
   }
  ],
- "answer": "Most worth knowing: they opened a sixth café in York in September.\n\n## Report\n- ran 3 searches, read 4 pages; wrote \"Brief — Ana Ruiz, Greenleaf Cafés\""
+ "answer": "Most worth knowing: they opened a sixth café in York in September.\n\n## Report\n- ran 3 searches, read 4 pages; wrote \"Brief — Ana Ruiz, Greenleaf Cafés\"",
+ "documents": [
+  {
+   "title": "Brief — Ana Ruiz, Greenleaf Cafés",
+   "content": "Brief — Ana Ruiz, Greenleaf Cafés\n\n## The company\n- Six cafés in Leeds and York, breakfast and lunch (https://greenleaf.example/about)\n- Staff: about 50 says its site (https://greenleaf.example/about), 80 says a news story (https://news.example/greenleaf-york)\n\n## The person\n- Operations director since 2023 (https://greenleaf.example/team)\n\n## Worth mentioning\n- Opened a sixth café, in York, in September (https://news.example/greenleaf-york)\n\n## Questions to ask\n1. How has stock-taking changed since the sixth café opened?\n2. What does a busy Saturday look like across six sites?\n3. Who else would look at a new stock system?"
+  }
+ ]
 }

@@ -17,5 +17,11 @@
    "detail": "“SEO audit — November 2026” is there."
   }
  ],
- "answer": "Fix first: remove the noindex from /shop/bread and /shop/rye.\n\n## Report\n- crawled 3 pages, confirmed 1; wrote \"SEO audit — November 2026\"\n\n## Carry forward\n- noindex on sitemap pages: 2\n- broken internal links: 1\n- duplicate titles: 2\n- missing meta description: 2"
+ "answer": "Fix first: remove the noindex from /shop/bread and /shop/rye.\n\n## Report\n- crawled 3 pages, confirmed 1; wrote \"SEO audit — November 2026\"\n\n## Carry forward\n- noindex on sitemap pages: 2\n- broken internal links: 1\n- duplicate titles: 2\n- missing meta description: 2",
+ "documents": [
+  {
+   "title": "SEO audit — November 2026",
+   "content": "SEO audit — November 2026\n\n## Fix first\n- noindex on 2 sitemap pages (/shop/bread, /shop/rye) — remove the noindex tag — new\n- 1 broken internal link on /about → /team (404) — point it at a page that exists — since October\n- duplicate title \"Rise Bakery\" on 2 pages — give each its own — new\n\n## All issues\n- (the three above)\n- missing meta description — 2 pages: /shop/bread, /about\n- fixed since October: images without alt on the home page\n\n## Checked\n- 3 pages crawled; robots.txt and sitemap read; no failures"
+  }
+ ]
 }

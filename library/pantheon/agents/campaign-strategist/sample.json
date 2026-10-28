@@ -17,5 +17,11 @@
    "detail": "“Campaign plan — 200 signups for the spring pottery course” is there."
   }
  ],
- "answer": "Channels: local ads, email to past students; budget £600 / £120 / £80 held back.\n\n## Report\n- ran 2 searches, read 2 pages; wrote \"Campaign plan — 200 signups for the spring pottery course\""
+ "answer": "Channels: local ads, email to past students; budget £600 / £120 / £80 held back.\n\n## Report\n- ran 2 searches, read 2 pages; wrote \"Campaign plan — 200 signups for the spring pottery course\"",
+ "documents": [
+  {
+   "title": "Campaign plan — 200 signups for the spring pottery course",
+   "content": "Campaign plan — 200 signups for the spring pottery course\n\n## Audience\nAdults within 10 miles who want a hands-on hobby; message: \"Make your first bowl in six weeks.\"\n\n## Channels\n- Local Facebook groups and ads — where local hobby courses get found (https://study.example/local-courses)\n- Email to past students — returning students book first (https://study.example/local-courses)\n\n## Calendar\n- Week 1: announce to past students; first ads\n- Week 2: early-bird ends; second ad set\n\n## Budget\n- £600 ads, £120 printed flyers, £80 held back (£800 in all)\n\n## Measuring\n- Ads: cost per signup; a similar studio paid £6 (https://blog.example/pottery-case); shift spend if over £8 after week one\n- Email: bookings from the link"
+  }
+ ]
 }

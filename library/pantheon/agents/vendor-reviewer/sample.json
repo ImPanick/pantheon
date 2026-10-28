@@ -19,5 +19,11 @@
    "detail": "“Vendor review — Q4 2026” is there."
   }
  ],
- "answer": "Fast Fibre: review. CleanCo: review.\n\n## Report\n- read 1 contract, summed the ledger, searched mail twice; wrote \"Vendor review — Q4 2026\"\n\n## Carry forward\n- Q4 2026: Fast Fibre £105.00; CleanCo £720.00"
+ "answer": "Fast Fibre: review. CleanCo: review.\n\n## Report\n- read 1 contract, summed the ledger, searched mail twice; wrote \"Vendor review — Q4 2026\"\n\n## Carry forward\n- Q4 2026: Fast Fibre £105.00; CleanCo £720.00",
+ "documents": [
+  {
+   "title": "Vendor review — Q4 2026",
+   "content": "Vendor review — Q4 2026\n\n## Fast Fibre\n**Spend** — £105.00 (last quarter £105.00, no change)\n**Renewal** — 1 Jan 2027; give notice by 2 Dec 2026\n**Issues** — outages on 3 Oct and 19 Oct\n**Verdict** — review: two outages and a renewal within 60 days\n\n## CleanCo\n**Spend** — £720.00 (last quarter £600.00, up 20%)\n**Renewal** — no contract found — check where it is kept\n**Issues** — none this quarter\n**Verdict** — review: no contract found\n\n## Renewals coming up\n- Fast Fibre — give notice by 2 Dec 2026"
+  }
+ ]
 }

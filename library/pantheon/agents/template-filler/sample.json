@@ -16,5 +16,11 @@
    "detail": "“Filled — Welcome letter — M-0412” is there."
   }
  ],
- "answer": "Missing: start_date.\n\n## Report\n- filled \"Welcome letter\" from the webhook's values; wrote \"Filled — Welcome letter — M-0412\""
+ "answer": "Missing: start_date.\n\n## Report\n- filled \"Welcome letter\" from the webhook's values; wrote \"Filled — Welcome letter — M-0412\"",
+ "documents": [
+  {
+   "title": "Filled — Welcome letter — M-0412",
+   "content": "Dear Ana, your membership number is M-0412. It starts on [missing: start_date]. Welcome, Ana.\n\n---\n## Drafting notes\n- **Missing fields**: start_date\n- **Not used**: plan = \"Family\""
+  }
+ ]
 }

@@ -18,5 +18,11 @@
    "detail": "It answered, with Drafted, Already answered, Not resolved."
   }
  ],
- "answer": "**Drafted**\n- \"I can't log in after changing my email\"\n\n**Already answered**\n- \"How do I reset my password?\" — Help: passwords\n\n**Not resolved**\n- \"Export is slow\"\n\n## Report\n- read 3 threads, drafted 1 article\n\n## Carry forward\n- 7 Nov: I can't log in after changing my email"
+ "answer": "**Drafted**\n- \"I can't log in after changing my email\"\n\n**Already answered**\n- \"How do I reset my password?\" — Help: passwords\n\n**Not resolved**\n- \"Export is slow\"\n\n## Report\n- read 3 threads, drafted 1 article\n\n## Carry forward\n- 7 Nov: I can't log in after changing my email",
+ "documents": [
+  {
+   "title": "Help article — \"I can't log in after changing my email\"",
+   "content": "Help article — \"I can't log in after changing my email\"\n\n## The problem\nAfter changing the email on an account, the old login stops working.\n\n## Steps\n1. Open the confirmation email sent to the new address.\n2. Click \"Confirm this address\".\n3. Log in with the new address.\n\n## If it still fails\nAsk for a new confirmation email from Settings → Account."
+  }
+ ]
 }

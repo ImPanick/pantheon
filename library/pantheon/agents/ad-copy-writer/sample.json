@@ -14,5 +14,11 @@
    "detail": "“Ad copy — fresh bread delivery” is there."
   }
  ],
- "answer": "5 variants for Google search, 5 for Meta.\n\n## Report\n- wrote \"Ad copy — fresh bread delivery\""
+ "answer": "5 variants for Google search, 5 for Meta.\n\n## Report\n- wrote \"Ad copy — fresh bread delivery\"",
+ "documents": [
+  {
+   "title": "Ad copy — fresh bread delivery",
+   "content": "Ad copy — fresh bread delivery\n\n## Google search\nLimits: headline 30, description 90\n1. Fresh bread by 7am (18) — Sourdough and rye at your door before breakfast. Order by 9pm. (65)\n2. Never run out of bread (23) — A weekly loaf, delivered fresh in Leeds. Pause any week. (59)\n3. Sourdough at £4.50 (19) — Baked overnight, at your door by 7am. (37)\n4. Breakfast, sorted (18) — Fresh rye and sourdough delivered across Leeds. (49)\n5. Still buying sliced? (21) — Real bread by 7am for £4.50 a loaf. (36)\n\n## Meta\nLimits: primary text 125, headline 40\n1. Wake up to bread that was baked last night. Sourdough and rye at your door by 7am. (85) — Fresh bread by 7am (18)\n2. A loaf on the step, every week you want one — pause any week. (66) — Bread, delivered (16)\n3. £4.50 a loaf, delivered across Leeds before breakfast. (56) — Sourdough by 7am (16)\n4. Order by 9pm, eat it at 7. (28) — Tomorrow's bread, tonight (25)\n5. When did you last have bread this fresh? (42) — Leeds sourdough (15)\n\n## Claims to check\nnone"
+  }
+ ]
 }

@@ -17,5 +17,11 @@
    "detail": "“Competitors — 2 Nov” is there."
   }
  ],
- "answer": "Acme: Pro up from $49 to $59, one launch, two new roles.\n\n## Report\n- read 3 pages and 1 news result for Acme; wrote \"Competitors — 2 Nov\"\n\n## Carry forward\n- Acme: Starter $19, Pro $59 / user / month; roles: Backend Engineer, Solutions Engineer (Berlin), Product Designer; reported https://acme.example/blog/summaries"
+ "answer": "Acme: Pro up from $49 to $59, one launch, two new roles.\n\n## Report\n- read 3 pages and 1 news result for Acme; wrote \"Competitors — 2 Nov\"\n\n## Carry forward\n- Acme: Starter $19, Pro $59 / user / month; roles: Backend Engineer, Solutions Engineer (Berlin), Product Designer; reported https://acme.example/blog/summaries",
+ "documents": [
+  {
+   "title": "Competitors — 2 Nov",
+   "content": "Competitors — 2 Nov\n\n## Acme\n**Pricing** — Pro $49 → $59 / user / month — https://acme.example/pricing\n**Launches** — Acme launched AI meeting summaries for every Pro plan on 30 Oct — https://acme.example/blog/summaries\n**Hiring** — 2 new: Solutions Engineer (Berlin), Product Designer — https://acme.example/careers"
+  }
+ ]
 }

@@ -14,5 +14,11 @@
    "detail": "“Email sequence — trial users to paying customers” is there."
   }
  ],
- "answer": "3 emails, on days 0, 4 and 12.\n\n## Report\n- wrote \"Email sequence — trial users to paying customers\""
+ "answer": "3 emails, on days 0, 4 and 12.\n\n## Report\n- wrote \"Email sequence — trial users to paying customers\"",
+ "documents": [
+  {
+   "title": "Email sequence — trial users to paying customers",
+   "content": "Email sequence — trial users to paying customers\n\n## Sends\n| Email | Day | Job |\n|---|---|---|\n| 1 | 0 | welcome and first invoice |\n| 2 | 4 | a tip: reminders |\n| 3 | 12 | the offer, before the trial ends |\n\n## Email 1\nSubject lines: Your first invoice in 2 minutes / Welcome to your trial / Start here\nPreview: Welcome to your 14-day trial.\nWelcome to your 14-day trial. Send your first invoice today — it takes two minutes.\nCall to action: Send your first invoice\n[unsubscribe link]\n\n## Email 2\nSubject lines: Get paid faster with reminders / A tip for late payers / Stop chasing invoices\nPreview: Turn on automatic reminders and late payers get a polite nudge without you.\nTurn on automatic reminders and late payers get a polite nudge without you.\nCall to action: Send your first invoice\n[unsubscribe link]\n\n## Email 3\nSubject lines: Keep your invoices going / Your trial ends in 2 days / Stay on for £9 a month\nPreview: Your trial ends on day 14.\nYour trial ends on day 14. Stay on for £9 a month and keep everything you've set up.\nCall to action: Send your first invoice\n[unsubscribe link]"
+  }
+ ]
 }

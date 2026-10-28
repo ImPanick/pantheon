@@ -94,8 +94,19 @@ def test_an_asked_suggestion_seals_the_document_it_read(monkeypatch):
     so it refused with "Open the exact document to edit" and the suggestion
     could never land. The card seals the roadmap the run read; approved, the
     suggestion lands there."""
+    # `P24-27` rewrote the shipped Roadmap Keeper to write a suggestions
+    # document instead (`suggest_document`'s target was this row's defect), so
+    # the kit is its frontmatter as it stood: a shell beside the documents, and
+    # `suggest_document`, delivering the answer only.
+    import dataclasses
+    import src.agents.catalogue as catalogue
+    base = get_agent(None, "roadmap-keeper")
+    m = dataclasses.replace(base, tools=tuple(t for t in base.tools if t != "create_document") + ("suggest_document",),
+                            delivers=())
+    real_get = catalogue.get_agent
+    monkeypatch.setattr(catalogue, "get_agent",
+                        lambda owner, aid: m if aid == m.id else real_get(owner, aid))
     landed = _spy_on_suggest(monkeypatch)
-    m = get_agent(None, "roadmap-keeper")
     case = dict(_case(), answers=["approve_task"])
     (r,) = asyncio.run(E.run_agent(m, cases=[case]))
     assert landed, f"suggest_document never ran: {r.calls} ({r.status}, {r.error})"

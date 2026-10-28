@@ -17,5 +17,11 @@
    "detail": "“Keywords — pruning apple trees” is there."
   }
  ],
- "answer": "Easiest: pruning old apple trees.\n\n## Report\n- ran 4 searches, read your sitemap; wrote \"Keywords — pruning apple trees\""
+ "answer": "Easiest: pruning old apple trees.\n\n## Report\n- ran 4 searches, read your sitemap; wrote \"Keywords — pruning apple trees\"",
+ "documents": [
+  {
+   "title": "Keywords — pruning apple trees",
+   "content": "Keywords — pruning apple trees\n\n## Keywords\n| Keyword | Intent | Difficulty | Your page |\n|---|---|---|---|\n| how to prune apple trees | learn | high — the RHS and BigGarden rank with the exact phrase | new page |\n| pruning old apple trees | learn | low — a forum thread and a small blog rank | https://mygarden.example/blog/old-orchard |\n| best saw for pruning apple trees | compare | medium — BigShop ranks, but so does a forum | new page |\n\n## Easiest wins\n- pruning old apple trees\n\n## Notes\n- No search-volume data: difficulty is judged from who ranks."
+  }
+ ]
 }

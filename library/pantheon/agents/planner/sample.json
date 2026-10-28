@@ -15,5 +15,11 @@
    "detail": "“Plan — launch the new website” is there."
   }
  ],
- "answer": "[View note: Write the home page copy — launch the new website](#note-90448b0c-8216-4aea-90ab-4509a65ae869)\n\n\n[View note: Write the about page — launch the new website](#note-34a7a415-aa4b-4f87-a746-5357eb495122)\n\n\n[View note: Build the pages — launch the new website](#note-443b84fd-c59f-43da-999b-1448e711ae03)\n4 tasks; 3 reminders set for your own; first: write the home page copy on Monday.\n\n## Report\n- wrote \"Plan — launch the new website\" and set 3 reminders"
+ "answer": "4 tasks; 3 reminders set for your own; first: write the home page copy on Monday.\n\n## Report\n- wrote \"Plan — launch the new website\" and set 3 reminders",
+ "documents": [
+  {
+   "title": "Plan — launch the new website",
+   "content": "Plan — launch the new website\n\n## Milestones\n- Content ready — Fri 14 Nov\n- Site built and tested — Fri 21 Nov\n- Live — Thu 27 Nov (deadline Fri 28 Nov)\n\n## Tasks\n- Mon 10 Nov — Write the home page copy — you\n- Tue 11 Nov — Take product photos — Ben\n- Wed 12 Nov — Write the about page — you — after the home page copy\n- Mon 17 Nov — Build the pages — you — after all copy and photos\n\n## Buffer\n- Fri 28 Nov, kept free\n\n## Risks\n- The photos depend on Ben's week; if they slip, launch with stock images."
+  }
+ ]
 }

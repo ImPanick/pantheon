@@ -17,5 +17,11 @@
    "detail": "“Standards watch — November 2026” is there."
   }
  ],
- "answer": "2 items: 1 final, 1 consultation.\n\n## Report\n- ran 1 search, read 2 pages; wrote \"Standards watch — November 2026\"\n\n## Carry forward\n- https://regulator.example/cyber-2026\n- https://regulator.example/consult-refurb"
+ "answer": "2 items: 1 final, 1 consultation.\n\n## Report\n- ran 1 search, read 2 pages; wrote \"Standards watch — November 2026\"\n\n## Carry forward\n- https://regulator.example/cyber-2026\n- https://regulator.example/consult-refurb",
+ "documents": [
+  {
+   "title": "Standards watch — November 2026",
+   "content": "Standards watch — November 2026\n\nInformation, not legal advice.\n\n## New this month\n### Cybersecurity requirements for connected devices — https://regulator.example/cyber-2026\n**Issued by** — the Device Regulator; Final\n**What changes** — devices must ship without default passwords and get security updates for five years.\n**Who it affects** — \"manufacturers and importers of connected consumer devices\"\n**Takes effect** — 1 March 2027\n\n### Labelling of refurbished devices — https://regulator.example/consult-refurb\n**Issued by** — the Device Regulator; Consultation\n**What changes** — proposes a \"refurbished\" label and a twelve-month minimum warranty.\n**Who it affects** — \"sellers of refurbished devices\"\n**Takes effect** — comments close 15 January 2027\n\n\n## Checked\n- the Device Regulator: 1 search, 2 results, 2 new"
+  }
+ ]
 }

@@ -17,5 +17,11 @@
    "detail": "“Standup — Tue 4 Nov” is there."
   }
  ],
- "answer": "2 updates, 1 blocker; Chloe sent none.\n\n## Report\n- searched mail for 3 people, read 2 updates; wrote \"Standup — Tue 4 Nov\"\n\n## Carry forward\n- last run: 4 Nov\n- Ben: waiting on the client's logo files — since 3 Nov"
+ "answer": "2 updates, 1 blocker; Chloe sent none.\n\n## Report\n- searched mail for 3 people, read 2 updates; wrote \"Standup — Tue 4 Nov\"\n\n## Carry forward\n- last run: 4 Nov\n- Ben: waiting on the client's logo files — since 3 Nov",
+ "documents": [
+  {
+   "title": "Standup — Tue 4 Nov",
+   "content": "Standup — Tue 4 Nov\n\n## Blockers\n- Ben — waiting on the client's logo files (blocked since 3 Nov)\n\n## Updates\n- Ana — Did: finished the pricing page. Next: the about page.\n- Ben — Did: built the header. Next: the footer, once the logo arrives.\n\n## Missing\n- Chloe"
+  }
+ ]
 }

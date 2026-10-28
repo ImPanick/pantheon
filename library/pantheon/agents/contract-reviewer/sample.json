@@ -16,5 +16,11 @@
    "detail": "“Contract review — CleanCo services agreement” is there."
   }
  ],
- "answer": "3 flags, 2 high (clause 12, indemnity; the notice conflict) — ask a lawyer before signing.\n\n## Report\n- read the agreement; wrote \"Contract review — CleanCo services agreement\""
+ "answer": "3 flags, 2 high (clause 12, indemnity; the notice conflict) — ask a lawyer before signing.\n\n## Report\n- read the agreement; wrote \"Contract review — CleanCo services agreement\"",
+ "documents": [
+  {
+   "title": "Contract review — CleanCo services agreement",
+   "content": "Contract review — CleanCo services agreement\n\nNot legal advice.\n\n## Flags\n- Clause 12: \"The Client shall indemnify the Supplier against all losses.\" — You cover all their losses, with no limit. — High: unlimited, one-sided; ask a lawyer. — Redline: \"Each party shall indemnify the other for losses caused by its own breach, up to the fees paid in the prior 12 months.\"\n- Clause 9: \"This agreement renews for 24 months unless cancelled 90 days before the renewal date.\" — It renews for two years at a time, and you must cancel three months ahead. — Medium: easy to miss. — Redline: \"renews for 12 months unless either party gives 30 days' notice.\"\n- Clauses 7 and 9 conflict: \"30 days' notice\" against \"cancelled 90 days before the renewal date\" — resolve before signing. — High; ask a lawyer.\n\n## Usual terms\n- Payment: 30 days from invoice (clause 4)\n- Governing law: England and Wales (clause 15)"
+  }
+ ]
 }

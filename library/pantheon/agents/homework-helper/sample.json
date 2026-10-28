@@ -14,5 +14,11 @@
    "detail": "“Hints — solve 3x + 5 = 20” is there."
   }
  ],
- "answer": "Hints ready: solving a linear equation by undoing each step.\n\n## Report\n- wrote \"Hints — solve 3x + 5 = 20\""
+ "answer": "Hints ready: solving a linear equation by undoing each step.\n\n## Report\n- wrote \"Hints — solve 3x + 5 = 20\"",
+ "documents": [
+  {
+   "title": "Hints — solve 3x + 5 = 20",
+   "content": "Hints — solve 3x + 5 = 20\n\n## The idea\nThis tests solving a linear equation. You undo what was done to x, in reverse order, doing the same to both sides.\n\n## Hint 1\nSomething was added to 3x. What undoes adding?\n\n## Hint 2\nTake 5 from both sides. What does the equation look like now?\n\n## Hint 3\nNow 3 times x equals your new number. What undoes multiplying by 3?\n\n## Worked example\nSolve 2y + 3 = 11.\n2y + 3 − 3 = 11 − 3, so 2y = 8.\n2y ÷ 2 = 8 ÷ 2, so y = 4.\n\n## Check your answer\nPut your value of x back into 3x + 5. If you get 20, it is right."
+  }
+ ]
 }

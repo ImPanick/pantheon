@@ -19,5 +19,11 @@
    "detail": "“Fact check — Paris trip notes” is there."
   }
  ],
- "answer": "3 checked: 1 contradicted, 1 unclear, 1 supported; 1 not checked (an opinion).\n\n## Report\n- read \"Paris trip notes\", searched 3 claims, fetched 4 pages; wrote \"Fact check — Paris trip notes\""
+ "answer": "3 checked: 1 contradicted, 1 unclear, 1 supported; 1 not checked (an opinion).\n\n## Report\n- read \"Paris trip notes\", searched 3 claims, fetched 4 pages; wrote \"Fact check — Paris trip notes\"",
+ "documents": [
+  {
+   "title": "Fact check — Paris trip notes",
+   "content": "Fact check — Paris trip notes\n\n## Contradicted\n1. Paragraph 1: \"The Eiffel Tower opened in 1899\" — the source says 1889: \"The tower was opened on 31 March 1889.\" — https://tower.example/history\n\n## Unclear\n3. Paragraph 2: \"It gets 9 million visitors a year\" — sources disagree: 6.3 million (https://tower.example/visits) vs 7 million (https://travel.example/paris)\n\n## Supported\n2. Paragraph 1: \"It is 330 metres tall\" — https://tower.example/facts"
+  }
+ ]
 }

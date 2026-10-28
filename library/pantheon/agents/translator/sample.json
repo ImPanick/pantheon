@@ -16,5 +16,11 @@
    "detail": "“Translation — Invoice reminder — German” is there."
   }
  ],
- "answer": "Translated 2 sentences into German; no uncertain words.\n\n## Report\n- read \"Invoice reminder\" and wrote \"Translation — Invoice reminder — German\"\n\n## Carry forward\n- invoice = Rechnung\n- customer portal = Kundenportal\n- due = fällig"
+ "answer": "Translated 2 sentences into German; no uncertain words.\n\n## Report\n- read \"Invoice reminder\" and wrote \"Translation — Invoice reminder — German\"\n\n## Carry forward\n- invoice = Rechnung\n- customer portal = Kundenportal\n- due = fällig",
+ "documents": [
+  {
+   "title": "Translation — Invoice reminder — German",
+   "content": "Translation — Invoice reminder — German\n\n## Translated text\nSehr geehrte Frau Weber,\nIhre Rechnung Nr. 1043 über 240 € ist seit dem 15. Oktober fällig. Bitte zahlen Sie über das Kundenportal von Acme Ltd.\n\n## Glossary\n- invoice = Rechnung\n- customer portal = Kundenportal\n- due = fällig\n\n## Left as written\n- Acme Ltd"
+  }
+ ]
 }

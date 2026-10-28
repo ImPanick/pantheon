@@ -16,5 +16,11 @@
    "detail": "It answered, with New reviews, Average rating."
   }
  ],
- "answer": "**New reviews**\n- 2: one ★★★★★ (\"The sourdough is the best\"), one ★★ (\"Waited 20 minutes for\")\n\n**Average rating**\n- new reviews: 3.5; reviews.example: 4.6\n\n## Report\n- read 1 review page; wrote \"Reviews — 4 Nov\"\n\n## Carry forward\n- Priya — 3 Nov — The sourdough is the best\n- Tom — 3 Nov — Waited 20 minutes for a\n- Ann — 1 Nov — Lovely rye, a bit pricey"
+ "answer": "**New reviews**\n- 2: one ★★★★★ (\"The sourdough is the best\"), one ★★ (\"Waited 20 minutes for\")\n\n**Average rating**\n- new reviews: 3.5; reviews.example: 4.6\n\n## Report\n- read 1 review page; wrote \"Reviews — 4 Nov\"\n\n## Carry forward\n- Priya — 3 Nov — The sourdough is the best\n- Tom — 3 Nov — Waited 20 minutes for a\n- Ann — 1 Nov — Lovely rye, a bit pricey",
+ "documents": [
+  {
+   "title": "Reviews — 4 Nov",
+   "content": "Reviews — 4 Nov\n\n### ★★★★★ — Priya — 3 Nov\n\"The sourdough is the best I've had outside...\"\nDraft: Thank you, Priya — we're so glad the sourdough hit the spot. See you at the counter soon.\n\n### ★★ — Tom — 3 Nov\n\"Waited 20 minutes for a coffee...\"\nDraft: Sorry you waited so long for your coffee, Tom — that's not the morning we want for you. Please write to [your email] so we can put it right."
+  }
+ ]
 }

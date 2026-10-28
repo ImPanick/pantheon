@@ -18,5 +18,11 @@
    "detail": "“Roadmap suggestions — 3 Nov” is there."
   }
  ],
- "answer": "1 to mark shipped, 1 overdue, 2 unmatched.\n\n## Report\n- read the repository's merges and the roadmap; wrote \"Roadmap suggestions — 3 Nov\"\n\n## Carry forward\n- 3 Nov: suggested Dark mode shipped; Gift cards overdue"
+ "answer": "1 to mark shipped, 1 overdue, 2 unmatched.\n\n## Report\n- read the repository's merges and the roadmap; wrote \"Roadmap suggestions — 3 Nov\"\n\n## Carry forward\n- 3 Nov: suggested Dark mode shipped; Gift cards overdue",
+ "documents": [
+  {
+   "title": "Roadmap suggestions — 3 Nov",
+   "content": "Roadmap suggestions — 3 Nov\n\n## Shipped\n- Dark mode — suggest \"shipped 30 Oct\" — a1b2c3d 2026-10-30 Merge pull request #42 from shop/dark-mode\n\n## Overdue\n- Gift cards — due 31 Oct, not shipped — suggest a new date, or dropping it from this quarter\n\n## Unmatched\n- e4f5a6b 2026-10-29 Merge pull request #44 from shop/faster-search — not on the roadmap (maybe Search filters?)\n- Wishlist — marked shipped, no merge found — check"
+  }
+ ]
 }

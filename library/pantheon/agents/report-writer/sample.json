@@ -17,5 +17,11 @@
    "detail": "“Report — Q3 sales for the board” is there."
   }
  ],
- "answer": "Q3 sales were £30,500, up on Q2; 1 open question.\n\n## Report\n- read 2 documents and 1 note; wrote \"Report — Q3 sales for the board\""
+ "answer": "Q3 sales were £30,500, up on Q2; 1 open question.\n\n## Report\n- read 2 documents and 1 note; wrote \"Report — Q3 sales for the board\"",
+ "documents": [
+  {
+   "title": "Report — Q3 sales for the board",
+   "content": "Report — Q3 sales for the board\n\n## Summary\nQ3 sales were £30,500, up on Q2, carried by subscriptions. One Q2 figure needs checking before the meeting.\n\n## By product\n- Subscriptions: £18,400 (from: Q3 sales figures)\n- One-off orders: £12,100 (from: Q3 sales figures)\n- Total: £30,500 (calculated: 18,400 + 12,100)\n\n## Compared with Q2\n- Q2: £26,000 (from: Q2 recap) or £24,500 (from: Board prep)\n\n## Open questions\n- Q2 sales are £26,000 in \"Q2 recap\" and £24,500 in the note \"Board prep\": which is right?\n\n## Sources\n- Q3 sales figures (document)\n- Q2 recap (document)\n- Board prep (note)"
+  }
+ ]
 }

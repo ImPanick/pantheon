@@ -16,5 +16,11 @@
    "detail": "“Summary — Q4 board paper” is there."
   }
  ],
- "answer": "2 asks, the soonest by 12 November.\n\n## Report\n- read \"Q4 board paper\" and wrote \"Summary — Q4 board paper\""
+ "answer": "2 asks, the soonest by 12 November.\n\n## Report\n- read \"Q4 board paper\" and wrote \"Summary — Q4 board paper\"",
+ "documents": [
+  {
+   "title": "Summary — Q4 board paper",
+   "content": "Summary — Q4 board paper\n\nThe Q4 board paper reviews the office move and asks the board to approve the fit-out budget. It was written by operations for the 12 November meeting.\n\n## Decisions\n- The board approved moving to Riverside House in March (section 1).\n\n## Numbers\n- Fit-out budget: £48,000 in section 2, £52,000 in the cost table (the document gives both).\n- Lease: 5 years at £21,000 a year (section 2).\n\n## Asks\n- The board to approve the fit-out budget by 12 November (section 4).\n- Finance to confirm the deposit — no date given (section 4).\n\n## Risks\n- The landlord has not confirmed the March handover date (section 3)."
+  }
+ ]
 }
