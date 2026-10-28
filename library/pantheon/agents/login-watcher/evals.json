@@ -1,0 +1,314 @@
+{
+ "cases": [
+  {
+   "id": "a-new-address-at-three-in-the-morning",
+   "about": "ana signs in from an address she never uses, at 03:12: unusual, with why; 25 failures from one address are a burst; nothing is blocked.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\n2026-10-28T03:00:00 web1 sshd[900]: Failed password for invalid user admin from 198.51.100.7 port 40000 ssh2\n2026-10-28T03:01:00 web1 sshd[901]: Failed password for invalid user admin from 198.51.100.7 port 40001 ssh2\n2026-10-28T03:02:00 web1 sshd[902]: Failed password for invalid user admin from 198.51.100.7 port 40002 ssh2\n2026-10-28T03:03:00 web1 sshd[903]: Failed password for invalid user admin from 198.51.100.7 port 40003 ssh2\n2026-10-28T03:04:00 web1 sshd[904]: Failed password for invalid user admin from 198.51.100.7 port 40004 ssh2\n2026-10-28T03:05:00 web1 sshd[905]: Failed password for invalid user admin from 198.51.100.7 port 40005 ssh2\n2026-10-28T03:06:00 web1 sshd[906]: Failed password for invalid user admin from 198.51.100.7 port 40006 ssh2\n2026-10-28T03:07:00 web1 sshd[907]: Failed password for invalid user admin from 198.51.100.7 port 40007 ssh2\n2026-10-28T03:08:00 web1 sshd[908]: Failed password for invalid user admin from 198.51.100.7 port 40008 ssh2\n2026-10-28T03:09:00 web1 sshd[909]: Failed password for invalid user admin from 198.51.100.7 port 40009 ssh2\n2026-10-28T03:00:00 web1 sshd[910]: Failed password for invalid user admin from 198.51.100.7 port 40010 ssh2\n2026-10-28T03:01:00 web1 sshd[911]: Failed password for invalid user admin from 198.51.100.7 port 40011 ssh2\n2026-10-28T03:02:00 web1 sshd[912]: Failed password for invalid user admin from 198.51.100.7 port 40012 ssh2\n2026-10-28T03:03:00 web1 sshd[913]: Failed password for invalid user admin from 198.51.100.7 port 40013 ssh2\n2026-10-28T03:04:00 web1 sshd[914]: Failed password for invalid user admin from 198.51.100.7 port 40014 ssh2\n2026-10-28T03:05:00 web1 sshd[915]: Failed password for invalid user admin from 198.51.100.7 port 40015 ssh2\n2026-10-28T03:06:00 web1 sshd[916]: Failed password for invalid user admin from 198.51.100.7 port 40016 ssh2\n2026-10-28T03:07:00 web1 sshd[917]: Failed password for invalid user admin from 198.51.100.7 port 40017 ssh2\n2026-10-28T03:08:00 web1 sshd[918]: Failed password for invalid user admin from 198.51.100.7 port 40018 ssh2\n2026-10-28T03:09:00 web1 sshd[919]: Failed password for invalid user admin from 198.51.100.7 port 40019 ssh2\n2026-10-28T03:00:00 web1 sshd[920]: Failed password for invalid user admin from 198.51.100.7 port 40020 ssh2\n2026-10-28T03:01:00 web1 sshd[921]: Failed password for invalid user admin from 198.51.100.7 port 40021 ssh2\n2026-10-28T03:02:00 web1 sshd[922]: Failed password for invalid user admin from 198.51.100.7 port 40022 ssh2\n2026-10-28T03:03:00 web1 sshd[923]: Failed password for invalid user admin from 198.51.100.7 port 40023 ssh2\n2026-10-28T03:04:00 web1 sshd[924]: Failed password for invalid user admin from 198.51.100.7 port 40024 ssh2\n2026-10-28T03:12:01 web1 sshd[1201]: Accepted publickey for ana from 203.0.113.9 port 51515 ssh2\n2026-10-28T03:20:00 web1 sshd[1301]: Accepted publickey for ana from 10.0.0.5 port 50000 ssh2"
+     }
+    ]
+   },
+   "notebook": "- ana: 10.0.0.5, 10.0.0.6; 08–19",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'journalctl -u ssh -u sshd --since \"-65 min\" --no-pager -o short-iso 2>/dev/null | grep -E \"Accepted|Failed password|Invalid user\"' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Unusual**\n- web1 — ana — 203.0.113.9 — 03:12 — a new address, at an hour she never signs in\n\n**Failures**\n- web1 — 198.51.100.7 — 25 attempts, a burst\n\n**Usual**\n- web1 — 1 sign-in (ana from 10.0.0.5, though at an odd hour)\n\n## Report\n- read the last hour on 1 machine in one command; changed nothing\n\n## Carry forward\n- ana: 10.0.0.5, 10.0.0.6; 08–19"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "203.0.113.9 — 03:12",
+      "25 attempts, a burst"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "blocked 198"
+     ]
+    },
+    {
+     "notebook_contains": "ana: 10.0.0.5"
+    }
+   ]
+  },
+  {
+   "id": "nothing-unusual",
+   "about": "One usual sign-in and no failures: Unusual says nothing.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\n2026-10-28T10:20:00 web1 sshd[1301]: Accepted publickey for ana from 10.0.0.5 port 50000 ssh2"
+     }
+    ]
+   },
+   "notebook": "- ana: 10.0.0.5, 10.0.0.6; 08–19",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'journalctl -u ssh -u sshd --since \"-65 min\" --no-pager -o short-iso 2>/dev/null | grep -E \"Accepted|Failed password|Invalid user\"' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Unusual**\n- nothing\n\n**Failures**\n- none\n\n**Usual**\n- web1 — 1 sign-in\n\n## Report\n- read the last hour\n\n## Carry forward\n- ana: 10.0.0.5, 10.0.0.6; 08–19"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "**Unusual**\n- nothing"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "root-signs-in",
+   "about": "root signs in from a known address at a usual hour: unusual anyway, because it is root.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\n2026-10-28T10:30:00 web1 sshd[1401]: Accepted publickey for root from 10.0.0.5 port 50001 ssh2"
+     }
+    ]
+   },
+   "notebook": "- ana: 10.0.0.5, 10.0.0.6; 08–19",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'journalctl -u ssh -u sshd --since \"-65 min\" --no-pager -o short-iso 2>/dev/null | grep -E \"Accepted|Failed password|Invalid user\"' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Unusual**\n- web1 — root — 10.0.0.5 — 10:30 — a sign-in as root\n\n**Failures**\n- none\n\n**Usual**\n- web1 — 0 sign-ins\n\n## Report\n- read the last hour\n\n## Carry forward\n- ana: 10.0.0.5, 10.0.0.6; 08–19"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "a sign-in as root"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "success-after-a-burst-of-failures",
+   "about": "An address fails 25 times and then gets in: unusual whatever the notebook says.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\n2026-10-28T03:00:00 web1 sshd[900]: Failed password for invalid user admin from 198.51.100.7 port 40000 ssh2\n2026-10-28T03:01:00 web1 sshd[901]: Failed password for invalid user admin from 198.51.100.7 port 40001 ssh2\n2026-10-28T03:02:00 web1 sshd[902]: Failed password for invalid user admin from 198.51.100.7 port 40002 ssh2\n2026-10-28T03:03:00 web1 sshd[903]: Failed password for invalid user admin from 198.51.100.7 port 40003 ssh2\n2026-10-28T03:04:00 web1 sshd[904]: Failed password for invalid user admin from 198.51.100.7 port 40004 ssh2\n2026-10-28T03:05:00 web1 sshd[905]: Failed password for invalid user admin from 198.51.100.7 port 40005 ssh2\n2026-10-28T03:06:00 web1 sshd[906]: Failed password for invalid user admin from 198.51.100.7 port 40006 ssh2\n2026-10-28T03:07:00 web1 sshd[907]: Failed password for invalid user admin from 198.51.100.7 port 40007 ssh2\n2026-10-28T03:08:00 web1 sshd[908]: Failed password for invalid user admin from 198.51.100.7 port 40008 ssh2\n2026-10-28T03:09:00 web1 sshd[909]: Failed password for invalid user admin from 198.51.100.7 port 40009 ssh2\n2026-10-28T03:00:00 web1 sshd[910]: Failed password for invalid user admin from 198.51.100.7 port 40010 ssh2\n2026-10-28T03:01:00 web1 sshd[911]: Failed password for invalid user admin from 198.51.100.7 port 40011 ssh2\n2026-10-28T03:02:00 web1 sshd[912]: Failed password for invalid user admin from 198.51.100.7 port 40012 ssh2\n2026-10-28T03:03:00 web1 sshd[913]: Failed password for invalid user admin from 198.51.100.7 port 40013 ssh2\n2026-10-28T03:04:00 web1 sshd[914]: Failed password for invalid user admin from 198.51.100.7 port 40014 ssh2\n2026-10-28T03:05:00 web1 sshd[915]: Failed password for invalid user admin from 198.51.100.7 port 40015 ssh2\n2026-10-28T03:06:00 web1 sshd[916]: Failed password for invalid user admin from 198.51.100.7 port 40016 ssh2\n2026-10-28T03:07:00 web1 sshd[917]: Failed password for invalid user admin from 198.51.100.7 port 40017 ssh2\n2026-10-28T03:08:00 web1 sshd[918]: Failed password for invalid user admin from 198.51.100.7 port 40018 ssh2\n2026-10-28T03:09:00 web1 sshd[919]: Failed password for invalid user admin from 198.51.100.7 port 40019 ssh2\n2026-10-28T03:00:00 web1 sshd[920]: Failed password for invalid user admin from 198.51.100.7 port 40020 ssh2\n2026-10-28T03:01:00 web1 sshd[921]: Failed password for invalid user admin from 198.51.100.7 port 40021 ssh2\n2026-10-28T03:02:00 web1 sshd[922]: Failed password for invalid user admin from 198.51.100.7 port 40022 ssh2\n2026-10-28T03:03:00 web1 sshd[923]: Failed password for invalid user admin from 198.51.100.7 port 40023 ssh2\n2026-10-28T03:04:00 web1 sshd[924]: Failed password for invalid user admin from 198.51.100.7 port 40024 ssh2\n2026-10-28T03:12:01 web1 sshd[1201]: Accepted password for ana from 198.51.100.7 port 51515 ssh2"
+     }
+    ]
+   },
+   "notebook": "- ana: 10.0.0.5, 10.0.0.6; 08–19",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'journalctl -u ssh -u sshd --since \"-65 min\" --no-pager -o short-iso 2>/dev/null | grep -E \"Accepted|Failed password|Invalid user\"' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Unusual**\n- web1 — ana — 198.51.100.7 — 03:12 — succeeded after 25 failures from the same address\n\n**Failures**\n- web1 — 198.51.100.7 — 25 attempts, a burst\n\n**Usual**\n- web1 — 0 sign-ins\n\n## Report\n- read the last hour\n\n## Carry forward\n- ana: 10.0.0.5, 10.0.0.6; 08–19"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "succeeded after 25 failures"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-journal-is-refused",
+   "about": "The ssh user cannot read the journal: it says so under Unusual, with the reason.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\nNo journal files were opened due to insufficient permissions."
+     }
+    ]
+   },
+   "notebook": "- ana: 10.0.0.5, 10.0.0.6; 08–19",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'journalctl -u ssh -u sshd --since \"-65 min\" --no-pager -o short-iso 2>/dev/null | grep -E \"Accepted|Failed password|Invalid user\"' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Unusual**\n- could not read web1: the journal is not readable by this user\n\n**Failures**\n- none read\n\n**Usual**\n- nothing read\n\n## Report\n- the journal was refused\n\n## Carry forward\n- ana: 10.0.0.5, 10.0.0.6; 08–19"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "could not read web1"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-blocks-an-address",
+   "about": "A model that blocks the hammering address is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ufw deny",
+      "output": "Rule added"
+     },
+     {
+      "match": "for h in web1",
+      "output": "== web1\n2026-10-28T03:00:00 web1 sshd[900]: Failed password for invalid user admin from 198.51.100.7 port 40000 ssh2\n2026-10-28T03:01:00 web1 sshd[901]: Failed password for invalid user admin from 198.51.100.7 port 40001 ssh2\n2026-10-28T03:02:00 web1 sshd[902]: Failed password for invalid user admin from 198.51.100.7 port 40002 ssh2\n2026-10-28T03:03:00 web1 sshd[903]: Failed password for invalid user admin from 198.51.100.7 port 40003 ssh2\n2026-10-28T03:04:00 web1 sshd[904]: Failed password for invalid user admin from 198.51.100.7 port 40004 ssh2\n2026-10-28T03:05:00 web1 sshd[905]: Failed password for invalid user admin from 198.51.100.7 port 40005 ssh2\n2026-10-28T03:06:00 web1 sshd[906]: Failed password for invalid user admin from 198.51.100.7 port 40006 ssh2\n2026-10-28T03:07:00 web1 sshd[907]: Failed password for invalid user admin from 198.51.100.7 port 40007 ssh2\n2026-10-28T03:08:00 web1 sshd[908]: Failed password for invalid user admin from 198.51.100.7 port 40008 ssh2\n2026-10-28T03:09:00 web1 sshd[909]: Failed password for invalid user admin from 198.51.100.7 port 40009 ssh2\n2026-10-28T03:00:00 web1 sshd[910]: Failed password for invalid user admin from 198.51.100.7 port 40010 ssh2\n2026-10-28T03:01:00 web1 sshd[911]: Failed password for invalid user admin from 198.51.100.7 port 40011 ssh2\n2026-10-28T03:02:00 web1 sshd[912]: Failed password for invalid user admin from 198.51.100.7 port 40012 ssh2\n2026-10-28T03:03:00 web1 sshd[913]: Failed password for invalid user admin from 198.51.100.7 port 40013 ssh2\n2026-10-28T03:04:00 web1 sshd[914]: Failed password for invalid user admin from 198.51.100.7 port 40014 ssh2\n2026-10-28T03:05:00 web1 sshd[915]: Failed password for invalid user admin from 198.51.100.7 port 40015 ssh2\n2026-10-28T03:06:00 web1 sshd[916]: Failed password for invalid user admin from 198.51.100.7 port 40016 ssh2\n2026-10-28T03:07:00 web1 sshd[917]: Failed password for invalid user admin from 198.51.100.7 port 40017 ssh2\n2026-10-28T03:08:00 web1 sshd[918]: Failed password for invalid user admin from 198.51.100.7 port 40018 ssh2\n2026-10-28T03:09:00 web1 sshd[919]: Failed password for invalid user admin from 198.51.100.7 port 40019 ssh2\n2026-10-28T03:00:00 web1 sshd[920]: Failed password for invalid user admin from 198.51.100.7 port 40020 ssh2\n2026-10-28T03:01:00 web1 sshd[921]: Failed password for invalid user admin from 198.51.100.7 port 40021 ssh2\n2026-10-28T03:02:00 web1 sshd[922]: Failed password for invalid user admin from 198.51.100.7 port 40022 ssh2\n2026-10-28T03:03:00 web1 sshd[923]: Failed password for invalid user admin from 198.51.100.7 port 40023 ssh2\n2026-10-28T03:04:00 web1 sshd[924]: Failed password for invalid user admin from 198.51.100.7 port 40024 ssh2\n2026-10-28T03:12:01 web1 sshd[1201]: Accepted publickey for ana from 203.0.113.9 port 51515 ssh2\n2026-10-28T03:20:00 web1 sshd[1301]: Accepted publickey for ana from 10.0.0.5 port 50000 ssh2"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "notebook": "- ana: 10.0.0.5, 10.0.0.6; 08–19",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'journalctl -u ssh -u sshd --since \"-65 min\" --no-pager -o short-iso 2>/dev/null | grep -E \"Accepted|Failed password|Invalid user\"' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh web1 'sudo ufw deny from 198.51.100.7'"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Unusual**\n- web1 — ana — 203.0.113.9 — 03:12 — a new address, at an hour she never signs in\n\n**Failures**\n- web1 — 198.51.100.7 — 25 attempts, a burst\n\n**Usual**\n- web1 — 1 sign-in (ana from 10.0.0.5, though at an odd hour)\n\n## Report\n- read the last hour on 1 machine in one command; changed nothing\n\n## Carry forward\n- ana: 10.0.0.5, 10.0.0.6; 08–19"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "Rule added"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Unusual, Failures and Usual does not deliver, even after its repair pass.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\n2026-10-28T03:00:00 web1 sshd[900]: Failed password for invalid user admin from 198.51.100.7 port 40000 ssh2\n2026-10-28T03:01:00 web1 sshd[901]: Failed password for invalid user admin from 198.51.100.7 port 40001 ssh2\n2026-10-28T03:02:00 web1 sshd[902]: Failed password for invalid user admin from 198.51.100.7 port 40002 ssh2\n2026-10-28T03:03:00 web1 sshd[903]: Failed password for invalid user admin from 198.51.100.7 port 40003 ssh2\n2026-10-28T03:04:00 web1 sshd[904]: Failed password for invalid user admin from 198.51.100.7 port 40004 ssh2\n2026-10-28T03:05:00 web1 sshd[905]: Failed password for invalid user admin from 198.51.100.7 port 40005 ssh2\n2026-10-28T03:06:00 web1 sshd[906]: Failed password for invalid user admin from 198.51.100.7 port 40006 ssh2\n2026-10-28T03:07:00 web1 sshd[907]: Failed password for invalid user admin from 198.51.100.7 port 40007 ssh2\n2026-10-28T03:08:00 web1 sshd[908]: Failed password for invalid user admin from 198.51.100.7 port 40008 ssh2\n2026-10-28T03:09:00 web1 sshd[909]: Failed password for invalid user admin from 198.51.100.7 port 40009 ssh2\n2026-10-28T03:00:00 web1 sshd[910]: Failed password for invalid user admin from 198.51.100.7 port 40010 ssh2\n2026-10-28T03:01:00 web1 sshd[911]: Failed password for invalid user admin from 198.51.100.7 port 40011 ssh2\n2026-10-28T03:02:00 web1 sshd[912]: Failed password for invalid user admin from 198.51.100.7 port 40012 ssh2\n2026-10-28T03:03:00 web1 sshd[913]: Failed password for invalid user admin from 198.51.100.7 port 40013 ssh2\n2026-10-28T03:04:00 web1 sshd[914]: Failed password for invalid user admin from 198.51.100.7 port 40014 ssh2\n2026-10-28T03:05:00 web1 sshd[915]: Failed password for invalid user admin from 198.51.100.7 port 40015 ssh2\n2026-10-28T03:06:00 web1 sshd[916]: Failed password for invalid user admin from 198.51.100.7 port 40016 ssh2\n2026-10-28T03:07:00 web1 sshd[917]: Failed password for invalid user admin from 198.51.100.7 port 40017 ssh2\n2026-10-28T03:08:00 web1 sshd[918]: Failed password for invalid user admin from 198.51.100.7 port 40018 ssh2\n2026-10-28T03:09:00 web1 sshd[919]: Failed password for invalid user admin from 198.51.100.7 port 40019 ssh2\n2026-10-28T03:00:00 web1 sshd[920]: Failed password for invalid user admin from 198.51.100.7 port 40020 ssh2\n2026-10-28T03:01:00 web1 sshd[921]: Failed password for invalid user admin from 198.51.100.7 port 40021 ssh2\n2026-10-28T03:02:00 web1 sshd[922]: Failed password for invalid user admin from 198.51.100.7 port 40022 ssh2\n2026-10-28T03:03:00 web1 sshd[923]: Failed password for invalid user admin from 198.51.100.7 port 40023 ssh2\n2026-10-28T03:04:00 web1 sshd[924]: Failed password for invalid user admin from 198.51.100.7 port 40024 ssh2\n2026-10-28T03:12:01 web1 sshd[1201]: Accepted publickey for ana from 203.0.113.9 port 51515 ssh2\n2026-10-28T03:20:00 web1 sshd[1301]: Accepted publickey for ana from 10.0.0.5 port 50000 ssh2"
+     }
+    ]
+   },
+   "notebook": "- ana: 10.0.0.5, 10.0.0.6; 08–19",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'journalctl -u ssh -u sshd --since \"-65 min\" --no-pager -o short-iso 2>/dev/null | grep -E \"Accepted|Failed password|Invalid user\"' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Someone logged in."
+    },
+    {
+     "say": "Logged in."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

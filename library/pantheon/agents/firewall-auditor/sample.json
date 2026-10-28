@@ -1,0 +1,20 @@
+{
+ "case": "redis-open-to-the-network",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 1 machine in one command; 1 network check refused; changed nothing",
+ "read": [
+  "network"
+ ],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Open but not expected, Expected but closed, As expected."
+  }
+ ],
+ "answer": "**Open but not expected**\n- web1 — 6379/tcp — redis-server — the reach check from the workstation was refused; listening on every address with the firewall inactive\n\n**Expected but closed**\n- nothing\n\n**As expected**\n- web1 — 22, 80, 443\n\n## Report\n- read 1 machine in one command; 1 network check refused; changed nothing\n\n## Carry forward\n- web1 open: 22, 80, 443, 6379"
+}

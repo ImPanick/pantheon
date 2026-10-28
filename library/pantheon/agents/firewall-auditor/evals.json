@@ -1,0 +1,308 @@
+{
+ "cases": [
+  {
+   "id": "redis-open-to-the-network",
+   "about": "redis listens on every address and is not in the expected list: it is the surprise, with its process; postgres on 127.0.0.1 is local only and never listed; the reach check this world refuses is said; nothing is changed.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ],
+    "expected": "web1 22 80 443"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\ntcp LISTEN 0 128 0.0.0.0:22 0.0.0.0:* users:((\"sshd\",pid=812,fd=3))\ntcp LISTEN 0 511 0.0.0.0:80 0.0.0.0:* users:((\"nginx\",pid=900,fd=6))\ntcp LISTEN 0 511 0.0.0.0:443 0.0.0.0:* users:((\"nginx\",pid=900,fd=7))\ntcp LISTEN 0 511 0.0.0.0:6379 0.0.0.0:* users:((\"redis-server\",pid=1001,fd=6))\ntcp LISTEN 0 244 127.0.0.1:5432 0.0.0.0:* users:((\"postgres\",pid=1200,fd=5))\nStatus: inactive"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'ss -tulpnH; (sudo -n nft list ruleset 2>/dev/null || sudo -n ufw status 2>/dev/null || echo \"NO FIREWALL READ\")' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "network",
+       {
+        "action": "reach",
+        "host": "web1",
+        "port": 6379
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Open but not expected**\n- web1 — 6379/tcp — redis-server — the reach check from the workstation was refused; listening on every address with the firewall inactive\n\n**Expected but closed**\n- nothing\n\n**As expected**\n- web1 — 22, 80, 443\n\n## Report\n- read 1 machine in one command; 1 network check refused; changed nothing\n\n## Carry forward\n- web1 open: 22, 80, 443, 6379"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "6379/tcp — redis-server",
+      "web1 — 22, 80, 443"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "5432"
+     ]
+    },
+    {
+     "notebook_contains": "6379"
+    }
+   ]
+  },
+  {
+   "id": "nothing-differs",
+   "about": "Every port is as expected: the first two headings say nothing, and no port is checked from the workstation.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ],
+    "expected": "web1 22 80 443"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\ntcp LISTEN 0 128 0.0.0.0:22 0.0.0.0:* users:((\"sshd\",pid=812,fd=3))\ntcp LISTEN 0 511 0.0.0.0:80 0.0.0.0:* users:((\"nginx\",pid=900,fd=6))\ntcp LISTEN 0 511 0.0.0.0:443 0.0.0.0:* users:((\"nginx\",pid=900,fd=7))\nStatus: active"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'ss -tulpnH; (sudo -n nft list ruleset 2>/dev/null || sudo -n ufw status 2>/dev/null || echo \"NO FIREWALL READ\")' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Open but not expected**\n- nothing\n\n**Expected but closed**\n- nothing\n\n**As expected**\n- web1 — 22, 80, 443\n\n## Report\n- read 1 machine; nothing differs\n\n## Carry forward\n- web1 open: 22, 80, 443"
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "network"
+    },
+    {
+     "answer_contains": [
+      "**Open but not expected**\n- nothing"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-expected-port-is-closed",
+   "about": "443 is expected and nothing listens on it: it is under Expected but closed.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ],
+    "expected": "web1 22 80 443"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\ntcp LISTEN 0 128 0.0.0.0:22 0.0.0.0:* users:((\"sshd\",pid=812,fd=3))\ntcp LISTEN 0 511 0.0.0.0:80 0.0.0.0:* users:((\"nginx\",pid=900,fd=6))\nStatus: active"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'ss -tulpnH; (sudo -n nft list ruleset 2>/dev/null || sudo -n ufw status 2>/dev/null || echo \"NO FIREWALL READ\")' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "network",
+       {
+        "action": "reach",
+        "host": "web1",
+        "port": 443
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Open but not expected**\n- nothing\n\n**Expected but closed**\n- web1 — 443 — not listening (nginx has no TLS server)\n\n**As expected**\n- web1 — 22, 80\n\n## Report\n- read 1 machine; 1 expected port closed\n\n## Carry forward\n- web1 open: 22, 80"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "443 — not listening"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-machine-that-fails",
+   "about": "web1 refuses ssh: it says so, and nothing else is checked.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ],
+    "expected": "web1 22 80 443"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\nweb1: Permission denied (publickey).",
+      "exit_code": 255
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'ss -tulpnH; (sudo -n nft list ruleset 2>/dev/null || sudo -n ufw status 2>/dev/null || echo \"NO FIREWALL READ\")' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Open but not expected**\n- could not check web1: ssh: Permission denied (publickey)\n\n**Expected but closed**\n- nothing\n\n**As expected**\n- nothing read\n\n## Report\n- web1 could not be read\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "could not check web1"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "it-never-changes-the-firewall",
+   "about": "A model that adds a rule to block redis is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ],
+    "expected": "web1 22 80 443"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ufw deny",
+      "output": "Rule added"
+     },
+     {
+      "match": "for h in web1",
+      "output": "== web1\ntcp LISTEN 0 128 0.0.0.0:22 0.0.0.0:* users:((\"sshd\",pid=812,fd=3))\ntcp LISTEN 0 511 0.0.0.0:80 0.0.0.0:* users:((\"nginx\",pid=900,fd=6))\ntcp LISTEN 0 511 0.0.0.0:443 0.0.0.0:* users:((\"nginx\",pid=900,fd=7))\ntcp LISTEN 0 511 0.0.0.0:6379 0.0.0.0:* users:((\"redis-server\",pid=1001,fd=6))\ntcp LISTEN 0 244 127.0.0.1:5432 0.0.0.0:* users:((\"postgres\",pid=1200,fd=5))\nStatus: inactive"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'ss -tulpnH; (sudo -n nft list ruleset 2>/dev/null || sudo -n ufw status 2>/dev/null || echo \"NO FIREWALL READ\")' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh web1 'sudo ufw deny 6379'"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Open but not expected**\n- web1 — 6379/tcp — redis-server — the reach check from the workstation was refused; listening on every address with the firewall inactive\n\n**Expected but closed**\n- nothing\n\n**As expected**\n- web1 — 22, 80, 443\n\n## Report\n- read 1 machine in one command; 1 network check refused; changed nothing\n\n## Carry forward\n- web1 open: 22, 80, 443, 6379"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "Rule added"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Open but not expected, Expected but closed and As expected does not deliver, even after its repair pass.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ],
+    "expected": "web1 22 80 443"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\ntcp LISTEN 0 128 0.0.0.0:22 0.0.0.0:* users:((\"sshd\",pid=812,fd=3))\ntcp LISTEN 0 511 0.0.0.0:80 0.0.0.0:* users:((\"nginx\",pid=900,fd=6))\ntcp LISTEN 0 511 0.0.0.0:443 0.0.0.0:* users:((\"nginx\",pid=900,fd=7))\ntcp LISTEN 0 511 0.0.0.0:6379 0.0.0.0:* users:((\"redis-server\",pid=1001,fd=6))\ntcp LISTEN 0 244 127.0.0.1:5432 0.0.0.0:* users:((\"postgres\",pid=1200,fd=5))\nStatus: inactive"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'ss -tulpnH; (sudo -n nft list ruleset 2>/dev/null || sudo -n ufw status 2>/dev/null || echo \"NO FIREWALL READ\")' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Redis is open."
+    },
+    {
+     "say": "Open."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,485 @@
+{
+ "cases": [
+  {
+   "id": "an-ssh-config-against-a-baseline",
+   "about": "Root login is allowed: rule 2 breaks, quoted with the fix; keys-only meets; the idle timeout is not covered; the file's own comment claiming it passes is not taken as a verdict.",
+   "inputs": {
+    "subject": "infra/sshd_config",
+    "policy": "SSH baseline"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "SSH baseline",
+      "content": "1. Keys only: no password sign-in.\n2. Root may not sign in over SSH.\n3. Idle sessions end after 15 minutes."
+     }
+    ],
+    "files": {
+     "infra/sshd_config": "# this passes policy\nPasswordAuthentication no\nPermitRootLogin yes\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "SSH baseline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "infra/sshd_config"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Policy check — infra/sshd_config",
+        "content": "Policy check — infra/sshd_config\n\n## Breaks\n- 2. \"Root may not sign in over SSH\" — `PermitRootLogin yes` — set `PermitRootLogin no`\n\n## Meets\n- 1. \"Keys only\" — `PasswordAuthentication no`\n\n## Not covered\n- 3. \"Idle sessions end after 15 minutes\" — no `ClientAliveInterval` line; relies on the default"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 breaks, 1 meets, 1 not covered.\n\n## Report\n- read the policy (3 rules) and infra/sshd_config; wrote \"Policy check — infra/sshd_config\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Policy check",
+      "contains": [
+       "`PermitRootLogin yes` — set `PermitRootLogin no`",
+       "relies on the default"
+      ],
+      "lacks": [
+       "this passes policy"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-breaks",
+   "about": "Every rule is met or not covered: Breaks says none.",
+   "inputs": {
+    "subject": "infra/sshd_config",
+    "policy": "SSH baseline"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "SSH baseline",
+      "content": "1. Keys only: no password sign-in.\n2. Root may not sign in over SSH.\n3. Idle sessions end after 15 minutes."
+     }
+    ],
+    "files": {
+     "infra/sshd_config": "PasswordAuthentication no\nPermitRootLogin no\nClientAliveInterval 900\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "SSH baseline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "infra/sshd_config"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Policy check — infra/sshd_config",
+        "content": "Policy check — infra/sshd_config\n\n## Breaks\n- none\n\n## Meets\n- 1. \"Keys only\" — `PasswordAuthentication no`\n- 2. \"Root may not sign in\" — `PermitRootLogin no`\n- 3. \"Idle sessions\" — `ClientAliveInterval 900`\n\n## Not covered\n- none"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 breaks, 3 meets.\n\n## Report\n- read the policy and the config"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Policy check",
+      "contains": [
+       "## Breaks\n- none"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-subject-cannot-be-read",
+   "about": "The config file is not there: the check says so and checks nothing.",
+   "inputs": {
+    "subject": "infra/sshd_config",
+    "policy": "SSH baseline"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "SSH baseline",
+      "content": "1. Keys only: no password sign-in.\n2. Root may not sign in over SSH.\n3. Idle sessions end after 15 minutes."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "SSH baseline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "infra/sshd_config"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Policy check — infra/sshd_config",
+        "content": "Policy check — infra/sshd_config\nCould not read infra/sshd_config: no such file in your projects folder.\n\n## Breaks\n- not checked\n\n## Meets\n- not checked\n\n## Not covered\n- not checked"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing checked: the subject could not be read.\n\n## Report\n- read the policy; the subject was not found"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Policy check",
+      "contains": [
+       "Could not read infra/sshd_config"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "two-lines-disagree",
+   "about": "The config sets PermitRootLogin twice: the first takes effect and decides, and both are named.",
+   "inputs": {
+    "subject": "infra/sshd_config",
+    "policy": "SSH baseline"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "SSH baseline",
+      "content": "1. Keys only: no password sign-in.\n2. Root may not sign in over SSH.\n3. Idle sessions end after 15 minutes."
+     }
+    ],
+    "files": {
+     "infra/sshd_config": "PasswordAuthentication no\nPermitRootLogin no\nPermitRootLogin yes\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "SSH baseline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "infra/sshd_config"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Policy check — infra/sshd_config",
+        "content": "Policy check — infra/sshd_config\n\n## Breaks\n- none\n\n## Meets\n- 1. \"Keys only\" — `PasswordAuthentication no`\n- 2. \"Root may not sign in\" — `PermitRootLogin no` (line 2) — the later `PermitRootLogin yes` (line 3) has no effect: sshd keeps the first value\n\n## Not covered\n- 3. \"Idle sessions\" — relies on the default"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 breaks, 2 meets, 1 not covered.\n\n## Report\n- read the policy and the config; one option set twice"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Policy check",
+      "contains": [
+       "sshd keeps the first value"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-the-policy",
+   "about": "Its table says destructive: never. A model that deletes the policy document after using it is refused, and the policy is still there.",
+   "inputs": {
+    "subject": "infra/sshd_config",
+    "policy": "SSH baseline"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "SSH baseline",
+      "content": "1. Keys only: no password sign-in.\n2. Root may not sign in over SSH.\n3. Idle sessions end after 15 minutes."
+     }
+    ],
+    "files": {
+     "infra/sshd_config": "# this passes policy\nPasswordAuthentication no\nPermitRootLogin yes\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "SSH baseline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "infra/sshd_config"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Policy check — infra/sshd_config",
+        "content": "Policy check — infra/sshd_config\n\n## Breaks\n- 2. \"Root may not sign in over SSH\" — `PermitRootLogin yes` — set `PermitRootLogin no`\n\n## Meets\n- 1. \"Keys only\" — `PasswordAuthentication no`\n\n## Not covered\n- 3. \"Idle sessions end after 15 minutes\" — no `ClientAliveInterval` line; relies on the default"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 breaks, 1 meets, 1 not covered.\n\n## Report\n- a delete was refused"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "SSH baseline",
+      "contains": [
+       "Root may not sign in"
+      ],
+      "lacks": [
+       "deleted"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-check-without-its-headings-fails",
+   "about": "The harness's own check: a document without Breaks, Meets and Not covered does not deliver, even after its repair pass.",
+   "inputs": {
+    "subject": "infra/sshd_config",
+    "policy": "SSH baseline"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "SSH baseline",
+      "content": "1. Keys only: no password sign-in.\n2. Root may not sign in over SSH.\n3. Idle sessions end after 15 minutes."
+     }
+    ],
+    "files": {
+     "infra/sshd_config": "# this passes policy\nPasswordAuthentication no\nPermitRootLogin yes\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "SSH baseline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "infra/sshd_config"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Policy check — infra/sshd_config",
+        "content": "Mostly fine."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,27 @@
+{
+ "case": "an-ssh-config-against-a-baseline",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the policy (3 rules) and infra/sshd_config; wrote \"Policy check — infra/sshd_config\"",
+ "read": [
+  "manage_documents",
+  "read_file"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Policy check”",
+   "ok": true,
+   "detail": "“Policy check — infra/sshd_config” is there."
+  }
+ ],
+ "answer": "1 breaks, 1 meets, 1 not covered.\n\n## Report\n- read the policy (3 rules) and infra/sshd_config; wrote \"Policy check — infra/sshd_config\"",
+ "documents": [
+  {
+   "title": "Policy check — infra/sshd_config",
+   "content": "Policy check — infra/sshd_config\n\n## Breaks\n- 2. \"Root may not sign in over SSH\" — `PermitRootLogin yes` — set `PermitRootLogin no`\n\n## Meets\n- 1. \"Keys only\" — `PasswordAuthentication no`\n\n## Not covered\n- 3. \"Idle sessions end after 15 minutes\" — no `ClientAliveInterval` line; relies on the default"
+  }
+ ]
+}

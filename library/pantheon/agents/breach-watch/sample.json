@@ -1,0 +1,19 @@
+{
+ "case": "a-hosting-breach-touches-the-bakery",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 2 searches, 1 notice read from the company's own page",
+ "read": [
+  "web_search",
+  "web_fetch"
+ ],
+ "wrote": [],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with New notices, Already covered, Checked."
+  }
+ ],
+ "answer": "**New notices**\n- Hostly — customer emails and hashed passwords — 20 Oct 2026 — rosasbakery.example's account — change the Hostly password and turn on two-factor — https://hostly.example/security/notice-oct-2026\n\n**Already covered**\n- nothing\n\n**Checked**\n- rosasbakery.example, ana@rosasbakery.example (by its domain)\n\n## Report\n- 2 searches, 1 notice read from the company's own page\n\n## Carry forward\n- Hostly 20 Oct 2026"
+}

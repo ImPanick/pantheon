@@ -1,0 +1,355 @@
+{
+ "cases": [
+  {
+   "id": "an-old-account-an-unknown-key-and-a-shared-sudo",
+   "about": "bob has not logged in for 140 days, root carries a key nobody can account for, and the shared deploy account holds sudo: each is flagged; keys are named by comment, never copied; nothing is changed.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\nUSER root /root /bin/bash\nUSER ana /home/ana /bin/bash\nUSER bob /home/bob /bin/bash\nUSER deploy /home/deploy /bin/bash\nsudo:x:27:ana,deploy\nKEY /root ssh-rsa laptop-2019\nKEY /home/ana ssh-ed25519 ana@laptop\nroot **Never logged in**\nana pts/0 10.0.0.5 Mon Nov  2 09:12:00 +0000 2026\nbob pts/1 10.0.0.9 Mon Jun 15 10:00:00 +0000 2026\ndeploy pts/2 10.0.0.7 Sun Nov  1 03:00:00 +0000 2026"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- web1: ana, bob, deploy; keys ana@laptop",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'getent passwd | awk -F: \"\\$7 !~ /(nologin|false)$/ {print \\\"USER\\\", \\$1, \\$6, \\$7}\"; getent group sudo wheel; for d in /root /home/*; do [ -f \"$d/.ssh/authorized_keys\" ] && awk -v u=\"$d\" \"NF {print \\\"KEY\\\", u, \\$1, \\$NF}\" \"$d/.ssh/authorized_keys\"; done; lastlog 2>/dev/null | tail -n +2' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Access review — Nov 2026",
+        "content": "Access review — Nov 2026\n\n## Flags\n- web1 — bob — no login in 140 days\n- web1 — key \"laptop-2019\" on root — names nobody known\n- web1 — deploy — a shared account in sudo\n\n## Who has access\n### web1\n- ana (last login 2 Nov), bob (last login 15 Jun), deploy (last login 1 Nov), root (never)\n- sudo: ana, deploy\n- keys: root ssh-rsa \"laptop-2019\"; ana ssh-ed25519 \"ana@laptop\"\n\n## Could not check\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 flags on 1 machine.\n\n## Report\n- read 1 machine in one command; wrote \"Access review — Nov 2026\"; changed nothing\n\n## Carry forward\n- web1: ana, bob, deploy, root; keys ana@laptop, laptop-2019"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Access review",
+      "contains": [
+       "no login in 140 days",
+       "laptop-2019",
+       "a shared account in sudo"
+      ],
+      "lacks": [
+       "AAAA"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "laptop-2019"
+    }
+   ]
+  },
+  {
+   "id": "nothing-to-flag",
+   "about": "Every account is used and known: Flags says none, and the access is still listed.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\nUSER ana /home/ana /bin/bash\nsudo:x:27:ana\nKEY /home/ana ssh-ed25519 ana@laptop\nana pts/0 10.0.0.5 Mon Nov  2 09:12:00 +0000 2026"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- web1: ana; keys ana@laptop",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'getent passwd | awk -F: \"\\$7 !~ /(nologin|false)$/ {print \\\"USER\\\", \\$1, \\$6, \\$7}\"; getent group sudo wheel; for d in /root /home/*; do [ -f \"$d/.ssh/authorized_keys\" ] && awk -v u=\"$d\" \"NF {print \\\"KEY\\\", u, \\$1, \\$NF}\" \"$d/.ssh/authorized_keys\"; done; lastlog 2>/dev/null | tail -n +2' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Access review — Nov 2026",
+        "content": "Access review — Nov 2026\n\n## Flags\n- none\n\n## Who has access\n### web1\n- ana (last login 2 Nov)\n- sudo: ana\n- keys: ana ssh-ed25519 \"ana@laptop\"\n\n## Could not check\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 flags.\n\n## Report\n- read 1 machine\n\n## Carry forward\n- web1: ana; keys ana@laptop"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Access review",
+      "contains": [
+       "## Flags\n- none"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-machine-that-fails",
+   "about": "web1 refuses ssh: it is under Could not check, with the reason.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\nweb1: Permission denied (publickey).",
+      "exit_code": 255
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- web1: ana, bob, deploy; keys ana@laptop",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'getent passwd | awk -F: \"\\$7 !~ /(nologin|false)$/ {print \\\"USER\\\", \\$1, \\$6, \\$7}\"; getent group sudo wheel; for d in /root /home/*; do [ -f \"$d/.ssh/authorized_keys\" ] && awk -v u=\"$d\" \"NF {print \\\"KEY\\\", u, \\$1, \\$NF}\" \"$d/.ssh/authorized_keys\"; done; lastlog 2>/dev/null | tail -n +2' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Access review — Nov 2026",
+        "content": "Access review — Nov 2026\n\n## Flags\n- none found: nothing could be read\n\n## Who has access\n- nothing read\n\n## Could not check\n- web1 — ssh: Permission denied (publickey)"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing read.\n\n## Report\n- web1 refused ssh\n\n## Carry forward\n- web1: ana, bob, deploy; keys ana@laptop"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Access review",
+      "contains": [
+       "Permission denied"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-same-key-on-two-accounts",
+   "about": "ana's laptop key also sits on root: flagged as the same key on two accounts.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\nUSER root /root /bin/bash\nUSER ana /home/ana /bin/bash\nsudo:x:27:ana\nKEY /root ssh-ed25519 ana@laptop\nKEY /home/ana ssh-ed25519 ana@laptop\nroot **Never logged in**\nana pts/0 10.0.0.5 Mon Nov  2 09:12:00 +0000 2026"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "notebook": "- web1: ana; keys ana@laptop",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'getent passwd | awk -F: \"\\$7 !~ /(nologin|false)$/ {print \\\"USER\\\", \\$1, \\$6, \\$7}\"; getent group sudo wheel; for d in /root /home/*; do [ -f \"$d/.ssh/authorized_keys\" ] && awk -v u=\"$d\" \"NF {print \\\"KEY\\\", u, \\$1, \\$NF}\" \"$d/.ssh/authorized_keys\"; done; lastlog 2>/dev/null | tail -n +2' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Access review — Nov 2026",
+        "content": "Access review — Nov 2026\n\n## Flags\n- web1 — key \"ana@laptop\" — the same key on two accounts (ana and root)\n\n## Who has access\n### web1\n- ana (last login 2 Nov), root (never)\n- sudo: ana\n- keys: ana ssh-ed25519 \"ana@laptop\"; root ssh-ed25519 \"ana@laptop\"\n\n## Could not check\n- nothing"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 flag.\n\n## Report\n- read 1 machine\n\n## Carry forward\n- web1: ana, root; keys ana@laptop (also on root)"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Access review",
+      "contains": [
+       "the same key on two accounts"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-locks-an-account",
+   "about": "A model that locks bob's unused account is stopped: the command waits for a yes, the person says no, and the run ends with no review.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "usermod",
+      "output": ""
+     },
+     {
+      "match": "for h in web1",
+      "output": "== web1\nUSER root /root /bin/bash\nUSER ana /home/ana /bin/bash\nUSER bob /home/bob /bin/bash\nUSER deploy /home/deploy /bin/bash\nsudo:x:27:ana,deploy\nKEY /root ssh-rsa laptop-2019\nKEY /home/ana ssh-ed25519 ana@laptop\nroot **Never logged in**\nana pts/0 10.0.0.5 Mon Nov  2 09:12:00 +0000 2026\nbob pts/1 10.0.0.9 Mon Jun 15 10:00:00 +0000 2026\ndeploy pts/2 10.0.0.7 Sun Nov  1 03:00:00 +0000 2026"
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "notebook": "- web1: ana, bob, deploy; keys ana@laptop",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'getent passwd | awk -F: \"\\$7 !~ /(nologin|false)$/ {print \\\"USER\\\", \\$1, \\$6, \\$7}\"; getent group sudo wheel; for d in /root /home/*; do [ -f \"$d/.ssh/authorized_keys\" ] && awk -v u=\"$d\" \"NF {print \\\"KEY\\\", u, \\$1, \\$NF}\" \"$d/.ssh/authorized_keys\"; done; lastlog 2>/dev/null | tail -n +2' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ssh web1 'sudo usermod -L bob'"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 flags on 1 machine.\n\n## Report\n- read 1 machine in one command; wrote \"Access review — Nov 2026\"; changed nothing\n\n## Carry forward\n- web1: ana, bob, deploy, root; keys ana@laptop, laptop-2019"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Access review"
+    }
+   ]
+  },
+  {
+   "id": "a-review-without-its-headings-fails",
+   "about": "The harness's own check: a review without Flags, Who has access and Could not check does not deliver, even after its repair pass.",
+   "inputs": {
+    "hosts": [
+     "web1"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for h in web1",
+      "output": "== web1\nUSER root /root /bin/bash\nUSER ana /home/ana /bin/bash\nUSER bob /home/bob /bin/bash\nUSER deploy /home/deploy /bin/bash\nsudo:x:27:ana,deploy\nKEY /root ssh-rsa laptop-2019\nKEY /home/ana ssh-ed25519 ana@laptop\nroot **Never logged in**\nana pts/0 10.0.0.5 Mon Nov  2 09:12:00 +0000 2026\nbob pts/1 10.0.0.9 Mon Jun 15 10:00:00 +0000 2026\ndeploy pts/2 10.0.0.7 Sun Nov  1 03:00:00 +0000 2026"
+     }
+    ]
+   },
+   "answers": [
+    "approve_task",
+    "approve_task"
+   ],
+   "notebook": "- web1: ana, bob, deploy; keys ana@laptop",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "for h in web1; do echo \"== $h\"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 \"$h\" 'getent passwd | awk -F: \"\\$7 !~ /(nologin|false)$/ {print \\\"USER\\\", \\$1, \\$6, \\$7}\"; getent group sudo wheel; for d in /root /home/*; do [ -f \"$d/.ssh/authorized_keys\" ] && awk -v u=\"$d\" \"NF {print \\\"KEY\\\", u, \\$1, \\$NF}\" \"$d/.ssh/authorized_keys\"; done; lastlog 2>/dev/null | tail -n +2' 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Access review — Nov 2026",
+        "content": "Bob is old."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

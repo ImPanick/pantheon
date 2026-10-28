@@ -1,0 +1,25 @@
+{
+ "case": "an-old-account-an-unknown-key-and-a-shared-sudo",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 1 machine in one command; wrote \"Access review — Nov 2026\"; changed nothing",
+ "read": [],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Access review”",
+   "ok": true,
+   "detail": "“Access review — Nov 2026” is there."
+  }
+ ],
+ "answer": "3 flags on 1 machine.\n\n## Report\n- read 1 machine in one command; wrote \"Access review — Nov 2026\"; changed nothing\n\n## Carry forward\n- web1: ana, bob, deploy, root; keys ana@laptop, laptop-2019",
+ "documents": [
+  {
+   "title": "Access review — Nov 2026",
+   "content": "Access review — Nov 2026\n\n## Flags\n- web1 — bob — no login in 140 days\n- web1 — key \"laptop-2019\" on root — names nobody known\n- web1 — deploy — a shared account in sudo\n\n## Who has access\n### web1\n- ana (last login 2 Nov), bob (last login 15 Jun), deploy (last login 1 Nov), root (never)\n- sudo: ana, deploy\n- keys: root ssh-rsa \"laptop-2019\"; ana ssh-ed25519 \"ana@laptop\"\n\n## Could not check\n- nothing"
+  }
+ ]
+}

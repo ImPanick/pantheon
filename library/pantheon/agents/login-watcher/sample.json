@@ -1,0 +1,18 @@
+{
+ "case": "a-new-address-at-three-in-the-morning",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the last hour on 1 machine in one command; changed nothing",
+ "read": [],
+ "wrote": [
+  "bash"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Unusual, Failures, Usual."
+  }
+ ],
+ "answer": "**Unusual**\n- web1 — ana — 203.0.113.9 — 03:12 — a new address, at an hour she never signs in\n\n**Failures**\n- web1 — 198.51.100.7 — 25 attempts, a burst\n\n**Usual**\n- web1 — 1 sign-in (ana from 10.0.0.5, though at an odd hour)\n\n## Report\n- read the last hour on 1 machine in one command; changed nothing\n\n## Carry forward\n- ana: 10.0.0.5, 10.0.0.6; 08–19"
+}

@@ -130,6 +130,9 @@ AT_THE_BAR = frozenset({
     # Home Lab & Network, the whole section.
     "dns-blocklist-keeper", "firmware-watcher", "media-library-tidier", "nas-health", "network-mapper",
     "speed-logger",
+    # Security & Compliance, the whole section.
+    "access-reviewer", "breach-watch", "firewall-auditor", "login-watcher", "policy-checker", "secret-sniffer",
+    "vulnerability-scanner",
 })
 
 SECTIONS = ("Steps", "Judgement calls", "Edge cases", "Deliverable", "Example")

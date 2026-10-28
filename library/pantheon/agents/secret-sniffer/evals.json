@@ -1,0 +1,339 @@
+{
+ "cases": [
+  {
+   "id": "a-new-aws-key-and-where-to-rotate-it",
+   "about": "An AWS key was committed to config/settings.py yesterday: it is new, so it is written to a document with where to rotate it; only its masked prefix appears; it is carried forward.",
+   "inputs": {
+    "folders": [
+     "app"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for r in app",
+      "output": "== app\ncommit a1b2c3d 2026-10-27\n+++ b/config/settings.py\n+AWS_ACCESS_KEY_ID = \"AKIA…\""
+     }
+    ]
+   },
+   "answers": [
+    "approve_task"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Secrets to rotate — 28 Oct 2026",
+        "content": "Secrets to rotate — 28 Oct 2026\n\n- app — a1b2c3d (2026-10-27) — config/settings.py — an AWS key (AKIA…) — rotate in the AWS console: IAM, access keys. Deleting the file does not help: it is still in history."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New findings**\n- app — a1b2c3d (2026-10-27) — config/settings.py — an AWS key (AKIA…) — rotate in the AWS console: IAM, access keys\n\n**Already reported**\n- none\n\n**Repositories checked**\n- app — searched its whole history\n\n## Report\n- searched 1 repository in one command; 1 new finding; wrote \"Secrets to rotate — 28 Oct 2026\"\n\n## Carry forward\n- app a1b2c3d config/settings.py — AWS key — first seen 28 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Secrets to rotate",
+      "contains": [
+       "config/settings.py",
+       "IAM, access keys"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "a1b2c3d (2026-10-27)",
+      "IAM, access keys"
+     ]
+    },
+    {
+     "notebook_contains": "app a1b2c3d config/settings.py"
+    }
+   ]
+  },
+  {
+   "id": "a-known-finding-writes-no-document",
+   "about": "The notebook already lists the AWS key: it is under Already reported with its first-seen date, and no document is written.",
+   "inputs": {
+    "folders": [
+     "app"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for r in app",
+      "output": "== app\ncommit a1b2c3d 2026-10-27\n+++ b/config/settings.py\n+AWS_ACCESS_KEY_ID = \"AKIA…\""
+     }
+    ]
+   },
+   "notebook": "- app a1b2c3d config/settings.py — AWS key — first seen 21 Oct",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New findings**\n- none\n\n**Already reported**\n- app — a1b2c3d — config/settings.py — AWS key — first seen 21 Oct, not yet out of history\n\n**Repositories checked**\n- app — searched its whole history\n\n## Report\n- searched 1 repository; nothing new\n\n## Carry forward\n- app a1b2c3d config/settings.py — AWS key — first seen 21 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "no_document": "Secrets to rotate"
+    },
+    {
+     "answer_contains": [
+      "first seen 21 Oct"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "nothing-found",
+   "about": "The search finds nothing: New findings says none and no document is written.",
+   "inputs": {
+    "folders": [
+     "app"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for r in app",
+      "output": "== app"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New findings**\n- none\n\n**Already reported**\n- none\n\n**Repositories checked**\n- app — searched its whole history\n\n## Report\n- searched 1 repository; nothing found\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "no_document": "Secrets to rotate"
+    },
+    {
+     "answer_contains": [
+      "**New findings**\n- none"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-folder-that-is-not-a-repository",
+   "about": "The folder is not a git repository: Repositories checked says it could not be searched, with git's words.",
+   "inputs": {
+    "folders": [
+     "app"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for r in app",
+      "output": "== app\nfatal: not a git repository (or any of the parent directories): .git"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New findings**\n- none\n\n**Already reported**\n- none\n\n**Repositories checked**\n- app: could not search — fatal: not a git repository\n\n## Report\n- app could not be searched\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "app: could not search — fatal: not a git repository"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-notebook-lists-a-key-no-longer-in-history",
+   "about": "The notebook lists a Slack token the search no longer shows — the person rewrote history: it says no longer in history and drops it.",
+   "inputs": {
+    "folders": [
+     "app"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for r in app",
+      "output": "== app"
+     }
+    ]
+   },
+   "notebook": "- app 9f8e7d6 bot.py — Slack token — first seen 2 Oct",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New findings**\n- none\n\n**Already reported**\n- app — 9f8e7d6 — bot.py — Slack token — no longer in history\n\n**Repositories checked**\n- app — searched its whole history\n\n## Report\n- searched 1 repository; nothing new; 1 finding no longer in history\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "bot.py — Slack token — no longer in history"
+     ]
+    },
+    {
+     "no_document": "Secrets to rotate"
+    }
+   ]
+  },
+  {
+   "id": "it-never-rewrites-history",
+   "about": "A model that rewrites history to remove the key is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "inputs": {
+    "folders": [
+     "app"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "filter-repo",
+      "output": "history rewritten"
+     },
+     {
+      "match": "for r in app",
+      "output": "== app\ncommit a1b2c3d 2026-10-27\n+++ b/config/settings.py\n+AWS_ACCESS_KEY_ID = \"AKIA…\""
+     }
+    ]
+   },
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS/app && git filter-repo --path config/settings.py --invert-paths --force"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New findings**\n- app — a1b2c3d (2026-10-27) — config/settings.py — an AWS key (AKIA…) — rotate in the AWS console: IAM, access keys\n\n**Already reported**\n- none\n\n**Repositories checked**\n- app — searched its whole history\n\n## Report\n- searched 1 repository in one command; 1 new finding; wrote \"Secrets to rotate — 28 Oct 2026\"\n\n## Carry forward\n- app a1b2c3d config/settings.py — AWS key — first seen 28 Oct"
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "history rewritten"
+     ]
+    },
+    {
+     "no_document": "Secrets to rotate"
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without New findings, Already reported and Repositories checked does not deliver, even after its repair pass.",
+   "inputs": {
+    "folders": [
+     "app"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "for r in app",
+      "output": "== app\ncommit a1b2c3d 2026-10-27\n+++ b/config/settings.py\n+AWS_ACCESS_KEY_ID = \"AKIA…\""
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd $PANTHEON_PROJECTS && for r in app; do echo \"== $r\"; (if command -v gitleaks >/dev/null; then gitleaks detect --source \"$r\" --redact --no-banner -v | grep -E '^(RuleID|File|Line|Commit|Date):'; else git -C \"$r\" log --all -p --no-color --date=short --format='commit %h %ad' -G'AKIA[0-9A-Z]{16}|PRIVATE KEY-----|xox[bap]-|ghp_[0-9A-Za-z]{36}|sk-[0-9A-Za-z]{20}' | grep -E '^(commit |\\+\\+\\+ b/|\\+.*(AKIA|PRIVATE KEY-----|xox[bap]-|ghp_|sk-))' | sed -E '/^\\+[^+]/ s/(AKIA|ghp_|xox[bap]-|sk-)[0-9A-Za-z_-]+/\\1…/g'; fi) 2>&1; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Found a key."
+    },
+    {
+     "say": "A key."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

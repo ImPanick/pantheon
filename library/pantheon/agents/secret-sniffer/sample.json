@@ -1,0 +1,25 @@
+{
+ "case": "a-new-aws-key-and-where-to-rotate-it",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- searched 1 repository in one command; 1 new finding; wrote \"Secrets to rotate — 28 Oct 2026\"",
+ "read": [],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with New findings, Already reported, Repositories checked."
+  }
+ ],
+ "answer": "**New findings**\n- app — a1b2c3d (2026-10-27) — config/settings.py — an AWS key (AKIA…) — rotate in the AWS console: IAM, access keys\n\n**Already reported**\n- none\n\n**Repositories checked**\n- app — searched its whole history\n\n## Report\n- searched 1 repository in one command; 1 new finding; wrote \"Secrets to rotate — 28 Oct 2026\"\n\n## Carry forward\n- app a1b2c3d config/settings.py — AWS key — first seen 28 Oct",
+ "documents": [
+  {
+   "title": "Secrets to rotate — 28 Oct 2026",
+   "content": "Secrets to rotate — 28 Oct 2026\n\n- app — a1b2c3d (2026-10-27) — config/settings.py — an AWS key (AKIA…) — rotate in the AWS console: IAM, access keys. Deleting the file does not help: it is still in history."
+  }
+ ]
+}

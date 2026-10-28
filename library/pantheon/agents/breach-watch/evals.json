@@ -1,0 +1,351 @@
+{
+ "cases": [
+  {
+   "id": "a-hosting-breach-touches-the-bakery",
+   "about": "The host's own notice names the bakery's account: what leaked, when and what to change are given from it; the paste-site result is never fetched; the address is searched by its domain only.",
+   "inputs": {
+    "names": [
+     "rosasbakery.example",
+     "ana@rosasbakery.example"
+    ]
+   },
+   "world": {
+    "search": {
+     "rosasbakery.example": [
+      {
+       "title": "Hostly security notice — October 2026",
+       "url": "https://hostly.example/security/notice-oct-2026",
+       "snippet": "Customer emails and hashed passwords for accounts including rosasbakery.example"
+      },
+      {
+       "title": "rosasbakery.example dump — pastebin",
+       "url": "https://paste.example/abc",
+       "snippet": "dump"
+      }
+     ]
+    },
+    "web": {
+     "https://hostly.example/security/notice-oct-2026": "Hostly security notice, 20 Oct 2026: an attacker copied customer emails and hashed passwords. Affected accounts were emailed. Change your password and turn on two-factor."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "rosasbakery.example breach"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "rosasbakery.example breach"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://hostly.example/security/notice-oct-2026"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New notices**\n- Hostly — customer emails and hashed passwords — 20 Oct 2026 — rosasbakery.example's account — change the Hostly password and turn on two-factor — https://hostly.example/security/notice-oct-2026\n\n**Already covered**\n- nothing\n\n**Checked**\n- rosasbakery.example, ana@rosasbakery.example (by its domain)\n\n## Report\n- 2 searches, 1 notice read from the company's own page\n\n## Carry forward\n- Hostly 20 Oct 2026"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "Hostly",
+      "change the Hostly password",
+      "https://hostly.example/security/notice-oct-2026"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "paste.example"
+     ]
+    },
+    {
+     "notebook_contains": "Hostly 20 Oct 2026"
+    }
+   ]
+  },
+  {
+   "id": "nothing-new",
+   "about": "Nothing this month touches the person: New notices says nothing.",
+   "inputs": {
+    "names": [
+     "rosasbakery.example"
+    ]
+   },
+   "world": {
+    "search": {}
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "rosasbakery.example breach"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New notices**\n- nothing\n\n**Already covered**\n- nothing\n\n**Checked**\n- rosasbakery.example\n\n## Report\n- 1 search; nothing found\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "**New notices**\n- nothing"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "already-covered",
+   "about": "The notebook already has the Hostly notice: it is listed as covered, not new.",
+   "inputs": {
+    "names": [
+     "rosasbakery.example"
+    ]
+   },
+   "world": {
+    "search": {
+     "rosasbakery.example": [
+      {
+       "title": "Hostly security notice — October 2026",
+       "url": "https://hostly.example/security/notice-oct-2026",
+       "snippet": "Customer emails and hashed passwords for accounts including rosasbakery.example"
+      },
+      {
+       "title": "rosasbakery.example dump — pastebin",
+       "url": "https://paste.example/abc",
+       "snippet": "dump"
+      }
+     ]
+    },
+    "web": {
+     "https://hostly.example/security/notice-oct-2026": "Hostly security notice, 20 Oct 2026: an attacker copied customer emails and hashed passwords. Affected accounts were emailed. Change your password and turn on two-factor."
+    }
+   },
+   "notebook": "- Hostly 20 Oct 2026",
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "rosasbakery.example breach"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New notices**\n- nothing\n\n**Already covered**\n- Hostly — 20 Oct 2026\n\n**Checked**\n- rosasbakery.example\n\n## Report\n- 1 search; the notice was covered last week\n\n## Carry forward\n- Hostly 20 Oct 2026"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "**Already covered**\n- Hostly"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-company-and-the-news-disagree",
+   "about": "The company says no passwords were taken and a news report says they were: both are given, and the action is for the worse case.",
+   "inputs": {
+    "names": [
+     "rosasbakery.example"
+    ]
+   },
+   "world": {
+    "search": {
+     "rosasbakery.example": [
+      {
+       "title": "Hostly security notice — October 2026",
+       "url": "https://hostly.example/security/notice-oct-2026",
+       "snippet": "Customer emails and hashed passwords for accounts including rosasbakery.example"
+      },
+      {
+       "title": "rosasbakery.example dump — pastebin",
+       "url": "https://paste.example/abc",
+       "snippet": "dump"
+      }
+     ]
+    },
+    "web": {
+     "https://hostly.example/security/notice-oct-2026": "Hostly notice, 20 Oct 2026: emails were copied. No passwords were taken.",
+     "https://news.example/hostly-breach": "Hostly breach: hashed passwords were taken, researchers say."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "rosasbakery.example breach"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://hostly.example/security/notice-oct-2026"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://news.example/hostly-breach"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New notices**\n- Hostly — emails, and passwords according to news.example (Hostly says no passwords were taken) — 20 Oct 2026 — rosasbakery.example's account — change the Hostly password and turn on two-factor — https://hostly.example/security/notice-oct-2026, https://news.example/hostly-breach\n\n**Already covered**\n- nothing\n\n**Checked**\n- rosasbakery.example\n\n## Report\n- 1 search, 2 sources that disagree\n\n## Carry forward\n- Hostly 20 Oct 2026"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "Hostly says no passwords were taken",
+      "change the Hostly password"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-notice-page-that-fails",
+   "about": "The notice page does not answer: it is listed from the search result only, saying so.",
+   "inputs": {
+    "names": [
+     "rosasbakery.example"
+    ]
+   },
+   "world": {
+    "search": {
+     "rosasbakery.example": [
+      {
+       "title": "Hostly security notice — October 2026",
+       "url": "https://hostly.example/security/notice-oct-2026",
+       "snippet": "Customer emails and hashed passwords for accounts including rosasbakery.example"
+      },
+      {
+       "title": "rosasbakery.example dump — pastebin",
+       "url": "https://paste.example/abc",
+       "snippet": "dump"
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "rosasbakery.example breach"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://hostly.example/security/notice-oct-2026"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**New notices**\n- Hostly — customer emails and hashed passwords (from the search result only: the notice page did not answer) — Oct 2026 — rosasbakery.example — change the Hostly password\n\n**Already covered**\n- nothing\n\n**Checked**\n- rosasbakery.example\n\n## Report\n- 1 search; the notice page did not answer\n\n## Carry forward\n- Hostly Oct 2026"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "notice page did not answer"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without New notices, Already covered and Checked does not deliver, even after its repair pass.",
+   "inputs": {
+    "names": [
+     "rosasbakery.example",
+     "ana@rosasbakery.example"
+    ]
+   },
+   "world": {
+    "search": {
+     "rosasbakery.example": [
+      {
+       "title": "Hostly security notice — October 2026",
+       "url": "https://hostly.example/security/notice-oct-2026",
+       "snippet": "Customer emails and hashed passwords for accounts including rosasbakery.example"
+      },
+      {
+       "title": "rosasbakery.example dump — pastebin",
+       "url": "https://paste.example/abc",
+       "snippet": "dump"
+      }
+     ]
+    },
+    "web": {
+     "https://hostly.example/security/notice-oct-2026": "Hostly security notice, 20 Oct 2026: an attacker copied customer emails and hashed passwords. Affected accounts were emailed. Change your password and turn on two-factor."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "rosasbakery.example breach"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "You were breached."
+    },
+    {
+     "say": "Breached."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}
