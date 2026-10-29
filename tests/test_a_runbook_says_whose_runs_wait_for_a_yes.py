@@ -10,13 +10,14 @@ the runbook is every word the model is told, so a runbook that says "after
 your first command, every step waits for the person's yes" now contradicts the
 page for an admin and tells the model about a card that will not come.
 
-**Measured before this change:** 77 of the 173 shipped runbooks (or their
-taglines) promised a yes that the hire's own table lets an Auto-approve
-holder's run take without asking — 72 of them about a write, a command, a
-fetch or a click their table allows, and two (Config Drift's `ls`, Trip
-Planner's web search) about a call the gate asks nobody about; five more
-promised a yes that every run does wait for (a deletion, an unsubscribe) in
-words this check could not tie to the effect.
+**Measured before this change, by this check:** 76 of the 173 shipped agents
+failed it. Read one by one: seventy promised a yes for a step their own table
+allows — a write, a command, a fetch, a click — which an Auto-approve holder's
+run takes unasked; two promised one the gate asks nobody about after outside
+content (Config Drift's `ls` and `read_file`, Trip Planner's web search); and
+four promised a yes every run does wait for (ETL Runner's replace, Restore
+Drill's and Screenshot Reporter's `rm`, Unsubscribe Sweeper's unsubscribe) in
+words that did not tie it to the effect that asks.
 
 **The rule, sentence by sentence** (outside the fenced examples, which show a
 run's report rather than promise one; quoted text is what a run writes): a
