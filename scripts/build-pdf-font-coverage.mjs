@@ -34,10 +34,13 @@ const OUT = join(ROOT, 'static', 'js', 'pdfFontCoverage.js');
 
 // The faces whose coverage is decided by the font. Inter's regular face: its
 // bold has the same cmap and its italics lack only private-use code points
-// (measured with this reader, 2026-10-29). The CJK face is not here — it draws
+// (measured with this reader, 2026-10-29). `B1691`: and the symbols face, the
+// box drawing, blocks, maths and dingbats `scripts/build-pdf-cjk-font.py` cuts
+// out of Noto Sans CJK SC beside the CJK face, fetched for a character neither
+// the built-in fonts nor Inter draws. The CJK face is not here — it draws
 // 20,340 characters scattered through the ideographs, a table larger than the
 // rest of the export, and is fetched by block (`_PDF_CJK`).
-const FACES = ['Inter-Regular.ttf'];
+const FACES = ['Inter-Regular.ttf', 'NotoSansCJKsc-Symbols.subset.ttf'];
 
 function coverage(file) {
   const { jsPDF } = createRequire(import.meta.url)(JSPDF);

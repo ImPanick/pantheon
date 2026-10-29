@@ -224,10 +224,48 @@ site.fns._rasterisePdf().then(() => {
   // Each probe alone: every symbol `B1687` names, the two Inter lacks, an
   // emoji past U+FFFF, a variation selector, a private-use code point, and
   // one word of each script `B1674` named.
+  // `B1691`: and every character that row names — a `tree` listing's
+  // connectors, blocks, maths, enclosed numbers and dingbats — with a
+  // double-line box the CJK face does not carry, and the same `─` beside
+  // Chinese.
   out.needs = {};
   for (const probe of [...'™↔↕▶◀❤☀‼⁉↩✔⌚─', '🎉', '\ufe0f', '\ue0a0', 'שלום', 'Привет', 'Γειά', '你好',
-    'café “naïve” — €']) {
+    'café “naïve” — €', ...'├└│█▁∀∈≡⊂ⓐ⑴☎♠♣╔║', '├── 你好']) {
     out.needs[probe] = site.fns._pdfFontsNeeded(probe);
+  }
+  // ── 7. Nothing the CJK face draws is left without a face (`B1691`) ──────
+  // Every character of `NotoSansCJKsc-Regular.subset.ttf`, read by the
+  // vendored jsPDF as the export reads it: one the built-in fonts cannot
+  // draw that `_pdfFontsNeeded` fetches no face for is lost from a document
+  // that has it. Before `B1691` that was 295 characters — box drawing,
+  // blocks, maths, enclosed numbers, dingbats, small forms — all outside
+  // `_PDF_CJK`'s blocks and drawn by neither Inter nor Windows-1252.
+  const CJK = path.join(__dirname, '..', '..', 'static', 'lib', 'pdf-fonts', 'NotoSansCJKsc-Regular.subset.ttf');
+  const reader = new jspdf.jsPDF();
+  reader.addFileToVFS('cjk.ttf', fs.readFileSync(CJK).toString('latin1'));
+  reader.addFont('cjk.ttf', 'cjkcoverage', 'normal');
+  const cmap = reader.getFont('cjkcoverage', 'normal').metadata;
+  out.cjkFaceCharacters = 0;
+  out.cjkOrphans = [];
+  for (let cp = 0x20; cp <= 0xffff; cp++) {
+    if ((cp >= 0xd800 && cp <= 0xdfff) || cmap.characterToGlyph(cp) === 0) continue;
+    out.cjkFaceCharacters++;
+    const ch = String.fromCharCode(cp);
+    if (!site.fns._undrawableInPdf(ch).length) continue;   // the built-in fonts draw it, or it is unseen
+    if (!Object.values(site.fns._pdfFontsNeeded(ch)).some(Boolean)) out.cjkOrphans.push(ch);
+  }
+  // ── 8. And the symbols face holds only what nothing else draws ──────────
+  // Each character of its table, alone, fetches it and nothing else: none is
+  // in `_PDF_CJK`'s blocks, in Windows-1252 or in Inter.
+  out.symbolsFaceCharacters = 0;
+  out.symbolsFaceElsewhere = [];
+  for (const range of PDF_FONT_COVERAGE['NotoSansCJKsc-Symbols.subset.ttf'] || []) {
+    const [first, last = first] = range.split('-').map((hex) => parseInt(hex, 16));
+    for (let cp = first; cp <= last; cp++) {
+      out.symbolsFaceCharacters++;
+      const needs = site.fns._pdfFontsNeeded(String.fromCharCode(cp));
+      if (!(needs.symbols && !needs.sans && !needs.cjk)) out.symbolsFaceElsewhere.push(String.fromCharCode(cp));
+    }
   }
 }).then(() => {
   console.log(JSON.stringify(out));

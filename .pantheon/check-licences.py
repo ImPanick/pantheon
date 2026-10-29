@@ -906,7 +906,9 @@ INVENTORY = [
           "Inter-OFL.txt", "Inter"),
     # `B1674`. The fallback PDF's Chinese, Japanese and Korean face: a subset of
     # Noto Sans CJK SC built by `scripts/build-pdf-cjk-font.py`, so a Modified
-    # Version — its Reserved Font Name, "Source", is not in its name.
+    # Version — its Reserved Font Name, "Source", is not in its name. `B1691`:
+    # and its symbols face, a second subset the same build cuts from the same
+    # source (`NotoSansCJKsc-Symbols.subset.ttf`), under the same name.
     Entry("Noto Sans CJK", ["static/lib/pdf-fonts/NotoSansCJK*.ttf"], "OFL-1.1",
           "NotoSansCJK-OFL.txt", "Noto Sans CJK"),
     Entry("OpenDyslexic", ["static/fonts/OpenDyslexic-*.woff2"], "OFL-1.1",

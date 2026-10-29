@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """`B1674` (`D-2026-10-29-03` §3). The CJK face the fallback PDF draws Chinese,
 Japanese and Korean with: `static/lib/pdf-fonts/NotoSansCJKsc-Regular.subset.ttf`.
+`B1691`: and its symbols face, `NotoSansCJKsc-Symbols.subset.ttf`, cut from the
+same source the same way (below, *The symbols face*).
 
 The fallback PDF is drawn by jsPDF's `html()`, whose built-in fonts are
 Windows-1252 only. jsPDF can embed a TrueType font — `glyf` outlines, not the
@@ -35,17 +37,39 @@ That is a Modified Version under the OFL. Noto Sans CJK's one Reserved Font Name
 is "Source" (its copyright line, `licenses/NotoSansCJK-OFL.txt`), which this
 name does not use.
 
-    python3 scripts/build-pdf-cjk-font.py <NotoSansCJKsc-VF.ttf> <out.ttf>
+**The symbols face** (`B1691`). The export fetches the CJK face for a character
+in the Chinese, Japanese and Korean blocks (`_PDF_CJK` in
+`static/js/document.js`) and Inter for one Inter draws; a box-drawing, block,
+maths or dingbat character — every one of a pasted `tree` listing's `├── └──`
+— is in neither, so a Latin document lost it, though the source draws it. The
+6.4 MB face is not fetched for a `─`: this second cut keeps, from the same
+source, only the characters of the blocks around it that the source draws and
+that neither Windows-1252 (the built-in fonts) nor Inter (the vendored
+`Inter-Regular.ttf`, read here) does — the symbol and punctuation blocks from
+General Punctuation to Miscellaneous Symbols and Arrows, Supplemental
+Punctuation, and the four small blocks outside `_PDF_CJK` the source also
+draws (`SYMBOL_BLOCKS`): 532 characters in 521 glyphs, 73 KB — every
+character of the source, up to U+FFFF and outside `_PDF_CJK`, that the export
+had no face for (measured 2026-10-29), and 237 more than the CJK face carries
+(`║ ╔ ╝`, `░ ▓`, `❶`, `⇄`). The same steps 2–4 make it, so it is the same
+Regular instance as the CJK face, glyph for glyph.
 
-Needs fontTools (4.66.1 made the committed file; the output is the same bytes
-on every run). It is a vendoring tool, run by hand when the font is bumped, and
-nothing at runtime needs it. `.pantheon/check-vendored-versions.py` records the
-command and the output's sha256; `.pantheon/vendored-builds/` records the build.
+    python3 scripts/build-pdf-cjk-font.py <NotoSansCJKsc-VF.ttf> <out-dir>
+
+writes both faces into `<out-dir>` (`static/lib/pdf-fonts`). Needs fontTools
+(4.66.1 made the committed files; the output is the same bytes on every run).
+It is a vendoring tool, run by hand when the font is bumped — or Inter, which
+the symbols face is cut against — and nothing at runtime needs it.
+`.pantheon/check-vendored-versions.py` records the command and each output's
+sha256; `.pantheon/vendored-builds/` records the build. A face's coverage is
+read for the export by `node scripts/build-pdf-font-coverage.mjs`, which a
+rebuilt symbols face needs run again.
 """
 from __future__ import annotations
 
 import hashlib
 import sys
+import unicodedata
 from pathlib import Path
 
 SOURCE_SHA256 = "990c807e79c25662a5a9ecf7f971baeb2bf2eab9a559e5ecf15cdfdb8561d21f"
@@ -64,6 +88,25 @@ BLOCKS = {
 
 #: What jsPDF does not read, so the file need not carry it.
 DROPPED = ["GSUB", "GPOS", "GDEF", "BASE", "vhea", "vmtx", "VORG", "DSIG", "STAT"]
+
+#: `B1691`. The symbols face's blocks, by Unicode's own ranges for them. None
+#: is in `_PDF_CJK` (`static/js/document.js`), which fetches the CJK face; the
+#: last four are the blocks outside it the source still draws characters of
+#: (ideographic description, the ﬁ ligatures, vertical and small forms).
+SYMBOL_BLOCKS = {
+    "General Punctuation to Miscellaneous Symbols and Arrows": (0x2000, 0x2BFF),
+    "Supplemental Punctuation": (0x2E00, 0x2E7F),
+    "Ideographic Description Characters": (0x2FF0, 0x2FFF),
+    "Alphabetic Presentation Forms": (0xFB00, 0xFB4F),
+    "Vertical Forms": (0xFE10, 0xFE1F),
+    "Small Form Variants": (0xFE50, 0xFE6F),
+}
+
+#: The face the export draws Latin, Greek and Cyrillic with, beside this file.
+INTER = Path(__file__).resolve().parent.parent / "static" / "lib" / "pdf-fonts" / "Inter-Regular.ttf"
+
+CJK_FACE = "NotoSansCJKsc-Regular.subset.ttf"
+SYMBOLS_FACE = "NotoSansCJKsc-Symbols.subset.ttf"
 
 
 def encoded_by(codec: str) -> set[int]:
@@ -90,18 +133,48 @@ def characters() -> set[int]:
     return out
 
 
-def build(source: Path, out: Path) -> str:
-    from fontTools import subset
-    from fontTools.ttLib import TTFont
-    from fontTools.varLib import instancer
+def windows_1252() -> set[int]:
+    """The characters Windows-1252 encodes, the PDF's built-in fonts' encoding."""
+    out = set()
+    for byte in range(0x20, 0x100):
+        try:
+            out.add(ord(bytes((byte,)).decode("cp1252")))
+        except UnicodeDecodeError:
+            continue
+    return out
 
-    data = source.read_bytes()
-    digest = hashlib.sha256(data).hexdigest()
+
+def symbol_characters(source: Path) -> set[int]:
+    """`B1691`. The symbols face's characters: those of `SYMBOL_BLOCKS` the
+    source draws and neither the built-in fonts nor Inter does — less the
+    invisible ones (spaces, format and control characters), which the export
+    never fetches a face for."""
+    from fontTools.ttLib import TTFont
+
+    drawn = TTFont(source, lazy=True).getBestCmap()
+    elsewhere = windows_1252() | set(TTFont(INTER, lazy=True).getBestCmap())
+    out = set()
+    for first, last in SYMBOL_BLOCKS.values():
+        for cp in range(first, last + 1):
+            if cp in drawn and cp not in elsewhere and unicodedata.category(chr(cp))[0] not in "CZ":
+                out.add(cp)
+    return out
+
+
+def check_source(source: Path) -> None:
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
     if digest != SOURCE_SHA256:
         raise SystemExit(
             f"{source} is not Noto Sans CJK SC's variable TrueType at Sans2.004 (sha256 {digest}, "
             f"expected {SOURCE_SHA256}). Building from another release means checking its "
             f"coverage and licence again and moving SOURCE_SHA256 with it.")
+
+
+def build(source: Path, out: Path, unicodes: set[int]) -> str:
+    from fontTools import subset
+    from fontTools.ttLib import TTFont
+    from fontTools.varLib import instancer
+
     font = TTFont(source, recalcTimestamp=False)
     options = subset.Options()
     options.layout_features = []
@@ -111,7 +184,7 @@ def build(source: Path, out: Path) -> str:
     options.name_IDs = ["*"]
     options.name_languages = ["*"]
     subsetter = subset.Subsetter(options)
-    subsetter.populate(unicodes=characters())
+    subsetter.populate(unicodes=unicodes)
     subsetter.subset(font)
     instancer.instantiateVariableFont(font, {"wght": 400}, inplace=True)
     name = font["name"]
@@ -127,13 +200,21 @@ def build(source: Path, out: Path) -> str:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 2:
-        print("usage: python3 scripts/build-pdf-cjk-font.py <NotoSansCJKsc-VF.ttf> <out.ttf>",
+    if len(argv) != 2 or not Path(argv[1]).is_dir():
+        print("usage: python3 scripts/build-pdf-cjk-font.py <NotoSansCJKsc-VF.ttf> <out-dir>\n"
+              f"  writes {CJK_FACE} and {SYMBOLS_FACE} into <out-dir>, which must exist",
               file=sys.stderr)
         return 2
-    out = Path(argv[1])
-    digest = build(Path(argv[0]), out)
-    print(f"{out}: {out.stat().st_size:,} bytes, sha256 {digest}")
+    source, where = Path(argv[0]), Path(argv[1])
+    check_source(source)
+    from fontTools.ttLib import TTFont
+
+    for name, unicodes in ((CJK_FACE, characters()), (SYMBOLS_FACE, symbol_characters(source))):
+        out = where / name
+        digest = build(source, out, unicodes)
+        made = TTFont(out, lazy=True)
+        print(f"{out}: {out.stat().st_size:,} bytes, {len(made.getBestCmap()):,} characters in "
+              f"{len(made.getGlyphOrder()):,} glyphs, sha256 {digest}")
     return 0
 
 

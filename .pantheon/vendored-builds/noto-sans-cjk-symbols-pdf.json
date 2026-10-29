@@ -1,0 +1,15 @@
+{
+ "file": "static/lib/pdf-fonts/NotoSansCJKsc-Symbols.subset.ttf",
+ "entry": "Noto Sans CJK",
+ "bundler": "fonttools 4.66.1 (scripts/build-pdf-cjk-font.py)",
+ "command": "python3 scripts/build-pdf-cjk-font.py NotoSansCJKsc-VF.ttf static/lib/pdf-fonts",
+ "input": {
+  "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/Variable/TTF/NotoSansCJKsc-VF.ttf",
+  "sha256": "990c807e79c25662a5a9ecf7f971baeb2bf2eab9a559e5ecf15cdfdb8561d21f"
+ },
+ "cut_against": {
+  "file": "static/lib/pdf-fonts/Inter-Regular.ttf",
+  "sha256": "40d692fce188e4471e2b3cba937be967878f631ad3ebbbdcd587687c7ebe0c82"
+ },
+ "packages": []
+}

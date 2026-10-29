@@ -348,16 +348,23 @@ def test_each_symbol_the_row_names_is_decided_by_inters_own_table():
     U+FFFF or Hebrew, nor the box-drawing `─` and the variation selector U+FE0F,
     which the old rule fetched Inter for and Inter lacks, nor a private-use
     code point (a Powerline arrow), which Inter maps to a glyph of its own.
-    The scripts `B1674` named are decided as before."""
+    The scripts `B1674` named are decided as before.
+
+    `B1691` added a third face, the symbols face, so the answer has a third
+    key; and `─`, which Inter lacks, now fetches that face rather than nothing
+    (`tests/test_the_fallback_pdf_draws_a_pasted_tree_listing_in_a_browser.py`)
+    — still not Inter."""
     chain = run_harness("jspdf_export_chain.js")
     assert chain["ok"], chain
     needs = chain["needs"]
+    nothing = {"sans": False, "symbols": False, "cjk": False}
     for ch in DRAWN_BY_INTER:
-        assert needs[ch] == {"sans": True, "cjk": False}, (ch, needs[ch])
-    for ch in NOT_IN_INTER + "🎉─" + "\ufe0f\ue0a0":
-        assert needs[ch] == {"sans": False, "cjk": False}, (ch, needs[ch])
-    assert needs["שלום"] == {"sans": False, "cjk": False}, needs["שלום"]
-    assert needs["Привет"] == {"sans": True, "cjk": False}, needs["Привет"]
-    assert needs["Γειά"] == {"sans": True, "cjk": False}, needs["Γειά"]
-    assert needs["你好"] == {"sans": False, "cjk": True}, needs["你好"]
-    assert needs["café “naïve” — €"] == {"sans": False, "cjk": False}, needs["café “naïve” — €"]
+        assert needs[ch] == {**nothing, "sans": True}, (ch, needs[ch])
+    for ch in NOT_IN_INTER + "🎉" + "\ufe0f\ue0a0":
+        assert needs[ch] == nothing, (ch, needs[ch])
+    assert needs["─"] == {**nothing, "symbols": True}, needs["─"]
+    assert needs["שלום"] == nothing, needs["שלום"]
+    assert needs["Привет"] == {**nothing, "sans": True}, needs["Привет"]
+    assert needs["Γειά"] == {**nothing, "sans": True}, needs["Γειά"]
+    assert needs["你好"] == {**nothing, "cjk": True}, needs["你好"]
+    assert needs["café “naïve” — €"] == nothing, needs["café “naïve” — €"]
