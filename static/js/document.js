@@ -10034,7 +10034,7 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
     // needs KaTeX's sheet for them, and only then.
     await markdownModule.renderMath(container);
     const head = container.querySelector('.katex')
-      ? '<link rel="stylesheet" href="/static/lib/katex/katex.min.css">' : '';
+      ? `<link rel="stylesheet" href="${markdownModule.KATEX_CSS}">` : '';
     const page = _exportHtmlDocument(container.innerHTML, {
       head: head + '<style>@page{margin:14mm}@media print{body{margin:0 auto!important}'
         + '.code-block-header button,.copy-btn{display:none!important}}</style>',
@@ -10167,12 +10167,16 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
    * as html2pdf's tiles did, which is also what lets a link's place be worked
    * out from where it sat on the page (`'text'` moves later lines down by
    * however much it pushed earlier ones, and nothing reports by how much).
+   * `B1676`: so the cut is never through a line — the clone is laid out with
+   * every line clear of the page edges first (`_keepLinesOffPageEdges`), and
+   * the links are measured in that layout, so they move with their words.
    *
    * Resolves to the link boxes it added.
    */
   async function _pdfFromHtml(pdf, html) {
     const inner = pdf.internal.pageSize.getWidth() - 2 * PDF_MARGIN_MM;
     const windowWidth = inner / MM_PER_CSS_PX;
+    const pageHeight = pdf.internal.pageSize.getHeight() - 2 * PDF_MARGIN_MM;
     let links = [];
     await pdf.html(html, {
       worker: true,
@@ -10184,13 +10188,20 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
         allowTaint: false,
         onclone: (clonedDoc, clonedEl) => {
           _plainStylesForPdfClone(clonedDoc);
-          // Measured in the clone, after its styles changed: that is the
-          // layout html2canvas draws, and the page's own sheet is not.
+          try {
+            if (clonedEl) _keepLinesOffPageEdges(clonedEl, pageHeight / (inner / windowWidth));
+          } catch (e) {
+            // A layout this could not walk still makes a file — with a line
+            // cut at an edge, as before `B1676` — rather than none at all.
+            console.warn('Could not keep the PDF\'s lines clear of its page edges:', e);
+          }
+          // Measured in the clone, after its styles changed and its lines
+          // moved: that is the layout html2canvas draws, and the page's own
+          // sheet is not.
           if (clonedEl) links = _pdfLinkBoxes(clonedEl, inner / windowWidth);
         },
       },
     }).from(html).toPdf();
-    const pageHeight = pdf.internal.pageSize.getHeight() - 2 * PDF_MARGIN_MM;
     const pages = pdf.getNumberOfPages();
     const added = [];
     for (const box of links) {
@@ -10274,7 +10285,9 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
    */
   function _plainStylesForPdfClone(clonedDoc) {
     try {
-      clonedDoc.querySelectorAll('link[rel="stylesheet"], style').forEach((n) => n.remove());
+      clonedDoc.querySelectorAll('link[rel="stylesheet"], style').forEach((n) => {
+        if (!_isKatexSheet(n)) n.remove();
+      });
       const s = clonedDoc.createElement('style');
       s.textContent = [
         'body{background:#fff;color:#000;font-family:sans-serif}',
@@ -10289,6 +10302,12 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
         'img{max-width:100%}',
         // What the printed frame hides too (`B1333`'s `@media print` rule).
         '.code-block-header button,.copy-btn{display:none}',
+        // `B1675`. KaTeX's MathML copy, which its sheet clips to a pixel for
+        // screen readers. html2canvas does not read `clip-path`, so with the
+        // sheet kept the copy was still written into the file — invisible,
+        // but a second `a 2 + b 2 = c 2` in its text, and a run that can sit
+        // across a page edge. The formula drawn beside it is the one shown.
+        '.katex .katex-mathml{display:none}',
       ].join('');
       clonedDoc.head.appendChild(s);
       // `B421`, measured in Chromium on the tree before this row, with
@@ -10316,6 +10335,290 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
       // throw below is what this guards, and it reports itself.
       console.warn('Could not plain-style the PDF clone:', e);
     }
+  }
+
+  /**
+   * `B1675`. Whether `node` is KaTeX's own stylesheet, the one sheet the
+   * clone keeps.
+   *
+   * KaTeX lays a formula out with its sheet: an exponent is a `.vlist` row
+   * lifted by `position: relative` and a `top` in ems, at `.sizing`'s smaller
+   * size, and the MathML copy beside it is clipped to a pixel for screen
+   * readers. With every sheet gone (`B1322`), measured in Chromium on the
+   * fallback PDF, `$x^2$` came out as *x2* — the `2` at full size on x's
+   * baseline — after a gap where the browser had laid out the unclipped
+   * MathML, and `$$a^2+b^2=c^2$$` was drawn twice, once flat and once by the
+   * browser's own MathML in Times. `B1322`'s reason does not reach this sheet:
+   * what html2canvas cannot parse is the colour syntax `static/style.css`'s
+   * `color-mix()` computes to, and KaTeX's sheet names no colour but
+   * `currentColor`, which computes to the export's black
+   * (`tests/test_the_fallback_pdf_never_cuts_a_line_and_draws_formulas_in_a_browser.py`
+   * holds the vendored file to that). It is the page's own `<link>`, which
+   * `ensureKatex` put there and the clone already loaded, so keeping it costs
+   * no request.
+   */
+  function _isKatexSheet(node) {
+    const href = node && node.tagName === 'LINK' && node.getAttribute && node.getAttribute('href');
+    if (!href || !markdownModule.KATEX_CSS) return false;
+    try {
+      return new URL(href, 'http://pantheon.invalid/').pathname === markdownModule.KATEX_CSS;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /**
+   * `B1676`. Move every line of text the page edge would cut down to the
+   * next page, in the clone html2canvas is about to draw.
+   *
+   * `autoPaging: true` slices the drawing at each page edge; a line of text
+   * lying across one was drawn on both pages, clipped, so its top half closed
+   * one page and its bottom half opened the next (html2pdf's tiles did the
+   * same), and the clipped-off copy stayed in the file's text. Measured in
+   * Chromium before this, on the export the test below drives: a code line,
+   * a list item and a paragraph line, each drawn on two pages. jsPDF's other
+   * mode, `autoPaging: 'text'`, moves
+   * such a line down instead, but it moves everything drawn after it by a
+   * running offset it keeps to itself, and it draws in html2canvas's painting
+   * order, not top to bottom — a `position: relative` box is painted after
+   * the flow around it, and every KaTeX exponent is one — so neither the
+   * links nor the exponents could be put back where they belong.
+   *
+   * So the layout itself leaves the edges clear, and everything measured
+   * from it afterwards (`_pdfLinkBoxes`) is measured where it will be drawn.
+   * A line is "across an edge" when the box jsPDF reserves for its text
+   * would be: that reaches a quarter of the font size above the glyphs the
+   * browser reports (jsPDF puts it one font size above the baseline). Where
+   * the line opens its block — a heading, a list item, a code block — the
+   * block moves, so its marker, border and background go with it; a later
+   * line is moved by a zero-width spacer at its start, kept on that line by
+   * `nowrap` with the line's first word. A line taller than a page, or one
+   * that already opens its page, is left as it is: no move can help it.
+   * Driven in
+   * `tests/test_the_fallback_pdf_never_cuts_a_line_and_draws_formulas_in_a_browser.py`.
+   *
+   * Returns how many lines it moved.
+   */
+  function _keepLinesOffPageEdges(root, pagePx) {
+    const doc = root.ownerDocument;
+    const win = doc.defaultView;
+    const range = doc.createRange();
+    const stuck = new Set();
+    let moved = 0;
+    for (let edge = pagePx; edge < root.getBoundingClientRect().height; edge += pagePx) {
+      for (let tries = 0; tries < 400; tries++) {
+        const cut = _lineAcrossEdge(root, edge, pagePx, win, range, stuck);
+        if (!cut) break;
+        if (_moveLineDown(root, cut, edge - cut.top + 0.5, win, range)) moved++;
+        else stuck.add(cut.node);
+      }
+    }
+    return moved;
+  }
+
+  // What a line is made of, for `B1676`: an element of one of these kinds is
+  // drawn as one box on its line, as an inline-block is.
+  const _PDF_ATOMIC_TAGS = new Set(['img', 'svg', 'canvas', 'video', 'iframe', 'input', 'select',
+    'textarea', 'object', 'embed']);
+
+  /** `B1676`. The first text run (DOM order) that the edge `edge`, in CSS px
+   *  from `root`'s top, would cut: `{ node, rect, top }`, `top` being where
+   *  jsPDF's box for it starts. */
+  function _lineAcrossEdge(root, edge, pagePx, win, range, stuck) {
+    const top0 = root.getBoundingClientRect().top;
+    const walker = root.ownerDocument.createTreeWalker(root, win.NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (stuck.has(node) || !/\S/.test(node.data) || !node.parentElement) continue;
+      range.selectNodeContents(node);
+      for (const r of range.getClientRects()) {
+        // A run a line's height or more from the edge cannot reach it.
+        if (!r.height || r.top - top0 - r.height > edge || r.bottom - top0 + r.height < edge) continue;
+        const fs = parseFloat(win.getComputedStyle(node.parentElement).fontSize) || 12;
+        const top = r.top - top0 - 0.25 * fs;
+        const bottom = r.bottom - top0 + 0.05 * fs;
+        if (top >= edge || bottom <= edge) continue;
+        if (bottom - top >= pagePx || top <= edge - pagePx + 1) {
+          stuck.add(node);
+          break;
+        }
+        return { node, rect: r, top };
+      }
+    }
+    return null;
+  }
+
+  /** `B1676`. The box of the character at `i` in text node `node`. */
+  function _pdfCharBox(node, i, range) {
+    const code = node.data.charCodeAt(i);
+    range.setStart(node, i);
+    range.setEnd(node, Math.min(node.data.length, i + (code >= 0xd800 && code <= 0xdbff ? 2 : 1)));
+    return range.getBoundingClientRect();
+  }
+
+  /** `B1676`. The first visible character of `node` on the line whose top is
+   *  `lineTop` (or below it): characters are in line order within one text
+   *  node, so a binary search finds it. */
+  function _pdfFirstCharOnLine(node, lineTop, range) {
+    const ink = [];
+    for (let i = 0; i < node.data.length; i++) if (!/\s/.test(node.data[i])) ink.push(i);
+    let lo = 0;
+    let hi = ink.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (_pdfCharBox(node, ink[mid], range).top >= lineTop - 1) hi = mid;
+      else lo = mid + 1;
+    }
+    return { offset: lo < ink.length ? ink[lo] : ink[ink.length - 1], first: lo === 0 };
+  }
+
+  /** `B1676`. Push the line `cut` is on down by `shift` px. */
+  function _moveLineDown(root, cut, shift, win, range) {
+    const display = (el) => win.getComputedStyle(el).display;
+    const inlineLevel = (d) => d.startsWith('inline') || d === 'contents';
+    // The block the line is in, and the inline-block the run sits inside, if
+    // it does (KaTeX's `.base`): that box is what is on the line.
+    const chain = [];
+    for (let el = cut.node.parentElement; el && el !== root; el = el.parentElement) chain.unshift(el);
+    let block = root;
+    let atom = null;
+    for (const el of chain) {
+      const d = display(el);
+      if (d.startsWith('inline-') || _PDF_ATOMIC_TAGS.has(el.localName)) { atom = el; break; }
+      if (!inlineLevel(d)) block = el;
+    }
+    // The block's line content in order: text, boxes, and what ends a line.
+    const items = [];
+    const walk = (el) => {
+      for (let c = el.firstChild; c; c = c.nextSibling) {
+        if (c.nodeType === 3) {
+          if (/\S/.test(c.data)) items.push({ text: c });
+          continue;
+        }
+        if (c.nodeType !== 1 || c.hasAttribute('data-pdf-gap')) continue;
+        const cs = win.getComputedStyle(c);
+        if (cs.display === 'none' || cs.position === 'absolute' || cs.position === 'fixed') continue;
+        if (c.localName === 'br' || cs.float !== 'none' || !inlineLevel(cs.display)) items.push({ stop: true });
+        else if (cs.display.startsWith('inline-') || _PDF_ATOMIC_TAGS.has(c.localName)) items.push({ atom: c });
+        else walk(c);
+      }
+    };
+    walk(block);
+    let at = items.findIndex((it) => (atom ? it.atom === atom : it.text === cut.node));
+    if (at < 0) return false;
+    // Back along the line to its first item.
+    const band = atom ? atom.getBoundingClientRect() : cut.rect;
+    let start;
+    let left;
+    if (atom) {
+      start = { atom };
+      left = band.left;
+    } else {
+      const found = _pdfFirstCharOnLine(cut.node, cut.rect.top, range);
+      start = { node: cut.node, offset: found.offset };
+      left = _pdfCharBox(cut.node, found.offset, range).left;
+      if (!found.first) at = -1;          // the line starts inside this run
+    }
+    for (let i = at - 1; at >= 0 && i >= 0; i--) {
+      const it = items[i];
+      if (it.stop) break;
+      let r;
+      if (it.atom) {
+        r = it.atom.getBoundingClientRect();
+      } else {
+        range.selectNodeContents(it.text);
+        const rs = range.getClientRects();
+        r = rs[rs.length - 1];
+      }
+      if (!r || !r.height || r.bottom <= band.top || r.top >= band.bottom || r.right > left + 1) break;
+      at = i;
+      if (it.atom) {
+        start = { atom: it.atom };
+        left = r.left;
+        continue;
+      }
+      const found = _pdfFirstCharOnLine(it.text, r.top, range);
+      start = { node: it.text, offset: found.offset };
+      left = _pdfCharBox(it.text, found.offset, range).left;
+      if (!found.first) break;
+    }
+    const opensBlock = at === 0;
+    // What is measured: the line's first item.
+    let anchor = start.atom;
+    if (!anchor) {
+      let { node } = start;
+      const { offset } = start;
+      const lineTop = _pdfCharBox(node, offset, range).top;
+      let end = offset;
+      while (end < node.data.length && !/\s/.test(node.data[end])) end++;
+      // A word broken at this line's end (`overflow-wrap`) keeps its break.
+      let lo = offset + 1;
+      let hi = end;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (_pdfCharBox(node, mid, range).top > lineTop + 1) hi = mid;
+        else lo = mid + 1;
+      }
+      end = Math.min(end, lo);
+      if (offset > 0) node = node.splitText(offset);
+      if (end - offset < node.data.length) node.splitText(end - offset);
+      anchor = node;
+    }
+    const topOf = () => {
+      if (anchor.nodeType !== 3) return anchor.getBoundingClientRect().top;
+      range.selectNodeContents(anchor);
+      return range.getBoundingClientRect().top;
+    };
+    const want = topOf() + shift;
+    // The line opens its block: move the block, and the blocks it opens.
+    if (opensBlock && block !== root && !display(block).startsWith('table')) {
+      let mover = block;
+      const firstInFlow = (parent) => {
+        for (let c = parent.firstChild; c; c = c.nextSibling) {
+          if (c.nodeType === 3 && /\S/.test(c.data)) return c;
+          if (c.nodeType !== 1) continue;
+          const cs = win.getComputedStyle(c);
+          if (cs.display !== 'none' && cs.position !== 'absolute' && cs.position !== 'fixed') return c;
+        }
+        return null;
+      };
+      while (mover.parentElement && mover.parentElement !== root
+        && ['block', 'list-item', 'flow-root'].includes(display(mover.parentElement))
+        && firstInFlow(mover.parentElement) === mover) mover = mover.parentElement;
+      const margin = parseFloat(win.getComputedStyle(mover).marginTop) || 0;
+      let add = shift;
+      for (let i = 0; i < 4; i++) {
+        mover.style.marginTop = `${margin + add}px`;
+        const short = want - topOf();
+        if (short <= 0.25) return true;
+        add += short;
+      }
+      mover.style.marginTop = `${margin}px`;
+    }
+    // A later line: a spacer on the line's baseline as tall as the line's
+    // ascent plus the move, kept on the line by `nowrap` with its first word.
+    let spacer = anchor.parentNode && anchor.parentNode.hasAttribute
+      && anchor.parentNode.hasAttribute('data-pdf-keep')
+      ? anchor.parentNode.querySelector('[data-pdf-gap]') : null;
+    if (!spacer) {
+      const keep = anchor.ownerDocument.createElement('span');
+      keep.setAttribute('data-pdf-keep', '');
+      keep.style.whiteSpace = 'nowrap';
+      spacer = anchor.ownerDocument.createElement('span');
+      spacer.setAttribute('data-pdf-gap', '');
+      spacer.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
+      anchor.parentNode.insertBefore(keep, anchor);
+      keep.append(spacer, anchor);
+    }
+    const box = anchor.nodeType === 3
+      ? (range.selectNodeContents(anchor), range.getBoundingClientRect()) : anchor.getBoundingClientRect();
+    let height = (parseFloat(spacer.style.height) || 0) + shift + 2 * box.height + 4;
+    for (let i = 0; i < 4; i++) {
+      spacer.style.height = `${height}px`;
+      const short = want - topOf();
+      if (short <= 0.25 && short > -1) return true;
+      height += short;
+    }
+    return want - topOf() <= 0.25;
   }
 
   async function exportAsDocx() {
