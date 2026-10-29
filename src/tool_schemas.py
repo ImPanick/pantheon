@@ -177,12 +177,13 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "write_file",
-            "description": "Write/save a file to disk",
+            "description": "Write/save a file to disk. With append true, add to the end of the file instead of replacing it (a log or a ledger that only grows).",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "path": {"type": "string", "description": "File path to write to"},
-                    "content": {"type": "string", "description": "File content to write"}
+                    "content": {"type": "string", "description": "File content to write"},
+                    "append": {"type": "boolean", "description": "Add content to the end of the file, keeping what it holds, instead of replacing it; the file is made if it is not there"}
                 },
                 "required": ["path", "content"]
             }
@@ -2336,7 +2337,9 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
     elif tool_type == "get_workspace":
         content = ""
     elif tool_type == "write_file":
-        content = args.get("path", "") + "\n" + args.get("content", "")
+        # `B1672`: an append rides as the JSON the tool reads it from.
+        from src.agent_tools.filesystem_tools import write_file_content
+        content = write_file_content(args)
     elif tool_type == "edit_file":
         content = json.dumps(args)
     elif tool_type == "apply_patch":

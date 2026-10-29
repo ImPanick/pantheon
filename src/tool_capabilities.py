@@ -1320,7 +1320,7 @@ def _command_reading(tool_name: str, text: str) -> tuple:
     `chdir` findings, which only the run can answer (`src/run_files.py`)."""
     from src.shell_reading import python_findings, read_shell, readings, writes_of
     findings = python_findings(text) if tool_name == "python" else read_shell(text)
-    return (*readings(findings), writes_of(findings))
+    return (*readings(findings), writes_of(findings, text))
 
 
 def _command_readings(tool_name: Any, content: Any) -> tuple[str | None, str | None]:
@@ -1454,9 +1454,10 @@ def patch_deletes(tool_name: Any, content: Any) -> str | None:
 def call_destroys(tool_name: Any, content: Any, files: Any = None) -> str | None:
     """Why this call carries `destructive` beyond its tool's registration, in
     the words every card uses: a command's deletion, or that it cannot be read
-    (`B1622`); a file a command writes over (`B1669`); a `write_file` over a
-    file that was there (`B1660`); a patch's deletion (`B1668`). `None` when
-    nothing in the call adds it."""
+    (`B1622`); a file a command writes over — a `>`, or a program told to
+    write over its output (`B1669`, `B1680`); a `write_file` over a file that
+    was there, not an append (`B1660`, `B1672`); a patch's deletion (`B1668`).
+    `None` when nothing in the call adds it."""
     return (command_destroys(tool_name, content) or command_replaces(tool_name, content, files)
             or write_replaces(tool_name, content, files) or patch_deletes(tool_name, content))
 

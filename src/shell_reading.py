@@ -85,12 +85,22 @@ where the command starts and what the run has already looked at:
     inside it when it is a folder (`-t`, or a folder that is there), unless it
     is told never to overwrite (`-n`, `--no-clobber`, `--update=none`) or to
     keep what it replaces (`-b`, `--backup`), as `mv`'s rule reads them;
+  * `B1679`: a redirect after a compound command — `done > f`, `fi > f`,
+    `} > f`, `( … ) > f`, `esac > f` — which writes what it printed, and does
+    not only empty the file as a redirect with no command does (`: > log`);
+  * `B1680`: a program told to write over a named output — `curl -o`/`-O`,
+    `wget -O`, `sort -o`, `unzip -o`, `tar -x`/`-c`, `ffmpeg -y` — as the
+    block above `_scan` reads each from its manual (not `sed -i`: an in-place
+    edit is a plain write, `D-2026-10-29-03` §1);
 
 and **where the command goes** — a `chdir` finding — for each `cd`, `pushd`,
 `env -C`, `sudo -D`, a Python `os.chdir` or a subprocess `cwd=`, so a relative
 target is looked for wherever the command could be when it writes. A target or
 a `cd` filled in when it runs (`> "$out"`, `cd "$dir"`) is marked not
-`known`, and one inside a command run on another machine or in a container
+`known` — except (`B1681`) one that starts with a single variable and has
+nothing else filled in (`cd "$PANTHEON_PROJECTS"/'w'`), which is kept with the
+variable named (`var`) for the run, which knows what its shell is given, to
+fill in — and one inside a command run on another machine or in a container
 (`ssh host '…'`, `docker exec`) is marked `far`: the run cannot know whether
 either was there, so either is destructive — the cautious reading the ruling
 names. Python's own `open(path, "w")` is **not** read: whether a mode string
@@ -104,6 +114,7 @@ from __future__ import annotations
 
 import ast
 import os
+import posixpath
 import re
 import shlex
 from dataclasses import dataclass, field, replace
@@ -141,7 +152,14 @@ class Finding:
     container. `sources` are a copy's sources, `(path, known)`, and `into`
     whether its destination is a folder (`folder`, from `-t`), a file
     (`file`, from `-T`), or whichever is there (empty); `parents` is
-    `cp --parents`, which keeps each source's whole path inside it."""
+    `cp --parents`, which keeps each source's whole path inside it.
+
+    `B1681`. `var` is the variable a `known` path starts with — `path` is
+    `$PANTHEON_PROJECTS/w`, as written — whose value the run fills in as its
+    shell will (`src/run_files.py`), and `split` that it is unquoted, so a
+    value with a space or a glob in it is not one path. `B1680`: a source
+    with no name (`("", False)`) is what an archive holds, which the command
+    does not name."""
     kind: str
     why: str
     path: str = ""
@@ -150,6 +168,8 @@ class Finding:
     sources: Tuple[Tuple[str, bool], ...] = ()
     into: str = ""
     parents: bool = False
+    var: str = ""
+    split: bool = False
 
 
 @dataclass
@@ -162,6 +182,14 @@ class _Word:
     lead: str = ""           # what it starts with, up to its first quote or expansion
     body: Optional[str] = None  # a here-document's text, on its delimiter's word
     strip_tabs: bool = False    # `<<-`: its body's leading tabs are dropped
+    fills: int = 0           # `B1681`: how many expansions it holds
+    var: str = ""            # `B1681`: the variable it starts with (`$X…`, `${X}…`), if any
+    var_split: bool = False  # `B1681`: that variable is unquoted, so its value is split and globbed
+
+    def fill(self) -> None:
+        """An expansion the shell fills in when it runs."""
+        self.expanded = True
+        self.fills += 1
 
     def assignment(self) -> bool:
         """`NAME=value` — whatever the value is made of."""
@@ -179,6 +207,9 @@ class _Simple:
     words: List[_Word] = field(default_factory=list)
     redirects: List[Tuple[str, _Word]] = field(default_factory=list)
     ended_by: str = ""
+    # `B1679`: it follows a group's `)` or is an `esac`, so its redirections
+    # are the compound command's (`(…) > x`, `case … esac > x`).
+    compound: bool = False
 
 
 # ── Reading the words ───────────────────────────────────────────────────────
@@ -289,8 +320,9 @@ class _Lexer:
                 continue
             i += 1
 
-    def _dollar(self, s: str, i: int, word: _Word, out: List[str]) -> int:
-        """`s[i]` is `$`: an expansion, whose commands are read."""
+    def _dollar(self, s: str, i: int, word: _Word, out: List[str], quoted: bool = False) -> int:
+        """`s[i]` is `$`: an expansion, whose commands are read. `quoted`: it
+        is inside double quotes."""
         nxt = s[i + 1] if i + 1 < len(s) else ""
         if nxt == "'":
             # `$'…'` is decoded as it is read, and its escapes can spell any
@@ -298,7 +330,7 @@ class _Lexer:
             j = i + 2
             while j < len(s) and s[j] != "'":
                 if s[j] == "\\":
-                    word.expanded = True
+                    word.fill()
                     j += 1
                 j += 1
             if j >= len(s):
@@ -311,33 +343,44 @@ class _Lexer:
         if s.startswith("$((", i):
             end = self._closing(s, i + 3, "(", ")")
             if s.startswith(")", end + 1):
-                word.expanded = True
+                word.fill()
                 self.substitutions_in(s[i + 3:end])
                 out.append(s[i:end + 2])
                 return end + 2
         if nxt == "(":
             end = self._closing(s, i + 2, "(", ")")
             self.sub(s[i + 2:end])
-            word.expanded = True
+            word.fill()
             out.append(s[i:end + 1])
             return end + 1
         if nxt == "{":
             end = self._closing(s, i + 2, "{", "}")
             self.substitutions_in(s[i + 2:end])
-            word.expanded = True
+            if _NAME_RE.fullmatch(s[i + 2:end]):
+                self._leads(word, out, s[i + 2:end], quoted)
+            word.fill()
             out.append(s[i:end + 1])
             return end + 1
         m = _NAME_RE.match(s, i + 1)
         if m:
-            word.expanded = True
+            self._leads(word, out, m.group(0), quoted)
+            word.fill()
             out.append(s[i:m.end()])
             return m.end()
         if nxt and (nxt.isdigit() or nxt in "@*#?$!-"):
-            word.expanded = True
+            word.fill()
             out.append(s[i:i + 2])
             return i + 2
         out.append("$")             # a dollar sign and nothing after it
         return i + 1
+
+    @staticmethod
+    def _leads(word: _Word, out: List[str], name: str, quoted: bool) -> None:
+        """`B1681`. `$name` is the first thing in `word`: a path that starts
+        with it (`"$PANTHEON_PROJECTS"/w`) is spelled against a value the run
+        may know — and, unquoted, split and globbed as the shell does."""
+        if not word.fills and not "".join(out):
+            word.var, word.var_split = name, not quoted
 
     def _word(self, s: str, i: int) -> Tuple[_Word, int]:
         word = _Word()
@@ -373,7 +416,7 @@ class _Lexer:
             if ch == "`":
                 end = self._bq_close(s, i + 1)
                 self.sub(s[i + 1:end].replace("\\`", "`"))
-                word.expanded = True
+                word.fill()
                 out.append(s[i:end + 1])
                 unquoted.append(" ")
                 i = end + 1
@@ -401,12 +444,12 @@ class _Lexer:
             if ch == '"':
                 return i + 1
             if ch == "$":
-                i = self._dollar(s, i, word, out)
+                i = self._dollar(s, i, word, out, quoted=True)
                 continue
             if ch == "`":
                 end = self._bq_close(s, i + 1)
                 self.sub(s[i + 1:end].replace("\\`", "`"))
-                word.expanded = True
+                word.fill()
                 out.append(s[i:end + 1])
                 i = end + 1
                 continue
@@ -499,6 +542,9 @@ _SKIP = ("!", "{", "}", "then", "else", "elif", "do", "if", "while", "until", "f
          "coproc")
 _NOT_A_COMMAND = ("for", "select", "function", "[[", "((")
 _ARM_ENDS = (";;", ";&", ";;&")
+#: `B1679`. The words that end a compound command: a redirection after one is
+#: the compound command's (`done > list.txt`), not a command of its own.
+_CLOSERS = ("}", "fi", "done")
 
 
 def _simple_commands(tokens: Sequence[tuple]) -> List[_Simple]:
@@ -507,13 +553,20 @@ def _simple_commands(tokens: Sequence[tuple]) -> List[_Simple]:
     raw: List[_Simple] = []
     cur = _Simple()
     in_test = False
+    groups = 0      # `B1679`: subshells `( … )` open here, not a case pattern's `)`
     for tok in tokens:
         if tok[0] == "op":
             if in_test and tok[1] in ("&&", "||", "(", ")"):
                 continue
+            closed = False
+            if tok[1] == "(" and not cur.redirects and all(w.keyword(*_SKIP) for w in cur.words):
+                groups += 1     # not `f()`, nor a pattern's `(a)` after `case x in`
+            elif tok[1] == ")" and groups:
+                groups -= 1
+                closed = True
             cur.ended_by = tok[1]
             raw.append(cur)
-            cur = _Simple()
+            cur = _Simple(compound=closed)
         elif tok[0] == "r":
             cur.redirects.append((tok[1], tok[2]))
         else:
@@ -538,6 +591,10 @@ def _simple_commands(tokens: Sequence[tuple]) -> List[_Simple]:
         if cases and lead is not None and lead.keyword("esac"):
             cases -= 1
             expect_pattern = False
+            if simple.redirects:
+                # `B1679`: `esac > x` — what the whole `case` printed.
+                out.append(_Simple(redirects=simple.redirects, ended_by=simple.ended_by,
+                                   compound=True))
             continue
         if cases and expect_pattern:
             # A pattern, or one of several (`docx|odt)`), or a blank line.
@@ -866,6 +923,19 @@ def _spelled(word: _Word) -> bool:
             and (not text.startswith("~") or text == "~" or text.startswith("~/")))
 
 
+def _spelling(word: _Word) -> Tuple[bool, str, bool]:
+    """`B1681`. `(known, var, split)` for a path a command names: spelled
+    out (`_spelled`), or spelled against the one variable it starts with and
+    nothing else filled in (`cd "$PANTHEON_PROJECTS"/w`) — which the run, that
+    knows the variable's value, can look at; anything else is not known."""
+    if _spelled(word):
+        return True, "", False
+    if (word.var and word.fills == 1 and not word.globbed and not word.braced
+            and "{}" not in word.text):
+        return True, word.var, word.var_split
+    return False, "", False
+
+
 def _replaces_through(op: str, target: _Word) -> bool:
     """`B1669`. Whether a redirection opens a file from its start — `>`, `>|`,
     `&>`, or `>&` onto a name rather than a descriptor (`>&2`, `2>&1`, `>&-`)
@@ -882,6 +952,235 @@ def _replaces_through(op: str, target: _Word) -> bool:
 _COPY_VALUES = {"cp": ("tS", {"--target-directory", "--suffix"}),
                 "install": ("gmoSt", {"--group", "--mode", "--owner", "--suffix",
                                        "--target-directory", "--strip-program"})}
+
+# ── `B1680` · programs that write over an output they are told to ───────────
+#
+# `curl -o notes.md …`, `sort -o notes.md …`, `wget -O`, `unzip -o`, `tar -x`
+# and `ffmpeg -y` write over a file the command names (or an archive holds)
+# whether or not it was there, and were `execute_code` alone while a `>` onto
+# the same file was read (`B1669`). Each program's own words, as its manual
+# gives them, name what it writes from the start:
+#
+#   * `curl`: `-o`/`--output` (`-o -` is the screen), and `-O`/`--remote-name`
+#     (`--remote-name-all`) the last part of each address's path, under
+#     `--output-dir`; and the files it keeps beside a download — `-D`
+#     (`--dump-header`), `-c` (`--cookie-jar`), `--trace`, `--trace-ascii`,
+#     `--stderr`, `--libcurl`, `--etag-save`. Not when it resumes (`-C`, which
+#     appends) or is told not to clobber (`--no-clobber`, which picks another
+#     name), for the download;
+#   * `wget`: `-O`/`--output-document` (it truncates the file first: the
+#     manual's own *"analogous to shell redirection"*) unless `-nc`, `-o`/
+#     `--output-file` (its log; `-a` appends) and `--save-cookies`; with
+#     `-N` (`--timestamping`), the last part of each address's path. Without
+#     them a second download is saved beside the first (`name.1`), and a
+#     recursive one (`-r`, `-m`, `-p`, `-x`) writes a tree of names the
+#     command does not hold — not read, and it stays as it was;
+#   * `sort`: `-o`/`--output` (`sort -o f f` too: it rewrites the file whole);
+#   * `unzip -o` (never asking) and `tar -x` (whose default is to replace),
+#     into `-d`/`-C` or the folder they run in: each member the command names
+#     in it, or — named nowhere in the command — whatever the archive holds,
+#     which the run cannot know, in a folder that was there. Not `unzip`
+#     without `-o` (it asks, and with no one to answer it keeps the file),
+#     `-n`, or a listing, test or print (`-l`, `-t`, `-p`, `-c`, `-v`, `-Z`);
+#     not `tar -k`, `--skip-old-files`, `-O` (`--to-stdout`) or
+#     `--to-command`. And `tar -c`'s archive (`-f`), which it writes whole;
+#   * `ffmpeg -y`: each output file (a word that is not an option's value or
+#     an `-i` input); without `-y` it asks, and with `-nostdin` or no one to
+#     answer, keeps the file.
+#
+# `sed -i` is not here: an in-place edit is a plain write
+# (`D-2026-10-29-03` §1, *"edits stay writes"* — `edit_file` and a patch's
+# *Update File*), and so is `sed -i`'s. An option this does not know is read
+# as taking a value (most of these programs' options do), so a word it
+# swallows is never called an output it is not; a value it calls an output
+# only asks more.
+
+#: `curl`'s short options that take a value.
+_CURL_SHORT = "AbcCdDeEFHKmoPQrtTuUwxXyYz"
+_CURL_LONG = {
+    "--output", "--output-dir", "--dump-header", "--cookie-jar", "--trace", "--trace-ascii",
+    "--stderr", "--libcurl", "--etag-save", "--etag-compare", "--continue-at", "--url",
+    "--data", "--data-ascii", "--data-binary", "--data-raw", "--data-urlencode", "--json",
+    "--form", "--form-string", "--header", "--proxy-header", "--user-agent", "--referer",
+    "--cookie", "--user", "--proxy-user", "--request", "--request-target", "--max-time",
+    "--connect-timeout", "--retry", "--retry-delay", "--retry-max-time", "--write-out",
+    "--upload-file", "--cacert", "--capath", "--cert", "--cert-type", "--key", "--key-type",
+    "--config", "--resolve", "--connect-to", "--interface", "--limit-rate", "--max-filesize",
+    "--range", "--proxy", "--preproxy", "--socks4", "--socks4a", "--socks5",
+    "--socks5-hostname", "--noproxy", "--oauth2-bearer", "--pinnedpubkey", "--time-cond",
+    "--local-port", "--dns-servers", "--doh-url", "--unix-socket", "--abstract-unix-socket",
+    "--mail-from", "--mail-rcpt", "--mail-auth", "--ftp-port", "--quote", "--expect100-timeout",
+    "--hsts", "--alt-svc", "--aws-sigv4", "--variable", "--url-query", "--speed-limit",
+    "--speed-time", "--max-redirs", "--create-file-mode", "--parallel-max", "--proto",
+    "--proto-redir", "--proto-default", "--netrc-file", "--tls-max", "--ciphers", "--curves",
+    "--keepalive-time", "--happy-eyeballs-timeout-ms", "--rate", "--sasl-authzid",
+    "--login-options", "--service-name", "--delegation", "--krb", "--engine",
+}
+#: The files `curl` keeps beside a download, which it writes from the start.
+_CURL_SIDE_FILES = {"-D": "curl -D", "--dump-header": "curl --dump-header",
+                    "-c": "curl -c", "--cookie-jar": "curl --cookie-jar",
+                    "--trace": "curl --trace", "--trace-ascii": "curl --trace-ascii",
+                    "--stderr": "curl --stderr", "--libcurl": "curl --libcurl",
+                    "--etag-save": "curl --etag-save"}
+#: `wget`'s short options that take a value (`-n` takes `c`, `d`, `H`, `v`, `p`).
+_WGET_SHORT = "aABDeiIlnoOPQRtTUwX"
+_WGET_LONG = {
+    "--output-document", "--output-file", "--append-output", "--directory-prefix",
+    "--input-file", "--execute", "--user-agent", "--tries", "--timeout", "--wait", "--level",
+    "--accept", "--reject", "--domains", "--exclude-domains", "--header", "--post-data",
+    "--post-file", "--body-data", "--body-file", "--method", "--user", "--password",
+    "--http-user", "--http-password", "--load-cookies", "--save-cookies", "--base", "--config",
+    "--referer", "--quota", "--waitretry", "--dns-timeout", "--connect-timeout",
+    "--read-timeout", "--limit-rate", "--bind-address", "--ca-certificate", "--certificate",
+    "--private-key", "--restrict-file-names", "--cut-dirs", "--default-page", "--progress",
+    "--accept-regex", "--reject-regex", "--include-directories", "--exclude-directories",
+    "--warc-file", "--use-askpass", "--rejected-log", "--local-encoding", "--remote-encoding",
+}
+_WGET_RECURSIVE = {"-r", "--recursive", "-m", "--mirror", "-p", "--page-requisites", "-x",
+                   "--force-directories"}
+_SORT_SHORT = "kotST"
+_SORT_LONG = {"--key", "--output", "--field-separator", "--buffer-size",
+              "--temporary-directory", "--parallel", "--batch-size", "--compress-program",
+              "--files0-from", "--random-source", "--sort"}
+#: `unzip`'s options that take a value (`-x` takes the words after it), and
+#: those that extract nothing.
+_UNZIP_SHORT = "dPIO"
+_UNZIP_READS = set("clptvzZT")
+#: GNU `tar`'s short options that take a value, and long ones.
+_TAR_SHORT = "bCfFgHIKLNTVX"
+_TAR_LONG = {
+    "--file", "--directory", "--files-from", "--exclude-from", "--blocking-factor", "--format",
+    "--starting-file", "--tape-length", "--newer", "--after-date", "--newer-mtime", "--label",
+    "--listed-incremental", "--info-script", "--new-volume-script", "--use-compress-program",
+    "--exclude", "--transform", "--xform", "--strip-components", "--owner", "--group",
+    "--mode", "--mtime", "--to-command", "--record-size", "--volno-file", "--rmt-command",
+    "--rsh-command", "--index-file", "--level", "--suffix", "--quoting-style", "--warning",
+    "--exclude-tag", "--exclude-tag-all", "--exclude-tag-under", "--owner-map", "--group-map",
+    "--pax-option", "--sort",
+}
+#: `ffmpeg`'s options that take no value; any other option takes one.
+_FFMPEG_FLAGS = {
+    "-y", "-n", "-nostdin", "-stdin", "-hide_banner", "-an", "-vn", "-sn", "-dn", "-re",
+    "-shortest", "-copyts", "-start_at_zero", "-nostats", "-stats", "-benchmark",
+    "-benchmark_all", "-dump", "-hex", "-xerror", "-ignore_unknown", "-copy_unknown",
+    "-accurate_seek", "-noaccurate_seek", "-autorotate", "-noautorotate", "-autoscale",
+    "-noautoscale", "-debug_ts", "-report", "-bitexact", "-fix_sub_duration", "-psnr",
+    "-vstats", "-qphist", "-copyinkf", "-sameq", "-same_quant", "-deinterlace", "-intra",
+}
+#: Each program above, and the reader that reads it.
+_OUTPUT_READERS = {"curl": "_curl", "wget": "_wget", "wget2": "_wget", "sort": "_sort",
+                   "unzip": "_unzip", "tar": "_tar", "gtar": "_tar", "bsdtar": "_tar",
+                   "ffmpeg": "_ffmpeg"}
+#: `ffmpeg`'s own information: it writes nothing.
+_FFMPEG_INFO = {"-version", "-h", "-help", "--help", "-?", "-L", "-buildconf", "-formats",
+                "-muxers", "-demuxers", "-devices", "-codecs", "-decoders", "-encoders",
+                "-bsfs", "-protocols", "-filters", "-pix_fmts", "-layouts", "-sample_fmts",
+                "-colors", "-sources", "-sinks", "-hwaccels"}
+
+
+def _scan(words: Sequence[_Word], shorts: str, longs: set,
+          old_style: bool = False) -> Tuple[List[Tuple[str, Optional[_Word]]], List[_Word]]:
+    """`B1680`. A command's options and operands, read as `getopt_long`
+    reads them: `[(option, its value or None)]` and the operands. Options
+    anywhere before `--`; a short option's value joined to it or the next
+    word (`shorts` take one), a long one's after `=` or the next word
+    (`longs` take one), and a long one written short of its name (`--outp`)
+    read as the one of `longs` it begins. `old_style` (`tar xzf a.tgz`): a
+    first word without a `-` is a cluster whose options take their values
+    from the words after it, in order."""
+    opts: List[Tuple[str, Optional[_Word]]] = []
+    operands: List[_Word] = []
+    rest = list(words)
+    pending: List[str] = []
+    if old_style and rest and not rest[0].text.startswith("-"):
+        for letter in rest.pop(0).text:
+            if letter in shorts:
+                pending.append("-" + letter)
+            else:
+                opts.append(("-" + letter, None))
+    ended = False
+    i = 0
+    while i < len(rest):
+        w = rest[i]
+        t = w.text
+        i += 1
+        if pending:
+            opts.append((pending.pop(0), w))
+            continue
+        if ended or t == "-" or not t.startswith("-"):
+            operands.append(w)
+            continue
+        if t == "--":
+            ended = True
+            continue
+        if t.startswith("--"):
+            key, eq, value = t.partition("=")
+            if key not in longs:
+                key = next((n for n in sorted(longs) if len(key) > 3 and n.startswith(key)), key)
+            if key in longs:
+                if eq:
+                    opts.append((key, replace(w, text=value)))
+                elif i < len(rest):
+                    opts.append((key, rest[i]))
+                    i += 1
+                else:
+                    opts.append((key, None))
+            else:
+                opts.append((key, None))
+            continue
+        for j, letter in enumerate(t[1:], start=1):
+            if letter in shorts:
+                if j + 1 < len(t):
+                    opts.append(("-" + letter, replace(w, text=t[j + 1:])))
+                elif i < len(rest):
+                    opts.append(("-" + letter, rest[i]))
+                    i += 1
+                else:
+                    opts.append(("-" + letter, None))
+                break
+            opts.append(("-" + letter, None))
+    return opts, operands
+
+
+def _file_value(word: Optional[_Word]) -> Optional[_Word]:
+    """`B1680`. A value that names a file: not the screen (`-`, curl's `%`
+    for its error output) or a device."""
+    if word is None or word.text in ("-", "%", "") or word.text.startswith("/dev/"):
+        return None
+    return word
+
+
+def _unknown(text: str) -> _Word:
+    """`B1680`. A path filled in when the command runs."""
+    return _Word(text=text, expanded=True, fills=2)
+
+
+def _under(folder: Optional[_Word], name: _Word) -> _Word:
+    """`B1680`. `name` inside an output folder (`--output-dir`, `-P`), as the
+    program joins them: an absolute name is itself."""
+    if folder is None or name.text.startswith("/"):
+        return name
+    if not _spelling(folder)[0] or not _spelled(name):
+        return _unknown(posixpath.join(folder.text, name.text))
+    return replace(folder, text=posixpath.join(folder.text, name.text))
+
+
+def _address_name(word: _Word, default: str) -> _Word:
+    """`B1680`. The name `curl -O` and `wget -N` save an address as: the last
+    part of its path, as written (its query is not part of it), or `default`
+    when it has none — `curl_response` (curl 8.10 on; an older curl writes
+    nothing), wget's `index.html`. Unknown when the address is filled in when
+    it runs or holds `curl`'s own `[1-3]`/`{a,b}` ranges."""
+    from urllib.parse import urlsplit
+    text = word.text
+    if not word.plain() or any(c in text for c in "[]{}"):
+        return _unknown(text)
+    try:
+        path = urlsplit(text if "://" in text else "http://" + text).path
+    except ValueError:
+        return _unknown(text)
+    name = posixpath.basename(path)
+    return _Word(text=name if name and name not in (".", "..") else default)
 
 
 def _flags(words: Sequence[_Word]) -> List[str]:
@@ -932,15 +1231,18 @@ class _Judge:
     def writes(self, why: str, word: _Word, sources: Sequence[_Word] = (), into: str = "",
                parents: bool = False) -> None:
         """`B1669`. `why` writes over `word`'s path, if one is there."""
+        known, var, split = _spelling(word)
         self.findings.append(Finding(
-            WRITES, why, path=word.text, known=_spelled(word), far=self.lexer.far,
-            sources=tuple((w.text, _spelled(w)) for w in sources), into=into, parents=parents))
+            WRITES, why, path=word.text, known=known, far=self.lexer.far,
+            sources=tuple((w.text, _spelled(w)) for w in sources), into=into, parents=parents,
+            var=var, split=split))
 
     def chdir(self, word: Optional[_Word]) -> None:
         """`B1669`. What follows runs in another folder — `None`: one only
         known when it runs (`cd` alone, `cd -`, `pushd +1`)."""
+        known, var, split = _spelling(word) if word is not None else (False, "", False)
         self.findings.append(Finding(CHDIR, "cd", path=word.text if word else "",
-                                     known=word is not None and _spelled(word), far=self.lexer.far))
+                                     known=known, far=self.lexer.far, var=var, split=split))
 
     def shell_string(self, word: _Word, who: str = "a shell") -> None:
         """A command handed over as one string — `sh -c '…'`, `ssh host '…'`."""
@@ -957,14 +1259,21 @@ class _Judge:
                 # `B1669`: a file it writes from the start, if one is there.
                 self.writes("a > redirect", target)
         words = list(simple.words)
+        closes = simple.compound
         while words and words[0].keyword(*_SKIP):
+            closes = closes or words[0].keyword(*_CLOSERS)
             words.pop(0)
         if words and words[0].keyword(*_NOT_A_COMMAND):
             return
         while words and words[0].assignment():
             words.pop(0)
         if not words:
-            self._empties(simple)
+            # `B1679`: `done > list.txt`, `fi > x`, `} > x` and `(…) > x` send
+            # what the compound command printed into the file — the `writes`
+            # above, a replacement only of a file that was there — and do not
+            # only empty it, as a redirection with no command does (`: > log`).
+            if not closes:
+                self._empties(simple)
             return
         self.command(words, simple)
 
@@ -1036,6 +1345,10 @@ class _Judge:
         reach = _reach_of(name, args)
         if reach:
             self.reaches(reach)
+        if name in _OUTPUT_READERS:
+            # `B1680`: the file its own words tell it to write over.
+            getattr(self, _OUTPUT_READERS[name])(name, args)
+            return
         if name in _DELETERS:
             self.destroys(_DELETERS[name])
             return
@@ -1313,6 +1626,130 @@ class _Judge:
                 if sub:
                     self.command(sub, _Simple())
                 i = j
+            i += 1
+
+    # ── `B1680` · what a program writes over by its own words ──────────────
+
+    def _curl(self, name: str, args: List[_Word]) -> None:
+        opts, operands = _scan(args, _CURL_SHORT, _CURL_LONG)
+        said = {o for o, _v in opts}
+        # Resuming appends; `--no-clobber` saves under another name.
+        keeps = bool(said & {"-C", "--continue-at", "--no-clobber"})
+        folder = next((v for o, v in reversed(opts) if o == "--output-dir" and v is not None), None)
+        for option, value in opts:
+            target = _file_value(value)
+            if target is None:
+                continue
+            if option in ("-o", "--output") and not keeps:
+                # `#1` is filled in from the address's own `[1-3]` range.
+                named = _unknown(target.text) if re.search(r"#\d", target.text) else target
+                self.writes(f"curl {option}", _under(folder, named))
+            elif option in _CURL_SIDE_FILES:
+                self.writes(_CURL_SIDE_FILES[option], target)
+        if keeps or not said & {"-O", "--remote-name", "--remote-name-all"}:
+            return
+        addresses = operands + [v for o, v in opts if o == "--url" and v is not None]
+        for address in addresses:
+            self.writes("curl -O", _under(folder, _address_name(address, "curl_response")))
+
+    def _wget(self, name: str, args: List[_Word]) -> None:
+        opts, operands = _scan(args, _WGET_SHORT, _WGET_LONG)
+        said = {o for o, _v in opts}
+        never = any(o == "-n" and v is not None and "c" in v.text for o, v in opts) \
+            or "--no-clobber" in said
+        for option, value in opts:
+            target = _file_value(value)
+            if target is None:
+                continue
+            if option in ("-O", "--output-document") and not never:
+                self.writes(f"{name} {option}", target)
+            elif option in ("-o", "--output-file", "--save-cookies"):
+                self.writes(f"{name} {option}", target)
+        if (said & {"-N", "--timestamping"} and not said & _WGET_RECURSIVE
+                and not said & {"-O", "--output-document"}):
+            folder = next((v for o, v in reversed(opts)
+                           if o in ("-P", "--directory-prefix") and v is not None), None)
+            for address in operands:
+                self.writes(f"{name} -N", _under(folder, _address_name(address, "index.html")))
+
+    def _sort(self, name: str, args: List[_Word]) -> None:
+        opts, _operands = _scan(args, _SORT_SHORT, _SORT_LONG)
+        for option, value in opts:
+            target = _file_value(value)
+            if option in ("-o", "--output") and target is not None:
+                self.writes(f"sort {option}", target)
+
+    def _unzip(self, name: str, args: List[_Word]) -> None:
+        # `-x` takes the words after it, up to the next option.
+        words, excluding = [], False
+        for w in args:
+            if w.text == "-x":
+                excluding = True
+            elif excluding and not w.text.startswith("-"):
+                continue
+            else:
+                excluding = False
+                words.append(w)
+        opts, operands = _scan(words, _UNZIP_SHORT, set())
+        said = {o for o, _v in opts}
+        if not operands or "-o" not in said or "-n" in said or any(o[1:] in _UNZIP_READS
+                                                                      for o in said):
+            return
+        folder = next((v for o, v in reversed(opts) if o == "-d" and v is not None),
+                      _Word(text="."))
+        members = operands[1:]
+        if any(not _spelled(m) or _GLOB_RE.search(m.text) for m in members):
+            members = []        # its own patterns: which members, it decides
+        if "-j" in said:
+            members = [replace(m, text=posixpath.basename(m.text)) for m in members]
+        self.writes("unzip -o", folder, sources=members or [_Word()], into="folder",
+                    parents=True)
+
+    def _tar(self, name: str, args: List[_Word]) -> None:
+        opts, operands = _scan(args, _TAR_SHORT, _TAR_LONG, old_style=True)
+        said = {o for o, _v in opts}
+        archive = next((v for o, v in reversed(opts) if o in ("-f", "--file")), None)
+        if said & {"-c", "--create"}:
+            # It writes the archive whole (`-r`, `-u` and `-A` add to it).
+            target = _file_value(archive)
+            if target is not None:
+                self.writes(f"{name} -c", target)
+            return
+        if not said & {"-x", "--extract", "--get"}:
+            return
+        if said & {"-O", "--to-stdout", "--to-command", "-k", "--keep-old-files",
+                   "--skip-old-files"}:
+            return
+        folders = [v for o, v in opts if o in ("-C", "--directory")]
+        if len(folders) > 1 or (folders and folders[0] is None):
+            folder = _unknown(" ".join(w.text for w in folders if w is not None))
+        else:
+            folder = folders[0] if folders else _Word(text=".")
+        members = operands
+        if (said & {"-P", "--absolute-names", "--strip-components", "--transform", "--xform",
+                    "--wildcards", "-T", "--files-from"}
+                or any(not _spelled(m) for m in members)):
+            members = []        # where each lands, it decides
+        self.writes(f"{name} -x", folder, sources=members or [_Word()], into="folder",
+                    parents=True)
+
+    def _ffmpeg(self, name: str, args: List[_Word]) -> None:
+        texts = {w.text for w in args}
+        if "-y" not in texts or texts & _FFMPEG_INFO:
+            return              # without `-y` it asks, and keeps the file
+        i = 0
+        while i < len(args):
+            t = args[i].text
+            if t == "-i" or (t.startswith("-") and len(t) > 1 and t not in _FFMPEG_FLAGS):
+                i += 2          # an input, or an option's value
+                continue
+            if not t.startswith("-") or t == "-":
+                target = args[i]
+                if t.startswith("file:"):
+                    target = replace(target, text=t[len("file:"):])
+                if _file_value(target) is not None and not t.startswith("pipe:") \
+                        and "://" not in t:
+                    self.writes("ffmpeg -y", _unknown(t) if "%" in t else target)
             i += 1
 
     def _copies(self, name: str, args: List[_Word]) -> None:
@@ -1658,13 +2095,35 @@ def readings(findings: Sequence[Finding]) -> Tuple[Optional[str], Optional[str]]
     return reason(findings, DESTROYS), reason(findings, REACHES)
 
 
-def writes_of(findings: Sequence[Finding]) -> Tuple[Finding, ...]:
+def writes_of(findings: Sequence[Finding], command: str = "") -> Tuple[Finding, ...]:
     """`B1669`. What the command writes over and where it goes, in the order
     read — for the run to look at (`src/run_files.command_replaces`). Empty
-    when it writes over nothing it names."""
+    when it writes over nothing it names.
+
+    `B1681`. `command` is the whole text read. A variable it could set
+    itself — its name written anywhere but in a `$name` or `${name…}`
+    (`PANTHEON_PROJECTS=/x; …`, `export HOME=/etc`, `env NAME=… sh -c …`,
+    Python's `os.environ["NAME"] = …`) — is not the run's value, so a path
+    spelled against it is not known; nor, with `HOME`, a path after `~`."""
     if not any(f.kind == WRITES for f in findings):
         return ()
-    return tuple(f for f in findings if f.kind in (WRITES, CHDIR))
+    out = tuple(f for f in findings if f.kind in (WRITES, CHDIR))
+    if command:
+        home_set = _set_here("HOME", command)
+        out = tuple(replace(f, known=False, var="", split=False)
+                    if f.known and ((f.var and _set_here(f.var, command))
+                                    or (home_set and f.path.startswith("~")))
+                    else f for f in out)
+    return out
+
+
+def _set_here(name: str, command: str) -> bool:
+    """`B1681`. Whether `command` could set the variable `name` itself: the
+    name appears other than right after a `$` or `${`."""
+    for m in re.finditer(rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", command):
+        if not command[:m.start()].endswith(("$", "${")):
+            return True
+    return False
 
 
 def shell_destroys(command: str) -> Optional[str]:

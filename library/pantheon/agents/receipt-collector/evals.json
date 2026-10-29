@@ -103,7 +103,8 @@
        "write_file",
        {
         "path": "money/ledger.csv",
-        "content": "date,merchant,amount,currency,reference,file,uid\n2026-10-25,Coffee Co,4.50,GBP,#8812,,r1\n2026-10-26,Hostly,12.00,USD,INV-42,receipts/invoice-42.pdf,r2\n"
+        "content": "date,merchant,amount,currency,reference,file,uid\n2026-10-25,Coffee Co,4.50,GBP,#8812,,r1\n2026-10-26,Hostly,12.00,USD,INV-42,receipts/invoice-42.pdf,r2\n",
+        "append": true
        }
       ]
      ]
@@ -144,10 +145,7 @@
   },
   {
    "id": "the-ledger-only-grows",
-   "about": "A ledger is already there: it is read first and the new row is added below the old ones, which stay as they were — written back once the person says yes, since the ledger was there before this run began (B1660).",
-   "answers": [
-    "approve_task"
-   ],
+   "about": "A ledger is already there: it is read first and the new row is added to its end with an append, which keeps the old rows as they were and is a plain write (D-2026-10-29-03 §2, B1672), so the sweep finishes with nothing asked.",
    "inputs": {
     "folder": "money"
    },
@@ -245,7 +243,8 @@
        "write_file",
        {
         "path": "money/ledger.csv",
-        "content": "date,merchant,amount,currency,reference,file,uid\n2026-10-02,Bakery,50.00,GBP,#77,,r0\n2026-10-26,Hostly,12.00,USD,INV-42,receipts/invoice-42.pdf,r2\n"
+        "content": "2026-10-26,Hostly,12.00,USD,INV-42,receipts/invoice-42.pdf,r2\n",
+        "append": true
        }
       ]
      ]
@@ -259,10 +258,12 @@
      "file": {
       "path": "money/ledger.csv",
       "contains": [
-       "Bakery,50.00,GBP",
-       "Hostly,12.00,USD"
+       "date,merchant,amount,currency,reference,file,uid\n2026-10-02,Bakery,50.00,GBP,#77,,r0\n2026-10-26,Hostly,12.00,USD,INV-42,receipts/invoice-42.pdf,r2\n"
       ]
      }
+    },
+    {
+     "status": "success"
     }
    ]
   },
@@ -435,7 +436,8 @@
        "write_file",
        {
         "path": "money/ledger.csv",
-        "content": "date,merchant,amount,currency,reference,file,uid\n2026-10-27,Books Example,amount not stated,,5521,,r3\n"
+        "content": "date,merchant,amount,currency,reference,file,uid\n2026-10-27,Books Example,amount not stated,,5521,,r3\n",
+        "append": true
        }
       ]
      ]
@@ -592,7 +594,8 @@
        "write_file",
        {
         "path": "money/ledger.csv",
-        "content": "date,merchant,amount,currency,reference,file,uid\n2026-10-25,Coffee Co,4.50,GBP,#8812,,r1\n"
+        "content": "date,merchant,amount,currency,reference,file,uid\n2026-10-25,Coffee Co,4.50,GBP,#8812,,r1\n",
+        "append": true
        }
       ]
      ]

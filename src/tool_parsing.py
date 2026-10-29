@@ -719,7 +719,9 @@ def _raw_openai_tool_call_to_block(value) -> Optional[ToolBlock]:
     elif tool_type in ("grep", "glob", "ls", "edit_file"):
         content = json.dumps(args) if args else "{}"
     elif tool_type == "write_file":
-        content = args.get("path", "") + "\n" + args.get("content", "")
+        # `B1672`: the native call's own conversion, so an append is kept.
+        from src.agent_tools.filesystem_tools import write_file_content
+        content = write_file_content(args)
     elif tool_type == "create_document":
         parts = [args.get("title", "Untitled")]
         if args.get("language"):

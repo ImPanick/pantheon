@@ -167,10 +167,11 @@ def test_every_shipped_writer_decides_it_as_its_runbook_says():
     """The four tables that did not have to decide it before, or decided it
     for a shell alone: Dataset Curator never overwrites a dataset (`ls`, and a
     dated name); Mockup Maker and Dashboard Builder ask before writing over a
-    page an earlier run left; Receipt Collector asks before writing its ledger
-    back — nothing shipped acts irreversibly without asking
-    (`test_the_roster_is_shipped`), and a person who wants the sweep
-    unattended may allow it on their own hire."""
+    page an earlier run left; Receipt Collector asks before a write that
+    would replace its ledger — since `B1672` it only appends to it, a plain
+    write, so its sweep asks nothing — and nothing shipped acts irreversibly
+    without asking (`test_the_roster_is_shipped`); a person may loosen it on
+    their own hire."""
     decided = {a: H.manifest_effects(get_agent(None, a))["destructive"]
                for a in ("dataset-curator", "mockup-maker", "dashboard-builder", "receipt-collector")}
     assert decided == {"dataset-curator": "never", "mockup-maker": "ask",
@@ -252,14 +253,17 @@ def test_dashboard_builder_asks_before_replacing_its_earlier_page_and_the_yes_wr
                       ("destructive", "write_workspace"))]
 
 
-def test_receipt_collector_asks_before_writing_its_ledger_back(cards):
-    """Its ledger was there before the run: the rewrite that adds a row asks,
-    naming it, and the yes writes every old row back with the new one."""
+def test_receipt_collector_adds_to_its_ledger_with_nothing_asked(cards):
+    """`B1672` changed this pin. Its ledger was there before the run, and the
+    rewrite that added a row asked under its `destructive: ask`, so every
+    unattended sweep after the first waited. The owner's ruling
+    (`D-2026-10-29-03` §2, *"Append-only is not destructive"*): it now adds
+    its row with `write_file`'s append, which keeps every old row and is a
+    plain write — the sweep finishes and no card is made."""
     result = _run("receipt-collector", "the-ledger-only-grows")
     assert result.passed, result.checks
-    assert [(tool, why) for tool, why, _e in cards] == [
-        ("write_file", "This agent's hire asks before destructive: 'write_file' waits for your yes "
-                       "(write_file replaces money/ledger.csv, which was there before this run began).")]
+    assert result.status == "success"
+    assert cards == []
 
 
 DRAFTED_TWICE = {
