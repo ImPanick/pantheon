@@ -305,7 +305,6 @@ class ChatProcessor:
             pinned = [m for m in mem_entries if m.get("pinned")]
             extended = [m for m in mem_entries if not m.get("pinned")]
 
-            _used_ids: list = []
             _pinned_report: dict = {}
             selected_pinned = self._select_pinned_memories(
                 message, pinned, report=_pinned_report)
@@ -353,8 +352,6 @@ class ChatProcessor:
                         "id": m.get("id"),
                         "reason": _pinned_reasons.get(m.get("id"),
                                                       self.PINNED_REASON)})
-                    if m.get("id"):
-                        _used_ids.append(m["id"])
 
             remaining_memory_slots = max(self.MEMORY_CONTEXT_LIMIT - len(self._last_used_memories), 0)
             if extended and remaining_memory_slots:
@@ -402,15 +399,13 @@ class ChatProcessor:
                             "confidence": m.get("confidence"),
                             "id": m.get("id"),
                             "reason": _reasons.get(m.get("id"), "")})
-                        if m.get("id"):
-                            _used_ids.append(m["id"])
 
-            # Bump usage counters for the memories that were actually injected.
-            if _used_ids and hasattr(self.memory_manager, "increment_uses"):
-                try:
-                    self.memory_manager.increment_uses(_used_ids)
-                except Exception as _e:
-                    logger.warning("Failed to increment memory uses: %s", _e)
+            # `B1653`. No use is counted here. These are the memories the
+            # turn was built with, not the ones it sent: a trim runs after
+            # this — in the route's context, per fallback candidate, and per
+            # request in the agent loop — and a memory it leaves out was never
+            # received (`B1650`). The route counts the turn's settled
+            # `memories_used` once it is settled (`count_memory_uses`).
 
             # (skills index injection moved out — see below; only fires in
             # agent mode so chat mode and incognito stay clean.)
@@ -622,6 +617,29 @@ class ChatProcessor:
 
         return preface, rag_sources, web_sources
 
+    def count_memory_uses(self, used_memories) -> None:
+        """`B1653`. Raise the use count of the memories a turn sent.
+
+        `used_memories` is the turn's settled `memories_used` — the list the
+        pill and the saved reply name, after every trim has taken off what it
+        left out (`B1650`, `memories_sent`) — so the count and the pill are one
+        set (`Law 7`). It was raised in `build_context_preface`, before any
+        trim, so a memory a tight turn never sent still had its count raised,
+        and `uses` (*injected into chat context N times*) counted a memory the
+        model never received.
+        """
+        ids: list = []
+        for m in used_memories or ():
+            mid = (m or {}).get("id") if isinstance(m, dict) else None
+            if mid and mid not in ids:
+                ids.append(mid)
+        if not ids or not hasattr(self.memory_manager, "increment_uses"):
+            return
+        try:
+            self.memory_manager.increment_uses(ids)
+        except Exception as _e:
+            logger.warning("Failed to increment memory uses: %s", _e)
+
     @staticmethod
     def _rag_off_sentence() -> str:
         """`B1287`. Why this turn searched no documents, for the person.
@@ -679,7 +697,7 @@ class ChatProcessor:
         """
         if incognito or not use_memory:
             return None
-        # The same capability check `increment_uses` above already uses, and for
+        # The same capability check `count_memory_uses` above already uses, and for
         # the same reason: a memory manager that predates this row is a valid
         # manager, and a feature that reports "style pass skipped" through an
         # exception handler on every turn of a test double is a log nobody can

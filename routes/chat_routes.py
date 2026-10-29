@@ -92,6 +92,7 @@ from routes.chat_helpers import (
     build_chat_context,
     save_assistant_response,
     run_post_response_tasks,
+    count_turn_memories,
     needs_auto_name,
     auto_name_session,
     _spawn_bg,
@@ -1738,32 +1739,43 @@ def setup_chat_routes(
         # worker thread (`B1598`) before the call it sizes.
         _door_max_tokens = await asyncio.to_thread(
             local_door_max_tokens, ctx.preset.max_tokens, sess.endpoint_url)
-        reply, actual_candidate, actual_model = await llm_call_async_with_route_fallback(
-            foreground_candidates,
-            request_messages,
-            fallback_statuses=foreground_policy.eligible_statuses,
-            candidate_request_factory=candidate_request_factory,
-            # `B935`. The selected model's temperature: a `pantheon-qwen3`
-            # model is held at the finetune's 0.2 unless the person chose the
-            # number, as on the agent path. With fallbacks on, the factory
-            # sets each candidate's own.
-            temperature=pan_qwen_route_temperature(
-                ctx.preset.temperature, sess.model, explicit_params),
-            # `B934`. The ceiling a person typed for local inference, on a
-            # local endpoint — the agent path's rule; with none typed, the
-            # preset's number as before. The factory sets each fallback's own.
-            max_tokens=_door_max_tokens,
-            # `B1029`'s resend on this door too (`B1087`): a server
-            # that refuses the length and states what it can serve is asked
-            # for that (`D-2026-10-02-01` §2).
-            max_tokens_floor=ctx.preset.max_tokens,
-            prompt_type=preset_id,
-            session_id=session,
-            # `P2-13`. So a local MiniMax endpoint honours a chosen temperature
-            # rather than clamping it to 0.2.
-            explicit_params=explicit_params,
-        )
-        actual_index = _candidate_index(foreground_candidates, actual_candidate)
+        # `B1653`. The memories this turn sent have their use count raised once
+        # it is settled which request answered: with a fallback chain each
+        # candidate's request is trimmed on its own, and a memory the answering
+        # one's trim left out was never received (`B1650`). A turn no candidate
+        # answered counts what it was built with, as the stream's does.
+        _turn_memories = getattr(ctx, "used_memories", None)
+        try:
+            reply, actual_candidate, actual_model = await llm_call_async_with_route_fallback(
+                foreground_candidates,
+                request_messages,
+                fallback_statuses=foreground_policy.eligible_statuses,
+                candidate_request_factory=candidate_request_factory,
+                # `B935`. The selected model's temperature: a `pantheon-qwen3`
+                # model is held at the finetune's 0.2 unless the person chose the
+                # number, as on the agent path. With fallbacks on, the factory
+                # sets each candidate's own.
+                temperature=pan_qwen_route_temperature(
+                    ctx.preset.temperature, sess.model, explicit_params),
+                # `B934`. The ceiling a person typed for local inference, on a
+                # local endpoint — the agent path's rule; with none typed, the
+                # preset's number as before. The factory sets each fallback's own.
+                max_tokens=_door_max_tokens,
+                # `B1029`'s resend on this door too (`B1087`): a server
+                # that refuses the length and states what it can serve is asked
+                # for that (`D-2026-10-02-01` §2).
+                max_tokens_floor=ctx.preset.max_tokens,
+                prompt_type=preset_id,
+                session_id=session,
+                # `P2-13`. So a local MiniMax endpoint honours a chosen temperature
+                # rather than clamping it to 0.2.
+                explicit_params=explicit_params,
+            )
+            actual_index = _candidate_index(foreground_candidates, actual_candidate)
+            _turn_memories = memories_sent(_turn_memories, (candidate_request_state.get(
+                "trim_stats", {}).get(actual_index) or {}).get("memories_left_out"))
+        finally:
+            await count_turn_memories(chat_processor, _turn_memories)
         apply_compaction_state(
             sess,
             candidate_request_state.get("compactions", {}).get(actual_index),
@@ -4031,6 +4043,12 @@ def setup_chat_routes(
                     yield chunk
             finally:
                 _active_streams.pop(session, None)
+                # `B1653`. The memories this turn sent have their use count
+                # raised here, once, however the turn ended: `ctx.used_memories`
+                # is settled by now — the agent loop's `context_trimmed`
+                # notices and the answering fallback's trim have taken off what
+                # no request carried (`B1650`).
+                await count_turn_memories(chat_processor, getattr(ctx, "used_memories", None))
 
         # Compare panes are short-lived, single-shot generations whose sessions
         # exist only to drive that one pane — there's nothing to "resume" and

@@ -1618,6 +1618,21 @@ async def _run_extraction_jobs_sequentially(session_id: str, jobs: list, max_wai
             logger.warning("[bg-extract] %s extraction job failed for session %s", name, session_id, exc_info=True)
 
 
+async def count_turn_memories(chat_processor, used_memories) -> None:
+    """`B1653`. Raise the use count of the memories a turn sent, once it is
+    settled which those were — `ChatProcessor.count_memory_uses`, off the event
+    loop (`B1618`), and never a reason for the turn to fail. A processor
+    without the method (a test double) counts nothing, as one without
+    `increment_uses` always did."""
+    count = getattr(chat_processor, "count_memory_uses", None)
+    if count is None or not used_memories:
+        return
+    try:
+        await asyncio.to_thread(count, list(used_memories))
+    except Exception:
+        logger.warning("B1653: counting this turn's memories failed", exc_info=True)
+
+
 async def run_post_response_tasks(
     sess,
     session_manager,
