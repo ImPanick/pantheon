@@ -197,7 +197,17 @@ export function trimNoticeText(event) {
   const before = Number(d.messages_before || 0);
   const after = Number(d.messages_after || 0);
   const detail = before && after && before > after ? ` (${after}/${before} messages sent)` : '';
-  return `Context trimmed for this model${detail}`;
+  // `B1572` (`D-2026-10-29-01` §4: "name the cut"). What the trim left out
+  // that the person relies on, in the server's words (`TRIM_LEFT_OUT`,
+  // `src/context_compactor.py`): *— left out to fit: your saved memory and the
+  // middle of your message*.
+  const left = Array.isArray(d.left_out) ? d.left_out.map(String).filter(Boolean) : [];
+  const cut = left.length
+    ? ' — left out to fit: ' + (left.length > 1
+      ? left.slice(0, -1).join(', ') + ' and ' + left[left.length - 1]
+      : left[0])
+    : '';
+  return `Context trimmed for this model${detail}${cut}`;
 }
 
 /**
@@ -218,6 +228,10 @@ export function trimFromRecord(record) {
     ['tokens_after', 'context_tokens_after_trim']]) {
     const value = Number(record[saved]);
     if (record[saved] != null && Number.isFinite(value)) data[key] = value;
+  }
+  // `B1572`: and what it left out, which the record keeps beside the figures.
+  if (Array.isArray(record.context_trim_left_out) && record.context_trim_left_out.length) {
+    data.left_out = record.context_trim_left_out.slice();
   }
   return { type: 'context_trimmed', data };
 }

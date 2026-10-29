@@ -107,7 +107,11 @@ export const SETTINGS_PANELS = Object.freeze([
     label: 'AI Defaults',
     group: 'models',
     adminOnly: true,
-    keywords: ['ai', 'defaults', 'model', 'vision', 'image', 'tts', 'stt'],
+    // `B1564`: the speech-to-text card's words, for a person who types what
+    // they want rather than the abbreviation.
+    keywords: ['ai', 'defaults', 'model', 'vision', 'image', 'tts', 'stt',
+               'speech', 'speech to text', 'voice', 'dictation', 'transcribe',
+               'transcription', 'whisper', 'microphone'],
   }),
   definePanel({
     id: 'search',

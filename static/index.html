@@ -2434,6 +2434,47 @@
               <div id="set-imgSettingsMsg" style="font-size:11px;color:color-mix(in oklab, var(--fg) 45%, var(--fg-muted));"></div>
             </div>
           </div>
+          <!-- `B1564` (`D-2026-10-29-01` §3, the owner: "Allow for both
+               local + browser. All options available."). The card the fork
+               arrived without: `initSttSettings` in `settings.js` had wired
+               these ids all along and returned on the missing select. One
+               control, the provider: "Off" saves `stt_enabled: false`, so the
+               switch and the list can never disagree. The browser's sentence
+               is on its own option and in the note under the list, where it is
+               chosen — the exception to `Law 16` the owner made with it in
+               front of them. Admin-only with the panel (`registry.js`), as
+               `POST /api/auth/settings` is. -->
+          <div class="admin-card" id="set-sttCard">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>Speech to Text</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">Turns what you say into words in the message box. On, the chat's empty send button becomes a microphone.</div>
+            <div class="settings-col" id="set-sttConfigWrap">
+              <div class="settings-row">
+                <label class="settings-label" for="set-sttProviderSelect">Provider</label>
+                <select id="set-sttProviderSelect" class="settings-select" aria-describedby="set-sttProviderNote">
+                  <option value="disabled">Off</option>
+                  <option value="local">Local Whisper, on this server</option>
+                  <option value="browser">The browser’s own — in Chrome, the audio goes to Google</option>
+                </select>
+              </div>
+              <div id="set-sttProviderNote" class="admin-toggle-sub" role="note"></div>
+              <div id="set-sttModelRow" class="settings-row" style="display:none">
+                <label class="settings-label" for="set-sttModelSelect">Model</label>
+                <select id="set-sttModelSelect" class="settings-select">
+                  <option value="tiny">tiny (fastest)</option>
+                  <option value="base" selected>base</option>
+                  <option value="small">small</option>
+                  <option value="medium">medium</option>
+                  <option value="large-v3">large-v3 (most accurate)</option>
+                </select>
+                <input id="set-sttModelInput" class="settings-select" type="text" placeholder="whisper-1" aria-label="Model the endpoint transcribes with" style="display:none">
+              </div>
+              <div id="set-sttLangRow" class="settings-row" style="display:none">
+                <label class="settings-label" for="set-sttLangInput">Language</label>
+                <input id="set-sttLangInput" class="settings-select" type="text" placeholder="Blank detects it, or e.g. en">
+              </div>
+              <div id="set-sttSettingsMsg" class="admin-toggle-sub" role="status" aria-live="polite"></div>
+            </div>
+          </div>
           <!-- TTS panel hidden — user opted out of read-aloud entirely. Kept
                in DOM so the JS that wires set-ttsProviderSelect etc. doesn't
                throw on missing nodes; not visible to anyone. -->

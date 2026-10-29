@@ -306,19 +306,9 @@ ABSENT_BY_DESIGN = [
             "intg-save-btn", "intg-status", "intg-test-btn", "intg-url",
         ),
     },
-    {
-        "where": "static/js/settings.js",
-        "guard": "if (!provSel) return;",
-        "why": "Speech-to-text was removed from AI Defaults; the comment at "
-               "the guard says so. Text-to-speech, which kept its card, is "
-               "`set-tts*` and resolves.",
-        "ids": (
-            "set-sttConfigWrap", "set-sttEnabledToggle", "set-sttLangInput",
-            "set-sttLangRow", "set-sttModelInput", "set-sttModelRow",
-            "set-sttModelSelect", "set-sttProviderSelect",
-            "set-sttSettingsMsg",
-        ),
-    },
+    # `B1564`. Speech-to-text's nine `set-stt*` ids were declared here, behind
+    # `initSttSettings`' `if (!provSel) return;`; the card is in AI Defaults
+    # now (`D-2026-10-29-01` §3), so there is nothing left to declare.
     {
         "where": "static/js/settings.js",
         "guard": "if (!epSel || !modelSel) return;",

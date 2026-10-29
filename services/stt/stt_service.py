@@ -160,8 +160,18 @@ class STTService:
 
     def unavailable_reason(self) -> Optional[str]:
         """`B1565`. The sentence for why local Whisper is not running, when
-        the download gate is the reason; `None` otherwise."""
-        return self._whisper_refusal
+        the download gate is the reason; `None` otherwise.
+
+        `B1564`: or when faster-whisper is not installed or would not load
+        (`B1579`'s sentence) — the Settings card says it under the choice,
+        and a recording sent to `/api/stt/transcribe` is told it rather than
+        *not available or set to browser mode*. Asked against the settings
+        as they are now, as `unheard_reason` is: a reason left from before
+        the provider changed is about local Whisper and nothing else."""
+        settings = self._load_settings()
+        if settings.get("stt_enabled") is False or settings.get("stt_provider") != "local":
+            return None
+        return self._whisper_refusal or self._whisper_failure
 
     def unheard_reason(self) -> Optional[str]:
         """`B1571`. Why this server turned a recording into no text, when it
@@ -290,7 +300,12 @@ class STTService:
             return None
         provider = settings["stt_provider"]
         model = settings["stt_model"]
-        language = settings.get("stt_language", "")
+        # `B1564`. Settings' one language field reaches the browser's own
+        # recognition too, which takes a BCP 47 tag (`en-GB`); Whisper and an
+        # OpenAI-compatible endpoint take the ISO 639-1 code (`en`) and refuse
+        # the tag, so a language set for the browser would have failed every
+        # recording sent here after the provider changed.
+        language = str(settings.get("stt_language") or "").split("-")[0].strip().lower()
 
         if provider in ("disabled", "browser"):
             return None
@@ -321,8 +336,8 @@ class STTService:
         if provider == "local":
             whisper = self._get_whisper()
             stats["model_loaded"] = whisper is not None
-            if self._whisper_refusal:
-                stats["unavailable_reason"] = self._whisper_refusal
+            if whisper is None and self.unavailable_reason():
+                stats["unavailable_reason"] = self.unavailable_reason()
         elif provider == "browser":
             stats["model"] = "Browser (Web Speech API)"
         elif provider.startswith("endpoint:"):

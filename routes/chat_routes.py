@@ -38,6 +38,8 @@ from src.context_compactor import (
     compaction_metric_figures,
     maybe_compact,
     trim_for_context,
+    trim_left_out,
+    trimmed_frame,
 )
 # `B921`: `P4-13`'s predicate moved to the compactor, so the agent loop's own
 # `compacted` notice asks it too; imported under the name every caller here uses.
@@ -645,6 +647,9 @@ def _chat_candidate_request_factory(
         if not context_length:
             context_length = fallback_context_length
         request_messages = trim_for_context(candidate_messages, context_length)
+        # `B1572`. Read before a recording is put into words below, which
+        # rewrites the person's message as a new object.
+        left_out = trim_left_out(candidate_messages, request_messages)
         # `B1290`. Only the selected model was asked whether it hears; a
         # fallback that says nothing, or no, is sent the turn's words alone —
         # an audio part it does not take would fail the turn it is rescuing.
@@ -676,6 +681,8 @@ def _chat_candidate_request_factory(
         # meant "before compaction and trim" when a fallback route answered and
         # "before trim" when the ordinary path did, on the same metrics key.
         state["trim_stats"][index] = shaping_stats(candidate_messages, request_messages)
+        if left_out:   # `B1572`: only when there is something to say
+            state["trim_stats"][index]["left_out"] = left_out
         state["compaction_stats"][index] = (
             shaping_stats(messages, candidate_messages) if was_compacted else {}
         )
@@ -779,6 +786,16 @@ def _apply_shaping_metrics(metrics, ctx, *, route_trim=None, route_compaction=No
         metrics["context_messages_after_trim"] = trim.get("messages_after")
         metrics["context_tokens_before_trim"] = trim.get("tokens_before")
         metrics["context_tokens_after_trim"] = trim.get("tokens_after")
+        # `B1572`. What it left out that the person relies on, beside what the
+        # agent loop's own trim left out (`context_compactor.trim_metric_figures`,
+        # already on an agent turn's metrics), each said once.
+        left_out = list(metrics.get("context_trim_left_out") or [])
+        for words in (route_trim.get("left_out") if _shaping_shrank(route_trim)
+                      else getattr(ctx, "context_trim_left_out", None)) or []:
+            if words not in left_out:
+                left_out.append(words)
+        if left_out:
+            metrics["context_trim_left_out"] = left_out
     compaction = (
         route_compaction if _shaping_shrank(route_compaction) else _ctx_shaping(ctx, "compact")
     )
@@ -2894,7 +2911,11 @@ def setup_chat_routes(
             # so suppressing the event left the live stream saying less than the
             # reload of the same turn.
             if ctx.context_trimmed:
-                yield f"data: {json.dumps({'type': 'context_trimmed', 'data': {'context_length': ctx.context_length, 'messages_before': ctx.context_messages_before_trim, 'messages_after': ctx.context_messages_after_trim, 'tokens_before': ctx.context_tokens_before_trim, 'tokens_after': ctx.context_tokens_after_trim}})}\n\n"
+                # `B1572`: through the builder the agent loop's trim uses, with
+                # what it left out that the person relies on.
+                yield "data: " + json.dumps(trimmed_frame(
+                    ctx.context_length, _ctx_shaping(ctx, "trim"),
+                    getattr(ctx, "context_trim_left_out", None))) + "\n\n"
 
             full_response = ""
             thinking_response = ""

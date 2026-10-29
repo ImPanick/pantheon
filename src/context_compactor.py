@@ -558,6 +558,110 @@ def compacted_frame(context_length, stats=None) -> Dict[str, Any]:
     return {"type": "compacted", "data": data, "context_length": context_length}
 
 
+# ── `B1572` · what a trim left out, named ───────────────────────────────────
+#
+# `D-2026-10-29-01` §4, the owner: *"Keep 24k, name the cut."* An unproven
+# window keeps the 24,000-character attachment allowance (`D-2026-08-26-06`), and
+# 24,000 characters is ~7,200 tokens against Agent mode's 6,000-token input
+# budget, so `trim_for_context` makes room. Measured through `/api/chat_stream`
+# before this (an Agent-mode turn, a model whose window nothing proves, a saved
+# memory and 24,000 characters of attachments): the request went from five
+# messages to two — the saved memory, the uploads' list and the turn's note
+# dropped, the instructions cut to 2,000 characters and the message itself to
+# 14,478 of its 24,261 — and the person was told nothing; the turn even said
+# which memories it had used. Now the trim's line says what it left out, live
+# and on the saved reply.
+
+#: The context blocks a person relies on, by the `metadata.source` they were
+#: built with (`own_context_message` / `untrusted_context_message`), and the
+#: words the line says for each. Matched as a prefix: the memory blocks are
+#: `saved memory: pinned context` and `saved memory: retrieved context`.
+TRIM_LEFT_OUT = (
+    ("saved memory", "your saved memory"),
+    ("retrieved documents", "the documents retrieved for it"),
+    ("web search results", "the web search results"),
+    ("prefetched search context", "the web search results"),
+)
+
+#: Said when the person's own message (with its attachments) was shortened to
+#: fit — the trim keeps its beginning and end (`PASTED_MESSAGE_CUT_NOTICE`).
+MESSAGE_CUT_WORDS = "the middle of your message"
+
+
+def _the_persons_message(messages: List[Dict]) -> Optional[Dict]:
+    """The last `user` message that is the person's own words: not a context
+    block (`metadata.source`), not one the agent loop injected, and not the
+    turn's application note (the date, `turn_note_message`)."""
+    from src.prompt_security import is_turn_note_content
+
+    for message in reversed(messages or []):
+        if message.get("role") != "user" or message.get("_agent_injected"):
+            continue
+        if (message.get("metadata") or {}).get("source"):
+            continue
+        if is_turn_note_content(message.get("content")):
+            continue
+        return message
+    return None
+
+
+def trim_left_out(before: List[Dict], after: List[Dict]) -> List[str]:
+    """`B1572`. What `trim_for_context` left out of `before` to give `after`
+    that a person relies on, as the words the trim's line says, in order.
+
+    The trim keeps the messages it keeps as the same objects, so a block is
+    left out when it is in `before` and not in `after`. The person's message is
+    the one the trim copies to shorten: said when the copy is shorter."""
+    kept = {id(message) for message in after or []}
+    said: List[str] = []
+    for message in before or []:
+        if id(message) in kept:
+            continue
+        source = str((message.get("metadata") or {}).get("source") or "")
+        for prefix, words in TRIM_LEFT_OUT:
+            if source.startswith(prefix) and words not in said:
+                said.append(words)
+    theirs = _the_persons_message(before)
+    if theirs is not None and id(theirs) not in kept:
+        now = _the_persons_message(after)
+        if now is None or (len(_content_as_text(now.get("content")))
+                           < len(_content_as_text(theirs.get("content")))):
+            said.append(MESSAGE_CUT_WORDS)
+    return said
+
+
+def trimmed_frame(context_length, stats=None, left_out=None) -> Dict[str, Any]:
+    """`B1572`. The `context_trimmed` event, as a dict: `context_length` and
+    `P4-13`'s four figures in `data`, and `left_out` when the trim left out
+    something `trim_left_out` names. One builder for the route's trim and the
+    agent loop's, which said nothing at all; `compacted_frame`'s twin."""
+    stats = stats or {}
+    data = {"context_length": context_length}
+    data.update({key: stats.get(key) for key in SHAPING_FIGURES})
+    if left_out:
+        data["left_out"] = list(left_out)
+    return {"type": "context_trimmed", "data": data}
+
+
+def trim_metric_figures(stats, left_out=None) -> Dict[str, Any]:
+    """`B1572`. A trim on the record a reply is saved from, under the keys the
+    route has always saved its own with (`_apply_shaping_metrics`): the flag,
+    the four figures, and `context_trim_left_out` when something was named.
+    `{}` when the trim shrank nothing."""
+    if not shaping_shrank(stats):
+        return {}
+    figures = {
+        "context_trimmed": True,
+        "context_messages_before_trim": stats.get("messages_before"),
+        "context_messages_after_trim": stats.get("messages_after"),
+        "context_tokens_before_trim": stats.get("tokens_before"),
+        "context_tokens_after_trim": stats.get("tokens_after"),
+    }
+    if left_out:
+        figures["context_trim_left_out"] = list(left_out)
+    return figures
+
+
 def compaction_metric_figures(stats) -> Dict[str, Any]:
     """`P4-13` / `B921`. A compaction's figures under the keys a turn's saved
     metrics carry them (`context_messages_before_compact` …), or `{}` when the
