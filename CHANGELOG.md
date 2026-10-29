@@ -253,6 +253,11 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **A guard in a loop or an `if` is understood, and `scp`, LibreOffice and `heif-convert` are read
+  for the files they write** (`B1688`–`B1690`). File Converter now tests each file it writes and
+  finishes its re-runs without asking; Config Drift's copy back over a live config is refused
+  where its hire says never. File Converter's and Image Optimiser's versions moved.
+
 - **More programs are read for the files they replace or remove** (`B1682`, `B1683`): `pandoc`,
   ImageMagick, `openssl`, the WebP tools, 7-Zip, `yt-dlp`, `rsync`, a recursive `wget`, and
   compressors that delete the file they pack (`gzip` without `-k`, and the like) ask where deletions
@@ -535,6 +540,9 @@ the next one is cut.
   arming that a non-empty memory store did on its own.
 
 ### Fixed
+
+- **The PDF fallback draws ™, ↔, ❤, © and the other symbols Inter has** (`B1687`), instead of
+  leaving blanks.
 
 - **The PDF fallback leaves a clean blank where it cannot draw a character, instead of garbled
   letters, and every fallback PDF is compressed** (`B1685`, `B1686`).

@@ -12,7 +12,7 @@
 // `?v=` — the JS/CSS branch below asks the network first, and the server
 // answers `no-cache` with an ETag — so a `?v=` is a module's identity, never
 // moved on one site (`.pantheon/AGENTS.md` § Operational facts).
-const CACHE_NAME = 'pantheon-v505-thirty-first-wave';
+const CACHE_NAME = 'pantheon-v506-thirty-second-wave';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them
 // gives offline math fallback glyphs instead of proper typesetting.
