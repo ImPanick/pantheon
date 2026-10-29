@@ -614,12 +614,38 @@ function _renderAgent(a) {
 
   page.appendChild(_el('h5', 'agents-h', 'What it may do'));
   page.appendChild(_effectsList(a.effects));
-  page.appendChild(_el('p', 'agents-small', `Tools: ${(a.tools || []).join(', ')}`));
-  if ((a.lacking || []).length) {
-    const lack = _el('div', 'agents-lacking');
-    lack.appendChild(_el('p', '', `Your runs of it will not have ${a.lacking.length === 1 ? 'this tool' : 'these tools'}, so it may not finish every step:`));
+  // `B1663`. A tool a never in its own file takes away (`hires.kit`) is in
+  // none of its runs, anyone's — a file kept before `B1662`, which refuses
+  // one on save. The server names it with that never (`lacking[].never`); it
+  // is left off *Tools:* and said apart from what this person's account
+  // lacks, which other people's runs do have. No shipped agent has one.
+  const taken = (a.lacking || []).filter((x) => x.never);
+  const lacking = (a.lacking || []).filter((x) => !x.never);
+  const kept = (a.tools || []).filter((t) => !taken.some((x) => x.tool === t));
+  page.appendChild(_el('p', 'agents-small', `Tools: ${kept.join(', ') || 'none'}`));
+  if (taken.length) {
+    const box = _el('div', 'agents-lacking agents-taken');
+    box.setAttribute('role', 'note');
+    const one = taken.length === 1;
+    const oneNever = new Set(taken.map((x) => x.never)).size === 1;
+    const which = oneNever ? 'A never in its file takes' : 'Nevers in its file take';
+    box.appendChild(_el('p', '', kept.length
+      ? `${which} ${one ? 'this tool' : 'these tools'} away, so its runs never get ${one ? 'it' : 'them'}:`
+      : `${which} away every tool it lists, so its runs get none and it can only talk:`));
     const ul = _el('ul');
-    a.lacking.forEach((x) => ul.appendChild(_el('li', '', `${x.tool} — ${x.reason}`)));
+    taken.forEach((x) => ul.appendChild(_el('li', '', `${x.tool} — ${x.reason}`)));
+    box.appendChild(ul);
+    if (a.source === 'own') {
+      box.appendChild(_el('p', '', `Edit your file: make ${oneNever ? 'that never' : 'those nevers'} ask, `
+        + `or take ${one ? 'the tool' : 'the tools'} out.`));
+    }
+    page.appendChild(box);
+  }
+  if (lacking.length) {
+    const lack = _el('div', 'agents-lacking');
+    lack.appendChild(_el('p', '', `Your runs of it will not have ${lacking.length === 1 ? 'this tool' : 'these tools'}, so it may not finish every step:`));
+    const ul = _el('ul');
+    lacking.forEach((x) => ul.appendChild(_el('li', '', `${x.tool} — ${x.reason}`)));
     lack.appendChild(ul);
     page.appendChild(lack);
   }

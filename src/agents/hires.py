@@ -127,14 +127,33 @@ def check_inputs(manifest: Manifest, raw: Any) -> Dict[str, Any]:
     return out
 
 
-def lacking_tools(manifest: Manifest, owner: Optional[str]) -> List[Dict[str, str]]:
+def lacking_tools(manifest: Manifest, owner: Optional[str],
+                  grants: Optional[Dict[str, str]] = None) -> List[Dict[str, str]]:
     """The agent's tools this person's runs will not have, each with the
-    sentence the chat would give for it. Empty for an admin."""
+    sentence the chat would give for it. Empty for an admin — unless:
+
+    `B1663`: a `never` the run is held to (`held_effects`: its file's, and a
+    hire's `grants`) takes a tool away (`kit`) — from everyone's runs, an
+    admin's too. A file kept before `B1662` with `tools: [web_fetch]` and
+    `network_egress: never` listed *Tools: web_fetch* on its page above an
+    empty list, while its runs got no tool at all. Such a tool is named with
+    the never that takes it (`never`), so the page says so apart from what
+    this person's account lacks — which other people's runs do have."""
+    from src.tool_capabilities import least_reach
     from src.tool_security import blocked_tool_reason, blocked_tools_for_owner
+    never = {e for e, r in held_effects(manifest, grants).items() if r == "never"}
+    kept = kit(manifest, never)
     blocked = blocked_tools_for_owner(owner)
-    out = [{"tool": t, "reason": blocked_tool_reason(t) or "Your account cannot use it."}
-           for t in manifest.tools if t in blocked]
-    if "computer" in manifest.tools and "computer" not in blocked:
+    out: List[Dict[str, str]] = []
+    for t in manifest.tools:
+        if t not in kept:
+            eff = sorted({e.value for e in least_reach(t)} & never)[0]
+            whose = "its file" if manifest.effects.get(eff) == "never" else "this hire"
+            out.append({"tool": t, "never": eff,
+                        "reason": f"every call of it has “{eff}”, which {whose} says is never"})
+        elif t in blocked:
+            out.append({"tool": t, "reason": blocked_tool_reason(t) or "Your account cannot use it."})
+    if "computer" in kept and "computer" not in blocked:
         # `P20-04`: the one tool whose privilege is its own, `can_use_workstation`.
         from src.workstation_access import may_use
         if not may_use(owner):
@@ -598,7 +617,9 @@ def hire_to_dict(db, hire, manifest: Optional[Manifest]) -> Dict[str, Any]:
         out["section"] = manifest.section
         out["update_to"] = manifest.version if manifest.version != hire.version else None
         out["effects"] = effective_effects(manifest, hire_grants(hire))
-        out["lacking"] = lacking_tools(manifest, hire.owner)
+        # `B1663`: with its grants — a never the hire set that takes a tool
+        # away (`web_fetch` under `network_egress: never`) is one its runs lack.
+        out["lacking"] = lacking_tools(manifest, hire.owner, hire_grants(hire))
     else:
         out["starts_on"] = ""
         out["missing"] = True
