@@ -502,7 +502,8 @@ the next one is cut.
   members' git, shell and own connections were refused until a restart (`B1661`); the Workshop
   tells a drafting model what each tool's calls can do, and saving an agent file that names an
   effect its tools cannot have says so (`B1658`, `B1659`), as does one whose own *never* takes a
-  tool away — which its runs had been handed again (`B1662`).
+  tool away — which its runs had been handed again (`B1662`); and an agent's page says which of
+  its listed tools its runs will not get, and why (`B1663`).
 - **A memory a trimmed reply left out is not counted as used** (`B1653`); a plain task you denied
   says so as its log's last line (`B1654`).
 - **A reply trimmed to fit keeps the agent's instructions whole** and shortens your message
