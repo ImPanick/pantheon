@@ -3403,3 +3403,37 @@ done.* Each is ruled as it was put:
 
 What reopens it: the owner changing any one of these — and for (1), any evidence that a page read
 by a hire has steered it into an action its person did not mean to allow.
+
+---
+
+## D-2026-10-29-02 — six more calls: an overwrite of what was there is destructive, PDF export on jsPDF's own renderer, CJK legacy text left as measured, docx 9.7.1, Mermaid stays on 11, and shipped JavaScript without its comments
+
+*The owner, 2026-10-29, answering four questions put after the twenty-seventh wave was pushed.*
+Each is ruled as it was put:
+
+1. **`B1660` — "Only pre-existing files."** `write_file` onto a path that held a file **before
+   the run began** carries `destructive` as well as `write_workspace`, so a hire's
+   `destructive: ask`/`never` and Auto's one exception cover it as they cover a shell `mv` over a
+   file. A file the same run created and then rewrites is a plain write — an agent iterating on its
+   own draft is not asked each pass. What reopens it: a case where "existed before the run" cannot
+   be known (then it is destructive, the cautious reading).
+2. **`B421` — "Use jsPDF's own html()."** html2pdf.js is replaced by jsPDF 4.2.1's `doc.html()`,
+   shipped as three published files — `jspdf` 4.2.1, `html2canvas` 1.4.1 and `DOMPurify` 3.4.17 —
+   each byte-identical to its registry tarball and independently bumpable. html2pdf's page-break
+   and link plugins go; what Pantheon used of them is rebuilt and measured.
+3. **`B1610`, `B1615` — "Accept the trade."** In legacy (non-UTF-8) encodings a short Korean line
+   with Hanja and a short spaced Chinese line can each decode cleanly as the other; every rule
+   measured fixed one side by breaking the other (`B1610`: ±36 cuts; `B1615`: 392 → 870 wrong). The
+   detector stays as it is (50 of 3,017 sweep cuts wrong, none of them UTF-8), and the limit is
+   written where the decoder is. No frequency-data dependency is added.
+4. **`B424` — take `docx` 9.7.1** with every package its build reveals declared (licence text,
+   `CREDITS.md` row, `INVENTORY` entry), so `check-licences.py` rule 7 holds.
+5. **`B423` — Mermaid stays on 11.x.** 12.0 changes how every existing diagram looks (ELK and
+   `neo` by default), raises the browser floor to Safari 17.4 / ES2024 and adds 2 MB. What reopens
+   it: a browser-driven check that renders diagrams and compares them, or an advisory against 11.x.
+6. **`B1591` — strip comments from shipped JavaScript at build time** with a real parser (acorn's
+   tokenizer, so a regular expression is never read as a comment or a division as a regular
+   expression). The repository's source keeps every comment (`Law 1`); the image serves the
+   stripped copy. The module count stands under `D-2026-09-14-01`.
+
+Not ruled, and so left open as filed: `B625` (the bombadil spec).
