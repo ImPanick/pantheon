@@ -5190,10 +5190,15 @@ class TaskScheduler:
                                   f"{waiting.get('tool_label') or waiting.get('tool') or 'an action'}",
                                   kind=wr.WAITING_APPROVAL)
             if verdict.decision != ANSWER_ALLOW:
-                if answer is None:
-                    # The sweeper's verdict (a lapse, a restart, a withdrawn
-                    # card); a person's answer is already in the log as "Resumed: …".
-                    self._record_run_step(run_id, kind="progress", detail=verdict.sentence)
+                # The run's last line says how it ended — the sweeper's verdict
+                # (a lapse, a restart, a withdrawn card) or a person's no.
+                # `B1654`: it was written for the sweeper's alone, on the word
+                # that a person's answer was already in the log as "Resumed: …";
+                # `B1110` says that only for an Allow, so a plain task denied
+                # from its card ended its log at a bare *Resumed* while its
+                # result said it was denied. This is the step's end line
+                # `B1110` leaves a denial to, written once.
+                self._record_run_step(run_id, kind="progress", detail=verdict.sentence)
                 wr.record_node_end(db, rec, status="error", text=verdict.sentence,
                                    error=verdict.sentence, steps=self.run_steps(run_id),
                                    model=rec.model, owner=task.owner)
