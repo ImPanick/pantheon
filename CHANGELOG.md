@@ -253,6 +253,10 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **A write through a link the command itself made, and a converter's numbered copies, are read
+  where they land** (`B1692`, `B1693`): over a file that was there before the run they ask where
+  deletions ask.
+
 - **A guard in a loop or an `if` is understood, and `scp`, LibreOffice and `heif-convert` are read
   for the files they write** (`B1688`–`B1690`). File Converter now tests each file it writes and
   finishes its re-runs without asking; Config Drift's copy back over a live config is refused
@@ -540,6 +544,9 @@ the next one is cut.
   arming that a non-empty memory store did on its own.
 
 ### Fixed
+
+- **The PDF fallback draws box-drawing, block, maths and dingbat characters**, so a pasted `tree`
+  listing comes out (`B1691`).
 
 - **The PDF fallback draws ™, ↔, ❤, © and the other symbols Inter has** (`B1687`), instead of
   leaving blanks.
