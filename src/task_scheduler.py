@@ -2141,13 +2141,27 @@ class TaskScheduler:
         note["dropped"] = int(note.get("dropped") or 0) + 1
         note["detail"] = capped_step_words(self._MAX_RUN_STEPS, note["dropped"])
 
-    def _close_run_step(self, run_id, *, tool, round_, status, output):
+    def _close_run_step(self, run_id, *, tool, round_, status, output, asked=False):
         """Finish the most recent open step for this tool and round.
 
         A `tool_output` with no matching `tool_start` still records: the point
         of the log is what happened, and a tool whose start event was missed is
         exactly the case somebody opens it to understand.
+
+        `B1648`. Except an approval card's (`asked`): that output is the
+        question, not the call — the gate stopped it before its `tool_start`,
+        and its "Waiting for an exact user approval." came back `ok`, with no
+        arguments. Recorded, it was a step of its own, and the run then
+        logged the same call twice once a person allowed it: the replay's
+        `tool_start` is the call's real step. Bucketed by the tool's whole
+        reach, the question turned a read into a write — Bookmark Librarian's
+        allowed note `view` reported *Wrote with: manage_notes* — and counted
+        as a draft, so Outbound Writer's one allowed draft was two. Where the
+        run parks, its "Waiting for your yes on …" line says the call asked;
+        where it cannot, `_run_agent_loop` records the call as not run.
         """
+        if asked:
+            return
         state = self._runs().get(run_id)
         for step in reversed(state["steps"] if state else []):
             if (step.get("kind") == "tool" and step.get("status") == "running"
@@ -5975,20 +5989,20 @@ class TaskScheduler:
                         _status = data.get("status")
                         if _status not in ("ok", "error"):
                             _status = "error" if data.get("exit_code") else "ok"
+                        approval = data.get("ask_user")
+                        _asked = (isinstance(approval, dict)
+                                  and approval.get("kind") == "tool_approval")
                         self._close_run_step(
                             run_id,
                             tool=data.get("tool") or "?",
                             round_=data.get("round"),
                             status=_status,
                             output=tool_summary if isinstance(tool_summary, str) else "",
+                            asked=_asked,   # `B1648`
                         )
                         if isinstance(tool_summary, str) and tool_summary.strip():
                             tool_results.append(f"[{data.get('tool', '?')}] {tool_summary[:500]}")
-                        approval = data.get("ask_user")
-                        if (
-                            isinstance(approval, dict)
-                            and approval.get("kind") == "tool_approval"
-                        ):
+                        if _asked:
                             approval_pause = {
                                 "tool": data.get("tool") or "tool",
                                 "approval_id": approval.get("approval_id"),
@@ -6042,6 +6056,21 @@ class TaskScheduler:
                                     "Could not retire scheduled-task approval",
                                     exc_info=True,
                                 )
+                            # `B1648`. Retired as a denial, so the call never
+                            # ran: its step says so, with its arguments, as a
+                            # refused call's does — it was an `ok` step with
+                            # the card's "Waiting for…" as its output.
+                            self._record_run_step(
+                                run_id,
+                                kind="tool",
+                                tool=data.get("tool") or "?",
+                                round=data.get("round"),
+                                detail=data.get("command") or "",
+                                status="blocked",
+                                output=approval_pause["reason"] or (
+                                    "It needs a person to approve it, and this run "
+                                    "cannot wait for one."),
+                            )
                             break
                 except (json.JSONDecodeError, KeyError):
                     pass
