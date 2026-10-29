@@ -10397,6 +10397,17 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
    * Driven in
    * `tests/test_the_fallback_pdf_never_cuts_a_line_and_draws_formulas_in_a_browser.py`.
    *
+   * `B1678`: a picture is part of its line too. Only text was looked at, so
+   * an `<img>` alone in its paragraph, or one taller than the words beside
+   * it, was drawn in two clipped halves across an edge — measured in
+   * Chromium: two of fourteen pictures alone in a paragraph and two of ten
+   * inline ones. A picture (`_PDF_ATOMIC_TAGS`) is now "across an edge" when
+   * its own box is, and moves with its line the way a line of text does. One
+   * taller than a page cannot be drawn whole; it is moved only when that
+   * makes it cross fewer edges — to the top of a page — so a picture under
+   * two pages tall is cut once, not twice (it was drawn on three pages).
+   * Driven in `tests/test_the_fallback_pdf_never_cuts_a_picture_in_a_browser.py`.
+   *
    * Returns how many lines it moved.
    */
   function _keepLinesOffPageEdges(root, pagePx) {
@@ -10421,13 +10432,28 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
   const _PDF_ATOMIC_TAGS = new Set(['img', 'svg', 'canvas', 'video', 'iframe', 'input', 'select',
     'textarea', 'object', 'embed']);
 
-  /** `B1676`. The first text run (DOM order) that the edge `edge`, in CSS px
-   *  from `root`'s top, would cut: `{ node, rect, top }`, `top` being where
-   *  jsPDF's box for it starts. */
+  /** `B1676`. The first text run or picture (DOM order) that the edge
+   *  `edge`, in CSS px from `root`'s top, would cut: `{ node, rect, top }`,
+   *  `top` being where jsPDF's box for it starts. */
   function _lineAcrossEdge(root, edge, pagePx, win, range, stuck) {
     const top0 = root.getBoundingClientRect().top;
-    const walker = root.ownerDocument.createTreeWalker(root, win.NodeFilter.SHOW_TEXT);
+    const walker = root.ownerDocument.createTreeWalker(root,
+      win.NodeFilter.SHOW_TEXT | win.NodeFilter.SHOW_ELEMENT);
+    let picture = null;
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      // `B1678`. A picture is one box; what is inside it (an SVG's own
+      // text) is drawn with it.
+      if (picture && picture.contains(node)) continue;
+      picture = null;
+      if (node.nodeType === 1) {
+        if (!_PDF_ATOMIC_TAGS.has(node.localName)) continue;
+        picture = node;
+        if (stuck.has(node)) continue;
+        const cut = _pictureAcrossEdge(node, edge, pagePx, top0);
+        if (cut === 'stuck') stuck.add(node);
+        else if (cut) return cut;
+        continue;
+      }
       if (stuck.has(node) || !/\S/.test(node.data) || !node.parentElement) continue;
       range.selectNodeContents(node);
       for (const r of range.getClientRects()) {
@@ -10445,6 +10471,22 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
       }
     }
     return null;
+  }
+
+  /** `B1678`. Whether the edge `edge` cuts the picture `el`: its cut, as
+   *  `_lineAcrossEdge` returns one; `'stuck'` when no move can make it cross
+   *  fewer edges (taller than a page and already crossing as few as it can,
+   *  or already opening its page); or `null`. */
+  function _pictureAcrossEdge(el, edge, pagePx, top0) {
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) return null;
+    const top = r.top - top0;
+    const bottom = r.bottom - top0;
+    if (top >= edge - 0.5 || bottom <= edge + 0.5) return null;
+    const fewest = Math.ceil((bottom - top) / pagePx - 0.001) - 1;
+    const crossed = Math.ceil((bottom - 0.5) / pagePx) - Math.floor((top + 0.5) / pagePx) - 1;
+    if (crossed <= fewest || top <= edge - pagePx + 1) return 'stuck';
+    return { node: el, rect: r, top };
   }
 
   /** `B1676`. The box of the character at `i` in text node `node`. */
@@ -10477,14 +10519,22 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
     const inlineLevel = (d) => d.startsWith('inline') || d === 'contents';
     // The block the line is in, and the inline-block the run sits inside, if
     // it does (KaTeX's `.base`): that box is what is on the line.
+    // `B1678`: a picture's cut names the picture itself.
     const chain = [];
-    for (let el = cut.node.parentElement; el && el !== root; el = el.parentElement) chain.unshift(el);
+    const from = cut.node.nodeType === 1 ? cut.node : cut.node.parentElement;
+    for (let el = from; el && el !== root; el = el.parentElement) chain.unshift(el);
     let block = root;
     let atom = null;
     for (const el of chain) {
       const d = display(el);
       if (d.startsWith('inline-') || _PDF_ATOMIC_TAGS.has(el.localName)) { atom = el; break; }
       if (!inlineLevel(d)) block = el;
+    }
+    // `B1678`. A picture laid out as a block is a line of its own, and the
+    // block it opens is itself.
+    if (atom && !inlineLevel(display(atom))) {
+      const atomTop = () => atom.getBoundingClientRect().top;
+      return _pdfMoveBlockDown(root, atom, atomTop() + shift, atomTop, win);
     }
     // The block's line content in order: text, boxes, and what ends a line.
     const items = [];
@@ -10570,30 +10620,8 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
     };
     const want = topOf() + shift;
     // The line opens its block: move the block, and the blocks it opens.
-    if (opensBlock && block !== root && !display(block).startsWith('table')) {
-      let mover = block;
-      const firstInFlow = (parent) => {
-        for (let c = parent.firstChild; c; c = c.nextSibling) {
-          if (c.nodeType === 3 && /\S/.test(c.data)) return c;
-          if (c.nodeType !== 1) continue;
-          const cs = win.getComputedStyle(c);
-          if (cs.display !== 'none' && cs.position !== 'absolute' && cs.position !== 'fixed') return c;
-        }
-        return null;
-      };
-      while (mover.parentElement && mover.parentElement !== root
-        && ['block', 'list-item', 'flow-root'].includes(display(mover.parentElement))
-        && firstInFlow(mover.parentElement) === mover) mover = mover.parentElement;
-      const margin = parseFloat(win.getComputedStyle(mover).marginTop) || 0;
-      let add = shift;
-      for (let i = 0; i < 4; i++) {
-        mover.style.marginTop = `${margin + add}px`;
-        const short = want - topOf();
-        if (short <= 0.25) return true;
-        add += short;
-      }
-      mover.style.marginTop = `${margin}px`;
-    }
+    if (opensBlock && block !== root && !display(block).startsWith('table')
+      && _pdfMoveBlockDown(root, block, want, topOf, win)) return true;
     // A later line: a spacer on the line's baseline as tall as the line's
     // ascent plus the move, kept on the line by `nowrap` with its first word.
     let spacer = anchor.parentNode && anchor.parentNode.hasAttribute
@@ -10619,6 +10647,36 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
       height += short;
     }
     return want - topOf() <= 0.25;
+  }
+
+  /** `B1676`. Move `block` — and the blocks it is the first thing in — down
+   *  by its top margin until `topOf()` reads `want`. False, with the margin
+   *  put back, when four tries do not get it there. */
+  function _pdfMoveBlockDown(root, block, want, topOf, win) {
+    const display = (el) => win.getComputedStyle(el).display;
+    let mover = block;
+    const firstInFlow = (parent) => {
+      for (let c = parent.firstChild; c; c = c.nextSibling) {
+        if (c.nodeType === 3 && /\S/.test(c.data)) return c;
+        if (c.nodeType !== 1) continue;
+        const cs = win.getComputedStyle(c);
+        if (cs.display !== 'none' && cs.position !== 'absolute' && cs.position !== 'fixed') return c;
+      }
+      return null;
+    };
+    while (mover.parentElement && mover.parentElement !== root
+      && ['block', 'list-item', 'flow-root'].includes(display(mover.parentElement))
+      && firstInFlow(mover.parentElement) === mover) mover = mover.parentElement;
+    const margin = parseFloat(win.getComputedStyle(mover).marginTop) || 0;
+    let add = want - topOf();
+    for (let i = 0; i < 4; i++) {
+      mover.style.marginTop = `${margin + add}px`;
+      const short = want - topOf();
+      if (short <= 0.25) return true;
+      add += short;
+    }
+    mover.style.marginTop = `${margin}px`;
+    return false;
   }
 
   async function exportAsDocx() {
