@@ -24,6 +24,7 @@ import { chevronIcon, playIcon } from './icons.js';
 
 import { scrollBehavior } from './motion.js';
 import { printHtmlInFrame } from './printFrame.js';   // `B1333`
+import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
   let API_BASE = '';
   let isOpen = false;
   let _hlDebounce = null;
@@ -10096,6 +10097,8 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
       // prose is `markdown.js`'s icon, a `span.emoji` with no text that the
       // clone's plain styles draw as nothing, so its own character is read
       // from its label: it is named with the rest rather than lost unsaid.
+      // `B1687`: and a font that draws it is fetched for it, and draws it —
+      // the clone gives such an icon back its character (`_pdfFontRuns`).
       const text = (container.textContent || '') + [...container.querySelectorAll('.emoji[aria-label]')]
         .map((el) => el.getAttribute('aria-label')).join('');
       const needs = _pdfFontsNeeded(text);
@@ -10161,11 +10164,19 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
       return null;   // no table to check against: say nothing rather than guess
     }
   })();
+  // What nobody can be told about, so what is never named nor fetched for:
+  // whitespace and the control and invisible format characters. `B1687`: and
+  // the variation selectors, which only choose how the character before them
+  // is drawn. `❤️` as an emoji keyboard types it carries U+FE0F, which no face
+  // draws; with the heart drawn in Inter, the sentence named the selector on
+  // its own — and before that the selector alone (`Script=Inherited`) was
+  // what fetched Inter.
+  const _PDF_UNSEEN = /[\s\p{Cc}\p{Cf}\p{Variation_Selector}]/u;
   function _undrawableInPdf(text, fonts = {}) {
     if (!_PDF_DRAWABLE) return [];
     const out = new Set();
     for (const ch of text) {
-      if (/[\s\p{Cc}\p{Cf}]/u.test(ch) || _PDF_DRAWABLE.has(ch)) continue;
+      if (_PDF_UNSEEN.test(ch) || _PDF_DRAWABLE.has(ch)) continue;
       if (Object.values(fonts).some((font) => font.draws(ch))) continue;
       out.add(ch);
     }
@@ -10206,22 +10217,57 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
   // ideographs, Hangul syllables, compatibility ideographs, the CJK
   // compatibility forms, and halfwidth and fullwidth forms.
   const _PDF_CJK = /[\u1100-\u11ff\u2e80-\u2fdf\u3000-\u33ff\u3400-\u4dbf\u4e00-\u9fff\ua960-\ua97f\uac00-\ud7ff\uf900-\ufaff\ufe30-\ufe4f\uff00-\uffef]/u;
-  const _PDF_FOR_INTER = /[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}\p{Script=Common}\p{Script=Inherited}]/u;
 
   /** `B1674`. Which of `PDF_FONTS` the text needs, decided before any is
    *  fetched ("loaded only when a document needs it"): Inter for a
-   *  character the built-in fonts cannot draw that is Latin, Greek, Cyrillic
-   *  or common punctuation and symbols — not an emoji, which neither font
-   *  draws — and the CJK face for a Chinese, Japanese or Korean one. */
+   *  character the built-in fonts cannot draw that Inter does, and the CJK
+   *  face for a Chinese, Japanese or Korean one.
+   *
+   *  `B1687`. Inter was decided by script — Latin, Greek, Cyrillic, common
+   *  punctuation and symbols — less every `\p{Extended_Pictographic}`
+   *  character, as an emoji neither face draws. That property covers ™, ↔,
+   *  ▶, ❤, ‼ and seventeen more that Inter draws, so a Latin document's
+   *  `Brand™` fetched nothing and its `™` was left out (measured in
+   *  Chromium); and Inter was fetched for 3,342 characters it lacks, `─` and
+   *  U+FE0F among them. Now it is the font's own answer (`_pdfFaceDraws`). */
   function _pdfFontsNeeded(text) {
     const needs = { sans: false, cjk: false };
     if (!_PDF_DRAWABLE) return needs;
     for (const ch of text) {
-      if (/[\s\p{Cc}\p{Cf}]/u.test(ch) || _PDF_DRAWABLE.has(ch)) continue;
+      if (_PDF_UNSEEN.test(ch) || _PDF_DRAWABLE.has(ch)) continue;
       if (_PDF_CJK.test(ch)) needs.cjk = true;
-      else if (_PDF_FOR_INTER.test(ch) && !/\p{Extended_Pictographic}/u.test(ch)) needs.sans = true;
+      else if (_pdfFaceDraws(PDF_FONTS.sans.faces.normal, ch)) needs.sans = true;
     }
     return needs;
+  }
+
+  /** `B1687`. Whether the face in `file` draws `ch`, asked before it is
+   *  fetched: `pdfFontCoverage.js`, the table
+   *  `scripts/build-pdf-font-coverage.mjs` reads out of the vendored file
+   *  with the vendored jsPDF — the answer `draws` gets from the loaded face
+   *  (`_pdfRegisterFonts`), written down ahead of time rather than a list of
+   *  code points kept here (`Law 7`). A face with no table draws nothing by
+   *  this measure. Read once, the first time it is asked.
+   *
+   *  A private-use code point (`_PDF_PRIVATE`) is drawn by no face, here or
+   *  once loaded: it means what the font its author used says it means — a
+   *  Powerline arrow pasted from a terminal, an icon font's glyph — and
+   *  Inter's 745 glyphs there are its own. The table records them, because
+   *  it records the font; asking it, they are not the author's character,
+   *  and a Latin document holding one fetched no face before this row and
+   *  fetches none now. */
+  const _PDF_PRIVATE = /\p{Co}/u;
+  const _pdfFaceTables = new Map();
+  function _pdfFaceDraws(file, ch) {
+    if (!_pdfFaceTables.has(file)) {
+      const table = new Set();
+      for (const range of PDF_FONT_COVERAGE[file] || []) {
+        const [first, last = first] = range.split('-').map((hex) => parseInt(hex, 16));
+        for (let cp = first; cp <= last; cp++) table.add(cp);
+      }
+      _pdfFaceTables.set(file, table);
+    }
+    return ch.length === 1 && !_PDF_PRIVATE.test(ch) && _pdfFaceTables.get(file).has(ch.charCodeAt(0));
   }
 
   /** `B1674`. A face's bytes as the binary string jsPDF's virtual file
@@ -10253,7 +10299,8 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
    *  Resolves to `{ fonts, trouble }`: `fonts[key]` is `{ family, faces,
    *  draws(ch) }` for each face set that loaded — `draws` asks the font
    *  itself whether it has the character (jsPDF writes one UTF-16 unit per
-   *  glyph, so nothing past U+FFFF) — and `trouble` is one sentence per set
+   *  glyph, so nothing past U+FFFF; `B1687`: and no private-use code point,
+   *  `_PDF_PRIVATE`) — and `trouble` is one sentence per set
    *  that did not, so the export still makes a file with the built-in fonts
    *  and says why those characters came out wrong. */
   async function _pdfRegisterFonts(pdf, needs) {
@@ -10271,7 +10318,7 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
         });
         const cmap = pdf.getFont(family, 'normal').metadata;
         fonts[key] = { family, faces,
-          draws: (ch) => ch.length === 1 && cmap.characterToGlyph(ch.charCodeAt(0)) !== 0 };
+          draws: (ch) => ch.length === 1 && !_PDF_PRIVATE.test(ch) && cmap.characterToGlyph(ch.charCodeAt(0)) !== 0 };
       } catch (e) {
         trouble.push((e && e.message) ? e.message : String(e));
       }
@@ -10333,10 +10380,31 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
    *  `_undrawableInPdf` names the visible ones in the export's sentence.
    *  Runs for every fallback PDF, a Latin-only one too (`fonts` empty: every
    *  run is a built-in font's, and only what Windows-1252 lacks is hidden).
+   *
+   *  `B1687`. First, an emoji icon whose character a font of the file draws
+   *  is that character again. `markdown.js` draws every
+   *  `\p{Extended_Pictographic}` character in prose as a monochrome icon, a
+   *  `span.emoji` with no text, which the clone's plain styles draw as
+   *  nothing — and that property holds `©` and `®`, which the built-in fonts
+   *  draw, and ™, ↔, ▶, ❤ and ‼, which Inter does. Measured in Chromium
+   *  before this: `Copyright ©` in prose came out as `Copyright` in every
+   *  fallback PDF, said to nobody, and `I ❤️ it` as `I it` with Inter
+   *  embedded.
+   *  The label is put back whole and laid out like any other text, so a
+   *  character of it no font draws — the selector in `❤️`, the flame in
+   *  `❤️‍🔥` — is hidden below like any other; an icon none of whose
+   *  characters is drawn stays the blank it was, and is named
+   *  (`_rasterisePdf` reads the labels).
    *  Returns how many stretches it wrapped. */
   function _pdfFontRuns(root, fonts, win) {
     if (!_PDF_DRAWABLE) return 0;   // no table to check against: change nothing
     const doc = root.ownerDocument;
+    root.querySelectorAll('.emoji[aria-label]').forEach((icon) => {
+      const label = icon.getAttribute('aria-label') || '';
+      if ([...label].some((ch) => !_PDF_UNSEEN.test(ch) && _pdfFontFor(ch, 'std', fonts) !== null)) {
+        icon.replaceWith(doc.createTextNode(label));
+      }
+    });
     const walker = doc.createTreeWalker(root, win.NodeFilter.SHOW_TEXT);
     const nodes = [];
     for (let n = walker.nextNode(); n; n = walker.nextNode()) if (n.parentElement && /\S/.test(n.data)) nodes.push(n);
