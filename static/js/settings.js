@@ -1333,10 +1333,6 @@ async function initSttSettings() {
     if (settings.stt_language) langInput.value = settings.stt_language;
   } catch (e) { console.warn('Failed to load STT settings', e); }
 
-  updateVisibility();
-  await Promise.all([saved.provider === 'local' ? readServer() : null, readDownloadSwitch()]);
-  describe();
-
   async function saveSTT() {
     var prov = provSel.value;
     try {
@@ -1363,6 +1359,12 @@ async function initSttSettings() {
   modelInput.addEventListener('change', saveSTT);
   langInput.addEventListener('change', saveSTT);
   _registerAiEndpointRefresh(function(endpoints) { fillEndpoints(endpoints); describe(); });
+
+  // Drawn and listening before the two slower reads below: a choice made
+  // while the switch's state is still being asked for is saved, not lost.
+  updateVisibility();
+  await Promise.all([saved.provider === 'local' ? readServer() : null, readDownloadSwitch()]);
+  describe();
 }
 
 /* ═══════════════════════════════════════════

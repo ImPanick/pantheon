@@ -36,6 +36,8 @@ import pytest
 
 from test_the_command_palette_in_a_browser import NODE, _SKIP, app_url  # noqa: F401,E402
 
+pytestmark = pytest.mark.skipif(NODE is None, reason=_SKIP or "")
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts" / "showcase"))
 
@@ -109,6 +111,19 @@ const HEARD = %(heard)s;
     await page.click('#settings-modal .settings-nav-item[data-settings-tab="ai"]');
     await page.waitForSelector('[data-settings-panel="ai"]:not(.hidden) #set-sttProviderSelect', { state: 'visible' });
     await page.waitForFunction(() => (document.getElementById('set-sttProviderNote') || {}).textContent);
+    // Every word the card's message says, kept: "Saved" clears itself after
+    // two seconds, which a loaded machine can spend between two polls.
+    await page.evaluate(() => {
+      window.__sttSaid = [];
+      const msg = document.getElementById('set-sttSettingsMsg');
+      new MutationObserver(() => { if (msg.textContent) window.__sttSaid.push(msg.textContent); })
+        .observe(msg, { childList: true, characterData: true, subtree: true });
+    });
+  };
+  const saved = async (page) => {
+    await page.waitForFunction(() => window.__sttSaid.length > 0);
+    const said = await page.evaluate(() => window.__sttSaid.splice(0));
+    if (!said.includes('Saved')) out.errors.push('the card said ' + JSON.stringify(said));
   };
   const card = (page) => page.evaluate(() => {
     const sel = document.getElementById('set-sttProviderSelect');
@@ -135,7 +150,7 @@ const HEARD = %(heard)s;
   out.fresh = await card(page);
   for (const choice of ['local', 'browser', 'endpoint:' + out.endpoint, 'disabled']) {
     await page.selectOption('#set-sttProviderSelect', choice);
-    await page.waitForFunction(() => document.getElementById('set-sttSettingsMsg').textContent === 'Saved');
+    await saved(page);
     if (choice === 'local') {
       await page.waitForFunction(() => /not installed|not downloaded/.test(
         document.getElementById('set-sttProviderNote').textContent));
@@ -153,7 +168,7 @@ const HEARD = %(heard)s;
   }
   // The language, which the browser's recognition is given too.
   await page.selectOption('#set-sttProviderSelect', 'browser');
-  await page.waitForFunction(() => document.getElementById('set-sttSettingsMsg').textContent === 'Saved');
+  await saved(page);
   await page.fill('#set-sttLangInput', 'en-GB');
   await page.press('#set-sttLangInput', 'Tab');
   await page.waitForFunction(async () => {
@@ -173,11 +188,11 @@ const HEARD = %(heard)s;
   // ── The microphone in the chat ──
   const record = async (context, name) => {
     const page = await pageIn(context);
-    const said = [];
-    await page.exposeFunction('__said', (s) => said.push(s));
+    // Every toast, kept in the page: each is read by the step that waits on it.
     await page.evaluate(() => {
+      window.__said = [];
       const toast = document.getElementById('toast');
-      new MutationObserver(() => { if (toast.textContent) window.__said(toast.textContent); })
+      new MutationObserver(() => { if (toast.textContent) window.__said.push(toast.textContent); })
         .observe(toast, { childList: true, subtree: true, characterData: true });
     });
     await page.waitForFunction(() => {
@@ -185,19 +200,25 @@ const HEARD = %(heard)s;
       return b && b.dataset.mode === 'mic';
     });
     await page.click('.send-btn');
-    await page.waitForFunction(() => document.querySelector('.send-btn').dataset.mode === 'recording');
+    // Recording, or the sentence that says why not — never a wait on a state
+    // a refused microphone leaves within one frame.
+    await page.waitForFunction(() => window.__said.some((s) =>
+      /^(Recording|This browser has no speech|Microphone|No microphone)/.test(s)));
     await page.waitForTimeout(1200);
-    await page.click('.send-btn');
+    if (await page.evaluate(() => document.querySelector('.send-btn').dataset.mode === 'recording')) {
+      await page.click('.send-btn');
+    }
     await page.waitForFunction(() => document.querySelector('.send-btn').dataset.mode !== 'recording');
     await page.waitForFunction(() => document.getElementById('message').value
-      || (window.fileHandlerModule && window.fileHandlerModule.getPendingCount() > 0));
+      || (window.fileHandlerModule && window.fileHandlerModule.getPendingCount() > 0)
+      || window.__said.some((s) => /^Microphone|^No microphone/.test(s)));
     await page.waitForTimeout(300);
     out.mic[name] = await page.evaluate(() => ({
       message: document.getElementById('message').value,
       attached: window.fileHandlerModule.getPendingCount(),
       lang: window.__fakeLang === undefined ? null : window.__fakeLang,
+      said: window.__said.slice(),
     }));
-    out.mic[name].said = said;
     await page.close();
   };
   // Chrome's order: the last final result after `stop()`, then `end`.
@@ -352,3 +373,6 @@ def test_an_endpoint_transcribes_through_the_server(drive):
     mic = drive["mic"]["endpoint"]
     assert mic["message"] == SPOKEN_TO_THE_ENDPOINT, mic
     assert drive["transcribed"], "the endpoint's /audio/transcriptions was asked"
+    # The language was set as the browser takes it (`en-GB`); an endpoint, as
+    # Whisper, takes the ISO 639-1 code and refuses the tag.
+    assert [t["language"] for t in drive["transcribed"]] == ["en"]

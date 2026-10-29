@@ -471,10 +471,14 @@ class _Handler(BaseHTTPRequestHandler):
             # fx5-vision: an OpenAI-compatible speech-to-text answer, when the
             # test gave the model one to say (`transcript`); it records that it
             # was asked, as the chat requests are recorded.
-            self.rfile.read(n)
+            raw = self.rfile.read(n)
             if self.log is not None:
+                # `B1564`: and the language it was asked in, the form's one
+                # field a test reads.
+                said = re.search(rb'name="language"\r\n\r\n([^\r]*)\r\n', raw)
                 self.log.append({"stream": False, "transcription": True, "conv": None, "messages": [],
-                                 "images": [], "roles": []})
+                                 "images": [], "roles": [],
+                                 "language": said.group(1).decode() if said else None})
             if self.transcript is None:
                 return self._json(404, {"error": {"message": "not found"}})
             return self._json(200, {"text": self.transcript})

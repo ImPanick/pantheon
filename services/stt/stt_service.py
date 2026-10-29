@@ -300,7 +300,12 @@ class STTService:
             return None
         provider = settings["stt_provider"]
         model = settings["stt_model"]
-        language = settings.get("stt_language", "")
+        # `B1564`. Settings' one language field reaches the browser's own
+        # recognition too, which takes a BCP 47 tag (`en-GB`); Whisper and an
+        # OpenAI-compatible endpoint take the ISO 639-1 code (`en`) and refuse
+        # the tag, so a language set for the browser would have failed every
+        # recording sent here after the provider changed.
+        language = str(settings.get("stt_language") or "").split("-")[0].strip().lower()
 
         if provider in ("disabled", "browser"):
             return None
