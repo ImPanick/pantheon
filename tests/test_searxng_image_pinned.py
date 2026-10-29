@@ -216,3 +216,143 @@ def test_chromas_volume_is_mounted_where_the_pinned_server_writes():
             f"{path.name}: chromadb/chroma:{tag} keeps its index in {writes}, and the "
             f"service mounts {_mounts(spec)} — the index is in the container's own layer and "
             f"a recreate loses it (`B1626`). Mount the `chromadb-data` volume at {writes}.")
+
+
+# ── `B1667`: the same rule for the images the Dockerfiles build `FROM` ──
+#
+# All three `FROM`s in `Dockerfile` read `python:3.14-slim` — a minor line, not
+# a release — so a rebuild could swap the interpreter under the product with no
+# change in the tree and no record of which one was working: the class `B445`
+# closed for the compose files, one file over. One rule (`Law 14`): a `FROM` is
+# judged by the `_split_image` and `_RELEASE_TAG` above, exactly as an `image:`
+# is, and a digest passes because a content address does not move.
+#
+# Every Dockerfile in the tree is read, not just the app's, so a new one is held
+# to the rule the day it lands (`Law 13`). The workstation's two are the
+# exception, written down with why, keyed by the reference so moving either one
+# makes the entry stale and this test says so.
+
+import subprocess  # noqa: E402
+
+MOVING_BASE_ON_PURPOSE = {
+    # (file, reference): why it is not held to a release yet
+    ("workstation/Dockerfile", "ubuntu:24.04"): (
+        "Ubuntu publishes no three-part release tag (its dated `noble-YYYYMMDD` "
+        "tags do not fit `_RELEASE_TAG`), so this wants a digest, and the "
+        "workstation's own build tests are where that is driven; found while "
+        "doing B1667 and filed as its own row"),
+    ("workstation/vm.Dockerfile", "ubuntu:24.04"): (
+        "the VM image's build stage, on the workstation's base for the same "
+        "reason; filed with the row above"),
+}
+
+
+def _dockerfiles() -> list[str]:
+    """Every tracked Dockerfile, as `git ls-files` names it, falling back to
+    the tree when this is not a checkout (an sdist, a copied directory)."""
+    try:
+        out = subprocess.run(["git", "ls-files"], cwd=_ROOT, capture_output=True,
+                             text=True, check=True, timeout=60).stdout.splitlines()
+    except (OSError, subprocess.SubprocessError):
+        out = [str(p.relative_to(_ROOT)) for p in _ROOT.rglob("*")
+               if ".git" not in p.parts and "node_modules" not in p.parts
+               and "venv" not in p.parts and p.is_file()]
+    return sorted(f for f in out
+                  if Path(f).name == "Dockerfile" or Path(f).name.endswith(".Dockerfile"))
+
+
+def _from_refs(text: str) -> list[str]:
+    """The image each `FROM` names, read the way the builder reads the file:
+    continuation lines joined, comments dropped, `--platform=` and other flags
+    skipped, `$VAR`/`${VAR}` replaced by the default of an `ARG` declared before
+    the first `FROM` (the only `ARG`s a `FROM` can see). A stage built `FROM` an
+    earlier stage's name is that stage, not an image, so it is left out; so is
+    `scratch`, which is no image at all. A variable with no default is kept as
+    written, and so fails the rule — a base chosen at build time is not pinned
+    in the tree."""
+    instructions, buf = [], ""
+    for line in text.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        if s.endswith("\\"):
+            buf += s[:-1].strip() + " "
+            continue
+        instructions.append((buf + s).strip())
+        buf = ""
+    global_args: dict[str, str] = {}
+    stages: set[str] = set()
+    refs: list[str] = []
+    seen_from = False
+    for ins in instructions:
+        word, _, rest = ins.partition(" ")
+        word = word.upper()
+        if word == "ARG" and not seen_from:
+            name, eq, default = rest.strip().partition("=")
+            if eq:
+                global_args[name.strip()] = default.strip().strip('"').strip("'")
+        if word != "FROM":
+            continue
+        seen_from = True
+        parts = [p for p in rest.split() if not p.startswith("--")]
+        ref = re.sub(r"\$\{(\w+)\}|\$(\w+)",
+                     lambda m: global_args.get(m.group(1) or m.group(2), m.group(0)), parts[0])
+        if len(parts) >= 3 and parts[1].upper() == "AS":
+            stages_named = parts[2].lower()
+        else:
+            stages_named = None
+        if ref.lower() not in stages and ref != "scratch":
+            refs.append(ref)
+        if stages_named:
+            stages.add(stages_named)
+    return refs
+
+
+def test_from_refs_reads_the_dockerfile_grammar():
+    text = (
+        "# a comment FROM nothing:1\n"
+        "ARG BASE=python:3.14.10-slim\n"
+        "FROM --platform=$BUILDPLATFORM ${BASE} AS build\n"
+        "RUN echo \\\n"
+        "  FROM not-an-instruction:latest\n"
+        "FROM build AS again\n"
+        "FROM scratch\n"
+        "from debian:trixie as lower\n"
+        "FROM $UNSET_BASE\n"
+    )
+    assert _from_refs(text) == ["python:3.14.10-slim", "debian:trixie", "$UNSET_BASE"]
+
+
+def test_every_dockerfile_builds_from_a_release_or_a_digest():
+    files = _dockerfiles()
+    assert "Dockerfile" in files, f"the app's Dockerfile is not where this looks: {files}"
+    problems, used_exceptions = [], set()
+    for rel in files:
+        for ref in _from_refs((_ROOT / rel).read_text(encoding="utf-8")):
+            name, tag, digest = _split_image(ref)
+            if digest or _RELEASE_TAG.match(tag):
+                continue
+            if (rel, ref) in MOVING_BASE_ON_PURPOSE:
+                used_exceptions.add((rel, ref))
+                continue
+            problems.append(
+                f"{rel}: `FROM {ref}` — `{tag or '(no tag = latest)'}` moves under a "
+                f"rebuild, so the base can change with nothing in the tree saying so. Pin "
+                f"it to a release tag (`python:3.14.N-slim`) or a digest, the way every "
+                f"compose image is (`B445`, `B1667`)")
+    stale = set(MOVING_BASE_ON_PURPOSE) - used_exceptions
+    assert not problems, "\n".join(problems)
+    assert not stale, (
+        f"MOVING_BASE_ON_PURPOSE names {sorted(stale)}, which no Dockerfile builds from "
+        f"any more (or which is now pinned) — delete the entry so the table says only "
+        f"what is true")
+
+
+def test_the_apps_stages_share_one_pinned_base():
+    """`B1591`'s comment-stripping stage runs on the base the other two use, on
+    purpose — one image to trust and keep current — so a pin moved in one stage
+    and not the others is a second base arriving by accident."""
+    refs = _from_refs((_ROOT / "Dockerfile").read_text(encoding="utf-8"))
+    assert len(refs) == 3 and len(set(refs)) == 1, refs
+    name, tag, digest = _split_image(refs[0])
+    assert name == "python" and (digest or _RELEASE_TAG.match(tag)), refs[0]

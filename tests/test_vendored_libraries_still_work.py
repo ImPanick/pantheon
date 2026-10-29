@@ -308,6 +308,13 @@ def test_the_rasteriser_is_shown_a_clone_with_none_of_this_pages_styles(chain):
     assert "error" not in hook, hook
     assert hook["removed"] == ["link", "style"], \
         "the page's own stylesheets must not reach the clone"
+    # `B1675`: KaTeX's sheet stays — the third stylesheet the clone was
+    # handed — so a formula is laid out as KaTeX lays it out; and KaTeX's
+    # MathML copy, which html2canvas would write into the file unclipped, is
+    # not drawn. Drawn and measured in
+    # `tests/test_the_fallback_pdf_never_cuts_a_line_and_draws_formulas_in_a_browser.py`.
+    assert hook["katexSheet"] == "/static/lib/katex/katex.min.css", hook
+    assert ".katex .katex-mathml{display:none}" in hook["rules"], hook["rules"]
     assert hook["added"] == 1, "the clone is given the export's own rules"
     assert "color-mix(" not in hook["rules"] and "color(srgb" not in hook["rules"], \
         "the rules the clone is given must be ones the rasteriser can read"

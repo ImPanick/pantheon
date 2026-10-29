@@ -1,9 +1,21 @@
+# ---- the base: one Python patch release, for all three stages ----
+# `B1667`. Every stage read `python:3.14-slim`, a minor line rather than a
+# release, so a rebuild could swap the interpreter under the product with
+# nothing in the tree saying so — `B445`'s class, which the compose files had
+# already closed. Pinned to the patch release that tag resolved to when this
+# was read from Docker Hub's tag list on 2026-10-29: `3.14-slim` and
+# `3.14.10-slim` named the same amd64 (sha256:ec6a14df…697f2d) and arm64
+# (sha256:29434a59…18ca1f) images, so this pins what a build was already
+# getting. Dependabot's docker ecosystem proposes the next patch as a pull
+# request; move all three `FROM`s together (`B1591`'s stage shares the base on
+# purpose). tests/test_searxng_image_pinned.py holds every Dockerfile to it.
+
 # ---- builder: patch + build wheels for Real-ESRGAN's broken-on-3.14 deps ----
 # basicsr/gfpgan/facexlib read their version via exec()+locals()['__version__'],
 # which raises KeyError on Python 3.13+ (PEP 667). Build patched wheels here so
 # the final image / the Forge never has to compile the broken sdists. See
 # docker/build-realesrgan-wheels.sh for the full rationale.
-FROM python:3.14-slim AS realesrgan-wheels
+FROM python:3.14.10-slim AS realesrgan-wheels
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 COPY docker/build-realesrgan-wheels.sh /usr/local/bin/build-realesrgan-wheels.sh
@@ -22,7 +34,7 @@ RUN bash /usr/local/bin/build-realesrgan-wheels.sh /wheels
 # package-lock.json, at an exact version whose sha512 `npm ci` checks. The
 # stage runs on the base the other two use, with Debian's node (the one the
 # app's stage installs below), so no new image enters the build.
-FROM python:3.14-slim AS js-without-comments
+FROM python:3.14.10-slim AS js-without-comments
 RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
@@ -32,7 +44,7 @@ COPY scripts/strip-js-comments.mjs scripts/
 COPY static/ static/
 RUN node scripts/strip-js-comments.mjs /build /out
 
-FROM python:3.14-slim
+FROM python:3.14.10-slim
 
 # P0-18. A published image is a distribution, and this one declared no licence
 # anywhere in its metadata — the same failure class as P0-30, where the desktop

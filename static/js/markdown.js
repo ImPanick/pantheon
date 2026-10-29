@@ -1299,7 +1299,9 @@ const markdownModule = {
   renderMermaid,
   renderMath,
   ensureMermaid,
-  ensureKatex
+  ensureKatex,
+  // `B1675`: where KaTeX's sheet is, for the export that has to keep it.
+  KATEX_CSS,
 };
 
 export default markdownModule;

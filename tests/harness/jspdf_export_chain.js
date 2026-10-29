@@ -49,6 +49,10 @@ if (from < 0 || to < 0 || to <= from) {
   process.exit(2);
 }
 const span = source.slice(from, to);
+// `B1675`: the clone keeps KaTeX's own sheet, named where `markdown.js` loads
+// it — read from there rather than written here a second time.
+const KATEX_CSS = (fs.readFileSync(path.join(__dirname, '..', '..', 'static', 'js', 'markdown.js'), 'utf8')
+  .match(/const KATEX_CSS = '([^']+)';/) || [])[1];
 
 const out = { ok: true, version: jspdf.jsPDF.version };
 
@@ -80,7 +84,7 @@ function lift(textareaValue, win) {
     'document', 'window', 'activeDocId', 'ensurePdfLibs', 'uiModule', 'markdownModule',
     '_getExportBaseName', 'printHtmlInFrame',
     span + '\nreturn { _rasterisePdf, _pdfLinkBoxes, _plainStylesForPdfClone, _undrawableInPdf };'
-  )(doc, win, 'doc-1', async () => {}, uiModule, { renderMath: async () => {} },
+  )(doc, win, 'doc-1', async () => {}, uiModule, { renderMath: async () => {}, KATEX_CSS },
     () => 'pantheon-export', async () => false);
   return { fns, ui };
 }
@@ -167,7 +171,11 @@ site.fns._rasterisePdf().then(() => {
   const clone = {
     querySelectorAll: (sel) => {
       if (sel.indexOf('stylesheet') >= 0) {
-        return [{ remove() { removed.push('link'); } }, { remove() { removed.push('style'); } }];
+        const link = (href, name) => ({
+          tagName: 'LINK', getAttribute: (a) => (a === 'href' ? href : null), remove() { removed.push(name); },
+        });
+        return [link('/static/style.css', 'link'), { tagName: 'STYLE', remove() { removed.push('style'); } },
+          link(KATEX_CSS, 'katex')];
       }
       if (sel === '[style]') return [svg];
       return linkEls;
@@ -178,6 +186,7 @@ site.fns._rasterisePdf().then(() => {
   try {
     onclone(clone, null);
     out.onclone.removed = removed;
+    out.onclone.katexSheet = KATEX_CSS || null;
     out.onclone.added = head.kids.length;
     out.onclone.rules = head.kids.length ? head.kids[0].textContent : '';
     out.onclone.svgKept = Object.keys(decl).sort();
