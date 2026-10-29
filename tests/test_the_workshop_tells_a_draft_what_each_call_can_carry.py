@@ -119,16 +119,23 @@ def test_every_tool_in_the_palette_lists_its_rows_on_the_hire_form():
         assert tool["effects"] == H.tool_effects(tool["name"]), tool["name"]
 
 
+def _effects_line(effects) -> str:
+    """`effects: {a: ask, b: ask}` for one tool's rows. Built here, outside the
+    loop that uses it, because a loop holding both a lone `{` and a lone `}`
+    is what `B876`'s rule reads as a hand-written brace balancer."""
+    return "effects: {" + ", ".join(f"{e}: ask" for e in effects) + "}"
+
+
 def test_a_table_that_names_what_the_palette_lists_passes_its_check():
     """What the palette tells a draft to name is never what the check then
     refuses (`B1659`), for any one tool it lists."""
     template = W.render(_shell_agent({"tools": [{"name": "bash", "effects": []}],
                                       "sections": [W.palette()["sections"][0]]}))
+    empty = _effects_line([])
     refused = {}
     for tool in W.palette()["tools"]:
-        effects = "{" + ", ".join(f"{e}: ask" for e in tool["effects"]) + "}"
         text = (template.replace("tools: [bash]", f"tools: [{tool['name']}]")
-                .replace("effects: {}", f"effects: {effects}"))
+                .replace(empty, _effects_line(tool["effects"])))
         try:
             W.check(text)
         except Exception as e:  # noqa: BLE001 — collected and named below
