@@ -788,7 +788,7 @@ async def _read_file(content: str, st: _Station) -> Dict:
 
 
 async def _write_file(content: str, st: _Station) -> Dict:
-    raw_path, body = fs._write_file_args(content)
+    raw_path, body, append = fs._write_file_call(content)
     refused = _path_refusal("write_file", raw_path)
     if refused:
         return refused
@@ -807,7 +807,10 @@ async def _write_file(content: str, st: _Station) -> Dict:
         if st.failure is not None:
             return st.failure.as_result()
     try:
-        written = await st.client.write(st.account, existing or st.at(raw_path), body)
+        # `B1672`: an append the daemon makes itself (`"append"`, in its
+        # protocol from the start), keeping every byte the file had.
+        written = await st.client.write(st.account, existing or st.at(raw_path), body,
+                                        append=append)
     except WorkstationError as e:
         if e.code == "bad_request" and await _is_dir(st, st.at(raw_path)):
             # The answer `open(path, "w")` gives here, word for word.
@@ -820,7 +823,7 @@ async def _write_file(content: str, st: _Station) -> Dict:
         # over it is a plain write (`src/run_files.py`).
         from src.run_files import IN_WORKSTATION, note_made
         note_made(raw_path, IN_WORKSTATION)
-    return fs._write_result(written["path"], old, body)
+    return fs._write_result(written["path"], old, body, append)
 
 
 async def held_a_file(raw_path: str, *, owner: Optional[str],
@@ -856,18 +859,24 @@ async def held_a_file(raw_path: str, *, owner: Optional[str],
 
 
 async def shell_station(*, owner: Optional[str], workspace: Optional[str] = None,
-                        session_id: Optional[str] = None):
+                        session_id: Optional[str] = None, hired: bool = False):
     """`B1669`. Where this person's next `bash` or `python` command in their
     workstation starts, and a way to ask what is at a path there:
-    `(starts, home, kind_at)`, or `None` when the workstation cannot be asked
-    — which the gate reads as destructive (`src/run_files.py`).
+    `(starts, home, kind_at, values)`, or `None` when the workstation cannot
+    be asked — which the gate reads as destructive (`src/run_files.py`).
 
     Asked as `_shell` asks it: the folder the chat's shell was left in
     (`B962`, read without moving it) and the folder a command starts in when
     none is held — the workspace as the workstation names it
     (`station_folder`), else the home. `kind_at(path)` is `"file"`,
     `"folder"`, `"none"`, or `None` when the workstation could not say (down,
-    or a path outside what it lets this person look at)."""
+    or a path outside what it lets this person look at).
+
+    `values` (`B1681`): the variables a path in the command may start with,
+    as its shell there has them — `$HOME`, and in a hire's run (`hired`)
+    `$PANTHEON_PROJECTS`, which Pantheon sets itself (`run_env`) to the
+    folder the run works in. Any other run's is the daemon's own choice, not
+    known here, and a path spelled against it stays unknown."""
     from src.run_files import FILE, FOLDER, NOTHING
     from src.workstation_access import sync_config, workstation_for
     try:
@@ -894,7 +903,12 @@ async def shell_station(*, owner: Optional[str], workspace: Optional[str] = None
                 return None
         return FOLDER if await _is_dir(st, path) else NOTHING
 
-    return list(dict.fromkeys(f for f in (held, start) if f)), home, kind_at
+    from src.tool_execution import run_projects_folder
+    values = {"HOME": home}
+    projects = run_projects_folder(folder, hired)
+    if projects:
+        values[P.PROJECTS_ENV] = projects   # what `run_env` hands the command
+    return list(dict.fromkeys(f for f in (held, start) if f)), home, kind_at, values
 
 
 async def _edit_file(content: str, st: _Station) -> Dict:

@@ -1599,7 +1599,7 @@ Read a file and return its contents.""",
 <file path>
 <file contents>
 ```
-Write content to a file. First line is the path, rest is the content.""",
+Write content to a file. First line is the path, rest is the content. To add to the end of a file instead of replacing it, give `{"path": "<file path>", "content": "<text to add>", "append": true}`.""",
 
     "edit_file": """\
 ```edit_file
@@ -7242,6 +7242,9 @@ async def stream_agent_loop(
         # `B1669`: the chat, whose shell keeps its folder between calls, so a
         # command's `>` is looked for where the command will start.
         session_id=session_id,
+        # `B1681`: a hire's run, whose `$PANTHEON_PROJECTS` is its own folder,
+        # so a command's path spelled against it is looked for there.
+        hired=bool(getattr(tool_policy, "hired", False)),
     )
     run_security = ToolRunSecurityContext(
         external_untrusted_context_seen=(

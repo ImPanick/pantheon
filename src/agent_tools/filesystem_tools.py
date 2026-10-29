@@ -168,9 +168,32 @@ def _read_text(open_text, offset: int, limit: int, read_cap: Optional[int]) -> s
 def _write_file_args(content: str) -> Tuple[str, str]:
     """`(path, body)` out of a `write_file` call: the path on the first line and
     the body after it, or a JSON object carrying both."""
+    return _write_file_call(content)[:2]
+
+
+def write_file_content(args: Dict[str, Any]) -> str:
+    """`B1672`. A `write_file` call's arguments (a native call's object) as
+    the content the tool reads: `path` on the first line and the body after
+    it, or — an append — the JSON object `_write_file_call` reads `append`
+    from. The one conversion both ways a native call arrives share
+    (`tool_schemas.function_call_to_tool_block`, and a raw call leaked into
+    text, `tool_parsing`), so neither drops the append."""
+    if str(args.get("append")).lower() == "true":
+        return json.dumps({"path": args.get("path", ""), "content": args.get("content", ""),
+                           "append": True})
+    return args.get("path", "") + "\n" + args.get("content", "")
+
+
+def _write_file_call(content: str) -> Tuple[str, str, bool]:
+    """`(path, body, append)` out of a `write_file` call, the one reading the
+    tool, the workstation's and the gate share. `append` (`B1672`) is a JSON
+    object's `"append": true`: the body goes on the end of the file, which is
+    kept — `D-2026-10-29-03` §2, *"Append-only is not destructive"*, so a
+    ledger that only grows is written without replacing it."""
     lines = content.split("\n", 1)
     raw_path = lines[0].strip()
     body = lines[1] if len(lines) > 1 else ""
+    append = False
     # Decode JSON-object args (the fenced inline-args shape
     # ```write_file {"path": "...", "content": "..."}```), matching
     # ReadFileTool above. Without this the whole JSON string becomes the
@@ -184,9 +207,10 @@ def _write_file_args(content: str) -> Tuple[str, str]:
             if isinstance(_a, dict) and "path" in _a:
                 raw_path = str(_a.get("path", "")).strip()
                 body = str(_a.get("content", ""))
+                append = str(_a.get("append")).lower() == "true"
         except (json.JSONDecodeError, TypeError, ValueError):
             pass
-    return raw_path, body
+    return raw_path, body, append
 
 
 def _previous_text(open_text) -> str:
@@ -200,9 +224,13 @@ def _previous_text(open_text) -> str:
         return ""
 
 
-def _write_result(path: str, old: str, body: str) -> Dict[str, Any]:
-    diff = _unified_diff(old, body, path)
-    result = {"output": f"Wrote {len(body)} bytes to {path}", "exit_code": 0}
+def _write_result(path: str, old: str, body: str, append: bool = False) -> Dict[str, Any]:
+    """What a write answers: its size, and the diff from what the file held.
+    `B1672`: an append's diff is the lines it added at the end."""
+    diff = _unified_diff(old, old + body if append else body, path)
+    said = (f"Added {len(body)} bytes to the end of {path}" if append
+            else f"Wrote {len(body)} bytes to {path}")
+    result = {"output": said, "exit_code": 0}
     if diff:
         result["diff"] = diff
     return result
@@ -272,7 +300,7 @@ class ReadFileTool:
 class WriteFileTool:
     async def execute(self, content: str, ctx: dict) -> dict:
         from src.tool_execution import _resolve_tool_path, _resolve_search_root, _truncate
-        raw_path, body = _write_file_args(content)
+        raw_path, body, append = _write_file_call(content)
         try:
             path = _resolve_tool_path(raw_path)
         except ValueError as e:
@@ -285,7 +313,8 @@ class WriteFileTool:
                 d = os.path.dirname(path)
                 if d:
                     os.makedirs(d, exist_ok=True)
-                with open(path, "w", encoding="utf-8") as f:
+                # `B1672`: an append keeps every byte the file had.
+                with open(path, "a" if append else "w", encoding="utf-8") as f:
                     f.write(body)
                 return old, there
             old_content, was_there = await asyncio.to_thread(_write)
@@ -298,7 +327,7 @@ class WriteFileTool:
             # write, not a replacement of the person's file (`src/run_files.py`).
             from src.run_files import note_made
             note_made(raw_path)
-        return _write_result(path, old_content, body)
+        return _write_result(path, old_content, body, append)
 
 class ApplyPatchTool:
     async def execute(self, content: str, ctx: dict) -> dict:

@@ -217,21 +217,33 @@ def test_a_run_resumed_from_a_card_reads_its_own_file_as_the_run_that_asked_did(
 
 # ── a shipped agent ─────────────────────────────────────────────────────────
 
-def test_speed_logger_still_logs_under_its_never():
+def test_speed_logger_still_logs_under_its_never(tmp_path):
     """Speed Logger's one command wrote its log's header with `>` after a
     `cd "$PANTHEON_PROJECTS"/…` — a folder filled in when it runs — so, read
     as this row reads it, its `destructive: never` refused every run. Its
     header now goes on with `>>` (the file is not there when it does), and
-    every case runs its command unrefused through the real harness."""
+    every case runs its command unrefused through the real harness.
+
+    `B1681` changed what the `>` is read as: a hire's run knows the folder
+    `$PANTHEON_PROJECTS` names, so the header's `>` is refused only once
+    `speed.csv` is there — which is every run after the first, since the
+    reading cannot see the `[ -f speed.csv ] ||` guarding it. So the header
+    stays on `>>`."""
     m = get_agent(None, "speed-logger")
     assert H.manifest_effects(m)["destructive"] == "never"
     cases = E.load_evals(m)
     command = cases[0]["script"][0]["call"][0][1]["command"]
     assert '>> speed.csv' in command and '"time,down_mbit,up_mbit,ping_ms" > speed.csv' not in command
-    never = ToolRunSecurityContext(hire_never_effects=frozenset({"destructive"}), files=RunFiles())
+    (tmp_path / "net").mkdir()
+
+    def never() -> ToolRunSecurityContext:
+        return ToolRunSecurityContext(hire_never_effects=frozenset({"destructive"}),
+                                      files=RunFiles(str(tmp_path), "boss", hired=True))
     before = command.replace('ping_ms" >> speed.csv', 'ping_ms" > speed.csv')
-    assert never.decision_for("bash", before).allowed is False, "the command as it was is refused"
-    assert never.decision_for("bash", command).allowed is True
+    assert never().decision_for("bash", before).allowed is True, "the first run: no log yet"
+    (tmp_path / "net" / "speed.csv").write_text("time,down_mbit,up_mbit,ping_ms\n", encoding="utf-8")
+    assert never().decision_for("bash", before).allowed is False, "the command as it was is refused"
+    assert never().decision_for("bash", command).allowed is True
     results = asyncio.run(E.run_agent(m))
     assert len(results) == len(cases) == 6
     for result in results:

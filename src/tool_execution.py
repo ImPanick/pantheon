@@ -378,13 +378,16 @@ _hired_call: contextvars.ContextVar = contextvars.ContextVar(
 )
 
 
-def run_projects_folder(workspace: Optional[str]) -> Optional[str]:
+def run_projects_folder(workspace: Optional[str], hired: Optional[bool] = None) -> Optional[str]:
     """`B1646`. What `$PANTHEON_PROJECTS` names in this call in place of the
     person's whole projects folder: a hire's run's own folder — `workspace`,
     as the machine the call runs on names it. None for every other call (a
     chat keeps the whole folder, where the skills say a new project goes) and
-    for a run with no folder."""
-    return (workspace or None) if _hired_call.get() else None
+    for a run with no folder. `hired` (`B1681`): whether the run is a hire's,
+    for the gate, which reads a call before this call's binding is made;
+    unset, the binding."""
+    hired = _hired_call.get() if hired is None else hired
+    return (workspace or None) if hired else None
 
 
 #: `B1417`. Where a project the agent is asked to build belongs.
@@ -467,8 +470,17 @@ def projects_env(owner: Optional[str] = None) -> Dict[str, str]:
     the whole projects folder with none (`run_projects_folder`) — so its
     runbook's `cd` and its file tools' relative paths meet in one folder."""
     from workstation import protocol as _wp
-    folder = run_projects_folder(get_active_workspace())
-    return {_wp.PROJECTS_ENV: folder or projects_root(owner, create=False)}
+    return {_wp.PROJECTS_ENV: projects_folder_for(owner, get_active_workspace())}
+
+
+def projects_folder_for(owner: Optional[str], workspace: Optional[str],
+                        hired: Optional[bool] = None) -> str:
+    """`B1681`. The folder `$PANTHEON_PROJECTS` names for a shell on this
+    machine: the run's own folder in a hire's run (`run_projects_folder`),
+    else the person's projects folder — the one rule `projects_env` sets the
+    variable by and the gate reads a command's path by
+    (`run_files.RunFiles.shell_values`), so the two cannot disagree."""
+    return run_projects_folder(workspace, hired) or projects_root(owner, create=False)
 
 
 def save_into_projects(owner: Optional[str], destination: str, name: str,
