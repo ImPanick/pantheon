@@ -348,7 +348,8 @@ def replaces(content: Any, files: Optional[RunFiles] = None) -> Optional[str]:
 # projects folder: `tool_execution.projects_folder_for`, the rule the shell's
 # environment is set by) and `$HOME` — and has nothing else filled in, which
 # is filled in here as the shell will (`_named`); unquoted, a value it would
-# split or glob is not known. In the workstation the gate cannot look, so the
+# split or glob is not known, and so is one the command sets itself
+# (`shell_reading.writes_of`), and `~` once it sets `HOME`. In the workstation the gate cannot look, so the
 # loop asks it before the call is classified (`look`, as `write_file`'s
 # `B1660` does), and a command it could not ask about is destructive; there a
 # hire's `$PANTHEON_PROJECTS` is the folder Pantheon hands its command, and a

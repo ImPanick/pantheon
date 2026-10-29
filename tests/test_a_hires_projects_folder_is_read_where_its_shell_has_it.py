@@ -19,7 +19,8 @@ fills it in by the one rule the shell's environment is set by
 (`tool_execution.projects_folder_for`, `RunFiles.shell_values`): a hire's
 folder in a hire's run, the person's projects folder in a chat, and `$HOME`
 as `~`. Unquoted, a value the shell would split or glob is not known; any
-other variable is not known. In the workstation the run asks there as
+other variable is not known, and neither is one the command could set
+itself (nor `~` once it sets `HOME`). In the workstation the run asks there as
 before, and a hire's `$PANTHEON_PROJECTS` is the folder Pantheon hands its
 command (`run_env`); a chat's there is the daemon's own and stays unknown.
 
@@ -92,6 +93,23 @@ def test_what_the_shell_fills_in_some_other_way_stays_unknown(tmp_path):
         assert call_destroys("bash", command, files) == \
             f"it cannot be known whether {shown} was there before this run began", command
     assert call_destroys("bash", NEW, files) is None, "quoted, the space is part of one path"
+
+
+def test_a_variable_the_command_sets_itself_is_not_the_runs(folder):
+    """The run knows the value it gives the shell, not one the command sets:
+    an assignment, an `export` or Python's `os.environ[…] =` anywhere in it —
+    and `~` once it sets `HOME` — is not known, so destructive."""
+    files = _files(folder)
+    for command, shown in (("PANTHEON_PROJECTS=/etc; " + NEW, "brand-new.md"),
+                           ("export PANTHEON_PROJECTS=/etc && " + NEW, "brand-new.md"),
+                           ('HOME=/etc; echo hi > "$HOME"/passwd', "$HOME/passwd"),
+                           ("export HOME=/etc && echo hi > ~/passwd", "~/passwd")):
+        assert call_destroys("bash", command, files) == \
+            f"it cannot be known whether {shown} was there before this run began", command
+    code = ("import os, subprocess\nos.environ['PANTHEON_PROJECTS'] = '/etc'\n"
+            "subprocess.run('cd \"$PANTHEON_PROJECTS\"/w && echo hi > brand-new.md', shell=True)")
+    assert call_destroys("python", code, files) == \
+        "it cannot be known whether brand-new.md was there before this run began"
 
 
 def test_home_is_read_as_the_shells_home(folder, tmp_path, monkeypatch):

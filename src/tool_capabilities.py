@@ -1320,7 +1320,7 @@ def _command_reading(tool_name: str, text: str) -> tuple:
     `chdir` findings, which only the run can answer (`src/run_files.py`)."""
     from src.shell_reading import python_findings, read_shell, readings, writes_of
     findings = python_findings(text) if tool_name == "python" else read_shell(text)
-    return (*readings(findings), writes_of(findings))
+    return (*readings(findings), writes_of(findings, text))
 
 
 def _command_readings(tool_name: Any, content: Any) -> tuple[str | None, str | None]:

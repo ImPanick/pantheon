@@ -2095,13 +2095,35 @@ def readings(findings: Sequence[Finding]) -> Tuple[Optional[str], Optional[str]]
     return reason(findings, DESTROYS), reason(findings, REACHES)
 
 
-def writes_of(findings: Sequence[Finding]) -> Tuple[Finding, ...]:
+def writes_of(findings: Sequence[Finding], command: str = "") -> Tuple[Finding, ...]:
     """`B1669`. What the command writes over and where it goes, in the order
     read — for the run to look at (`src/run_files.command_replaces`). Empty
-    when it writes over nothing it names."""
+    when it writes over nothing it names.
+
+    `B1681`. `command` is the whole text read. A variable it could set
+    itself — its name written anywhere but in a `$name` or `${name…}`
+    (`PANTHEON_PROJECTS=/x; …`, `export HOME=/etc`, `env NAME=… sh -c …`,
+    Python's `os.environ["NAME"] = …`) — is not the run's value, so a path
+    spelled against it is not known; nor, with `HOME`, a path after `~`."""
     if not any(f.kind == WRITES for f in findings):
         return ()
-    return tuple(f for f in findings if f.kind in (WRITES, CHDIR))
+    out = tuple(f for f in findings if f.kind in (WRITES, CHDIR))
+    if command:
+        home_set = _set_here("HOME", command)
+        out = tuple(replace(f, known=False, var="", split=False)
+                    if f.known and ((f.var and _set_here(f.var, command))
+                                    or (home_set and f.path.startswith("~")))
+                    else f for f in out)
+    return out
+
+
+def _set_here(name: str, command: str) -> bool:
+    """`B1681`. Whether `command` could set the variable `name` itself: the
+    name appears other than right after a `$` or `${`."""
+    for m in re.finditer(rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", command):
+        if not command[:m.start()].endswith(("$", "${")):
+            return True
+    return False
 
 
 def shell_destroys(command: str) -> Optional[str]:
