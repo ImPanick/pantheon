@@ -73,8 +73,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import re
+import shutil
 import sys
 import tempfile
 import time
@@ -83,6 +85,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import PurePath
 from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 EVAL_FILE = "evals.json"
 MAX_CASES = 10
@@ -593,10 +597,91 @@ class _Patches:
         self._undo.clear()
 
 
+#: `B1645`. Where a world is made, by name, and the file in it that names the
+#: process that made it — so a world whose process was killed before it could
+#: remove it is removed by a later process's first world (`_sweep_dead_worlds`).
+WORLD_PREFIX = "pantheon-eval-"
+WORLD_OWNER_FILE = ".pantheon-eval-owner"
+
+#: `B1645`. Every world this process made, in order. The suite's guard
+#: (`tests/conftest.py`) reads it to fail a test whose world outlived it.
+WORLDS_MADE: List[str] = []
+
+#: The temp folders this process has swept: once each is enough, since a world
+#: this process makes it removes itself.
+_SWEPT: set = set()
+
+
+def _world_owner() -> Tuple[int, str]:
+    """This process, as a world's owner file names it: its pid and its host (a
+    pid is a pid only on the machine that gave it)."""
+    import socket
+    return os.getpid(), socket.gethostname()
+
+
+def _process_gone(pid: int) -> bool:
+    """Whether no process `pid` is running here. A process that is there but
+    not ours to signal (`EPERM`) is there."""
+    if os.name == "nt":
+        from core.platform_compat import pid_alive   # `os.kill(pid, 0)` would end it on Windows
+        return not pid_alive(pid)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    except OSError:
+        return False
+    return False
+
+
+def _sweep_dead_worlds(parent: str) -> List[str]:
+    """`B1645`. Remove each world in `parent` whose owner file names a process
+    on this host that is gone, and answer which.
+
+    A world is removed when it ends (`isolated`'s `finally`), but a process
+    that is killed — `timeout`'s SIGTERM, the OOM killer's SIGKILL, a machine
+    restarted mid-suite — runs no `finally`, and its world stayed in the temp
+    folder for good, ~900 KB each. Only a world this harness made and named is
+    judged: a folder with no owner file (one made before `B1645`, or anyone
+    else's) is left alone, as is one whose process is running, is this one, or
+    is on another host."""
+    removed: List[str] = []
+    try:
+        names = os.listdir(parent)
+    except OSError:
+        return removed
+    me, host = _world_owner()
+    for name in names:
+        folder = os.path.join(parent, name)
+        if not name.startswith(WORLD_PREFIX) or os.path.islink(folder) or not os.path.isdir(folder):
+            continue
+        try:
+            with open(os.path.join(folder, WORLD_OWNER_FILE), encoding="utf-8") as fh:
+                pid_text, _, its_host = fh.read().strip().partition(" ")
+            pid = int(pid_text)
+        except (OSError, ValueError):
+            continue
+        if its_host == host and pid != me and pid > 0 and _process_gone(pid):
+            shutil.rmtree(folder, ignore_errors=True)
+            if not os.path.exists(folder):
+                removed.append(folder)
+    if removed:
+        logger.info("Removed %d evaluation world(s) left by a process that was stopped mid-case: %s",
+                    len(removed), ", ".join(removed))
+    return removed
+
+
 @contextmanager
 def isolated(root: Optional[str] = None):
     """A fresh SQLite file and data folder, swapped in for every module that
-    holds the install's `SessionLocal` or `DATA_DIR`, and put back after."""
+    holds the install's `SessionLocal` or `DATA_DIR`, and put back after.
+
+    `B1645`. Everything after the folder is made is inside the `try`, so a
+    world whose setup breaks (its database cannot be made, a manager raises)
+    is undone and removed like one that ran — it left its folder in the temp
+    folder and, worse, the install's session and data folder swapped for its
+    own. And a world names the process that made it, so one left by a killed
+    process is removed by the next (`_sweep_dead_worlds`)."""
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.pool import NullPool
@@ -605,16 +690,21 @@ def isolated(root: Optional[str] = None):
 
     # `P24-27`. A world the harness makes is removed when it ends: each is a
     # SQLite file and a data folder, and a roster's evaluation runs hundreds.
-    made_here = root is None
-    root = root or tempfile.mkdtemp(prefix="pantheon-eval-")
+    made_here = not root
+    if made_here:
+        parent = tempfile.gettempdir()
+        if parent not in _SWEPT:
+            _SWEPT.add(parent)
+            _sweep_dead_worlds(parent)
+        root = tempfile.mkdtemp(prefix=WORLD_PREFIX)
+        WORLDS_MADE.append(root)
     data = os.path.join(root, "data")
-    os.makedirs(data, exist_ok=True)
-    engine = create_engine(f"sqlite:///{os.path.join(root, 'eval.db')}",
-                           connect_args={"check_same_thread": False}, poolclass=NullPool)
-    cdb.Base.metadata.create_all(engine)
-    factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     p = _Patches()
+    engine = factory = None
     old_session, old_data = cdb.SessionLocal, constants.DATA_DIR
+    contacts_mod = sys.modules.get("routes.contacts.contacts_routes")
+    gate_key, gate_unset = "BACKGROUND_TASK_FOREGROUND_GATE", object()
+    old_gate: Any = gate_unset
 
     def _swap(frm_session, to_session, frm_data, to_data, record):
         for mod in list(sys.modules.values()):
@@ -654,68 +744,83 @@ def isolated(root: Optional[str] = None):
                 moved = type(v)(moved) if isinstance(v, PurePath) else moved
                 p.set(mod, k, moved) if record else setattr(mod, k, moved)
 
-    _swap(old_session, factory, old_data, data, True)
-    _swap_paths(old_data, data, True)
-    # A module may hold a session factory or data folder that is not the
-    # install's current one (one copied while something else had swapped them
-    # — a test, an earlier world). Every one of ours is swapped, so nothing a
-    # case runs can write outside its world.
-    from sqlalchemy.orm import sessionmaker as _sm
-    for mod in list(sys.modules.values()):
-        name = getattr(mod, "__name__", "") or ""
-        if not name.startswith(("src.", "routes.", "core.", "services.")):
-            continue
-        try:
-            if isinstance(getattr(mod, "SessionLocal", None), _sm) and mod.SessionLocal is not factory:
-                p.set(mod, "SessionLocal", factory)
-            if isinstance(getattr(mod, "DATA_DIR", None), str) and mod.DATA_DIR != data:
-                p.set(mod, "DATA_DIR", data)
-        except Exception:
-            continue
-    # `B1602`. The world's own memory and chats. `manage_memory` and the
-    # session tools ask `ai_interaction`'s managers, which only the app's boot
-    # sets: a case answered "Memory manager not available" — or, in a process
-    # where something had set them, read and wrote that memory file and that
-    # session cache. Made after the swap, so they read the world's database
-    # and folder; the process's own are put back after.
-    import core.models as core_models
-    import src.ai_interaction as ai
-    from core.session_manager import SessionManager
-    from src.memory import MemoryManager
-    world_sessions = SessionManager()
-    p.set(ai, "_memory_manager", MemoryManager(data))
-    p.set(ai, "_memory_vector", None)
-    p.set(ai, "_session_manager", world_sessions)
-    p.set(core_models, "_SESSION_MANAGER_INSTANCE", world_sessions)
-    # The address book's one-minute cache is the process's: a copy read from
-    # the install would answer a case's `resolve_contact`, and the world's
-    # would answer the install's for a minute after.
-    contacts_mod = sys.modules.get("routes.contacts.contacts_routes")
-    if contacts_mod is not None:
-        p.set(contacts_mod, "_contact_cache", {"contacts": [], "fetched_at": None})
-    # No person is in the world, so a background run waits for nobody; the
-    # variable is the install's again afterwards.
-    old_gate = os.environ.get("BACKGROUND_TASK_FOREGROUND_GATE")
-    os.environ["BACKGROUND_TASK_FOREGROUND_GATE"] = "0"
     try:
+        if made_here:
+            with open(os.path.join(root, WORLD_OWNER_FILE), "w", encoding="utf-8") as fh:
+                fh.write("%d %s" % _world_owner())
+        os.makedirs(data, exist_ok=True)
+        engine = create_engine(f"sqlite:///{os.path.join(root, 'eval.db')}",
+                               connect_args={"check_same_thread": False}, poolclass=NullPool)
+        cdb.Base.metadata.create_all(engine)
+        factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+        _swap(old_session, factory, old_data, data, True)
+        _swap_paths(old_data, data, True)
+        # A module may hold a session factory or data folder that is not the
+        # install's current one (one copied while something else had swapped them
+        # — a test, an earlier world). Every one of ours is swapped, so nothing a
+        # case runs can write outside its world.
+        from sqlalchemy.orm import sessionmaker as _sm
+        for mod in list(sys.modules.values()):
+            name = getattr(mod, "__name__", "") or ""
+            if not name.startswith(("src.", "routes.", "core.", "services.")):
+                continue
+            try:
+                if isinstance(getattr(mod, "SessionLocal", None), _sm) and mod.SessionLocal is not factory:
+                    p.set(mod, "SessionLocal", factory)
+                if isinstance(getattr(mod, "DATA_DIR", None), str) and mod.DATA_DIR != data:
+                    p.set(mod, "DATA_DIR", data)
+            except Exception:
+                continue
+        # `B1602`. The world's own memory and chats. `manage_memory` and the
+        # session tools ask `ai_interaction`'s managers, which only the app's boot
+        # sets: a case answered "Memory manager not available" — or, in a process
+        # where something had set them, read and wrote that memory file and that
+        # session cache. Made after the swap, so they read the world's database
+        # and folder; the process's own are put back after.
+        import core.models as core_models
+        import src.ai_interaction as ai
+        from core.session_manager import SessionManager
+        from src.memory import MemoryManager
+        world_sessions = SessionManager()
+        p.set(ai, "_memory_manager", MemoryManager(data))
+        p.set(ai, "_memory_vector", None)
+        p.set(ai, "_session_manager", world_sessions)
+        p.set(core_models, "_SESSION_MANAGER_INSTANCE", world_sessions)
+        # The address book's one-minute cache is the process's: a copy read from
+        # the install would answer a case's `resolve_contact`, and the world's
+        # would answer the install's for a minute after.
+        if contacts_mod is not None:
+            p.set(contacts_mod, "_contact_cache", {"contacts": [], "fetched_at": None})
+        # No person is in the world, so a background run waits for nobody; the
+        # variable is the install's again afterwards.
+        old_gate = os.environ.get(gate_key)
+        os.environ[gate_key] = "0"
         yield factory, data
     finally:
-        if old_gate is None:
-            os.environ.pop("BACKGROUND_TASK_FOREGROUND_GATE", None)
-        else:
-            os.environ["BACKGROUND_TASK_FOREGROUND_GATE"] = old_gate
-        p.undo()
-        # A module first imported inside the world copied the world's names;
-        # it is given the install's back, so nothing outlives the world.
-        _swap(factory, old_session, data, old_data, False)
-        _swap_paths(data, old_data, False)
-        if contacts_mod is None and "routes.contacts.contacts_routes" in sys.modules:
-            # First imported in the world: its cache holds the world's book.
-            sys.modules["routes.contacts.contacts_routes"]._contact_cache = {"contacts": [], "fetched_at": None}
-        engine.dispose()
-        if made_here:
-            import shutil
-            shutil.rmtree(root, ignore_errors=True)
+        # `B1645`: the folder goes whatever putting the install back raises.
+        try:
+            if old_gate is not gate_unset:
+                if old_gate is None:
+                    os.environ.pop(gate_key, None)
+                else:
+                    os.environ[gate_key] = old_gate
+            p.undo()
+            if factory is not None:
+                # A module first imported inside the world copied the world's names;
+                # it is given the install's back, so nothing outlives the world.
+                _swap(factory, old_session, data, old_data, False)
+                _swap_paths(data, old_data, False)
+                if contacts_mod is None and "routes.contacts.contacts_routes" in sys.modules:
+                    # First imported in the world: its cache holds the world's book.
+                    sys.modules["routes.contacts.contacts_routes"]._contact_cache = {"contacts": [], "fetched_at": None}
+            if engine is not None:
+                engine.dispose()
+        finally:
+            if made_here:
+                # `shutil` is imported with the module: a world still open
+                # when the interpreter exits is closed then, when an import
+                # here fails ("sys.meta_path is None") and the folder stayed.
+                shutil.rmtree(root, ignore_errors=True)
 
 
 # ── The model ───────────────────────────────────────────────────────────────

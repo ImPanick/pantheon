@@ -318,6 +318,40 @@ def _close_reused_clients():
         _ph.close_reused()
 
 
+def eval_worlds_left(evals, start: int) -> list:
+    """`B1645`. The evaluation worlds `evals` made, from the `start`-th on,
+    that are still on disk — removed here, so the guard below can name them
+    without leaving them."""
+    import shutil as _shutil
+    left = [w for w in list(getattr(evals, "WORLDS_MADE", ()))[start:] if os.path.exists(w)]
+    for world in left:
+        _shutil.rmtree(world, ignore_errors=True)
+    return left
+
+
+@_pytest.fixture(autouse=True)
+def _no_eval_world_outlives_its_test():
+    """`B1645`. A test whose evaluation world (`src.agents.evals.isolated`) is
+    still in the temp folder when it ends fails, naming the folder.
+
+    459 `pantheon-eval-*` worlds (~900 KB each) sat in `/tmp` on a disk with
+    2 GB free (2026-10-28), and nothing said which run had left them. A world
+    removes itself when its `with` ends, so one that stays was never ended or
+    its removal failed — and either way the test that made it is the one to
+    read. Costs a test that makes no world one list's length."""
+    evals = sys.modules.get("src.agents.evals")
+    start = len(getattr(evals, "WORLDS_MADE", ())) if evals is not None else 0
+    yield
+    evals = sys.modules.get("src.agents.evals")
+    if evals is None:
+        return
+    left = eval_worlds_left(evals, start)
+    if left:
+        _pytest.fail(f"B1645: this test left {len(left)} evaluation world(s) in the temp folder "
+                     f"(removed now): {', '.join(left)}. A world `isolated()` makes is removed "
+                     "when its `with` ends; end it.", pytrace=False)
+
+
 # `B18`. The pre-import above defuses the six stubs that exist today; this
 # stops the seventh from being silent. A stub installed at module scope lands
 # during COLLECTION, before the first test runs, so by the time anything fails
