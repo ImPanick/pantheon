@@ -840,6 +840,16 @@ def _more_plausible_alternative(head: bytes, detected: str) -> str | None:
       scores zero here and this function never looks at it. That is the guard
       that keeps the rule away from files whose encoding nobody can name, and it
       is measured: without it, ``Preis: 45,00 £ · 50,00 ¥`` is re-read as Thai.
+
+    **What it leaves undecided, by the owner's ruling (`D-2026-10-29-02` §3).**
+    A short line of Korean with Hanja words in EUC-KR and a short line of spaced
+    Chinese in GB can each decode cleanly as the other — both readings spaced,
+    neither showing the marks `_not_korean` and `_not_chinese` read — and the
+    detector does not always offer the right codec at all (`B1610`, `B1615`).
+    Every rule measured fixed one side by breaking the other (one gained 36 cuts
+    and lost 36; another took Korean news from 392 wrong to 870), so the reading
+    stays the detector's. A CJK frequency table would decide it and was not
+    taken. UTF-8 text never reaches this question.
     """
     ranking = _rank_encodings(head)
     if len(ranking) < 2:

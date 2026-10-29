@@ -466,7 +466,8 @@ VENDORED = [
              "types (measured — `getConfig().layout` comes back `elk` after "
              "Pantheon's own `initialize()` call), the browser floor rises to "
              "Safari 17.4 / ES2024, and mermaid.min.js grows 3.57 MB -> 5.58 "
-             "MB. Needs a browser to verify, which this wave could not do.",
+             "MB. The owner kept 11.x on 2026-10-29 (D-2026-10-29-02 §5) until a "
+             "browser-driven check can compare diagrams, or an advisory names 11.x.",
     ),
     Vendored(
         "Pyodide", "pyodide", "0.27.5", "2026-09-16",
