@@ -367,9 +367,11 @@ def test_the_windows_build_icon_is_the_multi_size_ico():
     icons = [elt.value for node in ast.walk(spec) if isinstance(node, ast.Call)
              and getattr(node.func, "id", "") == "EXE"
              for kw in node.keywords if kw.arg == "icon" for elt in kw.value.elts]
+    # `B1666`: the Windows script builds from `Pantheon.spec` and names no icon
+    # of its own, so the spec's is the one both builds use.
     ps1 = re.findall(r"--icon=(\S+)", (ROOT / "build-windows-portable.ps1").read_text(encoding="utf-8"))
-    assert icons and ps1, (icons, ps1)
-    for rel in icons + ps1:
+    assert icons and not ps1, (icons, ps1)
+    for rel in icons:
         path = ROOT / rel.replace("\\", "/")
         im = Image.open(path)
         assert sorted(im.ico.sizes()) == [(s, s) for s in (16, 24, 32, 48, 64, 128, 256)], rel

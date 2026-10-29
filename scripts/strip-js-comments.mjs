@@ -56,7 +56,7 @@ import { parse, version as acornVersion } from 'acorn';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
 
 // Where the modules are, relative to the app's root; what under it is never
@@ -317,6 +317,19 @@ function main(argv) {
   return 0;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+// Run as a command, not imported (the tests import it). `B1666`: compared by
+// real path — node resolves the module it runs through symlinks, so a script
+// reached through one (a symlinked checkout, macOS's `/tmp`) was never `main`
+// here, and exited 0 having written nothing, which a build reads as success.
+function invokedAsCommand() {
+  if (!process.argv[1]) return false;
+  try {
+    return fs.realpathSync(fileURLToPath(import.meta.url)) === fs.realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+}
+
+if (invokedAsCommand()) {
   process.exitCode = main(process.argv.slice(2));
 }

@@ -14,6 +14,14 @@
 
   The app then keeps using its normal filesystem layout when frozen.
 
+  What goes in the bundle is one list, Pantheon.spec's (`B1666`): this builds
+  from it rather than passing its own --add-data list, which had drifted from
+  the spec (no docker/build-realesrgan-wheels.sh, `B373`) and, by naming a
+  script instead of the spec, made PyInstaller write a fresh Pantheon.spec over
+  the committed one on every build. The spec ships Pantheon's JavaScript
+  without its comments through scripts/strip-js-comments.mjs, as the image
+  does (`D-2026-10-29-03` section 4), so the build needs Node.js and acorn.
+
   Usage:
     powershell -ExecutionPolicy Bypass -File .\build-windows-portable.ps1
 #>
@@ -54,25 +62,23 @@ Write-Step "Installing build dependencies"
 & $pyExe -m pip install -r requirements.txt pyinstaller pystray Pillow
 if ($LASTEXITCODE -ne 0) { Fail "Dependency install failed." }
 
+# `B1666`. The stripper's parser, acorn, at the exact version and sha512
+# package-lock.json names - the install the image's stage and CI's suite run.
+Write-Step "Installing the JavaScript comment stripper (acorn, from package-lock.json)"
+$npmCmd = Get-Command npm -ErrorAction SilentlyContinue
+if (-not (Get-Command node -ErrorAction SilentlyContinue) -or -not $npmCmd) {
+    Fail "Node.js not found on PATH. The bundle ships Pantheon's JavaScript without its comments, through scripts/strip-js-comments.mjs, which runs on Node.js: install it from nodejs.org, open a new terminal and run this again."
+}
+& $npmCmd.Source ci --omit=dev --ignore-scripts --no-audit --no-fund
+if ($LASTEXITCODE -ne 0) { Fail "npm ci failed, so the comment stripper has no parser. Its output above says why." }
+
 Write-Step "Building portable exe bundle"
 Remove-Item -Recurse -Force build, dist -ErrorAction SilentlyContinue
 
-$dataArgs = @(
-    "--add-data", "static;static",
-    "--add-data", "scripts;scripts",
-    "--add-data", "mcp_servers;mcp_servers",
-    "--add-data", "services/hwfit/data;services/hwfit/data",
-    "--add-data", "config;config",
-    "--add-data", ".env.example;.env.example",
-    # MIT, BSD and OFL require the notice to travel with a redistributed copy,
-    # and this bundle is one. Keep these in step with Pantheon.spec.
-    "--add-data", "licenses;licenses",
-    "--add-data", "LICENSE;.",
-    "--add-data", "NOTICE;.",
-    "--add-data", "CREDITS.md;."
-)
-
-& $pyExe -m PyInstaller --noconfirm --clean --onedir --noconsole --icon=static/icon.ico --name Pantheon @dataArgs launcher.py
+# Pantheon.spec is the bundle: its data (static/ without comments, scripts,
+# the licences MIT, BSD and OFL require to travel with a redistributed copy),
+# its icon (static/icon.ico), one folder, no console.
+& $pyExe -m PyInstaller --noconfirm --clean Pantheon.spec
 if ($LASTEXITCODE -ne 0) { Fail "PyInstaller build failed." }
 
 Write-Host ""
