@@ -323,7 +323,7 @@ Re-measured 2026-10-29, after the twenty-fourth wave: **36 filed, 47 closed**, o
 
 **Direction as of 2026-10-29, after the twenty-fourth wave: level in the wave, falling over the window; what is left is mostly decisions.**
 
-Re-measured 2026-10-29, after the twenty-fifth wave: **29 filed, 39 closed**, open **51 → 41** — falling, by two in one wave (three closed, one filed); the ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1623`–`B1662`) block.
+Re-measured 2026-10-29, after the twenty-fifth wave: **30 filed, 40 closed**, open **51 → 41** — falling, by two in one wave (four closed, two filed); the ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1624`–`B1663`) block.
 
 **Direction as of 2026-10-29, after the twenty-fifth wave: falling; what is left is mostly decisions.**
 
