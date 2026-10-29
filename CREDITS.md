@@ -862,15 +862,32 @@ repository does not appear to load PDFObject.
 
 ## Fonts
 
-All shipped unmodified. **Do not subset or re-convert them** — that produces a
-Modified Version and OFL §3's Reserved Font Name restriction then applies.
+All shipped unmodified but one. **Do not subset or re-convert them** — that
+produces a Modified Version and OFL §3's Reserved Font Name restriction then
+applies. The one exception is Noto Sans CJK, below, which is subset on purpose
+and whose Reserved Font Name the subset does not use.
 
 | Font | Files | Licence | Author | Reserved Font Name |
 |---|---|---|---|---|
 | [Fira Code](https://github.com/tonsky/FiraCode) | `static/fonts/FiraCode-{Light,Regular,SemiBold}.woff2` | SIL Open Font License 1.1 ([`licenses/FiraCode-OFL.txt`](licenses/FiraCode-OFL.txt)) | Nikita Prokopov & contributors | none declared |
-| [Inter](https://github.com/rsms/inter) | `static/fonts/Inter-{Regular,Medium,SemiBold}.woff2` | SIL Open Font License 1.1 ([`licenses/Inter-OFL.txt`](licenses/Inter-OFL.txt)) | Rasmus Andersson | none declared |
+| [Inter](https://github.com/rsms/inter) v4.1 | `static/fonts/Inter-{Regular,Medium,SemiBold}.woff2`, `static/lib/pdf-fonts/Inter-{Regular,Bold,Italic,BoldItalic}.ttf` | SIL Open Font License 1.1 ([`licenses/Inter-OFL.txt`](licenses/Inter-OFL.txt)) | Rasmus Andersson | none declared |
+| [Noto Sans CJK](https://github.com/notofonts/noto-cjk) SC v2.004, subset | `static/lib/pdf-fonts/NotoSansCJKsc-Regular.subset.ttf` | SIL Open Font License 1.1 ([`licenses/NotoSansCJK-OFL.txt`](licenses/NotoSansCJK-OFL.txt)) | Adobe, for Google's Noto project | **yes — `Source`**, which the subset's name does not use |
 | [OpenDyslexic](https://opendyslexic.org/) | `static/fonts/OpenDyslexic-{Regular,Bold}.woff2` | SIL Open Font License 1.1 ([`licenses/OpenDyslexic-OFL.txt`](licenses/OpenDyslexic-OFL.txt)) | Abbie Gonzalez | **yes — `OpenDyslexic`** |
 | KaTeX (20 faces) v0.18.7 | `static/lib/katex/fonts/*.woff2` | SIL Open Font License 1.1 ([`licenses/KaTeX-fonts-OFL.txt`](licenses/KaTeX-fonts-OFL.txt)) | Design Science, Inc. and Khan Academy | **yes — every face** |
+
+**The fallback PDF's faces (`B1674`, `D-2026-10-29-03` §3).** `static/lib/pdf-fonts/`
+holds what *Print as PDF* embeds when the browser's print frame cannot print and
+jsPDF draws the file instead — fetched only for a document that has characters
+jsPDF's built-in (Windows-1252) fonts cannot draw. Inter's four `.ttf` faces are
+the v4.1 release's `extras/ttf/` files byte for byte (`Inter-4.1.zip`; its
+`extras/woff-hinted/` holds `static/fonts/`'s three `.woff2` byte for byte, which
+is how their version was established). The CJK face is Noto Sans CJK SC's
+variable TrueType at tag `Sans2.004`, cut by `scripts/build-pdf-cjk-font.py` to
+the characters GB 2312, Big5, JIS X 0208 and KS X 1001 encode plus the kana,
+CJK punctuation and fullwidth blocks (20,340 glyphs of 65,535), with its weight
+fixed at Regular. jsPDF takes TrueType outlines, not the CFF of Noto CJK's
+`.otf`s, which is why it is this file. `.pantheon/check-vendored-versions.py`
+holds each file's sha256.
 
 The 20 KaTeX faces are `KaTeX_AMS`, `KaTeX_Caligraphic`, `KaTeX_Fraktur`,
 `KaTeX_Main`, `KaTeX_Math`, `KaTeX_SansSerif`, `KaTeX_Script`, `KaTeX_Size1–4`

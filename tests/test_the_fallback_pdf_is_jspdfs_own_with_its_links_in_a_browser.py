@@ -77,7 +77,7 @@ const PDF_PATH = process.argv[3];
     '',
     'Latin-1 survives: café naïve façade.',
     '',
-    'Cyrillic does not: Привет CYRPROBE.',
+    'Cyrillic too, since `B1674`: Привет CYRPROBE.',
     '',
     ...lines.map((l) => l + '\n'),
     'And on a later page, [LATEPROBE](https://example.net/late) at the end.',
@@ -288,17 +288,22 @@ def test_html2pdfs_page_break_plugin_had_nothing_to_act_on(drive):
     assert rules["breaking"] == 0, rules
 
 
-def test_what_the_built_in_fonts_cannot_draw_is_said_not_left_in_the_file(drive):
-    """`html()` writes with the PDF's built-in fonts (WinAnsi): `Привет` comes
-    out as Latin-1 garbage. The file is still handed over — the rest of it is
-    right — and the person is told which characters are wrong, and what keeps
-    them (`Law 15`)."""
+def test_cyrillic_is_drawn_in_inter_and_nothing_is_said_to_be_lost(drive):
+    """`B1674` changed this test. It read: `html()` writes with the PDF's
+    built-in fonts (WinAnsi), so `Привет` comes out as Latin-1 garbage, and
+    the person is told which characters are wrong. Now a document with
+    Cyrillic in it fetches Inter (`static/lib/pdf-fonts/`, the four faces and
+    not the CJK one — "loaded only when a document needs it") and the file
+    carries `Привет` as text; with nothing left undrawable, nothing is said.
+    The sentence for what still is (emoji) is driven in
+    `tests/test_the_fallback_pdf_draws_every_script_but_emoji_in_a_browser.py`."""
     toast = " ".join(drive["errorToast"])
-    assert "Saved" in toast and "can't draw" in toast, drive["errorToast"]
-    assert all(ch in toast for ch in "Привет"), toast
-    assert "Export as Word" in toast, toast
+    assert "can't draw" not in toast, drive["errorToast"]
     text = "".join(p.extract_text() or "" for p in _reader(drive).pages)
-    assert "CYRPROBE" in text and "Привет" not in text
+    assert "CYRPROBE" in text and "Привет" in text, text[:400]
+    fonts = sorted({u.rsplit("/", 1)[-1] for u in drive["libRequests"] if "/pdf-fonts/" in u})
+    assert fonts == ["Inter-Bold.ttf", "Inter-BoldItalic.ttf", "Inter-Italic.ttf",
+                     "Inter-Regular.ttf"], fonts
 
 
 def test_the_fallback_left_nothing_behind_and_logged_no_page_error(drive):

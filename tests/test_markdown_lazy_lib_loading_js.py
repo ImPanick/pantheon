@@ -452,7 +452,9 @@ def test_pdf_export_typesets_its_container_before_jspdf():
     render = "await markdownModule.renderMath(container);"
     assert render in body, "the export never typesets its detached container"
     assert body.index("container.innerHTML = html;") < body.index(render)
-    assert body.index(render) < body.index("_pdfFromHtml(pdf, container.outerHTML)")
+    # `B1674` gave the call a third argument (the fonts it registered), so
+    # the call is matched up to it.
+    assert body.index(render) < body.index("_pdfFromHtml(pdf, container.outerHTML,")
 
     match = re.search(r"\n  async function exportAsPdf\(\) \{(.*?)\n  \}\n", source, re.S)
     assert match, "exportAsPdf not found"

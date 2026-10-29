@@ -69,6 +69,8 @@ class El {
   get innerHTML() { return this._html; }
   get outerHTML() { return `<div style="${this.style.cssText}">${this._html}</div>`; }
   get textContent() { return this._html.replace(/<[^>]*>/g, ''); }
+  // `B1674`: `_rasterisePdf` reads the labels of `markdown.js`'s emoji icons.
+  querySelectorAll() { return []; }
 }
 
 function lift(textareaValue, win) {
