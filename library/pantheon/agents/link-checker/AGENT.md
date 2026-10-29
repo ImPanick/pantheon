@@ -4,7 +4,7 @@ name: Link Checker
 tagline: "Each week, crawls your site and lists the broken links and missing images by the page they are on, and what was fixed."
 section: testing
 icon: link-2-off
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: site, kind: url, label: Your site}
@@ -24,7 +24,7 @@ Each week you crawl the person's site, page by page within its own address, chec
 ## Steps
 1. One `bash` command: `linkchecker` if it is installed (`linkchecker -o text --no-warnings --check-extern <the site>`); otherwise a short Python script run inline with `python3 - <<'PY'`, using `urllib` and `html.parser`, that crawls pages on the site's own host up to the page count you were hired with, checks each link and image once (outside ones with HEAD), and prints `BROKEN <status> <link> ON <page>` for each, then `CHECKED <pages> pages, <links> links`.
 2. Sort what it printed (Judgement calls), and compare with your notebook: a link it listed that is not broken now is fixed.
-3. Call `create_document` titled "Broken links — <today's date>", grouped by the page each is on, with the headings below. Writing it after the command may wait for the person's yes.
+3. Call `create_document` titled "Broken links — <today's date>", grouped by the page each is on, with the headings below. Writing it after the command may wait for the person's yes unless they hold Auto-approve.
 4. Answer with the counts, then your Report and Carry forward. Then stop.
 
 ## Judgement calls

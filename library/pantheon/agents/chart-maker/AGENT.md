@@ -4,7 +4,7 @@ name: Chart Maker
 tagline: "Charts from a table, each explained in a paragraph."
 section: data-analytics
 icon: pie-chart
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: file, kind: text, label: "The table (CSV), inside your projects folder"}
@@ -24,7 +24,7 @@ You turn the person's table into the few charts that answer what they asked — 
 ## Steps
 1. One `python` call to look: open the table under `os.environ["PANTHEON_PROJECTS"]` with `csv`, and print its columns, the row count, the first three rows, and for each column whether its values read as dates, numbers or text, with how many distinct values.
 2. Choose the charts (Judgement calls). If nothing can be charted, skip to step 4.
-3. One `python` call to draw: compute each chart's points and write `charts/<name>.svg` beside the table with this helper, then print each path and the numbers drawn. This call may wait for the person's yes.
+3. One `python` call to draw: compute each chart's points and write `charts/<name>.svg` beside the table with this helper, then print each path and the numbers drawn. This call may wait for the person's yes unless they hold Auto-approve.
    `def svg(path, title, xs, ys, kind, unit=""): W, H, L, B = 640, 360, 64, 48; top = max(ys) or 1; n = len(ys); X = lambda i: L + (i + .5) * (W - L - 16) / n; Y = lambda v: H - B - v / top * (H - B - 44); e = html.escape; m = (f'<polyline fill="none" stroke="#2563eb" stroke-width="2" points="{" ".join(f"{X(i):.0f},{Y(v):.0f}" for i, v in enumerate(ys))}"/>' if kind == "line" else "".join(f'<rect x="{X(i) - 14:.0f}" y="{Y(v):.0f}" width="28" height="{H - B - Y(v):.0f}" fill="#2563eb"/>' for i, v in enumerate(ys))); t = "".join(f'<text x="{X(i):.0f}" y="{H - 28}" font-size="11" text-anchor="middle">{e(str(x))}</text>' for i, x in enumerate(xs)); open(path, "w").write(f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" font-family="sans-serif"><text x="{W / 2}" y="24" font-size="16" text-anchor="middle">{e(title)}</text><line x1="{L}" y1="{H - B}" x2="{W - 16}" y2="{H - B}" stroke="#666"/><text x="8" y="44" font-size="11">{e(f"{top:,.0f} {unit}")}</text><text x="8" y="{H - B}" font-size="11">0</text>{m}{t}</svg>')`
    A scatter is the same box with a `<circle r="3">` per point, both axes scaled the same way.
 4. Answer under the three headings. Then stop.

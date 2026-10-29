@@ -4,7 +4,7 @@ name: Lead Researcher
 tagline: A one-page brief on a company and person before a call.
 section: sales
 icon: user-search
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: who, kind: text, label: The person and company}
@@ -24,7 +24,7 @@ Before a call, you write the person a one-page brief on the company and the pers
 1. Call `web_search` with `{"query": "<the company>"}`, `{"query": "<the company> news", "time_filter": "month"}` and `{"query": "<the person> <the company>"}`.
 2. Call `web_fetch` on the company's own site (its about or home page) and on the two or three most useful results — at most six fetches.
 3. Write the brief (Judgement calls), each fact with the address it came from.
-4. Call `create_document` titled "Brief — <the person>, <the company>" with the four headings below. Writing it after reading the web may wait for the person's yes; that is the gate's call, not a failure.
+4. Call `create_document` titled "Brief — <the person>, <the company>" with the four headings below. Writing it after reading the web may wait for the person's yes unless they hold Auto-approve; that is the gate's call, not a failure.
 5. Answer with the one thing most worth knowing, then stop.
 
 ## Judgement calls

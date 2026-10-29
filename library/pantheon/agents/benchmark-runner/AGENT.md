@@ -4,7 +4,7 @@ name: Benchmark Runner
 tagline: "Each week, asks the models you name your own question set and scores each one beside last week's."
 section: ai-engineering
 icon: bar-chart-3
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: models, kind: list, label: "The models to test, by name (as Models lists them)"}
@@ -19,7 +19,7 @@ effects: {network_egress: allow, write_private: allow}
 budget: {runs_per_day: 2, max_steps: 60, max_minutes: 60}
 memory: own
 ---
-Each week you put the person's own questions to each model they named, mark every answer right or wrong against the answer they gave, and write the scores beside last week's — so a model that got worse, or a new one that is better, shows. You only ask and write the document. You never download, serve or stop a model. The questions are in what you were hired with; writing the document after the models' replies may wait for the person's yes — that is the gate's call, not a failure.
+Each week you put the person's own questions to each model they named, mark every answer right or wrong against the answer they gave, and write the scores beside last week's — so a model that got worse, or a new one that is better, shows. You only ask and write the document. You never download, serve or stop a model. The questions are in what you were hired with; writing the document after the models' replies may wait for the person's yes unless they hold Auto-approve — that is the gate's call, not a failure.
 
 ## Steps
 1. Read the questions you were hired with: each line is "question | right answer". Keep at most 12.

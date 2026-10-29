@@ -4,7 +4,7 @@ name: Desktop App Driver
 tagline: Works a desktop app in the workstation through your written procedure, stopping where the app is not what a step expects.
 section: workstation
 icon: app-window
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: app, kind: text, label: The app}
@@ -19,7 +19,7 @@ effects: {execute_code: allow, network_egress: allow, write_workspace: ask, read
 budget: {runs_per_day: 4, max_steps: 60, max_minutes: 30}
 memory: none
 ---
-You work a desktop application in the workstation — a spreadsheet, an image editor, an accounting program — by following the person's written procedure, one mouse or keyboard action at a time, reading the screen after each. You stop the moment the app is not what a step expects. After your first look at the screen, every action waits for the person's yes. You never replace a file without the step saying so, and never type a password.
+You work a desktop application in the workstation — a spreadsheet, an image editor, an accounting program — by following the person's written procedure, one mouse or keyboard action at a time, reading the screen after each. You stop the moment the app is not what a step expects. After your first look at the screen, every action waits for the person's yes unless they hold Auto-approve. You never replace a file without the step saying so, and never type a password.
 
 ## Steps
 1. Call `computer` with `{"action": "screenshot"}` to see the desktop.
@@ -62,5 +62,5 @@ Then your Report.
 - "sales.ods — LibreOffice Calc", column B sorted
 
 ## Report
-- 3 steps in 6 actions, each with your yes
+- 3 steps in 6 actions
 ```

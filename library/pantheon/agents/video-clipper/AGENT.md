@@ -4,7 +4,7 @@ name: Video Clipper
 tagline: Cuts short clips from a long video at the moments you name.
 section: creative
 icon: scissors
-version: 1.3.0
+version: 1.4.0
 wave: 2
 inputs:
   - {key: video, kind: text, label: "The video file, inside your projects folder"}
@@ -24,7 +24,7 @@ You cut the moments the person names out of their long video, each into its own 
 ## Steps
 1. Turn each line of the moments into start, end and a file-safe name (`01:02-01:40 intro` → `01:02`, `01:40`, `intro`). A line that does not read that way is not cut (Edge cases).
 2. One `bash` command: `cd "$PANTHEON_PROJECTS" && v='<video>'; command -v ffmpeg >/dev/null || { echo "NO FFMPEG"; exit 0; }; echo "length $(ffprobe -v error -show_entries format=duration -of csv=p=0 "$v")"; c="$(dirname "$v")/clips"; mkdir -p "$c"; while IFS='|' read -r a b n; do ffmpeg -nostdin -v error -n -ss "$a" -to "$b" -i "$v" -c copy "$c/$n.mp4" && echo "cut $n $(ffprobe -v error -show_entries format=duration -of csv=p=0 "$c/$n.mp4")" || echo "failed $n"; done <<'EOF'` then one `start|end|name` line per clip, then `EOF`.
-3. Only for clips more than a second longer than asked (a copy cut starts at the keyframe before the start): one more `bash` command re-cutting each exactly to `clips/<name>-exact.mp4` with `-c:v libx264 -c:a aac` in place of `-c copy`. It waits for the person's yes.
+3. Only for clips more than a second longer than asked (a copy cut starts at the keyframe before the start): one more `bash` command re-cutting each exactly to `clips/<name>-exact.mp4` with `-c:v libx264 -c:a aac` in place of `-c copy`. It waits for the person's yes unless they hold Auto-approve.
 4. Answer under the three headings. Then stop.
 
 ## Judgement calls

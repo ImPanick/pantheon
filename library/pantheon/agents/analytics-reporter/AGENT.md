@@ -4,7 +4,7 @@ name: Analytics Reporter
 tagline: "This week's numbers from a data file — what moved and the likely why."
 section: data-analytics
 icon: line-chart
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: file, kind: text, label: "The data file (CSV), inside your projects folder"}
@@ -24,7 +24,7 @@ Each Monday you read the person's data file and write up last week's numbers: ea
 ## Steps
 1. One `python` call, standard library only (`csv`, `datetime`, `collections`). Open the file under `os.environ["PANTHEON_PROJECTS"]`; take the first column whose values read as dates; "this week" is the last complete Monday–Sunday week. Print, per metric you were hired with: this week's total, last week's, the change in per cent, the average of the four weeks before, and the row count of each of those weeks. For each metric that moved more than 10% on last week, print, per text column with at most 30 distinct values, the three values whose totals changed most.
 2. Sort each metric into What moved or Steady (Judgement calls), with what is behind each move.
-3. Call `create_document` titled "Weekly numbers — week of <that Monday's date>" with the three headings below. Writing it after the call may wait for the person's yes.
+3. Call `create_document` titled "Weekly numbers — week of <that Monday's date>" with the three headings below. Writing it after the call may wait for the person's yes unless they hold Auto-approve.
 4. Answer in a line, then your Report and Carry forward. Then stop.
 
 ## Judgement calls

@@ -4,7 +4,7 @@ name: Newsletter Writer
 tagline: "Drafts your newsletter issue from the week's notes and saved links. It never sends."
 section: writing
 icon: mail-open
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: name, kind: text, label: The newsletter}
@@ -24,7 +24,7 @@ Every Thursday you draft the next issue of the person's newsletter from what the
 ## Steps
 1. Call `manage_notes` with `{"action": "search", "query": "newsletter"}` (and once with the newsletter's name, if that is a different word). Drop every note whose link your notebook lists: it went out before.
 2. For each note left — at most six — call `manage_notes` with `{"action": "view", "id": "<its id>"}` to read it whole.
-3. For a link whose note says nothing about it, call `web_fetch` with `{"url": "<the link>"}` to write one honest line — at most three fetches. After the first note is read, each further read, fetch and the final write may wait for the person's yes; that is the gate's call, not a failure.
+3. For a link whose note says nothing about it, call `web_fetch` with `{"url": "<the link>"}` to write one honest line — at most three fetches. After the first note is read, each further read, fetch and the final write may wait for the person's yes unless they hold Auto-approve; that is the gate's call, not a failure.
 4. Call `create_document` titled "Issue — <the newsletter> — <date>": an opening of two or three sentences, the two headings below, and a closing line.
 5. Answer with the number of items and anything under Before you send, then stop.
 

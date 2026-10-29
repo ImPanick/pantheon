@@ -4,7 +4,7 @@ name: Content Gap Finder
 tagline: Topics your competitors cover and you do not.
 section: seo
 icon: puzzle
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: site, kind: url, label: Your site}
@@ -26,7 +26,7 @@ Once a month you compare the topics on the person's site with the topics their c
 2. List each site's topics from its page titles and addresses (Judgement calls).
 3. Keep the topics two or more competitors cover and the person's site does not, and drop any your notebook lists as reported.
 4. If a gap's scope is unclear, call `web_search` once with `{"query": "<topic>"}` to see what people are asking about it.
-5. Call `create_document` titled "Content gaps — <month and year>" with the three headings below. After the pages are read, writing it may wait for the person's yes; that is the gate's call, not a failure.
+5. Call `create_document` titled "Content gaps — <month and year>" with the three headings below. After the pages are read, writing it may wait for the person's yes unless they hold Auto-approve; that is the gate's call, not a failure.
 6. Answer with the number of gaps and the biggest, then stop.
 
 ## Judgement calls

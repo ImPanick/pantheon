@@ -4,7 +4,7 @@ name: Firewall Auditor
 tagline: "Each week, the ports open on each machine checked against what should be open, with the process behind each surprise."
 section: security
 icon: brick-wall
-version: 1.3.0
+version: 1.4.0
 wave: 2
 inputs:
   - {key: hosts, kind: list, label: Machines to check (names or addresses the workstation can ssh to)}
@@ -24,7 +24,7 @@ Each week you compare what each of the person's machines is listening on — and
 ## Steps
 1. One `bash` command: `for h in <the machines, each in single quotes>; do echo "== $h"; ssh -n -o BatchMode=yes -o ConnectTimeout=8 -- "$h" 'ss -tulpnH; (sudo -n nft list ruleset 2>/dev/null || sudo -n ufw status 2>/dev/null || echo "NO FIREWALL READ")' 2>&1; done`. Each machine goes in single quotes (a `'` in it written `'\''`), so a name is one word whatever it holds, and `--` before it means ssh never reads a name as one of its options.
 2. For each machine, list the ports listening on an outside address (not `127.0.0.1` or `[::1]`), with their process, and compare with the expected list you were hired with.
-3. For each port that differs — listening but not expected, or expected but not listening — call `network` with `{"action": "reach", "host": "<machine>", "port": <port>}` once, to see whether it is reachable from the workstation. Each waits for the person's yes.
+3. For each port that differs — listening but not expected, or expected but not listening — call `network` with `{"action": "reach", "host": "<machine>", "port": <port>}` once, to see whether it is reachable from the workstation. Each waits for the person's yes unless they hold Auto-approve.
 4. Answer under the three headings, then your Report and Carry forward. Then stop.
 
 ## Judgement calls

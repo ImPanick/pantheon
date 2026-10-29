@@ -4,7 +4,7 @@ name: Budget Watcher
 tagline: "Spend against budget per category each week, overruns flagged."
 section: finance
 icon: piggy-bank
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: ledger, kind: text, label: "The ledger CSV, inside your projects folder"}
@@ -23,7 +23,7 @@ Each Monday you add up this month's spending so far in the person's ledger, cate
 
 ## Steps
 1. Call `read_file` with `{"path": "<the ledger you were hired with>"}` and note its columns (date, amount, category) and how dates are written.
-2. Call `python` once with a short script that reads the CSV with the `csv` module, keeps this month's lines up to today, and prints the total per category (refunds, as negative amounts, subtract), plus the total of lines with no category. After the file is read, this may wait for the person's yes; that is the gate's call, not a failure.
+2. Call `python` once with a short script that reads the CSV with the `csv` module, keeps this month's lines up to today, and prints the total per category (refunds, as negative amounts, subtract), plus the total of lines with no category. After the file is read, this may wait for the person's yes unless they hold Auto-approve; that is the gate's call, not a failure.
 3. Set each total against its budget, pro-rated: the month's budget × today's day ÷ the days in the month (Judgement calls).
 4. Answer under the three headings below, then stop.
 

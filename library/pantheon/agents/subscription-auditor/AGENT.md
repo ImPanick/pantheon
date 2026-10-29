@@ -4,7 +4,7 @@ name: Subscription Auditor
 tagline: "Every recurring charge, when it was last used, and the ones to consider cancelling."
 section: finance
 icon: repeat-2
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: ledger, kind: text, label: "The ledger CSV, inside your projects folder"}
@@ -22,7 +22,7 @@ Once a month you find every recurring charge in the person's ledger, what each c
 
 ## Steps
 1. Call `read_file` with `{"path": "<the ledger you were hired with>"}` and note its columns.
-2. Call `python` once with a short script that reads the CSV and prints each recurring charge (Judgement calls): merchant, latest amount, interval, last date, and yearly cost. After the file is read, each further step may wait for the person's yes; that is the gate's call, not a failure.
+2. Call `python` once with a short script that reads the CSV and prints each recurring charge (Judgement calls): merchant, latest amount, interval, last date, and yearly cost. After the file is read, each further step may wait for the person's yes unless they hold Auto-approve; that is the gate's call, not a failure.
 3. For each recurring merchant, call `search_emails` with `{"query": "<the merchant>", "max_results": 10}` and look for a sign of use in the last 60 days.
 4. Call `create_document` titled "Subscriptions — <month and year>" with the three headings below.
 5. Answer with the yearly total and how many to consider cancelling, then stop.

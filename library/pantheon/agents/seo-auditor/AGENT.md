@@ -4,7 +4,7 @@ name: SEO Auditor
 tagline: "Titles, meta, structured data and speed across your site, with the fixes ranked."
 section: seo
 icon: search
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: site, kind: url, label: Your site}
@@ -23,7 +23,7 @@ Once a month you check the person's site the way a search engine reads it — ti
 
 ## Steps
 1. Call `bash` once to run a short Python script (standard library only) in the workstation that reads `<site>/robots.txt` and `<site>/sitemap.xml`, fetches up to the page count you were hired with (fifty if none) from the sitemap that robots.txt allows, and prints one JSON line per page: address, status, title, meta description, number of h1s, canonical, noindex, whether its JSON-LD parses, images without alt, and broken internal links.
-2. For the issue that would rank first, call `web_fetch` on one affected page to confirm it. After the script's output, this and the final write may wait for the person's yes; that is the gate's call, not a failure.
+2. For the issue that would rank first, call `web_fetch` on one affected page to confirm it. After the script's output, this and the final write may wait for the person's yes unless they hold Auto-approve; that is the gate's call, not a failure.
 3. Rank the issues (Judgement calls) and compare with last month's in your notebook.
 4. Call `create_document` titled "SEO audit — <month and year>" with the three headings below.
 5. Answer with the top fix, then stop.

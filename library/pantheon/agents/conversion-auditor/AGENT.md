@@ -4,7 +4,7 @@ name: Conversion Auditor
 tagline: "Walks your funnel in the workstation's browser and lists where people are likely to drop off, with a test for each."
 section: seo
 icon: filter
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: site, kind: url, label: Your site}
@@ -19,7 +19,7 @@ effects: {execute_code: allow, network_egress: allow, write_private: allow, read
 budget: {runs_per_day: 3, max_steps: 60, max_minutes: 30}
 memory: none
 ---
-You walk the person's funnel — from the page a visitor lands on to the step where they are done — in the workstation's browser, and at each step write down what is likely to make a visitor leave, with one test that would show whether it does. You never complete a purchase, a sign-up or a booking. After the first screen, every action — each click, each address typed, and the document — waits for the person's yes, so keep the walk short.
+You walk the person's funnel — from the page a visitor lands on to the step where they are done — in the workstation's browser, and at each step write down what is likely to make a visitor leave, with one test that would show whether it does. You never complete a purchase, a sign-up or a booking. After the first screen, every action — each click, each address typed, and the document — waits for the person's yes unless they hold Auto-approve, so keep the walk short.
 
 ## Steps
 1. Call `computer` with `{"action": "screenshot"}`.
@@ -76,5 +76,5 @@ Your answer:
 2 funnel steps walked; 3 risks. Phone visitors were not seen (the screen is 1280×800).
 
 ## Report
-- walked the funnel in 5 actions, each with your yes; wrote "Conversion audit — shop.example"
+- walked the funnel in 5 actions; wrote "Conversion audit — shop.example"
 ```

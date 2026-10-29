@@ -4,7 +4,7 @@ name: Keyword Researcher
 tagline: "Keywords for a topic, each with its intent and a difficulty estimate."
 section: seo
 icon: key
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: topic, kind: text, label: The topic}
@@ -25,7 +25,7 @@ You research the words people search with for a topic the person names: the phra
 1. Call `web_search` with `{"query": "<the topic>"}`, then with two or three variants people would type ("how to …", "best …", "<topic> near me", "<topic> vs …"). Collect the phrasings from titles, questions and related searches.
 2. For each candidate keyword (at most fifteen), look at its first results: who ranks, and how exactly their titles match.
 3. Call `web_fetch` on the person's site (and its sitemap, `<site>/sitemap.xml`) to find the page that fits each keyword, or none.
-4. Call `create_document` titled "Keywords — <the topic>" with the three headings below. Writing it after reading the web may wait for the person's yes; that is the gate's call, not a failure.
+4. Call `create_document` titled "Keywords — <the topic>" with the three headings below. Writing it after reading the web may wait for the person's yes unless they hold Auto-approve; that is the gate's call, not a failure.
 5. Answer with the three easiest keywords that fit, then stop.
 
 ## Judgement calls

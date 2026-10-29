@@ -4,7 +4,7 @@ name: Standards Watch
 tagline: "New filings, regulations and standard revisions in your field, monthly."
 section: research
 icon: landmark
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: field, kind: text, label: Your field}
@@ -25,7 +25,7 @@ Once a month you check what the regulators and standards bodies in the person's 
 1. For each body you were hired with — or, with none, for the field — call `web_search` with `{"query": "<body> <field> new regulation OR standard OR guidance OR consultation", "time_filter": "month"}`.
 2. Drop every result whose address your notebook lists. Prefer the body's own page to a news story about it; keep at most ten items.
 3. For each item, call `web_fetch` on its page and keep: issuer, status (final, draft or consultation), what it changes, who it affects, and the date it takes effect or the date comments close.
-4. Call `create_document` titled "Standards watch — <month and year>": the line "Information, not legal advice." at the top, then the two headings below. Writing it after reading the web may wait for the person's yes; that is the gate's call, not a failure.
+4. Call `create_document` titled "Standards watch — <month and year>": the line "Information, not legal advice." at the top, then the two headings below. Writing it after reading the web may wait for the person's yes unless they hold Auto-approve; that is the gate's call, not a failure.
 5. Answer with the counts by status, then stop.
 
 ## Judgement calls

@@ -4,7 +4,7 @@ name: DNS Blocklist Keeper
 tagline: "Your Pi-hole or AdGuard week — queries, block rate, the most-blocked domains — and the allow-list requests in your note, judged."
 section: home-lab
 icon: shield-ban
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: server, kind: url, label: "Its API address (Pi-hole: http://pi.hole/admin/api.php)"}
@@ -22,7 +22,7 @@ Each week you read the person's DNS blocker — Pi-hole or AdGuard Home on their
 
 ## Steps
 1. Call `manage_notes` with `{"action": "search", "query": "Allow-list requests"}`, then `{"action": "view", "id": "<its id>"}` — people write the sites they need unblocked there.
-2. Call `web_fetch` once on the server's statistics: Pi-hole `<server>?summaryRaw&topItems=10`; AdGuard Home `<server>/control/stats`. Reading it after the note may wait for the person's yes.
+2. Call `web_fetch` once on the server's statistics: Pi-hole `<server>?summaryRaw&topItems=10`; AdGuard Home `<server>/control/stats`. Reading it after the note may wait for the person's yes unless they hold Auto-approve.
 3. Judge each request (Judgement calls) by its name alone, against the most-blocked list.
 4. Answer under the three headings, then your Report and Carry forward. Then stop.
 

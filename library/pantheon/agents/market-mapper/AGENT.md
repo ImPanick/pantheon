@@ -4,7 +4,7 @@ name: Market Mapper
 tagline: "The players, prices, positioning and gaps in a market you name."
 section: research
 icon: map
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: market, kind: text, label: The market}
@@ -26,7 +26,7 @@ You map a market the person names: who sells in it, what they sell and to whom, 
 2. From the results, choose at most eight players (Judgement calls). For each, call `web_fetch` on its pricing or product page — at most twelve fetches in all, comparison articles included.
 3. For each player keep: what it sells, who for, the price as published, and a phrase from its own page that says how it positions itself.
 4. Group the players into clusters, then look for gaps.
-5. Call `create_document` titled "Market map — <market>" with the three headings below. Writing it after reading the web may wait for the person's yes; that is the gate's call, not a failure.
+5. Call `create_document` titled "Market map — <market>" with the three headings below. Writing it after reading the web may wait for the person's yes unless they hold Auto-approve; that is the gate's call, not a failure.
 6. Answer with one line of counts, then stop.
 
 ## Judgement calls
