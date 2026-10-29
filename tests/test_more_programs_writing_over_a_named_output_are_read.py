@@ -196,7 +196,7 @@ def test_a_write_behind_a_test_that_nothing_is_there_replaces_nothing(folder):
     changes each time it is read (`$RANDOM`, `$_`)."""
     files = _files(folder)
     for command in ("[ -e notes.md ] || cwebp in.png -o notes.md",
-                    '[ -e "$out" ] || convert in.jpg "$out"',
+                    '[ -e "$out" ] || cwebp in.png -o "$out"',
                     "test -e notes.md || echo hi > notes.md",
                     "[[ -e notes.md ]] || echo hi > notes.md",
                     "[ -f notes.md ] || pandoc in.md -o notes.md",
@@ -207,6 +207,11 @@ def test_a_write_behind_a_test_that_nothing_is_there_replaces_nothing(folder):
                     "[ -e site ] || cp other/index.html site",
                     "cd site && { [ -e index.html ] || echo hi > index.html; }"):
         assert call_destroys("bash", command, files) is None, command
+    # `B1693` changed this one: the test speaks for `$out` alone, while
+    # `convert` writes `out-0.png`… beside it for several frames, in a folder
+    # the words do not name — which cannot be looked at.
+    assert call_destroys("bash", '[ -e "$out" ] || convert in.jpg "$out"', files) == \
+        "it cannot be known whether what convert writes beside $out was there before this run began"
     for command, shown in (("mkdir -p d && [ -e notes.md ] || echo hi > notes.md", "a > redirect"),
                            ("[ -e notes.md ] && echo hi > notes.md", "a > redirect"),
                            ("! [ -e notes.md ] || echo hi > notes.md", "a > redirect"),

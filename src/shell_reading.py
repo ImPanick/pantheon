@@ -104,8 +104,14 @@ where the command starts and what the run has already looked at:
     `-format` onto a different file (in place, each is an edit, as `sed -i`
     is); LibreOffice's `--convert-to` and `heif-convert`, as the block
     below `_FFMPEG_INFO` reads them;
+  * `B1693`: the numbered names ImageMagick (`out-0.png`…) and `heif-dec`
+    (`out-1.jpg`…) give each image when the input holds several — a
+    `numbered` finding: the folder, and the shape of those names in it;
 
-and **where the command goes** — a `chdir` finding — for each `cd`, `pushd`,
+and (`B1692`) **the links it makes** — `ln`, `ln -s`, `link`, `cp -l`/`-s`
+— a `links` finding, so a write onto a link's name after it in the same
+command is looked at where the link points; and **where the command goes**
+— a `chdir` finding — for each `cd`, `pushd`,
 `env -C`, `sudo -D`, a Python `os.chdir` or a subprocess `cwd=`, so a relative
 target is looked for wherever the command could be when it writes. A target or
 a `cd` filled in when it runs (`> "$out"`, `cd "$dir"`) is marked not
@@ -150,6 +156,7 @@ UNREADABLE = "unreadable"
 REACHES = "reaches"     # `B1652`: it reaches another machine
 WRITES = "writes"       # `B1669`: it writes over a path, if one is there
 CHDIR = "chdir"         # `B1669`: it moves to another folder before what follows
+LINKS = "links"         # `B1692`: it makes a name that writes through to another file
 
 
 class _Unreadable(Exception):
@@ -186,7 +193,21 @@ class Finding:
     `B1690`. `steady`: `path` names the same file each time the shell reads
     it in this command, until something sets a variable in it (`_steady`) —
     so a test of the same words before it (`_Tests`) is a test of this
-    file, whether or not the run can fill it in."""
+    file, whether or not the run can fill it in.
+
+    `B1692`. A `links` finding is a name a link makes — `path` the link's
+    name, or the folder it is made in (`into`, as a copy's), and `sources`
+    what it points at — so a write onto that name after it, in the same
+    command, is looked at where it lands. `beside`: what it points at is
+    named from the link's own folder, as a symbolic link's text is (`ln -s
+    ../a d/l` points at `a`), not from where the command runs.
+
+    `B1693`. `numbered`: a `writes` finding for the names a program gives
+    each image when it writes several — `path` the folder, and `numbered`
+    the shape of their names there, as a regular expression a name matches
+    whole (`out-[0-9]+\\.png`). How many it writes is the input's to decide,
+    so a name of that shape that was there may be written over, or may
+    not."""
     kind: str
     why: str
     path: str = ""
@@ -199,6 +220,8 @@ class Finding:
     split: bool = False
     removes: bool = False
     steady: bool = False
+    beside: bool = False
+    numbered: str = ""
 
 
 @dataclass
@@ -1385,10 +1408,26 @@ _FFMPEG_INFO = {"-version", "-h", "-help", "--help", "-?", "-L", "-buildconf", "
 # `out/$f`. A test of those same words before it (`[ -e "converted/${f%.*}.pdf"
 # ] && continue`) is then a test of that file (`_Tests`).
 #
-# What none of them reads: a file holding several images is written as
-# `out-1.jpg`, `out-2.jpg` by `heif-convert` (and `out-0.png`… by
-# ImageMagick's `convert`), names the input decides — read, as `B1682` read
-# ImageMagick, by the one name the command gives.
+# `B1693` · and the names a converter gives each of several images. A file
+# holding several images is written as `out-1.jpg`, `out-2.jpg` by
+# `heif-convert` (`heif_dec.cc`), and as `out-0.png`, `out-1.png`… by
+# ImageMagick (measured, 6.9.12: `convert`, `magick`, `montage`,
+# `composite`, each `-write`, and `mogrify -format`/`-path`) — the name it is
+# given up to its last `.`, a `-` and the image's number, then the rest;
+# with no `.`, the name and the number. How many there are is the input's:
+# the reader does not open it to count (`D-2026-10-29-02` §1's cautious
+# reading, as the owner's rulings have taken it). So besides the one name,
+# each is read for the names of that shape in its folder (`_numbered`): a
+# file of that shape that was there before the run may be written over —
+# it cannot be known, so it is destructive — and where none is, it is a
+# plain write. Not for an ImageMagick format that keeps every frame in one
+# file (`_MAGICK_ONE_FILE`, measured) unless `+adjoin` says otherwise, and
+# not for a `%d` name, which is unknowable already. GraphicsMagick (`gm`) is
+# not installed here to measure, so it is read for ImageMagick's shape and
+# for a number after the whole name (`out.png.0`) as well — the cautious
+# reading. The name made from a `for` loop's name
+# (`"converted/${f%.*}.jpg"`, `lexer.bare`) has any name with no `/` before
+# its number, so the shape is read as that.
 
 #: `scp`'s options that take a value (OpenSSH).
 _SCP_SHORT = "cDFiJlMoPSX"
@@ -1450,6 +1489,24 @@ _HEIF_LONG = {"--quality", "--decoder", "--output", "--chroma-upsampling",
               "--tile-threads", "--extract-mime-item"}
 _OUTPUT_READERS.update({"scp": "_scp", "jpegoptim": "_jpegoptim", "oxipng": "_oxipng",
                         "mogrify": "_mogrify", "heif-convert": "_heif", "heif-dec": "_heif"})
+#: `B1693`. ImageMagick's formats that keep every frame in one file —
+#: measured, 6.9.12, a three-frame GIF written as each: no numbered names.
+#: Any other (`png`, `jpg`, `bmp`, `tga`, a name it does not know…) may be.
+_MAGICK_ONE_FILE = frozenset("""
+    apng avif dcx dds exr fits gif hdr heic ico json jxl mat miff mng mpc pam pbm pdf pgm pnm
+    ppm ps psd ras rgb sgi sun svg tif tiff txt webp xcf""".split())
+#: `B1693`. What the name ends with when a program numbers it: `-3`, `-3.png`
+#: — or GraphicsMagick's `.3` — the only names the run need look at
+#: (`src/run_files.py`) for any shape `_numbered` reads.
+NUMBERED_TAIL = re.compile(r"(?:-[0-9]+(?:\.[^./]*)?|\.[0-9]+)$")
+#: `B1693`. A variable in a name, as `_numbered` lets one through: `$f`,
+#: `${f}`, or `${f}` with a part taken off its end or start — none of which
+#: can put a `/` in a value that holds none.
+_TRIMMED = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?:(?:%%?|##?)[^}]*)?\}"
+                      r"|\$([A-Za-z_][A-Za-z0-9_]*)")
+#: `B1692`. `ln`'s options that take a value.
+_LN_SHORT = "St"
+_LN_LONG = {"--suffix", "--target-directory"}
 
 
 def _scan(words: Sequence[_Word], shorts: str, longs: set,
@@ -1554,6 +1611,68 @@ def _under(folder: Optional[_Word], name: _Word) -> _Word:
             return _Word(text=joined, expanded=True, fills=2, quoted=True)
         return _unknown(joined)
     return replace(folder, text=posixpath.join(folder.text, name.text))
+
+
+def _numbered(word: _Word, bare: frozenset, gm: bool = False,
+              also: Sequence[str] = ()) -> Optional[Tuple[_Word, str]]:
+    """`B1693`. Where a program that may write several images puts them,
+    and the shape of their names there: `(the folder, a regular expression
+    a name in it matches whole)` — `out.png` → `out-[0-9]+\\.png` in `.` —
+    or `None` when it cannot be known.
+
+    The name is cut at its last `.` (none: the whole name), and the number
+    goes before it. The folder must be spelled out, or spelled against the
+    one variable the path starts with (`_spelling`); a variable in the name
+    only a `for` loop's name over names in the folder (`bare`, so its value
+    holds no `/`), whole or trimmed (`${f%.*}`), each read as any name. `gm`
+    reads GraphicsMagick's other shape too (`out.png.0`); `also` other
+    suffixes beside the image's (`heif-convert --with-xmp`'s)."""
+    text = word.text
+    if not _steady(word) or text.endswith("/"):
+        return None
+    head, slash, name = text.rpartition("/")
+    folder_text = (head or "/") if slash else "."
+    if _spelled(word):
+        folder: _Word = _Word(text=folder_text)
+        pieces: List[Tuple[bool, str]] = [(False, name)]
+    else:
+        if "$" in folder_text or "`" in folder_text:
+            # Only the one variable the path starts with (`B1681`).
+            if not (word.var and folder_text.count("$") == 1 and "`" not in folder_text
+                    and folder_text.startswith((f"${word.var}", f"${{{word.var}}}"))):
+                return None
+            folder = _Word(text=folder_text, expanded=True, fills=1, quoted=True,
+                           var=word.var, var_split=word.var_split)
+        else:
+            folder = _Word(text=folder_text)
+        if not _spelling(folder)[0]:
+            return None
+        pieces, at = [], 0
+        for m in _TRIMMED.finditer(name):
+            if (m.group(1) or m.group(2)) not in bare:
+                return None
+            pieces += [(False, name[at:m.start()]), (True, m.group(0))]
+            at = m.end()
+        pieces.append((False, name[at:]))
+        if any("$" in t or "`" in t for filled, t in pieces if not filled):
+            return None         # `$1`, `${#f}`, `${f/a/b}`: not a trimmed name
+    last = pieces[-1][1]
+    if "." in last:
+        root = [(f, t) for f, t in pieces[:-1]] + [(False, last[:last.rfind(".")])]
+        ext = last[last.rfind(".") + 1:]
+        tail = r"\.(?i:" + "|".join(re.escape(s) for s in (ext, *also)) + ")"
+    elif len(pieces) == 1:
+        root, tail = pieces, ""
+    else:
+        # Where its last `.` is, the loop's value decides: any number before
+        # an ending with no `.` in it.
+        root, tail = [(True, "")], r"(?:\.[^./]*)?"
+    spelled = "".join("[^/]*" if filled else re.escape(t) for filled, t in root)
+    shape = spelled + "-[0-9]+" + tail
+    if gm:
+        whole = "".join("[^/]*" if filled else re.escape(t) for filled, t in pieces)
+        shape = f"(?:{shape}|{whole}\\.[0-9]+)"
+    return folder, shape
 
 
 def _address_name(word: _Word, default: str) -> _Word:
@@ -1681,6 +1800,34 @@ class _Judge:
         """`B1683`. `why` takes away the file at `word` — and, `recursive`,
         what is in the folder there, which the command does not name."""
         self.writes(why, word, sources=[_Word()] if recursive else (), removes=True)
+
+    def links(self, why: str, word: _Word, targets: Sequence[_Word], into: str = "",
+              parents: bool = False, beside: bool = False) -> None:
+        """`B1692`. `why` makes a link at `word` — or (`into`) in the folder
+        there, by each target's name — to each of `targets`."""
+        known, var, split = _spelling(word)
+        self.findings.append(Finding(
+            LINKS, why, path=word.text, known=known, far=self.lexer.far,
+            sources=tuple((w.text, _spelled(w)) for w in targets), into=into, parents=parents,
+            var=var, split=split, beside=beside))
+
+    def numbered(self, why: str, word: _Word, gm: bool = False, also: Sequence[str] = ()) -> None:
+        """`B1693`. `why` may write several images, each by a number after
+        `word`'s name (`_numbered`): the names of that shape in its folder,
+        or — when they cannot be spelled — what it writes there, unknown."""
+        shape = _numbered(word, self.lexer.bare, gm, also)
+        if shape is None:
+            # Not a folder (`into`): the names beside `word`, wherever it is.
+            self.findings.append(Finding(WRITES, why, path=word.text, known=False,
+                                         far=self.lexer.far, numbered=".+"))
+            return
+        folder, pattern = shape
+        known, var, split = _spelling(folder)
+        # Never `steady`: a test of one name (`[ -e out.png ] ||`) says
+        # nothing of the numbered ones beside it.
+        self.findings.append(Finding(WRITES, why, path=folder.text, known=known,
+                                     far=self.lexer.far, into="folder", var=var, split=split,
+                                     numbered=pattern))
 
     def chdir(self, word: Optional[_Word]) -> None:
         """`B1669`. What follows runs in another folder — `None`: one only
@@ -1832,10 +1979,11 @@ class _Judge:
         if name in _COPY_VALUES:
             self._copies(name, args)
             return
-        if name == "ln":
+        if name in ("ln", "link"):
             flags = _flags(args)
-            if _short(flags, "f") or "--force" in flags:
+            if name == "ln" and (_short(flags, "f") or "--force" in flags):
                 self.destroys("ln -f replaces whatever had the link's name")
+            self._ln(name, args)            # `B1692`: and the name it makes
             return
         if name == "find":
             self._find(args)
@@ -2264,23 +2412,34 @@ class _Judge:
         if len(words) < 2 or {w.text for w in words} & _MAGICK_INFO:
             return
         why = name if tool == name else f"{name} {tool}"
+        split = any(w.text == "+adjoin" for w in words)
         for j, w in enumerate(words[:-1]):
             if w.text in ("-write", "+write"):
-                self._image_output(why, words[j + 1])
-        self._image_output(why, words[-1])
+                self._image_output(why, words[j + 1], split, name == "gm")
+        self._image_output(why, words[-1], split, name == "gm")
 
-    def _image_output(self, why: str, word: _Word) -> None:
+    def _image_output(self, why: str, word: _Word, split: bool = False, gm: bool = False) -> None:
         """An ImageMagick output: a file, unless it is the screen, a pipe or
-        no file at all (`null:`, `info:`, `x:`)."""
+        no file at all (`null:`, `info:`, `x:`). `B1693`: and the numbered
+        names it writes instead for several frames — unless its format keeps
+        them in one file (`_MAGICK_ONE_FILE`) and `+adjoin` (`split`) does
+        not say otherwise."""
         text = word.text
         if (text.startswith(("-", "+")) and text != "-") or text.lower().startswith(("fd:", "pipe:")):
             return              # an option where the output goes: it names none
+        fmt = ""
         if word.plain() and _MAGICK_FORMAT.match(text):
-            text = text.split(":", 1)[1]
+            fmt, text = text.split(":", 1)
             word = replace(word, text=text)
         if _file_value(word) is None:
             return
-        self.writes(why, _unknown(text) if "%" in text else word)
+        if "%" in text:
+            self.writes(why, _unknown(text))     # its own numbers: unknowable already
+            return
+        self.writes(why, word)
+        fmt = (fmt or posixpath.splitext(posixpath.basename(text))[1][1:]).lower()
+        if split or fmt not in _MAGICK_ONE_FILE:
+            self.numbered(why, word, gm=gm)
 
     def _openssl(self, name: str, args: List[_Word]) -> None:
         for j, w in enumerate(args):
@@ -2515,7 +2674,8 @@ class _Judge:
             elif key in ("-path", "-output-directory") and value is not None:
                 folder, moved = value, key
             elif key in ("-write", "+write") and value is not None:
-                self._image_output(f"{name} {key}", value)
+                self._image_output(f"{name} {key}", value, gm=name.startswith("gm"),
+                                   split=any(a.text == "+adjoin" for a in args))
             if key in _MAGICK_TWO:
                 i += 2
             elif t.startswith("-"):
@@ -2535,6 +2695,11 @@ class _Judge:
                 self.writes(why, where, sources=[_Word()], into="folder")
             elif not _same_path(out, w):
                 self.writes(why, out)
+                # `B1693`: `mogrify -format png anim.gif` writes `anim-0.png`….
+                ext = (fmt.text if fmt is not None
+                       else posixpath.splitext(posixpath.basename(out.text))[1][1:]).lower()
+                if ext not in _MAGICK_ONE_FILE or any(a.text == "+adjoin" for a in args):
+                    self.numbered(why, out, gm=name.startswith("gm"))
 
     def _mogrify_output(self, word: _Word, folder: Optional[_Word],
                         fmt: Optional[_Word]) -> Optional[_Word]:
@@ -2632,6 +2797,11 @@ class _Judge:
         if said & {"--with-aux", "--tiles", "-S", "--sequence"}:
             # Each auxiliary image, tile or frame: names the file decides.
             self.writes(name, _unknown(f"{root.text if root else target.text}-*"))
+            return
+        # `B1693`: a file holding several images is written `out-1.jpg`,
+        # `out-2.jpg`… (`heif_dec.cc`), and their metadata, read as beside them.
+        self.numbered(name, target, also=[s for o, s in (("--with-xmp", "xmp"),
+                                                         ("--with-exif", "exif")) if o in said])
 
     # ── `B1683` · what packs or unpacks a file and takes it away ──────────
 
@@ -2750,6 +2920,37 @@ class _Judge:
         for w in operands[1:]:
             self.removes("zip -m", w, recursive=recursive)
 
+    def _ln(self, name: str, args: List[_Word]) -> None:
+        """`B1692`. The names `ln` (and `link`) makes, read as GNU reads its
+        words: `ln TARGET LINK`, `ln TARGET` (in the folder it runs in, by
+        the target's name), `ln TARGET… FOLDER` or `-t FOLDER`; `-T` makes
+        the last word the link whatever is there. A hard link shares its
+        target's file; a symbolic one names it, from the link's own folder
+        unless `-r` (`beside`). A write onto that name later in the command
+        writes the target (`src/run_files.py`); `ln` itself makes the name
+        and writes nothing (with `-f` it replaces — read above)."""
+        opts, operands = _scan(args, _LN_SHORT, _LN_LONG)
+        said = {o for o, _v in opts}
+        if said & {"--help", "--version"} or not operands:
+            return
+        if name == "link":
+            if len(operands) == 2:          # `link FILE1 FILE2`, and nothing else
+                self.links("link", operands[1], operands[:1], into="file")
+            return
+        symbolic = bool(said & {"-s", "--symbolic"})
+        beside = symbolic and not said & {"-r", "--relative"}
+        why = "ln -s" if symbolic else "ln"
+        folder = next((v for o, v in reversed(opts)
+                       if o in ("-t", "--target-directory") and v is not None), None)
+        if folder is not None:
+            self.links(why, folder, operands, into="folder", beside=beside)
+        elif len(operands) == 1:
+            self.links(why, _Word(text="."), operands, into="folder", beside=beside)
+        else:
+            into = ("file" if said & {"-T", "--no-target-directory"}
+                    else "folder" if len(operands) > 2 else "")
+            self.links(why, operands[-1], operands[:-1], into=into, beside=beside)
+
     def _copies(self, name: str, args: List[_Word]) -> None:
         """`B1669`. `cp` or `install`: what it writes over, read as GNU reads
         its words — options anywhere before `--`, a short option's value
@@ -2798,15 +2999,26 @@ class _Judge:
                     break
         if name == "install" and ({"-d", "--directory"} & flags):
             return                                  # it makes folders
-        if {"-n", "--no-clobber", "-b", "--backup", "--update=none", "--update=none-fail"} & flags:
-            return                                  # it never overwrites, or keeps what it would
         parents = "--parents" in flags
         if folder is not None:
-            if operands:
-                self.writes(name, folder, sources=operands, into="folder", parents=parents)
+            if not operands:
+                return
+            dest, sources, into = folder, operands, "folder"
         elif len(operands) >= 2:
+            dest, sources = operands[-1], operands[:-1]
             into = "file" if ({"-T", "--no-target-directory"} & flags) else ""
-            self.writes(name, operands[-1], sources=operands[:-1], into=into, parents=parents)
+        else:
+            return
+        if not {"-n", "--no-clobber", "-b", "--backup", "--update=none",
+                "--update=none-fail"} & flags:
+            # Unless it never overwrites, or keeps what it would.
+            self.writes(name, dest, sources=sources, into=into, parents=parents)
+        symbolic = bool({"-s", "--symbolic-link"} & flags)
+        if name == "cp" and (symbolic or {"-l", "--link"} & flags):
+            # `B1692`: it makes links, not copies — read after its own write,
+            # which makes the name and does not write through it.
+            self.links("cp -s" if symbolic else "cp -l", dest, sources, into=into,
+                       parents=parents, beside=symbolic)
 
     def _git(self, args: List[_Word]) -> None:
         with_value = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path",
@@ -3299,6 +3511,7 @@ def python_findings(code: str, *, depth: int = 0) -> List[Finding]:
             for a in node.names:
                 aliases[a.asname or a.name] = f"{node.module}.{a.name}"
     findings: List[Finding] = []
+    links: List[Finding] = []       # `B1692`
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
@@ -3318,6 +3531,16 @@ def python_findings(code: str, *, depth: int = 0) -> List[Finding]:
             folder = _literal(node.args[0]) if node.args else None
             findings.append(Finding(CHDIR, "os.chdir", path=folder or "",
                                     known=bool(folder) and not folder.startswith("~")))
+        elif name in ("os.link", "os.symlink"):
+            # `B1692`: a name the commands it runs may write through. Read
+            # first, wherever it is in the code: `ast.walk` is not the order
+            # the code runs in, and a link read late would be missed.
+            given = dict(zip(("src", "dst"), node.args))
+            given.update({k.arg: k.value for k in node.keywords if k.arg in ("src", "dst")})
+            src, dst = _literal(given.get("src")), _literal(given.get("dst"))
+            links.append(Finding(LINKS, name, path=dst or "", known=bool(dst) and dst[:1] != "~",
+                                 sources=((src or "", bool(src) and src[:1] != "~"),),
+                                 into="file", beside=name == "os.symlink"))
         elif name in _PY_SHELL or name.startswith(_PY_SPAWN):
             first = node.args[0] if node.args else next(
                 (k.value for k in node.keywords if k.arg in ("args", "cmd", "command")), None)
@@ -3344,7 +3567,7 @@ def python_findings(code: str, *, depth: int = 0) -> List[Finding]:
             elif method in _PY_SQL and node.args and _literal(node.args[0]) is not None \
                     and _SQL_DESTROYS.search(_literal(node.args[0])):
                 findings.append(Finding(DESTROYS, "it hands a database a statement that deletes"))
-    return findings
+    return links + findings
 
 
 def reason(findings: Sequence[Finding], kind: str = DESTROYS) -> Optional[str]:
@@ -3375,10 +3598,14 @@ def writes_of(findings: Sequence[Finding], command: str = "") -> Tuple[Finding, 
     itself — its name written anywhere but in a `$name` or `${name…}`
     (`PANTHEON_PROJECTS=/x; …`, `export HOME=/etc`, `env NAME=… sh -c …`,
     Python's `os.environ["NAME"] = …`) — is not the run's value, so a path
-    spelled against it is not known; nor, with `HOME`, a path after `~`."""
-    if not any(f.kind == WRITES for f in findings):
+    spelled against it is not known; nor, with `HOME`, a path after `~`.
+
+    `B1692`. And the links it makes, which a write after them goes through
+    — and which, even with no write, the run must not go on taking for its
+    own once a link is there."""
+    if not any(f.kind in (WRITES, LINKS) for f in findings):
         return ()
-    out = tuple(f for f in findings if f.kind in (WRITES, CHDIR))
+    out = tuple(f for f in findings if f.kind in (WRITES, CHDIR, LINKS))
     if command:
         home_set = _set_here("HOME", command)
         out = tuple(replace(f, known=False, var="", split=False)

@@ -1547,6 +1547,11 @@ def capabilities_for_action(tool_name: Any, content: Any, *, files: Any = None) 
             # `B1669`: or when it writes over a file that was there before the
             # run began — or whether one was cannot be known.
             destroys = command_replaces(tool_name, content, files)
+        elif tool_name in _REPLACE_READ_TOOLS:
+            # `B1692`: it asks for itself (`ln -f`, `rm …; ln …`), and a name
+            # its links make is still not the run's own afterwards.
+            from src.run_files import forget_links
+            forget_links(tool_name, command_writes(tool_name, content), files)
         added = ({ToolEffect.DESTRUCTIVE} if destroys is not None else set()) | (
             {ToolEffect.NETWORK_EGRESS} if reaches is not None else set())
         if not added:
