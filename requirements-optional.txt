@@ -30,7 +30,7 @@ soundfile==0.14.0; python_version >= "3.11" and python_version < "3.13"
 # DuckDuckGo as a search provider option.
 # Install if you want DDG in the search-provider dropdown.
 # Alternatives: SearXNG, Brave, Tavily, Serper, Google PSE.
-ddgs==9.16.0
+ddgs==9.16.1
 
 # PDF form-filling feature (fillable AcroForm detection, field extraction,
 # value/annotation/signature stamping, page rendering for the form overlay).
@@ -39,7 +39,7 @@ ddgs==9.16.0
 # CREDITS.md. PDF *text* extraction goes through pypdf (BSD-3-Clause) and works
 # without PyMuPDF; installing it unlocks form-filling, the PDF viewer's page
 # render, annotation fill, and fillable-PDF detection on chat attachments.
-PyMuPDF==1.28.2
+PyMuPDF==2.0
 
 # Office / EPUB document text extraction (chat attachments + the personal-docs
 # RAG index). markitdown (MIT, Microsoft) converts .docx/.xlsx/.pptx/.xls/.epub
@@ -60,4 +60,4 @@ PyMuPDF==1.28.2
 # test_one_office_register_across_both_doors, test_personal_docs_office_index
 # and test_attachment_extension_registers — give 195 passed on 0.1.7 and 195
 # passed on 0.1.6. Same files, same count, no new failure.
-markitdown[docx,pptx,xlsx,xls]==0.1.7
+markitdown[docx,pptx,xlsx,xls]==0.1.9
