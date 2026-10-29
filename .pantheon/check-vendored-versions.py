@@ -351,7 +351,10 @@ VENDORED = [
              "Medium,SemiBold}.woff2 byte for byte, which is how the UI's own "
              "faces were found to be this release too; they are outside this "
              "file's root, so only the four `.ttf`s are fingerprinted here. "
-             "TrueType because jsPDF embeds `glyf` outlines and not WOFF2.",
+             "TrueType because jsPDF embeds `glyf` outlines and not WOFF2. "
+             "B1687: static/js/pdfFontCoverage.js is read out of Regular "
+             "(which characters it draws, decided before it is fetched) — "
+             "a bump re-runs `node scripts/build-pdf-font-coverage.mjs`.",
     ),
     Vendored(
         "Noto Sans CJK", "notofonts/noto-cjk", "2.004", "2026-10-29",

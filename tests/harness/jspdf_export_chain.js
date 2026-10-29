@@ -19,7 +19,7 @@
 // is promise plumbing over plain objects: which branch of `from()` the app
 // takes, whether jsPDF reads each option rather than storing it, and what the
 // app's own helpers (`_plainStylesForPdfClone`, `_pdfLinkBoxes`,
-// `_undrawableInPdf`) do with the inputs they are given.
+// `_undrawableInPdf`, `_pdfFontsNeeded`) do with the inputs they are given.
 //
 //     node tests/harness/jspdf_export_chain.js
 //
@@ -53,6 +53,13 @@ const span = source.slice(from, to);
 // it — read from there rather than written here a second time.
 const KATEX_CSS = (fs.readFileSync(path.join(__dirname, '..', '..', 'static', 'js', 'markdown.js'), 'utf8')
   .match(/const KATEX_CSS = '([^']+)';/) || [])[1];
+// `B1687`: `_pdfFontsNeeded` asks Inter's own table, which `document.js`
+// imports from the module `scripts/build-pdf-font-coverage.mjs` writes. Its
+// value is a JSON object, read from there and handed to the span as the
+// import would be.
+const COVERAGE_SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'static', 'js', 'pdfFontCoverage.js'), 'utf8');
+const PDF_FONT_COVERAGE = JSON.parse(COVERAGE_SRC.slice(COVERAGE_SRC.indexOf('{', COVERAGE_SRC.indexOf('PDF_FONT_COVERAGE =')),
+  COVERAGE_SRC.lastIndexOf('}') + 1));
 
 const out = { ok: true, version: jspdf.jsPDF.version };
 
@@ -84,10 +91,10 @@ function lift(textareaValue, win) {
   const uiModule = { showToast: (m) => ui.toasts.push(m), showError: (m) => ui.errors.push(m) };
   const fns = new Function(
     'document', 'window', 'activeDocId', 'ensurePdfLibs', 'uiModule', 'markdownModule',
-    '_getExportBaseName', 'printHtmlInFrame',
-    span + '\nreturn { _rasterisePdf, _pdfLinkBoxes, _plainStylesForPdfClone, _undrawableInPdf };'
+    '_getExportBaseName', 'printHtmlInFrame', 'PDF_FONT_COVERAGE',
+    span + '\nreturn { _rasterisePdf, _pdfLinkBoxes, _plainStylesForPdfClone, _undrawableInPdf, _pdfFontsNeeded };'
   )(doc, win, 'doc-1', async () => {}, uiModule, { renderMath: async () => {}, KATEX_CSS },
-    () => 'pantheon-export', async () => false);
+    () => 'pantheon-export', async () => false, PDF_FONT_COVERAGE);
   return { fns, ui };
 }
 
@@ -213,6 +220,15 @@ site.fns._rasterisePdf().then(() => {
   // ── 5. What the built-in fonts cannot draw ──────────────────────────────
   // A zero-width space (KaTeX puts them in math) is invisible, so not named.
   out.undrawable = site.fns._undrawableInPdf('café “naïve” — ™ Привет 你好 🎉 €\u200b');
+  // ── 6. Which faces a text fetches (`B1674`, `B1687`) ────────────────────
+  // Each probe alone: every symbol `B1687` names, the two Inter lacks, an
+  // emoji past U+FFFF, a variation selector, a private-use code point, and
+  // one word of each script `B1674` named.
+  out.needs = {};
+  for (const probe of [...'™↔↕▶◀❤☀‼⁉↩✔⌚─', '🎉', '\ufe0f', '\ue0a0', 'שלום', 'Привет', 'Γειά', '你好',
+    'café “naïve” — €']) {
+    out.needs[probe] = site.fns._pdfFontsNeeded(probe);
+  }
 }).then(() => {
   console.log(JSON.stringify(out));
 }, (err) => {
