@@ -22,6 +22,9 @@ rows:
     line clear of the edges before anything is measured, and the links are
     measured in that layout.
 
+`B1686` reads one more thing off the same file: it is deflated, as every
+fallback PDF now is (`PDF_PAGE`'s `compress`).
+
 Driven against the running app (`tests/test_the_command_palette_in_a_browser.py`'s
 `app_url`), the way
 `tests/test_the_fallback_pdf_is_jspdfs_own_with_its_links_in_a_browser.py`
@@ -154,6 +157,7 @@ def drive(app_url, tmp_path_factory):  # noqa: F811
     assert out["downloadedName"] == "Edge probe_v1.pdf", out
     import pypdf
     out["reader"] = pypdf.PdfReader(str(pdf))
+    out["size"] = pdf.stat().st_size
     return out
 
 
@@ -298,6 +302,28 @@ def test_a_list_marker_stays_on_its_items_line(drive):
     for item in _words(runs, "LISTPROBE"):
         assert any(m.page == item.page and abs(m.y - item.y) < 2 and m.x < item.x for m in markers), \
             (item, [m for m in markers if m.page == item.page])
+
+
+# ── `B1686`: the file is deflated ───────────────────────────────────────────
+
+def test_every_page_of_the_file_is_deflated(drive):
+    """`B1686`'s `Verify:` — this file's probe shrinks with `compress: true`.
+
+    jsPDF's `compress` is off by default and `PDF_PAGE` did not set it; `B1674`
+    turned it on only where a face is embedded, so this probe, which needs
+    none, went out as every page's drawing operators written in full. Measured
+    on it in Chromium: 510,195 B before, 53,427 B after, over five pages. The
+    bound is between the two, so a file written uncompressed again fails here
+    however its content moves; the rest of this file is `B1686`'s *its tests
+    pass*."""
+    reader = drive["reader"]
+    filters = set()
+    for page in reader.pages:
+        contents = page["/Contents"].get_object()
+        for part in (contents if isinstance(contents, list) else [contents]):
+            filters.add(str(part.get_object().get("/Filter")))
+    assert filters == {"/FlateDecode"}, filters
+    assert drive["size"] < 150_000, drive["size"]
 
 
 def test_the_export_finished_with_no_error(drive):
