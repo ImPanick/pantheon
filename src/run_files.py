@@ -2,7 +2,7 @@
 """What a run knows about the files it writes, and whether a `write_file`
 replaces one that was there before it began. `B1660`. And whether a shell
 command's `>`, `tee`, `cp` or `install` does (`B1669`, `command_replaces`), or
-a program told to write over its output (`B1680`, `B1682`), or a compressor
+a program told to write over its output (`B1680`, `B1682`, `B1688`–`B1690`), or a compressor
 takes away (`B1683`), with a path spelled against a variable the run knows
 filled in as its shell will (`B1681`) — in the workstation, the value its
 daemon reports it gives the command (`B1684`). An append replaces nothing
