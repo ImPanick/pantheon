@@ -509,28 +509,58 @@ INVENTORY = [
     Entry("SheetJS / xlsx", ["static/lib/xlsx.full.min.js"], "Apache-2.0",
           "SheetJS-Apache-2.0.txt", "SheetJS",
           contents=CONTENTS_SINGLE, notices=("SheetJS",)),
-    # `B339`, 2026-09-17. `single` here is upstream's rollup UMD build, which
-    # leaves no module paths — and rule 8's second half is what makes the claim
-    # mean something: the file carries three legal comments that are not docx's
-    # (`ieee754`, `buffer`, `string.fromcodepoint`), and each now has an Entry
-    # because an unclaimed notice fails. Upstream's 9.x Vite build leaves
-    # `//#region node_modules/<pkg>/` markers for **44** packages — the same
-    # library, the same dependencies, a build that says so — which is the
-    # measured cost recorded on `B424`.
+    # `B339`, 2026-09-17: `single` was right for docx 8.5.0's rollup UMD build,
+    # which left no module paths, and rule 8's second half made the claim mean
+    # something — the file carried three legal comments that are not docx's
+    # (`ieee754`, `buffer`, `string.fromcodepoint`), each with an Entry.
+    # `B424`, 2026-10-29 (`D-2026-10-29-02` §4): the file is docx **9.7.1**'s
+    # published `dist/index.umd.cjs`, a Vite (rolldown) build that leaves a
+    # `//#region node_modules/<pkg>/` marker for every module it took, so the
+    # answer is `derived` and rule 7 reads the list out of the bytes: 45
+    # packages, each declared below with its licence text. The same library and
+    # the same dependencies as 8.5.0 — that build simply did not say so.
     Entry("docx", ["static/lib/docx.umd.min.js"], "MIT",
           "docx-MIT-LICENSE.txt", "dolanmiu/docx",
-          contents=CONTENTS_SINGLE, notices=("dolanmiu/docx",)),
+          contents=CONTENTS_DERIVED, notices=("dolanmiu/docx",)),
     Entry("mammoth.js", ["static/lib/mammoth.browser.min.js"], "BSD-2-Clause",
           "mammoth.js-BSD-2-Clause.txt", "mammoth.js",
           contents=CONTENTS_SINGLE, notices=("mammoth",)),
-    Entry("html2pdf.js", ["static/lib/html2pdf.bundle.min.js"], "MIT",
-          "html2pdf.js-MIT-LICENSE.txt", "html2pdf.js",
-          contents=CONTENTS_DERIVED, notices=("html2pdf.js",)),
+    # `B421`, 2026-10-29 (`D-2026-10-29-02` §2): `html2pdf.bundle.min.js` is
+    # GONE. The fallback PDF is jsPDF's own `html()`, and jsPDF, html2canvas and
+    # DOMPurify ship as their own published files (their entries below now
+    # carry the patterns). The paperwork stays, with empty patterns, for the
+    # reason `B334` and `B338` give: those bytes ship in every tag of this
+    # repository up to 2026-10-29, and deleting the notice for bytes somebody
+    # can still check out is how attribution rots backwards.
+    Entry("html2pdf.js", [], "MIT",
+          "html2pdf.js-MIT-LICENSE.txt", "html2pdf.js", notices=("html2pdf.js",)),
     Entry("html2pdf bundle sidecar", [], "MIT (bundled deps)",
           "html2pdf.bundle.min.js.LICENSE.txt", "html2pdf.bundle.min.js.LICENSE.txt"),
-    Entry("jsPDF", [], "MIT", "jsPDF-MIT-LICENSE.txt", "jsPDF", bundled=("jspdf",)),
-    Entry("html2canvas", [], "MIT", "html2canvas-MIT-LICENSE.txt", "html2canvas",
-          bundled=("html2canvas",)),
+    # `B421`. jsPDF 4.2.1's published `dist/jspdf.umd.min.js`: a rollup build,
+    # no module paths, so `single` — and rule 8 then holds it to every legal
+    # comment in the file, which is 28. Most are jsPDF's own: its plugins carry
+    # per-file MIT notices in their authors' names, and three carry an
+    # authorless one (the jpeg_support, setLanguage and ttfsupport plugins),
+    # matched here by their whole text because there is no name to match. The
+    # rest are code jsPDF ships in its own source from somebody else, and each
+    # has its own Entry below (`omggif`, Adobe's JPEG encoder, the WebP
+    # decoder, Joseph Myers' md5, FPDF's RC4, Stoyan Stefanov's RGBColor) or
+    # an npm one (`pako`).
+    Entry("jsPDF", ["static/lib/jspdf.umd.min.js"], "MIT", "jsPDF-MIT-LICENSE.txt",
+          "jsPDF", bundled=("jspdf",), contents=CONTENTS_SINGLE,
+          notices=("jsPDF", "Steven Spungin", "Aras Abbasi", "Youssef Beddad",
+                   "Owen Leong", "Antti Palola", "Menezes de Morais",
+                   "Jussi Utunen", "Unicode Bidi Engine",
+                   "/** * @license * Licensed under the MIT License. * "
+                   "http://opensource.org/licenses/mit-license */",
+                   "/** * @license * * Licensed under the MIT License. * "
+                   "http://opensource.org/licenses/mit-license */")),
+    # `B421`. html2canvas 1.4.1's published `dist/html2canvas.min.js`, a rollup
+    # build with its own four dependencies and tslib's helpers inside it (each
+    # declared below; tslib's notice is the second legal comment in the file).
+    Entry("html2canvas", ["static/lib/html2canvas.min.js"], "MIT",
+          "html2canvas-MIT-LICENSE.txt", "html2canvas", bundled=("html2canvas",),
+          contents=CONTENTS_SINGLE),
     Entry("es6-promise", [], "MIT", "es6-promise-MIT-LICENSE.txt", "es6-promise",
           bundled=("es6-promise",)),
     # P0-21b. `html2pdf.bundle.min.js` ships fifteen top-level packages and its
@@ -571,9 +601,17 @@ INVENTORY = [
     # Apache-2.0 carries a patent grant MPL's is narrower than. The upstream
     # LICENSE ships verbatim with BOTH texts, because misrepresenting what was
     # offered would be worse than stating which half we took.
-    Entry("DOMPurify", [], "Apache-2.0 (dual, or MPL-2.0)",
+    #
+    # `B421`: DOMPurify 3.4.17's published `dist/purify.min.js` ships as a file
+    # of its own now (it was inside the html2pdf bundle). Its tarball splits
+    # the two offers into `LICENSE` (Apache-2.0) and `LICENSE-MPL`; the file
+    # here is Cure53's combined statement of both from the release the choice
+    # was made against, and it is still exactly what is offered. The second
+    # legal comment in `purify.min.js` is Babel's helpers' `regenerator-runtime`
+    # notice, claimed by that entry.
+    Entry("DOMPurify", ["static/lib/purify.min.js"], "Apache-2.0 (dual, or MPL-2.0)",
           "DOMPurify-Apache-2.0-or-MPL-2.0.txt", "DOMPurify",
-          bundled=("dompurify",), notices=("DOMPurify",)),
+          bundled=("dompurify",), notices=("DOMPurify",), contents=CONTENTS_SINGLE),
     Entry("fflate", [], "MIT", "fflate-MIT-LICENSE.txt", "fflate", bundled=("fflate",)),
     Entry("performance-now", [], "MIT",
           "performance-now-MIT-LICENSE.txt", "performance-now",
@@ -582,8 +620,11 @@ INVENTORY = [
     Entry("regenerator-runtime", [], "MIT",
           "regenerator-runtime-MIT-LICENSE.txt", "regenerator-runtime",
           bundled=("regenerator-runtime",)),
+    # `B421`: also Stoyan Stefanov's RGBColor as jsPDF carries it in its own
+    # source (`@author Stoyan Stefanov`, "Use it if you like it"); the npm
+    # `rgbcolor` is the same author's code under the MIT text here.
     Entry("rgbcolor", [], "MIT", "rgbcolor-MIT-LICENSE.txt", "rgbcolor",
-          bundled=("rgbcolor",)),
+          bundled=("rgbcolor",), notices=("rgbcolor", "Stoyan Stefanov")),
     Entry("stackblur-canvas", [], "MIT",
           "stackblur-canvas-MIT-LICENSE.txt", "stackblur-canvas",
           bundled=("stackblur-canvas",)),
@@ -662,6 +703,148 @@ INVENTORY = [
           "safe-buffer", bundled=("safe-buffer",), notices=("safe-buffer",)),
     Entry("Immutable.js", [], "MIT", "immutable-MIT-LICENSE.txt", "Immutable.js",
           bundled=("immutable",), notices=("Lee Byron",)),
+    # ── B421, 2026-10-29 ──────────────────────────────────────────────────
+    # What the three published PDF files carry that is not theirs. Inside
+    # `html2canvas.min.js` (rollup, no module paths): its four dependencies,
+    # all Niklas von Hertzen's, and Microsoft's `tslib` helpers, whose 0BSD
+    # header is a legal comment in the file and is matched by its first
+    # sentence (a bare "Microsoft Corporation" would claim any Microsoft
+    # notice anywhere). Read off html2canvas 1.4.1's own `package.json`, each
+    # text from that package's tarball.
+    Entry("css-line-break", [], "MIT", "css-line-break-MIT-LICENSE.txt", "css-line-break",
+          bundled=("css-line-break",)),
+    Entry("text-segmentation", [], "MIT", "text-segmentation-MIT-LICENSE.txt", "text-segmentation",
+          bundled=("text-segmentation",)),
+    Entry("utrie", [], "MIT", "utrie-MIT-LICENSE.txt", "utrie",
+          bundled=("utrie",)),
+    Entry("base64-arraybuffer", [], "MIT", "base64-arraybuffer-MIT-LICENSE.txt", "base64-arraybuffer",
+          bundled=("base64-arraybuffer",)),
+    Entry("tslib", [], "0BSD", "tslib-0BSD-LICENSE.txt", "tslib", bundled=("tslib",),
+          notices=("Copyright (c) Microsoft Corporation. Permission to use, copy, "
+                   "modify, and/or distribute this software for any purpose with or "
+                   "without fee is hereby granted.",)),
+    # Inside `jspdf.umd.min.js`: code jsPDF ships in its own source from
+    # somebody else, each found by its legal comment in the file (rule 8). No
+    # npm package to fetch a text from, so the text is the notice the file
+    # carries; two carry no licence at all, and say so in their own words.
+    Entry("omggif", [], "MIT", "omggif-MIT-LICENSE.txt", "omggif",
+          notices=("Dean McNamee",)),
+    Entry("JPEGEncoder (Adobe)", [], "BSD-3-Clause", "JPEGEncoder-Adobe-BSD-3-Clause.txt",
+          "JPEGEncoder", notices=("Adobe Systems Incorporated",)),
+    Entry("WebP decoder (webpjs)", [], "MIT", "webp-js-MIT-LICENSE.txt", "webpjs",
+          notices=("Dominik Homberger",)),
+    Entry("md5 (Joseph Myers)", [], "none stated — \"does not specify a particular license\"",
+          None, "Joseph Myers", notices=("Joseph Myers",)),
+    Entry("FPDF protection script", [], "FPDF — \"no usage restriction\"",
+          None, "FPDF", notices=("FPDF is released under a permissive license",)),
+    # ── B424, 2026-10-29 ──────────────────────────────────────────────────
+    # Inside `docx.umd.min.js`, docx 9.7.1's Vite build (`D-2026-10-29-02`
+    # §4). Rule 7 derives 45 packages from its `//#region node_modules/<pkg>/`
+    # markers; `buffer`, `ieee754` and `safe-buffer` were already declared (for
+    # docx 8.5.0's notices and Swagger UI's sidecar), and the other 42 are
+    # here. Four more are inside files the build took whole and rule 7 cannot
+    # open: JSZip's own browserify `dist/jszip.min.js` carries `lie`,
+    # `immediate` and `setimmediate` (its module map names them), and
+    # vite-plugin-node-polyfills' prebuilt `process` shim is `process`'s
+    # `browser.js`. Each text is the package's own, from the release the
+    # registry resolves docx 9.7.1's ranges to as of its publication
+    # (2026-05-27) — except `sax`, read off the code: 1.2.4 (1.3.0's
+    # `parsedEntity` is absent), which matters because sax went ISC ->
+    # BlueOak-1.0.0 at 1.4.2. `hash.js` ships no LICENSE file; its text is its
+    # README's "LICENSE" section, verbatim. JSZip is offered under MIT or
+    # GPLv3 and is taken under MIT; the file carries both offers.
+    Entry("available-typed-arrays", [], "MIT", "available-typed-arrays-MIT-LICENSE.txt", "available-typed-arrays",
+          bundled=("available-typed-arrays",)),
+    Entry("base64-js", [], "MIT", "base64-js-MIT-LICENSE.txt", "base64-js",
+          bundled=("base64-js",)),
+    Entry("call-bind", [], "MIT", "call-bind-MIT-LICENSE.txt", "call-bind",
+          bundled=("call-bind",)),
+    Entry("call-bind-apply-helpers", [], "MIT", "call-bind-apply-helpers-MIT-LICENSE.txt", "call-bind-apply-helpers",
+          bundled=("call-bind-apply-helpers",)),
+    Entry("call-bound", [], "MIT", "call-bound-MIT-LICENSE.txt", "call-bound",
+          bundled=("call-bound",)),
+    Entry("define-data-property", [], "MIT", "define-data-property-MIT-LICENSE.txt", "define-data-property",
+          bundled=("define-data-property",)),
+    Entry("dunder-proto", [], "MIT", "dunder-proto-MIT-LICENSE.txt", "dunder-proto",
+          bundled=("dunder-proto",)),
+    Entry("es-define-property", [], "MIT", "es-define-property-MIT-LICENSE.txt", "es-define-property",
+          bundled=("es-define-property",)),
+    Entry("es-errors", [], "MIT", "es-errors-MIT-LICENSE.txt", "es-errors",
+          bundled=("es-errors",)),
+    Entry("es-object-atoms", [], "MIT", "es-object-atoms-MIT-LICENSE.txt", "es-object-atoms",
+          bundled=("es-object-atoms",)),
+    Entry("events", [], "MIT", "events-MIT-LICENSE.txt", "events",
+          bundled=("events",)),
+    Entry("for-each", [], "MIT", "for-each-MIT-LICENSE.txt", "for-each",
+          bundled=("for-each",)),
+    Entry("function-bind", [], "MIT", "function-bind-MIT-LICENSE.txt", "function-bind",
+          bundled=("function-bind",)),
+    Entry("get-intrinsic", [], "MIT", "get-intrinsic-MIT-LICENSE.txt", "get-intrinsic",
+          bundled=("get-intrinsic",)),
+    Entry("get-proto", [], "MIT", "get-proto-MIT-LICENSE.txt", "get-proto",
+          bundled=("get-proto",)),
+    Entry("gopd", [], "MIT", "gopd-MIT-LICENSE.txt", "gopd",
+          bundled=("gopd",)),
+    Entry("has-property-descriptors", [], "MIT", "has-property-descriptors-MIT-LICENSE.txt", "has-property-descriptors",
+          bundled=("has-property-descriptors",)),
+    Entry("has-symbols", [], "MIT", "has-symbols-MIT-LICENSE.txt", "has-symbols",
+          bundled=("has-symbols",)),
+    Entry("has-tostringtag", [], "MIT", "has-tostringtag-MIT-LICENSE.txt", "has-tostringtag",
+          bundled=("has-tostringtag",)),
+    Entry("hash.js", [], "MIT", "hash.js-MIT-LICENSE.txt", "hash.js",
+          bundled=("hash.js",)),
+    Entry("hasown", [], "MIT", "hasown-MIT-LICENSE.txt", "hasown",
+          bundled=("hasown",)),
+    Entry("inherits", [], "ISC", "inherits-ISC-LICENSE.txt", "inherits",
+          bundled=("inherits",)),
+    Entry("is-arguments", [], "MIT", "is-arguments-MIT-LICENSE.txt", "is-arguments",
+          bundled=("is-arguments",)),
+    Entry("is-callable", [], "MIT", "is-callable-MIT-LICENSE.txt", "is-callable",
+          bundled=("is-callable",)),
+    Entry("is-generator-function", [], "MIT", "is-generator-function-MIT-LICENSE.txt", "is-generator-function",
+          bundled=("is-generator-function",)),
+    Entry("is-typed-array", [], "MIT", "is-typed-array-MIT-LICENSE.txt", "is-typed-array",
+          bundled=("is-typed-array",)),
+    Entry("jszip", [], "MIT (dual, or GPL-3.0-or-later)", "jszip-MIT-or-GPL-3.0-LICENSE.txt", "jszip",
+          bundled=("jszip",), notices=("JSZip",)),
+    Entry("math-intrinsics", [], "MIT", "math-intrinsics-MIT-LICENSE.txt", "math-intrinsics",
+          bundled=("math-intrinsics",)),
+    Entry("minimalistic-assert", [], "ISC", "minimalistic-assert-ISC-LICENSE.txt", "minimalistic-assert",
+          bundled=("minimalistic-assert",)),
+    Entry("nanoid", [], "MIT", "nanoid-MIT-LICENSE.txt", "nanoid",
+          bundled=("nanoid",)),
+    Entry("possible-typed-array-names", [], "MIT", "possible-typed-array-names-MIT-LICENSE.txt", "possible-typed-array-names",
+          bundled=("possible-typed-array-names",)),
+    Entry("readable-stream", [], "MIT", "readable-stream-MIT-LICENSE.txt", "readable-stream",
+          bundled=("readable-stream",)),
+    Entry("sax", [], "ISC", "sax-ISC-LICENSE.txt", "sax",
+          bundled=("sax",)),
+    Entry("set-function-length", [], "MIT", "set-function-length-MIT-LICENSE.txt", "set-function-length",
+          bundled=("set-function-length",)),
+    Entry("stream-browserify", [], "MIT", "stream-browserify-MIT-LICENSE.txt", "stream-browserify",
+          bundled=("stream-browserify",)),
+    Entry("string_decoder", [], "MIT", "string-decoder-MIT-LICENSE.txt", "string_decoder",
+          bundled=("string_decoder",)),
+    Entry("util", [], "MIT", "util-MIT-LICENSE.txt", "util",
+          bundled=("util",)),
+    Entry("util-deprecate", [], "MIT", "util-deprecate-MIT-LICENSE.txt", "util-deprecate",
+          bundled=("util-deprecate",)),
+    Entry("vite-plugin-node-polyfills", [], "MIT", "vite-plugin-node-polyfills-MIT-LICENSE.txt", "vite-plugin-node-polyfills",
+          bundled=("vite-plugin-node-polyfills",)),
+    Entry("which-typed-array", [], "MIT", "which-typed-array-MIT-LICENSE.txt", "which-typed-array",
+          bundled=("which-typed-array",)),
+    Entry("xml", [], "MIT", "xml-MIT-LICENSE.txt", "xml",
+          bundled=("xml",)),
+    Entry("xml-js", [], "MIT", "xml-js-MIT-LICENSE.txt", "xml-js",
+          bundled=("xml-js",)),
+    Entry("lie", [], "MIT", "lie-MIT-LICENSE.txt", "lie",
+          bundled=("lie",)),
+    Entry("immediate", [], "MIT", "immediate-MIT-LICENSE.txt", "immediate",
+          bundled=("immediate",)),
+    Entry("setimmediate", [], "MIT", "setimmediate-MIT-LICENSE.txt", "setimmediate",
+          bundled=("setimmediate",)),
+    Entry("process", [], "MIT", "process-MIT-LICENSE.txt", "process",
+          bundled=("process",)),
     Entry("KaTeX", ["static/lib/katex/katex.min.js", "static/lib/katex/katex.min.css"],
           "MIT", "KaTeX-MIT-LICENSE.txt", "KaTeX",
           contents=CONTENTS_SINGLE, notices=("KaTeX",)),

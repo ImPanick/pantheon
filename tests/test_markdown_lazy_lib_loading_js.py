@@ -404,7 +404,7 @@ def test_detached_container_math_typesets_with_the_real_renderer(node_available)
 
     mdToHtml defers math to a document-scoped flush, which cannot reach a
     detached node, so the export has to typeset its own container before
-    handing it to html2pdf. This is that container: pending spans in, real
+    handing it to jsPDF (`B421`; html2pdf until then). This is that container: pending spans in, real
     KaTeX markup out, no .katex-error and nothing left pending.
     """
     out = _run_node(
@@ -436,12 +436,14 @@ def test_detached_container_math_typesets_with_the_real_renderer(node_available)
     assert MATH_PENDING_CLASS not in out["written"]
 
 
-def test_pdf_export_typesets_its_container_before_html2pdf():
+def test_pdf_export_typesets_its_container_before_jspdf():
     """Ordering in a call site, so pin the call site. No node needed.
 
     `B1333`: *Print as PDF* prints the document's HTML in a frame, and the
-    html2pdf call moved to `_rasterisePdf` (the path kept for a frame that
-    cannot print). Both typeset before they hand the page on."""
+    raster call moved to `_rasterisePdf` (the path kept for a frame that
+    cannot print). Both typeset before they hand the page on. `B421`: the
+    raster call is jsPDF's own `html()` now, handed the container's HTML,
+    where it was `window.html2pdf()` handed the container."""
     source = (_REPO / "static/js/document.js").read_text(encoding="utf-8")
     match = re.search(r"\n  async function _rasterisePdf\(\) \{(.*?)\n  \}\n", source, re.S)
     assert match, "_rasterisePdf not found"
@@ -450,7 +452,7 @@ def test_pdf_export_typesets_its_container_before_html2pdf():
     render = "await markdownModule.renderMath(container);"
     assert render in body, "the export never typesets its detached container"
     assert body.index("container.innerHTML = html;") < body.index(render)
-    assert body.index(render) < body.index("window.html2pdf()")
+    assert body.index(render) < body.index("_pdfFromHtml(pdf, container.outerHTML)")
 
     match = re.search(r"\n  async function exportAsPdf\(\) \{(.*?)\n  \}\n", source, re.S)
     assert match, "exportAsPdf not found"

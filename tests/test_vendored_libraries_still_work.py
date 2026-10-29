@@ -13,8 +13,10 @@ So these tests do not check that a file changed. They run the shipped bundles:
     `readFileContent`, lifted out of `static/js/documentLibrary.js` and
     evaluated, which reaches the vendored mammoth itself.
   * PDF export — `exportAsPdf` is lifted out of `static/js/document.js` and
-    evaluated against the vendored bundle, so the options and the source the
-    worker ends up holding are the app's rather than a copy of them.
+    evaluated against the vendored jsPDF, so the options and the source the
+    worker ends up holding are the app's rather than a copy of them. (`B421`,
+    2026-10-29: the html2pdf bundle is gone and the fallback PDF is jsPDF
+    4.2.1's own `html()`; the PDF section below says what replaced what.)
 
 Driving the call sites rather than copying their arguments is `Law 13`: the
 options and the `from()` argument are set in one place, and a test that restated
@@ -196,66 +198,86 @@ def test_docx_import_reports_a_problem_rather_than_throwing(tmp_path):
 
 
 # ── PDF export ─────────────────────────────────────────────────────────────
+#
+# `B421` (`D-2026-10-29-02` §2). The fallback PDF is jsPDF 4.2.1's own
+# `html()` now, with html2canvas 1.4.1 and DOMPurify 3.4.17 beside it as their
+# own published files; html2pdf.js and its bundle are gone. `B421`'s `Verify:`
+# asked for this file's `exportAsPdf` chain to pass *unchanged* — that was
+# written for splitting the bundle into html2pdf's own three files, and it
+# cannot hold once html2pdf itself goes: there is no `html2pdf().set()` left to
+# read an option back from. So the chain is the same span of `document.js`,
+# driven against the real vendored jsPDF instead (`jspdf_export_chain.js`),
+# and each test below says which of the old ones it stands in for. The drawing
+# itself needs a browser and is driven in
+# `tests/test_the_fallback_pdf_is_jspdfs_own_with_its_links_in_a_browser.py`.
 
 @pytest.fixture(scope="module")
 def chain():
-    return run_harness("html2pdf_export_chain.js")
+    return run_harness("jspdf_export_chain.js")
 
 
-def test_pdf_export_options_survive_the_jspdf_major(chain):
-    """The feature. Every option `document.js:9689` passes is still understood
-    by the shipped bundle after html2pdf 0.10.2 -> 0.14.0 and jsPDF 2 -> 4.
+def test_pdf_export_options_are_read_by_the_vendored_jspdf(chain):
+    """The feature. Every option the call site passes is understood by the
+    shipped jsPDF's `html()` Worker, read back after `set()` ran (was
+    `test_pdf_export_options_survive_the_jspdf_major`, against html2pdf).
 
     `margin: 10` coming back as `[10, 10, 10, 10]` is the load-bearing part:
-    it means `set()` *normalised* the value rather than storing a number it
-    would later ignore. A key that quietly stopped being read is the shape of
-    break that reaches a user as a wrong page rather than as an error.
+    `set()` normalised it rather than storing a number it would later ignore.
+    `drawsIntoThePdf` is why the file is text: `html()` hands html2canvas
+    jsPDF's own canvas, whose 2D context writes PDF operators, where html2pdf
+    drew into a bitmap and pasted JPEG tiles.
     """
     assert chain["ok"], chain
-    assert chain["exportsFunction"], "the bundle no longer publishes window.html2pdf"
-    el = chain["element"]
-    assert "error" not in el, el
-    assert el["margin"] == [10, 10, 10, 10], el
-    assert el["filename"] == "pantheon-export.pdf", el
-    assert el["image"] == {"type": "jpeg", "quality": 0.95}, el
-    assert el["html2canvasScale"] == 2, el
-    assert el["jsPDF"] == {"unit": "mm", "format": "a4", "orientation": "portrait"}, el
+    assert chain["version"] == "4.2.1", chain["version"]
+    w = chain["worker"]
+    assert w["margin"] == [10, 10, 10, 10], w
+    assert w["width"] == pytest.approx(190, abs=0.01), w
+    assert w["innerWidth"] == pytest.approx(w["width"]), (
+        "the content is drawn as wide as the page between its margins", w)
+    # 96 CSS px to the inch: 12px type is 9pt on the page, as it was.
+    assert w["width"] / w["windowWidth"] == pytest.approx(25.4 / 96), w
+    assert w["autoPaging"] is True, w
+    assert w["allowTaint"] is False, w
+    assert w["drawsIntoThePdf"] is True and w["sameDocument"] is True, w
 
 
-def test_the_export_call_site_passes_an_element_and_not_a_string(chain):
-    """`B334`. `Worker.prototype.from` switches on the source's type: a string
-    goes through `createElement('div', {innerHTML: src})` — the sink
-    CVE-2026-22787 is about — and an element is stored as-is.
+def test_the_export_call_site_hands_jspdf_a_string_so_dompurify_runs(chain):
+    """`B421` turned `B334`'s test around (`..._passes_an_element_and_not_a_string`).
 
-    `static/js/document.js` builds a detached `<div>` and passes the node, so
-    Pantheon is on the element branch. That is measured here by running the real
-    `exportAsPdf` and reporting what it handed `from()`, rather than by reading
-    the call site: a refactor to `.from(container.innerHTML)` would be a
-    one-word change that turned a HIGH advisory live, and it fails here.
+    `B334` pinned the element branch because html2pdf 0.10.2's string branch
+    was `innerHTML` with only `<script>` removed — CVE-2026-22787's sink. In
+    jsPDF 4.2.1's `html()` the string branch is `DOMPurify.sanitize` with the
+    DOMPurify shipped beside it (3.4.17, zero advisories), and the element
+    branch is the one that uses no sanitiser at all: the string is how the
+    third file does anything (`Law 13`). The browser test counts the
+    `sanitize` call; this reads the type the real call site passes, so a
+    refactor back to `.html(container)` is a one-word change that fails here.
     """
     cs = chain["callSite"]
-    assert cs and "error" not in cs, cs
-    assert cs["fromType"] == "object", (
-        "exportAsPdf passed a string to html2pdf().from() — that is the "
-        f"innerHTML branch, which is CVE-2026-22787's sink: {cs}"
-    )
-    assert cs["fromNodeName"] == "DIV", cs
-    assert "body text" in (cs["fromInnerHTML"] or ""), cs
+    assert cs["errors"] == [], cs
+    assert cs["srcType"] == "string", (
+        "_rasterisePdf handed jsPDF a node — the branch DOMPurify never sees", cs)
+    assert cs["fromIsSrc"] is True, cs
+    assert "body text" in cs["src"], cs
+    assert cs["src"].startswith('<div style="padding:20px;'), (
+        "the container's own style travels with it — the string is its outerHTML", cs)
+    assert cs["saved"] == "pantheon-export.pdf", cs
 
 
 def test_the_export_options_come_from_the_one_call_site(chain):
-    """`Law 13`. The options this file feeds the bundle are read out of
-    `document.js`, so the two cannot drift; asserting their values here is what
-    makes the reading visible to somebody changing them."""
-    opts = chain["callSite"]["options"]
-    assert opts["margin"] == 10, opts
-    assert opts["filename"].endswith(".pdf"), opts
-    assert opts["image"] == {"type": "jpeg", "quality": 0.95}, opts
-    # `onclone` is a function and does not survive JSON; it is pinned by
+    """`Law 13`. The options this file feeds jsPDF are read out of
+    `document.js`, so the two cannot drift; asserting their values here is
+    what makes the reading visible to somebody changing them."""
+    cs = chain["callSite"]
+    assert cs["ctor"] == {"unit": "mm", "format": "a4", "orientation": "portrait"}, cs
+    opts = cs["options"]
+    assert opts["worker"] is True and opts["margin"] == 10, opts
+    assert opts["autoPaging"] is True, opts
+    # `onclone` is a function and does not survive JSON; it is driven by
     # `test_the_rasteriser_is_shown_a_clone_with_none_of_this_pages_styles`.
-    assert opts["html2canvas"] == {"scale": 2}, opts
-    assert opts["jsPDF"] == {"unit": "mm", "format": "a4",
-                             "orientation": "portrait"}, opts
+    # No `scale`: `html()` derives it from `width`/`windowWidth`, and the
+    # `scale: 2` html2pdf took would draw everything twice the size.
+    assert opts["html2canvas"] == {"allowTaint": False, "onclone": "function"}, opts
 
 
 def test_the_rasteriser_is_shown_a_clone_with_none_of_this_pages_styles(chain):
@@ -267,6 +289,13 @@ def test_the_rasteriser_is_shown_a_clone_with_none_of_this_pages_styles(chain):
     "color"` and produced no file at all, while Markdown and Word — which
     never rasterise — worked. The bundle is vendored byte-identical
     (`FORBIDDEN.md` Part 1), so the fix is what the clone is allowed to carry.
+
+    `B421`: html2canvas is the same 1.4.1 under jsPDF's `html()`, so this hook
+    still stands between the page and the parser. And it was no longer
+    enough — measured on the tree before `B421`, html2pdf and all, the same
+    document failed again on `"oklab"`, because html2canvas copies the live
+    page's computed style inline onto every SVG it clones, and the code
+    block's icons compute to `oklab(…)`. The second half below is that SVG.
 
     Driven here, not read: the `onclone` the real call site passes is called on
     a clone and what it did is reported.
@@ -285,44 +314,39 @@ def test_the_rasteriser_is_shown_a_clone_with_none_of_this_pages_styles(chain):
     assert "white-space:pre-wrap" in hook["rules"], \
         "without the page's stylesheet a <pre> falls back to the UA's "\
         "`white-space: pre`, and long lines run off the page"
+    assert ".code-block-header button" in hook["rules"], \
+        "the code block's buttons are hidden here as the printed frame hides them"
+    # The SVG: every colour the parser cannot read is gone — the logical
+    # longhand too — and nothing else was touched.
+    assert hook["svgKept"] == ["border-top-width", "box-shadow", "outline-color",
+                               "stroke-width"], hook["svgKept"]
 
 
-def test_pdf_export_passes_a_node_and_keeps_it(chain):
-    """`document.js` hands `from()` a detached element, so the export takes the
-    element branch and the string branch — the one with the sink in it — is not
-    on Pantheon's path. Asserted by identity on the node that came back, which
-    only the element branch can produce; the string branch builds a new `<div>`.
+def test_a_link_is_a_box_over_its_words_and_only_a_way_out_is_one(chain):
+    """`B421`. html2pdf's link plugin, which Pantheon had on by default and
+    jsPDF's `html()` does not have, rebuilt as `_pdfLinkBoxes` (stands in for
+    `test_pdf_export_passes_a_node_and_keeps_it`, whose branch is gone).
+
+    One box per line box, in millimetres from the drawn element's corner, so a
+    link that wraps is clickable on both lines. An in-page `#anchor` and a
+    `javascript:` URL are not links out of a file someone saves; `mailto:` is.
     """
-    el = chain["element"]
-    assert el["srcIsTheElementWeGave"] is True, el
-    assert el["srcInnerHTML"] == "<p>hello</p>", el
+    links = chain["links"]
+    assert [(round(b["x"], 3), round(b["y"], 3), round(b["w"], 3), round(b["h"], 3), b["url"])
+            for b in links] == [
+        (5, 5, 15, 4, "https://example.com/x"),
+        (125, 10, 50, 4, "https://example.com/wraps"),
+        (5, 14, 20, 4, "https://example.com/wraps"),
+        (5, 30, 10, 4, "mailto:someone@example.com"),
+    ], links
 
 
-def test_a_string_source_no_longer_hands_back_the_payload(chain):
-    """`B334`'s differential. **Fails on html2pdf.js 0.10.2**, the version
-    shipped until 2026-09-16 (CVE-2026-22787 / GHSA-w8x4-x68c-m6fc, HIGH).
-
-    0.10.2's `createElement` set `innerHTML` and then removed `<script>`
-    elements, which does nothing about `<img onerror>`, `<svg onload>` or
-    `<iframe srcdoc>` — none of which is a `<script>` and all of which run.
-    Running the same harness against the 0.10.2 bundle returns
-    `srcInnerHTML == '<img src=x onerror="pantheonWasHere()"><b>kept</b>'`: the
-    payload verbatim, in the tree the exporter was about to rasterise.
-    0.14.0 replaced that block with `DOMPurify.sanitize(opt.innerHTML)`.
-
-    The assertion is on what comes back rather than on how it failed, because
-    those are different in a browser and here: with a real DOM the sanitizer
-    strips the handler and returns the `<b>`, and in this shim DOMPurify
-    declines to run at all. Both are "the payload did not survive"; neither is
-    0.10.2's answer.
-
-    Pantheon does not take this branch today (the test above measures that).
-    The branch is one refactor from being taken, and that is reason enough to
-    be on the version where it is sanitised.
-    """
-    s = chain["string"]
-    assert "onerror" not in json.dumps(s), (
-        "a string source handed the raw payload back to the exporter — this is "
-        f"html2pdf 0.10.2's behaviour: {s}"
-    )
-    assert "pantheonWasHere" not in json.dumps(s), s
+def test_what_the_built_in_fonts_cannot_draw_is_named(chain):
+    """`B421`. `html()` writes text with the PDF's built-in fonts (WinAnsi),
+    so Cyrillic, CJK and emoji come out wrong — measured in Chromium, and
+    said to the person by `_rasterisePdf`. Latin-1 and Windows-1252's extras
+    (“ ” — €) draw; `™` is in the table and jsPDF draws a space for it. A
+    zero-width space is not named: nobody can be told about what they cannot
+    see."""
+    assert chain["undrawable"] == ["™", "П", "р", "и", "в", "е", "т", "你", "好", "🎉"], \
+        chain["undrawable"]

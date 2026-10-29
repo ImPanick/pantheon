@@ -9755,18 +9755,39 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
     return _docxReady;
   }
 
-  let _html2pdfReady = null;
-  function ensureHtml2Pdf() {
-    if (_html2pdfReady) return _html2pdfReady;
-    if (window.html2pdf) return (_html2pdfReady = Promise.resolve());
-    _html2pdfReady = new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = '/static/lib/html2pdf.bundle.min.js';
-      s.onload = resolve;
-      s.onerror = () => reject(new Error('Failed to load PDF library'));
-      document.head.appendChild(s);
+  /**
+   * `B421`. The raster PDF's three libraries, each upstream's own published
+   * file and each bumpable on its own (`D-2026-10-29-02` §2). This loaded one
+   * `html2pdf.bundle.min.js`, which carried jsPDF 4.0.0 and DOMPurify 3.3.1
+   * inside it — twenty-seven open advisories between them — and could move
+   * only when html2pdf.js published a rebuild. jsPDF's own `html()` replaces
+   * it, and looks html2canvas and DOMPurify up on `window` when it runs
+   * (`globalObject["html2canvas"]`, `globalObject["DOMPurify"]`), so all three
+   * are on the page before it is called. In order, and one at a time: a
+   * script that did not load is named in the refusal, and the next attempt
+   * fetches only what is still missing.
+   */
+  const PDF_LIBS = [
+    { src: '/static/lib/purify.min.js', global: 'DOMPurify' },
+    { src: '/static/lib/html2canvas.min.js', global: 'html2canvas' },
+    { src: '/static/lib/jspdf.umd.min.js', global: 'jspdf' },
+  ];
+  let _pdfLibsReady = null;
+  function ensurePdfLibs() {
+    if (_pdfLibsReady) return _pdfLibsReady;
+    _pdfLibsReady = PDF_LIBS.reduce((ready, lib) => ready.then(() => (window[lib.global]
+      ? null
+      : new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = lib.src;
+        s.onload = resolve;
+        s.onerror = () => reject(new Error(`${lib.src.split('/').pop()} did not load`));
+        document.head.appendChild(s);
+      }))), Promise.resolve()).catch((e) => {
+      _pdfLibsReady = null;   // let the next export try again
+      throw e;
     });
-    return _html2pdfReady;
+    return _pdfLibsReady;
   }
 
   function _getExportBaseName() {
@@ -10022,15 +10043,28 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
     await _rasterisePdf();
   }
 
-  /** The raster PDF — html2canvas tiles in a jsPDF — for a browser whose frame
-   *  cannot print (`B1333`). It was the only PDF path until then. */
+  /** The fallback PDF, for a browser whose frame cannot print (`B1333`). It
+   *  was the only PDF path until then.
+   *
+   *  `B421` (`D-2026-10-29-02` §2): drawn by jsPDF's own `html()` rather than
+   *  html2pdf.js. html2pdf rasterised the page into JPEG tiles; `html()` hands
+   *  html2canvas a canvas whose 2D context writes PDF operators, so the text
+   *  is text — selectable and searchable, as the printed frame's is. Of
+   *  html2pdf's two plugins, what Pantheon used is rebuilt below
+   *  (`_pdfLinkBoxes`: a link is a link in the file); the page-break plugin
+   *  had nothing to act on — it reads `break-before/after/inside` and the
+   *  `html2pdf__page-break` class, and the only such rule in
+   *  `static/style.css` is inside `@media print`, which this path never
+   *  renders under (measured in Chromium: zero elements of an export's
+   *  container carry one). */
   async function _rasterisePdf() {
     const textarea = document.getElementById('doc-editor-textarea');
     if (!textarea) return;
     try {
-      await ensureHtml2Pdf();
+      await ensurePdfLibs();
     } catch (e) {
-      if (uiModule) uiModule.showError('Failed to load PDF library');
+      const why = (e && e.message) ? e.message : String(e);
+      if (uiModule) uiModule.showError(`Couldn't load the PDF library (${why}) — Export Markdown or Word instead.`);
       return;
     }
     const lang = document.getElementById('doc-language-select')?.value || '';
@@ -10047,8 +10081,8 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
     container.style.cssText = 'padding:20px;font-family:sans-serif;font-size:12px;color:#000;background:#fff;line-height:1.6;';
     container.innerHTML = html;
     // This container is detached, so the document-scoped flush mdToHtml
-    // schedules never sees it. Typeset the deferred math before html2pdf
-    // rasterises, or the PDF gets raw formula source. renderMath() returns
+    // schedules never sees it. Typeset the deferred math before jsPDF
+    // draws it, or the PDF gets raw formula source. renderMath() returns
     // immediately, without loading KaTeX, when there is nothing pending.
     await markdownModule.renderMath(container);
     const baseName = _getExportBaseName();
@@ -10057,19 +10091,155 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
     // fire-and-forget, so the one failure it had — a colour the rasteriser
     // cannot read — reached nobody but the console.
     try {
-      await window.html2pdf().set({
-        margin: 10,
-        filename: baseName + '.pdf',
-        image: { type: 'jpeg', quality: 0.95 },
-        html2canvas: { scale: 2, onclone: _plainStylesForPdfClone },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      }).from(container).save();
+      const pdf = new window.jspdf.jsPDF(PDF_PAGE);
+      // `B421`. A string, not the node: `html()` sanitises a string with the
+      // DOMPurify shipped beside it before anything is put into this page,
+      // and keeps a node as it is. The container is ours and already
+      // markdown.js's output; the string branch is what makes the third
+      // file do something, and it costs one serialisation.
+      await _pdfFromHtml(pdf, container.outerHTML);
+      pdf.save(baseName + '.pdf');
+      // Said, not left for the reader of the file to find (`Law 15`).
+      const lost = _undrawableInPdf(container.textContent || '');
+      if (lost.length && uiModule) {
+        const shown = lost.slice(0, 8).join(' ') + (lost.length > 8 ? ' …' : '');
+        uiModule.showError(`Saved — but this PDF's built-in fonts can't draw ${shown}, so `
+          + `${lost.length === 1 ? 'it comes' : 'they come'} out wrong in the file. `
+          + 'Export as Word keeps every character.');
+      }
     } catch (e) {
       const why = (e && e.message) ? e.message : String(e);
       if (uiModule) uiModule.showError('PDF export failed: ' + why + ' — Export Markdown or Word instead.');
       else alert('PDF export failed: ' + why);
     }
   }
+
+  /**
+   * `B421`. The characters of `text` that jsPDF's `html()` cannot draw.
+   *
+   * It writes text with the PDF's built-in fonts, whose encoding is WinAnsi
+   * (Windows-1252). Measured in Chromium: `Привет мир` came out as
+   * `@825B <8@`, `你好世界` as seven Latin-1 letters, an emoji as nothing,
+   * and `™` — which the table has — as a space. html2pdf drew pixels and had
+   * no such limit; a Unicode font handed to `html()` (`fontFaces`, TrueType)
+   * would lift it, and none ships here. Whitespace and the invisible format
+   * characters (KaTeX's zero-width spaces) are not counted: nobody can be
+   * told about a character they cannot see.
+   */
+  const _PDF_DRAWABLE = (() => {
+    try {
+      const dec = new TextDecoder('windows-1252');
+      const set = new Set();
+      for (let b = 0x20; b < 0x100; b++) set.add(dec.decode(new Uint8Array([b])));
+      set.delete('\u2122');
+      return set;
+    } catch (_) {
+      return null;   // no table to check against: say nothing rather than guess
+    }
+  })();
+  function _undrawableInPdf(text) {
+    if (!_PDF_DRAWABLE) return [];
+    const out = new Set();
+    for (const ch of text) if (!/[\s\p{Cc}\p{Cf}]/u.test(ch) && !_PDF_DRAWABLE.has(ch)) out.add(ch);
+    return [...out];
+  }
+
+  /** `B421`. A4 portrait in millimetres with a 10 mm margin — the page
+   *  html2pdf was asked for (`margin: 10`, `jsPDF: {unit, format,
+   *  orientation}`), kept. */
+  const PDF_PAGE = { unit: 'mm', format: 'a4', orientation: 'portrait' };
+  const PDF_MARGIN_MM = 10;
+  const MM_PER_CSS_PX = 25.4 / 96;
+
+  /**
+   * `B421`. Draw `html` into `pdf` with jsPDF's `html()`, then put its links
+   * back.
+   *
+   * The scale is html2pdf's: the content is laid out as wide as the page's
+   * inner width in CSS pixels at 96 per inch (`windowWidth`) and drawn at that
+   * width in millimetres (`width`), so 12px type is 9pt on the page, as it was.
+   * `html2canvas.scale` is left alone — `html()` derives it from those two,
+   * and the `scale: 2` html2pdf took for sharper tiles would draw everything
+   * twice the size here. `allowTaint: false` keeps html2canvas's own default,
+   * which html2pdf ran with: a picture from another origin is left out rather
+   * than poisoning the page's canvas with a `SecurityError` (`html()`
+   * defaults it to `true`). `autoPaging: true` cuts at the page edge exactly
+   * as html2pdf's tiles did, which is also what lets a link's place be worked
+   * out from where it sat on the page (`'text'` moves later lines down by
+   * however much it pushed earlier ones, and nothing reports by how much).
+   *
+   * Resolves to the link boxes it added.
+   */
+  async function _pdfFromHtml(pdf, html) {
+    const inner = pdf.internal.pageSize.getWidth() - 2 * PDF_MARGIN_MM;
+    const windowWidth = inner / MM_PER_CSS_PX;
+    let links = [];
+    await pdf.html(html, {
+      worker: true,
+      margin: PDF_MARGIN_MM,
+      width: inner,
+      windowWidth,
+      autoPaging: true,
+      html2canvas: {
+        allowTaint: false,
+        onclone: (clonedDoc, clonedEl) => {
+          _plainStylesForPdfClone(clonedDoc);
+          // Measured in the clone, after its styles changed: that is the
+          // layout html2canvas draws, and the page's own sheet is not.
+          if (clonedEl) links = _pdfLinkBoxes(clonedEl, inner / windowWidth);
+        },
+      },
+    }).from(html).toPdf();
+    const pageHeight = pdf.internal.pageSize.getHeight() - 2 * PDF_MARGIN_MM;
+    const pages = pdf.getNumberOfPages();
+    const added = [];
+    for (const box of links) {
+      const page = Math.floor(box.y / pageHeight) + 1;
+      if (page > pages) continue;
+      pdf.setPage(page);
+      const at = { page, x: PDF_MARGIN_MM + box.x, y: PDF_MARGIN_MM + box.y - (page - 1) * pageHeight,
+        w: box.w, h: box.h, url: box.url };
+      pdf.link(at.x, at.y, at.w, at.h, { url: at.url });
+      added.push(at);
+    }
+    pdf.setPage(pages);
+    return added;
+  }
+
+  /**
+   * `B421`. html2pdf's link plugin, which Pantheon had on by default
+   * (`enableLinks: true`) and jsPDF's `html()` does not have: every `<a>` the
+   * export draws is a clickable area over the same text in the PDF. One box
+   * per line box (`getClientRects`), so a link that wraps is clickable on
+   * both lines, in millimetres from the drawn element's top-left corner.
+   *
+   * Only `http:`, `https:` and `mailto:` — narrower than html2pdf, which
+   * linked every `href`: `markdown.js` emits `http(s)` links and in-page
+   * `#anchors`, and an anchor in a file someone saves is a link back into
+   * this app's address, which is somewhere the reader of the PDF has no
+   * business being sent.
+   */
+  function _pdfLinkBoxes(root, mmPerPx) {
+    const origin = root.getBoundingClientRect();
+    const out = [];
+    root.querySelectorAll('a[href]').forEach((a) => {
+      const href = (a.getAttribute('href') || '').trim();
+      if (!href || href.startsWith('#')) return;
+      let url;
+      try { url = new URL(href, window.location.href); } catch (_) { return; }
+      if (!['http:', 'https:', 'mailto:'].includes(url.protocol)) return;
+      for (const r of a.getClientRects()) {
+        if (!r.width || !r.height) continue;
+        out.push({ x: (r.left - origin.left) * mmPerPx, y: (r.top - origin.top) * mmPerPx,
+          w: r.width * mmPerPx, h: r.height * mmPerPx, url: url.href });
+      }
+    });
+    return out;
+  }
+
+  // `B421`. The colour syntaxes html2canvas 1.4.1's parser throws on — it
+  // reads hex, `rgb[a]`, `hsl[a]` and names, and nothing else.
+  const _PDF_UNREADABLE_COLOUR = /\b(?:color|color-mix|oklab|oklch|lab|lch|hwb|light-dark)\(/i;
 
   /**
    * `B1322`. What html2canvas is allowed to see of this page.
@@ -10094,11 +10264,13 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
    * the same document exports in 5.8 s.
    *
    * It lives **between** `exportAsPdf` and `exportAsDocx` on purpose:
-   * `tests/harness/html2pdf_export_chain.js` lifts exactly that span out of
-   * this file and evaluates it against the real vendored bundle, so a name the
+   * `tests/harness/jspdf_export_chain.js` lifts exactly that span out of
+   * this file and evaluates it against the real vendored jsPDF, so a name the
    * options reach for has to be inside the span or the harness drives a
    * `ReferenceError` instead of the export. Declarations hoist, so after the
-   * function that names it is fine.
+   * function that names it is fine. (`B421`: html2canvas is still the one
+   * that reads the clone, under jsPDF's `html()` — the same 1.4.1, the same
+   * colour parser — so this is still what keeps it reading.)
    */
   function _plainStylesForPdfClone(clonedDoc) {
     try {
@@ -10115,8 +10287,30 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
         'blockquote{border-left:3px solid #ccc;margin:0.5em 0;padding-left:10px;color:#333}',
         'table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:3px 6px}',
         'img{max-width:100%}',
+        // What the printed frame hides too (`B1333`'s `@media print` rule).
+        '.code-block-header button,.copy-btn{display:none}',
       ].join('');
       clonedDoc.head.appendChild(s);
+      // `B421`, measured in Chromium on the tree before this row, with
+      // html2pdf: a document with a fenced code block exported nothing again —
+      // `Attempting to parse an unsupported color function "oklab"`. Dropping
+      // the sheets is not enough, because html2canvas copies the live page's
+      // *computed* style inline onto every SVG it clones (and onto its
+      // stand-ins for `::before`/`::after`), and the code block's icons
+      // compute to `oklab(…)` under today's palettes. So any colour that came
+      // across that way, in a form the parser does not read, is dropped too,
+      // and the element takes the export's colours like everything else.
+      // Every declaration, not a list of colour properties: the copy carries
+      // the logical longhands too (`border-block-start-color` is what the
+      // top border reads back from), so naming `border-top-color` missed it.
+      clonedDoc.querySelectorAll('[style]').forEach((el) => {
+        const unreadable = [];
+        for (let i = 0; i < el.style.length; i++) {
+          const prop = el.style.item(i);
+          if (_PDF_UNREADABLE_COLOUR.test(el.style.getPropertyValue(prop))) unreadable.push(prop);
+        }
+        unreadable.forEach((prop) => el.style.removeProperty(prop));
+      });
     } catch (e) {
       // A clone we could not reach is still worth rasterising; the colour
       // throw below is what this guards, and it reports itself.
