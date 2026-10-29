@@ -89,7 +89,10 @@ export const GIT_ACTIONS = [
     say: 'Commit the changes in this repository, with a message that says what changed and why.' },
   { id: 'pull', label: 'Pull', hint: 'Bring in what the remote has',
     say: 'Pull the latest changes into this repository.' },
-  { id: 'push', label: 'Push', hint: 'Send your commits — it asks first',
+  // `B1585` / `D-2026-10-29-01` §2. A push follows the chat's trust rung like
+  // every other action, so the hint promises nothing about asking: on the
+  // default rung a clean chat's push goes out unasked (`P25-00`, driven).
+  { id: 'push', label: 'Push', hint: 'Send your commits to the remote',
     say: 'Push this branch to its remote.' },
   { id: 'branch', label: 'New branch…', hint: 'Start a branch from here',
     say: 'Create a new branch in this repository called ' },

@@ -21,8 +21,9 @@ somehow repeats it has it replaced before anyone reads it.
 **What each action is** (`tool_capabilities._ACTION_CAPABILITIES`): status,
 diff and log read the repository; branch and commit change it; pull and clone
 also reach a host; push is the one that changes something outside — it asks
-first wherever the person's rung asks for that, and a hired agent asks too
-(`D-2026-10-24-01`).
+first wherever the person's rung asks for that, like every other action
+(`D-2026-10-29-01` §2: on the default rung a clean chat's push goes out
+unasked), and a hired agent's own effects table answers first (`P24-07`).
 
 **Never.** Hooks and the file-system monitor are off for every command
 (`core.hooksPath=/dev/null`, `core.fsmonitor=false`): a repository someone else

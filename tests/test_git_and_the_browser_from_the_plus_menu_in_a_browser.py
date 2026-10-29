@@ -6,8 +6,10 @@ The row's flow, driven, at both sizes and in both palettes:
   * **1440×900, dark**: *+ → Git ›* lists the repositories in the person's
     workstation; one picked is the chat's workspace; *+ → Git › Status*, then
     *Commit…*, each sent: the agent answers with the `git` tool, the commit
-    carries the person's own name and email; *Push* asks first, and the yes
-    sends it out over https with the person's own token for that host;
+    carries the person's own name and email; *Push* follows the chat's trust
+    rung like every other action — on the default rung, in this clean chat, it
+    goes out unasked (`D-2026-10-29-01` §2) — over https with the person's own
+    token for that host;
   * **390×844, light**: on a phone the same menu drills in — *Git ›* is a page
     of its own with a back row, and back is the menu again;
   * **1440×900, light**: *+ → Browser*; the agent is asked to find a page and
@@ -23,9 +25,10 @@ sets them.
 **Found by this drive, on `f3a9150e`:** the + menu at 390 px ran 64 px past the
 screen's right edge, and its *Git ›* page 7 px; *+ → Browser* left the menu
 open over the chat (fixed; held in `tests/test_the_plus_menu_nests.py`). One
-is the owner's to decide and stands here as a strict `xfail` that turns red
-when it changes: a push in a clean chat on the default trust rung goes out
-without a card, though the menu says *it asks first*. The other — the browser
+was the owner's to decide (`B1585`): a push in a clean chat on the default
+trust rung went out without a card, though the menu said *it asks first*. The
+owner ruled *change the words* (`D-2026-10-29-01` §2): a push follows the
+rung, and the menu's Push now says only what it does. The other — the browser
 window, open while the agent asks to open a page, lay over the chat's card —
 is `B1586`'s: the window steps aside for the question and comes back.
 
@@ -514,13 +517,19 @@ def test_status_and_a_commit_as_the_person(drive):
     assert seen["remoteLog"][0] == f"{NAME} <{EMAIL}>|{MESSAGE}", seen["remoteLog"]
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "P25-00: on the default trust rung (`gate_on_untrusted`) nothing asks in a clean chat, "
-    "a push included — measured: status, commit and push in one fresh agent chat, the push "
-    "went out with no card, while + → Git › Push says 'it asks first' and P25-03 says a push "
-    "asks. Whether a push asks on the default rung is the owner's call (filed as a new row)."))
-def test_the_push_asks_first(drive):
-    assert drive["seen"]["git"]["push"]["asked"] >= 1, "the push went out without asking"
+def test_the_push_follows_the_chats_rung_and_the_menu_promises_no_question(drive):
+    """`B1585` / `D-2026-10-29-01` §2 — *change the words*. This was the
+    strict xfail `test_the_push_asks_first`: on the default rung
+    (`gate_on_untrusted`) nothing asks in a clean chat, a push included, while
+    + → Git › Push said *it asks first*. A push follows the rung like every
+    other action, so in this fresh chat it goes out with no card — and the
+    menu's row says what it does and nothing about asking."""
+    git = drive["seen"]["git"]
+    assert git["push"]["asked"] == 0, "a clean chat on the default rung asks nothing, a push included"
+    assert "Pushed" in git["push"]["reply"], git["push"]
+    push_row = next(r for r in git["attachedRows"] if r.startswith("Push"))
+    assert push_row == "Push Send your commits to the remote", push_row
+    assert not any("asks first" in r for r in git["attachedRows"]), git["attachedRows"]
 
 
 def test_the_push_goes_out_as_the_persons_own(drive):
