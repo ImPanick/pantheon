@@ -253,6 +253,9 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **A host shell command is read for what it reaches like a workstation one** (`B1655`), and 26
+  agents' hire forms drop a row naming an effect their tools cannot have; the web readers'
+  reading is shown as *search and read the web* (`B1656`).
 - **A shell or Python command that reaches another machine counts as reaching the network**
   (`pip install`, `npm ci`, `curl`, `git push`, `ssh`, a Python network call), and one whose reach
   cannot be read counts as both reaching out and deleting. Agents with a shell now decide it: 19
