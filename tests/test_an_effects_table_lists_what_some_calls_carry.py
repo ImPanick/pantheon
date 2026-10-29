@@ -165,7 +165,7 @@ def test_a_never_agents_own_command_reads_clean():
 ])
 def test_a_scratch_deletion_asks_until_the_hirer_allows_it_and_no_other_runs_unasked(agent, command):
     """The command's own scratch deletion asks, in the hire's words and naming
-    the deletion; the hirer may set "delete things" to run without asking on
+    the deletion; the hirer may set "delete or overwrite things" to run without asking on
     their own hire (`D-2026-10-22-01` §3, `check_grants`), and then it runs.
     Once that command's answer is in the run, any other deletion still asks —
     on Manual approve by the floor, and in Auto by its one exception

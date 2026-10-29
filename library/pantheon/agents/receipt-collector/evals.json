@@ -144,7 +144,10 @@
   },
   {
    "id": "the-ledger-only-grows",
-   "about": "A ledger is already there: it is read first and the new row is added below the old ones, which stay as they were.",
+   "about": "A ledger is already there: it is read first and the new row is added below the old ones, which stay as they were — written back once the person says yes, since the ledger was there before this run began (B1660).",
+   "answers": [
+    "approve_task"
+   ],
    "inputs": {
     "folder": "money"
    },

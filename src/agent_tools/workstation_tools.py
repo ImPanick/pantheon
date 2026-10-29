@@ -815,7 +815,44 @@ async def _write_file(content: str, st: _Station) -> Dict:
             why = IsADirectoryError(errno.EISDIR, os.strerror(errno.EISDIR), shown)
             return {"error": f"write_file: {shown}: {why}", "exit_code": 1}
         return _file_answer("write_file", e)
+    if existing is None:
+        # `B1660`: nothing was there, so this run made it — its next write
+        # over it is a plain write (`src/run_files.py`).
+        from src.run_files import IN_WORKSTATION, note_made
+        note_made(raw_path, IN_WORKSTATION)
     return fs._write_result(written["path"], old, body)
+
+
+async def held_a_file(raw_path: str, *, owner: Optional[str],
+                      workspace: Optional[str] = None) -> Optional[bool]:
+    """`B1660`. Does `raw_path` hold a file in this person's workstation, as
+    `write_file` there would find it? `True`, `False`, or `None` when the
+    workstation could not say (down, off, not this person's) — which the gate
+    reads as destructive (`src/run_files.py`).
+
+    Asked as `_write_file` asks it, through the same folder rule
+    (`station_folder`) and the same stat, and answered as it answers: a path
+    it refuses before asking writes nothing, and anything but a station that
+    could not answer is "not there yet, or not a file" — a new file."""
+    from src.workstation_access import sync_config, workstation_for
+    if _path_refusal("write_file", raw_path):
+        return False
+    try:
+        client, account = workstation_for(owner)
+        daemon = await sync_config(client)
+    except WorkstationError:
+        return None
+    folder, _said = station_folder(owner, account, workspace, daemon)
+    if folder and _sensitive(folder):
+        folder = None
+    st = _Station(client, account, asyncio.get_running_loop(), workspace=folder)
+    try:
+        await _stat_file(st, st.at(raw_path))
+    except WorkstationError as e:
+        # Outside the home `_write_file` refuses (nothing written); anything
+        # else it reads as "not there yet, or not a file" and makes one.
+        return None if e.code in _STATION_FAILURES else False
+    return True
 
 
 async def _edit_file(content: str, st: _Station) -> Dict:

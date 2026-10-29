@@ -1193,7 +1193,8 @@ def call_reaches(tool_name: Any) -> tuple[frozenset[ToolEffect], ...]:
     or cannot be read (`B1622`) or reaches the network (`B1652`) — for
     `shell_with_login`, registered `network_egress` already, those are the
     same set, and for `host_shell`, registered `destructive` already, a
-    command that reaches the network is the one more (`B1655`). Read in one
+    command that reaches the network is the one more (`B1655`) — and a
+    `write_file` over a file that was there before the run (`B1660`). Read in one
     place so the three questions below cannot disagree about what a call of
     the tool can be (`Law 7`).
 
@@ -1217,6 +1218,9 @@ def call_reaches(tool_name: Any) -> tuple[frozenset[ToolEffect], ...]:
         reaches.append(base.effects | {ToolEffect.DESTRUCTIVE})
         reaches.append(base.effects | {ToolEffect.NETWORK_EGRESS})
         reaches.append(base.effects | {ToolEffect.DESTRUCTIVE, ToolEffect.NETWORK_EGRESS})
+    if tool_name in _WRITE_TOOLS:
+        # `B1660`: a write over a file that was there before the run began.
+        reaches.append(base.effects | {ToolEffect.DESTRUCTIVE})
     if bare in _ACTION_CAPABILITIES:
         reaches += [c.effects for c in _ACTION_CAPABILITIES[bare].values()]
     if bare in _OBSERVE_ONLY_ACTIONS:
@@ -1337,7 +1341,31 @@ def command_reaches(tool_name: Any, content: Any) -> str | None:
     return _command_readings(tool_name, content)[1]
 
 
-def _is_destructive_call(tool_name: Any, content: Any) -> bool:
+# ── `B1660` · writing over a file that was there is an overwrite ────────────
+#
+# A `write_file` whose path held a file before the run began carries
+# `destructive` as well as `write_workspace` (`D-2026-10-29-02` §1), as a shell
+# `mv` over a file does (`B1622`) — so a hire's `destructive: ask`/`never` and
+# Auto's one exception cover it. A file the same run made is a plain write.
+# Whether the path was there is a fact about the run as well as the call, so
+# the run's record (`src/run_files.RunFiles`, on `ToolRunSecurityContext.files`)
+# is handed in; `src/run_files.py` says what it knows, where it stops and why.
+# Like `B1622`, this only ever adds the effect, and the registration is
+# untouched: a card for a new file says what it said.
+_WRITE_TOOLS = frozenset({"write_file"})
+
+
+def write_replaces(tool_name: Any, content: Any, files: Any = None) -> str | None:
+    """`B1660`. Why this `write_file` call carries `destructive` — the file it
+    replaces, or why that cannot be known — or `None`. `None` for every other
+    tool."""
+    if tool_name not in _WRITE_TOOLS:
+        return None
+    from src.run_files import replaces
+    return replaces(content, files)
+
+
+def _is_destructive_call(tool_name: Any, content: Any, files: Any = None) -> bool:
     """Does this exact call carry `DESTRUCTIVE`, arguments included?
 
     `B1341` / `D-2026-10-17-01`. One statement of Auto's single exception, so
@@ -1347,7 +1375,8 @@ def _is_destructive_call(tool_name: Any, content: Any) -> bool:
     nine multiplexed tools — `manage_memory action=delete` is destructive and
     `action=add` is not, and a tool-level check would miss every one of them —
     and `B1622` makes it a property of the command for a shell: `bash rm -rf`
-    is destructive and `bash ls` is not.
+    is destructive and `bash ls` is not — and `B1660` of the path and the run
+    for a `write_file` (`files`, the run's record).
 
     Fails **closed** on an unreadable call: a call whose classification cannot
     be resolved is treated as destructive, so Auto asks. That is the safe
@@ -1355,7 +1384,8 @@ def _is_destructive_call(tool_name: Any, content: Any) -> bool:
     sees an irreversible step before it happens.
     """
     try:
-        return ToolEffect.DESTRUCTIVE in capabilities_for_action(tool_name, content).effects
+        return ToolEffect.DESTRUCTIVE in capabilities_for_action(
+            tool_name, content, files=files).effects
     except Exception:  # noqa: BLE001
         logger.debug(
             "destructive check unreadable for %r; asking rather than auto-approving",
@@ -1364,8 +1394,15 @@ def _is_destructive_call(tool_name: Any, content: Any) -> bool:
         return True
 
 
-def capabilities_for_action(tool_name: Any, content: Any) -> ToolCapabilities:
-    """Classify a sealed multiplexed action; ambiguous actions fail high."""
+def capabilities_for_action(tool_name: Any, content: Any, *, files: Any = None) -> ToolCapabilities:
+    """Classify a sealed multiplexed action; ambiguous actions fail high.
+
+    `files` (`B1660`) is the run's record of the files it made
+    (`src/run_files.RunFiles`): whether a `write_file` replaces a file that
+    was there before the run began. Every surface that classifies one call of
+    a run — the gate, the card, its seal, the step's effect keys — hands in the
+    same record, so they cannot disagree; without one, nothing is known to be
+    the run's own."""
     base = capabilities_for_tool(tool_name)
     if not isinstance(tool_name, str):
         return base
@@ -1397,6 +1434,16 @@ def capabilities_for_action(tool_name: Any, content: Any) -> ToolCapabilities:
             return base
         return ToolCapabilities(
             frozenset(base.effects | added),
+            base.result_integrity,
+            known=base.known,
+        )
+
+    # `B1660`. A write over a file that was there before the run began.
+    if tool_name in _WRITE_TOOLS:
+        if write_replaces(tool_name, content, files) is None:
+            return base
+        return ToolCapabilities(
+            frozenset(base.effects | {ToolEffect.DESTRUCTIVE}),
             base.result_integrity,
             known=base.known,
         )
@@ -2239,6 +2286,12 @@ class ToolRunSecurityContext:
     # per chat. A callable for the reason `allow_rule_lookup` is one: this
     # module reads no database. `None` for every caller that does not wire it.
     vault_use_lookup: Any = None
+    # `B1660`. The run's record of the files it made (`src/run_files.RunFiles`),
+    # the same object each of its tool calls notes into: a `write_file` over a
+    # file that was there before the run began is `destructive`, and one over a
+    # file this run made is not. `None` for every caller that does not wire it
+    # — nothing is then known to be the run's own (the cautious reading).
+    files: Any = None
 
     def __post_init__(self) -> None:
         """`P7-08`. A run that starts tainted still has to be able to say so.
@@ -2436,7 +2489,7 @@ class ToolRunSecurityContext:
         # This is still not a second rung and moves no control: it narrows one
         # opt-out, in the direction of asking more rather than less, and a chat
         # that is not set to Auto is unaffected in either direction.
-        if _is_destructive_call(tool_name, content):
+        if _is_destructive_call(tool_name, content, self.files):
             logger.info(
                 "[approval] %s is destructive; asking even though this chat is "
                 "set to Auto (B1341)", tool_name,
@@ -2469,7 +2522,7 @@ class ToolRunSecurityContext:
             sentence = "The vault could not say how this login may be used, so this asks."
         if not sentence:
             return None
-        capabilities = capabilities_for_action(tool_name, content)
+        capabilities = capabilities_for_action(tool_name, content, files=self.files)
         return ToolGateDecision(
             False,
             f"{sentence} '{tool_name}' waits for your yes.",
@@ -2499,7 +2552,7 @@ class ToolRunSecurityContext:
             # `D-2026-10-24-02`, the mirror: nothing private in the run to
             # leak, so reading more of the public web does not ask. Writes,
             # sending and everything else go to the ladder as before.
-            caps = capabilities_for_action(tool_name, content)
+            caps = capabilities_for_action(tool_name, content, files=self.files)
             effs = {effect.value for effect in caps.effects}
             if caps.known and effs and effs <= BLIND_LIFTED_EFFECTS:
                 return ToolGateDecision(True, None)
@@ -2507,7 +2560,7 @@ class ToolRunSecurityContext:
             return None
         bare = tool_name[len("mcp__email__"):] if isinstance(tool_name, str) and tool_name.startswith(
             "mcp__email__") else tool_name
-        capabilities = capabilities_for_action(tool_name, content)
+        capabilities = capabilities_for_action(tool_name, content, files=self.files)
         effects = {effect.value for effect in capabilities.effects}
         if not capabilities.known or not effects or not effects <= SEALED_LIFTED_EFFECTS:
             return None
@@ -2562,7 +2615,7 @@ class ToolRunSecurityContext:
             return None
         if self_escalation_for(tool_name, content) is not None:
             return None
-        capabilities = capabilities_for_action(tool_name, content)
+        capabilities = capabilities_for_action(tool_name, content, files=self.files)
         effects = {effect.value for effect in capabilities.effects}
         if not capabilities.known or not effects or not effects <= set(self.hire_allow_effects):
             return None
@@ -2592,13 +2645,14 @@ class ToolRunSecurityContext:
         nothing to say about this action (which is every non-agent run)."""
         if not (self.hire_ask_effects or self.hire_never_effects):
             return None
-        capabilities = capabilities_for_action(tool_name, content)
+        capabilities = capabilities_for_action(tool_name, content, files=self.files)
         effects = {effect.value for effect in capabilities.effects}
         never = effects & set(self.hire_never_effects)
         # `B1622`. A command's deletion is named, so the person reads what in
         # it is destructive rather than only that something is; `B1652`, and
-        # what in it reaches the network.
+        # what in it reaches the network; `B1660`, and the file a write replaces.
         why, reach = _command_readings(tool_name, content)
+        why = why or write_replaces(tool_name, content, self.files)
 
         def because(named):
             said = [w for e, w in (("destructive", why), ("network_egress", reach)) if w and e in named]
@@ -2713,7 +2767,7 @@ class ToolRunSecurityContext:
         if not tainted and not asks_untainted:
             return ToolGateDecision(True)
 
-        capabilities = capabilities_for_action(tool_name, content)
+        capabilities = capabilities_for_action(tool_name, content, files=self.files)
         # `B19`. Tainted runs keep the full set, byte for byte. Only the
         # untainted strict rungs narrow, and only by `read_private`.
         gate_effects = (

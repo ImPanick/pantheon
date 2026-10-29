@@ -15,6 +15,10 @@ changed. Two more: Bills Due's `external_side_effect: never` (no tool of its
 kit can send or act outside Pantheon at all) and Mockup Maker's
 `destructive: never` (`write_file` is `write_workspace`; the row promised
 something no call is classified as, so the gate it named never asked).
+*`B1660` gave it a call that carries it again: a `write_file` over a file that
+was there before the run began is `destructive` (`D-2026-10-29-02` §1), so
+Mockup Maker's table decides it once more — `ask`, before writing over a page
+an earlier run left.*
 
 **The one truthful fix is the tables.** The classification is the gate's input
 and is right: a search or a fetch is a request made through Pantheon
@@ -99,7 +103,8 @@ def test_a_web_readers_page_draws_no_row_its_calls_cannot_trip(client):
     for agent, rows in (("competitor-prices", {"brokered_network_read": "allow", "network_egress": "allow"}),
                         ("rank-tracker", {"brokered_network_read": "allow"}),
                         ("bills-due", {"read_private": "allow", "write_private": "allow"}),
-                        ("mockup-maker", {"write_workspace": "allow"})):
+                        # `B1660`: a write over a page that was there is `destructive`.
+                        ("mockup-maker", {"destructive": "ask", "write_workspace": "allow"})):
         page = call(client, "GET", f"/api/agents/{agent}").json()
         assert page["effects"] == rows, (agent, page["effects"])
     refused = call(client, "POST", "/api/agents/topic-watcher/hire",

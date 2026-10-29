@@ -280,17 +280,24 @@ class WriteFileTool:
         try:
             def _write():
                 old = _previous_text(lambda: open(path, "r", encoding="utf-8"))
+                # `B1660`: whether a file was there, asked before it is opened.
+                there = os.path.exists(path)
                 d = os.path.dirname(path)
                 if d:
                     os.makedirs(d, exist_ok=True)
                 with open(path, "w", encoding="utf-8") as f:
                     f.write(body)
-                return old
-            old_content = await asyncio.to_thread(_write)
+                return old, there
+            old_content, was_there = await asyncio.to_thread(_write)
         except PermissionError:
             return {"error": f"write_file: {path}: permission denied", "exit_code": 1}
         except OSError as e:
             return {"error": f"write_file: {path}: {e}", "exit_code": 1}
+        if not was_there:
+            # `B1660`: this run made it, so its next write over it is a plain
+            # write, not a replacement of the person's file (`src/run_files.py`).
+            from src.run_files import note_made
+            note_made(raw_path)
         return _write_result(path, old_content, body)
 
 class ApplyPatchTool:

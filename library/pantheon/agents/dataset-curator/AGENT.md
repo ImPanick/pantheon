@@ -4,7 +4,7 @@ name: Dataset Curator
 tagline: "Gathers exchanges about a topic from your chats, strips personal details, labels each, and saves them as a dataset file."
 section: ai-engineering
 icon: table-2
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: topic, kind: text, label: Which conversations (a topic or words they contain)}
@@ -14,7 +14,7 @@ tools: [search_chats, read_chat, ls, write_file]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Kept, Left out, Labels]}
-effects: {read_private: allow, read_workspace: allow, write_workspace: allow}
+effects: {read_private: allow, read_workspace: allow, write_workspace: allow, destructive: never}
 budget: {runs_per_day: 3, max_steps: 40, max_minutes: 25}
 memory: none
 ---

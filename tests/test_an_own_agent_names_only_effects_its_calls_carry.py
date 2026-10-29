@@ -70,8 +70,11 @@ def test_an_own_web_fetch_agent_allowing_read_public_is_told_so_when_saved(clien
 
 
 def test_a_never_no_call_carries_refuses_nothing_and_is_told_so(client):
-    """Mockup Maker's case: `write_file` is `write_workspace`, never `destructive`."""
-    text = _own(["write_file"], "{write_workspace: allow, destructive: never}", "page-maker")
+    """Mockup Maker's case as it was: a file tool no call of which is
+    `destructive`. `B1660` made a `write_file` over a file that was there
+    `destructive`, so the case is `edit_file` now — an edit in place, which
+    replaces no file whole."""
+    text = _own(["edit_file"], "{write_workspace: allow, destructive: never}", "page-maker")
     res = call(client, "POST", "/api/agents/own", json={"text": text})
     assert res.status_code == 422 and res.json()["detail"] == (
         "Effect “destructive” is never, and no call of this agent's tools has it, so it refuses "
@@ -151,7 +154,7 @@ def test_a_file_kept_before_stays_theirs_and_draws_no_row_that_cannot_happen(cli
 
 def test_the_form_draws_a_named_rule_only_where_some_call_carries_it():
     for tools, effects in ((["web_fetch"], {"read_public": "allow"}),
-                           (["write_file"], {"destructive": "never"}),
+                           (["edit_file"], {"destructive": "never"}),   # `B1660`: not write_file
                            (["web_search", "agent_browser"], {"read_public": "never"})):
         m = dataclasses.replace(W.check(_own(tools, "{}")), effects=effects)
         reach = {e for t in tools for e in H.tool_effects(t)}

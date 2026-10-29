@@ -585,10 +585,14 @@ class ExactToolApproval:
         tool_name: Any,
         content: Any,
         workspace: Any,
+        files: Any = None,
     ) -> bool:
         if self._claimed:
             return False
-        capabilities = capabilities_for_action(tool_name, content)
+        # `B1660`: `files` is the claiming run's record of the files its turn
+        # made (carried from the run that asked, on the card's paused turn),
+        # so a rewrite of the run's own draft reads as it read when sealed.
+        capabilities = capabilities_for_action(tool_name, content, files=files)
         effects = tuple(sorted(effect.value for effect in capabilities.effects))
         result_integrity = capabilities.result_integrity.value
         if (
@@ -624,6 +628,7 @@ class ExactToolApproval:
         tool_name: Any,
         content: Any,
         workspace: Any,
+        files: Any = None,
     ) -> bool:
         with self._lock:
             return self._matches_unlocked(
@@ -632,6 +637,7 @@ class ExactToolApproval:
                 tool_name=tool_name,
                 content=content,
                 workspace=workspace,
+                files=files,
             )
 
     def claim(
@@ -642,6 +648,7 @@ class ExactToolApproval:
         tool_name: Any,
         content: Any,
         workspace: Any,
+        files: Any = None,
     ) -> bool:
         with self._lock:
             if not self._matches_unlocked(
@@ -650,6 +657,7 @@ class ExactToolApproval:
                 tool_name=tool_name,
                 content=content,
                 workspace=workspace,
+                files=files,
             ):
                 return False
             self._claimed = True

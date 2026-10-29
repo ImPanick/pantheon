@@ -294,8 +294,9 @@ def test_an_agents_page_says_what_it_may_do_and_the_form_hires_it(sandbox):
         out({ page, post, view: mod._test.state().view, note: win().note.textContent });
     """)
     page = out["page"]
+    # `B1660`: the destructive row names overwriting too.
     assert page["effects"] == ["search and read the webwithout asking", "reach other sites and machinesasks you first",
-                               "delete thingsnever"]
+                               "delete or overwrite thingsnever"]
     assert "bash — runs commands on the server" in page["lacking"][0]
     assert page["runbook"] == "1. Do it."
     assert page["fields"] == [["topics", "TEXTAREA", "", ""], ["at", "INPUT", "time", "07:00"],

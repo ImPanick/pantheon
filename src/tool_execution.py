@@ -1199,6 +1199,8 @@ async def execute_tool_block(
             tool_name=getattr(block, "tool_type", None),
             content=getattr(block, "content", None),
             workspace=workspace,
+            # `B1660`: read by the run's own record of the files it made.
+            files=getattr(security_context, "files", None),
         )
         if not approval_claimed:
             return _refused(
