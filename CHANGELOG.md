@@ -498,6 +498,11 @@ the next one is cut.
 
 ### Fixed
 
+- **Pressing Sign In before the sign-in page has finished loading no longer sends your
+  password in the page address** (`B1665`). On a slow or busy server the press went out as
+  the browser's own form submission, putting the password in the address bar, the browser's
+  history and the server's access log; the press now waits for the page and signs you in.
+
 - **A hired agent with a project works in that project from its shell as well as its file
   tools** (`B1646`), and in the workstation `git` and the login shell work in your projects
   folder (`B1647`).

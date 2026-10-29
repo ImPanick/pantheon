@@ -107,7 +107,13 @@ const down = async () => {
   await login.fill('#password', 'helper-pass-1');
   await login.click('#submitBtn');
   await wait(login, () => (document.getElementById('error') || {}).textContent, 60000);
-  out.loginError = await login.evaluate(() => document.getElementById('error').textContent);
+  // `B1664`: read what is there, and name the page when it is not the sign-in
+  // page — on a loaded machine it had become Chromium's error page for
+  // `/login?…&password=…`, a press the page was not yet holding (`B1665`).
+  out.loginError = await login.evaluate(() => {
+    const e = document.getElementById('error');
+    return e ? e.textContent : `no #error: the page is ${location.pathname}${location.search ? ' with a query' : ''}`;
+  });
 
   console.log(JSON.stringify(out));
   await browser.close();

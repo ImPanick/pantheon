@@ -331,6 +331,10 @@ Re-measured 2026-10-29, after the twenty-sixth wave: **25 filed, 34 closed**, op
 
 **Direction as of 2026-10-29, after the twenty-sixth wave: falling; what is left is decisions, the redesign and what this sandbox cannot reach.**
 
+Re-measured 2026-10-29, after the twenty-seventh wave: **24 filed, 31 closed**, open **45 → 38** — falling, by one in one wave (two closed, one filed and closed in it). The window moved on, so its start reads 45. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1626`–`B1665`) block.
+
+**Direction as of 2026-10-29, after the twenty-seventh wave: falling; what is left is decisions, the redesign and what this sandbox cannot reach.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus

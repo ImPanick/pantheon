@@ -408,7 +408,7 @@
 
   <div class="error" id="error" role="alert" aria-live="assertive"></div>
 
-  <form id="authForm" autocomplete="on">
+  <form id="authForm" method="post" autocomplete="on">
     <label for="username">Username</label>
     <div class="pw-wrapper">
       <input id="username" name="username" type="text" required autofocus autocomplete="username">
@@ -473,6 +473,20 @@
     }
     return (err && err.message) || String(err);
   }
+  // `B1665`. The submit handler below is attached only once the status check
+  // has answered, and until then a press of Sign In was the browser's own
+  // submit: a GET to `/login?username=…&password=…`, the password in the
+  // address bar, the history and the server's access log — for seconds, on a
+  // busy server. The form is held from here; a press made while it is held is
+  // made again, through the handler, as soon as the handler is there.
+  const form = document.getElementById('authForm');
+  let formReady = false;
+  let pressedEarly = false;
+  form.addEventListener('submit', (e) => {
+    if (formReady) return;
+    e.preventDefault();
+    pressedEarly = true;
+  });
   // Load version
   try {
     const vr = await fetch(appUrl('/api/version'));
@@ -490,7 +504,6 @@
     document.getElementById('password').focus();
   }
 
-  const form = document.getElementById('authForm');
   const errEl = document.getElementById('error');
   const setupNote = document.getElementById('setupNote');
   const confirmGroup = document.getElementById('confirmGroup');
@@ -711,6 +724,8 @@
       return;
     }
   });
+  formReady = true;
+  if (pressedEarly) form.requestSubmit();
 
   // Password show/hide toggles
   const eyeOpen = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
