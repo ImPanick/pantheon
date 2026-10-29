@@ -253,6 +253,13 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **A shell command that writes over a file that was there, and a patch that deletes one, now
+  count as deleting it** (`B1669`, `B1668`), as `write_file` does (`B1660`): `>`, `tee` and `cp`
+  onto an existing file ask where deletions ask. Speed Logger's header line now appends, so its
+  version moved. Every approval card now says what the call would destroy (`B1670`).
+- **The Docker image builds from `python:3.14.10-slim`**, a pinned release, instead of the moving
+  `3.14-slim` (`B1667`).
+
 - **An agent replacing a file that was there before its run now counts as deleting it**
   (`B1660`). Where a hire says deletions ask or are never allowed, or a chat is on Auto, a
   `write_file` over such a file asks or is refused; an agent rewriting a file it made in the same
@@ -511,6 +518,9 @@ the next one is cut.
   arming that a non-empty memory store did on its own.
 
 ### Fixed
+
+- **The PDF fallback draws formulas with their exponents raised, and never cuts a line of text in
+  half at a page edge** (`B1675`, `B1676`).
 
 - **The PDF fallback exports documents that contain a code block** (`B421`); it produced nothing
   for them before.
