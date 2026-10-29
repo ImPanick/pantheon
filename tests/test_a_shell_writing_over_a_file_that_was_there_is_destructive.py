@@ -228,7 +228,12 @@ def test_speed_logger_still_logs_under_its_never(tmp_path):
     `$PANTHEON_PROJECTS` names, so the header's `>` is refused only once
     `speed.csv` is there — which is every run after the first, since the
     reading cannot see the `[ -f speed.csv ] ||` guarding it. So the header
-    stays on `>>`."""
+    stays on `>>`.
+
+    `B1682` reads that guard (`shell_reading._guard`): the `>` behind it
+    runs only when there is no `speed.csv`, so it replaces nothing and is
+    allowed even once the log is there. The header stays on `>>`, which is
+    the same write."""
     m = get_agent(None, "speed-logger")
     assert H.manifest_effects(m)["destructive"] == "never"
     cases = E.load_evals(m)
@@ -242,7 +247,11 @@ def test_speed_logger_still_logs_under_its_never(tmp_path):
     before = command.replace('ping_ms" >> speed.csv', 'ping_ms" > speed.csv')
     assert never().decision_for("bash", before).allowed is True, "the first run: no log yet"
     (tmp_path / "net" / "speed.csv").write_text("time,down_mbit,up_mbit,ping_ms\n", encoding="utf-8")
-    assert never().decision_for("bash", before).allowed is False, "the command as it was is refused"
+    # `B1682` changed this from refused: the guard in front of the `>` is read.
+    assert never().decision_for("bash", before).allowed is True, "its guard is read"
+    unguarded = before.replace("[ -f speed.csv ] || ", "")
+    assert unguarded != before
+    assert never().decision_for("bash", unguarded).allowed is False, "a `>` with no guard is refused"
     assert never().decision_for("bash", command).allowed is True
     results = asyncio.run(E.run_agent(m))
     assert len(results) == len(cases) == 6
