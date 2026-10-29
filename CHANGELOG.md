@@ -253,6 +253,10 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **A shell or Python command that reaches another machine counts as reaching the network**
+  (`pip install`, `npm ci`, `curl`, `git push`, `ssh`, a Python network call), and one whose reach
+  cannot be read counts as both reaching out and deleting. Agents with a shell now decide it: 19
+  allow it and 31 never may (`B1652`).
 - **A hired agent runs what its hire allows, even after reading the web, when its person holds
   `can_auto_approve`** (admins do). Effects set to *allow* on the hire no longer stop for a yes
   after the agent reads a page, a mail or a tool result; *ask* still asks, *never* is refused, and
@@ -491,6 +495,8 @@ the next one is cut.
 
 ### Fixed
 
+- **A memory a trimmed reply left out is not counted as used** (`B1653`); a plain task you denied
+  says so as its log's last line (`B1654`).
 - **A reply trimmed to fit keeps the agent's instructions whole** and shortens your message
   first, and a memory the model never received is not shown as used (`B1651`, `B1650`); a step you
   allowed from a card appears once in a run's log and report (`B1648`); 76 agent runbooks say

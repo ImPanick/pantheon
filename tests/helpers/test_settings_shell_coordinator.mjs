@@ -814,6 +814,19 @@ const searchModule = functionProxy();
 
 const STUBS = new Map([
   [
+    // `B1564`. Settings' speech-to-text card names the browser's own
+    // recognition in the recorder's words and tells the chat's microphone
+    // about a change; the smoke drives Settings, not the recorder, so a
+    // recorder that records nothing stands in.
+    path.join(JS, 'voiceRecorder.js'),
+    {
+      default: { refreshSttProvider() {}, init() {} },
+      browserSpeechRecognition: () => null,
+      NO_BROWSER_SPEECH: 'This browser has no speech recognition of its own.',
+      browserSpeechRefusal: () => '',
+    },
+  ],
+  [
     // H19. The Shortcuts panel reads the keybind registry from the module that
     // owns it instead of keeping a second copy that disagreed about
     // `toggle_sidebar`. Stubbed rather than loaded for real: this smoke is
