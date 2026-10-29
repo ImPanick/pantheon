@@ -304,7 +304,9 @@ def plan_for_task(db, task, run_id: Optional[str] = None) -> Optional[RunPlan]:
         db.commit()
         raise AgentRunRefused(sentence)
 
-    effects = H.effective_effects(manifest, H.hire_grants(hire))
+    # `B1662`: what it is held to, not the rows drawn — a never in its own
+    # table that takes a tool away is not drawn, and still takes the tool.
+    effects = H.held_effects(manifest, H.hire_grants(hire))
     never = frozenset(e for e, r in effects.items() if r == "never")
     ask = frozenset(e for e, r in effects.items() if r == "ask")
     allow = frozenset(e for e, r in effects.items() if r == "allow")

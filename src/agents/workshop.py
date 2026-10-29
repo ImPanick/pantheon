@@ -70,10 +70,14 @@ def check(text: str):
 
     `B1659`: and, since the person is writing it now, every effect its table
     names is one a call of its agent can carry (`check_effects_carried`) —
-    a file already kept is read by the lint alone, so it stays theirs."""
-    from src.agents.manifest import check_effects_carried, parse_manifest
+    a file already kept is read by the lint alone, so it stays theirs.
+
+    `B1662`: and every tool it lists is one its run gets — no never in its
+    table takes it away (`check_tools_kept`)."""
+    from src.agents.manifest import check_effects_carried, check_tools_kept, parse_manifest
     m = parse_manifest(text or "", source="own")
     check_effects_carried(m)
+    check_tools_kept(m)
     return m
 
 

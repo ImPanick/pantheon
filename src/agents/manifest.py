@@ -519,6 +519,53 @@ def check_effects_carried(m: "Manifest") -> None:
         f"{', '.join(sorted(run)) or 'none'}.")
 
 
+def _and(names: List[str]) -> str:
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def check_tools_kept(m: "Manifest") -> None:
+    """`B1662`. For a file a person is writing now (`workshop.check`, after
+    `check_effects_carried`): every tool it lists is one its run gets. A
+    `never` in its table that every call of a tool carries takes the tool away
+    (`hires.kit`) — `network_egress: never` on a `web_fetch` agent — so the
+    tool's rows are not drawn (`hires.manifest_effects`), the never the person
+    wrote is not on the form, and with every tool gone the agent can only
+    talk: the lint's own rule for an empty `tools`. They are told which never
+    takes which tool, and what to do.
+
+    Not part of `lint`, for `B1659`'s reason: a file kept before stays theirs
+    and hireable — its run is held to the never as before
+    (`hires.held_effects`), its form draws none of the tool's rows — and its
+    next save says so."""
+    from src.agents.hires import kit
+    from src.tool_capabilities import least_reach
+    never = {e for e, r in m.effects.items() if r == "never"}
+    kept = kit(m, never)
+    by: Dict[str, List[str]] = {}
+    for t in m.tools:
+        if t not in kept:
+            by.setdefault(sorted({e.value for e in least_reach(t)} & never)[0], []).append(t)
+    if not by:
+        return
+    talk = "an agent with no tools can only talk, and a chat already does that"
+    if kept:
+        eff, tools = sorted(by.items())[0]
+        raise ManifestRefused(
+            f"Effect “{eff}” is never, and every call of {_and(tools)} has it, so it takes "
+            f"{_and(tools)} away — {'a tool' if len(tools) == 1 else 'tools'} on the list that its "
+            f"runs never get. Take {_and(tools)} out, or make it ask.")
+    if len(by) == 1:
+        eff, tools = next(iter(by.items()))
+        raise ManifestRefused(
+            f"Effect “{eff}” is never, and every call of {_and(tools)} has it, so it leaves this "
+            f"agent no tools — {talk}. Make it ask, or choose a tool that works without it.")
+    which = ", ".join(f"{t} “{e}”" for t in m.tools for e, ts in by.items() if t in ts)
+    raise ManifestRefused(
+        f"Effects {_and([f'“{e}”' for e in sorted(by)])} are never, and every call of each tool has "
+        f"one ({which}), so they leave this agent no tools — {talk}. Make one ask, or choose tools "
+        f"that work without them.")
+
+
 def _check_budget(raw: dict) -> Dict[str, int]:
     ceilings = {"runs_per_day": RUNS_PER_DAY_CEILING, "max_steps": MAX_STEPS_CEILING,
                 "max_minutes": MAX_MINUTES_CEILING}

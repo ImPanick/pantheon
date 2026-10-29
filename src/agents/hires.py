@@ -161,7 +161,11 @@ def kit(manifest: Manifest, never) -> List[str]:
     do stays, and the gate refuses just those calls in the hire's words: with
     `write_private: never`, Memory Auditor keeps `manage_memory` to list and
     search, and an `add`, `edit` or `delete` is refused. Filtering by the
-    widest reach took the whole tool away, its reads with its writes."""
+    widest reach took the whole tool away, its reads with its writes.
+
+    `B1662`: a run hands it the nevers it is held to (`held_effects`), its
+    table's own among them — not the rows the form draws, which leave out a
+    never that takes a tool away, so read from those the tool came back."""
     from src.tool_capabilities import least_reach
     never = set(never or ())
     return [t for t in manifest.tools if not ({e.value for e in least_reach(t)} & never)]
@@ -180,9 +184,20 @@ def manifest_effects(manifest: Manifest) -> Dict[str, str]:
     way — it asks a call's effects, and no call has that one. A person's file
     is told so when it is saved (`manifest.check_effects_carried`); one kept
     before — a Topic Watcher customised before `B1656`, whose table allows
-    `read_public` — keeps its line, and runs, and the row is not drawn."""
+    `read_public` — keeps its line, and runs, and the row is not drawn.
+
+    `B1662`: of the tools its run gets. A `never` in its own table that every
+    call of a tool carries takes the tool away (`kit`) — `network_egress:
+    never` on a `web_fetch` agent — and the form drew the tool's other rows
+    still: *search and read the web — without asking* for an agent left no
+    tools at all. The rows are now those of the tools the kit keeps under the
+    table's own `never`s. Such a never is still the file's, and holds — a run
+    and a hire's grants read it from `held_effects`; a person's file is told
+    when it is saved (`manifest.check_tools_kept`), and one kept before stays
+    theirs and draws none of the tool's rows."""
+    never = {e for e, r in manifest.effects.items() if r == "never"}
     out: Dict[str, str] = {}
-    for tool in manifest.tools:
+    for tool in kit(manifest, never):
         for eff in tool_effects(tool):
             out[eff] = manifest.effects.get(eff) or ("allow" if eff in QUIET_EFFECTS else "ask")
     return dict(sorted(out.items()))
@@ -213,10 +228,16 @@ def check_grants(manifest: Manifest, raw: Any) -> Dict[str, str]:
     """A person's changes to the effects. Each may only tighten, except one
     loosening the owner allowed: `ask` → `allow` on their own hire (§3)."""
     raw = raw if isinstance(raw, dict) else {}
-    base = manifest_effects(manifest)
+    # `B1662`: the table it is held to, so a never the form does not draw —
+    # one that takes a tool away — is still one a hire cannot loosen.
+    base = held_effects(manifest)
     out: Dict[str, str] = {}
     for eff, rule in raw.items():
         if eff not in base:
+            gone = [t for t in manifest.tools if eff in tool_effects(t)]
+            if gone:
+                raise HireRefused(f"{manifest.name} never has the effect “{eff}”: a never in its own "
+                                  f"table takes {', '.join(gone)} away.")
             raise HireRefused(f"{manifest.name}'s tools never have the effect “{eff}”.")
         if rule not in EFFECT_RULES:
             raise HireRefused(f"“{eff}” can only be allow, ask or never.")
@@ -234,6 +255,21 @@ def effective_effects(manifest: Manifest, grants: Dict[str, str]) -> Dict[str, s
     eff = manifest_effects(manifest)
     eff.update({k: v for k, v in (grants or {}).items() if k in eff})
     return eff
+
+
+def held_effects(manifest: Manifest, grants: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    """`B1662`. What a run is held to: the rows its hire draws with the
+    hire's grants (`effective_effects`), and every `never` its own table names
+    that some call of its tools carries. One that takes a tool away is not
+    drawn (`manifest_effects`) and is still the file's: a run's kit is cut by
+    it (`runtime.plan_for_task`, `summon.summon`, through `kit`), the gate is
+    handed it, and a hire cannot loosen it (`check_grants`). Read from the
+    rows alone, a run of a `web_search` + `web_fetch` agent whose file says
+    `network_egress: never` would be handed `web_fetch` again."""
+    tools = {e for t in manifest.tools for e in tool_effects(t)}
+    out = effective_effects(manifest, grants or {})
+    out.update({e: "never" for e, r in manifest.effects.items() if r == "never" and e in tools})
+    return dict(sorted(out.items()))
 
 
 #: `D-2026-10-29-01` §1 (`B1605`). What the hire form says before the hire,

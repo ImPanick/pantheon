@@ -107,7 +107,7 @@ def summon(owner: Optional[str], agent_id: str, *, mode: str = "agent", db=None)
             hire = None      # no hires table yet: the file's own table
         if hire is not None:
             grants = H.hire_grants(hire)
-    effects = H.effective_effects(manifest, grants)
+    effects = H.held_effects(manifest, grants)      # `B1662`: the hired run's table too
     never = frozenset(e for e, r in effects.items() if r == "never")
     ask = frozenset(e for e, r in effects.items() if r == "ask")
     tools = H.kit(manifest, never)      # `B1619`: the hired run's own rule
