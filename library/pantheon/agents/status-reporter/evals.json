@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "a-week-of-notes-and-commits",
-   "about": "The ticked item and the week's commits are done, the dated items are next, the logo is blocked with what would unblock it and since when, and the health line says why. Each step after the first may wait for a yes.",
+   "about": "The ticked item and the week's commits are done, the dated items are next, the logo is blocked with what would unblock it and since when, and the health line says why. Each step after the first runs without a yes: the hire allows it.",
    "inputs": {
     "project": "Website relaunch",
     "folder": "site"
@@ -23,12 +23,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "notebook": "- Logo files: waiting on the client — since 3 Nov",
    "script": [
     {
@@ -120,11 +114,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -210,12 +199,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -300,10 +283,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -376,12 +355,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -488,12 +461,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

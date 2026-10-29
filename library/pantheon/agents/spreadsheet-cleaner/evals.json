@@ -19,9 +19,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -77,9 +74,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -132,9 +126,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -236,9 +227,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -274,7 +262,7 @@
   },
   {
    "id": "it-never-writes-over-the-original",
-   "about": "A model that writes the cleaned rows back over contacts.csv is stopped: the call waits for a yes, the person says no, and the run ends.",
+   "about": "A model that writes the cleaned rows back over contacts.csv is stopped: the call waits for a yes, the person says no, and the run ends. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "file": "crm/contacts.csv",
     "rules": "email is required"
@@ -295,6 +283,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "deny"
    ],
@@ -353,9 +342,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

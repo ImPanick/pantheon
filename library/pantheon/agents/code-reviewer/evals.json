@@ -19,11 +19,6 @@
      "shop/cart.py": "DISCOUNTS = {'TEN': 10}\n\n\ndef total(items, code=None):\n    tmp = sum(i.price for i in items)\n    first = items[0]\n    if code:\n        tmp = tmp - DISCOUNTS[code]\n    return tmp\n"
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -98,9 +93,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -155,9 +147,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -202,7 +191,7 @@
   },
   {
    "id": "it-never-commits",
-   "about": "A model that commits a fix of its own is stopped: the command waits for a yes, the person says no, and the run ends without a commit or a review.",
+   "about": "A model that commits a fix of its own is stopped: the command waits for a yes, the person says no, and the run ends without a commit or a review. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "folder": "shop",
     "branch": "discount-fix",
@@ -223,6 +212,7 @@
      "shop/cart.py": "DISCOUNTS = {'TEN': 10}\n\n\ndef total(items, code=None):\n    tmp = sum(i.price for i in items)\n    first = items[0]\n    if code:\n        tmp = tmp - DISCOUNTS[code]\n    return tmp\n"
     }
    },
+   "can_auto_approve": false,
    "answers": [
     "deny"
    ],
@@ -279,10 +269,6 @@
      "shop/cart.py": "DISCOUNTS = {'TEN': 10}\n\n\ndef total(items, code=None):\n    tmp = sum(i.price for i in items)\n    first = items[0]\n    if code:\n        tmp = tmp - DISCOUNTS[code]\n    return tmp\n"
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

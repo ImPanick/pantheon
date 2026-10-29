@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "a-final-rule-and-a-consultation",
-   "about": "A final rule and an open consultation, each with issuer and status, what changes, who it affects in the body's words and its date, soonest first, under the not-legal-advice line. Writing after reading the web waits for the person's yes.",
+   "about": "A final rule and an open consultation, each with issuer and status, what changes, who it affects in the body's words and its date, soonest first, under the not-legal-advice line. Writing after reading the web needs no yes: the hire allows it.",
    "inputs": {
     "field": "connected consumer devices",
     "bodies": [
@@ -30,9 +30,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -118,9 +115,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -204,9 +198,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- https://regulator.example/cyber-2026\n- https://regulator.example/consult-refurb",
    "script": [
     {
@@ -280,9 +271,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -369,9 +357,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -457,9 +442,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

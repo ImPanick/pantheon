@@ -480,6 +480,10 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
         out = m.to_public()
         out["lacking"] = H.lacking_tools(m, user)
         out["effects"] = H.manifest_effects(m)
+        # `D-2026-10-29-01` §1 (`B1605`). Said on the hire form, before the
+        # hire: what *without asking* means once the agent has read the web.
+        out["after_outside"] = H.allowed_after_outside(
+            m, user, auth_manager=getattr(request.app.state, "auth_manager", None))
         # `P24-18` / `P24-17`. Its measurement on this person's model, how many
         # cases its evaluation set has, and its sample report.
         from src.agents.fit import fit, model_for

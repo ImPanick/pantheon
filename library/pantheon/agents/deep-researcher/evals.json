@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "a-finished-report-is-summarised",
-   "about": "The run after the research finished: it finds the report, reads it once the person allows the read, and brings back five lines and its sources exactly, without starting another job.",
+   "about": "The run after the research finished: it finds the report, reads it — the hire allows the read — and brings back five lines and its sources exactly, without starting another job.",
    "inputs": {
     "question": "Do heat pumps work in cold climates?"
    },
@@ -26,9 +26,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -183,9 +180,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -318,9 +312,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "trigger": {
     "event": "research_completed",
     "data": {

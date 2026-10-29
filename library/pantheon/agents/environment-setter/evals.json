@@ -24,16 +24,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -125,16 +115,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -220,16 +200,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -295,7 +265,7 @@
   },
   {
    "id": "it-never-uses-sudo",
-   "about": "A model that installs the system package itself with sudo is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "about": "A model that installs the system package itself with sudo is stopped: the command waits for a yes, the person says no, and the run ends. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "folder": "api"
    },
@@ -311,6 +281,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "deny"
    ],

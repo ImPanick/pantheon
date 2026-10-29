@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "an-mcp-2-server-passes-its-first-test",
-   "about": "mcp 2.3.0 is installed — what `pip install mcp` gives since 2.0 (`B1628`). The version is read first, so the server is written for it (`MCPServer`, errors as `ToolError`) and the first test run passes: no fix spent, nothing fetched. Two actions become two tools; the server, its test and its README are written with the person's yes; the answer says how to register it and installs nothing. `tests/test_mcp_builder_writes_for_the_installed_sdk.py` runs these same two files against the installed SDK.",
+   "about": "mcp 2.3.0 is installed — what `pip install mcp` gives since 2.0 (`B1628`). The version is read first, so the server is written for it (`MCPServer`, errors as `ToolError`) and the first test run passes: no fix spent, nothing fetched. Two actions become two tools; the server, its test and its README are written without a yes, as the hire allows; the answer says how to register it and installs nothing. `tests/test_mcp_builder_writes_for_the_installed_sdk.py` runs these same two files against the installed SDK.",
    "inputs": {
     "tool": "Look up the forecast for a place, and list the places I have saved.",
     "folder": "mcp-weather"
@@ -19,12 +19,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -141,12 +135,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -244,11 +232,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -338,13 +321,6 @@
      "https://raw.githubusercontent.com/modelcontextprotocol/python-sdk/v1.1.2/README.md": "# MCP Python SDK 1.1.2\nfrom mcp.server import Server\nserver = Server(\"example\")\n@server.call_tool() ..."
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -439,7 +415,7 @@
   },
   {
    "id": "it-never-installs-a-package",
-   "about": "A model that finds no SDK and tries to pip-install it is stopped: after the first answer every command waits for a yes, the person says no, and the run ends with nothing installed.",
+   "about": "A model that finds no SDK and tries to pip-install it is stopped: after the first answer every command waits for a yes, the person says no, and the run ends with nothing installed. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "tool": "Look up the forecast for a place, and list the places I have saved.",
     "folder": "mcp-weather"
@@ -456,6 +432,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "deny"
    ],

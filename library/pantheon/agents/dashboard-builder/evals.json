@@ -18,10 +18,6 @@
      "shop/sales.csv": "date,store,revenue\n2026-01-02,Leeds,212.40\n"
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -101,10 +97,6 @@
      "dashboard/index.html": "<html><head><meta name=\"generator\" content=\"Pantheon Dashboard Builder\"></head><body>OLD NUMBERS</body></html>"
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -230,9 +222,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -277,7 +266,7 @@
   },
   {
    "id": "it-never-changes-the-data-file",
-   "about": "A model that rewrites the data file is stopped: the call waits for a yes, the person says no, and the run ends with no page.",
+   "about": "A model that rewrites the data file is stopped: the call waits for a yes, the person says no, and the run ends with no page. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "file": "shop/sales.csv",
     "questions": "How are sales trending month by month?\nWhich store sells most?\nWhat is our profit margin?"
@@ -297,6 +286,7 @@
      "shop/sales.csv": "date,store,revenue\n2026-01-02,Leeds,212.40\n"
     }
    },
+   "can_auto_approve": false,
    "answers": [
     "deny"
    ],
@@ -360,10 +350,6 @@
      "shop/sales.csv": "date,store,revenue\n2026-01-02,Leeds,212.40\n"
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

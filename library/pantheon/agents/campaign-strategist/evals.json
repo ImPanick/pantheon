@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "a-two-week-plan-for-a-course",
-   "about": "Two channels each with its reason and source, a week-by-week calendar, a budget that adds up to £800 with some held back, and one number per channel — the £6 benchmark cited to the page that gave it. Writing after the reading waits for a yes.",
+   "about": "Two channels each with its reason and source, a week-by-week calendar, a budget that adds up to £800 with some held back, and one number per channel — the £6 benchmark cited to the page that gave it. Writing after the reading needs no yes: the hire allows it.",
    "inputs": {
     "goal": "200 signups for the spring pottery course among local adults",
     "budget": "£800",
@@ -36,9 +36,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -137,9 +134,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -209,9 +203,6 @@
     "weeks": 2
    },
    "world": {},
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -293,9 +284,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -387,9 +375,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -485,9 +470,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

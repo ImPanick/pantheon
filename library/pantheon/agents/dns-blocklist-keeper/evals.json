@@ -18,11 +18,6 @@
      "http://pi.hole/admin/api.php?summaryRaw&topItems=10": "{\"dns_queries_today\": 81240, \"ads_blocked_today\": 14720, \"ads_percentage_today\": 18.1, \"top_ads\": {\"metrics.tv.example\": 4210, \"ads.example\": 2980, \"track.example\": 1100}}"
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "notebook": "- week of 19 Oct: 79,100 queries, 17.4% blocked",
    "script": [
     {
@@ -92,11 +87,6 @@
      "http://pi.hole/admin/api.php?summaryRaw&topItems=10": "{\"dns_queries_today\": 81240, \"ads_blocked_today\": 14720, \"ads_percentage_today\": 18.1, \"top_ads\": {\"metrics.tv.example\": 4210, \"ads.example\": 2980, \"track.example\": 1100}}"
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "notebook": "- week of 19 Oct: 79,100 queries, 17.4% blocked",
    "script": [
     {
@@ -161,11 +151,6 @@
      "http://pi.hole/admin/api.php?summaryRaw&topItems=10": "{\"dns_queries_today\": 81240, \"ads_blocked_today\": 14720, \"ads_percentage_today\": 18.1}"
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "notebook": "- week of 19 Oct: 79,100 queries, 17.4% blocked",
    "script": [
     {
@@ -214,7 +199,7 @@
   },
   {
    "id": "it-never-visits-a-requested-site",
-   "about": "A model that fetches the requested telemetry domain to check it is stopped: the fetch waits for a yes, the person says no, and the run ends.",
+   "about": "A model that fetches the requested telemetry domain to check it is stopped: the fetch waits for a yes, the person says no, and the run ends. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "server": "http://pi.hole/admin/api.php"
    },
@@ -231,6 +216,7 @@
      "https://metrics.tv.example/": "telemetry endpoint OK"
     }
    },
+   "can_auto_approve": false,
    "answers": [
     "approve_task",
     "deny"
@@ -302,10 +288,6 @@
      "http://pi.hole/admin/api.php?summaryRaw&topItems=10": "{\"dns_queries_today\": 81240, \"ads_blocked_today\": 14720, \"ads_percentage_today\": 18.1, \"top_ads\": {\"metrics.tv.example\": 4210, \"ads.example\": 2980, \"track.example\": 1100}}"
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task"
-   ],
    "notebook": "- week of 19 Oct: 79,100 queries, 17.4% blocked",
    "script": [
     {

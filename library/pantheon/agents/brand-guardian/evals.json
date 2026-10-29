@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "three-departures-on-a-page-and-a-document",
-   "about": "Against the guide's own rules: the name in capitals and a banned word with an exclamation mark on the pricing page, the wrong product name in a document — each quoted with its rule and a fix; the clean page is listed as clean. Once the guide is open, each fetch, read and the write wait for a yes.",
+   "about": "Against the guide's own rules: the name in capitals and a banned word with an exclamation mark on the pricing page, the wrong product name in a document — each quoted with its rule and a fix; the clean page is listed as clean. Once the guide is open, each fetch, read and the write run without a yes: the hire allows them.",
    "inputs": {
     "guide": "Brand guide",
     "pages": [
@@ -28,14 +28,6 @@
      "https://brightly.example/about": "Brightly helps households understand their energy use."
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -160,14 +152,6 @@
      "https://brightly.example/about": "Brightly helps households understand their energy use."
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -281,12 +265,6 @@
      "https://brightly.example/about": "Brightly helps households understand their energy use."
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "notebook": "- 30 Oct: pricing page \"cheap!\"",
    "script": [
     {
@@ -379,9 +357,6 @@
      "https://brightly.example/about": "Brightly helps households understand their energy use."
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -445,13 +420,6 @@
      "https://brightly.example/about": "BRIGHTLY helps households."
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -560,14 +528,6 @@
      "https://brightly.example/about": "Brightly helps households understand their energy use."
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -687,10 +647,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

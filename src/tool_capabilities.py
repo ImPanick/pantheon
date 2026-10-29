@@ -2018,6 +2018,16 @@ class ToolGateDecision:
     # were not asked. `reason` is NOT: it is the refusal sentence and every
     # reader of it is behind `if not decision.allowed`.
     auto_approved: bool = False
+    # `D-2026-10-29-01` §1 (`B1605`). True on an `allowed=True` decision that
+    # the post-external gate would otherwise have refused, in a hired agent's
+    # run whose own effects table sets every effect of the action to *allow*
+    # (`ToolRunSecurityContext._allowed_hire_decision_for`). Recorded exactly
+    # as `auto_approved` is — on the `tool_start`, the `tool_output`, the
+    # persisted `tool_event` and, for a hire, the run's step log — and only on
+    # the steps it changed, so a run says which steps ran without a person
+    # seeing them after outside content came in. `tripped_effects` rides on it
+    # as on Auto's, naming what nobody was asked about.
+    hire_approved: bool = False
 
 
 _EXTERNAL_MESSAGE_SOURCES = frozenset(
@@ -2176,6 +2186,17 @@ class ToolRunSecurityContext:
     # `D-2026-10-24-02`. A hired agent whose whole kit cannot read the
     # person's private data. False for every other run.
     hire_blind: bool = False
+    # `D-2026-10-29-01` §1 (`B1605`). The effects a hired agent's table sets
+    # to *allow* — the third side of `hire_ask_effects` / `hire_never_effects`,
+    # read only by `_allowed_hire_decision_for` — and whether the lift that
+    # reads them is on for this run: True only for a hired agent's run whose
+    # person holds `can_auto_approve`, resolved once per run by the caller
+    # (`src.approval_mode.hire_lift_for`), as `auto_approved` is. This module
+    # reads no privilege. Both empty/False for every run that is not such a
+    # hire's — every chat, every task, every summoned agent — so the gate
+    # answers those exactly as before.
+    hire_allow_effects: frozenset = frozenset()
+    hire_allow_after_outside: bool = False
     # `P27-08`. `(tool_name, content) -> sentence | None`, supplied by the
     # caller (`src/vault.asks_before`, bound to the run's owner and chat): a
     # vault login this call signs in with is set to ask — each time, or once
@@ -2333,6 +2354,11 @@ class ToolRunSecurityContext:
         hired = self._hire_decision_for(tool_name, content)
         if hired is None:
             hired = self._sealed_hire_decision_for(tool_name, content)
+        if hired is None:
+            # `D-2026-10-29-01` §1. After the table's `ask` and `never` (asked
+            # just above, so neither is lifted) and after the sealed and blind
+            # lifts (a step they run is not this amendment's to record).
+            hired = self._allowed_hire_decision_for(tool_name, content)
         if hired is not None:
             # `P24-07`. Before the ladder and before Auto: what a hire says
             # about an effect is the person's standing answer about this agent.
@@ -2453,6 +2479,78 @@ class ToolRunSecurityContext:
             return None
         return ToolGateDecision(True, None)
 
+    def _allowed_hire_decision_for(self, tool_name: Any, content: Any = None):
+        """`D-2026-10-29-01` §1 (`B1605`) — the third amendment of the
+        post-external gate, for one kind of run only.
+
+        A hired agent whose kit both reads the person's data and reaches
+        outside stopped at almost every step after its first outside read —
+        Newsletter Writer six times in one case — so a scheduled one could not
+        finish unattended. The owner's ruling: *hire approval covers it*. In a
+        hired agent's run, after outside content, an action **every** effect of
+        which the hire's own table sets to *allow* is answered as it would be
+        had nothing come in. What is lifted is whether a person is asked, never
+        what is validated — the rung, the tool policy, ownership and every
+        validator still answer as before.
+
+        **The adversary (`Law 17`)** is the one the gate exists for: the author
+        of a page, a mail or a tool result the agent reads, writing text that
+        steers it. With this lift that author can steer the agent's next steps
+        *within what the hire allows* — read more of the person's data, write
+        it, send it, if the person set those to allow — and nobody sees the
+        step first. That cost was put to the owner and accepted
+        (`D-2026-10-29-01`); it is why each such step is recorded
+        (`hire_approved`), why the hire form says it before the hire, and why
+        three things the hire's table does not decide keep the gate:
+
+          * **a self-escalation asks every time** (`D-2026-10-25-01`,
+            `StopCondition.MORE_REACH`) — more reach is the person's to give,
+            not an effect a hire can pre-approve;
+          * **a write to memory, skills or scheduled tasks** after outside
+            content keeps the gate (`LAUNDERING_TOOLS`, as for a sealed kit,
+            `D-2026-10-24-01`) — the injected text would outlive the run and
+            reach every later chat; their reads are lifted like any other;
+          * **only a hire whose person holds `can_auto_approve`** — the people
+            Auto is held to (`hire_allow_after_outside`, resolved by the
+            caller); anyone else's hire behaves exactly as before.
+
+        And `ask` still asks, `never` is still refused: `_hire_decision_for`
+        answers before this and its answer is final. An unrecognised action is
+        never lifted (its effects are a guess). "As it would be had nothing
+        come in" is asked of the ladder itself (`_ladder_decision_for` with
+        `tainted=False`), so a stricter rung that asks in a clean chat still
+        asks here — the lift can never make a rung ask *less* after outside
+        content than before it, the inversion `P7-03`'s refutation found.
+        `None` means "not this amendment's": the ladder answers as before."""
+        if not (self.hire_allow_after_outside and self.external_untrusted_context_seen):
+            return None
+        if self_escalation_for(tool_name, content) is not None:
+            return None
+        capabilities = capabilities_for_action(tool_name, content)
+        effects = {effect.value for effect in capabilities.effects}
+        if not capabilities.known or not effects or not effects <= set(self.hire_allow_effects):
+            return None
+        bare = tool_name[len("mcp__email__"):] if isinstance(tool_name, str) and tool_name.startswith(
+            "mcp__email__") else tool_name
+        if bare in LAUNDERING_TOOLS and effects - {"read_workspace", "read_private"}:
+            return None
+        gated = self._ladder_decision_for(tool_name, content)
+        if gated.allowed:
+            return None   # the ladder runs it anyway: nothing was lifted, nothing to record
+        if not self._ladder_decision_for(tool_name, content, tainted=False).allowed:
+            return None   # the rung asks for it in a clean run too: that question stands
+        logger.info(
+            "[approval] %s ran unasked after outside content: the hire allows %s "
+            "(D-2026-10-29-01)", tool_name, ", ".join(sorted(effects)),
+        )
+        return ToolGateDecision(
+            True,
+            None,
+            tripped_effects=gated.tripped_effects,
+            classification=gated.classification,
+            hire_approved=True,
+        )
+
     def _hire_decision_for(self, tool_name: Any, content: Any = None):
         """`P24-07`. A hired agent's effects table, or `None` when it has
         nothing to say about this action (which is every non-agent run)."""
@@ -2488,13 +2586,21 @@ class ToolRunSecurityContext:
             )
         return None
 
-    def _ladder_decision_for(self, tool_name: Any, content: Any = None) -> ToolGateDecision:
+    def _ladder_decision_for(self, tool_name: Any, content: Any = None, *,
+                             tainted: bool | None = None) -> ToolGateDecision:
         """The trust ladder's own answer — `P7-02`, `P7-03`, `P7-04`, `P7-13`.
 
         Split out of `decision_for` by `D-2026-10-09-01` §2 and otherwise
         unchanged, so "what does Manual approve do" has one answer and Auto is
         visibly a wrapper around it rather than a second gate (`Law 7`).
+
+        `tainted` is whether outside content has come in, and defaults to the
+        run's own answer. `D-2026-10-29-01` asks it once with `False` — what
+        this rung answers the same action in a clean run — so a hire's lift is
+        the ladder's own clean answer, not a second copy of it.
         """
+        if tainted is None:
+            tainted = self.external_untrusted_context_seen
         # `P7-13`. Every question below is asked of this set — the rung's stop
         # conditions from `TRUST_LADDER` — and never of the rung's name, so the
         # ladder that says which rung is stricter is the gate that enforces it.
@@ -2564,7 +2670,7 @@ class ToolRunSecurityContext:
         # pathological argument is refused with a truthful card instead of
         # ending the turn and discarding its reply.
         asks_untainted = StopCondition.IN_A_CLEAN_CHAT in asks
-        if not self.external_untrusted_context_seen and not asks_untainted:
+        if not tainted and not asks_untainted:
             return ToolGateDecision(True)
 
         capabilities = capabilities_for_action(tool_name, content)
@@ -2572,7 +2678,7 @@ class ToolRunSecurityContext:
         # untainted strict rungs narrow, and only by `read_private`.
         gate_effects = (
             POST_EXTERNAL_BLOCKED_EFFECTS
-            if self.external_untrusted_context_seen
+            if tainted
             else RUNG_BLOCKED_EFFECTS
         )
         blocked_effects = capabilities.effects & gate_effects
@@ -2601,7 +2707,7 @@ class ToolRunSecurityContext:
         # make Pantheon ask more often"; this is what makes that true.
         if (
             StopCondition.DESPITE_A_STANDING_RULE not in asks
-            and not self.external_untrusted_context_seen
+            and not tainted
             and self._allow_rule_matches(tool_name, content)
         ):
             return ToolGateDecision(True)
@@ -2622,7 +2728,7 @@ class ToolRunSecurityContext:
             if capabilities.known
             else TOOL_CLASSIFICATION_UNRECOGNISED
         )
-        if self.external_untrusted_context_seen:
+        if tainted:
             why = "External untrusted context has already influenced this run. "
         else:
             # The rung asked for this, and the sentence has to say so — the old

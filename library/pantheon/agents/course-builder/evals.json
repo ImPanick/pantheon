@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "a-two-week-course-for-office-staff",
-   "about": "Two weeks, each with a goal, readings it opened (title, source, address) and an exercise with what a good answer contains; the week short of readings says so. Writing after reading the web waits for the person's yes.",
+   "about": "Two weeks, each with a goal, readings it opened (title, source, address) and an exercise with what a good answer contains; the week short of readings says so. Writing after reading the web needs no yes: the hire allows it.",
    "inputs": {
     "subject": "Python for data analysis",
     "audience": "office staff who use spreadsheets",
@@ -49,9 +49,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -188,9 +185,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -318,9 +312,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -398,9 +389,6 @@
     "weeks": 1
    },
    "world": {},
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -503,9 +491,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -626,9 +611,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

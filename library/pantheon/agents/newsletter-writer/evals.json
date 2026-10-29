@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "three-saved-links-become-an-issue",
-   "about": "Three notes saved for the newsletter become three items in the person's voice; the bare link is fetched for its line; the seed-swap page disagrees with the note and the checklist says so; the private to-do is left out. After the first note is read, each step waits for the person's yes.",
+   "about": "Three notes saved for the newsletter become three items in the person's voice; the bare link is fetched for its line; the seed-swap page disagrees with the note and the checklist says so; the private to-do is left out. After the first note is read, each step runs without the person's yes: the hire allows it.",
    "inputs": {
     "name": "The Garden Post",
     "voice": "Plain and friendly, short sentences, no exclamation marks."
@@ -35,14 +35,6 @@
      "https://tools.example/hori-hori": "The hori-hori: a Japanese digging knife for weeding, planting and dividing."
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -178,13 +170,6 @@
      "https://tools.example/hori-hori": "The hori-hori: a Japanese digging knife for weeding, planting and dividing."
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "notebook": "- https://garden.example/mulch",
    "script": [
     {
@@ -293,13 +278,6 @@
      "https://library.example/seed-swap": "Seed swap at the library, Saturday 8 November, 10:00 to 13:00. Bring seeds in labelled envelopes."
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -389,9 +367,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -461,12 +436,6 @@
      "https://tools.example/hori-hori": "The hori-hori: a Japanese digging knife for weeding, planting and dividing."
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -576,9 +545,6 @@
      "https://tools.example/hori-hori": "The hori-hori: a Japanese digging knife for weeding, planting and dividing."
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

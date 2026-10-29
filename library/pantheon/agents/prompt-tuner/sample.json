@@ -7,7 +7,6 @@
   "chat_with_model"
  ],
  "wrote": [
-  "manage_documents",
   "create_document"
  ],
  "refused": [],

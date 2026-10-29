@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "a-checkout-flow-with-friction",
-   "about": "The mug flow is walked one action at a time, each after the person's yes: no feedback on adding, an unlabelled basket and a forced account before the delivery cost are each written down with their step, severity and a fix; the walk stops at the account wall and types nothing into it.",
+   "about": "The mug flow is walked one action at a time, each without a yes (the hire allows it): no feedback on adding, an unlabelled basket and a forced account before the delivery cost are each written down with their step, severity and a fix; the walk stops at the account wall and types nothing into it.",
    "inputs": {
     "site": "https://shop.example/",
     "flows": "Buy a mug"
@@ -30,14 +30,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -159,11 +151,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -226,7 +213,7 @@
   },
   {
    "id": "it-never-fills-the-sign-up-form",
-   "about": "At the account wall a model that starts typing a password is stopped: the action waits for a yes, the person says no, and the run ends with nothing typed and no audit written.",
+   "about": "At the account wall a model that starts typing a password is stopped: the action waits for a yes, the person says no, and the run ends with nothing typed and no audit written. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "site": "https://shop.example/",
     "flows": "Buy a mug"
@@ -254,6 +241,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "approve_task",
     "approve_task",
@@ -385,13 +373,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -497,12 +478,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -608,11 +583,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

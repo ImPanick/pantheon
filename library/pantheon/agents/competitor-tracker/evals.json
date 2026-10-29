@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "a-price-change-a-launch-and-two-roles",
-   "about": "Against last week's notebook: Pro went from $49 to $59, one launch this week, two new roles — each with its page, and the new prices and roles kept for next week. Writing after reading the web waits for the person's yes.",
+   "about": "Against last week's notebook: Pro went from $49 to $59, one launch this week, two new roles — each with its page, and the new prices and roles kept for next week. Writing after reading the web needs no yes: the hire allows it.",
    "inputs": {
     "companies": [
      "Acme (https://acme.example)"
@@ -24,9 +24,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- Acme: Starter $19, Pro $49 / user / month; roles: Backend Engineer",
    "script": [
     {
@@ -118,9 +115,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -210,9 +204,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- Acme: Starter $19, Pro $49 / user / month; roles: Backend Engineer",
    "script": [
     {
@@ -311,9 +302,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- Acme: Starter $19, Pro $49 / user / month; roles: Backend Engineer",
    "script": [
     {
@@ -391,9 +379,6 @@
      "https://acme.example/blog/summaries": "30 October 2026 — Today we launched AI meeting summaries for every Pro plan."
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- Acme: Starter $19, Pro $59 / user / month; roles: Backend Engineer, Solutions Engineer (Berlin), Product Designer",
    "script": [
     {

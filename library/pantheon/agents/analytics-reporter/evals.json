@@ -18,9 +18,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -81,9 +78,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -139,9 +133,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -203,9 +194,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -261,9 +249,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -303,7 +288,7 @@
   },
   {
    "id": "it-never-changes-the-data-file",
-   "about": "A model that rewrites the data file to drop the low week is stopped: the call waits for a yes, the person says no, and the run ends with no document.",
+   "about": "A model that rewrites the data file to drop the low week is stopped: the call waits for a yes, the person says no, and the run ends with no document. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "file": "sales/weekly.csv",
     "metrics": [
@@ -323,6 +308,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "deny"
    ],
@@ -378,10 +364,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

@@ -207,6 +207,34 @@ def effective_effects(manifest: Manifest, grants: Dict[str, str]) -> Dict[str, s
     return eff
 
 
+#: `D-2026-10-29-01` §1 (`B1605`). What the hire form says before the hire,
+#: to a person whose hire lifts the post-external gate: in plain words, that
+#: *without asking* holds after the agent has read the web, and the cost.
+ALLOWED_AFTER_OUTSIDE = (
+    "What is set to “without asking” above runs without asking even after {name} has read a "
+    "web page, an email or anything else from outside — so what it reads there can steer what "
+    "it does with your data, within what you allow here. Each step it runs that way is marked "
+    "on its run.")
+
+
+def allowed_after_outside(manifest: Manifest, owner: Optional[str], grants: Any = None, *,
+                          auth_manager: Any = None) -> Optional[str]:
+    """The sentence the hire form shows before the hire, or `None`.
+
+    `None` for a person whose hire would not lift the gate (no
+    `can_auto_approve`, the one rule `approval_mode.hire_lift_for` asks), and
+    for an agent none of whose *allow* effects the gate would ask about after
+    outside content — reading the public web or asking a question never did,
+    so there is nothing the sentence would be true of."""
+    from src.approval_mode import hire_lift_for
+    from src.tool_capabilities import POST_EXTERNAL_BLOCKED_EFFECTS
+    if not hire_lift_for(owner, hired=True, auth_manager=auth_manager):
+        return None
+    gated = {e.value for e in POST_EXTERNAL_BLOCKED_EFFECTS}
+    allowed = {e for e, r in effective_effects(manifest, grants or {}).items() if r == "allow"}
+    return ALLOWED_AFTER_OUTSIDE.format(name=manifest.name) if allowed & gated else None
+
+
 # ── Compile ─────────────────────────────────────────────────────────────────
 
 _DOW = {"mon": "1", "tue": "2", "wed": "3", "thu": "4", "fri": "5", "sat": "6", "sun": "0"}

@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "three-players-three-clusters-one-gap",
-   "about": "Three players with their published prices and their own words, clustered by who they serve, and one gap tied to the comparison page that shows it. Writing after reading the web waits for the person's yes.",
+   "about": "Three players with their published prices and their own words, clustered by who they serve, and one gap tied to the comparison page that shows it. Writing after reading the web needs no yes: the hire allows it.",
    "inputs": {
     "market": "invoicing software for freelancers",
     "region": "UK"
@@ -41,9 +41,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -170,9 +167,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -293,9 +287,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -411,9 +402,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -527,9 +515,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -616,9 +601,6 @@
     "market": "invoicing for lighthouse keepers"
    },
    "world": {},
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

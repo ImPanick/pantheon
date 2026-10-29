@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "two-new-links-one-filed-one-dead",
-   "about": "The note has three links and the notebook knows one: the two new ones are fetched; the one that loads is filed with its real title, two sentences and reused tags, the other is listed under Could not load with nothing made up. After the note is read, each fetch and the write wait for a yes.",
+   "about": "The note has three links and the notebook knows one: the two new ones are fetched; the one that loads is filed with its real title, two sentences and reused tags, the other is listed under Could not load with nothing made up. After the note is read, each fetch and the write run without a yes: the hire allows them.",
    "inputs": {
     "note": "Bookmarks"
    },
@@ -19,12 +19,6 @@
      "https://news.example/old-story": "An old story."
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "notebook": "- https://news.example/old-story\n- tags: garden, news",
    "script": [
     {
@@ -128,9 +122,6 @@
      "https://news.example/old-story": "An old story."
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- https://garden.example/prune-apples\n- https://old.example/recipe\n- https://news.example/old-story",
    "script": [
     {
@@ -192,9 +183,6 @@
      "https://news.example/old-story": "An old story."
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- https://garden.example/prune-apples\n- https://news.example/old-story\n- https://old.example/recipe",
    "script": [
     {
@@ -247,11 +235,6 @@
      "https://shop.example/": "Shop Example — home and garden supplies. Free delivery over £30."
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -333,11 +316,6 @@
      "https://news.example/old-story": "An old story."
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "notebook": "- https://news.example/old-story\n- https://old.example/recipe",
    "script": [
     {
@@ -477,9 +455,6 @@
      "https://news.example/old-story": "An old story."
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- https://garden.example/prune-apples\n- https://old.example/recipe\n- https://news.example/old-story",
    "script": [
     {

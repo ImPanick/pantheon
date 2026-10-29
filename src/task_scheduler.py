@@ -5304,6 +5304,7 @@ class TaskScheduler:
             _agent_slot["agent"] = {"hire_id": agent_plan.hire_id, "agent_id": agent_plan.agent_id,
                                     "ask_effects": sorted(agent_plan.ask_effects),
                                     "never_effects": sorted(agent_plan.never_effects),
+                                    "allow_effects": sorted(agent_plan.allow_effects),
                                     "sealed": agent_plan.sealed, "blind": agent_plan.blind}
             if agent_plan.workspace:
                 # `B1642`: where the person's tools run in their workstation,
@@ -5839,6 +5840,7 @@ class TaskScheduler:
                 **({"allowed_owner": "this agent's",
                     "ask_effects": frozenset(_agent.get("ask_effects") or ()),
                     "never_effects": frozenset(_agent.get("never_effects") or ()),
+                    "allow_effects": frozenset(_agent.get("allow_effects") or ()),
                     "sealed": bool(_agent.get("sealed")),
                     "blind": bool(_agent.get("blind")),
                     "agent_id": _agent.get("agent_id") or None,
@@ -5942,6 +5944,10 @@ class TaskScheduler:
                             round=data.get("round"),
                             detail=data.get("command") or "",
                             status="running",
+                            # `D-2026-10-29-01` §1 (`B1605`). A hire's step
+                            # that ran after outside content without a card,
+                            # because the hire allows it: the run says so.
+                            **({"hire_approved": True} if data.get("hire_approved") else {}),
                         )
                     elif data.get("type") == "tool_blocked":
                         # Refused by policy — it never ran, and that is the most

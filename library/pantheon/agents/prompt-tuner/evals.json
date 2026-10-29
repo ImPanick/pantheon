@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "a-change-that-raises-the-score-is-kept",
-   "about": "The runbook passes 2 of 3 cases on qwen3-8b; one added rule makes the outage case pass with no other breaking, so it is kept; the original documents are untouched; each step after the first had the person's yes.",
+   "about": "The runbook passes 2 of 3 cases on qwen3-8b; one added rule makes the outage case pass with no other breaking, so it is kept; the original documents are untouched; each step after the first ran without a yes: the hire allows it.",
    "inputs": {
     "runbook": "Inbox triage runbook",
     "evals": "Inbox triage evals",
@@ -42,17 +42,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -220,17 +209,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -372,12 +350,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -490,12 +462,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -608,17 +574,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -784,12 +739,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

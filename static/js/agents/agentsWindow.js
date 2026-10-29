@@ -683,6 +683,14 @@ function _renderAgent(a) {
   if (proj) form.appendChild(proj);
   const tz = _tz();
   if (tz) form.appendChild(_el('p', 'agents-small', `Times are in ${tz}.`));
+  // `D-2026-10-29-01` §1 (`B1605`). Before the hire, in the server's words:
+  // what is set to *without asking* runs after the agent has read the web.
+  // Only for a person whose hire it is true of (`can_auto_approve`).
+  if (a.after_outside) {
+    const warn = _el('p', 'agents-small agents-after-outside', a.after_outside);
+    warn.setAttribute('role', 'note');
+    form.appendChild(warn);
+  }
   const buttons = _el('div', 'agents-actions');
   const go = _el('button', 'agents-primary', 'Summon');
   go.type = 'submit';
@@ -1052,6 +1060,12 @@ function _runRow(run) {
   if (r) {
     if (r.read && r.read.length) row.appendChild(_el('p', 'agents-small', `Read with: ${r.read.join(', ')}`));
     if (r.wrote && r.wrote.length) row.appendChild(_el('p', 'agents-small', `Wrote with: ${r.wrote.join(', ')}`));
+    // `D-2026-10-29-01` §1 (`B1605`). The steps that ran after outside content
+    // with nobody asked, because the hire allows them — said, not hidden.
+    if (r.unasked && r.unasked.length) {
+      row.appendChild(_el('p', 'agents-small agents-unasked',
+        `Ran without asking after it read something from outside, as its hire allows: ${r.unasked.join(', ')}`));
+    }
     (r.refused || []).forEach((x) => row.appendChild(_el('p', 'agents-small agents-refused',
       `Refused ${x.tool}: ${x.reason}`)));
     if ((r.checks || []).length) {

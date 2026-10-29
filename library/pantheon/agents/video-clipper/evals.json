@@ -41,7 +41,7 @@
   },
   {
    "id": "a-copy-cut-that-starts-early-is-recut-exactly",
-   "about": "The intro came out 4 seconds long because a copy cut starts at a keyframe: it is re-cut exactly to intro-exact.mp4 after the person's yes.",
+   "about": "The intro came out 4 seconds long because a copy cut starts at a keyframe: it is re-cut exactly to intro-exact.mp4 without a yes, as the hire allows.",
    "inputs": {
     "video": "talks/keynote.mp4",
     "moments": "01:02-01:40 intro\n12:10-14:55 the demo\n50:00-51:00 outro"
@@ -58,9 +58,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

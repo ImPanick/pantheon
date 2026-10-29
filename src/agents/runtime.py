@@ -12,7 +12,9 @@ assembly, built from the hire and its manifest at the moment the run starts:
   retrieval guess adds or drops one — `B1414`/`B1416`);
 * **the effects** that ask before running, per call (`ToolPolicy.ask_effects`,
   answered by `ToolRunSecurityContext` before the trust ladder, so a chat's
-  Auto never skips what a hire said to ask about);
+  Auto never skips what a hire said to ask about) — and, `D-2026-10-29-01`,
+  those it allows (`allow_effects`), which run after outside content without
+  a card when the hire's person holds `can_auto_approve`;
 * **its skills**, followed whole with keyword injection suppressed;
 * **its inputs** and **its notebook** — what the hirer filled in, and what the
   last runs carried forward — as context messages.
@@ -94,6 +96,8 @@ class RunPlan:
     workspace: Optional[str] = None
     #: `P24-09`. What the agent is for, in its file's words — the judge reads it.
     tagline: str = ""
+    #: `D-2026-10-29-01` §1. The effects the hire's table sets to *allow*.
+    allow_effects: frozenset = frozenset()
 
 
 #: `D-2026-10-24-01`. A tool with any of these effects can carry data out of
@@ -303,6 +307,7 @@ def plan_for_task(db, task, run_id: Optional[str] = None) -> Optional[RunPlan]:
     effects = H.effective_effects(manifest, H.hire_grants(hire))
     never = frozenset(e for e, r in effects.items() if r == "never")
     ask = frozenset(e for e, r in effects.items() if r == "ask")
+    allow = frozenset(e for e, r in effects.items() if r == "allow")
     tools = H.kit(manifest, never)      # `B1619`: a tool goes only if every call of it is never
 
     msgs: List[dict] = []
@@ -330,7 +335,7 @@ def plan_for_task(db, task, run_id: Optional[str] = None) -> Optional[RunPlan]:
                    skill_lines=lines, memory=manifest.memory, delivers=manifest.delivers,
                    owner=hire.owner, inputs=inputs, project=hire.project,
                    sealed=is_sealed(tools, never), blind=is_blind(tools), workspace=workspace_for(hire.owner, hire.project),
-                   tagline=manifest.tagline)
+                   tagline=manifest.tagline, allow_effects=allow)
 
 
 # ── The report ──────────────────────────────────────────────────────────────
@@ -379,6 +384,10 @@ def build_report(answer: str, steps: List[dict]) -> Dict[str, Any]:
     read: List[str] = []
     wrote: List[str] = []
     refused: List[Dict[str, str]] = []
+    #: `D-2026-10-29-01` §1 (`B1605`). The tools whose steps ran after outside
+    #: content without a card, because the hire allows them (`hire_approved`
+    #: on the step) — the run's record of what nobody saw first.
+    unasked: List[str] = []
     for s in steps or ():
         if s.get("kind") != "tool":
             continue
@@ -386,13 +395,15 @@ def build_report(answer: str, steps: List[dict]) -> Dict[str, Any]:
         if s.get("status") == "blocked":
             refused.append({"tool": tool, "reason": str(s.get("output") or "")[:300]})
             continue
+        if s.get("hire_approved") and tool not in unasked:
+            unasked.append(tool)
         bucket = read if _effect_bucket(tool, str(s.get("detail") or "")) == "read" else wrote
         if tool not in bucket:
             bucket.append(tool)
     return {
         "answer": (answer or "")[:ANSWER_MAX_CHARS],
         "summary": _section(answer, REPORT_HEADING)[:2000],
-        "read": read, "wrote": wrote, "refused": refused,
+        "read": read, "wrote": wrote, "refused": refused, "unasked": unasked,
         "carried": carried_forward(answer),
     }
 

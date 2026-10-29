@@ -50,6 +50,13 @@ would leave the install (`P24-27`). A case's `notebook` is what the hire's last
 run carried forward, so "new since last time" can be measured; its `trigger`
 is the webhook payload or app event that started the run.
 
+`D-2026-10-29-01` §1 (`B1605`). The world's one person is its admin, so they
+hold `can_auto_approve`, and what a hire allows runs after outside content
+without a card. A case with `"can_auto_approve": false` is hired by a person
+who does not hold it — every step after outside content asks, as before — so
+a case that proves a person's *no* stops a step the hire allows says whose
+runs that is true of.
+
 `B1602`. A world has its own memory and its own chats — `manage_memory`,
 `list_sessions` and `search_chats` answer from them (they answered *not
 available* in every case, or from whatever the process had set) — and a
@@ -92,6 +99,9 @@ EVAL_FILE = "evals.json"
 MAX_CASES = 10
 EVAL_OWNER = "eval"
 SCRIPTED_MODEL = "scripted"
+#: `D-2026-10-29-01` §1. Whether the world's person holds `can_auto_approve` —
+#: yes, as its admin; a test sets it False to measure a hirer who does not.
+WORLD_CAN_AUTO_APPROVE = True
 SCRIPTED_URL = "http://127.0.0.1:9/v1"
 
 # What the world answers: everything that would reach outside the install.
@@ -158,8 +168,11 @@ def lint_evals(data: Any, manifest) -> List[Dict[str, Any]]:
         _need(bool(re.fullmatch(r"[a-z0-9][a-z0-9-]{1,63}", cid)), f"Case {n}'s id “{cid}” is not lower-case words joined by dashes.")
         _need(cid not in seen, f"Two cases are called “{cid}”.")
         seen.add(cid)
-        extra = set(case) - {"id", "about", "inputs", "world", "answers", "script", "checks", "notebook", "trigger"}
+        extra = set(case) - {"id", "about", "inputs", "world", "answers", "script", "checks", "notebook", "trigger",
+                             "can_auto_approve"}
         _need(not extra, f"Case “{cid}” has a field nothing reads: {', '.join(sorted(extra))}.")
+        _need(isinstance(case.get("can_auto_approve", True), bool),
+              f"Case “{cid}”'s can_auto_approve is true or false: whether its hirer holds Auto-approve.")
         _need(isinstance(case.get("notebook", ""), str),
               f"Case “{cid}”'s notebook is the text the last run carried forward, not a list or a map.")
         trig = case.get("trigger")
@@ -1204,6 +1217,17 @@ async def run_case(manifest, case: Dict[str, Any], *, factory, data_dir: str,
                 if callable(fn) and getattr(mod, "__name__", "").startswith(("src.", "routes.", "core.")):
                     p.set(mod, fname, (lambda real: lambda o, *a, **k: o == EVAL_OWNER or real(o, *a, **k))(fn))
         p.set(agent_loop, "blocked_tools_for_owner", lambda o: set())
+        # `D-2026-10-29-01` §1 (`B1605`). An admin holds `can_auto_approve`
+        # (`core.auth.ADMIN_PRIVILEGES`), so for the world's person what a hire
+        # allows runs after outside content without a card, as it would for
+        # them. A case whose `can_auto_approve` is false measures a hirer
+        # without it — the one whose runs still ask — and so does
+        # `WORLD_CAN_AUTO_APPROVE` False, for every case at once.
+        import src.approval_mode as approval_mode
+        may_auto = bool(case.get("can_auto_approve", True)) and WORLD_CAN_AUTO_APPROVE
+        p.set(approval_mode, "may_use_auto",
+              (lambda real: lambda o, *a, **k: may_auto if o == EVAL_OWNER
+               else real(o, *a, **k))(approval_mode.may_use_auto))
         # `B1607`. The world is the workstation: `computer` is answered from its
         # screens (or shell rules), so the loop offers it. It was withheld — no
         # workstation is set up in a world — so every case's `computer` call was

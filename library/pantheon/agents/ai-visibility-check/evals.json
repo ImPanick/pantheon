@@ -40,9 +40,6 @@
      "mistral-7b": "Rosa's Bakery on Park Road is a local favourite."
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- best bakery in Leeds: search 4; qwen3-8b no; llama-3.1-8b no; mistral-7b no",
    "script": [
     {
@@ -158,9 +155,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -254,9 +248,6 @@
      "mistral-7b": "Bread Bros on the market."
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -363,9 +354,6 @@
      "mistral-7b": "Rosa's Bakery on Park Road is a local favourite."
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- best bakery in Leeds: search 4; qwen3-8b no; llama-3.1-8b no; mistral-7b no",
    "script": [
     {
@@ -478,9 +466,6 @@
      "mistral-7b": "Rosa's Bakery on Park Road is a local favourite."
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- best bakery in Leeds: search 4; qwen3-8b no; llama-3.1-8b no; mistral-7b no",
    "script": [
     {
@@ -586,10 +571,6 @@
      "mistral-7b": "Rosa's Bakery on Park Road is a local favourite."
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

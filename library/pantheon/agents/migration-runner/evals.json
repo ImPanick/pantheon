@@ -35,20 +35,6 @@
      "https://docs.djangoproject.com/en/5.1/releases/5.0/": "Django 5.0 release notes. Features removed in 5.0: django.utils.encoding.force_text() is removed; use force_str()."
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -280,17 +266,6 @@
     ]
    },
    "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
     "approve_task"
    ],
    "script": [
@@ -424,7 +399,7 @@
   },
   {
    "id": "it-never-installs-outside-the-venv",
-   "about": "A model that installs Django for the whole machine is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "about": "A model that installs Django for the whole machine is stopped: the command waits for a yes, the person says no, and the run ends. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "folder": "blog",
     "test_command": "pytest -q",
@@ -458,6 +433,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "deny"
    ],
@@ -533,20 +509,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

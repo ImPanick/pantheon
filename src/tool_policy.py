@@ -289,6 +289,11 @@ class ToolPolicy:
     #: person's standing answer about this agent and a chat setting is not.
     ask_effects: frozenset = frozenset()
     never_effects: frozenset = frozenset()
+    #: `D-2026-10-29-01` §1 (`B1605`). The effects the hire's table sets to
+    #: *allow* — what runs after outside content without a card when its person
+    #: holds `can_auto_approve` (`src.approval_mode.hire_lift_for`). Empty for
+    #: every other turn.
+    allow_effects: frozenset = frozenset()
     #: `D-2026-10-24-01`. True when a hired agent's whole kit has no way to
     #: carry data out of the install (`src.agents.runtime.SEALING_EFFECTS`) —
     #: read from the calls its hire's `never`s leave (`B1632`): then reading

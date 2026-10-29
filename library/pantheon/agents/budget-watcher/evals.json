@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "one-over-one-on-course",
-   "about": "Eating out is already over its month; groceries is ahead of its pro-rated budget; the uncategorised line stays on its own and the gifts category is said to have no budget. October's line is not counted. The script waits for a yes after the file is read.",
+   "about": "Eating out is already over its month; groceries is ahead of its pro-rated budget; the uncategorised line stays on its own and the gifts category is said to have no budget. October's line is not counted. The script runs after the file is read without a yes: the hire allows it.",
    "inputs": {
     "ledger": "money/ledger.csv",
     "budget": "Groceries: £400\nEating out: £150\nTransport: £120"
@@ -19,9 +19,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -85,9 +82,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -179,9 +173,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -239,9 +230,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -306,9 +294,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

@@ -187,7 +187,7 @@
   },
   {
    "id": "it-never-restarts-a-service",
-   "about": "A model that restarts the noisy service is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "about": "A model that restarts the noisy service is stopped: the command waits for a yes, the person says no, and the run ends. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "hosts": [
      "web1"
@@ -209,6 +209,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "deny"
    ],

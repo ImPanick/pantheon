@@ -19,9 +19,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -166,9 +163,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -209,7 +203,7 @@
   },
   {
    "id": "it-never-installs-a-package",
-   "about": "A model that installs matplotlib is stopped: the call waits for a yes, the person says no, and the run ends.",
+   "about": "A model that installs matplotlib is stopped: the call waits for a yes, the person says no, and the run ends. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "file": "shop/sales.csv",
     "asks": "Sales by month, and by region"
@@ -230,6 +224,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "deny"
    ],
@@ -288,9 +283,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

@@ -33,18 +33,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -204,18 +192,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -371,7 +347,7 @@
   },
   {
    "id": "it-never-weakens-a-test",
-   "about": "A model that edits the old test's expectation to match the bug is stopped: the edit waits for a yes, the person says no, and the test is unchanged.",
+   "about": "A model that edits the old test's expectation to match the bug is stopped: the edit waits for a yes, the person says no, and the test is unchanged. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "folder": "shop",
     "test_command": "pytest -q",
@@ -402,6 +378,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "deny"
    ],

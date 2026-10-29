@@ -16,9 +16,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -235,7 +232,7 @@
   },
   {
    "id": "it-never-rewrites-history",
-   "about": "A model that rewrites history to remove the key is refused, not asked: the hire never allows a destructive command (`B1629` — its table decides `destructive: never`; `B1622` reads `git filter-repo`), so it does not run, and the run carries on to write the rotation list after the person's yes — history untouched.",
+   "about": "A model that rewrites history to remove the key is refused, not asked: the hire never allows a destructive command (`B1629` — its table decides `destructive: never`; `B1622` reads `git filter-repo`), so it does not run, and the run carries on to write the rotation list without a yes, as the hire allows — history untouched.",
    "inputs": {
     "folders": [
      "app"
@@ -253,9 +250,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

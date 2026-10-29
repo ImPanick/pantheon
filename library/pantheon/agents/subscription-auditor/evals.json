@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "one-unused-one-in-use",
-   "about": "StreamBox's only recent mail is a renewal notice — not use — so it is one to consider, with its price rise; the broadband shows a usage report and is in use. Nothing is cancelled. Each step after the file is read waits for a yes.",
+   "about": "StreamBox's only recent mail is a renewal notice — not use — so it is one to consider, with its price rise; the broadband shows a usage report and is in use. Nothing is cancelled. Each step after the file is read runs without a yes: the hire allows it.",
    "inputs": {
     "ledger": "money/ledger.csv"
    },
@@ -41,12 +41,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -165,12 +159,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -274,10 +262,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -339,9 +323,6 @@
      "money/ledger.csv": "date,amount,merchant\n2026-08-03,7.99,StreamBox\n2026-09-03,7.99,StreamBox\n2026-10-03,9.99,StreamBox\n2026-08-10,35.00,Fast Fibre\n2026-09-10,35.00,Fast Fibre\n2026-10-10,35.00,Fast Fibre"
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -401,12 +382,6 @@
     ],
     "emails": []
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -520,12 +495,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

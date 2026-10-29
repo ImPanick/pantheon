@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "two-images-get-web-copies",
-   "about": "A large JPEG and a PNG get WebP and recompressed copies in optimised/ in one command the person allows; the smaller is kept, bytes before and after are reported, and the SVG and the tiny icon are skipped with why.",
+   "about": "A large JPEG and a PNG get WebP and recompressed copies in optimised/ in one command the hire allows; the smaller is kept, bytes before and after are reported, and the SVG and the tiny icon are skipped with why.",
    "inputs": {
     "folder": "site/img"
    },
@@ -21,9 +21,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -64,7 +61,7 @@
   },
   {
    "id": "nothing-runs-without-a-yes",
-   "about": "The person says no to the command: the run ends there and nothing is written.",
+   "about": "The person says no to the command: the run ends there and nothing is written. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "folder": "site/img"
    },
@@ -83,6 +80,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "deny"
    ],
@@ -183,9 +181,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -246,9 +241,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

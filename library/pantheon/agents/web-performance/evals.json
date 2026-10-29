@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "the-home-page-got-slower",
-   "about": "One command measures both pages; the home page's LCP rose from 3.1 s to 4.8 s and comes first with its one fix (the 2.4 MB hero image); the about page's wobble is not called a change. Writing after the command's output waits for a yes.",
+   "about": "One command measures both pages; the home page's LCP rose from 3.1 s to 4.8 s and comes first with its one fix (the 2.4 MB hero image); the about page's wobble is not called a change. Writing after the command's output needs no yes: the hire allows it.",
    "inputs": {
     "pages": [
      "https://shop.example/",
@@ -18,9 +18,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- https://shop.example/ — LCP 3.1 s, CLS 0.02, TBT 320 ms, 3.6 MB\n- https://shop.example/about — LCP 1.9 s, CLS 0.00, TBT 85 ms, 0.8 MB",
    "script": [
     {
@@ -82,9 +79,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- https://shop.example/ — LCP 3.1 s, CLS 0.02, TBT 320 ms, 3.6 MB\n- https://shop.example/about — LCP 1.9 s, CLS 0.00, TBT 85 ms, 0.8 MB",
    "script": [
     {
@@ -144,9 +138,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -209,9 +200,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- https://shop.example/ — LCP 3.1 s, CLS 0.02, TBT 320 ms, 3.6 MB\n- https://shop.example/about — LCP 1.9 s, CLS 0.00, TBT 85 ms, 0.8 MB",
    "script": [
     {
@@ -270,9 +258,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- https://shop.example/about — LCP 1.9 s, CLS 0.00, TBT 85 ms, 0.8 MB",
    "script": [
     {
@@ -329,9 +314,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

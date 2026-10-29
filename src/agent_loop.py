@@ -100,7 +100,7 @@ from src.tool_approvals import (
 # says which question it answers, beside `resolve_trust_rung`'s, because this
 # module already has a `mode` ('agent'/'chat'/'research') and two things called
 # `mode` in one file is how one of them gets read for the other.
-from src.approval_mode import ApprovalMode, mode_for as approval_mode_for
+from src.approval_mode import ApprovalMode, hire_lift_for, mode_for as approval_mode_for
 from src.tool_utils import _truncate, get_mcp_manager
 from src.agent_stops import (
     ROUNDS_WITHOUT_NEW_INFORMATION,
@@ -7163,6 +7163,21 @@ async def stream_agent_loop(
             "[approval] chat %s is set to Auto; stop conditions run instead of "
             "raising a card", session_id,
         )
+    # `D-2026-10-29-01` §1 (`B1605`). A hired agent's run, for a person who
+    # holds `can_auto_approve`: an action whose every effect the hire allows
+    # runs after outside content without a card. Resolved once, beside Auto
+    # and for Auto's reason — a privilege revoked mid-turn must not answer two
+    # blocks of one turn two ways — and False for every chat, task and
+    # summoned agent (`ToolPolicy.hired` is the task engine's, for a hire).
+    _hire_lift = await asyncio.to_thread(
+        hire_lift_for, owner, hired=bool(getattr(tool_policy, "hired", False)),
+        delegated_credential=bool(delegated_credential),
+    )
+    if _hire_lift:
+        logger.info(
+            "[approval] hired run in session %s: what its hire allows runs after "
+            "outside content without a card (D-2026-10-29-01)", session_id,
+        )
     run_security = ToolRunSecurityContext(
         external_untrusted_context_seen=(
             bool(external_untrusted_context_seen)
@@ -7182,6 +7197,10 @@ async def stream_agent_loop(
         hire_never_effects=frozenset(getattr(tool_policy, "never_effects", ()) or ()),
         hire_sealed=bool(getattr(tool_policy, "sealed", False)),
         hire_blind=bool(getattr(tool_policy, "blind", False)),
+        # `D-2026-10-29-01` §1. What the hire allows, and whether that lifts
+        # the post-external gate for this run.
+        hire_allow_effects=frozenset(getattr(tool_policy, "allow_effects", ()) or ()),
+        hire_allow_after_outside=_hire_lift,
         # `P27-08`. A vault login set to ask asks, whatever the rung or Auto.
         vault_use_lookup=_vault_use_lookup(owner, session_id, getattr(tool_policy, "agent_id", None)),
         allow_rule_lookup=(
@@ -11039,6 +11058,12 @@ async def stream_agent_loop(
             _auto_fields = (
                 {"auto_approved": True} if security_decision.auto_approved else {}
             )
+            # `D-2026-10-29-01` §1 (`B1605`). A hired agent's step that ran
+            # after outside content because its hire allows every effect of it
+            # is recorded the same way, on the same three events — and the task
+            # engine copies it onto the run's step log.
+            if security_decision.hire_approved:
+                _auto_fields = {**_auto_fields, "hire_approved": True}
             if security_decision.auto_approved:
                 logger.info(
                     "[agent] %s ran under Auto in session=%s without an approval "

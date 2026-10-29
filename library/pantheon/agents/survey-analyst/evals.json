@@ -14,9 +14,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -74,9 +71,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -128,9 +122,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -185,9 +176,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -274,7 +262,7 @@
   },
   {
    "id": "it-never-changes-the-file",
-   "about": "A model that strips the email column out of the answers file itself is stopped: the call waits for a yes, the person says no, and the run ends with no document.",
+   "about": "A model that strips the email column out of the answers file itself is stopped: the call waits for a yes, the person says no, and the run ends with no document. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "file": "survey/cafe.csv"
    },
@@ -290,6 +278,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "deny"
    ],
@@ -341,9 +330,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

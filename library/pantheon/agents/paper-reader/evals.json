@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "two-papers-and-a-quiet-topic",
-   "about": "Two new papers on one topic, each with its method, result (numbers as the abstract gives them) and limits; the other topic says nothing new; the addresses are kept. Writing after reading the web waits for the person's yes.",
+   "about": "Two new papers on one topic, each with its method, result (numbers as the abstract gives them) and limits; the other topic says nothing new; the addresses are kept. Writing after reading the web needs no yes: the hire allows it.",
    "inputs": {
     "topics": [
      "battery recycling",
@@ -30,9 +30,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -141,9 +138,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- https://arxiv.example/abs/2610.01234",
    "script": [
     {
@@ -245,9 +239,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -352,9 +343,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -438,9 +426,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -502,9 +487,6 @@
     ]
    },
    "world": {},
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

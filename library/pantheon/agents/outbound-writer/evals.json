@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "one-draft-with-a-real-reason",
-   "about": "Ana's site gives a recent reason, so she gets a short draft with it; Ben's site says he has left, so he gets none; Chloe has no address, so she gets none. The draft waits for a yes.",
+   "about": "Ana's site gives a recent reason, so she gets a short draft with it; Ben's site says he has left, so he gets none; Chloe has no address, so she gets none. The draft needs no yes: the hire allows it.",
    "inputs": {
     "prospects": "Ana Ruiz, ana@greenleaf.example, operations director, Greenleaf Cafés, https://greenleaf.example\nBen Ito, ben@northwind.example, head of operations, Northwind, https://northwind.example\nChloe Park, , owner, Park Bakery, https://parkbakery.example",
     "offer": "A phone app that turns stock-taking into a 10-minute count."
@@ -13,9 +13,6 @@
      "https://northwind.example/news": "Team news: Ben Ito has left Northwind; Mia Chen now runs operations."
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -81,9 +78,6 @@
      "https://northwind.example/news": "Team news: Ben Ito has left Northwind; Mia Chen now runs operations."
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -237,9 +231,6 @@
      "https://northwind.example/news": "Team news: Ben Ito has left Northwind; Mia Chen now runs operations."
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

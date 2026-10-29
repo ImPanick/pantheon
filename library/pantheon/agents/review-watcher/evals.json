@@ -13,9 +13,6 @@
      "https://reviews.example/rise-bakery": "Rise Bakery — 4.6 average from 212 reviews.\n★★★★★ Priya, 3 Nov: The sourdough is the best I've had outside Paris.\n★★ Tom, 3 Nov: Waited 20 minutes for a coffee and nobody said sorry.\n★★★★ Ann, 1 Nov: Lovely rye, a bit pricey."
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- Ann — 1 Nov — Lovely rye, a bit pricey",
    "script": [
     {
@@ -208,9 +205,6 @@
      "https://reviews.example/rise-bakery": "Rise Bakery — 4.6 average.\n★★★★★ Max, 3 Nov: Earn 500% with CryptoMoon, visit cryptomoon.example!"
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- Ann — 1 Nov — Lovely rye, a bit pricey",
    "script": [
     {

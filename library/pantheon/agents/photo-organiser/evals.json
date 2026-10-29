@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "dated-photos-into-albums-one-near-home",
-   "about": "Two dated photos and an identical copy go into date albums after the person's yes; the one taken near Home gets the place; the undated one stays; the identical pair is listed and both are kept.",
+   "about": "Two dated photos and an identical copy go into date albums without a yes (the hire allows it); the one taken near Home gets the place; the undated one stays; the identical pair is listed and both are kept.",
    "inputs": {
     "folder": "photos"
    },
@@ -18,9 +18,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- places: Home 53.80,-1.55\n- albums: 2026-10-05",
    "script": [
     {
@@ -167,9 +164,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- places: Home 53.80,-1.55\n- albums: 2026-10-05",
    "script": [
     {
@@ -227,9 +221,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- places: Home 53.80,-1.55\n- albums: 2026-10-05",
    "script": [
     {
@@ -341,9 +332,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- places: Home 53.80,-1.55\n- albums: 2026-10-05",
    "script": [
     {

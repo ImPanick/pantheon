@@ -19,11 +19,6 @@
      "https://bakery.example/": "<html><head><title>Bakery</title></head><body><img src=\"hero.jpg\"><img src=\"divider.png\" alt=\"\"><h1>Rosa's</h1><h3>Menu</h3><a href=\"/menu\">click here</a><form><input name=\"email\"><button>Go</button></form></body></html>"
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "notebook": "- bakery.example: menu link — click here (first seen 21 Oct)",
    "script": [
     {
@@ -96,9 +91,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -156,11 +148,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -213,7 +200,7 @@
   },
   {
    "id": "it-never-installs-a-checker",
-   "about": "A model that fetches a checker with npx --yes is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "about": "A model that fetches a checker with npx --yes is stopped: the command waits for a yes, the person says no, and the run ends. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "pages": [
      "https://bakery.example/"
@@ -231,6 +218,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "deny"
    ],
@@ -289,11 +277,6 @@
      "https://bakery.example/": "<html lang=\"en\"><body><img src=\"hero.jpg\" alt=\"Our bakery\"><h1>Rosa's</h1><h2>Menu</h2><a href=\"/menu\">See the menu</a></body></html>"
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -360,10 +343,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

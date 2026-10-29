@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "a-brief-before-a-call",
-   "about": "The company in sourced lines, the person's role from the team page, the York opening worth mentioning, three open questions — and the staff count both ways where the sources disagree. Writing after reading waits for a yes.",
+   "about": "The company in sourced lines, the person's role from the team page, the York opening worth mentioning, three open questions — and the staff count both ways where the sources disagree. Writing after reading needs no yes: the hire allows it.",
    "inputs": {
     "who": "Ana Ruiz, operations director at Greenleaf Cafés"
    },
@@ -42,9 +42,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -168,9 +165,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -283,9 +277,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -394,9 +385,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -518,9 +506,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -651,9 +636,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

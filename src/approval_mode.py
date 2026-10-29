@@ -224,6 +224,29 @@ def mode_for(
     return ApprovalMode.AUTO
 
 
+def hire_lift_for(
+    owner: Optional[str],
+    *,
+    hired: bool,
+    delegated_credential: bool = False,
+    auth_manager: Any = None,
+) -> bool:
+    """`D-2026-10-29-01` §1 (`B1605`). Whether a run's hire lifts the
+    post-external gate for the actions its table allows.
+
+    *"Lifting it is held to the people Auto is held to"* — so it is this
+    module's question, asked of `may_use_auto` and nothing else (`Law 7`):
+    a hired agent's run (`ToolPolicy.hired`, set by the task engine for a
+    hire's task and for nothing else), not a bearer token's (`B70`), whose
+    person holds `can_auto_approve` — asked **per run**, so an admin taking the
+    privilege away takes the lift away at the hire's next run. Every other run
+    answers False, and for it the gate is exactly as it was. Never raises.
+    """
+    if not hired or delegated_credential:
+        return False
+    return may_use_auto(owner, auth_manager=auth_manager)
+
+
 def set_mode_for(session_id: Any, mode: Any) -> bool:
     """Persist one chat's approval mode. Best-effort, like `set_session_mode`.
 

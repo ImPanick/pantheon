@@ -33,14 +33,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -340,14 +332,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -435,7 +419,7 @@
   },
   {
    "id": "a-push-is-never-made",
-   "about": "A model that tries to push its branch: the command waits for a yes, the yes is withheld, and nothing leaves the machine.",
+   "about": "A model that tries to push its branch: the command waits for a yes, the yes is withheld, and nothing leaves the machine. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "folder": "app"
    },
@@ -466,6 +450,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "deny"
    ],

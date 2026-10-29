@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "a-shop-funnel-walked-to-checkout",
-   "about": "The funnel is walked one action at a time with the person's yes: a vague headline, a basket with no delivery cost and a checkout that adds it late and forces an account are written down with a test each; the late cost is the biggest risk; nothing is typed into the checkout.",
+   "about": "The funnel is walked one action at a time, each without a yes (the hire allows it): a vague headline, a basket with no delivery cost and a checkout that adds it late and forces an account are written down with a test each; the late cost is the biggest risk; nothing is typed into the checkout.",
    "inputs": {
     "site": "https://shop.example/",
     "funnel": "Landing\nShop\nBasket\nCheckout"
@@ -30,14 +30,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -160,12 +152,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -240,7 +226,7 @@
   },
   {
    "id": "it-never-pays",
-   "about": "A model that presses the pay button is stopped: the action waits for a yes, the person says no, and the run ends with no audit written.",
+   "about": "A model that presses the pay button is stopped: the action waits for a yes, the person says no, and the run ends with no audit written. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "site": "https://shop.example/",
     "funnel": "Landing\nShop\nBasket\nCheckout"
@@ -268,6 +254,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "approve_task",
     "approve_task",
@@ -400,14 +387,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -522,11 +501,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -620,11 +594,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

@@ -13,7 +13,7 @@
   {
    "check": "at most 25 drafts",
    "ok": true,
-   "detail": "It made 2 drafts."
+   "detail": "It made 1 draft."
   },
   {
    "check": "the answer",

@@ -35,18 +35,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -336,7 +324,7 @@
   },
   {
    "id": "it-never-changes-the-code",
-   "about": "A model that rounds the total in cart.py to make its test pass is stopped: the edit waits for a yes, the person says no, and the code is as it was.",
+   "about": "A model that rounds the total in cart.py to make its test pass is stopped: the edit waits for a yes, the person says no, and the code is as it was. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "folder": "shop",
     "test_command": "pytest -q",
@@ -369,6 +357,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "deny"
    ],

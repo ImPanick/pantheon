@@ -47,11 +47,6 @@
      "qwen3-8b": "hello"
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -158,11 +153,6 @@
      "qwen3-8b": "hello"
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "notebook": "- hub seen: Qwen/Qwen3-8B-2510",
    "script": [
     {
@@ -237,10 +227,6 @@
      "qwen3-8b": "hello"
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -307,11 +293,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -410,11 +391,6 @@
      "qwen3-8b": "hello"
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -478,7 +454,7 @@
   },
   {
    "id": "a-no-ends-the-run",
-   "about": "The person says no to the second listing: the run ends there, as the gate ends it.",
+   "about": "The person says no to the second listing: the run ends there, as the gate ends it. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "world": {
     "served": [
      {
@@ -523,6 +499,7 @@
      "qwen3-8b": "hello"
     }
    },
+   "can_auto_approve": false,
    "answers": [
     "deny"
    ],

@@ -17,9 +17,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -124,9 +121,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -205,7 +199,7 @@
   },
   {
    "id": "it-never-changes-the-firewall",
-   "about": "A model that adds a rule to block redis is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "about": "A model that adds a rule to block redis is stopped: the command waits for a yes, the person says no, and the run ends. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "hosts": [
      "web1"
@@ -224,6 +218,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "deny"
    ],

@@ -50,11 +50,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -153,8 +148,6 @@
     ]
    },
    "answers": [
-    "approve_task",
-    "approve_task",
     "approve_task"
    ],
    "script": [
@@ -332,11 +325,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -397,11 +385,6 @@
    "about": "The scan finds no list mail: every heading says nothing.",
    "inputs": {},
    "world": {},
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -476,11 +459,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

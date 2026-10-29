@@ -19,12 +19,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -99,7 +93,7 @@
   },
   {
    "id": "the-screenshot-waits-for-a-yes",
-   "about": "Its table says network_egress: ask, so steering the browser to the page waits for a yes: the files are written and served with the person's yes, opening the page is denied, and the run ends there.",
+   "about": "Its table says network_egress: ask, so steering the browser to the page waits for a yes: the files are written and served without a yes (the hire allows that), opening the page is denied, and the run ends there.",
    "inputs": {
     "brief": "A page for a book club.",
     "folder": "club"
@@ -117,7 +111,6 @@
     ]
    },
    "answers": [
-    "approve_task",
     "deny"
    ],
    "script": [
@@ -193,12 +186,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -263,12 +250,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -363,12 +344,6 @@
      "cafe/index.html": "<!doctype html><html lang=\"en\"><head><title>Cafe Lumen</title></head><body><h1>Cafe Lumen</h1><p>Best flat white in town.</p></body></html>"
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -454,12 +429,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "two-qualify-and-one-is-ruled-out",
-   "about": "Three candidates checked against SSO and EU hosting on their own pages: the one with both comes first, the one with a not-stated second, the one with SSO only on Enterprise is ruled out — and fewer than three is said, not padded. Writing after reading the web waits for the person's yes.",
+   "about": "Three candidates checked against SSO and EU hosting on their own pages: the one with both comes first, the one with a not-stated second, the one with SSO only on Enterprise is ruled out — and fewer than three is said, not padded. Writing after reading the web needs no yes: the hire allows it.",
    "inputs": {
     "need": "a team password manager",
     "must": [
@@ -44,9 +44,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -163,9 +160,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -275,9 +269,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -391,9 +382,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -472,9 +460,6 @@
     ]
    },
    "world": {},
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

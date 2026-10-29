@@ -259,6 +259,11 @@ def test_with_no_hire_the_gate_answers_exactly_as_before(tool, content):
 
 
 def test_a_hire_that_allows_never_lifts_the_untrusted_floor():
+    """For a hirer who does not hold `can_auto_approve` — every hire, until
+    `B1605` (`D-2026-10-29-01` §1): for one who does, an action whose every
+    effect the table allows runs, and
+    `tests/test_a_hire_runs_what_it_was_allowed_after_reading_the_web.py` holds
+    that half."""
     d = _ctx(external_untrusted_context_seen=True, hire_ask_effects=frozenset()).decision_for(
         "send_email", '{"to": "a@b.c"}')
     assert d.allowed is False, "the floor after untrusted content is the ladder's, and a hire cannot lift it"

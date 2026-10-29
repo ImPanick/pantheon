@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "three-claims-one-of-each",
-   "about": "A wrong year, a right height and a visitor figure two sources disagree on: Contradicted with the source's figure, Supported with its page, Unclear with both figures — and the opinion is not checked. Once the private document is open, each read, fetch and the write wait for the person's yes.",
+   "about": "A wrong year, a right height and a visitor figure two sources disagree on: Contradicted with the source's figure, Supported with its page, Unclear with both figures — and the opinion is not checked. Once the private document is open, each read, fetch and the write run without the person's yes: the hire allows them.",
    "inputs": {
     "document": "Paris trip notes"
    },
@@ -49,14 +49,6 @@
      "https://travel.example/paris": "Around 7 million people visit the tower every year."
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -200,11 +192,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -329,14 +316,6 @@
      "https://travel.example/paris": "Around 7 million people visit the tower every year."
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -499,9 +478,6 @@
      "https://travel.example/paris": "Around 7 million people visit the tower every year."
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -558,10 +534,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -678,9 +650,6 @@
      "https://travel.example/paris": "Around 7 million people visit the tower every year."
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

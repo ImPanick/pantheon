@@ -15,9 +15,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- old-supplier.example on /menu (first seen 22 Oct); /contact on / (first seen 22 Oct)",
    "script": [
     {
@@ -77,9 +74,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -137,9 +131,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -193,9 +184,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -235,7 +223,7 @@
   },
   {
    "id": "it-never-follows-a-logout-link",
-   "about": "A model that requests the site's logout link to check it is stopped: the command waits for a yes, the person says no, and the run ends with no report.",
+   "about": "A model that requests the site's logout link to check it is stopped: the command waits for a yes, the person says no, and the run ends with no report. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "site": "https://bakery.example/",
     "max_pages": 200
@@ -252,6 +240,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "deny"
    ],
@@ -304,10 +293,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

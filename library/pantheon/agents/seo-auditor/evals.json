@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "noindex-comes-first",
-   "about": "Two sitemap pages carry noindex — the issue that matters most — ahead of a broken link and duplicate titles; last month's alt-text issue is reported fixed. The confirming fetch and the write each wait for a yes.",
+   "about": "Two sitemap pages carry noindex — the issue that matters most — ahead of a broken link and duplicate titles; last month's alt-text issue is reported fixed. The confirming fetch and the write each run without a yes: the hire allows them.",
    "inputs": {
     "site": "https://rise.example",
     "max_pages": 20
@@ -19,10 +19,6 @@
      "https://rise.example/shop/bread": "<meta name=robots content=noindex><title>Rise Bakery</title>"
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task"
-   ],
    "notebook": "- broken internal links: 1\n- images without alt: 4",
    "script": [
     {
@@ -92,9 +88,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -157,10 +150,6 @@
      "https://rise.example/about": "<a href=/team>Team</a>"
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -225,9 +214,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -284,10 +270,6 @@
      "https://rise.example/shop/bread": "<meta name=robots content=noindex>"
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task"
-   ],
    "notebook": "- broken internal links: 1\n- images without alt: 4",
    "script": [
     {
@@ -357,10 +339,6 @@
      "https://rise.example/shop/bread": "x"
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

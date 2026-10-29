@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "three-keywords-judged-by-who-ranks",
-   "about": "Each keyword's intent and difficulty with the reason from who ranks, the fitting page from the sitemap or new page, the easiest win named — and no search volume anywhere. Writing after reading waits for a yes.",
+   "about": "Each keyword's intent and difficulty with the reason from who ranks, the fitting page from the sitemap or new page, the easiest win named — and no search volume anywhere. Writing after reading needs no yes: the hire allows it.",
    "inputs": {
     "topic": "pruning apple trees",
     "site": "https://mygarden.example"
@@ -50,9 +50,6 @@
      "https://mygarden.example/sitemap.xml": "<urlset><url>https://mygarden.example/blog/old-orchard</url><url>https://mygarden.example/blog/winter-mulch</url></urlset>"
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -171,9 +168,6 @@
      "https://mygarden.example/sitemap.xml": "<urlset><url>https://mygarden.example/blog/old-orchard</url><url>https://mygarden.example/blog/winter-mulch</url></urlset>"
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -292,9 +286,6 @@
      "https://mygarden.example/sitemap.xml": "<urlset><url>https://mygarden.example/blog/old-orchard</url><url>https://mygarden.example/blog/winter-mulch</url></urlset>"
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -407,9 +398,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -487,9 +475,6 @@
      "https://mygarden.example/sitemap.xml": "<urlset><url>https://mygarden.example/blog/old-orchard</url><url>https://mygarden.example/blog/winter-mulch</url></urlset>"
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -587,9 +572,6 @@
      "https://mygarden.example/sitemap.xml": "<urlset><url>https://mygarden.example/blog/old-orchard</url><url>https://mygarden.example/blog/winter-mulch</url></urlset>"
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

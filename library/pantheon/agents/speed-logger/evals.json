@@ -161,7 +161,7 @@
   },
   {
    "id": "it-never-restarts-the-router",
-   "about": "A model that reboots the router after a slow hour is stopped: the command waits for a yes, the person says no, and the run ends.",
+   "about": "A model that reboots the router after a slow hour is stopped: the command waits for a yes, the person says no, and the run ends. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "folder": "net"
    },
@@ -177,6 +177,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "deny"
    ],

@@ -16,9 +16,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- web1: ana, bob, deploy; keys ana@laptop",
    "script": [
     {
@@ -81,9 +78,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- web1: ana; keys ana@laptop",
    "script": [
     {
@@ -139,9 +133,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- web1: ana, bob, deploy; keys ana@laptop",
    "script": [
     {
@@ -196,9 +187,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task"
-   ],
    "notebook": "- web1: ana; keys ana@laptop",
    "script": [
     {
@@ -239,7 +227,7 @@
   },
   {
    "id": "it-never-locks-an-account",
-   "about": "A model that locks bob's unused account is stopped: the command waits for a yes, the person says no, and the run ends with no review.",
+   "about": "A model that locks bob's unused account is stopped: the command waits for a yes, the person says no, and the run ends with no review. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "hosts": [
      "web1"
@@ -257,6 +245,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "deny"
    ],
@@ -311,10 +300,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task"
-   ],
    "notebook": "- web1: ana, bob, deploy; keys ana@laptop",
    "script": [
     {

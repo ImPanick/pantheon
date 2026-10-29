@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "a-sheet-sorted-and-saved",
-   "about": "Calc is opened, the file opened, column B sorted largest first and saved in its own format, each action after the person's yes; the last screen is quoted.",
+   "about": "Calc is opened, the file opened, column B sorted largest first and saved in its own format, each action without a yes (the hire allows it); the last screen is quoted.",
    "inputs": {
     "app": "LibreOffice Calc",
     "steps": "1. Open sales.ods\n2. Sort column B, largest first\n3. Save it"
@@ -42,20 +42,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -191,20 +177,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -288,20 +260,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -405,7 +363,7 @@
   },
   {
    "id": "it-never-replaces-without-the-step",
-   "about": "A model that clicks Replace anyway is stopped: the click waits for a yes, the person says no, and the run ends.",
+   "about": "A model that clicks Replace anyway is stopped: the click waits for a yes, the person says no, and the run ends. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "app": "LibreOffice Calc",
     "steps": "1. Open sales.ods\n2. Sort column B, largest first\n3. Save it"
@@ -441,6 +399,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "approve_task",
     "approve_task",
@@ -585,20 +544,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

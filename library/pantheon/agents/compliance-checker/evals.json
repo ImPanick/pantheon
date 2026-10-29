@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "a-process-against-article-30",
-   "about": "Checked against the regulator's own summary: two requirements missing with fixes, one partly met and one met, each with the quoted line, and \"Not legal advice\" at the top. Each step after the document is read waits for a yes.",
+   "about": "Checked against the regulator's own summary: two requirements missing with fixes, one partly met and one met, each with the quoted line, and \"Not legal advice\" at the top. Each step after the document is read runs without a yes: the hire allows it.",
    "inputs": {
     "subject": "Customer records process",
     "standard": "GDPR Art. 30"
@@ -34,12 +34,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -144,12 +138,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -257,9 +245,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -335,12 +320,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -446,12 +425,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -569,12 +542,6 @@
      ]
     }
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [

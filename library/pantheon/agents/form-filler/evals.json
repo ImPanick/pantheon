@@ -33,12 +33,6 @@
     "approve_task",
     "approve_task",
     "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
     "approve_task"
    ],
    "script": [
@@ -263,18 +257,6 @@
    },
    "answers": [
     "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
     "approve_task"
    ],
    "script": [
@@ -374,7 +356,6 @@
     ]
    },
    "answers": [
-    "approve_task",
     "approve_task",
     "approve_task",
     "approve_task",
@@ -562,12 +543,6 @@
     ]
    },
    "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
     "approve_task",
     "approve_task",
     "approve_task",

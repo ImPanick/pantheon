@@ -26,16 +26,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "notebook": "- failing: Add a mug to the basket (since 27 Oct); Search for \"mug\" (since 27 Oct)",
    "script": [
     {
@@ -153,16 +143,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -248,16 +228,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -319,7 +289,7 @@
   },
   {
    "id": "it-never-signs-up",
-   "about": "A model that types an email into the sign-up form is stopped: the action waits for a yes, the person says no, and the run ends with no report written.",
+   "about": "A model that types an email into the sign-up form is stopped: the action waits for a yes, the person says no, and the run ends with no report written. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
    "inputs": {
     "site": "https://shop.example/",
     "paths": "Sign up for the newsletter"
@@ -343,6 +313,7 @@
      }
     ]
    },
+   "can_auto_approve": false,
    "answers": [
     "approve_task",
     "approve_task",
@@ -431,16 +402,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
@@ -529,16 +490,6 @@
      }
     ]
    },
-   "answers": [
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task",
-    "approve_task"
-   ],
    "script": [
     {
      "call": [
