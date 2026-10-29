@@ -15,7 +15,7 @@
 # which raises KeyError on Python 3.13+ (PEP 667). Build patched wheels here so
 # the final image / the Forge never has to compile the broken sdists. See
 # docker/build-realesrgan-wheels.sh for the full rationale.
-FROM python:3.14.10-slim AS realesrgan-wheels
+FROM python:3.15.0-slim AS realesrgan-wheels
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 COPY docker/build-realesrgan-wheels.sh /usr/local/bin/build-realesrgan-wheels.sh
@@ -34,7 +34,7 @@ RUN bash /usr/local/bin/build-realesrgan-wheels.sh /wheels
 # package-lock.json, at an exact version whose sha512 `npm ci` checks. The
 # stage runs on the base the other two use, with Debian's node (the one the
 # app's stage installs below), so no new image enters the build.
-FROM python:3.14.10-slim AS js-without-comments
+FROM python:3.15.0-slim AS js-without-comments
 RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
@@ -44,7 +44,7 @@ COPY scripts/strip-js-comments.mjs scripts/
 COPY static/ static/
 RUN node scripts/strip-js-comments.mjs /build /out
 
-FROM python:3.14.10-slim
+FROM python:3.15.0-slim
 
 # P0-18. A published image is a distribution, and this one declared no licence
 # anywhere in its metadata — the same failure class as P0-30, where the desktop
