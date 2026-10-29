@@ -29,6 +29,7 @@ from src.tool_capabilities import (
     TOOL_CLASSIFICATION_RECOGNISED,
     ToolRunSecurityContext,
     TrustRung,
+    call_reasons,
     capabilities_for_action,
     capabilities_for_tool,
     describe_effects,
@@ -397,9 +398,12 @@ def _gate_before_p7_02(context, tool_name, content):
         if tainted
         else "This conversation is set to confirm every effectful action. "
     )
+    # `B1670` added what in the call carries what tripped it, in the words a
+    # hire's card uses, from the one function both cards read.
+    named = call_reasons(tool_name, content, blocked) if capabilities.known else ""
     return False, (
         f"{why}Tool '{tool_name}' requires a separate user-authorized action "
-        f"because it can cause {effects}."
+        f"because it can cause {effects}{named}."
     )
 
 

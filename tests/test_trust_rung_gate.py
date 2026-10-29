@@ -24,6 +24,7 @@ from src.tool_capabilities import (
     POST_EXTERNAL_BLOCKED_EFFECTS,
     ToolRunSecurityContext,
     TrustRung,
+    call_reasons,
     capabilities_for_action,
 )
 
@@ -50,10 +51,15 @@ def _gate_before_p7_03(context, tool_name, content=None):
     effects = ", ".join(sorted(effect.value for effect in blocked_effects))
     if not capabilities.known:
         effects = "unknown/high-impact"
+    # `B1670` added what in the call carries what tripped it — `(rm deletes
+    # files)`, `(it cannot be read: …)` — in the words a hire's card uses. The
+    # oracle takes them from the one function both cards read; the verdict
+    # and the rest of the sentence are pinned as before.
+    named = call_reasons(tool_name, content, blocked_effects) if capabilities.known else ""
     return False, (
         "External untrusted context has already influenced this run. "
         f"Tool '{tool_name}' requires a separate user-authorized action "
-        f"because it can cause {effects}."
+        f"because it can cause {effects}{named}."
     )
 
 

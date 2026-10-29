@@ -69,6 +69,35 @@ the post-external gate, which asks before **every** shell command once outside
 content has entered the run (`FORBIDDEN.md` Part 2) and is untouched here:
 this module only ever adds `destructive` or `network_egress` to a call, so it
 can make Pantheon ask more, and never less.
+
+**`B1669` · and what files it writes over.** A third answer, which this module
+cannot give alone: `bash 'echo x > notes.md'` replaces `notes.md` if it was
+there before the run began, and is a new file if not (`D-2026-10-29-02` §1,
+*"Only pre-existing files"*, the ruling `write_file`'s `B1660` is built to).
+So the reader names **what the command writes over** — a `writes` finding —
+and leaves *whether it was there* to the run (`src/run_files.py`), which knows
+where the command starts and what the run has already looked at:
+
+  * a `>`, `>|` or `&>` redirection (and `>& file`), not `>>`, and not a
+    device — `/dev/null`, `/dev/stderr`, `>&2` are not files;
+  * `tee` without `-a`/`--append`;
+  * `cp` and `install` onto a path: the destination, or each source's name
+    inside it when it is a folder (`-t`, or a folder that is there), unless it
+    is told never to overwrite (`-n`, `--no-clobber`, `--update=none`) or to
+    keep what it replaces (`-b`, `--backup`), as `mv`'s rule reads them;
+
+and **where the command goes** — a `chdir` finding — for each `cd`, `pushd`,
+`env -C`, `sudo -D`, a Python `os.chdir` or a subprocess `cwd=`, so a relative
+target is looked for wherever the command could be when it writes. A target or
+a `cd` filled in when it runs (`> "$out"`, `cd "$dir"`) is marked not
+`known`, and one inside a command run on another machine or in a container
+(`ssh host '…'`, `docker exec`) is marked `far`: the run cannot know whether
+either was there, so either is destructive — the cautious reading the ruling
+names. Python's own `open(path, "w")` is **not** read: whether a mode string
+writes, appends or reads is a property of the running program (a variable, a
+`Path.write_text`, a library call), and this reader reads the words of a call,
+not the program, so it stays what it was; its `subprocess` commands are read
+as any shell command is.
 """
 
 from __future__ import annotations
@@ -77,7 +106,7 @@ import ast
 import os
 import re
 import shlex
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Iterable, List, Optional, Sequence, Tuple
 
 #: Longer than any command a person or a runbook writes; past it the reader
@@ -90,6 +119,8 @@ MAX_DEPTH = 8
 DESTROYS = "destroys"
 UNREADABLE = "unreadable"
 REACHES = "reaches"     # `B1652`: it reaches another machine
+WRITES = "writes"       # `B1669`: it writes over a path, if one is there
+CHDIR = "chdir"         # `B1669`: it moves to another folder before what follows
 
 
 class _Unreadable(Exception):
@@ -100,10 +131,25 @@ class _Unreadable(Exception):
 
 @dataclass(frozen=True)
 class Finding:
-    """One thing the reader found: `kind` is `destroys`, `reaches` or
-    `unreadable`."""
+    """One thing the reader found: `kind` is `destroys`, `reaches`,
+    `unreadable`, `writes` or `chdir`.
+
+    `B1669`. A `writes` finding's `why` is what writes (`a > redirect`, `tee`,
+    `cp`, `install`) and `path` the path it names, as written; a `chdir`'s
+    `path` is the folder. `known` is False when the path is filled in when the
+    command runs; `far` when the command runs on another machine or in a
+    container. `sources` are a copy's sources, `(path, known)`, and `into`
+    whether its destination is a folder (`folder`, from `-t`), a file
+    (`file`, from `-T`), or whichever is there (empty); `parents` is
+    `cp --parents`, which keeps each source's whole path inside it."""
     kind: str
     why: str
+    path: str = ""
+    known: bool = True
+    far: bool = False
+    sources: Tuple[Tuple[str, bool], ...] = ()
+    into: str = ""
+    parents: bool = False
 
 
 @dataclass
@@ -156,14 +202,16 @@ class _Lexer:
     """Splits a command into words, operators and redirections, reading every
     substitution it meets as a command of its own."""
 
-    def __init__(self, depth: int, findings: List[Finding]):
+    def __init__(self, depth: int, findings: List[Finding], far: bool = False):
         if depth > MAX_DEPTH:
             raise _Unreadable("it nests commands deeper than this reader follows")
         self.depth = depth
         self.findings = findings
+        # `B1669`: reading a command another machine or a container runs.
+        self.far = far
 
     def sub(self, text: str) -> None:
-        read_shell(text, depth=self.depth + 1, findings=self.findings)
+        read_shell(text, depth=self.depth + 1, findings=self.findings, far=self.far)
 
     # Finding the end of a group, over quotes and nesting.
     def _closing(self, s: str, i: int, open_: str, close: str) -> int:
@@ -808,6 +856,34 @@ def _handed(word: _Word) -> bool:
     return t in ("-", "/dev/stdin") or t.startswith(("<(", "/dev/fd/", "/proc/self/fd/"))
 
 
+def _spelled(word: _Word) -> bool:
+    """`B1669`. Whether a path is spelled out in the command: nothing in it is
+    filled in when it runs — a `{}` is, by `find -exec` or `xargs -I` — and a
+    `~` in front is the shell's own home (`~user` is someone else's, looked
+    up when it runs)."""
+    text = word.text
+    return (word.plain() and bool(text) and "{}" not in text
+            and (not text.startswith("~") or text == "~" or text.startswith("~/")))
+
+
+def _replaces_through(op: str, target: _Word) -> bool:
+    """`B1669`. Whether a redirection opens a file from its start — `>`, `>|`,
+    `&>`, or `>&` onto a name rather than a descriptor (`>&2`, `2>&1`, `>&-`)
+    — onto something that could be a file: not a device (`/dev/null`,
+    `/dev/stderr`) and not a process (`> >(tee …)`, whose `tee` is read as a
+    command of its own). `>>` and `<>` keep what is there."""
+    text = target.text
+    if op == ">&" and (text.isdigit() or text in ("-", "") or text.endswith("-")):
+        return False
+    return op in (">", ">|", "&>", ">&") and not text.startswith(("/dev/", ">(", "<("))
+
+
+#: `B1669`. Options of `cp` and `install` that take a value, short and long.
+_COPY_VALUES = {"cp": ("tS", {"--target-directory", "--suffix"}),
+                "install": ("gmoSt", {"--group", "--mode", "--owner", "--suffix",
+                                       "--target-directory", "--strip-program"})}
+
+
 def _flags(words: Sequence[_Word]) -> List[str]:
     """The options as written, up to `--`."""
     out = []
@@ -853,6 +929,19 @@ class _Judge:
     def reaches(self, why: str) -> None:
         self.findings.append(Finding(REACHES, why))
 
+    def writes(self, why: str, word: _Word, sources: Sequence[_Word] = (), into: str = "",
+               parents: bool = False) -> None:
+        """`B1669`. `why` writes over `word`'s path, if one is there."""
+        self.findings.append(Finding(
+            WRITES, why, path=word.text, known=_spelled(word), far=self.lexer.far,
+            sources=tuple((w.text, _spelled(w)) for w in sources), into=into, parents=parents))
+
+    def chdir(self, word: Optional[_Word]) -> None:
+        """`B1669`. What follows runs in another folder — `None`: one only
+        known when it runs (`cd` alone, `cd -`, `pushd +1`)."""
+        self.findings.append(Finding(CHDIR, "cd", path=word.text if word else "",
+                                     known=word is not None and _spelled(word), far=self.lexer.far))
+
     def shell_string(self, word: _Word, who: str = "a shell") -> None:
         """A command handed over as one string — `sh -c '…'`, `ssh host '…'`."""
         if word.plain():
@@ -864,6 +953,9 @@ class _Judge:
         for op, target in simple.redirects:
             if op in (">", ">|", "&>", "<>", ">&") and _DEVICE_RE.match(target.text):
                 self.destroys(f"it writes over the disk {target.text}")
+            elif _replaces_through(op, target):
+                # `B1669`: a file it writes from the start, if one is there.
+                self.writes("a > redirect", target)
         words = list(simple.words)
         while words and words[0].keyword(*_SKIP):
             words.pop(0)
@@ -925,6 +1017,19 @@ class _Judge:
         if name in _AWKS:
             self._awk(args)
             return
+        if name in ("cd", "pushd", "chdir"):
+            # `B1669`: what follows runs there. `cd` alone or to `~` is the
+            # home; `cd -` and `pushd +1` go back to a folder decided earlier.
+            rest = [w for w in args if not (w.text.startswith("-") and len(w.text) > 1)
+                    and not w.text.startswith("+")]
+            if args and any(w.text == "-" or w.text[:1] in "+-" and w.text[1:].isdigit()
+                            for w in args):
+                self.chdir(None)
+            else:
+                self.chdir(rest[0] if rest else _Word(text="~"))
+            return
+        if name == "popd":
+            return                          # back to a folder this command was in
         # `B1652`. Whether it reaches another machine is asked of every program
         # from here on; what it deletes is asked below, as before — `rsync
         # --delete host:dir`, `git push --force` and `ssh host 'rm …'` do both.
@@ -952,6 +1057,21 @@ class _Judge:
                            for f in flags))
             if _short(flags, "f") or "--force" in flags or not kept:
                 self.destroys("mv replaces whatever already has the new name")
+            return
+        if name == "tee":
+            # `B1669`: each file it is handed, from its start — unless `-a`.
+            flags = _flags(args)
+            if not (_short(flags, "a") or "--append" in flags):
+                ended = False
+                for w in args:
+                    if not ended and w.text == "--":
+                        ended = True
+                    elif ((ended or not w.text.startswith("-"))
+                          and not w.text.startswith(("/dev/", ">(", "<("))):
+                        self.writes("tee", w)
+            return
+        if name in _COPY_VALUES:
+            self._copies(name, args)
             return
         if name == "ln":
             flags = _flags(args)
@@ -1030,6 +1150,15 @@ class _Judge:
             self.unreadable("env -S splits a string into a command")
             return
         rest = _past_options(args, _WRAPPERS[name])
+        if name in ("env", "sudo"):
+            # `B1669`: `env -C dir` and `sudo -D dir` run the rest in `dir`.
+            moves = ("-C", "--chdir") if name == "env" else ("-D", "--chdir")
+            options = args[:len(args) - len(rest)]
+            for j, w in enumerate(options):
+                if w.text in moves and j + 1 < len(options):
+                    self.chdir(options[j + 1])
+                elif w.text.startswith("--chdir="):
+                    self.chdir(replace(w, text=w.text.split("=", 1)[1]))
         if name in _WRAPPER_TAKES_ONE:
             rest = rest[1:]
         if name == "env":
@@ -1186,6 +1315,64 @@ class _Judge:
                 i = j
             i += 1
 
+    def _copies(self, name: str, args: List[_Word]) -> None:
+        """`B1669`. `cp` or `install`: what it writes over, read as GNU reads
+        its words — options anywhere before `--`, a short option's value
+        joined to it or the next word."""
+        shorts, longs = _COPY_VALUES[name]
+        flags: set = set()
+        operands: List[_Word] = []
+        folder: Optional[_Word] = None
+        ended = False
+        i = 0
+        while i < len(args):
+            w = args[i]
+            t = w.text
+            i += 1
+            if ended or t == "-" or not t.startswith("-"):
+                operands.append(w)
+                continue
+            if t == "--":
+                ended = True
+                continue
+            if t.startswith("--"):
+                key, eq, value = t.partition("=")
+                flags.add(key)
+                if key in longs and not eq:
+                    if i >= len(args):
+                        return                      # it refuses: nothing copied
+                    value_word, i = args[i], i + 1
+                else:
+                    value_word = replace(w, text=value)
+                if key == "--target-directory":
+                    folder = value_word
+                elif eq:
+                    flags.add(f"{key}={value}")
+                continue
+            for j, letter in enumerate(t[1:], start=1):
+                flags.add("-" + letter)
+                if letter in shorts:
+                    if j + 1 < len(t):
+                        value_word = replace(w, text=t[j + 1:])
+                    elif i < len(args):
+                        value_word, i = args[i], i + 1
+                    else:
+                        return
+                    if letter == "t":
+                        folder = value_word
+                    break
+        if name == "install" and ({"-d", "--directory"} & flags):
+            return                                  # it makes folders
+        if {"-n", "--no-clobber", "-b", "--backup", "--update=none", "--update=none-fail"} & flags:
+            return                                  # it never overwrites, or keeps what it would
+        parents = "--parents" in flags
+        if folder is not None:
+            if operands:
+                self.writes(name, folder, sources=operands, into="folder", parents=parents)
+        elif len(operands) >= 2:
+            into = "file" if ({"-T", "--no-target-directory"} & flags) else ""
+            self.writes(name, operands[-1], sources=operands[:-1], into=into, parents=parents)
+
     def _git(self, args: List[_Word]) -> None:
         with_value = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path",
                       "--config-env"}
@@ -1274,10 +1461,16 @@ class _Judge:
         """A command another machine or container runs."""
         if not words:
             return
-        if len(words) == 1:
-            self.shell_string(words[0], "the far side")
-        else:
-            self.command(words, _Simple())
+        # `B1669`: a file it writes over is on the far side, which the run
+        # cannot look at.
+        was, self.lexer.far = self.lexer.far, True
+        try:
+            if len(words) == 1:
+                self.shell_string(words[0], "the far side")
+            else:
+                self.command(words, _Simple())
+        finally:
+            self.lexer.far = was
 
     def _ssh(self, args: List[_Word]) -> None:
         with_value = set("bcDEeFIiJLlmOopQRSWw")
@@ -1310,16 +1503,17 @@ class _Judge:
 # ── The readers ─────────────────────────────────────────────────────────────
 
 def read_shell(command: str, *, depth: int = 0,
-               findings: Optional[List[Finding]] = None) -> List[Finding]:
+               findings: Optional[List[Finding]] = None, far: bool = False) -> List[Finding]:
     """Everything the reader finds in a shell command. Never raises: what it
-    cannot read is itself a finding."""
+    cannot read is itself a finding. `far` (`B1669`): the command runs on
+    another machine or in a container."""
     findings = findings if findings is not None else []
     text = str(command or "")
     if len(text) > MAX_COMMAND_CHARS:
         findings.append(Finding(UNREADABLE, "it is longer than this reader reads"))
         return findings
     try:
-        lexer = _Lexer(depth, findings)
+        lexer = _Lexer(depth, findings, far)
         judge = _Judge(lexer)
         for simple in _simple_commands(lexer.tokens(text)):
             judge.simple(simple)
@@ -1411,9 +1605,20 @@ def python_findings(code: str, *, depth: int = 0) -> List[Finding]:
             findings.append(Finding(DESTROYS, _PY_DESTROYS[name]))
         elif name in _PY_UNREADABLE:
             findings.append(Finding(UNREADABLE, f"{name} runs code this does not read"))
+        elif name == "os.chdir":
+            # `B1669`: the commands it runs after this start there.
+            folder = _literal(node.args[0]) if node.args else None
+            findings.append(Finding(CHDIR, "os.chdir", path=folder or "",
+                                    known=bool(folder) and not folder.startswith("~")))
         elif name in _PY_SHELL or name.startswith(_PY_SPAWN):
             first = node.args[0] if node.args else next(
                 (k.value for k in node.keywords if k.arg in ("args", "cmd", "command")), None)
+            cwd = next((k.value for k in node.keywords if k.arg == "cwd"), None)
+            if cwd is not None:
+                # `B1669`: this command starts in `cwd`.
+                folder = _literal(cwd)
+                findings.append(Finding(CHDIR, "cwd", path=folder or "",
+                                        known=bool(folder) and not folder.startswith("~")))
             if _literal(first) is not None:
                 read_shell(_literal(first), depth=depth + 1, findings=findings)
             elif isinstance(first, (ast.List, ast.Tuple)) and first.elts and _literal(first.elts[0]):
@@ -1451,6 +1656,15 @@ def reason(findings: Sequence[Finding], kind: str = DESTROYS) -> Optional[str]:
 def readings(findings: Sequence[Finding]) -> Tuple[Optional[str], Optional[str]]:
     """`B1652`. `(why it destroys, why it reaches the network)` from one reading."""
     return reason(findings, DESTROYS), reason(findings, REACHES)
+
+
+def writes_of(findings: Sequence[Finding]) -> Tuple[Finding, ...]:
+    """`B1669`. What the command writes over and where it goes, in the order
+    read — for the run to look at (`src/run_files.command_replaces`). Empty
+    when it writes over nothing it names."""
+    if not any(f.kind == WRITES for f in findings):
+        return ()
+    return tuple(f for f in findings if f.kind in (WRITES, CHDIR))
 
 
 def shell_destroys(command: str) -> Optional[str]:

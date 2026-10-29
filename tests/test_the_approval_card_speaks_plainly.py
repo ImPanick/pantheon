@@ -56,11 +56,16 @@ def _tainted():
 
 def test_after_outside_data_the_card_says_so_plainly_and_the_model_keeps_the_detail():
     """The row's sentence, from the real gate."""
-    decision, card = _card(_tainted(), "bash", "rm -rf /tmp/scratch")
+    decision, card = _card(_tainted(), "bash", "ls -la /tmp/scratch")
     assert card["description"] == PLAIN_TAINTED
     assert "bash" in decision.reason and "execute_code" in decision.reason, \
         "the gate's own sentence — what the model reads — is untouched"
     assert card["gate"]["tainted"] is True and card["gate"]["tripped_effects"]
+    # `B1670` changed this case's `rm -rf`: a call whose arguments make it
+    # destructive is now named after the plain sentence, in a hire card's
+    # words (`tests/test_the_ladders_card_says_what_a_call_destroys.py`).
+    _decision, deleting = _card(_tainted(), "bash", "rm -rf /tmp/scratch")
+    assert deleting["description"] == PLAIN_TAINTED[:-1] + " (rm deletes files)."
 
 
 def test_a_strict_rung_says_its_reason_the_same_way():

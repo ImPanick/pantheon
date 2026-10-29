@@ -419,7 +419,9 @@ def test_the_card_carries_the_gates_own_sentence_not_a_second_one():
     # effects and all, is still what the model reads as the refusal.
     from src.tool_approvals import card_words
     assert card["description"] == card_words(decision.reason)
-    assert card["description"] == "It has read outside data this turn, so this needs a yes from you."
+    # `B1670`: and what in the call is destructive, in a hire card's words.
+    assert card["description"] == ("It has read outside data this turn, so this needs a yes from "
+                                   "you (rm deletes files).")
     assert card["gate"]["tripped_effects"]
     for effect in card["gate"]["tripped_effects"]:
         assert effect in decision.reason

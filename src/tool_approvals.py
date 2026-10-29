@@ -310,8 +310,15 @@ _GATE_PREAMBLES = (
     ("External untrusted context has already influenced this run. ", _READ_OUTSIDE),
     ("This conversation is set to confirm every effectful action. ", _ASKS_EVERY_EFFECT),
 )
+#: `B1670`. The gate's sentence ends with what in the call carries what tripped
+#: it, when its arguments do — *(rm deletes files)*, *(write_file replaces
+#: notes.md, which was there before this run began)*, the words a hire's card
+#: uses (`tool_capabilities.call_reasons`) — and the card keeps them: a person
+#: asked to approve a deletion is told it is one (`Law 15`).
 _GATE_EFFECTS_TAIL = re.compile(
-    r"Tool '[^']+' requires a separate user-authorized action because it can cause [^.]+\."
+    r"Tool '[^']+' requires a separate user-authorized action because it can cause "
+    r"[^.(]+?(?: \((?P<named>.+)\))?\.",
+    re.S,
 )
 
 
@@ -322,8 +329,12 @@ def card_words(reason: str) -> str:
         if not text.startswith(gate_words):
             continue
         rest = text[len(gate_words):].strip()
-        if not rest or _GATE_EFFECTS_TAIL.fullmatch(rest):
+        if not rest:
             return f"{person_words}, so this needs a yes from you."
+        tail = _GATE_EFFECTS_TAIL.fullmatch(rest)
+        if tail:
+            named = f" ({tail['named']})" if tail["named"] else ""
+            return f"{person_words}, so this needs a yes from you{named}."
         return f"{person_words}. {rest}"
     return text
 

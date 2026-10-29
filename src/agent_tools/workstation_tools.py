@@ -855,6 +855,48 @@ async def held_a_file(raw_path: str, *, owner: Optional[str],
     return True
 
 
+async def shell_station(*, owner: Optional[str], workspace: Optional[str] = None,
+                        session_id: Optional[str] = None):
+    """`B1669`. Where this person's next `bash` or `python` command in their
+    workstation starts, and a way to ask what is at a path there:
+    `(starts, home, kind_at)`, or `None` when the workstation cannot be asked
+    — which the gate reads as destructive (`src/run_files.py`).
+
+    Asked as `_shell` asks it: the folder the chat's shell was left in
+    (`B962`, read without moving it) and the folder a command starts in when
+    none is held — the workspace as the workstation names it
+    (`station_folder`), else the home. `kind_at(path)` is `"file"`,
+    `"folder"`, `"none"`, or `None` when the workstation could not say (down,
+    or a path outside what it lets this person look at)."""
+    from src.run_files import FILE, FOLDER, NOTHING
+    from src.workstation_access import sync_config, workstation_for
+    try:
+        client, account = workstation_for(owner)
+        daemon = await sync_config(client)
+        home = await _home_path(client, account)
+    except WorkstationError:
+        return None
+    folder, _said = station_folder(owner, account, workspace, daemon)
+    if folder and _sensitive(folder):
+        folder = None
+    start = folder or home
+    held = sp.CHAT_FOLDERS.peek(sp.chat_key("workstation", account, session_id), start)
+    # The daemon reads a relative folder from the home.
+    start = start if start.startswith("/") else posixpath.join(home, start)
+    st = _Station(client, account, asyncio.get_running_loop(), workspace=folder)
+
+    async def kind_at(path: str) -> Optional[str]:
+        try:
+            await _stat_file(st, path)
+            return FILE
+        except WorkstationError as e:
+            if e.code in _STATION_FAILURES or e.code in ("outside_home", "forbidden"):
+                return None
+        return FOLDER if await _is_dir(st, path) else NOTHING
+
+    return list(dict.fromkeys(f for f in (held, start) if f)), home, kind_at
+
+
 async def _edit_file(content: str, st: _Station) -> Dict:
     raw_path, old, new, replace_all = fs._edit_file_args(content)
     if not raw_path:

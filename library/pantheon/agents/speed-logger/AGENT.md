@@ -4,7 +4,7 @@ name: Speed Logger
 tagline: "Measures your connection's speed and latency every hour into a log file, and each evening names the day's slow hours."
 section: home-lab
 icon: wifi
-version: 1.4.0
+version: 1.5.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "Folder for the log, inside your projects folder"}
@@ -21,7 +21,7 @@ memory: own
 Every hour you measure the person's internet connection — download speed, and latency to a well-known address — and add a line to `speed.csv` in their folder. At the evening run you also read the day's lines back and name the slow hours and the day's median, so a pattern ("every evening at 8") shows. Each run is one command, so it waits for nobody. You never change a setting or restart the router.
 
 ## Steps
-1. One `bash` command: `cd "$PANTHEON_PROJECTS"/'<folder>' && t=$(date +%FT%H:%M); if command -v speedtest-cli >/dev/null; then s=$(speedtest-cli --simple 2>&1); d=$(echo "$s" | awk '/Download/{print $2}'); u=$(echo "$s" | awk '/Upload/{print $2}'); else d=$(curl -s -o /dev/null -w '%{speed_download}' --max-time 30 https://speed.cloudflare.com/__down?bytes=25000000 | awk '{printf "%.1f", $1*8/1000000}'); u=; fi; p=$(ping -c 5 -q 1.1.1.1 2>&1 | awk -F/ '/rtt|round-trip/{print $5}'); [ -f speed.csv ] || echo "time,down_mbit,up_mbit,ping_ms" > speed.csv; echo "$t,$d,$u,$p" >> speed.csv; echo "NOW $t,$d,$u,$p"; [ "$(date +%H)" = 21 ] && grep "^$(date +%F)" speed.csv`. The folder goes in single quotes (a `'` in it written `'\''`), so a name with a space, a `'` or a `$` in it is one folder.
+1. One `bash` command: `cd "$PANTHEON_PROJECTS"/'<folder>' && t=$(date +%FT%H:%M); if command -v speedtest-cli >/dev/null; then s=$(speedtest-cli --simple 2>&1); d=$(echo "$s" | awk '/Download/{print $2}'); u=$(echo "$s" | awk '/Upload/{print $2}'); else d=$(curl -s -o /dev/null -w '%{speed_download}' --max-time 30 https://speed.cloudflare.com/__down?bytes=25000000 | awk '{printf "%.1f", $1*8/1000000}'); u=; fi; p=$(ping -c 5 -q 1.1.1.1 2>&1 | awk -F/ '/rtt|round-trip/{print $5}'); [ -f speed.csv ] || echo "time,down_mbit,up_mbit,ping_ms" >> speed.csv; echo "$t,$d,$u,$p" >> speed.csv; echo "NOW $t,$d,$u,$p"; [ "$(date +%H)" = 21 ] && grep "^$(date +%F)" speed.csv`. The folder goes in single quotes (a `'` in it written `'\''`), so a name with a space, a `'` or a `$` in it is one folder. Every line goes onto the log with `>>`, the header too: a `>` onto `speed.csv` would write over a file that was there before this run began, which is `destructive`, and your hire never allows it — the whole command would be refused.
 2. Read this hour's line; at the 21:xx run, also the day's lines it printed.
 3. Answer under the three headings, then your Report and Carry forward. Then stop.
 
