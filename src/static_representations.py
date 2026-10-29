@@ -59,11 +59,13 @@ browser does, and nowhere else. Three measured facts set the rule:
 
 `style.css` carries 2,250 comments — the row ids and the why that the repo's
 `Law`s ask for — and emptied they take its gzip from 365 KB to 193 KB, and
-what the browser decodes and parses from 1,663 KB to 1,275 KB. JavaScript keeps
-its comments: there is no rule like the one above for it without a parser —
-`/` is division or a regular expression by grammar, not by spelling,
-`Function.prototype.toString` returns source text, and the service worker's
-own walk (`withoutComments`) reads the modules it fetches.
+what the browser decodes and parses from 1,663 KB to 1,275 KB. JavaScript is
+not rewritten here: there is no rule like the one above for it without a
+parser — `/` is division or a regular expression by grammar, not by spelling.
+**`B1591`**: in the Docker image the modules arrive without their comments
+already, taken out at build time by acorn's parser
+(`scripts/strip-js-comments.mjs`, the `js-without-comments` stage), so what is
+prepared here is those files' bytes, under the ETag their own stat gives.
 """
 
 from __future__ import annotations

@@ -35,7 +35,10 @@ outage:
     deployment host built the image from CRLF-translated copies of twelve
     vendored bundles for days and every tool reported the tree clean.
     `tests/test_the_working_tree_is_the_bytes_git_has.py` asks that of the
-    working tree; this asks it of what actually shipped.
+    working tree; this asks it of what actually shipped. The one rewrite the
+    build makes on purpose — Pantheon's own modules served without their
+    comments (`B1591`) — is held to the blob it was made from, through the
+    record the build writes beside them (`compare_bytes`).
 
 **`Law 16`.** Nothing here reaches an external service. `docker compose build`
 pulls base images and wheels, which is the build; the probe talks only to
@@ -408,8 +411,17 @@ def compare_bytes(manifest: dict, actual: dict) -> dict:
     `actual` is `{path: blob_oid_or_None}` as hashed inside the container. A
     declared `eol=crlf` path is allowed to match after its carriage returns are
     stripped — the probe reports that second hash as `blob_lf`.
+
+    `B1591`. A module the image serves without its comments matches when the
+    image's record says it was made from **git's** blob and the file is **the
+    blob the record says was written** (the probe reports the pair as
+    `stripped_from`/`stripped_to`). So the build's own rewrite is not drift,
+    and what this check is for still is: a module built from bytes that are
+    not git's (`B362`'s CRLF copies) names a `from` git does not have, and one
+    changed after the build is not the `to` it was written as. Those count in
+    `matched`, and are listed again in `stripped` so the report can say so.
     """
-    matched, mismatched, missing = [], [], []
+    matched, mismatched, missing, stripped = [], [], [], []
     for path, want in sorted(manifest.items()):
         got = actual.get(path)
         if got is None:
@@ -419,9 +431,13 @@ def compare_bytes(manifest: dict, actual: dict) -> dict:
             matched.append(path)
         elif want.get("eol") == "crlf" and got.get("blob_lf") == want["blob"]:
             matched.append(path)
+        elif got.get("stripped_from") == want["blob"] and got.get("stripped_to") == got.get("blob"):
+            matched.append(path)
+            stripped.append(path)
         else:
             mismatched.append((path, got.get("bytes"), got.get("blob")))
-    return {"matched": matched, "mismatched": mismatched, "missing": missing}
+    return {"matched": matched, "mismatched": mismatched, "missing": missing,
+            "stripped": stripped}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -513,8 +529,26 @@ def _probe_mcp(app_root: Path) -> list:
     return out
 
 
+#: `B1591`. What the image's `js-without-comments` stage writes beside the
+#: modules it rewrote (`scripts/strip-js-comments.mjs`, `RECORD`): for each, the
+#: git blob it was made from and the blob it wrote. Read by the probe, below.
+STRIPPED_RECORD = "js-without-comments.json"
+
+
+def _stripped_record(app_root: Path) -> dict:
+    """`{path: {"from": blob, "to": blob}}` from the image's record, or `{}` —
+    a tree with no record (a checkout, an image from before `B1591`) has
+    nothing rewritten, and every file is held to git's blob as before."""
+    try:
+        files = json.loads((app_root / STRIPPED_RECORD).read_text(encoding="utf-8")).get("files")
+    except (OSError, ValueError, AttributeError):
+        return {}
+    return files if isinstance(files, dict) else {}
+
+
 def _probe_bytes(app_root: Path, manifest: dict) -> dict:
     out = {}
+    stripped = _stripped_record(app_root)
     for path, want in manifest.items():
         full = app_root / path
         try:
@@ -524,6 +558,9 @@ def _probe_bytes(app_root: Path, manifest: dict) -> dict:
         row = {"bytes": len(raw), "blob": blob_id(raw)}
         if want.get("eol") == "crlf":
             row["blob_lf"] = blob_id(raw.replace(b"\r\n", b"\n"))
+        made = stripped.get(path)
+        if isinstance(made, dict):
+            row["stripped_from"], row["stripped_to"] = made.get("from"), made.get("to")
         out[path] = row
     return out
 
@@ -605,7 +642,9 @@ def verdict(report: dict, allow_tracebacks: int = 0) -> dict:
     total = len(b.get("matched", [])) + len(b.get("mismatched", [])) + len(b.get("missing", []))
     rows.append({
         "name": "shipped bytes", "ok": not b.get("mismatched") and not b.get("missing") and total > 0,
-        "detail": f"{len(b.get('matched', []))}/{total} match the committed blob",
+        "detail": f"{len(b.get('matched', []))}/{total} match the committed blob"
+                  + (f" ({len(b['stripped'])} as served without comments, made from it)"
+                     if b.get("stripped") else ""),
         "lines": [f"{p}: {n} bytes in the image, blob {g[:12] if g else '?'} != git"
                   for p, n, g in b.get("mismatched", [])[:8]]
              + [f"{p}: not in the image" for p in b.get("missing", [])[:8]],

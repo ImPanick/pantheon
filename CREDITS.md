@@ -855,21 +855,30 @@ MIME sniffing in `src/upload_handler.py`.
 
 ## JavaScript dependencies
 
-Pantheon has no build step, no bundler and no framework — ES modules load
-directly, and everything a browser needs is vendored under `static/lib/` and
-credited above. The one npm entry is a development dependency and ships in
-nothing:
+Pantheon has no bundler and no framework — ES modules load directly, and
+everything a browser needs is vendored under `static/lib/` and credited above.
+Neither npm entry ships in anything:
 
 | Package | Where | Licence |
 |---|---|---|
+| [`acorn`](https://github.com/acornjs/acorn) `8.19.0` | `package.json` — `dependencies` | MIT |
 | [`@antithesishq/bombadil`](https://github.com/antithesishq/bombadil) `^0.7.6` | `package.json` — `devDependencies` | MIT |
 
-*Re-read on 2026-09-18 from `package.json`, from `package-lock.json`'s recorded
-`"license": "MIT"` for the pinned 0.7.6, and from the npm registry metadata —
-still MIT, still zero runtime dependencies, still types-only. The range in
-this row is the one `package.json` declares: `check-licences.py` rule 9 fails
-when the two disagree, so a bump that moves one side and not the other is red in
-CI (`B623`).*
+*`acorn` is a build tool of the Docker image (`B1591`, `D-2026-10-29-02` §6):
+the `js-without-comments` stage installs it with `npm ci --omit=dev` and runs
+`scripts/strip-js-comments.mjs`, which uses its parser to take the comments out
+of Pantheon's own modules. What the image copies out of that stage is those
+modules; no byte of acorn reaches the image. Pinned exactly, with its sha512 in
+`package-lock.json`; read on 2026-10-29 from the registry: MIT, no
+dependencies, published 2026-10-05. The CI suite installs it the same way to
+drive the stage's command.*
+
+*`bombadil` re-read on 2026-09-18 from `package.json`, from
+`package-lock.json`'s recorded `"license": "MIT"` for the pinned 0.7.6, and
+from the npm registry metadata — still MIT, still zero runtime dependencies,
+still types-only. The range in each row is the one `package.json` declares:
+`check-licences.py` rule 9 fails when the two disagree, so a bump that moves
+one side and not the other is red in CI (`B623`).*
 
 ---
 

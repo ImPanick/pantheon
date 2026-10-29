@@ -179,8 +179,10 @@ def test_a_revalidation_is_still_a_304_and_a_plain_client_gets_the_same_sheet(pr
 
 
 def test_a_module_is_its_files_bytes_compressed_and_the_rest_goes_as_before(probed):
-    """JavaScript keeps its comments; a range, a plain request and a font are
-    answered from the file, as they were."""
+    """The mount does not rewrite a module: it is the file's bytes, compressed
+    (in the image that file is already without its comments — the build's
+    `js-without-comments` stage, `B1591`); a range, a plain request and a font
+    are answered from the file, as they were."""
     js = probed["js"]
     assert js["encoding"] == "gzip" and js["sha"] == probed["js_file_sha"]
     assert probed["js_plain"]["encoding"] is None and probed["js_plain"]["sha"] == probed["js_file_sha"]
