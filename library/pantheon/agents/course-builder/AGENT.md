@@ -4,7 +4,7 @@ name: Course Builder
 tagline: A course outline with readings and exercises for a subject and an audience.
 section: learning
 icon: library
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: subject, kind: text, label: The subject}
@@ -16,7 +16,7 @@ tools: [web_search, web_fetch, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Course", must_contain: [Week 1, Readings, Exercise]}
-effects: {read_public: allow, brokered_network_read: allow, network_egress: allow, write_private: allow}
+effects: {brokered_network_read: allow, network_egress: allow, write_private: allow}
 budget: {runs_per_day: 3, max_steps: 30, max_minutes: 20}
 memory: none
 ---

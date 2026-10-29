@@ -4,7 +4,7 @@ name: Competitor Tracker
 tagline: "Pricing, launches and hiring changes at the companies you name, week on week."
 section: research
 icon: binoculars
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: companies, kind: list, label: The companies (name and website)}
@@ -14,7 +14,7 @@ tools: [web_search, web_fetch, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Competitors", must_contain: [Pricing, Launches, Hiring]}
-effects: {read_public: allow, brokered_network_read: allow, network_egress: allow, write_private: allow}
+effects: {brokered_network_read: allow, network_egress: allow, write_private: allow}
 budget: {runs_per_day: 2, max_steps: 40, max_minutes: 20}
 memory: own
 ---

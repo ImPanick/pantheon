@@ -4,7 +4,7 @@ name: Paper Reader
 tagline: "New papers on your topics: each one's method, result and limits in plain words."
 section: research
 icon: file-text
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: topics, kind: list, label: Topics to watch}
@@ -14,7 +14,7 @@ tools: [web_search, web_fetch, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Papers", must_contain: [New papers, Checked]}
-effects: {read_public: allow, brokered_network_read: allow, network_egress: allow, write_private: allow}
+effects: {brokered_network_read: allow, network_egress: allow, write_private: allow}
 budget: {runs_per_day: 2, max_steps: 40, max_minutes: 25}
 memory: own
 ---

@@ -4,7 +4,7 @@ name: Mockup Maker
 tagline: Three different HTML mockups from a description.
 section: design
 icon: layout-template
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: brief, kind: long_text, label: What the screen is for}
@@ -18,7 +18,7 @@ delivers:
   - {kind: file, title: "{folder}/b.html", must_contain: [Direction B]}
   - {kind: file, title: "{folder}/c.html", must_contain: [Direction C]}
   - {kind: answer, must_contain: [Direction A, Direction B, Direction C]}
-effects: {write_workspace: allow, destructive: never}
+effects: {write_workspace: allow}
 budget: {runs_per_day: 4, max_steps: 15, max_minutes: 15}
 memory: none
 ---

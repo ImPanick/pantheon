@@ -4,7 +4,7 @@ name: Content Gap Finder
 tagline: Topics your competitors cover and you do not.
 section: seo
 icon: puzzle
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: site, kind: url, label: Your site}
@@ -15,7 +15,7 @@ tools: [web_fetch, web_search, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Content gaps", must_contain: [Gaps, Watching, Checked]}
-effects: {read_public: allow, brokered_network_read: allow, network_egress: allow, write_private: allow}
+effects: {brokered_network_read: allow, network_egress: allow, write_private: allow}
 budget: {runs_per_day: 2, max_steps: 50, max_minutes: 30}
 memory: own
 ---

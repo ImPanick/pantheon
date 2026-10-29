@@ -4,7 +4,7 @@ name: Release Watcher
 tagline: Reads the release pages you follow and says what changed since last time.
 section: research
 icon: tag
-version: 1.1.0
+version: 1.2.0
 wave: 1
 inputs:
   - {key: pages, kind: list, label: Release or changelog pages to read (web addresses)}
@@ -13,7 +13,7 @@ triggers:
 tools: [web_fetch]
 delivers:
   - {kind: answer, must_contain: [New releases, No change, Could not read]}
-effects: {read_public: allow, brokered_network_read: allow, network_egress: allow}
+effects: {brokered_network_read: allow, network_egress: allow}
 budget: {runs_per_day: 2, max_steps: 20, max_minutes: 10}
 memory: own
 ---

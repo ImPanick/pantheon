@@ -4,7 +4,7 @@ name: Ad Copy Writer
 tagline: "Ad variants per platform, inside each one's character limits."
 section: marketing
 icon: badge-dollar-sign
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: offer, kind: long_text, label: What you are advertising and to whom}
@@ -15,7 +15,7 @@ tools: [web_fetch, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Ad copy", must_contain: [Limits, Claims to check]}
-effects: {read_public: allow, brokered_network_read: allow, network_egress: allow, write_private: allow}
+effects: {brokered_network_read: allow, network_egress: allow, write_private: allow}
 budget: {runs_per_day: 6, max_steps: 15, max_minutes: 10}
 memory: none
 ---

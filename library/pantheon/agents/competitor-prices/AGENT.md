@@ -4,7 +4,7 @@ name: Competitor Prices
 tagline: "Your competitors' prices for your products, every day — it changes none of yours."
 section: ecommerce
 icon: badge-percent
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: products, kind: long_text, label: "One per line: your product, your price, then competitor page addresses"}
@@ -14,7 +14,7 @@ tools: [web_fetch]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Most expensive first, Could not read]}
-effects: {read_public: allow, brokered_network_read: allow, network_egress: allow}
+effects: {brokered_network_read: allow, network_egress: allow}
 budget: {runs_per_day: 2, max_steps: 40, max_minutes: 15}
 memory: own
 ---

@@ -13,7 +13,10 @@ what the lint cannot see, across the whole roster:
     with at least one, the hall's chips all drawn;
   * **nothing acts outward unasked** — no agent allows an effect that leaves
     the install (`external_side_effect`) or cannot be undone (`destructive`),
-    and Bills Due declares it never pays (`D-2026-10-22-01` §3);
+    and Bills Due never pays (`D-2026-10-22-01` §3) — held by its kit, no call
+    of which acts outside Pantheon (`B1656`: its table's
+    `external_side_effect: never` named an effect no call of its kit carries,
+    a row on the hire form nobody could move, and is gone);
   * **no wave-2 effect is left to the default** — every effect of every tool a
     wave-2 agent lists is in its table. (Two starters, Morning Brief and Weekly
     Review, list tools that can write and left `write_private` out on purpose:
@@ -59,8 +62,12 @@ def test_nothing_acts_outward_or_irreversibly_without_asking(hall):
     for m in hall:
         for effect in ("external_side_effect", "destructive", "admin_change"):
             assert m.effects.get(effect, "ask") != "allow", (m.id, effect)
+    # `B1656`: what keeps Bills Due from paying is its kit, not a word in its
+    # table — no call of any of its tools can act outside Pantheon or send.
+    from src.agents.hires import tool_effects
     bills = next(m for m in hall if m.id == "bills-due")
-    assert bills.effects["external_side_effect"] == "never"
+    assert not any({"external_side_effect", "network_egress"} & set(tool_effects(t)) for t in bills.tools), \
+        bills.tools
 
 
 def test_every_effect_of_a_wave_two_tool_is_in_the_table(hall):

@@ -4,7 +4,7 @@ name: Rank Tracker
 tagline: "Where your pages rank for your terms, week on week."
 section: seo
 icon: trending-up
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: site, kind: url, label: Your site}
@@ -15,7 +15,7 @@ tools: [web_search]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Biggest moves, All terms, an indication]}
-effects: {read_public: allow, brokered_network_read: allow}
+effects: {brokered_network_read: allow}
 budget: {runs_per_day: 2, max_steps: 40, max_minutes: 15}
 memory: own
 ---

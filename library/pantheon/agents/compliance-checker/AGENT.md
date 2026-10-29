@@ -4,7 +4,7 @@ name: Compliance Checker
 tagline: Checks a policy or process against a standard you name.
 section: legal-people
 icon: badge-check
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: subject, kind: text, label: The policy or process document title}
@@ -15,7 +15,7 @@ tools: [manage_documents, web_search, web_fetch, create_document]
 needs: {connectors: [], min_context: 32000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Compliance check", must_contain: [Not legal advice, Missing, Partly met, Met]}
-effects: {read_private: allow, write_private: allow, read_public: allow, brokered_network_read: allow, network_egress: allow, destructive: never}
+effects: {read_private: allow, write_private: allow, brokered_network_read: allow, network_egress: allow, destructive: never}
 budget: {runs_per_day: 4, max_steps: 40, max_minutes: 25}
 memory: none
 ---

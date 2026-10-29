@@ -4,7 +4,7 @@ name: Bookmark Librarian
 tagline: "Fetches the links you save, summarises them and tags them."
 section: knowledge
 icon: bookmark
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: note, kind: text, label: The note you paste links into, default: Bookmarks}
@@ -14,7 +14,7 @@ tools: [manage_notes, web_fetch, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Filed, Could not load]}
-effects: {read_private: allow, write_private: allow, read_public: allow, brokered_network_read: allow, network_egress: allow, destructive: never}
+effects: {read_private: allow, write_private: allow, brokered_network_read: allow, network_egress: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 40, max_minutes: 15}
 memory: own
 ---

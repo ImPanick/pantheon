@@ -4,7 +4,7 @@ name: Review Watcher
 tagline: "New reviews on the sites you name, each with a reply drafted. It posts nothing."
 section: seo
 icon: star
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: pages, kind: list, label: Your review pages}
@@ -14,7 +14,7 @@ tools: [web_fetch, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [New reviews, Average rating]}
-effects: {read_public: allow, brokered_network_read: allow, network_egress: allow, write_private: allow}
+effects: {brokered_network_read: allow, network_egress: allow, write_private: allow}
 budget: {runs_per_day: 2, max_steps: 25, max_minutes: 12}
 memory: own
 ---

@@ -4,7 +4,7 @@ name: Local News Digest
 tagline: "Town, school and council news worth knowing, every morning."
 section: research
 icon: newspaper
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: place, kind: text, label: Your town or area}
@@ -16,7 +16,7 @@ tools: [web_search, web_fetch]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Worth knowing, Checked]}
-effects: {read_public: allow, brokered_network_read: allow, network_egress: allow}
+effects: {brokered_network_read: allow, network_egress: allow}
 budget: {runs_per_day: 2, max_steps: 25, max_minutes: 12}
 memory: own
 ---

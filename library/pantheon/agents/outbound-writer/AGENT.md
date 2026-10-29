@@ -4,7 +4,7 @@ name: Outbound Writer
 tagline: "Personalised first emails for a list of prospects — drafted, never sent."
 section: sales
 icon: send
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: prospects, kind: long_text, label: "One per line: name, email, role, company, site"}
@@ -16,7 +16,7 @@ needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: email_draft, max: 25}
   - {kind: answer, must_contain: [Drafted, Nothing specific found]}
-effects: {read_public: allow, brokered_network_read: allow, network_egress: allow, write_private: allow}
+effects: {brokered_network_read: allow, network_egress: allow, write_private: allow}
 budget: {runs_per_day: 3, max_steps: 60, max_minutes: 30}
 memory: none
 ---

@@ -4,7 +4,7 @@ name: Newsletter Writer
 tagline: "Drafts your newsletter issue from the week's notes and saved links. It never sends."
 section: writing
 icon: mail-open
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: name, kind: text, label: The newsletter}
@@ -15,7 +15,7 @@ tools: [manage_notes, web_fetch, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Issue", must_contain: [In this issue, Before you send]}
-effects: {read_private: allow, write_private: allow, read_public: allow, brokered_network_read: allow, network_egress: allow, destructive: never}
+effects: {read_private: allow, write_private: allow, brokered_network_read: allow, network_egress: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 25, max_minutes: 15}
 memory: own
 ---

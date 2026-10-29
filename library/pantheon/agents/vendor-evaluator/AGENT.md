@@ -4,7 +4,7 @@ name: Vendor Evaluator
 tagline: A shortlist and comparison table for a tool you need — it never contacts a vendor.
 section: research
 icon: scale
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: need, kind: long_text, label: What you need the tool to do}
@@ -15,7 +15,7 @@ tools: [web_search, web_fetch, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Vendor shortlist", must_contain: [Comparison, Top three, Ruled out]}
-effects: {read_public: allow, brokered_network_read: allow, network_egress: allow, write_private: allow}
+effects: {brokered_network_read: allow, network_egress: allow, write_private: allow}
 budget: {runs_per_day: 2, max_steps: 50, max_minutes: 30}
 memory: none
 ---

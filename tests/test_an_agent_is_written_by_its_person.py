@@ -44,10 +44,13 @@ def test_a_new_agent_is_kept_for_its_person_only(data):
 
 def test_a_customised_agent_shadows_the_shipped_one_and_removing_it_gives_it_back(data):
     shipped = get_agent("alice", "topic-watcher")
-    text = W.source(shipped).replace("version: 1.0.0", "version: 1.1.0")
+    # A version the shipped file has not reached, whatever it is at: this
+    # replaced "1.0.0" and asserted "1.1.0", which held only while the shipped
+    # file was at 1.1.0 and the replace did nothing (`B1656` moved it to 1.2.0).
+    text = W.source(shipped).replace(f"version: {shipped.version}", "version: 9.9.0")
     m, shadows = W.save("alice", text)
     assert shadows is True
-    assert get_agent("alice", "topic-watcher").version == "1.1.0", "the save is read at once, not from the cache"
+    assert get_agent("alice", "topic-watcher").version == "9.9.0", "the save is read at once, not from the cache"
     assert get_agent("bob", "topic-watcher").version == shipped.version
     W.remove("alice", "topic-watcher")
     assert get_agent("alice", "topic-watcher").source == "shipped"

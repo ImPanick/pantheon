@@ -4,7 +4,7 @@ name: Lead Researcher
 tagline: A one-page brief on a company and person before a call.
 section: sales
 icon: user-search
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: who, kind: text, label: The person and company}
@@ -14,7 +14,7 @@ tools: [web_search, web_fetch, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Brief", must_contain: [The company, The person, Worth mentioning, Questions to ask]}
-effects: {read_public: allow, brokered_network_read: allow, network_egress: allow, write_private: allow}
+effects: {brokered_network_read: allow, network_egress: allow, write_private: allow}
 budget: {runs_per_day: 6, max_steps: 30, max_minutes: 15}
 memory: none
 ---

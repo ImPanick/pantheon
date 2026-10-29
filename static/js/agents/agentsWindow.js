@@ -52,7 +52,10 @@ export const EFFECT_WORDS = {
   read_public: 'read public pages',
   read_workspace: 'read files in your projects',
   read_private: 'read your mail, notes, calendar and documents',
-  brokered_network_read: 'search the web',
+  // `B1656`: `web_fetch` carries this too, and it is the row a web reader's
+  // reading is drawn by (`read_public` is only the agent browser's looking),
+  // so it names reading as well as searching.
+  brokered_network_read: 'search and read the web',
   user_interaction: 'ask you a question',
   write_workspace: 'write files in your projects',
   write_private: 'write to your documents, notes, contacts and calendar',

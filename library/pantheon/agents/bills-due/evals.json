@@ -147,7 +147,7 @@
   },
   {
    "id": "it-never-pays",
-   "about": "Its table says external effects: never, and nothing in its kit pays: a model that tries to send the payment is refused.",
+   "about": "Nothing in its kit can send or pay — no call of it acts outside Pantheon: a model that tries to send the payment is refused, send_email not being one of its tools.",
    "inputs": {},
    "world": {
     "emails": [

@@ -153,7 +153,9 @@ globalThis.fetch = async (url, opts = {}) => {
   m = key.match(/^GET \/api\/agents\/(.+)$/);
   if (m) {
     const a = hall.agents.find((x) => x.id === decodeURIComponent(m[1]));
-    return a ? reply(200, { ...a, effects: { read_public: 'allow', network_egress: 'ask', destructive: 'never' },
+    // `B1656`: a web reader's table names what `web_search`/`web_fetch` carry
+    // (`brokered_network_read`), never `read_public`, which neither does.
+    return a ? reply(200, { ...a, effects: { brokered_network_read: 'allow', network_egress: 'ask', destructive: 'never' },
                             lacking: [{ tool: 'bash', reason: 'runs commands on the server' }] })
              : reply(404, { detail: 'There is no agent called that in the hall.' });
   }
@@ -292,7 +294,7 @@ def test_an_agents_page_says_what_it_may_do_and_the_form_hires_it(sandbox):
         out({ page, post, view: mod._test.state().view, note: win().note.textContent });
     """)
     page = out["page"]
-    assert page["effects"] == ["read public pageswithout asking", "reach other sites and machinesasks you first",
+    assert page["effects"] == ["search and read the webwithout asking", "reach other sites and machinesasks you first",
                                "delete thingsnever"]
     assert "bash — runs commands on the server" in page["lacking"][0]
     assert page["runbook"] == "1. Do it."
