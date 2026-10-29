@@ -4,7 +4,7 @@ name: Script Smith
 tagline: "A small automation script from your description, tested on sample files it makes — never on your own."
 section: development
 icon: terminal-square
-version: 1.4.0
+version: 1.5.0
 wave: 2
 inputs:
   - {key: task, kind: long_text, label: What the script should do}
@@ -15,7 +15,7 @@ tools: [write_file, read_file, bash]
 needs: {connectors: [], min_context: 16000, native_tools: required}
 delivers:
   - {kind: answer, must_contain: [Script, Run it, Tested]}
-effects: {write_workspace: allow, read_workspace: allow, execute_code: allow, destructive: never}
+effects: {write_workspace: allow, read_workspace: allow, execute_code: allow, network_egress: never, destructive: never}
 budget: {runs_per_day: 6, max_steps: 30, max_minutes: 20}
 memory: none
 ---

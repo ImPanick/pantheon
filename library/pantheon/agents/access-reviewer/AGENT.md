@@ -4,7 +4,7 @@ name: Access Reviewer
 tagline: "Each month, who can sign in to your machines, who holds sudo, and whose keys are there — unused access flagged; revoking is yours."
 section: security
 icon: users
-version: 1.3.0
+version: 1.4.0
 wave: 2
 inputs:
   - {key: hosts, kind: list, label: Machines to check (names or addresses the workstation can ssh to)}
@@ -14,7 +14,7 @@ tools: [bash, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred, programs: [{name: ssh, install: "sudo apt-get install -y openssh-client"}]}
 delivers:
   - {kind: document, title: "Access review", must_contain: [Flags, Who has access, Could not check]}
-effects: {execute_code: allow, write_private: allow, destructive: never}
+effects: {execute_code: allow, network_egress: allow, write_private: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 30, max_minutes: 15}
 memory: own
 ---

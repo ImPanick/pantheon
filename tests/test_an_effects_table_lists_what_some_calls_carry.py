@@ -67,8 +67,10 @@ def _effects(*es):
 
 def test_some_calls_carry_more_than_the_registration():
     assert capabilities_for_tool("bash").effects == _effects("execute_code")
-    assert widest_reach("bash") == _effects("execute_code", "destructive")
-    assert widest_reach("python") == _effects("execute_code", "destructive")
+    # `B1652`: and a command that reaches another machine carries
+    # `network_egress` (`pip install`, `ssh`, `requests.get`).
+    assert widest_reach("bash") == _effects("execute_code", "destructive", "network_egress")
+    assert widest_reach("python") == _effects("execute_code", "destructive", "network_egress")
     assert widest_reach("manage_notes") == _effects("read_private", "write_private", "destructive")
     assert widest_reach("read_file") == _effects("read_workspace")
     # A tool whose registration is already everything its actions do is as it was.
@@ -78,6 +80,8 @@ def test_some_calls_carry_more_than_the_registration():
 
 @pytest.mark.parametrize("tool,content", [
     ("bash", '{"command": "rm -rf build"}'), ("bash", '{"command": "ls"}'),
+    ("bash", '{"command": "pip install -r requirements.txt"}'),             # `B1652`
+    ("bash", '{"command": "rsync --delete -a out/ web1:/srv/site/"}'),      # both
     ("python", '{"code": "import os\\nos.remove(\\"x\\")"}'),
     ("manage_notes", '{"action": "delete", "id": "n1"}'), ("manage_notes", '{"action": "list"}'),
     ("manage_notes", '{"action": "frobnicate"}'), ("manage_memory", "search\nAna"),
@@ -93,7 +97,8 @@ def test_every_call_is_one_of_the_reaches_listed(tool, content):
 def test_a_shell_agent_silent_on_deletion_now_lists_it_and_asks():
     m = _manifest("[bash]")
     table = H.manifest_effects(m)
-    assert table == {"destructive": "ask", "execute_code": "allow"}
+    # `B1652`: `network_egress` too, which a command that reaches out carries.
+    assert table == {"destructive": "ask", "execute_code": "allow", "network_egress": "ask"}
     run = ToolRunSecurityContext(hire_ask_effects=frozenset(e for e, r in table.items() if r == "ask"))
     assert run.decision_for("bash", "ls -la").allowed is True
     asked = run.decision_for("bash", 'rm -rf "$t"')
@@ -111,9 +116,12 @@ def test_a_person_can_tighten_what_only_some_calls_do():
     the grant was refused as an effect the tools never have."""
     m = _manifest("[bash]")
     assert H.check_grants(m, {"destructive": "never"}) == {"destructive": "never"}
+    # `B1652`: a shell's `network_egress` is one too; sending as the person
+    # (`external_side_effect`) is still nothing a call of `bash` can carry.
+    assert H.check_grants(m, {"network_egress": "never"}) == {"network_egress": "never"}
     with pytest.raises(H.HireRefused) as refused:
-        H.check_grants(m, {"network_egress": "never"})
-    assert "never have the effect “network_egress”" in refused.value.sentence
+        H.check_grants(m, {"external_side_effect": "never"})
+    assert "never have the effect “external_side_effect”" in refused.value.sentence
 
 
 def test_every_shipped_agent_decides_every_effect_its_calls_can_carry():

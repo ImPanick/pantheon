@@ -4,7 +4,7 @@ name: Incident Scribe
 tagline: "Builds an incident's timeline from your machines' logs and drafts the post-mortem, evidence and guesses marked apart. It never publishes."
 section: devops
 icon: siren
-version: 1.3.0
+version: 1.4.0
 wave: 2
 inputs:
   - {key: hosts, kind: list, label: Machines to check (names or addresses the workstation can ssh to)}
@@ -15,7 +15,7 @@ tools: [bash, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred, programs: [{name: ssh, install: "sudo apt-get install -y openssh-client"}]}
 delivers:
   - {kind: document, title: "Post-mortem", must_contain: [Summary, Impact, Timeline, Contributing causes, Follow-ups]}
-effects: {execute_code: allow, write_private: allow, destructive: never}
+effects: {execute_code: allow, network_egress: allow, write_private: allow, destructive: never}
 budget: {runs_per_day: 4, max_steps: 40, max_minutes: 25}
 memory: none
 ---

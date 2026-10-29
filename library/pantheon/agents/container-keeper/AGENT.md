@@ -4,7 +4,7 @@ name: Container Keeper
 tagline: "Each hour, the stopped, restarting or unhealthy containers on your machines, with their logs and the command to fix each."
 section: devops
 icon: container
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: hosts, kind: list, label: Machines to check (names or addresses the workstation can ssh to)}
@@ -14,7 +14,7 @@ tools: [bash]
 needs: {connectors: [], min_context: 16000, native_tools: preferred, programs: [{name: ssh, install: "sudo apt-get install -y openssh-client"}]}
 delivers:
   - {kind: answer, must_contain: [Needs you, Healthy, Could not check]}
-effects: {execute_code: allow, destructive: never}
+effects: {execute_code: allow, network_egress: allow, destructive: never}
 budget: {runs_per_day: 30, max_steps: 20, max_minutes: 8}
 memory: own
 ---

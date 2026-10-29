@@ -4,7 +4,7 @@ name: MCP Builder
 tagline: Builds and tests an MCP server for a tool you describe — installing and registering it is your call.
 section: ai-engineering
 icon: plug
-version: 1.4.0
+version: 1.5.0
 wave: 2
 inputs:
   - {key: tool, kind: long_text, label: What the server should let a model do}
@@ -15,7 +15,7 @@ tools: [write_file, read_file, bash, web_fetch]
 needs: {connectors: [], min_context: 32000, native_tools: required}
 delivers:
   - {kind: answer, must_contain: [Built, Tested, To register]}
-effects: {write_workspace: allow, read_workspace: allow, execute_code: allow, brokered_network_read: allow, network_egress: allow, admin_change: ask, destructive: never}
+effects: {write_workspace: allow, read_workspace: allow, execute_code: allow, brokered_network_read: allow, network_egress: allow, destructive: never}
 budget: {runs_per_day: 3, max_steps: 60, max_minutes: 45}
 memory: none
 ---

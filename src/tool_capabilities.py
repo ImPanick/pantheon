@@ -1190,7 +1190,9 @@ def call_reaches(tool_name: Any) -> tuple[frozenset[ToolEffect], ...]:
     classified with by `capabilities_for_action`, distinct, the registration
     first: an action a table names, a look, a read or a write of the person's
     own data, a deletion (`_ACTION_DESTRUCTIVE`), and a command that deletes
-    or cannot be read (`B1622`). Read in one place so the three questions
+    or cannot be read (`B1622`) or reaches the network (`B1652`) — for
+    `shell_with_login`, registered `network_egress` already, those are the
+    same set. Read in one place so the three questions
     below cannot disagree about what a call of the tool can be (`Law 7`).
 
     Two classifications are not listed, and neither is something a hire's
@@ -1208,7 +1210,11 @@ def call_reaches(tool_name: Any) -> tuple[frozenset[ToolEffect], ...]:
         bare = tool_name[len("mcp__email__"):]
     reaches = [base.effects]
     if tool_name in _COMMAND_TOOLS:
+        # `B1622`, `B1652`: a command that deletes, one that reaches the
+        # network, and one that does both or cannot be read.
         reaches.append(base.effects | {ToolEffect.DESTRUCTIVE})
+        reaches.append(base.effects | {ToolEffect.NETWORK_EGRESS})
+        reaches.append(base.effects | {ToolEffect.DESTRUCTIVE, ToolEffect.NETWORK_EGRESS})
     if bare in _ACTION_CAPABILITIES:
         reaches += [c.effects for c in _ACTION_CAPABILITIES[bare].values()]
     if bare in _OBSERVE_ONLY_ACTIONS:
@@ -1288,21 +1294,33 @@ def _command_text(tool_name: str, content: Any) -> str | None:
 
 
 @functools.lru_cache(maxsize=512)
-def _command_reading(tool_name: str, text: str) -> str | None:
-    from src.shell_reading import python_destroys, shell_destroys
-    return python_destroys(text) if tool_name == "python" else shell_destroys(text)
+def _command_reading(tool_name: str, text: str) -> tuple[str | None, str | None]:
+    """`(why it destroys, why it reaches the network)`, from one reading."""
+    from src.shell_reading import python_findings, read_shell, readings
+    return readings(python_findings(text) if tool_name == "python" else read_shell(text))
+
+
+def _command_readings(tool_name: Any, content: Any) -> tuple[str | None, str | None]:
+    if tool_name not in _COMMAND_TOOLS:
+        return None, None
+    text = _command_text(tool_name, content)
+    if not text or not text.strip():
+        return None, None
+    return _command_reading(tool_name, text)
 
 
 def command_destroys(tool_name: Any, content: Any) -> str | None:
     """`B1622`. Why this command call carries `destructive` — what it deletes,
     or why it cannot be read — or `None`. `None` for every other tool, and for
     a call with no command (the tool-level question)."""
-    if tool_name not in _COMMAND_TOOLS:
-        return None
-    text = _command_text(tool_name, content)
-    if not text or not text.strip():
-        return None
-    return _command_reading(tool_name, text)
+    return _command_readings(tool_name, content)[0]
+
+
+def command_reaches(tool_name: Any, content: Any) -> str | None:
+    """`B1652`. Why this command call carries `network_egress` — what in it
+    reaches another machine, or why it cannot be read — or `None`, as
+    `command_destroys` answers for `destructive`."""
+    return _command_readings(tool_name, content)[1]
 
 
 def _is_destructive_call(tool_name: Any, content: Any) -> bool:
@@ -1355,12 +1373,16 @@ def capabilities_for_action(tool_name: Any, content: Any) -> ToolCapabilities:
         )
 
     # `B1622`. A shell's or Python's call: destructive when its command says
-    # so, or cannot be read; otherwise exactly the tool's registration.
+    # so, or cannot be read; `B1652`, reaching the network the same way;
+    # otherwise exactly the tool's registration.
     if tool_name in _COMMAND_TOOLS:
-        if command_destroys(tool_name, content) is None:
+        destroys, reaches = _command_readings(tool_name, content)
+        added = ({ToolEffect.DESTRUCTIVE} if destroys is not None else set()) | (
+            {ToolEffect.NETWORK_EGRESS} if reaches is not None else set())
+        if not added:
             return base
         return ToolCapabilities(
-            frozenset(base.effects | {ToolEffect.DESTRUCTIVE}),
+            frozenset(base.effects | added),
             base.result_integrity,
             known=base.known,
         )
@@ -2560,14 +2582,18 @@ class ToolRunSecurityContext:
         effects = {effect.value for effect in capabilities.effects}
         never = effects & set(self.hire_never_effects)
         # `B1622`. A command's deletion is named, so the person reads what in
-        # it is destructive rather than only that something is.
-        why = command_destroys(tool_name, content)
-        because = f" ({why})" if why else ""
+        # it is destructive rather than only that something is; `B1652`, and
+        # what in it reaches the network.
+        why, reach = _command_readings(tool_name, content)
+
+        def because(named):
+            said = [w for e, w in (("destructive", why), ("network_egress", reach)) if w and e in named]
+            return f" ({'; '.join(dict.fromkeys(said))})" if said else ""
         if never:
             return ToolGateDecision(
                 False,
                 (f"This agent's hire never allows {', '.join(sorted(never))}, so "
-                 f"'{tool_name}' was not run{because if 'destructive' in never else ''}. "
+                 f"'{tool_name}' was not run{because(never)}. "
                  f"Change the hire's effects in Agents to allow it."),
                 tripped_effects=tuple(describe_effects(
                     frozenset(e for e in capabilities.effects if e.value in never)).get("effects", ())),
@@ -2579,7 +2605,7 @@ class ToolRunSecurityContext:
             return ToolGateDecision(
                 False,
                 (f"This agent's hire asks before {', '.join(sorted(ask)) or 'an action it cannot classify'}: "
-                 f"'{tool_name}' waits for your yes{because if 'destructive' in ask else ''}."),
+                 f"'{tool_name}' waits for your yes{because(ask)}."),
                 tripped_effects=tuple(describe_effects(tripped).get("effects", ())),
                 classification=(TOOL_CLASSIFICATION_RECOGNISED if capabilities.known
                                 else TOOL_CLASSIFICATION_UNRECOGNISED),

@@ -4,7 +4,7 @@ name: Prototype Builder
 tagline: "A clickable prototype from your description: one self-contained page in your projects folder, every button going somewhere."
 section: development
 icon: blocks
-version: 1.4.0
+version: 1.5.0
 wave: 2
 inputs:
   - {key: idea, kind: long_text, label: What the app should do}
@@ -16,7 +16,7 @@ needs: {connectors: [], min_context: 32000, native_tools: required}
 delivers:
   - {kind: file, title: "{folder}/index.html"}
   - {kind: answer, must_contain: [Screens, Open it, Checked]}
-effects: {write_workspace: allow, read_workspace: allow, execute_code: allow, destructive: never}
+effects: {write_workspace: allow, read_workspace: allow, execute_code: allow, network_egress: never, destructive: never}
 budget: {runs_per_day: 4, max_steps: 50, max_minutes: 30}
 memory: none
 ---

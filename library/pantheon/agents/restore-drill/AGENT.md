@@ -4,7 +4,7 @@ name: Restore Drill
 tagline: "Restores last night's database dump into a scratch copy and checks the row counts."
 section: databases
 icon: database-backup
-version: 1.4.0
+version: 1.5.0
 wave: 2
 inputs:
   - {key: dump, kind: text, label: "The dump file or folder (a path the workstation can read)"}
@@ -19,7 +19,7 @@ needs:
   programs: [{name: pg_ctlcluster, when: {engine: postgres}, install: "sudo apt-get install -y postgresql"}, {name: psql, when: {engine: postgres}, install: "sudo apt-get install -y postgresql"}, {name: mysqld, when: {engine: mysql}, install: "sudo apt-get install -y mysql-server"}, {name: mysql, when: {engine: mysql}, install: "sudo apt-get install -y mysql-server"}, {name: python3, when: {engine: sqlite}, install: "sudo apt-get install -y python3"}]
 delivers:
   - {kind: answer, must_contain: [Result, Row counts, Took]}
-effects: {execute_code: allow, destructive: ask}
+effects: {execute_code: allow, network_egress: never, destructive: ask}
 budget: {runs_per_day: 2, max_steps: 25, max_minutes: 40}
 memory: own
 ---

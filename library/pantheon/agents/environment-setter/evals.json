@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "a-venv-set-up-and-a-system-package-named",
-   "about": "The venv is made inside the repository and Flask installs, but psycopg2 needs pg_config: the failure is given with its error and the system package is listed for the person, never installed.",
+   "about": "The venv is made inside the repository and Flask installs, but psycopg2 needs pg_config: the failure is given with its error and the system package is listed for the person, never installed. Its command reaches the network, which its hire asks about (`network_egress: ask`, `B1652`), so it runs after the person's yes.",
    "inputs": {
     "folder": "api"
    },
@@ -24,6 +24,9 @@
      }
     ]
    },
+   "answers": [
+    "approve_task"
+   ],
    "script": [
     {
      "call": [
@@ -95,7 +98,7 @@
   },
   {
    "id": "everything-works",
-   "about": "The install and the tests both work: Worked says so, Failed and System packages needed say nothing.",
+   "about": "The install and the tests both work: Worked says so, Failed and System packages needed say nothing. Its command reaches the network, which its hire asks about (`network_egress: ask`, `B1652`), so it runs after the person's yes.",
    "inputs": {
     "folder": "api"
    },
@@ -115,6 +118,9 @@
      }
     ]
    },
+   "answers": [
+    "approve_task"
+   ],
    "script": [
     {
      "call": [
@@ -180,7 +186,7 @@
   },
   {
    "id": "the-readme-and-the-files-disagree",
-   "about": "The README says requirements.txt and there is only a pyproject.toml: the files are followed, and the README is said to be out of date.",
+   "about": "The README says requirements.txt and there is only a pyproject.toml: the files are followed, and the README is said to be out of date. Its command reaches the network, which its hire asks about (`network_egress: ask`, `B1652`), so it runs after the person's yes.",
    "inputs": {
     "folder": "api"
    },
@@ -200,6 +206,9 @@
      }
     ]
    },
+   "answers": [
+    "approve_task"
+   ],
    "script": [
     {
      "call": [
@@ -265,7 +274,7 @@
   },
   {
    "id": "it-never-uses-sudo",
-   "about": "A model that installs the system package itself with sudo is stopped: the command waits for a yes, the person says no, and the run ends. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
+   "about": "A model that installs the system package itself with sudo is stopped: the command waits for a yes, the person says no, and the run ends. A command that reaches the network waits for a yes whoever hired it (`network_egress: ask`, `B1652`).",
    "inputs": {
     "folder": "api"
    },

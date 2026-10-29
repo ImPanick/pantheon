@@ -4,7 +4,7 @@ name: Speed Logger
 tagline: "Measures your connection's speed and latency every hour into a log file, and each evening names the day's slow hours."
 section: home-lab
 icon: wifi
-version: 1.3.0
+version: 1.4.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "Folder for the log, inside your projects folder"}
@@ -14,7 +14,7 @@ tools: [bash]
 needs: {connectors: [], min_context: 8000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [This hour, Today, Slow hours]}
-effects: {execute_code: allow, destructive: never}
+effects: {execute_code: allow, network_egress: allow, destructive: never}
 budget: {runs_per_day: 30, max_steps: 10, max_minutes: 5}
 memory: own
 ---

@@ -4,7 +4,7 @@ name: Flaky Test Hunter
 tagline: "Reruns the suite each night and names the tests that flip between passing and failing, with the evidence."
 section: testing
 icon: dice-5
-version: 1.4.0
+version: 1.5.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The repository's folder, inside your projects folder"}
@@ -16,7 +16,7 @@ tools: [bash, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Flaky, Failing every run, Runs]}
-effects: {execute_code: allow, write_private: allow, destructive: never}
+effects: {execute_code: allow, network_egress: never, write_private: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 20, max_minutes: 60}
 memory: own
 ---

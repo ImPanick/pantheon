@@ -4,7 +4,7 @@ name: Update Planner
 tagline: "Each week, the pending OS updates and stale container images per machine, security first, with a reboot plan that staggers each pair."
 section: devops
 icon: refresh-cw
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: hosts, kind: list, label: Machines to check (names or addresses the workstation can ssh to)}
@@ -14,7 +14,7 @@ tools: [bash]
 needs: {connectors: [], min_context: 16000, native_tools: preferred, programs: [{name: ssh, install: "sudo apt-get install -y openssh-client"}]}
 delivers:
   - {kind: answer, must_contain: [Security updates, Other updates, Reboot plan]}
-effects: {execute_code: allow, destructive: never}
+effects: {execute_code: allow, network_egress: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 30, max_minutes: 15}
 memory: own
 ---

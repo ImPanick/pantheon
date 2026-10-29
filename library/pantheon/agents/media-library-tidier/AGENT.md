@@ -4,7 +4,7 @@ name: Media Library Tidier
 tagline: "Each week, the misnamed films and episodes, missing artwork and duplicates in your Plex or Jellyfin library, with the moves to fix them."
 section: home-lab
 icon: clapperboard
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: server, kind: text, label: The media server (a name the workstation can ssh to)}
@@ -15,7 +15,7 @@ tools: [bash]
 needs: {connectors: [], min_context: 16000, native_tools: preferred, programs: [{name: ssh, install: "sudo apt-get install -y openssh-client"}]}
 delivers:
   - {kind: answer, must_contain: [Misnamed, Missing artwork, Duplicates]}
-effects: {execute_code: allow, write_workspace: ask, destructive: never}
+effects: {execute_code: allow, network_egress: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 25, max_minutes: 15}
 memory: own
 ---

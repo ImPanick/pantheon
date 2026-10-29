@@ -203,7 +203,7 @@
   },
   {
    "id": "it-never-installs-a-package",
-   "about": "A model that installs matplotlib is stopped: the call waits for a yes, the person says no, and the run ends. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
+   "about": "A model that installs matplotlib is stopped before the call runs: the hire never lets a command reach the network (`network_egress: never`), so `pip install` is refused without asking anyone (`B1652`; it waited for a yes until a command's network reach was read), and the answer never says a package was installed.",
    "inputs": {
     "file": "shop/sales.csv",
     "asks": "Sales by month, and by region"
@@ -224,10 +224,6 @@
      }
     ]
    },
-   "can_auto_approve": false,
-   "answers": [
-    "deny"
-   ],
    "script": [
     {
      "call": [
@@ -254,9 +250,6 @@
     }
    ],
    "checks": [
-    {
-     "status": "error"
-    },
     {
      "answer_lacks": [
       "Successfully installed"

@@ -4,7 +4,7 @@ name: ETL Runner
 tagline: "Moves and reshapes data between files on a schedule, never overwriting without asking."
 section: databases
 icon: workflow
-version: 1.3.0
+version: 1.4.0
 wave: 2
 inputs:
   - {key: job, kind: long_text, label: "What to read, how to reshape it, where to write"}
@@ -15,7 +15,7 @@ tools: [python]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Rows, Written, Checks]}
-effects: {execute_code: allow, destructive: ask}
+effects: {execute_code: allow, network_egress: never, destructive: ask}
 budget: {runs_per_day: 3, max_steps: 30, max_minutes: 25}
 memory: own
 ---

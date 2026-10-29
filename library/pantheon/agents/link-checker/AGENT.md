@@ -4,7 +4,7 @@ name: Link Checker
 tagline: "Each week, crawls your site and lists the broken links and missing images by the page they are on, and what was fixed."
 section: testing
 icon: link-2-off
-version: 1.3.0
+version: 1.4.0
 wave: 2
 inputs:
   - {key: site, kind: url, label: Your site}
@@ -15,7 +15,7 @@ tools: [bash, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Broken links", must_contain: [Broken, Check by hand, Pages checked]}
-effects: {execute_code: allow, write_private: allow, destructive: never}
+effects: {execute_code: allow, network_egress: allow, write_private: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 20, max_minutes: 30}
 memory: own
 ---

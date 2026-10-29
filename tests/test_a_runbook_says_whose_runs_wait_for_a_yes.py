@@ -272,13 +272,18 @@ def test_the_sentence_every_development_runbook_shipped_is_refused_and_its_rewri
 def test_what_still_asks_an_auto_approve_holder_is_named():
     """Environment Setter's commands run unasked for a holder, but one that
     deletes asks every hirer (`destructive: ask`): a sentence that names
-    Auto-approve and not that is wrong for the holder reading it."""
+    Auto-approve and not that is wrong for the holder reading it.
+
+    `B1652` changed what it names: a command that reaches the network — its
+    `pip install` — now carries `network_egress`, which its hire asks about
+    too, so the sentence names both."""
     m = get_agent(None, "environment-setter")
-    assert m.effects.get("destructive") == "ask"
+    assert m.effects.get("destructive") == "ask" and m.effects.get("network_egress") == "ask"
     sentence = next(s for b in blocks(m) for s in _SENTENCE.split(b) if WHOSE.search(s))
-    assert "`destructive`" in sentence and misreads(m) == []
+    assert "`destructive`" in sentence and "`network_egress`" in sentence and misreads(m) == []
     bare = _with(m, runbook=m.runbook.replace(sentence, re.sub(r";.*", ".", sentence)))
-    assert any("asks about destructive whoever holds Auto-approve" in x for x in misreads(bare))
+    assert any("asks about destructive, network_egress whoever holds Auto-approve" in x
+               for x in misreads(bare))
 
 
 def test_a_yes_nobody_is_asked_for_is_refused_too():

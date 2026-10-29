@@ -4,7 +4,7 @@ name: File Fetcher
 tagline: "Each week, collects the new files linked from the pages you name — statements, reports — into a folder. It never signs in."
 section: workstation
 icon: download
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: pages, kind: list, label: "Pages that link the files (e.g. a statements page)"}
@@ -16,7 +16,7 @@ tools: [bash]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Fetched, Already here, Needs you]}
-effects: {execute_code: allow, destructive: never}
+effects: {execute_code: allow, network_egress: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 30, max_minutes: 20}
 memory: own
 ---

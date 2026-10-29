@@ -4,7 +4,7 @@ name: Subscription Auditor
 tagline: "Every recurring charge, when it was last used, and the ones to consider cancelling."
 section: finance
 icon: repeat-2
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: ledger, kind: text, label: "The ledger CSV, inside your projects folder"}
@@ -14,7 +14,7 @@ tools: [python, read_file, search_emails, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Subscriptions", must_contain: [Consider cancelling, In use, Checked]}
-effects: {execute_code: allow, read_workspace: allow, read_private: allow, write_private: allow, destructive: never}
+effects: {execute_code: allow, network_egress: never, read_workspace: allow, read_private: allow, write_private: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 30, max_minutes: 15}
 memory: own
 ---

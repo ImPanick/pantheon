@@ -4,7 +4,7 @@ name: Visual Regression
 tagline: "Screenshots your pages each night with the workstation's own browser and flags the ones that changed since last time."
 section: testing
 icon: images
-version: 1.3.0
+version: 1.4.0
 wave: 2
 inputs:
   - {key: pages, kind: list, label: Page addresses}
@@ -15,7 +15,7 @@ tools: [bash, ls]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Changed, Unchanged, Could not shoot]}
-effects: {execute_code: allow, read_workspace: allow, destructive: never}
+effects: {execute_code: allow, network_egress: allow, read_workspace: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 30, max_minutes: 20}
 memory: own
 ---

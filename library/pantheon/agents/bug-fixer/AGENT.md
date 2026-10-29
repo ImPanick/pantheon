@@ -4,7 +4,7 @@ name: Bug Fixer
 tagline: "Reproduces an issue with a failing test, then puts the smallest fix beside it on a branch of its own."
 section: development
 icon: bug
-version: 1.4.0
+version: 1.5.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The repository's folder, inside your projects folder"}
@@ -16,7 +16,7 @@ tools: [bash, read_file, edit_file, grep, ls]
 needs: {connectors: [], min_context: 32000, native_tools: required}
 delivers:
   - {kind: answer, must_contain: [Reproduced, Fix, Tests, branch]}
-effects: {execute_code: allow, read_workspace: allow, write_workspace: allow, destructive: never}
+effects: {execute_code: allow, network_egress: never, read_workspace: allow, write_workspace: allow, destructive: never}
 budget: {runs_per_day: 4, max_steps: 60, max_minutes: 45}
 memory: none
 ---

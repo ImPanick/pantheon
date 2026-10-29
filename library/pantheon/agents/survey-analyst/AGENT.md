@@ -4,7 +4,7 @@ name: Survey Analyst
 tagline: "Themes, counts and quotes from survey answers."
 section: data-analytics
 icon: clipboard-check
-version: 1.3.0
+version: 1.4.0
 wave: 2
 inputs:
   - {key: file, kind: text, label: "The answers (CSV), inside your projects folder"}
@@ -14,7 +14,7 @@ tools: [python, create_document]
 needs: {connectors: [], min_context: 32000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Survey findings", must_contain: [Counts, Themes, What stood out]}
-effects: {execute_code: allow, write_private: allow, destructive: never}
+effects: {execute_code: allow, network_egress: never, write_private: allow, destructive: never}
 budget: {runs_per_day: 4, max_steps: 30, max_minutes: 20}
 memory: none
 ---

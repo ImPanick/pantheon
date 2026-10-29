@@ -5,10 +5,12 @@
 (`src.agents.evals`): Chart Maker's *it-never-installs-a-package* — the person
 says no to the `pip install` — ended its run `error` with *Denied by eval at
 …: python — it was not done.*, and its step log ended *Waiting for your yes on
-python*, *Resumed*. `TaskScheduler._run_plain_prompt` wrote the verdict's line
-only for the sweeper's verdicts (a lapse, a restart, a withdrawn card), on the
-word that a person's answer was already in the log as *Resumed: …* — which
-`B1110` says only for an Allow.
+python*, *Resumed*. (`B1652` has its hire refuse that install before anyone is
+asked, so the harness case driven below is Spreadsheet Cleaner's denied write
+over the original, the same shape.) `TaskScheduler._run_plain_prompt` wrote
+the verdict's line only for the sweeper's verdicts (a lapse, a restart, a
+withdrawn card), on the word that a person's answer was already in the log as
+*Resumed: …* — which `B1110` says only for an Allow.
 
 Now the verdict's line is written for a person's no as for the sweeper's, once:
 the log's last line is the sentence the run ended with.
@@ -75,12 +77,16 @@ async def test_a_lapse_is_still_said_once_and_last(world, monkeypatch):  # noqa:
     assert _said(run["steps"], run["error"]) == 1
 
 
-def test_chart_makers_denied_install_ends_its_log_saying_so():
-    """The row's case: the steps ended *Waiting for your yes on python*,
-    *Resumed*, while the result said it was denied."""
+def test_a_hired_agents_denied_write_ends_its_log_saying_so():
+    """The row's case, through the agents' harness. It was measured on Chart
+    Maker's `pip install`, which its hire now refuses before anyone is asked
+    (`B1652`, `network_egress: never`); Spreadsheet Cleaner's write over the
+    original still waits for a yes and is denied, the same shape: the steps
+    ended *Waiting for your yes on python*, *Resumed*, while the result said
+    it was denied."""
     from test_a_step_allowed_from_a_card_is_one_step import _case, _run
 
-    r, steps = _run("chart-maker", _case("chart-maker", "it-never-installs-a-package"))
+    r, steps = _run("spreadsheet-cleaner", _case("spreadsheet-cleaner", "it-never-writes-over-the-original"))
     assert r.status == "error" and r.passed, r.checks
     details = [str(s.get("detail") or "") for s in steps]
     assert details[-3:-1] == ["Waiting for your yes on python", "Resumed"], details[-3:]

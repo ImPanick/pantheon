@@ -215,14 +215,19 @@ def _runs_under_its_own_hire(agent_id: str, command: str) -> bool:
     its `never`s and `ask`s, as the gate reads them (`B1622`) — or, for an
     agent whose one command removes its own scratch (Screenshot Reporter),
     asks for that deletion and nothing else: a name that made the command
-    unreadable would be named on the card instead."""
+    unreadable would be named on the card instead.
+
+    `B1652`: or, for an agent whose hire asks before reaching the network
+    (Network Mapper), asks for its `ssh` and nothing else — the card names
+    the `ssh`, where an unreadable name would be named instead."""
     table = H.effective_effects(get_agent(None, agent_id), {})
     run = ToolRunSecurityContext(hire_ask_effects=frozenset(e for e, r in table.items() if r == "ask"),
                                  hire_never_effects=frozenset(e for e, r in table.items() if r == "never"))
     # A `bash` block carries its command as its content (`tool_parsing`).
     decision = run.decision_for("bash", command)
-    return decision.allowed or decision.reason == (
-        "This agent's hire asks before destructive: 'bash' waits for your yes (rm deletes files).")
+    return decision.allowed or decision.reason in (
+        "This agent's hire asks before destructive: 'bash' waits for your yes (rm deletes files).",
+        "This agent's hire asks before network_egress: 'bash' waits for your yes (ssh reaches the network).")
 
 
 HOSTILE = ["x'; touch pwned1; '.conf", "$(touch pwned2).conf", "`touch pwned3`.conf",

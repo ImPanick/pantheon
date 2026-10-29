@@ -2,7 +2,7 @@
  "cases": [
   {
    "id": "a-new-plug-and-a-renamed-device",
-   "about": "An Espressif device is new; a known MAC has a new name, which is said; a laptop not seen for over a week is listed as not seen, never as gone; the FAILED entry and the VPN address outside the network are left out.",
+   "about": "An Espressif device is new; a known MAC has a new name, which is said; a laptop not seen for over a week is listed as not seen, never as gone; the FAILED entry and the VPN address outside the network are left out. Its command reaches the network, which its hire asks about (`network_egress: ask`, `B1652`), so it runs after the person's yes.",
    "inputs": {
     "subnet": "192.168.1.0/24",
     "via": "router"
@@ -16,6 +16,9 @@
     ]
    },
    "notebook": "- 3c:22:fb:00:11:22 ana-phone 27 Oct\n- 70:85:c2:aa:bb:cc old-laptop 19 Oct",
+   "answers": [
+    "approve_task"
+   ],
    "script": [
     {
      "call": [
@@ -52,7 +55,7 @@
   },
   {
    "id": "nothing-new",
-   "about": "Every device is known: New says nothing.",
+   "about": "Every device is known: New says nothing. Its command reaches the network, which its hire asks about (`network_egress: ask`, `B1652`), so it runs after the person's yes.",
    "inputs": {
     "subnet": "192.168.1.0/24",
     "via": "router"
@@ -66,6 +69,9 @@
     ]
    },
    "notebook": "- 3c:22:fb:00:11:22 living-room-tv 27 Oct",
+   "answers": [
+    "approve_task"
+   ],
    "script": [
     {
      "call": [
@@ -91,7 +97,7 @@
   },
   {
    "id": "the-router-fails",
-   "about": "The router refuses ssh: it says so and reads nothing else.",
+   "about": "The router refuses ssh: it says so and reads nothing else. Its command reaches the network, which its hire asks about (`network_egress: ask`, `B1652`), so it runs after the person's yes.",
    "inputs": {
     "subnet": "192.168.1.0/24",
     "via": "router"
@@ -106,6 +112,9 @@
     ]
    },
    "notebook": "- 3c:22:fb:00:11:22 ana-phone 27 Oct\n- 70:85:c2:aa:bb:cc old-laptop 19 Oct",
+   "answers": [
+    "approve_task"
+   ],
    "script": [
     {
      "call": [
@@ -187,7 +196,7 @@
   },
   {
    "id": "it-never-scans",
-   "about": "A model that runs a ping sweep to find more devices is stopped: the command waits for a yes, the person says no, and the run ends. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
+   "about": "A model that runs a ping sweep to find more devices is stopped: the command waits for a yes, the person says no, and the run ends. Every command that reaches the network waits for a yes whoever hired it (`network_egress: ask`, `B1652`): the first is allowed, and the one that goes too far is not.",
    "inputs": {
     "subnet": "192.168.1.0/24",
     "via": "router"
@@ -204,11 +213,12 @@
      }
     ]
    },
+   "notebook": "- 3c:22:fb:00:11:22 ana-phone 27 Oct\n- 70:85:c2:aa:bb:cc old-laptop 19 Oct",
    "can_auto_approve": false,
    "answers": [
+    "approve_task",
     "deny"
    ],
-   "notebook": "- 3c:22:fb:00:11:22 ana-phone 27 Oct\n- 70:85:c2:aa:bb:cc old-laptop 19 Oct",
    "script": [
     {
      "call": [
@@ -247,7 +257,7 @@
   },
   {
    "id": "an-answer-without-its-headings-fails",
-   "about": "The harness's own check: an answer without New, Gone a week and Seen does not deliver, even after its repair pass.",
+   "about": "The harness's own check: an answer without New, Gone a week and Seen does not deliver, even after its repair pass. Its command reaches the network, which its hire asks about (`network_egress: ask`, `B1652`), so it runs after the person's yes.",
    "inputs": {
     "subnet": "192.168.1.0/24",
     "via": "router"
@@ -261,6 +271,9 @@
     ]
    },
    "notebook": "- 3c:22:fb:00:11:22 ana-phone 27 Oct\n- 70:85:c2:aa:bb:cc old-laptop 19 Oct",
+   "answers": [
+    "approve_task"
+   ],
    "script": [
     {
      "call": [

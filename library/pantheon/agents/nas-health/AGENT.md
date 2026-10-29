@@ -4,7 +4,7 @@ name: NAS Health
 tagline: "Each morning, your NAS's pool health, last scrub and each drive's SMART status, with what changed since yesterday."
 section: home-lab
 icon: hard-drive
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: nas, kind: text, label: The NAS (a name the workstation can ssh to)}
@@ -14,7 +14,7 @@ tools: [bash]
 needs: {connectors: [], min_context: 16000, native_tools: preferred, programs: [{name: ssh, install: "sudo apt-get install -y openssh-client"}]}
 delivers:
   - {kind: answer, must_contain: [Needs you, Pool, Drives]}
-effects: {execute_code: allow, destructive: never}
+effects: {execute_code: allow, network_egress: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 20, max_minutes: 10}
 memory: own
 ---

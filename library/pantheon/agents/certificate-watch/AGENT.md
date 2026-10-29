@@ -4,7 +4,7 @@ name: Certificate Watch
 tagline: "Each morning, the TLS certificates and domain registrations that expire within 30 days — it never renews anything."
 section: devops
 icon: lock
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: names, kind: list, label: Domains and host:port pairs}
@@ -14,7 +14,7 @@ tools: [bash]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Expiring soon, Did not answer, Fine]}
-effects: {execute_code: allow, destructive: never}
+effects: {execute_code: allow, network_egress: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 20, max_minutes: 10}
 memory: own
 ---

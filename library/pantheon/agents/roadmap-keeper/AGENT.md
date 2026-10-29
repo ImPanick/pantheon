@@ -4,7 +4,7 @@ name: Roadmap Keeper
 tagline: Keeps your roadmap document in step with what actually shipped.
 section: product
 icon: milestone
-version: 1.4.0
+version: 1.5.0
 wave: 2
 inputs:
   - {key: roadmap, kind: text, label: The roadmap document title}
@@ -15,7 +15,7 @@ tools: [manage_documents, bash, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Roadmap suggestions", must_contain: [Shipped, Overdue, Unmatched]}
-effects: {read_private: allow, write_private: allow, execute_code: allow, destructive: never}
+effects: {read_private: allow, write_private: allow, execute_code: allow, network_egress: never, destructive: never}
 budget: {runs_per_day: 2, max_steps: 25, max_minutes: 12}
 memory: own
 ---

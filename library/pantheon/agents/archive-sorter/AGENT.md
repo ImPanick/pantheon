@@ -4,7 +4,7 @@ name: Archive Sorter
 tagline: "Sorts a dump folder of scans and downloads into named, dated folders. Nothing is deleted."
 section: knowledge
 icon: archive
-version: 1.4.0
+version: 1.5.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The dump folder, inside your projects folder"}
@@ -14,7 +14,7 @@ tools: [ls, read_file, bash]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Moved, Left in place]}
-effects: {read_workspace: allow, execute_code: allow, destructive: never}
+effects: {read_workspace: allow, execute_code: allow, network_egress: never, destructive: never}
 budget: {runs_per_day: 2, max_steps: 40, max_minutes: 20}
 memory: own
 ---

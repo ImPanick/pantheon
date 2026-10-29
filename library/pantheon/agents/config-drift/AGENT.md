@@ -4,7 +4,7 @@ name: Config Drift
 tagline: Compares your machines' live config files with the copies recorded in git and lists the drift — it fixes nothing.
 section: devops
 icon: git-compare
-version: 1.4.0
+version: 1.5.0
 wave: 2
 inputs:
   - {key: hosts, kind: list, label: Machines to check (names or addresses the workstation can ssh to)}
@@ -15,7 +15,7 @@ tools: [bash, read_file, ls]
 needs: {connectors: [], min_context: 16000, native_tools: preferred, programs: [{name: ssh, install: "sudo apt-get install -y openssh-client"}]}
 delivers:
   - {kind: answer, must_contain: [Drifted, Matches, Could not check]}
-effects: {execute_code: allow, read_workspace: allow, destructive: never}
+effects: {execute_code: allow, network_egress: allow, read_workspace: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 40, max_minutes: 15}
 memory: own
 ---

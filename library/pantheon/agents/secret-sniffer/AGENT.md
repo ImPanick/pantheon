@@ -4,7 +4,7 @@ name: Secret Sniffer
 tagline: Finds keys and passwords committed to your repositories and says where to rotate each.
 section: security
 icon: key-round
-version: 1.4.0
+version: 1.5.0
 wave: 2
 inputs:
   - {key: folders, kind: list, label: "Repositories, inside your projects folder"}
@@ -14,7 +14,7 @@ tools: [bash, create_document]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [New findings, Already reported, Repositories checked]}
-effects: {execute_code: allow, write_private: allow, destructive: never}
+effects: {execute_code: allow, network_egress: never, write_private: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 25, max_minutes: 20}
 memory: own
 ---

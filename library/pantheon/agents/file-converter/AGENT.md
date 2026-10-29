@@ -4,7 +4,7 @@ name: File Converter
 tagline: "Converts what is dropped in a folder — documents to PDF, HEIC photos to JPEG, videos to MP4 — into converted/, originals kept."
 section: workstation
 icon: repeat
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The drop folder, inside your projects folder"}
@@ -14,7 +14,7 @@ tools: [bash]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Converted, Skipped, Failed]}
-effects: {execute_code: allow, destructive: ask}
+effects: {execute_code: allow, network_egress: never, destructive: ask}
 budget: {runs_per_day: 48, max_steps: 25, max_minutes: 20}
 memory: own
 ---

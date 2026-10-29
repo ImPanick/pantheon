@@ -4,7 +4,7 @@ name: Expense Tracker
 tagline: Categorises your receipts and statements into a monthly ledger.
 section: finance
 icon: wallet
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "Folder of receipts and statement CSVs"}
@@ -14,7 +14,7 @@ tools: [python, read_file, write_file, ls]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Totals, Uncategorised, Against last month]}
-effects: {execute_code: allow, read_workspace: allow, write_workspace: allow, destructive: never}
+effects: {execute_code: allow, network_egress: never, read_workspace: allow, write_workspace: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 30, max_minutes: 20}
 memory: own
 ---

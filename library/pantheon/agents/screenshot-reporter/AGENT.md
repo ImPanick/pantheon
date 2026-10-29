@@ -4,7 +4,7 @@ name: Screenshot Reporter
 tagline: Captures the pages and dashboards you name into one dated PDF every morning, with the workstation's own browser.
 section: workstation
 icon: camera
-version: 1.4.0
+version: 1.5.0
 wave: 2
 inputs:
   - {key: pages, kind: list, label: Page addresses}
@@ -15,7 +15,7 @@ tools: [bash]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [PDF, Captured, Failed to load]}
-effects: {execute_code: allow, destructive: ask}
+effects: {execute_code: allow, network_egress: allow, destructive: ask}
 budget: {runs_per_day: 2, max_steps: 25, max_minutes: 15}
 memory: own
 ---

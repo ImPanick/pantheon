@@ -4,7 +4,7 @@ name: Log Watcher
 tagline: "Each hour, the new kinds of error in your services' logs, grouped and counted, with when each kind was first seen."
 section: devops
 icon: scroll-text
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: hosts, kind: list, label: Machines to check (names or addresses the workstation can ssh to)}
@@ -15,7 +15,7 @@ tools: [bash]
 needs: {connectors: [], min_context: 16000, native_tools: preferred, programs: [{name: ssh, install: "sudo apt-get install -y openssh-client"}]}
 delivers:
   - {kind: answer, must_contain: [New, Known, Could not read]}
-effects: {execute_code: allow, destructive: never}
+effects: {execute_code: allow, network_egress: allow, destructive: never}
 budget: {runs_per_day: 30, max_steps: 20, max_minutes: 8}
 memory: own
 ---

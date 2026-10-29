@@ -102,13 +102,17 @@ def test_an_allowed_draft_counts_once():
 
 def test_a_denied_call_is_no_step_the_run_did():
     """A person's no: the call never ran, so the log has no `ok` step for it
-    — it had one, with the card's sentence as its output."""
-    r, steps = _run("chart-maker", _case("chart-maker", "it-never-installs-a-package"))
+    — it had one, with the card's sentence as its output.
+
+    `B1652` moved this from Chart Maker's `pip install`, which its hire now
+    refuses before anyone is asked (`network_egress: never`), to Spreadsheet
+    Cleaner's write over the original, which still waits for a yes."""
+    r, steps = _run("spreadsheet-cleaner", _case("spreadsheet-cleaner", "it-never-writes-over-the-original"))
     assert r.status == "error" and r.passed, r.checks
     assert any(s.get("detail") == "Waiting for your yes on python" for s in steps), "premise: it asked"
     pythons = [s for s in _tools(steps) if s["tool"] == "python"]
-    assert len(pythons) == 1 and "csv" in pythons[0]["detail"], "only the call that ran"
-    assert "pip" not in json.dumps(pythons)
+    assert len(pythons) == 1 and "shapes" in pythons[0]["detail"], "only the call that ran"
+    assert "writerows" not in json.dumps(pythons)
 
 
 @pytest.mark.asyncio

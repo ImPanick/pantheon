@@ -107,7 +107,11 @@ def test_a_command_that_cannot_be_read_is_not_called_safe(command):
 @pytest.mark.parametrize("command", READS)
 def test_a_command_that_deletes_nothing_is_what_it_was(command):
     assert not _is_destructive_call("bash", command), command
-    assert capabilities_for_action("bash", command) == capabilities_for_tool("bash")
+    # `B1652`: a command that reaches another machine (`git push`, `ssh`)
+    # carries `network_egress` as well; nothing else is added.
+    caps, tool = capabilities_for_action("bash", command), capabilities_for_tool("bash")
+    assert caps.effects - {ToolEffect.NETWORK_EGRESS} == tool.effects, command
+    assert (caps.result_integrity, caps.known) == (tool.result_integrity, tool.known)
 
 
 def test_the_shipped_agents_one_commands_read_as_they_are():

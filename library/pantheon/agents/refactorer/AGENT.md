@@ -4,7 +4,7 @@ name: Refactorer
 tagline: "Carries out one named refactor across a repository on a branch of its own, the tests green before and after."
 section: development
 icon: shuffle
-version: 1.4.0
+version: 1.5.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The repository's folder, inside your projects folder"}
@@ -16,7 +16,7 @@ tools: [bash, read_file, edit_file, grep, ls]
 needs: {connectors: [], min_context: 32000, native_tools: required}
 delivers:
   - {kind: answer, must_contain: [Before, Changed, After, branch]}
-effects: {execute_code: allow, read_workspace: allow, write_workspace: allow, destructive: ask}
+effects: {execute_code: allow, network_egress: never, read_workspace: allow, write_workspace: allow, destructive: ask}
 budget: {runs_per_day: 3, max_steps: 60, max_minutes: 50}
 memory: none
 ---

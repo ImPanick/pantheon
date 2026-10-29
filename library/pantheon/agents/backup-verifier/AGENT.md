@@ -4,7 +4,7 @@ name: Backup Verifier
 tagline: Each night, proves the newest backup exists and that one file from it can be read back.
 section: devops
 icon: shield
-version: 1.4.0
+version: 1.5.0
 wave: 1
 inputs:
   - {key: folder, kind: folder, label: "The backups folder, inside your projects folder"}
@@ -14,7 +14,7 @@ triggers:
 tools: [bash]
 delivers:
   - {kind: answer, must_contain: [Verdict, Newest backup, Read back]}
-effects: {execute_code: allow, destructive: never}
+effects: {execute_code: allow, network_egress: never, destructive: never}
 budget: {runs_per_day: 2, max_steps: 15, max_minutes: 10}
 memory: own
 ---

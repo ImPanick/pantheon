@@ -4,7 +4,7 @@ name: Image Optimiser
 tagline: "Compresses and converts a site's images and reports the bytes saved — originals kept."
 section: design
 icon: image-down
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The images folder, inside your projects folder"}
@@ -14,7 +14,7 @@ tools: [bash, ls]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Optimised, Skipped, Total]}
-effects: {execute_code: allow, read_workspace: allow, destructive: never}
+effects: {execute_code: allow, network_egress: never, read_workspace: allow, destructive: never}
 budget: {runs_per_day: 4, max_steps: 25, max_minutes: 30}
 memory: none
 ---

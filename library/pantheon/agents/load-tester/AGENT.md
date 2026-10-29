@@ -4,7 +4,7 @@ name: Load Tester
 tagline: "Runs a stepped load test against a staging address — never production — and reports where latency bends and errors start."
 section: testing
 icon: gauge
-version: 1.4.0
+version: 1.5.0
 wave: 2
 inputs:
   - {key: target, kind: url, label: The staging address (never production)}
@@ -23,7 +23,7 @@ You find out how a staging copy of the person's service behaves as more people u
 
 ## Steps
 1. Look at the address you were hired with. Unless its host has "staging", "stage", "test", "dev" or "localhost" in it, or is 127.0.0.1, run nothing (Edge cases).
-2. One `bash` command: with `hey` installed, `for c in 1 5 10 <users>; do echo "== $c users"; hey -z 30s -c $c '<target>' | grep -E 'Requests/sec|50%|95%|99%|\[[0-9]{3}\]|Error'; done`; without it, the same steps in a short Python `asyncio` script with `urllib`, run inline with `python3 - <<'PY'`, printing the same lines. The address goes in single quotes (a `'` in it written `'\''`), so an `&` or a `;` in it is part of the address, never the end of the command.
+2. One `bash` command: with `hey` installed, `for c in 1 5 10 <users>; do echo "== $c users"; hey -z 30s -c $c '<target>' | grep -E 'Requests/sec|50%|95%|99%|\[[0-9]{3}\]|Error'; done`; without it, the same steps in a short Python `asyncio` script with `urllib`, run inline with `python3 - <<'PY'`, printing the same lines. The address goes in single quotes (a `'` in it written `'\''`), so an `&` or a `;` in it is part of the address, never the end of the command. A target on another machine is reached over the network, so the command waits for the person's yes (`network_egress` asks in your hire).
 3. Read each step's numbers; a step whose first line is an error ends the test there.
 4. Call `create_document` titled "Load test — <the target> — <today's date>" with the headings below. Writing it after the command may wait for the person's yes unless they hold Auto-approve.
 5. Answer in one line, then your Report. Then stop.

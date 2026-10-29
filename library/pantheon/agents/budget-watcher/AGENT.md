@@ -4,7 +4,7 @@ name: Budget Watcher
 tagline: "Spend against budget per category each week, overruns flagged."
 section: finance
 icon: piggy-bank
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: ledger, kind: text, label: "The ledger CSV, inside your projects folder"}
@@ -15,7 +15,7 @@ tools: [python, read_file]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Over budget, On course to go over, Every category]}
-effects: {execute_code: allow, read_workspace: allow, destructive: never}
+effects: {execute_code: allow, network_egress: never, read_workspace: allow, destructive: never}
 budget: {runs_per_day: 2, max_steps: 15, max_minutes: 8}
 memory: own
 ---

@@ -39,6 +39,21 @@ Python — the `python` tool's code, and `python -c` — is read by
 command handed to `os.system` or `subprocess` (read by the shell reader), and
 `exec`/`eval`/`__import__`, or code that does not parse, as unreadable.
 
+**`B1652` · and whether it reaches another machine.** The same reading answers
+a second question: **does this call carry `network_egress`?** Yes when a
+program whose use is reaching another machine runs — fetching (`curl`, `wget`,
+`scp`, `rsync host:…`), connecting (`ssh`, `nc`, `telnet`), resolving or
+measuring one (`dig`, `ping`, `traceroute`, `nmap`, a load generator) — or a
+package manager or a version-control command does what fetches or publishes
+(`pip install`, `npm ci`, `apt-get install`, `docker pull`, `git clone`,
+`fetch`, `pull`, `push`), at the same depths as above; Python calling into a
+network library (`requests`, `urllib.request`, `socket.create_connection`…)
+or handed an address (`"https://…"`); **or the command cannot be read**: a
+command whose network reach cannot be read is never called local. Before this,
+Environment Setter's `pip install` was `execute_code` alone, so its hire's
+`network_egress: ask` — *reach other sites and machines — asks you first* —
+never asked.
+
 **The adversary (`Law 17`), and where this stops.** What this holds against is
 **a mistake** — the model reaching for `rm`, `mv` or `push --force` on its own
 reading of a job, or with words copied from its notebook or a file's name — and
@@ -46,12 +61,14 @@ reading of a job, or with words copied from its notebook or a file's name — an
 wrappers (base64 into a shell, a fetched script piped to `sh`). It is *not* a
 boundary against someone who controls the command: they write a script and
 run it by name, and no reading of words stops that. A program run by name — a
-script, `make`, a build, `python3 tool.py` — does what that program does; its
-command is read, the program is not. What holds against that adversary is the
-post-external gate, which asks before **every** shell command once outside
+script, `make`, a build, `python3 tool.py`, `npm test`, `cargo build` — does
+what that program does; its command is read, the program is not, so a build
+that fetches its dependencies is not read as reaching the network, and neither
+is a library this module does not name. What holds against that adversary is
+the post-external gate, which asks before **every** shell command once outside
 content has entered the run (`FORBIDDEN.md` Part 2) and is untouched here:
-this module only ever adds `destructive` to a call, so it can make Pantheon
-ask more, and never less.
+this module only ever adds `destructive` or `network_egress` to a call, so it
+can make Pantheon ask more, and never less.
 """
 
 from __future__ import annotations
@@ -72,6 +89,7 @@ MAX_DEPTH = 8
 
 DESTROYS = "destroys"
 UNREADABLE = "unreadable"
+REACHES = "reaches"     # `B1652`: it reaches another machine
 
 
 class _Unreadable(Exception):
@@ -82,7 +100,8 @@ class _Unreadable(Exception):
 
 @dataclass(frozen=True)
 class Finding:
-    """One thing the reader found: `kind` is `destroys` or `unreadable`."""
+    """One thing the reader found: `kind` is `destroys`, `reaches` or
+    `unreadable`."""
     kind: str
     why: str
 
@@ -554,6 +573,232 @@ _SQL_DESTROYS = re.compile(r"\b(drop\s+(table|database|schema|index|view|user|ro
 _REDIS_DESTROYS = frozenset({"flushall", "flushdb", "del", "unlink", "getdel"})
 _DEVICE_RE = re.compile(r"^/dev/(sd|hd|vd|xvd|nvme|mmcblk|disk|dm-|md|loop|mapper/)")
 
+# ── `B1652` · what reaches another machine ──────────────────────────────────
+
+#: Programs whose use is reaching another machine: fetching from it,
+#: connecting to it, resolving, probing or loading it, or a cloud's own client.
+_REACHERS = frozenset({
+    "curl", "curlie", "wget", "wget2", "aria2c", "axel", "http", "https", "xh", "httpie",
+    "lynx", "links", "elinks", "w3m", "nc", "ncat", "netcat", "socat", "telnet", "ftp", "lftp",
+    "tftp", "sftp", "scp", "ssh", "mosh", "rsh", "rlogin", "rcp", "ping", "ping6", "fping",
+    "hping3", "arping", "traceroute", "traceroute6", "tracepath", "mtr", "tcptraceroute", "dig",
+    "nslookup", "host", "drill", "kdig", "whois", "nmap", "masscan", "zmap", "arp-scan",
+    "iperf", "iperf3", "speedtest", "speedtest-cli", "ab", "wrk", "hey", "siege", "k6", "vegeta",
+    "ntpdate", "sntp", "gh", "glab", "hub", "aws", "gcloud", "gsutil", "az", "doctl", "flyctl",
+    "heroku", "vercel", "netlify", "wrangler", "rclone", "s3cmd", "yt-dlp", "youtube-dl",
+    "gallery-dl", "certbot", "testssl", "testssl.sh", "sslscan", "sslyze", "nikto", "lighthouse",
+    "pa11y", "sendmail", "msmtp", "swaks", "smbclient", "showmount", "snmpwalk", "snmpget",
+    "grpcurl", "websocat", "wscat", "ldapsearch", "ansible", "ansible-playbook", "twine",
+    "npx", "pnpx", "bunx", "uvx", "linkchecker", "lychee", "muffet", "httrack", "nuclei", "ffuf",
+    "gobuster", "whatweb", "wpscan", "sqlmap",
+})
+#: Programs that reach another machine when one of their first plain words
+#: is one of these: what installs, fetches, publishes or signs in.
+_PIP_REACH = {"install", "download", "wheel", "index", "search"}
+_CONDA_REACH = {"install", "create", "update", "upgrade", "search"}
+_APT_REACH = {"install", "update", "upgrade", "full-upgrade", "dist-upgrade", "download", "source",
+              "build-dep", "reinstall", "safe-upgrade"}
+_RPM_REACH = {"install", "update", "upgrade", "makecache", "download", "check-update", "search",
+              "reinstall", "groupinstall"}
+_IMAGE_REACH = {"pull", "push", "login", "search"}
+_REACH_SUBCOMMANDS = {
+    "pip": _PIP_REACH, "pip3": _PIP_REACH,
+    "pipx": {"install", "run", "upgrade", "upgrade-all", "inject", "reinstall", "reinstall-all"},
+    "poetry": {"install", "add", "update", "lock", "publish", "search", "self"},
+    "pipenv": {"install", "update", "lock", "sync", "upgrade"},
+    "conda": _CONDA_REACH, "mamba": _CONDA_REACH, "micromamba": _CONDA_REACH,
+    "npm": {"install", "i", "ci", "add", "update", "up", "upgrade", "publish", "unpublish", "view",
+            "info", "show", "audit", "outdated", "search", "login", "adduser", "exec", "x", "init",
+            "create", "dist-tag", "install-test", "it", "install-ci-test", "cit", "ping", "doctor",
+            "whoami", "deprecate"},
+    "pnpm": {"install", "i", "add", "update", "up", "upgrade", "dlx", "publish", "fetch", "outdated",
+             "audit", "create"},
+    "yarn": {"install", "add", "upgrade", "up", "dlx", "npm", "publish", "info", "outdated", "audit",
+             "create", "set"},
+    "bun": {"install", "i", "add", "a", "update", "x", "create", "c", "publish", "outdated", "upgrade"},
+    "deno": {"install", "add", "upgrade", "cache"},
+    "cargo": {"install", "fetch", "update", "add", "publish", "search", "login"},
+    "go": {"get", "install"},
+    "gem": {"install", "i", "update", "fetch", "push", "search"},
+    "bundle": {"install", "update", "add", "lock", "outdated", "cache", "package"},
+    "bundler": {"install", "update", "add", "lock", "outdated", "cache", "package"},
+    "composer": {"install", "require", "update", "upgrade", "create-project", "global", "outdated",
+                 "search"},
+    "apt": _APT_REACH, "apt-get": _APT_REACH, "aptitude": _APT_REACH,
+    "yum": _RPM_REACH, "dnf": _RPM_REACH, "microdnf": _RPM_REACH,
+    "apk": {"add", "update", "upgrade", "fetch"},
+    "zypper": {"install", "in", "refresh", "ref", "update", "up", "dup", "dist-upgrade",
+               "source-install", "si", "download"},
+    "brew": {"install", "update", "upgrade", "fetch", "tap", "search", "reinstall", "bundle"},
+    "port": {"install", "selfupdate", "sync", "upgrade"},
+    "snap": {"install", "refresh", "download"},
+    "flatpak": {"install", "update", "remote-add", "search"},
+    "docker": _IMAGE_REACH, "podman": _IMAGE_REACH, "nerdctl": _IMAGE_REACH,
+    "helm": {"install", "upgrade", "pull", "push", "repo", "search", "dependency", "dep", "fetch",
+             "registry"},
+    "terraform": {"init", "plan", "apply", "destroy", "import", "refresh", "get", "providers",
+                  "login"},
+    "tofu": {"init", "plan", "apply", "destroy", "import", "refresh", "get", "providers", "login"},
+    "ollama": {"pull", "push"},
+    "huggingface-cli": {"download", "upload", "login", "repo"},
+    "hf": {"download", "upload", "login", "repo"},
+    "openssl": {"s_client", "s_time", "ocsp"},
+}
+#: A Python module run with `-m` that is one of the programs above.
+_PY_MODULE_PROGRAMS = {"pip": "pip", "pipx": "pipx", "poetry": "poetry", "twine": "twine",
+                       "uv": "uv", "pipenv": "pipenv"}
+#: `git` subcommands that talk to a remote.
+_GIT_REACH = {"clone", "fetch", "pull", "push", "ls-remote", "send-email", "request-pull"}
+#: Options that keep a package manager or a package runner off the network.
+_OFFLINE = {"--offline", "--no-install", "--no-index"}
+#: `user@host:path`, `host:path`, `rsync://` or `host::module` — a remote end,
+#: and not a Windows drive (`C:\`).
+_REMOTE_PATH_RE = re.compile(r"^(?:rsync://|[^/:\s]+::|[^/:\s\\]{2,}:)")
+#: Web clients whose every address may be this machine's own: a site served
+#: here and fetched to test it (`curl http://localhost:8080/`) reaches no other
+#: machine. Any other client, an address filled in when it runs, or an option
+#: that sends the request somewhere else (a proxy, `--connect-to`, a list of
+#: addresses read from a file) is read as reaching the network.
+_WEB_CLIENTS = frozenset({"curl", "curlie", "wget", "wget2", "http", "https", "xh", "httpie", "ab",
+                          "hey", "wrk", "siege", "lighthouse", "pa11y"})
+_ELSEWHERE_OPTIONS = ("-x", "--proxy", "--preproxy", "--socks", "--connect-to", "--resolve",
+                      "--doh-url", "-K", "--config", "--input-file", "--execute",
+                      "--unix-socket", "--abstract-unix-socket")
+#: `wget`'s short spellings of a list of addresses and a command to obey.
+_WGET_ELSEWHERE = ("-i", "-e")
+_ADDRESS_RE = re.compile(r"^(?:[A-Za-z][A-Za-z0-9+.-]*://)?(?:[^@/\s]*@)?"
+                         r"(?P<host>\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._-]+)(?P<port>:\d+)?(?:[/?#]\S*)?$")
+_LOOPBACK_RE = re.compile(r"^(?:localhost|[a-z0-9-]+\.localhost|ip6-localhost|127(?:\.\d{1,3}){3}|"
+                          r"\[?::1\]?|0\.0\.0\.0)$", re.I)
+
+
+#: Browsers and page renderers run from a command: they reach whatever address
+#: they are handed (`chromium --headless --screenshot=… "$u"`).
+_BROWSERS = frozenset({"chromium", "chromium-browser", "google-chrome", "google-chrome-stable",
+                       "chrome", "firefox", "wkhtmltopdf", "wkhtmltoimage", "shot-scraper"})
+_SCHEME_RE = re.compile(r"(?:^|=)(?P<scheme>[A-Za-z][A-Za-z0-9+.-]*)://(?P<rest>\S*)")
+
+
+def _browser_reach(args: Sequence[_Word]) -> bool:
+    """`B1652`. Whether a browser is handed an address on another machine, or
+    one filled in when it runs."""
+    for w in args:
+        if not w.text.startswith("-") and not w.plain():
+            return True
+        m = _SCHEME_RE.search(w.text)
+        if m and m["scheme"].lower() != "file":
+            host = _ADDRESS_RE.match(f"{m['scheme']}://{m['rest']}")
+            if not host or not _LOOPBACK_RE.match(host["host"]):
+                return True
+    return False
+
+
+def _only_this_machine(name: str, args: Sequence[_Word]) -> bool:
+    """`B1652`. Whether a web client's every address is this machine's own."""
+    elsewhere = _ELSEWHERE_OPTIONS + (_WGET_ELSEWHERE if name.startswith("wget") else ())
+    if any(w.text == o or w.text.startswith(o + "=") or (o.startswith("--") and w.text.startswith(o))
+           for w in args for o in elsewhere):
+        return False
+    hosts = []
+    for w in args:
+        t = w.text
+        if t.startswith("-") or t.startswith("/") or not t:
+            continue
+        m = _ADDRESS_RE.match(t)
+        if not m or not ("://" in t or m["port"] or "." in m["host"] or _LOOPBACK_RE.match(m["host"])):
+            continue
+        if not w.plain():
+            return False
+        hosts.append(m["host"])
+    return bool(hosts) and all(_LOOPBACK_RE.match(h) for h in hosts)
+
+
+def _reach_of(name: str, args: Sequence[_Word]) -> Optional[str]:
+    """`B1652`. Why running `name` with `args` reaches another machine, or
+    `None`. A probe of the program itself (`--version`, `--help`) and a
+    program named with nothing to do reach nothing."""
+    texts = [w.text for w in args]
+    if not texts or all(t in _PROBES for t in texts):
+        return None
+    flags = _flags(args)
+    plain = [p.lower() for p in _plain_words(args)]
+    if name in _REACHERS:
+        if name in ("npx", "pnpx", "bunx", "uvx") and set(flags) & _OFFLINE:
+            return None
+        if name in _WEB_CLIENTS and _only_this_machine(name, args):
+            return None
+        return f"{name} reaches the network"
+    if name in _BROWSERS:
+        return f"{name} opens an address on the network" if _browser_reach(args) else None
+    if name == "rsync":
+        if any(_REMOTE_PATH_RE.match(t) for t in texts if not t.startswith("-")):
+            return "rsync copies to or from another machine"
+        return None
+    if name == "git":
+        return _git_reach(args)
+    if name == "uv":
+        if plain[:1] in (["add"], ["sync"], ["lock"], ["run"], ["tool"], ["python"]) or (
+                plain[:1] == ["pip"] and plain[1:2] and plain[1] in _PIP_REACH | {"compile", "sync"}):
+            return None if set(flags) & _OFFLINE else f"uv {' '.join(plain[:2])} fetches packages"
+        return None
+    if name == "go" and plain[:1] == ["mod"] and plain[1:2] and plain[1] in ("download", "tidy", "vendor"):
+        return f"go mod {plain[1]} fetches modules"
+    if name == "yarn" and not plain:
+        return None if set(flags) & _OFFLINE else "yarn installs packages from the network"
+    if name in ("docker", "podman", "nerdctl", "docker-compose"):
+        return _image_reach(name, plain, flags)
+    if name == "kubectl":
+        if not plain or plain[0] in ("config", "completion", "kustomize", "plugin", "options") or (
+                plain[0] == "version" and "--client" in flags):
+            return None
+        return "kubectl talks to a cluster"
+    words = _REACH_SUBCOMMANDS.get(name)
+    if words:
+        hit = next((p for p in plain[:2] if p in words), None)
+        if hit and not set(flags) & _OFFLINE:
+            return f"{name} {hit} reaches the network"
+    return None
+
+
+def _git_reach(args: Sequence[_Word]) -> Optional[str]:
+    with_value = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path",
+                  "--config-env"}
+    i = 0
+    while i < len(args) and args[i].text.startswith("-"):
+        i += 2 if args[i].text in with_value else 1
+    if i >= len(args):
+        return None
+    sub = args[i].text
+    plain = _plain_words(args[i + 1:])
+    if sub in _GIT_REACH:
+        return f"git {sub} talks to a remote"
+    if sub == "submodule" and set(plain) & {"update", "add", "sync"}:
+        return "git submodule fetches from a remote"
+    if sub == "remote" and plain[:1] in (["update"], ["show"], ["prune"]):
+        return f"git remote {plain[0]} talks to a remote"
+    if sub == "lfs" and plain[:1] in (["fetch"], ["pull"], ["push"], ["clone"]):
+        return f"git lfs {plain[0]} talks to a remote"
+    if sub == "archive" and any(w.text.startswith("--remote") for w in args[i + 1:]):
+        return "git archive --remote talks to a remote"
+    return None
+
+
+def _image_reach(name: str, plain: List[str], flags: List[str]) -> Optional[str]:
+    if any(f.startswith(("--pull", "--push")) for f in flags):
+        return f"{name} pulls or pushes an image"
+    if not plain:
+        return None
+    rest = plain[1:] if plain[0] == "compose" else (plain if name == "docker-compose" else None)
+    if rest is not None:
+        hit = next((p for p in rest[:2] if p in ("pull", "push")), None)
+        return f"{name} compose {hit} reaches a registry" if hit else None
+    if plain[0] in _IMAGE_REACH:
+        return f"{name} {plain[0]} reaches a registry"
+    if len(plain) > 1 and plain[0] in ("image", "plugin", "trust") and plain[1] in (
+            "pull", "push", "install", "sign"):
+        return f"{name} {plain[0]} {plain[1]} reaches a registry"
+    return None
+
 
 def _handed(word: _Word) -> bool:
     """A script argument that is not a file named in the command: standard
@@ -604,6 +849,9 @@ class _Judge:
 
     def unreadable(self, why: str) -> None:
         self.findings.append(Finding(UNREADABLE, why))
+
+    def reaches(self, why: str) -> None:
+        self.findings.append(Finding(REACHES, why))
 
     def shell_string(self, word: _Word, who: str = "a shell") -> None:
         """A command handed over as one string — `sh -c '…'`, `ssh host '…'`."""
@@ -677,6 +925,12 @@ class _Judge:
         if name in _AWKS:
             self._awk(args)
             return
+        # `B1652`. Whether it reaches another machine is asked of every program
+        # from here on; what it deletes is asked below, as before — `rsync
+        # --delete host:dir`, `git push --force` and `ssh host 'rm …'` do both.
+        reach = _reach_of(name, args)
+        if reach:
+            self.reaches(reach)
         if name in _DELETERS:
             self.destroys(_DELETERS[name])
             return
@@ -862,7 +1116,13 @@ class _Judge:
                     read(code.text)
                 return
             if t == "-m":
-                return                      # a module run by name
+                # A module run by name — except the ones that are a program
+                # this reader reads (`python -m pip install`, `B1652`), read
+                # as that program.
+                module = args[i + 1].text if i + 1 < len(args) else ""
+                if module in _PY_MODULE_PROGRAMS:
+                    self.command([_Word(text=_PY_MODULE_PROGRAMS[module])] + list(args[i + 2:]), simple)
+                return
             if t == "-":
                 self._stdin(simple, "python", read)
                 return
@@ -1088,6 +1348,18 @@ _PY_SHELL = {"os.system", "os.popen", "subprocess.run", "subprocess.call", "subp
              "subprocess.getstatusoutput", "pty.spawn"}
 _PY_SPAWN = ("os.exec", "os.spawn", "os.posix_spawn")
 _PY_SQL = {"execute", "executescript", "executemany", "exec_driver_sql"}
+#: `B1652`. Calls into these modules reach another machine, whatever they are
+#: handed (a client built here is the start of a request).
+_PY_NET_MODULES = ("requests", "httpx", "urllib.request", "urllib3", "http.client", "aiohttp",
+                   "ftplib", "smtplib", "poplib", "imaplib", "nntplib", "telnetlib", "paramiko",
+                   "websocket", "websockets", "xmlrpc.client", "pycurl", "asyncssh", "fabric",
+                   "boto3", "botocore", "dns.resolver", "urllib.urlopen", "urllib2")
+#: The parts of `socket` and `ssl` that connect or resolve; the rest of them
+#: (`socket.gethostname`, `ssl.create_default_context`) is local.
+_PY_NET_CALLS = {"socket.socket", "socket.create_connection", "socket.getaddrinfo",
+                 "socket.gethostbyname", "socket.gethostbyname_ex", "socket.gethostbyaddr",
+                 "socket.getfqdn", "ssl.get_server_certificate", "webbrowser.open"}
+_PY_ADDRESS_RE = re.compile(r"^\s*(https?|ftp|wss?|sftp)://", re.I)
 
 
 def _dotted(node, aliases) -> str:
@@ -1129,6 +1401,12 @@ def python_findings(code: str, *, depth: int = 0) -> List[Finding]:
         if not isinstance(node, ast.Call):
             continue
         name = _dotted(node.func, aliases)
+        # `B1652`. A call into a network library, or handed an address.
+        if name in _PY_NET_CALLS or any(name == m or name.startswith(m + ".") for m in _PY_NET_MODULES):
+            findings.append(Finding(REACHES, f"{name} reaches the network"))
+        elif any(_PY_ADDRESS_RE.match(_literal(a) or "")
+                 for a in list(node.args) + [k.value for k in node.keywords]):
+            findings.append(Finding(REACHES, f"{name or 'a call'} is handed an address on the network"))
         if name in _PY_DESTROYS:
             findings.append(Finding(DESTROYS, _PY_DESTROYS[name]))
         elif name in _PY_UNREADABLE:
@@ -1156,15 +1434,23 @@ def python_findings(code: str, *, depth: int = 0) -> List[Finding]:
     return findings
 
 
-def reason(findings: Sequence[Finding]) -> Optional[str]:
-    """Why these findings carry `destructive`, or `None` when nothing was found:
-    a deletion first, since it is the plainer sentence."""
+def reason(findings: Sequence[Finding], kind: str = DESTROYS) -> Optional[str]:
+    """Why these findings carry `destructive` (`kind` `destroys`) or
+    `network_egress` (`kind` `reaches`, `B1652`), or `None` when nothing was
+    found: what the command does first, since it is the plainer sentence, and
+    then that it cannot be read — which carries both."""
     for f in findings:
-        if f.kind == DESTROYS:
+        if f.kind == kind:
             return f.why
     for f in findings:
-        return f"it cannot be read: {f.why}"
+        if f.kind == UNREADABLE:
+            return f"it cannot be read: {f.why}"
     return None
+
+
+def readings(findings: Sequence[Finding]) -> Tuple[Optional[str], Optional[str]]:
+    """`B1652`. `(why it destroys, why it reaches the network)` from one reading."""
+    return reason(findings, DESTROYS), reason(findings, REACHES)
 
 
 def shell_destroys(command: str) -> Optional[str]:
@@ -1175,3 +1461,13 @@ def shell_destroys(command: str) -> Optional[str]:
 def python_destroys(code: str) -> Optional[str]:
     """Why this Python carries `destructive`, or `None`."""
     return reason(python_findings(code))
+
+
+def shell_reaches(command: str) -> Optional[str]:
+    """`B1652`. Why this shell command carries `network_egress`, or `None`."""
+    return reason(read_shell(command), REACHES)
+
+
+def python_reaches(code: str) -> Optional[str]:
+    """`B1652`. Why this Python carries `network_egress`, or `None`."""
+    return reason(python_findings(code), REACHES)

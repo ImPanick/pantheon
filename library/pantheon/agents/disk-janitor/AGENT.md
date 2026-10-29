@@ -4,7 +4,7 @@ name: Disk Janitor
 tagline: "Each morning, what is filling each full disk and what could be cleared, with the exact command — for you to run. It never deletes."
 section: devops
 icon: hard-drive
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: hosts, kind: list, label: Machines to check (names or addresses the workstation can ssh to)}
@@ -15,7 +15,7 @@ tools: [bash]
 needs: {connectors: [], min_context: 16000, native_tools: preferred, programs: [{name: ssh, install: "sudo apt-get install -y openssh-client"}]}
 delivers:
   - {kind: answer, must_contain: [Full, Could be cleared, Fine]}
-effects: {execute_code: allow, destructive: ask}
+effects: {execute_code: allow, network_egress: allow, destructive: ask}
 budget: {runs_per_day: 3, max_steps: 30, max_minutes: 12}
 memory: own
 ---

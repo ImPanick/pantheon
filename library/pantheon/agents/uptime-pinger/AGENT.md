@@ -4,7 +4,7 @@ name: Uptime Pinger
 tagline: Checks your addresses and ports every 15 minutes and logs each outage with when it started and how long it lasted.
 section: devops
 icon: activity
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: targets, kind: list, label: "Addresses (https://…) or host:port pairs"}
@@ -14,7 +14,7 @@ tools: [bash]
 needs: {connectors: [], min_context: 8000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Down, Back, Up]}
-effects: {execute_code: allow, destructive: never}
+effects: {execute_code: allow, network_egress: allow, destructive: never}
 budget: {runs_per_day: 96, max_steps: 10, max_minutes: 4}
 memory: own
 ---

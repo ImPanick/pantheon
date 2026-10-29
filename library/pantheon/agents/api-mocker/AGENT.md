@@ -4,7 +4,7 @@ name: API Mocker
 tagline: A runnable mock server and fixtures from an OpenAPI spec, checked with two calls before you get it.
 section: development
 icon: server-cog
-version: 1.4.0
+version: 1.5.0
 wave: 2
 inputs:
   - {key: spec, kind: text, label: "The OpenAPI file, inside your projects folder"}
@@ -15,7 +15,7 @@ tools: [read_file, write_file, bash, ls]
 needs: {connectors: [], min_context: 32000, native_tools: required}
 delivers:
   - {kind: answer, must_contain: [Written, Checked, No example]}
-effects: {read_workspace: allow, write_workspace: allow, execute_code: allow, destructive: never}
+effects: {read_workspace: allow, write_workspace: allow, execute_code: allow, network_egress: never, destructive: never}
 budget: {runs_per_day: 4, max_steps: 40, max_minutes: 25}
 memory: none
 ---
