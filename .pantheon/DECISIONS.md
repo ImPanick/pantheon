@@ -3437,3 +3437,6 @@ Each is ruled as it was put:
    stripped copy. The module count stands under `D-2026-09-14-01`.
 
 Not ruled, and so left open as filed: `B625` (the bombadil spec).
+
+Recorded with §4 by the coordinator, the same kind of choice as `D-2026-09-07-01`: JSZip, inside
+docx 9.7.1, offers MIT or GPLv3, and is taken under MIT.

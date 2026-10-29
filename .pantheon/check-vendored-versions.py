@@ -251,7 +251,7 @@ VENDORED = [
              "survives in the bytes for `contains=` to pin.",
         behind_ok="D-2026-10-29-02 §4 — the owner ruled 9.7.1, the release "
              "B335 measured against Pantheon's export; 9.15.0 (npm `latest` on "
-             "2026-10-29) is a new row filed by B424, to be measured the same "
+             "2026-10-29) is B1673, to be measured the same "
              "way before it is taken.",
         contains=(
             Inside(

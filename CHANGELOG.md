@@ -253,6 +253,20 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **An agent replacing a file that was there before its run now counts as deleting it**
+  (`B1660`). Where a hire says deletions ask or are never allowed, or a chat is on Auto, a
+  `write_file` over such a file asks or is refused; an agent rewriting a file it made in the same
+  run is not asked. Dashboard Builder and Receipt Collector now ask before replacing their
+  earlier output, and four agents' versions moved, so their hires pause until you choose Update.
+- **The Docker image serves Pantheon's JavaScript without its comments** (`B1591`), stripped at
+  build time by a parser that proves each file's code is unchanged: a first load moves about
+  856 KB less. The build gains a stage that installs one npm package (acorn, hash-pinned). The
+  repository's source keeps every comment.
+- **The PDF fallback is jsPDF's own renderer** (`B421`): selectable text instead of image tiles,
+  its links kept, and the jsPDF and DOMPurify versions html2pdf carried (27 advisories, one
+  critical) are gone. It draws only Western European characters; for other scripts, export as
+  Word (`B1674`).
+
 - **A host shell command is read for what it reaches like a workstation one** (`B1655`), and 26
   agents' hire forms drop a row naming an effect their tools cannot have; the web readers'
   reading is shown as *search and read the web* (`B1656`).
@@ -497,6 +511,11 @@ the next one is cut.
   arming that a non-empty memory store did on its own.
 
 ### Fixed
+
+- **The PDF fallback exports documents that contain a code block** (`B421`); it produced nothing
+  for them before.
+- **Word export is docx 9.7.1** (`B424`): the file gains its endnotes part and a properly linked
+  font table, and every package inside the library is credited.
 
 - **Pressing Sign In before the sign-in page has finished loading no longer sends your
   password in the page address** (`B1665`). On a slow or busy server the press went out as
