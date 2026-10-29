@@ -126,8 +126,9 @@ async def run_with_login(content: Any, *, owner: Optional[str], station_workspac
     try:
         cwd = place.resolve(args.get("cwd"))
     except _GitProblem:
-        return {"error": f"{args.get('cwd')} is outside your home, so nothing runs there.", "exit_code": 1,
-                **_where(place)}
+        # `B1647`: the person's own projects folder is in reach beside the home.
+        return {"error": f"{args.get('cwd') or place.base()} is outside {place.reach_words()}, so nothing "
+                "runs there.", "exit_code": 1, **_where(place)}
     db = SessionLocal()
     items = []
     try:

@@ -288,20 +288,37 @@ class _Place:
         # `P27-04`. The person's proxy and trusted file, for every command run
         # here (`src/vault_names.env_for`); empty on this machine.
         self.names_env: Dict[str, str] = {}
+        # `B1647`. The folders a command here may be pointed at — the home, and
+        # the person's own projects folder when it is mounted (`own_reach`).
+        self.reach: Tuple[str, ...] = ()
+        # `B1643`. Why a hire's projects folder is not where it runs, when not.
+        self.said: Optional[str] = None
+        # `B1646`. In a hire's run, `$PANTHEON_PROJECTS` naming its folder.
+        self.run_env: Dict[str, str] = {}
 
     async def open(self) -> Optional[Dict[str, Any]]:
         from src.workstation_access import routes_tools
         if not routes_tools(self.owner):
             return None
-        from src.agent_tools.workstation_tools import _home_path
+        from src.agent_tools.workstation_tools import _home_path, own_reach, run_env, station_folder
         from src.workstation_access import sync_config, workstation_for
         from src.workstation_client import WorkstationError
         try:
             self.client, self.account = workstation_for(self.owner)
-            await sync_config(self.client)
+            daemon = await sync_config(self.client)
             self.home = await _home_path(self.client, self.account)
         except WorkstationError as e:
             return e.as_result()
+        # `B1647`. A hire's run works in its projects folder (`B1642`), named
+        # as Pantheon names it until the workstation names it — the bash and
+        # file tools' own translation (`station_folder`) — and that folder is
+        # the person's own beside the home, as the jail (`B1417`) and
+        # `vet_workspace` hold it: `resolve` admitted the home alone, so
+        # `git status` in a hire's folder was "outside your home".
+        self.station_workspace, self.said = station_folder(self.owner, self.account,
+                                                           self.station_workspace, daemon)
+        self.reach = own_reach(self.home, daemon, self.account)
+        self.run_env = run_env(self.station_workspace)
         from src import vault_names
         try:
             self.names_env = vault_names.env_for(await vault_names.sync(self.client, self.account, self.owner))
@@ -325,16 +342,24 @@ class _Place:
         from src.tool_execution import agent_cwd
         return agent_cwd()
 
+    def reach_words(self) -> str:
+        """Where a command here may work, in a person's words."""
+        if len(self.reach) > 1:
+            return f"your home and your projects folder ({self.reach[1]})"
+        return "your home"
+
     def resolve(self, raw: Optional[str]) -> str:
         """The repository's folder: `raw` against the workspace, kept inside
-        the person's home on the workstation."""
+        the person's own folders on the workstation — the home, and (`B1647`)
+        their own projects folder, never another person's."""
         if self.in_workstation:
             from src.agent_tools.workstation_tools import _sensitive, within
             path = posixpath.normpath(posixpath.join(self.base(), raw or "."))
             if raw and raw.startswith("~"):
                 path = posixpath.normpath(posixpath.join(self.home, raw[1:].lstrip("/")))
-            if not within(path, self.home):
-                raise _GitProblem(f"{raw} is outside your home, so git does not work there.")
+            if not any(within(path, folder) for folder in self.reach):
+                raise _GitProblem(f"{raw or path} is outside {self.reach_words()}, so git does not "
+                                  "work there.")
             if _sensitive(path):
                 raise _GitProblem(f"{raw} is a folder git is not run in.")
             return path
@@ -345,8 +370,8 @@ class _Place:
         base_env = {"GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "/bin/false", "SSH_ASKPASS": "/bin/false",
                     "GIT_CONFIG_NOSYSTEM": "1", "LC_ALL": "C.UTF-8"}
         if self.in_workstation:
-            r = await self.client.exec(self.account, command, shell="bash", cwd=cwd,
-                                       timeout_s=timeout, env={**base_env, **self.names_env, **env})
+            r = await self.client.exec(self.account, command, shell="bash", cwd=cwd, timeout_s=timeout,
+                                       env={**base_env, **self.names_env, **self.run_env, **env})
             return {"stdout": r.get("stdout") or "", "stderr": r.get("stderr") or "",
                     "exit_code": r.get("exit_code"), "timed_out": bool(r.get("timed_out"))}
         from src.agent_tools.subprocess_tools import _create_bash_subprocess, kill_tree, own_process_group
@@ -367,7 +392,11 @@ class _Place:
 
 
 def _where(place: _Place) -> Dict[str, Any]:
-    return {"ran_in": "workstation", "account": place.account} if place.in_workstation else {}
+    if not place.in_workstation:
+        return {}
+    # `B1643`: a hire's projects folder that is not mounted — it ran in the
+    # home, and says why, as `bash` does.
+    return {"ran_in": "workstation", "account": place.account, **({"note": place.said} if place.said else {})}
 
 
 async def run_git(content: Any, *, owner: Optional[str], station_workspace: Optional[str] = None,
