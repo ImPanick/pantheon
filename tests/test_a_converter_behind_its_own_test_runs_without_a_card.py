@@ -143,8 +143,8 @@ def test_a_loops_test_rules_out_the_rest_of_its_body(folder):
     for command in (
             'for f in *; do [ -e "converted/${f%.*}.pdf" ] && continue; '
             'libreoffice --headless --convert-to pdf --outdir converted "$f"; done',
-            'for f in *.heic; do o="converted/${f%.*}.jpg"; [ -e "$o" ] && continue; '
-            'heif-convert "$f" "$o" && echo "OK $f -> $o" || echo "FAIL $f"; done',
+            'for f in *.heic; do [ -e "converted/${f%.*}.jpg" ] && continue; '
+            'heif-convert "$f" "converted/${f%.*}.jpg" && echo "OK $f" || echo "FAIL $f"; done',
             'for f in *; do o="converted/$f.txt"; [ -e "$o" ] && continue; echo x > "$o"; done',
             "for i in 1; do [ ! -e notes.md ] || continue; echo hi > notes.md; done",
             "for i in 1; do test -e notes.md && break; echo hi > notes.md; done",
@@ -155,6 +155,13 @@ def test_a_loops_test_rules_out_the_rest_of_its_body(folder):
             "for i in 1; do [ -e notes.md ] && continue; date | tee notes.md; done",
             "for i in 1; do [ -e notes.md ] && continue; sh -c 'echo hi > notes.md'; done"):
         assert _reads(folder, command) is None, command
+    # `B1693` changed this one: the test speaks for `$o`, while `heif-convert`
+    # writes `…-1.jpg`, `…-2.jpg` beside it for a file holding several
+    # images, in a folder `$o`'s words do not name (`converted/${f%.*}.jpg`,
+    # spelled out above, is looked in).
+    assert _reads(folder, 'for f in *.heic; do o="converted/${f%.*}.jpg"; [ -e "$o" ] && continue; '
+                          'heif-convert "$f" "$o"; done') == \
+        "it cannot be known whether what heif-convert writes beside $o was there before this run began"
 
 
 def test_a_loops_test_does_not_speak_where_bash_would_run_on(folder):

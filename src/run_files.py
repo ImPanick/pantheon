@@ -6,7 +6,9 @@ a program told to write over its output (`B1680`, `B1682`, `B1688`–`B1690`), o
 takes away (`B1683`), with a path spelled against a variable the run knows
 filled in as its shell will (`B1681`) — in the workstation, the value its
 daemon reports it gives the command (`B1684`). An append replaces nothing
-(`B1672`, `D-2026-10-29-03` §2).
+(`B1672`, `D-2026-10-29-03` §2). A write onto a name a link made earlier in
+the command lands where the link points (`B1692`), and a converter's numbered
+copies are looked for beside the name it is given (`B1693`).
 
 A leaf: the loop makes a holder per turn and hands it to the gate
 (`ToolRunSecurityContext.files`) and to each tool call (`bind_run_files`);
@@ -20,7 +22,7 @@ import os
 import posixpath
 import re
 from contextvars import ContextVar
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -103,11 +105,19 @@ class RunFiles:
         # `B1669`. In the workstation, each command's answer as the run worked
         # it out there (`look`): the sentence, or "" for nothing replaced.
         self.said: dict = {k: str(v) for k, v in dict(carried.get("said") or {}).items()}
+        # `B1693`. The numbered-looking files in each folder a converter
+        # writes into, the first time this run looked — so the numbered
+        # copies the run's own `convert` made are its own on the next pass,
+        # as `kinds` makes its own `>`'s file.
+        self.listed: dict = {str(k): sorted(str(n) for n in v)
+                             for k, v in dict(carried.get("listed") or {}).items()
+                             if isinstance(v, (list, tuple))}
 
     def carried(self) -> dict:
         """What a run resumed from this run's card starts with."""
         return {"made": sorted(self.made), "seen": dict(self.seen),
-                "kinds": dict(self.kinds), "said": dict(self.said)}
+                "kinds": dict(self.kinds), "said": dict(self.said),
+                "listed": {k: list(v) for k, v in self.listed.items()}}
 
     def in_workstation(self, tool: str = "write_file") -> bool:
         """Does this run's `tool` run in the person's workstation?"""
@@ -156,6 +166,37 @@ class RunFiles:
                 return None
             self.kinds[key] = found
         return self.kinds[key]
+
+    def numbered(self, path: str) -> Optional[list]:
+        """`B1693`. The numbered-looking files in the folder at `path` on
+        this machine the first time this run looked, or `None` when it
+        cannot be listed."""
+        key = _real(path)
+        if key is None:
+            return None
+        if key not in self.listed:
+            found = _numbered_here(key)
+            if found is None:
+                return None
+            self.listed[key] = found
+        # A name the run saw empty before it wrote there is its own.
+        return [n for n in self.listed[key]
+                if not self._own(os.path.join(key, n))]
+
+    def forget(self, paths) -> None:
+        """`B1692`. Drop "nothing was there" for each of `paths` on this
+        machine — names a link of the command being read makes — so the run
+        looks again the next time: a hard link there shares another file,
+        and writing it is not writing the run's own."""
+        for path in paths:
+            key = _real(path)
+            if key is not None and self.kinds.get(key) == NOTHING:
+                del self.kinds[key]
+
+    def _own(self, key: str) -> bool:
+        """`B1693`. Whether the file at `key` is this run's: `write_file`
+        made it, or the run looked and nothing was there."""
+        return key in self.made or self.kinds.get(key) == NOTHING
 
     def key(self, raw_path: str, where: Optional[str] = None) -> Optional[str]:
         """The one name for `raw_path` that the tool notes and the gate asks
@@ -219,11 +260,14 @@ class RunFiles:
             station = None
         if station is None:
             return
-        starts, home, kind_at, values = station
+        starts, home, kind_at, values, names_at = station
         # A copy into a folder is only known to be one once its folder is
-        # looked at, so the paths are asked for in rounds; three is a copy's.
-        for _round in range(4):
+        # looked at, so the paths are asked for in rounds; three is a copy's,
+        # and (`B1692`) a link's place, its target and what is in it add to
+        # them, as (`B1693`) a folder's numbered names do.
+        for _round in range(_MAX_HOPS + 4):
             asked: list = []
+            listing: list = []
 
             def kind_of(path: str, asked: list = asked) -> Optional[str]:
                 key = f"{IN_WORKSTATION}::{path}"
@@ -231,10 +275,23 @@ class RunFiles:
                     asked.append(path)
                 return self.kinds.get(key)
 
+            def names_of(path: str, listing: list = listing) -> Optional[list]:
+                key = f"{IN_WORKSTATION}::{path}"
+                if key not in self.listed:
+                    listing.append(path)
+                    return None
+                # A name the run saw empty before it wrote there is its own.
+                return [n for n in self.listed[key] if self.kinds.get(
+                    f"{IN_WORKSTATION}::{posixpath.join(path, n)}") != NOTHING]
+
             answer = _reading(writes, starts, home, kind_of, IN_YOUR_WORKSTATION, posixpath,
-                              values)
-            if not asked:
+                              values, names_of)
+            if not asked and not listing:
                 self.said[call] = answer or ""
+                # `B1692`: a name a link of this command makes is not the run's own.
+                for path in _linked(writes, starts, home, posixpath, values):
+                    if self.kinds.get(f"{IN_WORKSTATION}::{path}") == NOTHING:
+                        del self.kinds[f"{IN_WORKSTATION}::{path}"]
                 return
             for path in dict.fromkeys(asked):
                 try:
@@ -246,6 +303,16 @@ class RunFiles:
                 if found is None:
                     return
                 self.kinds[f"{IN_WORKSTATION}::{path}"] = found
+            for path in dict.fromkeys(listing):
+                try:
+                    names = await names_at(path)
+                except Exception:  # noqa: BLE001 — unknown, and so destructive
+                    logger.debug("B1693: could not list %r in the workstation", path,
+                                 exc_info=True)
+                    names = None
+                if names is None:
+                    return
+                self.listed[f"{IN_WORKSTATION}::{path}"] = _numbered_names(names)
 
 
 def _local_path(raw_path: Any, workspace: Optional[str]) -> Optional[str]:
@@ -367,6 +434,26 @@ def replaces(content: Any, files: Optional[RunFiles] = None) -> Optional[str]:
 #
 # Python's `open(path, "w")` is not read (`src/shell_reading.py` says why);
 # its `subprocess` commands are.
+#
+# **Through a link (`B1692`).** `ln notes.md new.md; echo x > new.md` empties
+# `notes.md`: `new.md` was nothing before the run, but the `>` opens the file
+# the link shares (a symbolic link: the file it names). So a write onto a name
+# a link made earlier in the same command — `ln`, `ln -s`, `link`, `cp -l`/
+# `-s`, `os.link`/`os.symlink` — or onto a name inside a folder one points
+# at, is looked at where it lands too (`_link_ends`, `_through`), and a file
+# that was there before the run makes it a replacement, worded as written
+# through the link. A link whose name or target cannot be known leaves a
+# write after it unknown. A write that takes a name away (`B1683`'s
+# `removes`) takes the link, not its target, and is not followed.
+#
+# **Numbered copies (`B1693`).** A converter given several images writes
+# `out-1.jpg`, `out-2.jpg` (`heif-convert`) or `out-0.png`… (ImageMagick)
+# instead of the one name; how many is the input's. So the folder is listed
+# — the first time the run looks, as `kinds` is (`RunFiles.listed`) — and a
+# file there of the numbered shape the reading gives (`Finding.numbered`)
+# makes the write unknown, and so destructive; where none is, it is a plain
+# write. A folder that cannot be listed, or holds more than `_MAX_LISTED`
+# names, is unknown too.
 
 IN_YOUR_WORKSTATION = " in your workstation"
 _ON_THE_FAR_SIDE = " on the far side"
@@ -396,6 +483,38 @@ def _kind_here(path: str) -> Optional[str]:
         return FILE if os.path.isfile(path) else NOTHING
     except (OSError, ValueError):
         return None
+
+
+#: `B1693`. Past this many names a folder holds, its numbered names are not
+#: looked through — the workstation's own bound on a listing
+#: (`workstation.protocol.MAX_LIST_ENTRIES`), here too, so a folder reads the
+#: same in either place.
+_MAX_LISTED = 5_000
+
+
+def _numbered_names(files) -> list:
+    """`B1693`. The names among `files` that end as a numbered copy's does
+    (`shell_reading.NUMBERED_TAIL`) — the only ones a shape is matched
+    against, so the run keeps no more than those."""
+    from src.shell_reading import NUMBERED_TAIL
+    return sorted(n for n in files if NUMBERED_TAIL.search(n))
+
+
+def _numbered_here(path: str) -> Optional[list]:
+    """`B1693`. The numbered-looking files in the folder at `path` on this
+    machine, now — `None` when it cannot be listed, or holds more than
+    `_MAX_LISTED` names. A link to a file is a file: a write goes through."""
+    files = []
+    try:
+        with os.scandir(path) as entries:
+            for count, entry in enumerate(entries, start=1):
+                if count > _MAX_LISTED:
+                    return None
+                if entry.is_file():
+                    files.append(entry.name)
+    except (OSError, ValueError):
+        return None
+    return _numbered_names(files)
 
 
 def _place(text: str, base: str, home: str, paths=os.path) -> str:
@@ -449,23 +568,148 @@ def _folders(writes, starts, home: str, paths=os.path,
     return folders
 
 
+#: `B1692`. Past this many links one after another, where a write lands is
+#: not followed further.
+_MAX_HOPS = 8
+
+
+def _inside(source: str, parents: bool, paths=os.path) -> str:
+    """The name a copy (or a link) gives `source` inside a folder: its last
+    part, or (`--parents`) its whole path."""
+    name = source.rstrip("/")
+    return name.lstrip("/") if parents else paths.basename(name)
+
+
+def _link_ends(f, folders, home: str, paths, values, kind_of) -> list:
+    """`B1692`. Each name the link finding `f` makes, and where it points:
+    `(at, to, link, target)` — the link's place and its target's, as the
+    command shows them — with `at` `None` when the name cannot be known (any
+    write after it may be onto it), and `to` `None` when what it points at
+    cannot. A name made in a folder (`into`) is the target's name there; one
+    that may or may not be a folder (`ln a b`, `b` there or not) is read as
+    both, unless `b` was a folder, where it is only the one inside."""
+    def rooted(text: str) -> bool:
+        return paths.isabs(text) or text == "~" or text.startswith("~/")
+
+    named = _named(f, values)
+    ends: list = []
+    # Where the command could be when it makes the link (`None`: unknown).
+    for b in (folders if folders is not None else [None]):
+        place = (None if named is None or (b is None and not rooted(named))
+                 else _place(named, b or "", home, paths))
+        for target, spelled in f.sources:
+            inner = _inside(target, f.parents, paths)
+            within = inner if f.path in (".", "./") else paths.join(f.path, inner)
+            if place is None:
+                ats = [(None, f.path)]
+            elif f.into == "folder":
+                ats = [(paths.join(place, inner), within)] if inner else []
+            elif f.into == "file" or not inner:
+                ats = [(place, f.path)]
+            else:
+                ats = [(paths.join(place, inner), within)]
+                if kind_of(place) != FOLDER:
+                    ats.insert(0, (place, f.path))
+            for at, link in ats:
+                # A symbolic link names its target from its own folder; a
+                # hard one, from where the command runs.
+                start = (paths.dirname(at) if at is not None else None) if f.beside else b
+                if not spelled or (start is None and not rooted(target)):
+                    to = None
+                else:
+                    to = _place(target, start or "", home, paths)
+                ends.append((at, to, link, target or f.path))
+    return list(dict.fromkeys(ends))
+
+
+def _through(place: str, links: list, paths=os.path) -> list:
+    """`B1692`. Where a write at `place` lands through the links made
+    before it: `(where, the target as shown, the link, sure)` — through a
+    link at `place` or a folder above it, and on through any link there.
+    `sure` is False through a link whose name cannot be known, which `place`
+    may or may not be; `where` is `None` when a target cannot be known."""
+    out: list = []
+    frontier = [(place, None, True)]
+    seen = {place}
+    for _ in range(_MAX_HOPS):
+        grown = []
+        for q, first, sure in frontier:
+            for at, to, link, target in links:
+                if at is None:
+                    rest = ""                   # it may be this very name
+                elif q == at:
+                    rest = ""
+                elif q.startswith(at.rstrip(paths.sep) + paths.sep):
+                    rest = q[len(at.rstrip(paths.sep)) + 1:]
+                else:
+                    continue
+                shown = paths.join(target, rest) if rest else target
+                hop = (None if to is None else paths.normpath(paths.join(to, rest) if rest else to),
+                       shown, first or link, sure and at is not None)
+                if hop[0] is None:
+                    out.append(hop)
+                elif hop[0] not in seen:
+                    seen.add(hop[0])
+                    out.append(hop)
+                    grown.append((hop[0], hop[2], hop[3]))
+        frontier = grown
+        if not frontier:
+            break
+    return out
+
+
+def _linked(writes, starts, home: str, paths=os.path,
+            values: Optional[Mapping[str, str]] = None) -> list:
+    """`B1692`. Every place a link the command makes may have its name —
+    what the run must not keep as "nothing was there": once the command has
+    run, a hard link there shares the person's file, and writing that name
+    in a later command writes theirs. (A symbolic one is looked at through
+    to its target already: the run's record is kept by real path.)"""
+    folders = _folders(writes, starts, home, paths, values)
+    places = []
+    for f in writes:
+        if f.kind != "links" or f.far:
+            continue
+        named = _named(f, values)
+        if named is None:
+            continue
+        rooted = paths.isabs(named) or named == "~" or named.startswith("~/")
+        for b in (folders if folders is not None else [""] if rooted else []):
+            place = _place(named, b, home, paths)
+            places.append(place)
+            for target, _spelled in f.sources:
+                inner = _inside(target, f.parents, paths)
+                if inner and f.into != "file":
+                    places.append(paths.join(place, inner))
+    return list(dict.fromkeys(places))
+
+
 def _reading(writes, starts, home: str, kind_of, where: str = "", paths=os.path,
-             values: Optional[Mapping[str, str]] = None) -> Optional[str]:
+             values: Optional[Mapping[str, str]] = None, names_of=None) -> Optional[str]:
     """Why these writes carry `destructive` — the first file one replaces,
     else the first whose being there cannot be known — or `None`. `kind_of`
     answers what was there (`FILE`, `FOLDER`, `NOTHING`, or `None`: unknown);
-    `values` (`B1681`) the variables a path may start with."""
+    `values` (`B1681`) the variables a path may start with; `names_of`
+    (`B1693`) the numbered names that were in a folder (`None`: unknown).
+
+    `B1692`. A write onto a name a link made earlier in the command — `ln
+    notes.md new.md; echo x > new.md` — writes the file the link points at,
+    so that is looked at too, the way the name itself is; not a write that
+    takes a name away (`B1683`'s `removes`), which takes the link."""
     folders = _folders(writes, starts, home, paths, values)
     unknown: Optional[str] = None
+    links: list = []
 
     def cannot(shown: str, at: str = where) -> str:
         return f"it cannot be known whether {shown}{at} was there before this run began"
 
     for f in writes:
+        if f.kind == "links":
+            if not f.far:       # on another machine: its writes there are the far side's
+                links.extend(_link_ends(f, folders, home, paths, values, kind_of))
+            continue
         if f.kind != "writes":
             continue
-        # `B1683`: a compressor's input is taken away, not written over.
-        does, does_in = ("removes", "removes") if f.removes else ("replaces", "writes")
         if f.far:
             unknown = unknown or cannot(f.path, _ON_THE_FAR_SIDE)
             continue
@@ -473,45 +717,107 @@ def _reading(writes, starts, home: str, kind_of, where: str = "", paths=os.path,
         relative = named is not None and not (
             paths.isabs(named) or named == "~" or named.startswith("~/"))
         if named is None or (relative and folders is None):
-            unknown = unknown or cannot(f.path)
+            unknown = unknown or (_beside(f, where) if f.numbered else cannot(f.path))
             continue
         for place in ([_place(named, "", home, paths)] if not relative else
                       [_place(named, b, home, paths) for b in folders]):
-            found = kind_of(place)
-            if found is None:
-                unknown = unknown or cannot(f.path)
-                continue
-            into = f.into or (("folder" if found == FOLDER else "file") if f.sources else "")
-            if into != "folder":
-                # A redirect or `tee` replaces a file; a copy onto a name
-                # replaces a file, or (`-T`) merges into a folder.
-                if found == FILE or (found == FOLDER and into == "file"):
-                    return f"{f.why} {does} {f.path}{where}, which was there before this run began"
-                continue
-            if found != FOLDER:
-                # `B1680`: into a folder that is not there (an archive makes
-                # it; a copy refuses) — nothing in it was there to replace.
-                continue
-            for source, spelled in f.sources:
-                if not spelled:
-                    # `B1680`: an archive's members, which the command does
-                    # not name, into a folder that was there.
-                    shown = "the folder it runs in" if f.path in (".", "./") else f.path
-                    unknown = unknown or (cannot(f.path) if source else (
-                        f"it cannot be known whether what {f.why} {does_in} in {shown}{where} was "
-                        f"there before this run began"))
+            hops = [(place, f.path, None, True)]
+            if not f.removes and links:
+                hops += _through(place, links, paths)
+            for at, shown, link, sure in hops:
+                said = _land(f, at, shown, link, sure, kind_of, names_of, where, paths)
+                if said is None:
                     continue
-                name = source.rstrip("/")
-                name = name.lstrip("/") if f.parents else paths.basename(name)
-                if not name:
-                    continue
-                inside = paths.join(place, name)
-                shown = name if f.path == "." else paths.join(f.path, name)
-                found = kind_of(inside)
-                if found is None:
-                    unknown = unknown or cannot(shown)
-                elif found != NOTHING:
-                    return f"{f.why} {does} {shown}{where}, which was there before this run began"
+                if said[0]:
+                    return said[1]
+                unknown = unknown or said[1]
+    return unknown
+
+
+def _beside(f, where: str, shown: str = "") -> str:
+    """`B1693`. What a program writes beside its output, when the input
+    holds several images, cannot be looked at."""
+    if f.into == "folder":
+        shown = shown or ("the folder it runs in" if f.path in (".", "./") else f.path)
+        return (f"it cannot be known whether what {f.why} writes in {shown}{where} was there "
+                f"before this run began")
+    return (f"it cannot be known whether what {f.why} writes beside {shown or f.path}{where} "
+            f"was there before this run began")
+
+
+def _land(f, at: Optional[str], shown: str, link: Optional[str], sure: bool, kind_of, names_of,
+          where: str, paths=os.path) -> Optional[Tuple[bool, str]]:
+    """What the write `f` finds at `at` — `shown` as the command names it,
+    reached through `link` (`B1692`) or not: `(True, why)` for a file it
+    replaces that was there, `(False, why)` when that cannot be known, or
+    `None`."""
+    does, does_in = ("removes", "removes") if f.removes else ("replaces", "writes")
+    there = "which was there before this run began"
+
+    def over(name: str) -> Tuple[bool, str]:
+        if link is None:
+            return True, f"{f.why} {does} {name}{where}, {there}"
+        said = f"{f.why} writes through the link {link} over {name}{where}, {there}"
+        return (True, said) if sure else (False, f"it cannot be known whether {said}")
+
+    def cannot(name: str) -> Tuple[bool, str]:
+        if link is None:
+            return False, f"it cannot be known whether {name}{where} was there before this run began"
+        return False, (f"it cannot be known whether {name}{where}, where the link {link} points, "
+                       f"was there before this run began")
+
+    if at is None:
+        return cannot(shown)            # where the link points cannot be known
+    found = kind_of(at)
+    if f.numbered:
+        # `B1693`: the names it gives each of several images, in this folder.
+        if found is None:
+            return False, _beside(f, where, shown)
+        if found != FOLDER:
+            return None                 # no folder: nothing numbered was there
+        names = names_of(at) if names_of is not None else None
+        if names is None:
+            return False, _beside(f, where, shown)
+        hit = next((n for n in names if re.fullmatch(f.numbered, n)), None)
+        if hit is None:
+            return None
+        inside = hit if shown in (".", "./") else paths.join(shown, hit)
+        if link is None:
+            return False, f"it cannot be known whether {f.why} writes over {inside}{where}, {there}"
+        return False, (f"it cannot be known whether {f.why} writes through the link {link} over "
+                       f"{inside}{where}, {there}")
+    if found is None:
+        return cannot(shown)
+    into = f.into or (("folder" if found == FOLDER else "file") if f.sources else "")
+    if into != "folder":
+        # A redirect or `tee` replaces a file; a copy onto a name replaces a
+        # file, or (`-T`) merges into a folder.
+        if found == FILE or (found == FOLDER and into == "file"):
+            return over(shown)
+        return None
+    if found != FOLDER:
+        # `B1680`: into a folder that is not there (an archive makes it; a
+        # copy refuses) — nothing in it was there to replace.
+        return None
+    unknown: Optional[Tuple[bool, str]] = None
+    for source, spelled in f.sources:
+        if not spelled:
+            # `B1680`: an archive's members, which the command does not
+            # name, into a folder that was there.
+            folder = "the folder it runs in" if shown in (".", "./") else shown
+            unknown = unknown or (cannot(shown) if source else (False, (
+                f"it cannot be known whether what {f.why} {does_in} in {folder}{where} was "
+                f"there before this run began")))
+            continue
+        name = _inside(source, f.parents, paths)
+        if not name:
+            continue
+        inside = paths.join(shown, name) if shown != "." else name
+        found = kind_of(paths.join(at, name))
+        if found is None:
+            unknown = unknown or cannot(inside)
+        elif found != NOTHING:
+            return over(inside)
     return unknown
 
 
@@ -525,24 +831,51 @@ def command_replaces(tool_name: Any, writes, content: Any = None,
     run's own."""
     writes = tuple(writes or ())
     first = next((f for f in writes if f.kind == "writes"), None)
-    if first is None:
-        return None
     files = files if isinstance(files, RunFiles) else None
     if tool_name not in SHELL_TOOLS:
+        if first is None:
+            return None
+        if first.numbered:
+            return _beside(first, "")
         return f"it cannot be known whether {first.path} was there before this run began"
     if files is not None and files.in_workstation(tool_name):
         said = files.said.get(call_key(tool_name, content))
+        if first is None:
+            return None         # its links are forgotten where it was looked at (`look`)
         if said is None:
+            if first.numbered:
+                return _beside(first, IN_YOUR_WORKSTATION)
             return (f"it cannot be known whether {first.path}{IN_YOUR_WORKSTATION} was there "
                     f"before this run began")
         return said or None
     from src.tool_execution import _AGENT_WORKDIR, agent_cwd, projects_env
     spelled = any(f.var for f in writes)    # `B1681`: a path starts with a variable
     if files is None:
+        if first is None:
+            return None
         return _reading(writes, [agent_cwd()], _AGENT_WORKDIR, _kind_here,
-                        values={"HOME": _AGENT_WORKDIR, **projects_env()} if spelled else None)
-    return _reading(writes, files.shell_starts(), _AGENT_WORKDIR, files.kind,
-                    values=files.shell_values() if spelled else None)
+                        values={"HOME": _AGENT_WORKDIR, **projects_env()} if spelled else None,
+                        names_of=_numbered_here)
+    values = files.shell_values() if spelled else None
+    said = None if first is None else _reading(writes, files.shell_starts(), _AGENT_WORKDIR,
+                                               files.kind, values=values, names_of=files.numbered)
+    forget_links(tool_name, writes, files)
+    return said
+
+
+def forget_links(tool_name: Any, writes, files: Optional[RunFiles]) -> None:
+    """`B1692`. A name a link of this command makes is not the run's own:
+    the run's record drops "nothing was there" for it on this machine (in
+    the workstation, `look` does), so a later write onto it is looked at
+    again — asked whether or not the command itself asks (`ln -f`)."""
+    if not isinstance(files, RunFiles) or tool_name not in SHELL_TOOLS:
+        return
+    writes = tuple(writes or ())
+    if not any(f.kind == "links" for f in writes) or files.in_workstation(tool_name):
+        return
+    from src.tool_execution import _AGENT_WORKDIR
+    values = files.shell_values() if any(f.var for f in writes) else None
+    files.forget(_linked(writes, files.shell_starts(), _AGENT_WORKDIR, os.path, values))
 
 
 # The holder for the tool call about to run — `B1415`'s shape: each call runs

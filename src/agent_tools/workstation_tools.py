@@ -72,7 +72,7 @@ import posixpath
 import re
 import shlex
 import time
-from typing import Any, Awaitable, Callable, Dict, FrozenSet, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, FrozenSet, List, Optional, Tuple
 
 from src.agent_tools import codenav_walk as _codenav
 from src.agent_tools import filesystem_tools as fs
@@ -862,8 +862,10 @@ async def shell_station(*, owner: Optional[str], workspace: Optional[str] = None
                         session_id: Optional[str] = None, hired: bool = False):
     """`B1669`. Where this person's next `bash` or `python` command in their
     workstation starts, and a way to ask what is at a path there:
-    `(starts, home, kind_at, values)`, or `None` when the workstation cannot
-    be asked — which the gate reads as destructive (`src/run_files.py`).
+    `(starts, home, kind_at, values, names_at)`, or `None` when the
+    workstation cannot be asked — which the gate reads as destructive
+    (`src/run_files.py`). `names_at(path)` (`B1693`): the files in a folder,
+    for the numbered copies a converter may write over.
 
     Asked as `_shell` asks it: the folder the chat's shell was left in
     (`B962`, read without moving it) and the folder a command starts in when
@@ -906,12 +908,24 @@ async def shell_station(*, owner: Optional[str], workspace: Optional[str] = None
                 return None
         return FOLDER if await _is_dir(st, path) else NOTHING
 
+    async def names_at(path: str) -> Optional[List[str]]:
+        """`B1693`. The files in the folder at `path` — a link counts, a
+        write goes through it — or `None`: not listed whole, or not at all."""
+        try:
+            listing = await st.client.list(st.account, path)
+        except WorkstationError:
+            return None
+        if listing.get("truncated"):
+            return None
+        return [str(e.get("path") or "") for e in listing.get("entries") or ()
+                if e.get("type") in ("file", "symlink")]
+
     from src.tool_execution import run_projects_folder
     values = {"HOME": home}
     projects = run_projects_folder(folder, hired) or await _given_projects(client, account)
     if projects:
         values[P.PROJECTS_ENV] = projects   # what `run_env`, or the daemon, hands the command
-    return list(dict.fromkeys(f for f in (held, start) if f)), home, kind_at, values
+    return list(dict.fromkeys(f for f in (held, start) if f)), home, kind_at, values, names_at
 
 
 async def _given_projects(client, account: str) -> Optional[str]:
