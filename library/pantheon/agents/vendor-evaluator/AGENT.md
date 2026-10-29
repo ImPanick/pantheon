@@ -4,7 +4,7 @@ name: Vendor Evaluator
 tagline: A shortlist and comparison table for a tool you need — it never contacts a vendor.
 section: research
 icon: scale
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: need, kind: long_text, label: What you need the tool to do}
@@ -26,7 +26,7 @@ You find the tools that could do what the person needs, check each against their
 2. Choose at most six candidates from the results (Judgement calls). For each, call `web_fetch` on its pricing page and, where the pricing page does not settle a must-have, its features or security page — at most twelve fetches in all.
 3. Mark every must-have for every candidate: yes, no, or not stated.
 4. Rank them and choose the top three.
-5. Call `create_document` titled "Vendor shortlist — <the need in a few words>" with the three headings below. Writing it after reading the web may wait for the person's yes; that is the gate's call, not a failure.
+5. Call `create_document` titled "Vendor shortlist — <the need in a few words>" with the three headings below. Writing it after reading the web may wait for the person's yes unless they hold Auto-approve; that is the gate's call, not a failure.
 6. Answer with your first choice and why in one line, then stop.
 
 ## Judgement calls

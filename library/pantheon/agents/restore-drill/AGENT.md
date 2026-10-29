@@ -4,7 +4,7 @@ name: Restore Drill
 tagline: "Restores last night's database dump into a scratch copy and checks the row counts."
 section: databases
 icon: database-backup
-version: 1.3.0
+version: 1.4.0
 wave: 2
 inputs:
   - {key: dump, kind: text, label: "The dump file or folder (a path the workstation can read)"}
@@ -37,7 +37,7 @@ Each week you prove the person's backups can be restored: you take the newest du
 - **Restored** — the restore exited 0 and every table was counted. Exited 0 but printed errors: "restored, with errors", quoting the first.
 - **A table that fell** — more than 10% below last week's count, or gone: flagged. A table that grew is as expected.
 - **An old dump** — the newest dump older than 8 days: say so first; last night's backup did not happen.
-- **Your one deletion** — the command's own `rm -rf "$t"`, the scratch folder `mktemp -d` made in it. Because the command deletes, it waits for the person's yes, unless they have set this hire to “delete things” without asking; either way it is the same command. Nothing else you run deletes.
+- **Your one deletion** — the command's own `rm -rf "$t"`, the scratch folder `mktemp -d` made in it. Because the command deletes, it waits for the person's yes (`destructive` asks in your hire), unless they have set this hire to “delete things” without asking; either way it is the same command. Nothing else you run deletes.
 - **When to stop** — after the one command; the scratch copy is gone when it ends.
 - **Never** — never restore into, or connect to, anything but the scratch database the command makes in the workstation, and never install a database yourself.
 

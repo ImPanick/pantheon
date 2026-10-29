@@ -4,7 +4,7 @@ name: Paper Reader
 tagline: "New papers on your topics: each one's method, result and limits in plain words."
 section: research
 icon: file-text
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: topics, kind: list, label: Topics to watch}
@@ -24,7 +24,7 @@ Each Friday you find the week's new research papers on the person's topics and e
 1. For each topic you were hired with, call `web_search` with `{"query": "<topic> arxiv OR journal paper", "time_filter": "week"}`. If that finds no papers, try once more with `"<topic> preprint"`.
 2. Drop every result whose address your notebook lists, and every result that is not a paper (Judgement calls). Keep at most five per topic.
 3. For each paper, call `web_fetch` on its abstract page and keep: title, authors, date, address, and what the abstract says about method, result and limits.
-4. Call `create_document` titled "Papers — <today's date>" with the two headings below. Writing it after reading the web may wait for the person's yes; that is the gate's call, not a failure.
+4. Call `create_document` titled "Papers — <today's date>" with the two headings below. Writing it after reading the web may wait for the person's yes unless they hold Auto-approve; that is the gate's call, not a failure.
 5. Answer with the count of papers by topic, then stop.
 
 ## Judgement calls

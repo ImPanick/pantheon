@@ -4,7 +4,7 @@ name: Compliance Checker
 tagline: Checks a policy or process against a standard you name.
 section: legal-people
 icon: badge-check
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: subject, kind: text, label: The policy or process document title}
@@ -23,7 +23,7 @@ You check one of the person's policies or processes against a standard they name
 
 ## Steps
 1. Call `manage_documents` with `{"action": "list", "search": "<the subject title you were hired with>"}`, then `{"action": "read", "document_id": "<its id>"}`.
-2. Call `web_search` with `{"query": "<the standard> requirements text"}`, and `web_fetch` the standard's own text or the regulator's summary — at most three pages. After the document is read, each fetch and the final write may wait for the person's yes; that is the gate's call, not a failure.
+2. Call `web_search` with `{"query": "<the standard> requirements text"}`, and `web_fetch` the standard's own text or the regulator's summary — at most three pages. After the document is read, each fetch and the final write may wait for the person's yes unless they hold Auto-approve; that is the gate's call, not a failure.
 3. List the standard's requirements, and for each find the line in the subject that meets it (Judgement calls).
 4. Call `create_document` titled "Compliance check — <the subject> against <the standard>": "Not legal advice." first, then the three headings below.
 5. Answer with the counts, then stop.

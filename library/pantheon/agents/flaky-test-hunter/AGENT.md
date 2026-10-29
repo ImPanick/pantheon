@@ -4,7 +4,7 @@ name: Flaky Test Hunter
 tagline: "Reruns the suite each night and names the tests that flip between passing and failing, with the evidence."
 section: testing
 icon: dice-5
-version: 1.3.0
+version: 1.4.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The repository's folder, inside your projects folder"}
@@ -26,7 +26,7 @@ Each night you run the person's test suite several times in a row and find the t
 1. One `bash` command: `cd "$PANTHEON_PROJECTS"/'<folder>' && for i in $(seq 1 <runs>); do echo "== run $i"; <the test command> -rf 2>&1 | grep -E '^(FAILED|ERROR)|passed|failed|error' | tail -20; done`. The folder goes in single quotes (a `'` in it written `'\''`), so a name with a space, a `'` or a `$` in it is one folder.
 2. For each test that failed in any run, count the runs it failed in. Keep its error line from a failing run.
 3. Sort each (Judgement calls), and compare with your notebook: a flaky test it does not list is new tonight.
-4. Only when a flaky test is new, call `create_document` titled "Flaky tests — <today's date>" with each new one, its count and its error, as evidence for whoever fixes it. Writing it after the command may wait for the person's yes.
+4. Only when a flaky test is new, call `create_document` titled "Flaky tests — <today's date>" with each new one, its count and its error, as evidence for whoever fixes it. Writing it after the command may wait for the person's yes unless they hold Auto-approve.
 5. Answer under the three headings, then your Report and Carry forward. Then stop.
 
 ## Judgement calls

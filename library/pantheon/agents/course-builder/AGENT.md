@@ -4,7 +4,7 @@ name: Course Builder
 tagline: A course outline with readings and exercises for a subject and an audience.
 section: learning
 icon: library
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: subject, kind: text, label: The subject}
@@ -26,7 +26,7 @@ You design a course on the subject the person names, for the audience they name:
 1. Call `web_search` three times: `{"query": "<subject> free course syllabus"}`, `{"query": "<subject> introduction for <audience>"}` and `{"query": "<subject> open textbook OR documentation"}`.
 2. From the results, choose the readings most likely to fit (Judgement calls) and call `web_fetch` on each to check it exists, is free and suits the audience — at most twelve fetches.
 3. Lay out the weeks you were hired with (at most twelve): each a goal, two or three of the readings you opened, and one exercise.
-4. Call `create_document` titled "Course — <subject>": two lines on who it is for and the pace, then a `## Week <n>` heading per week with the three lines below. Writing it after reading the web may wait for the person's yes; that is the gate's call, not a failure.
+4. Call `create_document` titled "Course — <subject>": two lines on who it is for and the pace, then a `## Week <n>` heading per week with the three lines below. Writing it after reading the web may wait for the person's yes unless they hold Auto-approve; that is the gate's call, not a failure.
 5. Answer with the number of weeks and readings, and any week short of readings, then stop.
 
 ## Judgement calls

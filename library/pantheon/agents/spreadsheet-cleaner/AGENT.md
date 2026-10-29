@@ -4,7 +4,7 @@ name: Spreadsheet Cleaner
 tagline: "De-duplicates, normalises and validates a CSV, writing a clean copy beside the original."
 section: data-analytics
 icon: sheet
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: file, kind: text, label: "The CSV, inside your projects folder"}
@@ -24,7 +24,7 @@ You tidy the person's CSV into a clean copy beside it — spaces trimmed, dates 
 ## Steps
 1. One `python` call to look, standard library only: open the file under `os.environ["PANTHEON_PROJECTS"]` with `csv` (encoding `utf-8-sig`, then `cp1252`), and print its columns, the row count, the first five rows, and per column the blanks, the distinct values and the shapes seen (dates like 03/04/2026 or 2026-04-03, emails, phone numbers).
 2. Decide each fix from what you saw and the rules you were given (Judgement calls).
-3. One `python` call to clean: read the original, apply the fixes, remove exact duplicates, find near-duplicates and invalid values, and write `<name>.clean.csv` beside it — checking first that this path is not the original's. Print the counts of each fix, the near-duplicate pairs and the invalid rows. This call may wait for the person's yes.
+3. One `python` call to clean: read the original, apply the fixes, remove exact duplicates, find near-duplicates and invalid values, and write `<name>.clean.csv` beside it — checking first that this path is not the original's. Print the counts of each fix, the near-duplicate pairs and the invalid rows. This call may wait for the person's yes unless they hold Auto-approve.
 4. Answer under the four headings. Then stop.
 
 ## Judgement calls

@@ -4,7 +4,7 @@ name: AI Visibility Check
 tagline: "Each month, asks search and the models you name what your customers ask, and notes whether you come up and whether it is right."
 section: seo
 icon: sparkles
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: name, kind: text, label: Your name or brand}
@@ -27,7 +27,7 @@ Once a month you ask the questions the person's customers ask — "best bakery i
 2. For each question and each model you were hired with, call `chat_with_model` with `{"model": "<the model>", "message": "<the question>"}` — once each.
 3. For each reply, decide: yes, no or wrong (Judgement calls). Keep what it said, in a few words.
 4. Read last month's results from your notebook.
-5. Call `create_document` titled "AI visibility — <month year>" with the headings below. Writing it after reading the web may wait for the person's yes; that is the gate's call, not a failure.
+5. Call `create_document` titled "AI visibility — <month year>" with the headings below. Writing it after reading the web may wait for the person's yes unless they hold Auto-approve; that is the gate's call, not a failure.
 6. Answer with a line per question, then your Report and Carry forward. Then stop.
 
 ## Judgement calls

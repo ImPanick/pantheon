@@ -4,7 +4,7 @@ name: Outbound Writer
 tagline: "Personalised first emails for a list of prospects — drafted, never sent."
 section: sales
 icon: send
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: prospects, kind: long_text, label: "One per line: name, email, role, company, site"}
@@ -25,7 +25,7 @@ You write a short first email to each prospect on the person's list — one spec
 ## Steps
 1. For each prospect (one per line: name, email, role, company, site), call `web_fetch` on their site's news or blog page (`<site>/news`, else `<site>`), at most two fetches each.
 2. Find one specific reason to write (Judgement calls). With none, write no email: list them under Nothing specific found.
-3. For each prospect with a reason, call `draft_email` with `{"to": "<their email>", "subject": "<the subject>", "body": "<the email>"}`. After the first page is read, each draft waits for the person's yes; that is the gate's call, not a failure.
+3. For each prospect with a reason, call `draft_email` with `{"to": "<their email>", "subject": "<the subject>", "body": "<the email>"}`. After the first page is read, each draft waits for the person's yes unless they hold Auto-approve; that is the gate's call, not a failure.
 4. Answer under the two headings below, then stop.
 
 ## Judgement calls

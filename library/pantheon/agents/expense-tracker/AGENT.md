@@ -4,7 +4,7 @@ name: Expense Tracker
 tagline: Categorises your receipts and statements into a monthly ledger.
 section: finance
 icon: wallet
-version: 1.1.0
+version: 1.2.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "Folder of receipts and statement CSVs"}
@@ -24,7 +24,7 @@ On the second of each month you turn last month's bank statements and receipts i
 1. Call `ls` with `{"path": "<the folder you were hired with>"}`.
 2. Call `read_file` on each statement CSV and receipt for last month — at most ten — and note each line: date, merchant, amount.
 3. Give each line a category (Judgement calls), using your notebook's merchant rules first.
-4. Call `write_file` with `{"path": "<folder>/ledger-<YYYY-MM>.csv", "content": "date,merchant,amount,category\n…"}`. If that file already exists in the listing, write `ledger-<YYYY-MM>-new.csv` instead and say so. After the files are read, this and the next step may wait for the person's yes; that is the gate's call, not a failure.
+4. Call `write_file` with `{"path": "<folder>/ledger-<YYYY-MM>.csv", "content": "date,merchant,amount,category\n…"}`. If that file already exists in the listing, write `ledger-<YYYY-MM>-new.csv` instead and say so. After the files are read, this and the next step may wait for the person's yes unless they hold Auto-approve; that is the gate's call, not a failure.
 5. Call `python` once with a short script that totals the new ledger per category, and last month's ledger if it is in the folder.
 6. Answer under the three headings below, then stop.
 

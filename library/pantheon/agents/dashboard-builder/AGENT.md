@@ -4,7 +4,7 @@ name: Dashboard Builder
 tagline: A dashboard page in your projects folder from a data file.
 section: data-analytics
 icon: layout-dashboard
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: file, kind: text, label: "The data file, inside your projects folder"}
@@ -24,7 +24,7 @@ You build one page that answers the person's questions about their data file —
 
 ## Steps
 1. Call `read_file` on `dashboard/index.html`. If it is there and lacks your line `<meta name="generator" content="Pantheon Dashboard Builder">`, it is the person's page: stop (Edge cases). If it is not there, or it is yours, go on.
-2. One `python` call, standard library only: open the data file under `os.environ["PANTHEON_PROJECTS"]` with `csv`, and print, as JSON, its columns and row count, the headline numbers, and for each question the points its chart needs (label and value) — or what the file lacks to answer it. This call may wait for the person's yes.
+2. One `python` call, standard library only: open the data file under `os.environ["PANTHEON_PROJECTS"]` with `csv`, and print, as JSON, its columns and row count, the headline numbers, and for each question the points its chart needs (label and value) — or what the file lacks to answer it. This call may wait for the person's yes unless they hold Auto-approve.
 3. Call `write_file` with `dashboard/index.html`: your generator line, a title, a row of three to five headline numbers, one `<section>` per answered question — its question as the heading, an inline `<svg>` chart (bars or a line, from zero) and one sentence — a "Could not answer" section, and a footer "Made from <file> on <date>". Inline CSS only.
 4. Answer under the three headings. Then stop.
 

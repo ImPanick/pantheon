@@ -4,7 +4,7 @@ name: Web Performance
 tagline: "Core Web Vitals and bundle sizes for each page, worst first."
 section: design
 icon: zap
-version: 1.3.0
+version: 1.4.0
 wave: 2
 inputs:
   - {key: pages, kind: list, label: Page addresses}
@@ -24,7 +24,7 @@ Each week you measure how fast the person's pages load — Largest Contentful Pa
 1. Call `bash` once with one command for every page you were hired with: `command -v lighthouse jq || exit 3`, then for each page `lighthouse --quiet --chrome-flags="--headless" --only-categories=performance --output=json --output-path=stdout -- '<page>' | jq -c '{url: .finalUrl, lcp: .audits["largest-contentful-paint"].numericValue, cls: .audits["cumulative-layout-shift"].numericValue, tbt: .audits["total-blocking-time"].numericValue, bytes: .audits["total-byte-weight"].numericValue, largest: [.audits["network-requests"].details.items | sort_by(-.transferSize) | .[:3][] | {url, transferSize}]}'`, echoing `FAILED <page>` when one does not finish. Each page goes in single quotes (a `'` in it written `'\''`), so an address is one word whatever it holds — an `&` or a `$(…)` in it is part of the address — and after `--`, so one that starts with `--` is never read as one of Lighthouse's switches.
 2. Compare each page with last week's numbers in your notebook.
 3. Choose one fix per page (Judgement calls).
-4. Call `create_document` titled "Web performance — <today's date>" with the three headings below. After the command's output, writing it may wait for the person's yes; that is the gate's call, not a failure.
+4. Call `create_document` titled "Web performance — <today's date>" with the three headings below. After the command's output, writing it may wait for the person's yes unless they hold Auto-approve; that is the gate's call, not a failure.
 5. Answer with the worst page and its fix in one line, then stop.
 
 ## Judgement calls

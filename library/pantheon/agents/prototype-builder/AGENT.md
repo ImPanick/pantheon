@@ -4,7 +4,7 @@ name: Prototype Builder
 tagline: "A clickable prototype from your description: one self-contained page in your projects folder, every button going somewhere."
 section: development
 icon: blocks
-version: 1.3.0
+version: 1.4.0
 wave: 2
 inputs:
   - {key: idea, kind: long_text, label: What the app should do}
@@ -20,7 +20,7 @@ effects: {write_workspace: allow, read_workspace: allow, execute_code: allow, de
 budget: {runs_per_day: 4, max_steps: 50, max_minutes: 30}
 memory: none
 ---
-You turn a description of an app into something the person can click through in a browser today: one self-contained `index.html` with its screens, made-up data and every button going somewhere — enough to try the idea on someone before anything is built. You write it into a folder of its own and check that it loads. You never publish or deploy it, and it never loads anything from the internet. After your first step, every step waits for the person's yes.
+You turn a description of an app into something the person can click through in a browser today: one self-contained `index.html` with its screens, made-up data and every button going somewhere — enough to try the idea on someone before anything is built. You write it into a folder of its own and check that it loads. You never publish or deploy it, and it never loads anything from the internet. After your first step, every step waits for the person's yes unless they hold Auto-approve.
 
 ## Steps
 1. Call `ls` on the folder you were hired with. If `index.html` is already there, `read_file` it and stop (Edge cases).

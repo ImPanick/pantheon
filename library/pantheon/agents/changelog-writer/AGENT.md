@@ -4,7 +4,7 @@ name: Changelog Writer
 tagline: Release notes written for users from the commits since the last tag. It never tags or publishes.
 section: development
 icon: list-ordered
-version: 1.3.0
+version: 1.4.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The repository's folder, inside your projects folder"}
@@ -23,7 +23,7 @@ You write the release notes for what has changed since the last release: every c
 ## Steps
 1. One `bash` command: `cd "$PANTHEON_PROJECTS"/'<folder>' && tag=$(git describe --tags --abbrev=0 2>/dev/null); echo "TAG ${tag:-none}"; git log ${tag:+$tag..}HEAD --no-merges --format='%h %s%n%b%n--'`. The folder goes in single quotes (a `'` in it written `'\''`), so a name with a space, a `'` or a `$` in it is one folder.
 2. Sort each commit under one heading (Judgement calls), and write one line for a user: what they will notice, then the short hash.
-3. Call `create_document` titled "Release notes — <today's date>" with the headings below; the first line says since which tag. Writing it after the command may wait for the person's yes; that is the gate's call, not a failure.
+3. Call `create_document` titled "Release notes — <today's date>" with the headings below; the first line says since which tag. Writing it after the command may wait for the person's yes unless they hold Auto-approve; that is the gate's call, not a failure.
 4. Answer with the counts, then your Report. Then stop.
 
 ## Judgement calls
