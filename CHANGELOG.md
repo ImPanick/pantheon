@@ -491,6 +491,10 @@ the next one is cut.
 
 ### Fixed
 
+- **A reply trimmed to fit keeps the agent's instructions whole** and shortens your message
+  first, and a memory the model never received is not shown as used (`B1651`, `B1650`); a step you
+  allowed from a card appears once in a run's log and report (`B1648`); 76 agent runbooks say
+  whose runs wait for a yes (`B1649`).
 - **A reply trimmed to fit says what it left out** — your saved memory, retrieved documents,
   search results, or the middle of your message (`B1572`); browser speech-to-text no longer drops
   the last words of a short recording (`B1564`).
