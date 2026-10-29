@@ -351,7 +351,9 @@ def test_the_json_the_freshness_workflow_reads_is_complete():
         for field in ("entry", "package", "registry", "version", "checked",
                       "source", "behind_ok", "osv_known"):
             assert field in rec, (rec.get("entry"), field)
-        assert rec["registry"] in {"npm", "sheetjs"}, rec
+        # `B1674` added "github": the fallback PDF's fonts are release files
+        # with no registry index, asked about by hand like SheetJS's CDN.
+        assert rec["registry"] in {"npm", "sheetjs", "github"}, rec
 
     # The workflow must not be the thing that decides a library is exempt; the
     # record is, next to the version it excuses. `B437`: the deciding moved from

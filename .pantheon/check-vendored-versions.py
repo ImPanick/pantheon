@@ -323,6 +323,63 @@ VENDORED = [
              "page (driven in tests/test_the_fallback_pdf_is_jspdfs_own_with_"
              "its_links_in_a_browser.py).",
     ),
+    # `B1674`, 2026-10-29 (`D-2026-10-29-03` §3, "Inter + a CJK font"). The
+    # faces the fallback PDF embeds for what jsPDF's built-in fonts cannot
+    # draw, fetched only by a document that needs them (`static/js/document.js`
+    # `PDF_FONTS`). Neither is on npm: `registry="github"` puts each under the
+    # freshness job's *Could not be asked*, to be checked by hand at `source`.
+    Vendored(
+        "Inter", "rsms/inter", "4.1", "2026-10-29",
+        "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip",
+        "v4.1",
+        registry="github",
+        files={
+            "static/lib/pdf-fonts/Inter-Regular.ttf":
+                "40d692fce188e4471e2b3cba937be967878f631ad3ebbbdcd587687c7ebe0c82",
+            "static/lib/pdf-fonts/Inter-Bold.ttf":
+                "288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947f",
+            "static/lib/pdf-fonts/Inter-Italic.ttf":
+                "bbc051dd204b5019a1aa0bc0ae2aa8a05ab13e7a3f979fa357631dc7feb6833a",
+            "static/lib/pdf-fonts/Inter-BoldItalic.ttf":
+                "948405a16cdc62701da5f4005ed068ca5f4d27061d98f7974ccfc37831d9581d",
+        },
+        note="B1674. The v4.1 release zip's `extras/ttf/` faces byte for "
+             "byte (the zip, 33,707,794 bytes, sha256 9883fdd4a49d4fb6"
+             "6bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e, downloaded "
+             "2026-10-29; Inter publishes no checksum to hold it to). The same "
+             "zip's `extras/woff-hinted/` holds static/fonts/Inter-{Regular,"
+             "Medium,SemiBold}.woff2 byte for byte, which is how the UI's own "
+             "faces were found to be this release too; they are outside this "
+             "file's root, so only the four `.ttf`s are fingerprinted here. "
+             "TrueType because jsPDF embeds `glyf` outlines and not WOFF2.",
+    ),
+    Vendored(
+        "Noto Sans CJK", "notofonts/noto-cjk", "2.004", "2026-10-29",
+        "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/Variable/TTF/"
+        "NotoSansCJKsc-VF.ttf",
+        "v2.004",
+        registry="github",
+        build="python3 scripts/build-pdf-cjk-font.py NotoSansCJKsc-VF.ttf "
+              "static/lib/pdf-fonts/NotoSansCJKsc-Regular.subset.ttf",
+        files={
+            "static/lib/pdf-fonts/NotoSansCJKsc-Regular.subset.ttf":
+                "5e89eb7fae7353b6760ca6de6daa04d548ffa2b76be35bdb069fad9908e98a9f",
+        },
+        note="B1674. Built, not upstream's bytes: Noto Sans CJK SC's "
+             "variable TrueType at tag Sans2.004 (36,144,788 bytes, sha256 "
+             "990c807e79c25662a5a9ecf7f971baeb2bf2eab9a559e5ecf15cdfdb8561d21f "
+             "— the build refuses any other; the same bytes from `main` on "
+             "2026-10-29, and Noto publishes no checksum), cut to the "
+             "characters GB 2312, Big5, JIS X 0208 and KS X 1001 encode plus "
+             "the kana, CJK punctuation and fullwidth blocks (20,340 glyphs), "
+             "its weight fixed at 400 (the file's default instance is Thin), "
+             "and named Regular. 6.4 MB, which with Inter's four faces is "
+             "the 8 MB the owner's 5-10 MB allowed. The same bytes on every "
+             "run with fontTools 4.66.1. What it leaves out: Hangul syllables "
+             "outside KS X 1001's 2,350, ideographs outside the four sets "
+             "(Extension A and beyond), and anything past U+FFFF, which "
+             "jsPDF cannot address; the export names those it cannot draw.",
+    ),
     # B338, 2026-09-17. The `node-qrcode` record is GONE, because the bytes
     # are: `static/lib/qrcode.min.js` was loaded by nothing and is no longer
     # shipped. This file fingerprints what we serve, so a record for a file

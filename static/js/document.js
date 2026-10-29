@@ -10091,19 +10091,36 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
     // fire-and-forget, so the one failure it had — a colour the rasteriser
     // cannot read — reached nobody but the console.
     try {
-      const pdf = new window.jspdf.jsPDF(PDF_PAGE);
+      // `B1674`. The fonts this document needs beyond the built-in ones,
+      // fetched only now and only those (`_pdfFontsNeeded`). An emoji in
+      // prose is `markdown.js`'s icon, a `span.emoji` with no text that the
+      // clone's plain styles draw as nothing, so its own character is read
+      // from its label: it is named with the rest rather than lost unsaid.
+      const text = (container.textContent || '') + [...container.querySelectorAll('.emoji[aria-label]')]
+        .map((el) => el.getAttribute('aria-label')).join('');
+      const needs = _pdfFontsNeeded(text);
+      // With faces to embed, only those the file draws with are written
+      // into it (jsPDF writes every registered font otherwise, ~85 KB for
+      // each face nothing used), and its streams are deflated (each face
+      // jsPDF writes is ~90 KB uncompressed, however few glyphs it holds).
+      // A document that needs none is made exactly as before.
+      const pdf = new window.jspdf.jsPDF(needs.sans || needs.cjk
+        ? { ...PDF_PAGE, putOnlyUsedFonts: true, compress: true } : PDF_PAGE);
+      const { fonts, trouble } = await _pdfRegisterFonts(pdf, needs);
+      if (fonts.sans) container.style.fontFamily = `${fonts.sans.family}, sans-serif`;
       // `B421`. A string, not the node: `html()` sanitises a string with the
       // DOMPurify shipped beside it before anything is put into this page,
       // and keeps a node as it is. The container is ours and already
       // markdown.js's output; the string branch is what makes the third
       // file do something, and it costs one serialisation.
-      await _pdfFromHtml(pdf, container.outerHTML);
+      await _pdfFromHtml(pdf, container.outerHTML, fonts);
       pdf.save(baseName + '.pdf');
       // Said, not left for the reader of the file to find (`Law 15`).
-      const lost = _undrawableInPdf(container.textContent || '');
+      const lost = _undrawableInPdf(text, fonts);
       if (lost.length && uiModule) {
         const shown = lost.slice(0, 8).join(' ') + (lost.length > 8 ? ' …' : '');
-        uiModule.showError(`Saved — but this PDF's built-in fonts can't draw ${shown}, so `
+        const why = trouble.length ? ` (the font that draws them did not load: ${trouble.join('; ')})` : '';
+        uiModule.showError(`Saved — but this PDF can't draw ${shown}${why}, so `
           + `${lost.length === 1 ? 'it comes' : 'they come'} out wrong in the file. `
           + 'Export as Word keeps every character.');
       }
@@ -10121,10 +10138,12 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
    * (Windows-1252). Measured in Chromium: `Привет мир` came out as
    * `@825B <8@`, `你好世界` as seven Latin-1 letters, an emoji as nothing,
    * and `™` — which the table has — as a space. html2pdf drew pixels and had
-   * no such limit; a Unicode font handed to `html()` (`fontFaces`, TrueType)
-   * would lift it, and none ships here. Whitespace and the invisible format
-   * characters (KaTeX's zero-width spaces) are not counted: nobody can be
-   * told about a character they cannot see.
+   * no such limit. `B1674` gives `html()` TrueType fonts for the rest
+   * (`PDF_FONTS`); what none of the document's `fonts` draws either — emoji,
+   * scripts neither covers, anything past U+FFFF — is what this names.
+   * Whitespace and the invisible format characters (KaTeX's zero-width
+   * spaces) are not counted: nobody can be told about a character they
+   * cannot see.
    */
   const _PDF_DRAWABLE = (() => {
     try {
@@ -10137,11 +10156,216 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
       return null;   // no table to check against: say nothing rather than guess
     }
   })();
-  function _undrawableInPdf(text) {
+  function _undrawableInPdf(text, fonts = {}) {
     if (!_PDF_DRAWABLE) return [];
     const out = new Set();
-    for (const ch of text) if (!/[\s\p{Cc}\p{Cf}]/u.test(ch) && !_PDF_DRAWABLE.has(ch)) out.add(ch);
+    for (const ch of text) {
+      if (/[\s\p{Cc}\p{Cf}]/u.test(ch) || _PDF_DRAWABLE.has(ch)) continue;
+      if (Object.values(fonts).some((font) => font.draws(ch))) continue;
+      out.add(ch);
+    }
     return [...out];
+  }
+
+  /**
+   * `B1674` (`D-2026-10-29-03` §3, "Inter + a CJK font"). The TrueType faces
+   * the fallback PDF embeds for what the built-in fonts cannot draw: Inter,
+   * the UI's own typeface, for Latin, Greek and Cyrillic, and Noto Sans CJK
+   * for Chinese, Japanese and Korean. Both are in `static/lib/pdf-fonts/`,
+   * versioned and hashed with the other vendored files (the CJK face is a
+   * subset, built by `scripts/build-pdf-cjk-font.py`, of the characters
+   * GB 2312, Big5, JIS X 0208 and KS X 1001 encode; CREDITS.md). TrueType
+   * because jsPDF embeds `glyf` outlines and not CFF; jsPDF writes only the
+   * glyphs a file uses into it.
+   *
+   * jsPDF draws each run of text in one font, the first of its CSS
+   * `font-family` it has, with no fallback from glyph to glyph — and a glyph
+   * its font lacks ends the run there (`pdfEscape16` stops at glyph 0). So
+   * the document is drawn in Inter when Inter is loaded, and each stretch
+   * of text its own font cannot draw is given, in html2canvas's clone, the
+   * font that can (`_pdfFontRuns`).
+   *
+   * The family names are letters only: jsPDF's `font` parser takes nothing
+   * else in a family name.
+   */
+  const PDF_FONT_DIR = '/static/lib/pdf-fonts/';
+  const PDF_FONTS = {
+    sans: { family: 'pantheonpdfsans', faces: { normal: 'Inter-Regular.ttf', bold: 'Inter-Bold.ttf',
+      italic: 'Inter-Italic.ttf', bolditalic: 'Inter-BoldItalic.ttf' } },
+    cjk: { family: 'pantheonpdfcjk', faces: { normal: 'NotoSansCJKsc-Regular.subset.ttf' } },
+  };
+
+  // `B1674`. Chinese, Japanese and Korean, by block: Hangul Jamo, the CJK
+  // radicals and symbols, kana, Bopomofo, Hangul compatibility jamo, the
+  // enclosed and compatibility CJK blocks, Extension A, the unified
+  // ideographs, Hangul syllables, compatibility ideographs, the CJK
+  // compatibility forms, and halfwidth and fullwidth forms.
+  const _PDF_CJK = /[\u1100-\u11ff\u2e80-\u2fdf\u3000-\u33ff\u3400-\u4dbf\u4e00-\u9fff\ua960-\ua97f\uac00-\ud7ff\uf900-\ufaff\ufe30-\ufe4f\uff00-\uffef]/u;
+  const _PDF_FOR_INTER = /[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}\p{Script=Common}\p{Script=Inherited}]/u;
+
+  /** `B1674`. Which of `PDF_FONTS` the text needs, decided before any is
+   *  fetched ("loaded only when a document needs it"): Inter for a
+   *  character the built-in fonts cannot draw that is Latin, Greek, Cyrillic
+   *  or common punctuation and symbols — not an emoji, which neither font
+   *  draws — and the CJK face for a Chinese, Japanese or Korean one. */
+  function _pdfFontsNeeded(text) {
+    const needs = { sans: false, cjk: false };
+    if (!_PDF_DRAWABLE) return needs;
+    for (const ch of text) {
+      if (/[\s\p{Cc}\p{Cf}]/u.test(ch) || _PDF_DRAWABLE.has(ch)) continue;
+      if (_PDF_CJK.test(ch)) needs.cjk = true;
+      else if (_PDF_FOR_INTER.test(ch) && !/\p{Extended_Pictographic}/u.test(ch)) needs.sans = true;
+    }
+    return needs;
+  }
+
+  /** `B1674`. A face's bytes as the binary string jsPDF's virtual file
+   *  system takes, fetched once per page and kept for the next export. A
+   *  failure is forgotten, so the next export asks again. */
+  const _pdfFontFiles = new Map();
+  function _pdfFontFile(file) {
+    if (!_pdfFontFiles.has(file)) {
+      const loading = fetch(PDF_FONT_DIR + file).then((res) => {
+        if (!res.ok) throw new Error(`${file} answered HTTP ${res.status}`);
+        return res.arrayBuffer();
+      }).then((buf) => {
+        const bytes = new Uint8Array(buf);
+        const parts = [];
+        for (let i = 0; i < bytes.length; i += 0x8000) {
+          parts.push(String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)));
+        }
+        return parts.join('');
+      }).catch((e) => {
+        _pdfFontFiles.delete(file);
+        throw e;
+      });
+      _pdfFontFiles.set(file, loading);
+    }
+    return _pdfFontFiles.get(file);
+  }
+
+  /** `B1674`. Fetch and register with `pdf` each font `needs` names.
+   *  Resolves to `{ fonts, trouble }`: `fonts[key]` is `{ family, faces,
+   *  draws(ch) }` for each face set that loaded — `draws` asks the font
+   *  itself whether it has the character (jsPDF writes one UTF-16 unit per
+   *  glyph, so nothing past U+FFFF) — and `trouble` is one sentence per set
+   *  that did not, so the export still makes a file with the built-in fonts
+   *  and says why those characters came out wrong. */
+  async function _pdfRegisterFonts(pdf, needs) {
+    const fonts = {};
+    const trouble = [];
+    for (const key of Object.keys(PDF_FONTS)) {
+      if (!needs[key]) continue;
+      const { family, faces } = PDF_FONTS[key];
+      try {
+        const styles = Object.keys(faces);
+        const bytes = await Promise.all(styles.map((style) => _pdfFontFile(faces[style])));
+        styles.forEach((style, i) => {
+          if (!pdf.existsFileInVFS(faces[style])) pdf.addFileToVFS(faces[style], bytes[i]);
+          pdf.addFont(faces[style], family, style);
+        });
+        const cmap = pdf.getFont(family, 'normal').metadata;
+        fonts[key] = { family, faces,
+          draws: (ch) => ch.length === 1 && cmap.characterToGlyph(ch.charCodeAt(0)) !== 0 };
+      } catch (e) {
+        trouble.push((e && e.message) ? e.message : String(e));
+      }
+    }
+    return { fonts, trouble };
+  }
+
+  // `B1674`. The names jsPDF resolves to its built-in fonts: their own, and
+  // the generic families it maps onto them.
+  const _PDF_BUILT_IN_FAMILIES = new Set(['helvetica', 'courier', 'times', 'symbol', 'zapfdingbats',
+    'sans-serif', 'serif', 'monospace', 'fixed', 'terminal', 'cursive', 'fantasy']);
+
+  /** `B1674`. Which font jsPDF will draw an element in, from its computed
+   *  `font-family`, the way jsPDF picks: the first family it has. A key of
+   *  `fonts`, or `'std'` for a built-in one. */
+  function _pdfFontOf(fontFamily, fonts) {
+    for (const raw of String(fontFamily || '').split(',')) {
+      const name = raw.trim().replace(/^["']|["']$/g, '').toLowerCase();
+      const key = Object.keys(fonts).find((k) => fonts[k].family === name);
+      if (key) return key;
+      if (_PDF_BUILT_IN_FAMILIES.has(name)) return 'std';
+    }
+    return 'std';
+  }
+
+  /** `B1674`. The font a character is drawn in, where its own (`base`) is
+   *  given: its own if that draws it, else the first of `fonts` that does,
+   *  else a built-in one — which leaves it out of the file rather than
+   *  ending the rest of the word with it, as a TrueType face would.
+   *  Whitespace stays with its run: html2canvas never draws it inside one. */
+  function _pdfFontFor(ch, base, fonts) {
+    if (/[\s\p{Cc}]/u.test(ch)) return base;
+    const draws = (key) => (key === 'std' ? _PDF_DRAWABLE.has(ch) : !!(fonts[key] && fonts[key].draws(ch)));
+    if (draws(base)) return base;
+    return Object.keys(fonts).find((key) => key !== base && draws(key)) || 'std';
+  }
+
+  /** `B1674`. In html2canvas's clone, give every stretch of text the font
+   *  that draws it (`_pdfFontFor`), as a `<span data-pdf-font>` naming that
+   *  family — so the browser lays it out in the font jsPDF will draw it in.
+   *  Returns how many stretches it wrapped. */
+  function _pdfFontRuns(root, fonts, win) {
+    const doc = root.ownerDocument;
+    const walker = doc.createTreeWalker(root, win.NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) if (n.parentElement && /\S/.test(n.data)) nodes.push(n);
+    let wrapped = 0;
+    for (const node of nodes) {
+      const base = _pdfFontOf(win.getComputedStyle(node.parentElement).fontFamily, fonts);
+      const runs = [];
+      for (const ch of node.data) {
+        const font = _pdfFontFor(ch, base, fonts);
+        const last = runs[runs.length - 1];
+        if (last && last.font === font) last.text += ch;
+        else runs.push({ font, text: ch });
+      }
+      if (runs.every((run) => run.font === base)) continue;
+      const frag = doc.createDocumentFragment();
+      for (const run of runs) {
+        if (run.font === base) {
+          frag.appendChild(doc.createTextNode(run.text));
+          continue;
+        }
+        const span = doc.createElement('span');
+        span.setAttribute('data-pdf-font', '');
+        span.style.fontFamily = run.font === 'std' ? 'sans-serif' : fonts[run.font].family;
+        span.textContent = run.text;
+        frag.appendChild(span);
+        wrapped++;
+      }
+      node.parentNode.replaceChild(frag, node);
+    }
+    return wrapped;
+  }
+
+  /** `B1674`. The clone's side of the fonts: `@font-face` rules for each
+   *  loaded face, at the URL it was fetched from (so the browser's layout
+   *  and jsPDF's drawing use the same glyphs and widths), each stretch of
+   *  text in the font that draws it, and every face loaded before anything
+   *  is measured. html2canvas waits for this (`onclone`'s promise). */
+  async function _pdfFontsInClone(clonedDoc, root, fonts) {
+    const win = clonedDoc.defaultView;
+    const rules = [];
+    const loads = [];
+    for (const { family, faces } of Object.values(fonts)) {
+      for (const [style, file] of Object.entries(faces)) {
+        const weight = style.includes('bold') ? 700 : 400;
+        const slant = style.includes('italic') ? 'italic' : 'normal';
+        rules.push(`@font-face{font-family:${family};src:url("${PDF_FONT_DIR}${file}") format("truetype");`
+          + `font-weight:${weight};font-style:${slant}}`);
+        loads.push(`${slant} ${weight} 16px ${family}`);
+      }
+    }
+    const sheet = clonedDoc.createElement('style');
+    sheet.textContent = rules.join('');
+    clonedDoc.head.appendChild(sheet);
+    _pdfFontRuns(root, fonts, win);
+    await Promise.all(loads.map((font) => clonedDoc.fonts.load(font)));
+    await clonedDoc.fonts.ready;
   }
 
   /** `B421`. A4 portrait in millimetres with a 10 mm margin — the page
@@ -10173,32 +10397,45 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
    *
    * Resolves to the link boxes it added.
    */
-  async function _pdfFromHtml(pdf, html) {
+  async function _pdfFromHtml(pdf, html, fonts = {}) {
     const inner = pdf.internal.pageSize.getWidth() - 2 * PDF_MARGIN_MM;
     const windowWidth = inner / MM_PER_CSS_PX;
     const pageHeight = pdf.internal.pageSize.getHeight() - 2 * PDF_MARGIN_MM;
+    const embedded = Object.keys(fonts).length > 0;
     let links = [];
+    const layout = (clonedEl) => {
+      try {
+        if (clonedEl) _keepLinesOffPageEdges(clonedEl, pageHeight / (inner / windowWidth));
+      } catch (e) {
+        // A layout this could not walk still makes a file — with a line
+        // cut at an edge, as before `B1676` — rather than none at all.
+        console.warn('Could not keep the PDF\'s lines clear of its page edges:', e);
+      }
+      // Measured in the clone, after its styles changed and its lines
+      // moved: that is the layout html2canvas draws, and the page's own
+      // sheet is not.
+      if (clonedEl) links = _pdfLinkBoxes(clonedEl, inner / windowWidth);
+    };
     await pdf.html(html, {
       worker: true,
       margin: PDF_MARGIN_MM,
       width: inner,
       windowWidth,
       autoPaging: true,
+      // `B1674`. A list (empty: the faces are registered with `pdf` already,
+      // `_pdfRegisterFonts`) is what makes jsPDF's canvas pick a font by
+      // family among everything `pdf` has, rather than map each family onto
+      // a built-in one. Only when fonts were loaded: a document that needs
+      // none is drawn exactly as before.
+      ...(embedded ? { fontFaces: [] } : {}),
       html2canvas: {
         allowTaint: false,
         onclone: (clonedDoc, clonedEl) => {
           _plainStylesForPdfClone(clonedDoc);
-          try {
-            if (clonedEl) _keepLinesOffPageEdges(clonedEl, pageHeight / (inner / windowWidth));
-          } catch (e) {
-            // A layout this could not walk still makes a file — with a line
-            // cut at an edge, as before `B1676` — rather than none at all.
-            console.warn('Could not keep the PDF\'s lines clear of its page edges:', e);
-          }
-          // Measured in the clone, after its styles changed and its lines
-          // moved: that is the layout html2canvas draws, and the page's own
-          // sheet is not.
-          if (clonedEl) links = _pdfLinkBoxes(clonedEl, inner / windowWidth);
+          // `B1674`: the fonts are in place and loaded before the layout is
+          // walked and measured — they change where every line falls.
+          if (embedded && clonedEl) return _pdfFontsInClone(clonedDoc, clonedEl, fonts).then(() => layout(clonedEl));
+          return layout(clonedEl);
         },
       },
     }).from(html).toPdf();
@@ -10397,6 +10634,17 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
    * Driven in
    * `tests/test_the_fallback_pdf_never_cuts_a_line_and_draws_formulas_in_a_browser.py`.
    *
+   * `B1678`: a picture is part of its line too. Only text was looked at, so
+   * an `<img>` alone in its paragraph, or one taller than the words beside
+   * it, was drawn in two clipped halves across an edge — measured in
+   * Chromium: two of fourteen pictures alone in a paragraph and two of ten
+   * inline ones. A picture (`_PDF_ATOMIC_TAGS`) is now "across an edge" when
+   * its own box is, and moves with its line the way a line of text does. One
+   * taller than a page cannot be drawn whole; it is moved only when that
+   * makes it cross fewer edges — to the top of a page — so a picture under
+   * two pages tall is cut once, not twice (it was drawn on three pages).
+   * Driven in `tests/test_the_fallback_pdf_never_cuts_a_picture_in_a_browser.py`.
+   *
    * Returns how many lines it moved.
    */
   function _keepLinesOffPageEdges(root, pagePx) {
@@ -10421,13 +10669,28 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
   const _PDF_ATOMIC_TAGS = new Set(['img', 'svg', 'canvas', 'video', 'iframe', 'input', 'select',
     'textarea', 'object', 'embed']);
 
-  /** `B1676`. The first text run (DOM order) that the edge `edge`, in CSS px
-   *  from `root`'s top, would cut: `{ node, rect, top }`, `top` being where
-   *  jsPDF's box for it starts. */
+  /** `B1676`. The first text run or picture (DOM order) that the edge
+   *  `edge`, in CSS px from `root`'s top, would cut: `{ node, rect, top }`,
+   *  `top` being where jsPDF's box for it starts. */
   function _lineAcrossEdge(root, edge, pagePx, win, range, stuck) {
     const top0 = root.getBoundingClientRect().top;
-    const walker = root.ownerDocument.createTreeWalker(root, win.NodeFilter.SHOW_TEXT);
+    const walker = root.ownerDocument.createTreeWalker(root,
+      win.NodeFilter.SHOW_TEXT | win.NodeFilter.SHOW_ELEMENT);
+    let picture = null;
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      // `B1678`. A picture is one box; what is inside it (an SVG's own
+      // text) is drawn with it.
+      if (picture && picture.contains(node)) continue;
+      picture = null;
+      if (node.nodeType === 1) {
+        if (!_PDF_ATOMIC_TAGS.has(node.localName)) continue;
+        picture = node;
+        if (stuck.has(node)) continue;
+        const cut = _pictureAcrossEdge(node, edge, pagePx, top0);
+        if (cut === 'stuck') stuck.add(node);
+        else if (cut) return cut;
+        continue;
+      }
       if (stuck.has(node) || !/\S/.test(node.data) || !node.parentElement) continue;
       range.selectNodeContents(node);
       for (const r of range.getClientRects()) {
@@ -10445,6 +10708,22 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
       }
     }
     return null;
+  }
+
+  /** `B1678`. Whether the edge `edge` cuts the picture `el`: its cut, as
+   *  `_lineAcrossEdge` returns one; `'stuck'` when no move can make it cross
+   *  fewer edges (taller than a page and already crossing as few as it can,
+   *  or already opening its page); or `null`. */
+  function _pictureAcrossEdge(el, edge, pagePx, top0) {
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) return null;
+    const top = r.top - top0;
+    const bottom = r.bottom - top0;
+    if (top >= edge - 0.5 || bottom <= edge + 0.5) return null;
+    const fewest = Math.ceil((bottom - top) / pagePx - 0.001) - 1;
+    const crossed = Math.ceil((bottom - 0.5) / pagePx) - Math.floor((top + 0.5) / pagePx) - 1;
+    if (crossed <= fewest || top <= edge - pagePx + 1) return 'stuck';
+    return { node: el, rect: r, top };
   }
 
   /** `B1676`. The box of the character at `i` in text node `node`. */
@@ -10477,14 +10756,22 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
     const inlineLevel = (d) => d.startsWith('inline') || d === 'contents';
     // The block the line is in, and the inline-block the run sits inside, if
     // it does (KaTeX's `.base`): that box is what is on the line.
+    // `B1678`: a picture's cut names the picture itself.
     const chain = [];
-    for (let el = cut.node.parentElement; el && el !== root; el = el.parentElement) chain.unshift(el);
+    const from = cut.node.nodeType === 1 ? cut.node : cut.node.parentElement;
+    for (let el = from; el && el !== root; el = el.parentElement) chain.unshift(el);
     let block = root;
     let atom = null;
     for (const el of chain) {
       const d = display(el);
       if (d.startsWith('inline-') || _PDF_ATOMIC_TAGS.has(el.localName)) { atom = el; break; }
       if (!inlineLevel(d)) block = el;
+    }
+    // `B1678`. A picture laid out as a block is a line of its own, and the
+    // block it opens is itself.
+    if (atom && !inlineLevel(display(atom))) {
+      const atomTop = () => atom.getBoundingClientRect().top;
+      return _pdfMoveBlockDown(root, atom, atomTop() + shift, atomTop, win);
     }
     // The block's line content in order: text, boxes, and what ends a line.
     const items = [];
@@ -10570,30 +10857,8 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
     };
     const want = topOf() + shift;
     // The line opens its block: move the block, and the blocks it opens.
-    if (opensBlock && block !== root && !display(block).startsWith('table')) {
-      let mover = block;
-      const firstInFlow = (parent) => {
-        for (let c = parent.firstChild; c; c = c.nextSibling) {
-          if (c.nodeType === 3 && /\S/.test(c.data)) return c;
-          if (c.nodeType !== 1) continue;
-          const cs = win.getComputedStyle(c);
-          if (cs.display !== 'none' && cs.position !== 'absolute' && cs.position !== 'fixed') return c;
-        }
-        return null;
-      };
-      while (mover.parentElement && mover.parentElement !== root
-        && ['block', 'list-item', 'flow-root'].includes(display(mover.parentElement))
-        && firstInFlow(mover.parentElement) === mover) mover = mover.parentElement;
-      const margin = parseFloat(win.getComputedStyle(mover).marginTop) || 0;
-      let add = shift;
-      for (let i = 0; i < 4; i++) {
-        mover.style.marginTop = `${margin + add}px`;
-        const short = want - topOf();
-        if (short <= 0.25) return true;
-        add += short;
-      }
-      mover.style.marginTop = `${margin}px`;
-    }
+    if (opensBlock && block !== root && !display(block).startsWith('table')
+      && _pdfMoveBlockDown(root, block, want, topOf, win)) return true;
     // A later line: a spacer on the line's baseline as tall as the line's
     // ascent plus the move, kept on the line by `nowrap` with its first word.
     let spacer = anchor.parentNode && anchor.parentNode.hasAttribute
@@ -10619,6 +10884,36 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
       height += short;
     }
     return want - topOf() <= 0.25;
+  }
+
+  /** `B1676`. Move `block` — and the blocks it is the first thing in — down
+   *  by its top margin until `topOf()` reads `want`. False, with the margin
+   *  put back, when four tries do not get it there. */
+  function _pdfMoveBlockDown(root, block, want, topOf, win) {
+    const display = (el) => win.getComputedStyle(el).display;
+    let mover = block;
+    const firstInFlow = (parent) => {
+      for (let c = parent.firstChild; c; c = c.nextSibling) {
+        if (c.nodeType === 3 && /\S/.test(c.data)) return c;
+        if (c.nodeType !== 1) continue;
+        const cs = win.getComputedStyle(c);
+        if (cs.display !== 'none' && cs.position !== 'absolute' && cs.position !== 'fixed') return c;
+      }
+      return null;
+    };
+    while (mover.parentElement && mover.parentElement !== root
+      && ['block', 'list-item', 'flow-root'].includes(display(mover.parentElement))
+      && firstInFlow(mover.parentElement) === mover) mover = mover.parentElement;
+    const margin = parseFloat(win.getComputedStyle(mover).marginTop) || 0;
+    let add = want - topOf();
+    for (let i = 0; i < 4; i++) {
+      mover.style.marginTop = `${margin + add}px`;
+      const short = want - topOf();
+      if (short <= 0.25) return true;
+      add += short;
+    }
+    mover.style.marginTop = `${margin}px`;
+    return false;
   }
 
   async function exportAsDocx() {

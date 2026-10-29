@@ -899,8 +899,16 @@ INVENTORY = [
           "swagger-ui-bundle.js.LICENSE.txt", "swagger-ui-bundle.js.LICENSE.txt"),
     Entry("Fira Code", ["static/fonts/FiraCode-*.woff2"], "OFL-1.1",
           "FiraCode-OFL.txt", "Fira Code"),
-    Entry("Inter", ["static/fonts/Inter-*.woff2"], "OFL-1.1",
+    # `B1674`: the same release's static TrueType faces, which the fallback
+    # PDF embeds (`static/js/document.js` `PDF_FONTS`) — jsPDF takes `glyf`
+    # outlines and not WOFF2.
+    Entry("Inter", ["static/fonts/Inter-*.woff2", "static/lib/pdf-fonts/Inter-*.ttf"], "OFL-1.1",
           "Inter-OFL.txt", "Inter"),
+    # `B1674`. The fallback PDF's Chinese, Japanese and Korean face: a subset of
+    # Noto Sans CJK SC built by `scripts/build-pdf-cjk-font.py`, so a Modified
+    # Version — its Reserved Font Name, "Source", is not in its name.
+    Entry("Noto Sans CJK", ["static/lib/pdf-fonts/NotoSansCJK*.ttf"], "OFL-1.1",
+          "NotoSansCJK-OFL.txt", "Noto Sans CJK"),
     Entry("OpenDyslexic", ["static/fonts/OpenDyslexic-*.woff2"], "OFL-1.1",
           "OpenDyslexic-OFL.txt", "OpenDyslexic"),
     Entry("OpenMoji", ["library/emoji/*"], "CC-BY-SA-4.0",
