@@ -347,11 +347,22 @@ _FOLDER_REFUSALS = frozenset({"not_found", "outside_home", "forbidden"})
 # chat with no workspace is known without asking the daemon on every call.
 # `list` with no path answers the home without starting a desktop (`ensure`
 # would). The home of an account does not move while its daemon runs.
-_HOMES: Dict[Tuple[str, str], str] = {}
+# `B1661`: while ITS daemon runs — so it is remembered per run of the daemon
+# (`health`'s `run`), not per address. A daemon reinstalled or replaced at the
+# address Pantheon knows has its homes where it keeps them, and was handed the
+# old one's as every command's folder, refused *outside your home* until
+# Pantheon restarted; the suite met it when a daemon was started on a port an
+# earlier test's had freed. A client that has not asked `health` cannot say
+# which daemon it reached, so it asks for the home; a daemon older than `run`
+# answers "" and is remembered by its address, as before.
+_HOMES: Dict[Tuple[str, str, str], str] = {}
 
 
 async def _home_path(client, account: str) -> str:
-    key = (str(getattr(client, "base", "")), account)
+    run = getattr(client, "daemon_run", None)
+    if run is None:
+        return str((await client.list(account, None, max_entries=0))["path"])
+    key = (str(getattr(client, "base", "")), run, account)
     if key not in _HOMES:
         if len(_HOMES) >= 512:
             _HOMES.pop(next(iter(_HOMES)), None)

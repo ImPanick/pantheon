@@ -325,6 +325,13 @@ MACHINE_IMAGE_STATES = ("ready", "preparing", "failed")
 # for a person whose machine exists — whether it is up, or powered off with its
 # disk kept until their next call boots it. No other backend says either.
 MACHINE_STATES = ("running", "stopped")
+# `B1661`, added. `health`, for a caller with the token, also answers
+#   "run": str
+# made when the daemon starts and new at every start. An address is not a
+# daemon: one reinstalled or replaced at the address Pantheon knows — or, in a
+# test run, started on a port an earlier one freed — is another daemon, with
+# its homes where it keeps them. Pantheon remembers an account's home per run
+# (`src/agent_tools/workstation_tools._home_path`), not per address.
 # `P20-06`. What the admin chose; where it is enforced is that row's subject.
 NETWORK_MODES = ("full", "internet", "none")
 

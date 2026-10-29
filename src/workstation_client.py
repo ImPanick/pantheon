@@ -419,6 +419,9 @@ class WorkstationClient:
         self.timeout = timeout
         # `P20-07`: learnt from this workstation's own `health`.
         self._starts_machines = False
+        # `B1661`: which run of the daemon answered `health` — None until it
+        # is asked, "" from a daemon older than the field.
+        self.daemon_run: Optional[str] = None
         self._verify: Any = None
         self._pin_source = SOURCE_NONE  # `B980`: where the pin in force came from
         # `B982`: httpx `mounts` that keep this workstation off an environment
@@ -614,6 +617,7 @@ class WorkstationClient:
                 "unavailable", f"The workstation speaks protocol {payload.get('protocol')}; this "
                                f"Pantheon speaks {P.PROTOCOL_VERSION}. Update the older one.")
         self._starts_machines = payload.get("backend") == "vm"  # `P20-07`
+        self.daemon_run = str(payload.get("run") or "")  # `B1661`
         return payload
 
     async def account(self, account: str) -> Dict:

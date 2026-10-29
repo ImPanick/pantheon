@@ -456,6 +456,10 @@ class Workstation:
         # `P27-04`. Each account's mapped names and pinned certificates.
         self._names: Dict[str, Any] = {}
         self.browsers.names_of = lambda account: self._names.get(account)
+        # `B1661`. Which run of the daemon this is, new at every start, so a
+        # caller that remembers what a daemon said (an account's home) can
+        # tell this one from another started later at the same address.
+        self.run = secrets.token_hex(8)
 
     # -- auth and accounts ------------------------------------------------------
 
@@ -476,6 +480,7 @@ class Workstation:
             out.update(self.settings())
             out["accounts"] = len(self.system.accounts())
             out["machine"] = self.system.machine()  # `P20-07`
+            out["run"] = self.run  # `B1661`
         return out
 
     def account(self, account: str) -> Dict:
