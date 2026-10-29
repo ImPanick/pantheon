@@ -1052,6 +1052,12 @@ async def run_in_workstation(tool: str, content: Any, *, owner: Optional[str],
         daemon = await sync_config(client)
     except WorkstationError as e:
         return desc, _where(e.as_result(), account_for(owner))
+    # `B1642`: a hire's projects folder, as the workstation names it.
+    workspace, said = station_folder(owner, account, workspace, daemon)
+    there, mounted = projects_folder(daemon, account)
+    if (not said and there and not mounted and tool in ("bash", "python")
+            and P.PROJECTS_ENV in str(content or "")):
+        said = no_projects_sentence(there)   # `B1643`: the `cd` that cannot go there
     if workspace and _sensitive(workspace):
         # Vetted when it was picked (`vet_workspace`); held to the rule again
         # here, as `_resolve_tool_path` holds a host workspace to it.
@@ -1070,6 +1076,8 @@ async def run_in_workstation(tool: str, content: Any, *, owner: Optional[str],
         result = {"error": f"{tool}: {e}", "exit_code": 1}
     if tool == "edit_file":
         desc = result.get("output") or result.get("error") or "edit_file"
+    if said:
+        sp.add_note(result, said)
     return desc, _where(result, account)
 
 
@@ -1077,6 +1085,76 @@ async def run_in_workstation(tool: str, content: Any, *, owner: Optional[str],
 
 def within(path: str, home: str) -> bool:
     return path == home or path.startswith(home.rstrip("/") + "/")
+
+
+def projects_folder(daemon: Optional[Dict], account: str) -> Tuple[Optional[str], bool]:
+    """`B1642`. The person's projects folder as their workstation names it —
+    `projects_root/<name>`, the daemon's own report (`health`) and the folder
+    it gives every command as `$PANTHEON_PROJECTS` — and whether anything is
+    mounted there. `(None, False)` from a daemon older than the report."""
+    root = (daemon or {}).get("projects_root")
+    if not isinstance(root, str) or not root.startswith("/"):
+        return None, False
+    return (posixpath.join(root, P.project_folder_of(account)),
+            (daemon or {}).get("projects_mounted") is True)
+
+
+def no_projects_sentence(folder: str) -> str:
+    """`B1643`. Why a command that works in the person's projects folder in
+    the workstation cannot: nothing is mounted where it goes."""
+    return (f"Your projects folder, {folder}, is not in this workstation: nothing is mounted at "
+            f"{posixpath.dirname(folder)}, so ${P.PROJECTS_ENV} names a folder that is not there "
+            "and a command cannot go into it. An admin mounts Pantheon's projects folder there "
+            "(the workstation overlay, docker/workstation.yml, mounts it as /projects).")
+
+
+def station_folder(owner: Optional[str], account: str, workspace: Optional[str],
+                   daemon: Optional[Dict]) -> Tuple[Optional[str], Optional[str]]:
+    """`B1642`. A workspace as the person's workstation names it, and the
+    sentence to add when the folder it names is not there.
+
+    A hire's run works in its projects folder (`runtime.workspace_for`: the
+    person's `<data>/projects/<name>`, or its project inside it), named as
+    Pantheon's machine names it. In the workstation the same folder is
+    `projects_folder` — the overlay mounts one as the other — so the hire's
+    shell starts there and its file tools read a relative path from there,
+    where its runbook's `cd "$PANTHEON_PROJECTS"/…` goes. They read it from the
+    home: `write_file` of `My Site/index.html` wrote `~/My Site/index.html`
+    and the folder the runbook served stayed empty. Any other workspace was
+    picked in the workstation (`vet_workspace`) and is its name already. With
+    nothing mounted the run starts in the home, as it did, and says why; a
+    daemon that does not report its projects folder is answered as before."""
+    if not workspace:
+        return None, None
+    from src.tool_execution import projects_root
+    here = os.path.realpath(projects_root(owner, create=False))
+    folder = os.path.realpath(workspace)
+    if folder != here and not folder.startswith(here + os.sep):
+        return workspace, None
+    there, mounted = projects_folder(daemon, account)
+    if there is None:
+        return None, None
+    if not mounted:
+        return None, no_projects_sentence(there) + " This ran in your workstation home instead."
+    rel = os.path.relpath(folder, here)
+    return (there if rel == os.curdir else posixpath.join(there, *rel.split(os.sep))), None
+
+
+async def workspace_in_workstation(owner: Optional[str], workspace: Optional[str]) -> Optional[str]:
+    """`B1642`. A hire's workspace for its whole run — its prompt's "Active
+    workspace", its tool calls, its approvals — as the person's workstation
+    names it, where their tools run there; otherwise, or when the workstation
+    cannot name it now (down, or nothing mounted), as it was: each call then
+    names it again, or says why it cannot (`run_in_workstation`)."""
+    from src.workstation_access import routes_tools, workstation_for
+    if not workspace or not routes_tools(owner):
+        return workspace
+    try:
+        client, account = workstation_for(owner)
+        named, said = station_folder(owner, account, workspace, await client.health())
+    except WorkstationError:
+        return workspace
+    return named if named and not said else workspace
 
 
 async def vet_workspace(owner: Optional[str], raw: Optional[str]) -> Optional[str]:
@@ -1088,22 +1166,46 @@ async def vet_workspace(owner: Optional[str], raw: Optional[str]) -> Optional[st
     itself cannot answer, so a caller can tell "no" from "down".
 
     The home, not the jail: with `sudo` on the daemon resolves `/etc` too, and
-    the owner's call is *a folder in my workstation home*."""
+    the owner's call is *a folder in my workstation home*. `B1642`: or in the
+    person's own projects folder there — where a hire's run works, and where
+    its approved action is replayed (`station_folder`) — which the jail admits
+    beside the home (`B1417`); never another person's."""
+    return (await _vetted(owner, raw))[0]
+
+
+async def sealed_workspace_holds(owner: Optional[str], sealed: str) -> bool:
+    """`tool_execution._sealed_workspace_holds` for the workstation: whether
+    the folder an approved action was sealed with is still, canonically, the
+    folder it names there. `B1642`: a hire's is named as Pantheon names it, so
+    it is compared as the workstation names it (`station_folder`)."""
+    path, named = await _vetted(owner, sealed)
+    return path is not None and path == named
+
+
+async def _vetted(owner: Optional[str], raw: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    """`(canonical path or None, the folder asked about as the workstation
+    names it)` — `vet_workspace`'s answer and what it was asked."""
     text = (raw or "").strip()
     if not text:
-        return None
+        return None, None
     from src.workstation_access import workstation_for
     client, account = workstation_for(owner)
+    daemon = await client.health()
+    named, _said = station_folder(owner, account, text, daemon)
+    if not named:
+        return None, None
     try:
-        path = str((await client.list(account, text, max_entries=0))["path"])
+        path = str((await client.list(account, named, max_entries=0))["path"])
     except WorkstationError as e:
         if e.code in _STATION_FAILURES:
             raise
-        return None
+        return None, named
     home = await _home_path(client, account)
-    if not within(path, home) or _sensitive(path):
-        return None
-    return path
+    projects, mounted = projects_folder(daemon, account)
+    mine = within(path, home) or (projects is not None and mounted and within(path, projects))
+    if not mine or _sensitive(path):
+        return None, named
+    return path, named
 
 
 async def workspace_named(owner: Optional[str], raw: Optional[str]) -> Optional[str]:
@@ -1134,6 +1236,15 @@ async def workspace_named(owner: Optional[str], raw: Optional[str]) -> Optional[
 async def describe_workspace(owner: Optional[str], workspace: Optional[str]) -> Dict:
     """`get_workspace`'s answer when the person's tools run in the workstation:
     the same question, answered about the machine the tools work on."""
+    said = None
+    if workspace:
+        # `B1642`: a hire's projects folder, as the workstation names it.
+        try:
+            from src.workstation_access import workstation_for
+            client, account = workstation_for(owner)
+            workspace, said = station_folder(owner, account, workspace, await client.health())
+        except WorkstationError as e:
+            return e.as_result()
     if workspace:
         return {"output": f"{workspace}\n(In your workstation. The shell and file tools start in "
                           "this folder and read relative paths from it; it is where they start, "
@@ -1158,7 +1269,7 @@ async def describe_workspace(owner: Optional[str], workspace: Optional[str]) -> 
     answer = {"output": out, "exit_code": 0}
     if projects:
         answer["projects_root"] = projects
-    return answer
+    return sp.add_note(answer, said)
 
 
 __all__ = ["WORKSTATION_TOOLS", "describe_workspace", "lifted_tools", "routes",
@@ -1166,4 +1277,6 @@ __all__ = ["WORKSTATION_TOOLS", "describe_workspace", "lifted_tools", "routes",
            "LIFTED_TOOLS", "WORKSPACE_TOOL", "network_refusal_note",  # `B985`, `B977`
            "NETWORK_SEND_NOTE", "NETWORK_SEND_INTERNET_NOTE",  # `B1011`, added
            "NETWORK_SILENT_NOTE", "silent_refusal_note", "refusals_from",  # `B1021`, added
-           "workspace_named"]  # `B986`
+           "workspace_named",  # `B986`
+           "projects_folder", "station_folder", "no_projects_sentence",  # `B1642`, `B1643`
+           "workspace_in_workstation", "sealed_workspace_holds"]  # `B1642`

@@ -107,16 +107,15 @@ def workspace_for(owner: Optional[str], project: Optional[str]) -> Optional[str]
     """`B1434`. The folder a hire's run works in: its project inside the
     person's projects folder, or the whole projects folder with none — so a
     relative path a runbook writes (`site/index.html`) lands there, and an
-    input that names a folder "inside your projects folder" resolves. `None`
-    where this person's tools run in their workstation: there the tools start
-    in the workstation home, whose `/projects` is the same folder
-    (`D-2026-10-01-01`)."""
-    try:
-        from src.workstation_access import routes_tools
-        if routes_tools(owner):
-            return None
-    except Exception:
-        pass
+    input that names a folder "inside your projects folder" resolves.
+
+    `B1642`. On either machine. It was `None` where the person's tools run in
+    their workstation, so there the file tools read a relative path from the
+    home while the runbook's `cd "$PANTHEON_PROJECTS"/…` went to the projects
+    folder: `write_file` of `My Site/index.html` wrote `~/My Site/index.html`,
+    and Site Builder served an empty folder. Named here as this machine names
+    it; the workstation's tools name the same folder as the workstation does
+    (`workstation_tools.station_folder`), and never bind it here (`B968`)."""
     from src.tool_execution import projects_root, vet_workspace
     root = projects_root(owner, create=True)
     if project:

@@ -595,10 +595,12 @@ async def _sealed_workspace_holds(sealed: str, owner: Optional[str]) -> bool:
     workstation does (`B968`) — and a workstation that cannot answer is not a
     "no": the tool will say it is down, and nothing runs anywhere else."""
     if _works_in_workstation(owner):
-        from src.agent_tools.workstation_tools import vet_workspace as vet_in_workstation
+        # `B1642`: the workstation compares it as it names it — a hire's
+        # projects folder is sealed as this machine names it.
+        from src.agent_tools.workstation_tools import sealed_workspace_holds
         from src.workstation_client import WorkstationError
         try:
-            return await vet_in_workstation(owner, sealed) == sealed
+            return await sealed_workspace_holds(owner, sealed)
         except WorkstationError:
             return True
     return vet_workspace(sealed) == sealed

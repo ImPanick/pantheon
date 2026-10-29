@@ -98,7 +98,9 @@ PROJECTS_DIR_ENV = "PANTHEON_WORKSTATION_PROJECTS"
 # both sides because both read it from here. The jail admits a person's own
 # folder; an account the admin list names (`config`'s `admins`) is admitted to
 # the whole of `PROJECTS_DIR`. Every command a person runs sees its own folder
-# as `$PROJECTS_ENV`.
+# as `$PROJECTS_ENV` — and, in a workstation with nothing mounted there, the
+# folder it would be, which is not there (`B1643`: never unset, so a `cd
+# "$PANTHEON_PROJECTS"/'<folder>'` fails instead of landing in `/<folder>`).
 PROJECTS_ENV = "PANTHEON_PROJECTS"
 
 # ── a workstation on another machine (`P20-07`, added) ────────────────────────
@@ -136,6 +138,10 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # "root_can_change_network" (CAP_NET_ADMIN is in this machine's bounding
     # set, so root here could rewrite any rule in its network namespace,
     # including a gate's that it shares).
+    # `B1642`, added: "projects_root" — the folder each person's projects
+    # folder is in here (`PROJECTS_DIR`, or where `PROJECTS_DIR_ENV` says) —
+    # and "projects_mounted" (bool), whether anything is there. A person's
+    # folder is "projects_root"/`project_folder(owner)`, mounted or not.
     "health": ("GET", "/v1/health"),
     # Admin settings the daemon enforces itself. Body: any of {"sudo": bool,
     # "network": one of NETWORK_MODES (`P20-06`, added),

@@ -365,4 +365,8 @@ def test_a_hire_runs_in_its_project_or_the_projects_folder(world, monkeypatch):
     import src.workstation_access as wa
     monkeypatch.setattr(wa, "routes_tools", lambda owner, **kw: True)
     from src.agents.runtime import workspace_for
-    assert workspace_for("alice", "shop") is None, "in the workstation its tools start in its home"
+    # `B1642` changed this: it was `None` in the workstation, where the tools
+    # then started in the home while the runbook's `cd` went to the projects
+    # folder. The same folder on either machine; the workstation names it as
+    # it does (`tests/test_a_hires_files_and_its_cd_meet_in_the_workstation.py`).
+    assert workspace_for("alice", "shop") == os.path.realpath(os.path.join(root, "shop"))

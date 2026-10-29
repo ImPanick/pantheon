@@ -65,8 +65,13 @@ def host(settings, people, monkeypatch, tmp_path):
 
 
 @pytest.fixture
-def station(ws, settings, people, tmp_path):
-    """The workstation with its projects mount, as the compose overlay gives it."""
+def station(ws, settings, people, tmp_path, monkeypatch):
+    """The workstation with its projects mount, as the compose overlay gives it
+    (and Pantheon's data folder the test's: a hire's run names its folder
+    here too, `B1642`)."""
+    import src.constants as constants
+    (tmp_path / "data").mkdir()
+    monkeypatch.setattr(constants, "DATA_DIR", str(tmp_path / "data"))
     _on(settings, ws)
     mount = tmp_path / "projects-mount"
     mine = mount / P.project_folder("ann")
@@ -151,19 +156,22 @@ def test_without_the_variable_a_runbooks_cd_leaves_the_projects_folder():
 # ── in the workstation ───────────────────────────────────────────────────────
 
 def test_each_runbooks_cd_lands_in_the_hires_folder_in_the_workstation(station):
-    """The run binds no workspace there (`workspace_for`), so the shell starts
-    in the home; the daemon's `$PANTHEON_PROJECTS` takes the `cd` to the
-    folder."""
-    assert workspace_for("ann", None) is None
+    """With the workspace the hire's run binds — its projects folder, which
+    the workstation names as it does (`B1642`; it bound none, and the shell
+    started in the home) — the daemon's `$PANTHEON_PROJECTS` takes the `cd`
+    to the folder."""
+    workspace = workspace_for("ann", None)
     for name in NAMES:
         for agent, head in _heads():
-            r = _call("bash", _fill(head, name) + " && pwd -P", "ann", session_id=f"hire-{agent}")[1]
+            r = _call("bash", _fill(head, name) + " && pwd -P", "ann", session_id=f"hire-{agent}",
+                      workspace=workspace)[1]
             assert r.get("ran_in") == "workstation", r
             assert r.get("exit_code") == 0 and r.get("stdout") == str(_lands(head, name, station)), (agent, head, r)
 
 
 def test_the_old_relative_cd_missed_the_folder_in_the_workstation(station):
-    """The control: Roadmap Keeper's `cd` as it was, in the same workstation."""
+    """The control: Roadmap Keeper's `cd` as it was, in the same workstation
+    with the workspace the run bound before `B1642` (none: the home)."""
     r = _call("bash", "cd 'My Site' && pwd -P", "ann", session_id="hire-roadmap-keeper")[1]
     assert r.get("ran_in") == "workstation" and r.get("exit_code") != 0, r
     assert "My Site" in (r.get("stderr") or r.get("output") or ""), r

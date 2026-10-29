@@ -66,10 +66,16 @@ def test_a_command_is_told_where_its_folder_is(ws, projects):
     assert out["stdout"] == str(projects / P.project_folder(ALLOWED))
 
 
-def test_without_the_mount_there_is_no_folder_and_no_variable(ws):
+def test_without_the_mount_there_is_no_folder_and_the_variable_names_it(ws, tmp_path):
+    """`B1643` changed this: the variable was left unset, so a hire's `cd
+    "$PANTHEON_PROJECTS"/'<folder>'` ran `cd /'<folder>'`. It names the folder
+    that is not there, and a `cd` into it fails
+    (`tests/test_a_hires_files_and_its_cd_meet_in_the_workstation.py`)."""
+    ws.system.shared_roots = [tmp_path / "nothing-mounted"]
     assert run(daemon(ws).ensure(A))["projects"] is None
     out = run(daemon(ws).exec(A, f'printf %s "${{{P.PROJECTS_ENV}:-unset}}"'))
-    assert out["stdout"] == "unset"
+    assert out["stdout"] == str(tmp_path / "nothing-mounted" / P.project_folder(ALLOWED))
+    assert not (tmp_path / "nothing-mounted").exists(), "named, never made"
 
 
 # ── no overlaps ──────────────────────────────────────────────────────────────

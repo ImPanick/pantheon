@@ -5306,7 +5306,11 @@ class TaskScheduler:
                                     "never_effects": sorted(agent_plan.never_effects),
                                     "sealed": agent_plan.sealed, "blind": agent_plan.blind}
             if agent_plan.workspace:
-                _agent_slot["workspace"] = agent_plan.workspace
+                # `B1642`: where the person's tools run in their workstation,
+                # the folder as the workstation names it.
+                from src.agent_tools.workstation_tools import workspace_in_workstation
+                _agent_slot["workspace"] = await workspace_in_workstation(agent_plan.owner,
+                                                                          agent_plan.workspace)
             for _line in agent_plan.skill_lines:
                 self._record_run_step(run_id, kind="progress", detail=_line)
 

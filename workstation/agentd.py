@@ -239,6 +239,21 @@ class System:
                         logger.warning("projects folder %s not made: %s", folder, e)
         return self.project_dirs(account)
 
+    def projects_root(self) -> Path:
+        """`B1642`/`B1643`. Where each person's projects folder is: under the
+        first shared root that is mounted, else where the first would be (or
+        `P.PROJECTS_DIR` with none configured). Reported by `settings`, so
+        Pantheon names a person's folder as this machine does."""
+        roots = list(self.shared_roots) or [Path(P.PROJECTS_DIR)]
+        there = [r for r in roots if Path(r).is_dir()]
+        return Path(os.path.realpath((there or roots)[0]))
+
+    def project_dir_named(self, account: str) -> Path:
+        """`B1643`. The account's projects folder, by name — whether or not it
+        is there. Named, never made: with nothing mounted there is nowhere to
+        make it."""
+        return self.projects_root() / P.project_folder_of(account)
+
     def ensure(self, account: str) -> Dict:  # pragma: no cover - interface
         raise NotImplementedError
 
@@ -471,9 +486,13 @@ class Workstation:
                 "home": str(self.system.home(account)) if exists else None}
 
     def settings(self) -> Dict:
+        root = self.system.projects_root()
         return {"sudo": self.system.sudo, "network": self.system.network,
                 "screen": [P.SCREEN_WIDTH, P.SCREEN_HEIGHT],
                 "admins": sorted(self.system.admin_accounts),  # `B1424`
+                # `B1642`: where each person's projects folder is here, and
+                # whether anything is mounted there.
+                "projects_root": str(root), "projects_mounted": root.is_dir(),
                 **self.system.network_report()}  # `P20-06`
 
     def config(self, body: Dict) -> Dict:
@@ -638,11 +657,14 @@ class Workstation:
         stdin = body.get("stdin")
         if stdin is not None and not isinstance(stdin, str):
             raise WorkstationError("bad_request", "“stdin” is text.")
-        self.system.ensure(account)
+        self._ready(account)
         prefix, env = self.system.run_as(account)
-        projects = self.system.make_project_dirs(account)  # `B1424`
-        if projects:
-            env[P.PROJECTS_ENV] = str(projects[0])
+        projects = self.system.project_dirs(account)
+        # `B1643`: never unset. With nothing mounted the variable names the
+        # folder that is not there, so a `cd "$PANTHEON_PROJECTS"/'<folder>'`
+        # fails naming it instead of going to `/<folder>` (a hire's `tmp` is
+        # `/tmp`); Pantheon says why (`workstation_tools.no_projects_sentence`).
+        env[P.PROJECTS_ENV] = str(projects[0] if projects else self.system.project_dir_named(account))
         env = {**env, **env_in}
         with self.system.acting_as(account):
             cwd = self.resolve(account, body.get("cwd"))
@@ -736,8 +758,16 @@ class Workstation:
 
     # -- files ------------------------------------------------------------------
 
-    def read(self, account: str, body: Dict) -> Dict:
+    def _ready(self, account: str) -> None:
+        """The account, made, with its projects folder made (`B1424`) — before
+        every command and every file call. `B1642`: a hire's file tools work in
+        that folder, and its first call may be an `ls` or a `write_file`, which
+        the jail refused while only `ensure` and `exec` made it."""
         self.system.ensure(account)
+        self.system.make_project_dirs(account)
+
+    def read(self, account: str, body: Dict) -> Dict:
+        self._ready(account)
         offset = _int(body.get("offset"), 0, "offset")
         max_bytes = min(_int(body.get("max_bytes"), P.MAX_FILE_BYTES, "max_bytes"), P.MAX_FILE_BYTES)
         with self.system.acting_as(account):
@@ -752,7 +782,7 @@ class Workstation:
                 "truncated": max(0, offset) + len(data) < size}
 
     def write(self, account: str, body: Dict) -> Dict:
-        self.system.ensure(account)
+        self._ready(account)
         try:
             data = base64.b64decode(str(body.get("data_b64") or ""), validate=True)
         except (ValueError, TypeError):
@@ -783,7 +813,7 @@ class Workstation:
         return {"path": str(path), "size": path.stat().st_size}
 
     def list(self, account: str, body: Dict) -> Dict:
-        self.system.ensure(account)
+        self._ready(account)
         with self.system.acting_as(account):
             return self._list(account, body)
 
