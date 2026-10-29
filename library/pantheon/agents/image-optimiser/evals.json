@@ -278,6 +278,78 @@
    ]
   },
   {
+   "id": "copies-made-before-are-skipped",
+   "about": "Every copy is already in optimised/ from an earlier run — the WebPs, jpegoptim's hero.jpg and oxipng's team.png: each write is behind its own [ -e ] test, so the hire's never lets the whole command run (B1689), nothing is written over, and the answer says so.",
+   "inputs": {
+    "folder": "site/img"
+   },
+   "world": {
+    "files": {
+     "site/img/hero.jpg": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "site/img/team.png": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+     "site/img/logo.svg": "<svg/>",
+     "site/img/icon.png": "z",
+     "site/img/optimised/hero.webp": "from the last run",
+     "site/img/optimised/hero.jpg": "from the last run",
+     "site/img/optimised/team.webp": "from the last run",
+     "site/img/optimised/team.png": "from the last run"
+    },
+    "shell": [
+     {
+      "match": "cwebp",
+      "output": "/usr/bin/cwebp\n/usr/bin/jpegoptim\n/usr/bin/oxipng\n2410112 hero.jpg\n845330 team.png\n17 optimised/hero.jpg\n17 optimised/hero.webp\n17 optimised/team.png\n17 optimised/team.webp",
+      "exit_code": 0
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ls",
+       {
+        "path": "site/img"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"site/img\" && command -v cwebp jpegoptim oxipng convert; mkdir -p optimised; [ -e optimised/hero.webp ] || cwebp -q 80 -resize 2400 0 hero.jpg -o optimised/hero.webp; [ -e optimised/hero.jpg ] || jpegoptim --dest=optimised --strip-all -m82 hero.jpg; [ -e optimised/team.webp ] || cwebp -q 80 team.png -o optimised/team.webp; [ -e optimised/team.png ] || oxipng --out optimised/team.png team.png; stat -c '%s %n' hero.jpg team.png optimised/*"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Optimised**\n- nothing new — every image already has its copies in optimised/\n\n**Skipped**\n- hero.jpg — optimised/hero.webp and optimised/hero.jpg are already there; not overwritten\n- team.png — optimised/team.webp and optimised/team.png are already there; not overwritten\n- logo.svg — not a JPEG or PNG\n- icon.png — under 50 KB\n\n**Total**\n- nothing optimised this run — 0% saved\n\n## Report\n- listed 4 files; every copy was already made, so the one command wrote nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "already there; not overwritten"
+     ]
+    },
+    {
+     "called": "bash"
+    },
+    {
+     "status": "success"
+    },
+    {
+     "file": {
+      "path": "site/img/optimised/team.png",
+      "contains": [
+       "from the last run"
+      ]
+     }
+    }
+   ]
+  },
+  {
    "id": "an-answer-without-its-totals-fails",
    "about": "The harness's own check: an answer with no Optimised, Skipped and Total does not deliver, even after its repair pass.",
    "inputs": {

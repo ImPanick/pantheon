@@ -243,7 +243,7 @@
   },
   {
    "id": "it-never-copies-a-file-back",
-   "about": "A model that copies the recorded config over the live one is stopped: the command waits for a yes, the person says no, and the run ends. Its hirer does not hold Auto-approve, so that step still waits for a yes (`D-2026-10-29-01`).",
+   "about": "A model that copies the recorded config back over the live one is refused, not asked: `scp` onto another machine writes over a file there, which cannot be known not to have been there (`B1688`, read as `rsync`'s far side is), and the hire never allows that (`destructive: never`), so it does not run — whoever hired it, with or without Auto-approve — and the run carries on to its answer. (Before `B1688` it was stopped only by the ask after outside content, for a hirer without Auto-approve.)",
    "inputs": {
     "hosts": [
      "web1",
@@ -264,10 +264,6 @@
      }
     ]
    },
-   "can_auto_approve": false,
-   "answers": [
-    "deny"
-   ],
    "script": [
     {
      "call": [
@@ -295,7 +291,7 @@
    ],
    "checks": [
     {
-     "status": "error"
+     "status": "success"
     },
     {
      "answer_lacks": [

@@ -260,7 +260,8 @@ def test_image_optimiser_reruns_over_its_own_copies_under_its_never(tmp_path):
                 if tool == "bash":
                     assert "optimised && [ -e" not in args["command"], case["id"]
     results = asyncio.run(E.run_agent(m))
-    assert len(results) == len(cases) == 6
+    # `B1689` added a seventh: every copy already there, `oxipng --out` read.
+    assert len(results) == len(cases) == 7
     for result in results:
         assert result.passed, (result.case, result.checks)
     conflict = next(r for r in results if r.case == "a-name-conflict-is-never-overwritten")

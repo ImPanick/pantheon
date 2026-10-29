@@ -99,6 +99,11 @@ where the command starts and what the run has already looked at:
     (`gzip notes.md`, `gunzip`, `bzip2`, `xz`, `zstd --rm`…), and `zip -m`,
     `tar --remove-files`, `7z a -sdel` — a `writes` finding marked `removes`,
     asked the same question: was the file there before the run began;
+  * `B1688`–`B1690`: `scp` as `cp` (onto another machine, the far side);
+    `jpegoptim --dest -o`, `oxipng --out`/`--dir` and `mogrify -path`/
+    `-format` onto a different file (in place, each is an edit, as `sed -i`
+    is); LibreOffice's `--convert-to` and `heif-convert`, as the block
+    below `_FFMPEG_INFO` reads them;
 
 and **where the command goes** — a `chdir` finding — for each `cd`, `pushd`,
 `env -C`, `sudo -D`, a Python `os.chdir` or a subprocess `cwd=`, so a relative
@@ -112,7 +117,9 @@ fill in — and one inside a command run on another machine or in a container
 either was there, so either is destructive — the cautious reading the ruling
 names. `B1682`: a write the command makes only when nothing is at its path —
 `[ -e f ] || cwebp … -o f`, `[ ! -e f ] && echo x > f` — replaces nothing,
-and is not named (`_guard`).
+and is not named (`_guard`); nor (`B1690`) the rest of a loop's body after
+`[ -e f ] && continue`, or `if [ ! -e f ]; then …`'s branch, written at the
+same words (`_Tests`) — File Converter's loop.
 
 Python's own `open(path, "w")` is **not** read: whether a mode string
 writes, appends or reads is a property of the running program (a variable, a
@@ -174,7 +181,12 @@ class Finding:
 
     `B1683`. `removes`: what `why` does to a file that was there is take it
     away (a compressor's input, `zip -m`'s), not write over it — the same
-    question to the run, said with its own verb."""
+    question to the run, said with its own verb.
+
+    `B1690`. `steady`: `path` names the same file each time the shell reads
+    it in this command, until something sets a variable in it (`_steady`) —
+    so a test of the same words before it (`_Tests`) is a test of this
+    file, whether or not the run can fill it in."""
     kind: str
     why: str
     path: str = ""
@@ -186,6 +198,7 @@ class Finding:
     var: str = ""
     split: bool = False
     removes: bool = False
+    steady: bool = False
 
 
 @dataclass
@@ -201,6 +214,11 @@ class _Word:
     fills: int = 0           # `B1681`: how many expansions it holds
     var: str = ""            # `B1681`: the variable it starts with (`$X…`, `${X}…`), if any
     var_split: bool = False  # `B1681`: that variable is unquoted, so its value is split and globbed
+    # `B1690`: something in it can be another value the next time it is read
+    # in the same command — a command's output, arithmetic, `$RANDOM`, `$?`, a
+    # positional parameter, or an expansion left unquoted, which is split and
+    # globbed — or (`_unknown`) a name the program fills in, not the shell.
+    unsteady: bool = False
 
     def fill(self) -> None:
         """An expansion the shell fills in when it runs."""
@@ -229,6 +247,9 @@ class _Simple:
     # `B1682`: the operator before it (`&&`, `||`, `;`, …; "" first), so a
     # test it follows is known to decide whether it runs (`_guard`).
     after: str = ""
+    # `B1690`: how many subshells `( … )` it is inside, so a `continue` is
+    # known to be in the same shell as the loop it ends (`_Tests`).
+    depth: int = 0
 
 
 # ── Reading the words ───────────────────────────────────────────────────────
@@ -252,16 +273,26 @@ class _Lexer:
     """Splits a command into words, operators and redirections, reading every
     substitution it meets as a command of its own."""
 
-    def __init__(self, depth: int, findings: List[Finding], far: bool = False):
+    def __init__(self, depth: int, findings: List[Finding], far: bool = False,
+                 apart: bool = False):
         if depth > MAX_DEPTH:
             raise _Unreadable("it nests commands deeper than this reader follows")
         self.depth = depth
         self.findings = findings
         # `B1669`: reading a command another machine or a container runs.
         self.far = far
+        # `B1690`: reading a command another shell runs (`sh -c '…'`), which
+        # has only the variables the outer one exported: `$o` there need not
+        # be the outer `$o`, so a test outside does not speak for it.
+        self.apart = apart
+        # `B1690`: the `for` loops' names that hold a name in the folder, here.
+        self.bare: frozenset = frozenset()
 
-    def sub(self, text: str) -> None:
-        read_shell(text, depth=self.depth + 1, findings=self.findings, far=self.far)
+    def sub(self, text: str, apart: bool = False) -> None:
+        """A command inside this one: a substitution (`$(…)`), which shares
+        this shell's variables, or (`apart`) a string another shell runs."""
+        read_shell(text, depth=self.depth + 1, findings=self.findings, far=self.far,
+                   apart=self.apart or apart)
 
     # Finding the end of a group, over quotes and nesting.
     def _closing(self, s: str, i: int, open_: str, close: str) -> int:
@@ -363,6 +394,7 @@ class _Lexer:
             end = self._closing(s, i + 3, "(", ")")
             if s.startswith(")", end + 1):
                 word.fill()
+                word.unsteady = True            # `B1690`: `$((i++))`
                 self.substitutions_in(s[i + 3:end])
                 out.append(s[i:end + 2])
                 return end + 2
@@ -370,24 +402,34 @@ class _Lexer:
             end = self._closing(s, i + 2, "(", ")")
             self.sub(s[i + 2:end])
             word.fill()
+            word.unsteady = True                # `B1690`: a command's output
             out.append(s[i:end + 1])
             return end + 1
         if nxt == "{":
             end = self._closing(s, i + 2, "{", "}")
-            self.substitutions_in(s[i + 2:end])
-            if _NAME_RE.fullmatch(s[i + 2:end]):
-                self._leads(word, out, s[i + 2:end], quoted)
+            inner = s[i + 2:end]
+            self.substitutions_in(inner)
+            if _NAME_RE.fullmatch(inner):
+                self._leads(word, out, inner, quoted)
             word.fill()
+            # `B1690`: `${x%.*}` is the same each time; `${!x}`, `${#}`,
+            # `${RANDOM}`, `${1}` and one holding a command are not.
+            name = _NAME_RE.match(inner)
+            if (not name or name.group(0) in _SHIFTING or "$" in inner or "`" in inner):
+                word.unsteady = True
             out.append(s[i:end + 1])
             return end + 1
         m = _NAME_RE.match(s, i + 1)
         if m:
             self._leads(word, out, m.group(0), quoted)
             word.fill()
+            if m.group(0) in _SHIFTING:
+                word.unsteady = True            # `B1690`: `$RANDOM`, `$_`
             out.append(s[i:m.end()])
             return m.end()
         if nxt and (nxt.isdigit() or nxt in "@*#?$!-"):
             word.fill()
+            word.unsteady = True                # `B1690`: `$?`, `$1` after a `shift`…
             out.append(s[i:i + 2])
             return i + 2
         out.append("$")             # a dollar sign and nothing after it
@@ -429,13 +471,17 @@ class _Lexer:
                 i = self._dq_word(s, i + 1, word, out)
                 continue
             if ch == "$":
+                fills = word.fills
                 i = self._dollar(s, i, word, out)
+                # `B1690`: unquoted, its value is split and globbed.
+                word.unsteady = word.unsteady or word.fills > fills
                 unquoted.append(" ")
                 continue
             if ch == "`":
                 end = self._bq_close(s, i + 1)
                 self.sub(s[i + 1:end].replace("\\`", "`"))
                 word.fill()
+                word.unsteady = True
                 out.append(s[i:end + 1])
                 unquoted.append(" ")
                 i = end + 1
@@ -469,6 +515,7 @@ class _Lexer:
                 end = self._bq_close(s, i + 1)
                 self.sub(s[i + 1:end].replace("\\`", "`"))
                 word.fill()
+                word.unsteady = True
                 out.append(s[i:end + 1])
                 i = end + 1
                 continue
@@ -497,7 +544,7 @@ class _Lexer:
             if ch in "<>" and s.startswith("(", i + 1):
                 end = self._closing(s, i + 2, "(", ")")
                 self.sub(s[i + 2:end])
-                word = _Word(text=s[i:end + 1], expanded=True)
+                word = _Word(text=s[i:end + 1], expanded=True, unsteady=True)
                 toks.append(("r", redirect, word) if redirect else ("w", word))
                 redirect = None
                 i = end + 1
@@ -585,7 +632,7 @@ def _simple_commands(tokens: Sequence[tuple]) -> List[_Simple]:
                 closed = True
             cur.ended_by = tok[1]
             raw.append(cur)
-            cur = _Simple(compound=closed, after=tok[1])
+            cur = _Simple(compound=closed, after=tok[1], depth=groups)
         elif tok[0] == "r":
             cur.redirects.append((tok[1], tok[2]))
         else:
@@ -613,7 +660,7 @@ def _simple_commands(tokens: Sequence[tuple]) -> List[_Simple]:
             if simple.redirects:
                 # `B1679`: `esac > x` — what the whole `case` printed.
                 out.append(_Simple(redirects=simple.redirects, ended_by=simple.ended_by,
-                                   compound=True))
+                                   compound=True, depth=simple.depth))
             continue
         if cases and expect_pattern:
             # A pattern, or one of several (`docx|odt)`), or a blank line.
@@ -1293,6 +1340,117 @@ _FFMPEG_INFO = {"-version", "-h", "-help", "--help", "-?", "-L", "-buildconf", "
                 "-bsfs", "-protocols", "-filters", "-pix_fmts", "-layouts", "-sample_fmts",
                 "-colors", "-sources", "-sinks", "-hwaccels"}
 
+# ── `B1688`–`B1690` · and the programs `B1682` found still unread ───────────
+#
+# Each from its own manual (and, where the manual is silent, its source), by
+# `B1680`'s rules:
+#
+#   * `scp` (`B1688`): `cp`'s reading of its last word — the target, or each
+#     source's name in it — onto this machine; onto another (`host:path`,
+#     `scp://`), the far side, as `rsync`'s. A source on another machine is
+#     named by its path there, and one whose name it does not hold (`host:`,
+#     a `*` the far side expands) is unknowable in a folder that was there;
+#   * `jpegoptim` (`B1689`) edits in place — a plain write by
+#     `D-2026-10-29-03` §1, like `sed -i` — unless `-d`/`--dest` names a
+#     folder, where it writes each file by its name; and there it refuses a
+#     file that is there (*"target file already exists"*) unless `-o`
+#     (`--overwrite`). So only `--dest` with `-o` writes over one. Image
+#     Optimiser's `jpegoptim --dest=optimised …` never does;
+#   * `oxipng` (`B1689`) edits in place too, unless `--out FILE` (one output,
+#     written whole) or `--dir DIR` (each input by its name; with `-r`, what
+#     a folder holds, which the command does not name). Not `--stdout` or a
+#     dry run (`-d`, `--dry-run`; `-P`, `--pretend` before 9.0);
+#   * `mogrify` (`B1689`; `magick mogrify`, `gm mogrify`) edits in place,
+#     unless `-path DIR` (each image by its name in it) or `-format EXT`
+#     (`name.EXT` beside the image, or in `-path`): a different file, written
+#     whole. A name it expands itself (`'*.jpg'`, `@list`) is unknowable in
+#     the folder. An output that is the input itself (`-format jpg a.jpg`,
+#     `jpegoptim -d . -o a.jpg`, `oxipng --out a.png a.png`) is the edit;
+#   * LibreOffice (`B1690`; `libreoffice`, `soffice`, `lowriter`…) with
+#     `--convert-to EXT[:filter]`: each document as `name.EXT` (its name
+#     without its last extension) in `--outdir` or the folder it runs in,
+#     over whatever is there (*"Overwriting: …"*); `--print-to-file` writes
+#     names it chooses into that folder. Not `--cat` (the screen);
+#   * `heif-convert` (`B1690`; `heif-dec` since libheif 1.17): `-o`, or its
+#     second word, or the input up to its last `.` with `.jpg`; and beside it
+#     `--with-xmp`'s `.xmp` and `--with-exif`'s `.exif` — `--with-aux`,
+#     `--tiles` and `--sequence` add names the file decides (unknowable).
+#
+# A name a program makes from an input filled in when it runs is unknowable
+# — except one quoted variable (`"$f"`) whose shape the reader knows
+# (`_Judge._named_after`): `heif-convert "$f"` writes `${f%.*}.jpg`, exactly
+# the shell's spelling of its rule, and in `for f in *` the value is a name
+# with no `/` and no leading `.`, so `libreoffice --outdir converted "$f"`
+# writes `converted/${f%.*}.pdf` and `jpegoptim -d out -o "$f"` writes
+# `out/$f`. A test of those same words before it (`[ -e "converted/${f%.*}.pdf"
+# ] && continue`) is then a test of that file (`_Tests`).
+#
+# What none of them reads: a file holding several images is written as
+# `out-1.jpg`, `out-2.jpg` by `heif-convert` (and `out-0.png`… by
+# ImageMagick's `convert`), names the input decides — read, as `B1682` read
+# ImageMagick, by the one name the command gives.
+
+#: `scp`'s options that take a value (OpenSSH).
+_SCP_SHORT = "cDFiJlMoPSX"
+#: `user@host:path`, `host:path`, `[::1]:path` or `scp://host/path` — a path
+#: on another machine; a `:` after a `/` is a file's own name.
+_SCP_REMOTE_RE = re.compile(r"^(?:scp://[^/]*(?:/|$)|\[[^\]/]*\]:|[^/:\s]+:)")
+#: `jpegoptim`'s options that take a value (`d:hm:nstqvfVpProT:S:bw:`).
+_JPEGOPTIM_SHORT = "dmTSw"
+_JPEGOPTIM_LONG = {"--dest", "--max", "--threshold", "--size", "--workers", "--files-from",
+                   "--max-pixels"}
+#: `oxipng`'s options that take a value (`-o` is its level, not its output).
+_OXIPNG_SHORT = "oift"
+_OXIPNG_LONG = {"--opt", "--dir", "--out", "--strip", "--keep", "--interlace", "--filters",
+                "--zc", "--zi", "--ziwi", "--brute-level", "--brute-lines", "--timeout",
+                "--max-raw-size", "--threads", "--zw", "--zm", "--zs"}
+#: ImageMagick's options, as its table (`magick/option.c`) counts their
+#: values: these `-` options take none (any other takes one), these take two,
+#: and these `+` options take one (any other takes none). `mogrify`'s inputs
+#: are its outputs, so an option read as taking a value it does not take
+#: would hide one — the list is the table's, whole.
+_MAGICK_FLAGS = frozenset("""
+    -adjoin -antialias -append -attenuate -auto-gamma -auto-level -auto-orient -average
+    -black-point-compensation -charcoal -clamp -clip -clut -coalesce -combine -compare
+    -composite -concurrent -contrast -deconstruct -despeckle -enhance -equalize -fft -flatten
+    -flip -flop -hald-clut -help -identify -ift -immutable -magnify -matte -maximum -minimum
+    -moments -monitor -monochrome -mosaic -negate -noop -normalize -ping -quiet
+    -regard-warnings -render -respect-parentheses -reverse -sans0 -separate -strip
+    -subimage-search -synchronize -taint -transform -transpose -transverse -trim -unique
+    -unique-colors -verbose""".split())
+_MAGICK_TWO = frozenset("""
+    -annotate -copy -distort -evaluate -floodfill -limit -morphology -sans2 -set
+    -sparse-color -statistic +copy +distort +evaluate +floodfill +morphology +sans2
+    +sparse-color +statistic""".split())
+_MAGICK_PLUS_VALUED = frozenset("""
+    +alpha +blur +resize +adaptive-blur +adaptive-resize +adaptive-sharpen +blue-shift +border
+    +canny +cdl +chop +colorize +color-matrix +colors +complex +connected-components
+    +contrast-stretch +convolve +crop +cycle +decipher +define +display +duration +edge
+    +emboss +encipher +evaluate-sequence +extent +frame +fx +gamma +gaussian +gaussian-blur
+    +highlight-color +hough-lines +interpolative-resize +kuwahara +lat +layers +level
+    +level-colors +linear-stretch +liquid-rescale +lowlight-color +mean-shift +median +mode
+    +modulate +morph +motion-blur +noise +opaque +poly +posterize +print +process +profile
+    +radial-blur +raise +random-threshold +recolor +resample +roll +rotate +sample +sans
+    +scale +segment +selective-blur +sepia-tone +set +shadow +sharpen +shave +shear
+    +sigmoidal-contrast +sketch +smush +solarize +splice +spread +stretch +strokewidth
+    +swirl +thumbnail +tint +transparent +transparent-color +treedepth +unsharp +vignette
+    +wave +weight +white-threshold +write""".split())
+#: The extensions `mogrify -format` looks past (`a.png.gz` → `a.jpg`).
+_MAGICK_PACKED = ("gz", "bz2", "z", "svgz", "wmz")
+#: LibreOffice by its names (`libreoffice7.6`, `soffice.bin`…).
+_OFFICE_RE = re.compile(r"^(libreoffice[\d.]*|soffice(\.bin)?|lowriter|localc|loimpress|"
+                        r"lodraw|lomath|lobase|loweb)$")
+#: LibreOffice's options that take the next word as their value.
+_OFFICE_VALUES = {"--convert-to", "--outdir", "--printer-name", "--pt", "--display",
+                  "--convert-images-to"}
+#: `heif-convert`'s options that take a value.
+_HEIF_SHORT = "qdCo"
+_HEIF_LONG = {"--quality", "--decoder", "--output", "--chroma-upsampling",
+              "--png-compression-level", "--transparency-composition-mode", "--codec-threads",
+              "--tile-threads", "--extract-mime-item"}
+_OUTPUT_READERS.update({"scp": "_scp", "jpegoptim": "_jpegoptim", "oxipng": "_oxipng",
+                        "mogrify": "_mogrify", "heif-convert": "_heif", "heif-dec": "_heif"})
+
 
 def _scan(words: Sequence[_Word], shorts: str, longs: set,
           old_style: bool = False) -> Tuple[List[Tuple[str, Optional[_Word]]], List[_Word]]:
@@ -1367,8 +1525,21 @@ def _file_value(word: Optional[_Word]) -> Optional[_Word]:
 
 
 def _unknown(text: str) -> _Word:
-    """`B1680`. A path filled in when the command runs."""
-    return _Word(text=text, expanded=True, fills=2)
+    """`B1680`. A path filled in when the command runs — by the program
+    (`%d`, `#1`, a name an archive holds), so not the same words twice
+    (`B1690`)."""
+    return _Word(text=text, expanded=True, fills=2, unsteady=True)
+
+
+def _steady(word: _Word) -> bool:
+    """`B1690`. Whether a path is the same file each time the shell reads
+    its words in one command, until a variable in it is set: spelled out,
+    or filled in only from variables in quotes (`"converted/${f%.*}.pdf"`) —
+    not a command's output, arithmetic, a variable the shell changes by
+    itself (`$RANDOM`, `$_`, `$?`, `$1`), anything unquoted (split and
+    globbed), a glob, a `{a,b}`, or a name the program fills in."""
+    return (bool(word.text) and not (word.unsteady or word.globbed or word.braced)
+            and "{}" not in word.text)
 
 
 def _under(folder: Optional[_Word], name: _Word) -> _Word:
@@ -1377,7 +1548,11 @@ def _under(folder: Optional[_Word], name: _Word) -> _Word:
     if folder is None or name.text.startswith("/"):
         return name
     if not _spelling(folder)[0] or not _spelled(name):
-        return _unknown(posixpath.join(folder.text, name.text))
+        joined = posixpath.join(folder.text, name.text)
+        if _steady(folder) and _steady(name):
+            # `B1690`: filled in by the shell alone — the same words, the same file.
+            return _Word(text=joined, expanded=True, fills=2, quoted=True)
+        return _unknown(joined)
     return replace(folder, text=posixpath.join(folder.text, name.text))
 
 
@@ -1416,6 +1591,33 @@ def _site_folder(word: _Word) -> _Word:
         return _unknown(text)
     own = {"http": 80, "https": 443, "ftp": 21}.get(parts.scheme.lower())
     return _Word(text=host + (f":{port}" if port and port != own else ""))
+
+
+def _in(folder: Optional[_Word], name: _Word) -> _Word:
+    """`B1689`. `name` in an output folder a program is given — in the one
+    it runs in (none, or `.`), the name as it is."""
+    return name if folder is None or folder.text in (".", "./") else _under(folder, name)
+
+
+def _same_path(a: _Word, b: _Word) -> bool:
+    """`B1689`. Whether two paths are one file by their words — the output
+    a program is told to write is the input it edits (`mogrify -format jpg
+    a.jpg`), which is the edit in place `D-2026-10-29-03` §1 keeps a write."""
+    return _steady(a) and _steady(b) and posixpath.normpath(a.text) == posixpath.normpath(b.text)
+
+
+def _far_name(word: _Word, remote: "re.Pattern") -> Tuple[_Word, bool]:
+    """`B1688`. A copy's source, as `scp` and `rsync` name what they copy:
+    `(its path, whether it is on another machine)` — `host:dir/a.md` is
+    `dir/a.md` there; one with no path (`host:`) or one the far side
+    expands (`host:*.md`, `host:$X`) holds no name here (`_Word()`)."""
+    m = remote.match(word.text) if word.plain() else None
+    if m is None:
+        return word, False
+    path = word.text[m.end():]
+    if not path or any(c in path for c in "*?[{$`"):
+        return _Word(), True
+    return replace(word, text=path), True
 
 
 def _flags(words: Sequence[_Word]) -> List[str]:
@@ -1471,7 +1673,9 @@ class _Judge:
         self.findings.append(Finding(
             WRITES, why, path=word.text, known=known, far=self.lexer.far,
             sources=tuple((w.text, _spelled(w)) for w in sources), into=into, parents=parents,
-            var=var, split=split, removes=removes))
+            var=var, split=split, removes=removes,
+            # `B1690`: in a shell of its own, a variable may not be the outer one.
+            steady=_steady(word) and not (self.lexer.apart and word.expanded)))
 
     def removes(self, why: str, word: _Word, recursive: bool = False) -> None:
         """`B1683`. `why` takes away the file at `word` — and, `recursive`,
@@ -1488,7 +1692,7 @@ class _Judge:
     def shell_string(self, word: _Word, who: str = "a shell") -> None:
         """A command handed over as one string — `sh -c '…'`, `ssh host '…'`."""
         if word.plain():
-            self.lexer.sub(word.text)
+            self.lexer.sub(word.text, apart=True)
         else:
             self.unreadable(f"{who} is handed a command made when it runs")
 
@@ -1586,9 +1790,10 @@ class _Judge:
         reach = _reach_of(name, args)
         if reach:
             self.reaches(reach)
-        if name in _OUTPUT_READERS:
+        reader = _OUTPUT_READERS.get(name) or ("_office" if _OFFICE_RE.match(name) else None)
+        if reader:
             # `B1680`: the file its own words tell it to write over.
-            getattr(self, _OUTPUT_READERS[name])(name, args)
+            getattr(self, reader)(name, args)
             return
         if name in _DELETERS:
             self.destroys(_DELETERS[name])
@@ -1765,7 +1970,7 @@ class _Judge:
                         self.unreadable(f"{name} -c is handed no command")
                     return
                 if "s" in t[1:]:
-                    self._stdin(simple, name, self.lexer.sub)
+                    self._stdin(simple, name, lambda t: self.lexer.sub(t, apart=True))
                     return
                 i += 2 if t in ("-o", "+o", "-O", "+O") else 1
                 continue
@@ -1775,7 +1980,7 @@ class _Judge:
             break
         rest = args[i:]
         if not rest:
-            self._stdin(simple, name, self.lexer.sub)
+            self._stdin(simple, name, lambda t: self.lexer.sub(t, apart=True))
         elif _handed(rest[0]):
             self.unreadable(f"{name} runs a script it is handed when it runs")
 
@@ -2051,6 +2256,9 @@ class _Judge:
             tool = words.pop(0).text.lower()
         elif name == "gm":
             return              # each of its tools is named
+        if tool == "mogrify":
+            self._mogrify(f"{name} mogrify", words)     # `B1689`
+            return
         if tool not in _MAGICK_WRITERS and tool != "magick":
             return              # it edits in place, or writes no file it is named
         if len(words) < 2 or {w.text for w in words} & _MAGICK_INFO:
@@ -2172,8 +2380,9 @@ class _Judge:
         *sources, dest = operands
         names: List[_Word] = []
         for src in sources:
-            remote = _REMOTE_PATH_RE.match(src.text) if src.plain() else None
-            path = replace(src, text=src.text[remote.end():]) if remote else src
+            # `B1688`: a source on another machine by its path there — and
+            # `host:*.md`, which the far side expands, by no name at all.
+            path, _far = _far_name(src, _REMOTE_PATH_RE)
             if "--files-from" in said or path.text.endswith("/") or path.text in ("", ".", ".."):
                 names.append(_Word())       # what is in it: names the command does not hold
             else:
@@ -2186,6 +2395,243 @@ class _Judge:
                         parents=bool(said & {"-R", "--relative"}))
         finally:
             self.lexer.far = was
+
+    # ── `B1688`–`B1690` · scp, the image tools, LibreOffice, heif-convert ──
+
+    def _named_after(self, word: _Word, how: str) -> Optional[_Word]:
+        """`B1689`, `B1690`. The name a program gives its output after an
+        input: its last part (`base`), that without its last extension
+        (`stem`; a name that only starts with a `.` has none, as LibreOffice
+        reads `.notes`), or the whole path without its last extension
+        (`root`: `heif-convert`'s `rfind('.')`). `None` when it cannot be
+        known — the input is filled in when it runs — except one quoted
+        variable (`"$f"`): `root` is `${f%.*}`, the shell's own spelling of
+        that rule; `base` (`$f`) and `stem` (`${f%.*}`) only for a `for`
+        loop's name, which holds no `/` and starts with no `.`
+        (`lexer.bare`)."""
+        text = word.text
+        if _spelled(word):
+            if how == "root":
+                cut = text.rfind(".")
+                return _Word(text=text[:cut] if cut >= 0 else text)
+            base = posixpath.basename(text.rstrip("/"))
+            if not base or how == "base":
+                return _Word(text=base) if base else None
+            cut = base.rfind(".")
+            return _Word(text=base[:cut] if cut > 0 else base)
+        var = word.var
+        if (not var or word.fills != 1 or not _steady(word)
+                or text not in (f"${var}", f"${{{var}}}")):
+            return None
+        if how != "root" and var not in self.lexer.bare:
+            return None
+        return _Word(text=text if how == "base" else f"${{{var}%.*}}", expanded=True, fills=2,
+                     quoted=True)
+
+    def _scp(self, name: str, args: List[_Word]) -> None:
+        """`B1688`. `scp … sources target`, read as `cp` is: onto this
+        machine, the target or each source's name in it; onto another, the
+        far side, as `rsync`'s."""
+        _opts, operands = _scan(args, _SCP_SHORT, set())
+        if len(operands) < 2:
+            return
+        *sources, dest = operands
+        names = [_far_name(src, _SCP_REMOTE_RE)[0] for src in sources]
+        far = _far_name(dest, _SCP_REMOTE_RE)[1]
+        was, self.lexer.far = self.lexer.far, self.lexer.far or far
+        try:
+            self.writes(name, dest, sources=names, into="folder" if dest.text.endswith("/") else "")
+        finally:
+            self.lexer.far = was
+
+    def _jpegoptim(self, name: str, args: List[_Word]) -> None:
+        """`B1689`. In place — the edit — unless `-d`/`--dest`, where only
+        `-o`/`--overwrite` writes over a file that is there."""
+        opts, operands = _scan(args, _JPEGOPTIM_SHORT, _JPEGOPTIM_LONG)
+        said = {o for o, _v in opts}
+        if said & {"-n", "--noaction", "--stdout", "-h", "--help", "-V", "--version"}:
+            return
+        dest = next((v for o, v in reversed(opts) if o in ("-d", "--dest") and v is not None), None)
+        over = next((o for o in ("-o", "--overwrite") if o in said), "")
+        if dest is None or not over:
+            return              # an edit in place, or it keeps the file that is there
+        why = f"{name} {over}"
+        if said & {"--files-from", "--files-stdin", "--stdin"}:
+            self.writes(why, dest, sources=[_Word()], into="folder")   # names it is handed
+        for w in operands:
+            base = self._named_after(w, "base")
+            if base is None:
+                self.writes(why, dest, sources=[_Word()], into="folder")
+            elif not _same_path(_in(dest, base), w):
+                self.writes(why, _in(dest, base))
+
+    def _oxipng(self, name: str, args: List[_Word]) -> None:
+        """`B1689`. In place — the edit — unless `--out` or `--dir`."""
+        opts, operands = _scan(args, _OXIPNG_SHORT, _OXIPNG_LONG)
+        said = {o for o, _v in opts}
+        if said & {"-d", "--dry-run", "-P", "--pretend", "--stdout", "-h", "--help", "-V",
+                   "--version"}:
+            return
+        inputs = [w for w in operands if w.text != "-"]
+        out = next((v for o, v in reversed(opts) if o == "--out" and v is not None), None)
+        if out is not None:
+            target = _file_value(out)
+            if target is not None and not (len(inputs) == 1 and _same_path(target, inputs[0])):
+                self.writes(f"{name} --out", target)
+            return
+        folder = next((v for o, v in reversed(opts) if o == "--dir" and v is not None), None)
+        if folder is None:
+            return
+        for w in inputs:
+            # With `-r` an input may be a folder: what it holds, by no name here.
+            base = None if said & {"-r", "--recursive"} else self._named_after(w, "base")
+            if base is None:
+                self.writes(f"{name} --dir", folder, sources=[_Word()], into="folder")
+            elif not _same_path(_in(folder, base), w):
+                self.writes(f"{name} --dir", _in(folder, base))
+
+    def _mogrify(self, name: str, args: List[_Word]) -> None:
+        """`B1689`. In place — the edit — unless `-path` (GraphicsMagick's
+        `-output-directory`) or `-format`; and each `-write`, as `convert`'s."""
+        fmt: Optional[_Word] = None
+        folder: Optional[_Word] = None
+        moved = ""
+        inputs: List[_Word] = []
+        if {w.text.lower() for w in args} & _MAGICK_INFO:
+            return
+        i = 0
+        while i < len(args):
+            w = args[i]
+            t = w.text
+            key = t.lower()
+            i += 1
+            if t in ("(", ")", "-") or not t.startswith(("-", "+")) or len(t) == 1:
+                if t not in ("(", ")", "-"):
+                    inputs.append(w)
+                continue
+            value = args[i] if i < len(args) else None
+            if key == "-format" and value is not None:
+                fmt = value
+            elif key in ("-path", "-output-directory") and value is not None:
+                folder, moved = value, key
+            elif key in ("-write", "+write") and value is not None:
+                self._image_output(f"{name} {key}", value)
+            if key in _MAGICK_TWO:
+                i += 2
+            elif t.startswith("-"):
+                i += 0 if key in _MAGICK_FLAGS else 1
+            else:
+                i += 1 if key in _MAGICK_PLUS_VALUED else 0
+        if fmt is None and folder is None:
+            return              # each image in place: the edit
+        why = f"{name} {moved or '-format'}"
+        for w in inputs:
+            out = self._mogrify_output(w, folder, fmt)
+            if out is None:
+                # A name it expands itself (`'*.jpg'`), or one filled in when it runs.
+                where = folder if folder is not None else _Word(text=posixpath.dirname(w.text) or ".")
+                if folder is None and not _word_is_plain_text(where.text):
+                    where = _unknown(where.text)
+                self.writes(why, where, sources=[_Word()], into="folder")
+            elif not _same_path(out, w):
+                self.writes(why, out)
+
+    def _mogrify_output(self, word: _Word, folder: Optional[_Word],
+                        fmt: Optional[_Word]) -> Optional[_Word]:
+        """`B1689`. The file `mogrify` writes for one input, as its source
+        names it (`wand/mogrify.c`, `AppendImageFormat`), or `None`."""
+        if word.plain() and _MAGICK_FORMAT.match(word.text):
+            word = replace(word, text=word.text.split(":", 1)[1])     # `png:a.dat`
+        text = word.text
+        if any(c in text for c in "*?[") or text.startswith("@") or (
+                fmt is not None and not (fmt.plain() and _word_is_plain_text(fmt.text))):
+            return None
+        if fmt is None:
+            base = self._named_after(word, "base")
+            return _in(folder, base) if base is not None else None
+        if not _spelled(word):
+            return None         # `-format`'s rule looks past `.gz`: no spelling of it
+        ext = fmt.text
+        base = posixpath.basename(text)
+        packed = ""
+        head, dot, last = base.rpartition(".")
+        if dot and head and last.lower() in _MAGICK_PACKED:
+            if folder is None:
+                base = head     # it reads past `.gz`, and writes none
+            else:
+                base, packed = head, "." + last
+        head, dot, _last = base.rpartition(".")
+        name = (head if dot and head else base) + "." + ext + packed
+        if folder is None:
+            return _Word(text=posixpath.join(posixpath.dirname(text), name))
+        return _in(folder, _Word(text=name))
+
+    def _office(self, name: str, args: List[_Word]) -> None:
+        """`B1690`. LibreOffice told to `--convert-to` (or `--print-to-file`):
+        each document's name with the new extension, in `--outdir` or the
+        folder it runs in."""
+        convert: Optional[_Word] = None
+        folder: Optional[_Word] = None
+        printing = cat = False
+        inputs: List[_Word] = []
+        i = 0
+        while i < len(args):
+            w = args[i]
+            t = w.text
+            i += 1
+            if not (t.startswith("-") and len(t) > 1):
+                inputs.append(w)
+                continue
+            key, eq, value = t.partition("=")
+            if not key.startswith("--"):
+                key = "-" + key     # `-convert-to`, its old spelling
+            value_word: Optional[_Word] = replace(w, text=value) if eq else None
+            if key in _OFFICE_VALUES and not eq:
+                value_word = args[i] if i < len(args) else None
+                i += 1
+            if key == "--convert-to":
+                convert = value_word
+            elif key == "--outdir":
+                folder = value_word
+            printing = printing or key == "--print-to-file"
+            cat = cat or key == "--cat"
+        if cat or not inputs or (convert is None and not printing):
+            return              # the screen, or nothing converted
+        where = folder if folder is not None else _Word(text=".")
+        why = f"{name} {'--convert-to' if convert is not None else '--print-to-file'}"
+        ext = convert.text.split(":", 1)[0] if convert is not None and _steady(convert) else ""
+        for w in inputs:
+            stem = self._named_after(w, "stem") if ext and _word_is_plain_text(ext) else None
+            if stem is None:
+                self.writes(why, where, sources=[_Word()], into="folder")
+            else:
+                self.writes(why, _in(folder, replace(stem, text=f"{stem.text}.{ext}")))
+
+    def _heif(self, name: str, args: List[_Word]) -> None:
+        """`B1690`. `heif-convert in [out]`: `-o`, its second word, or the
+        input up to its last `.` with `.jpg`; and the metadata beside it."""
+        opts, operands = _scan(args, _HEIF_SHORT, _HEIF_LONG)
+        said = {o for o, _v in opts}
+        if said & {"-h", "--help", "-v", "--version", "--list-decoders"} or not operands:
+            return
+        out = next((v for o, v in reversed(opts) if o in ("-o", "--output") and v is not None),
+                   operands[1] if len(operands) > 1 else None)
+        if out is None:
+            root = self._named_after(operands[0], "root")
+            out = (replace(root, text=root.text + ".jpg") if root
+                   else _unknown(f"{operands[0].text}.jpg"))
+        target = _file_value(out)
+        if target is None:
+            return
+        self.writes(name, target)
+        root = self._named_after(target, "root")
+        for option, suffix in (("--with-xmp", ".xmp"), ("--with-exif", ".exif")):
+            if option in said:
+                self.writes(f"{name} {option}", replace(root, text=root.text + suffix) if root
+                            else _unknown(target.text))
+        if said & {"--with-aux", "--tiles", "-S", "--sequence"}:
+            # Each auxiliary image, tile or frame: names the file decides.
+            self.writes(name, _unknown(f"{root.text if root else target.text}-*"))
 
     # ── `B1683` · what packs or unpacks a file and takes it away ──────────
 
@@ -2492,25 +2938,27 @@ class _Judge:
 # ── The readers ─────────────────────────────────────────────────────────────
 
 def read_shell(command: str, *, depth: int = 0,
-               findings: Optional[List[Finding]] = None, far: bool = False) -> List[Finding]:
+               findings: Optional[List[Finding]] = None, far: bool = False,
+               apart: bool = False) -> List[Finding]:
     """Everything the reader finds in a shell command. Never raises: what it
     cannot read is itself a finding. `far` (`B1669`): the command runs on
-    another machine or in a container."""
+    another machine or in a container; `apart` (`B1690`): in a shell of its
+    own, started by the one a test was read in."""
     findings = findings if findings is not None else []
     text = str(command or "")
     if len(text) > MAX_COMMAND_CHARS:
         findings.append(Finding(UNREADABLE, "it is longer than this reader reads"))
         return findings
     try:
-        lexer = _Lexer(depth, findings, far)
+        lexer = _Lexer(depth, findings, far, apart)
         judge = _Judge(lexer)
-        guard = None
-        for simple in _simple_commands(lexer.tokens(text)):
+        tokens = lexer.tokens(text)
+        tests = _Tests(tokens, text)
+        for simple in _simple_commands(tokens):
+            tests.before(simple, lexer)
             start = len(findings)
             judge.simple(simple)
-            if guard is not None and simple.after == guard[0]:
-                _unguard(findings, start, guard)
-            guard = _guard(simple)
+            tests.after(simple, findings, start)
     except _Unreadable as e:
         findings.append(Finding(UNREADABLE, e.why))
     except RecursionError:
@@ -2530,55 +2978,258 @@ _SHIFTING = frozenset({"RANDOM", "SRANDOM", "SECONDS", "LINENO", "BASHPID", "EPO
                        "EPOCHSECONDS", "BASH_COMMAND", "HISTCMD", "_"})
 
 
+#: `B1690`. The keywords that begin a body — a loop's, a branch's, a group's
+#: — so a test after one is at the head of its list.
+_BODY_STARTS = frozenset({"do", "then", "else", "{"})
+#: `B1690`. Where a body ends, or another branch begins: past these, what
+#: runs no longer depends on a test inside it.
+_BODY_ENDS = frozenset({"fi", "done", "}", "else", "elif", "esac"})
+#: `B1690`. After these the shell may be elsewhere, or any variable another
+#: value: no test before them speaks for what follows.
+_RESETS = frozenset({"source", ".", "eval", "cd", "pushd", "popd", "chdir"})
+_IDENT_RE = re.compile(r"(?<![A-Za-z0-9_])[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _leading(simple: _Simple) -> Tuple[List[str], List[_Word]]:
+    """`B1690`. A command's keywords (`do`, `then`, `!`, `done`…) and the
+    words after them."""
+    words = list(simple.words)
+    lead: List[str] = []
+    while words and words[0].keyword(*_SKIP):
+        lead.append(words.pop(0).text)
+    return lead, words
+
+
+def _existence(lead: Sequence[str], words: Sequence[_Word]) -> Optional[Tuple[bool, _Word, str]]:
+    """`B1682`, `B1690`. `[ -e f ]`, `test -f f` or `[[ -e f ]]`, each
+    turned round by a `!` inside it or before it: `(absent, f, the test)` —
+    `absent` when it holds only while nothing (`-e`), or nothing that is a
+    file (`-f`), is at `f` — or `None`: another command or test, or a path
+    whose words may not name the same file twice (`_steady`)."""
+    negated = lead.count("!") % 2 == 1
+    if len(words) < 3:
+        return None
+    if words[0].keyword("[") and words[-1].keyword("]"):
+        body = list(words[1:-1])
+    elif words[0].keyword("[[") and words[-1].keyword("]]"):
+        body = list(words[1:-1])
+    elif words[0].keyword("test"):
+        body = list(words[1:])
+    else:
+        return None
+    if len(body) == 3 and body[0].keyword("!"):
+        negated, body = not negated, body[1:]
+    if len(body) != 2 or not body[0].keyword("-e", "-f") or not _steady(body[1]):
+        return None
+    return negated, body[1], body[0].text
+
+
 def _guard(simple: _Simple) -> Optional[Tuple[str, _Word, str]]:
     """`B1682`. `[ -e f ] || cmd`, `test -f f || cmd`, `[[ -e f ]] || cmd` or
     `[ ! -e f ] && cmd`: the command after it runs only when nothing is at
     `f` (`-e`), or nothing that is a file (`-f`) — so what it writes at `f`
     replaces nothing, and Image Optimiser's `[ -e optimised/a.webp ] || cwebp
     … -o optimised/a.webp` skips what it made before instead of being refused
-    for it. `(the operator, f, the test)`, or `None`."""
+    for it. `(the operator, f, the test)`, or `None`. (`B1690`: `f` may be
+    any words that name the same file each time — `_steady` — and a `!` in
+    front turns the test round.)"""
     if simple.compound:
         return None
-    words = list(simple.words)
-    after = simple.after
-    while words and words[0].keyword("if", "then", "else", "elif", "do", "while", "until", "{"):
-        words.pop(0)
-        after = ""          # the head of the list the keyword begins
-    if len(words) < 3:
+    lead, words = _leading(simple)
+    test = _existence(lead, words)
+    if test is None:
         return None
-    if words[0].keyword("[") and words[-1].keyword("]"):
-        body = words[1:-1]
-    elif words[0].keyword("[[") and words[-1].keyword("]]"):
-        body = words[1:-1]
-    elif words[0].keyword("test"):
-        body = words[1:]
-    else:
+    absent, word, how = test
+    ender = "&&" if absent else "||"
+    # After a keyword it is the head of the list the keyword begins.
+    after = "" if any(k != "!" for k in lead) else simple.after
+    if simple.ended_by != ender or after not in _LIST_HEADS + (ender,):
         return None
-    negated = len(body) == 3 and body[0].keyword("!")
-    body = body[1:] if negated else body
-    if len(body) != 2 or not body[0].keyword("-e", "-f"):
-        return None
-    known, var, split = _spelling(body[1])
-    ender = "&&" if negated else "||"
-    if (not known or split or var in _SHIFTING or simple.ended_by != ender
-            or after not in _LIST_HEADS + (ender,)):
-        return None
-    return ender, body[1], body[0].text
+    return ender, word, how
 
 
-def _unguard(findings: List[Finding], start: int, guard: Tuple[str, _Word, str]) -> None:
-    """`B1682`. Take back what the command a `_guard` decides writes at the
+def _unguard(findings: List[Finding], start: int, word: _Word, test: str) -> None:
+    """`B1682`. Take back what the command a test decides writes at the
     path it tested — not when it moves elsewhere first (`env -C`, `sh -c 'cd
     …'`) or writes on another machine, and after `-f` only a write onto the
-    name, not a copy into a folder there."""
-    _ender, word, test = guard
+    name, not a copy into a folder there. (`B1690`: the same words, read the
+    same way — `steady` — whether or not the run can fill them in.)"""
     added = findings[start:]
     if any(f.kind == CHDIR for f in added):
         return
-    _known, var, _split = _spelling(word)
     findings[start:] = [f for f in added if not (
-        f.kind == WRITES and not f.far and f.known and not f.split and f.path == word.text
-        and f.var == var and (test == "-e" or not f.sources))]
+        f.kind == WRITES and not f.far and f.steady and f.path == word.text
+        and (test == "-e" or not f.sources))]
+
+
+def _skips_the_rest(words: Sequence[_Word]) -> bool:
+    """`B1690`. `continue` or `break`, alone or with a count (`continue 2`)
+    — not `continue 0` or `$n`, which fail and let what follows run."""
+    return bool(words) and words[0].keyword("continue", "break") and (
+        len(words) == 1 or (len(words) == 2 and words[1].plain()
+                            and words[1].text.isdigit() and int(words[1].text) >= 1))
+
+
+def _names_in(word: _Word) -> frozenset:
+    """`B1690`. The variables a path's words read (`~` reads `HOME`)."""
+    names = set(re.findall(r"\$\{?[#!]?([A-Za-z_][A-Za-z0-9_]*)", word.text))
+    if word.text.startswith("~"):
+        names.add("HOME")
+    return frozenset(names)
+
+
+def _sets(simple: _Simple, words: Sequence[_Word]) -> Optional[set]:
+    """`B1690`. The variables `simple` could give another value: every name
+    in its words that is not read with a `$` (`o=x`, `read o`, `export o`,
+    `for o in`, `(( o++ ))`) or that a `${o:=…}` sets — more than it sets,
+    which only ends a test sooner — or `None` for any at all (`source`,
+    `eval`) or a folder change (`cd`, `popd`) after which a path names
+    another file. An option (`-f`, `-o`) is not a name."""
+    if words and words[0].plain() and words[0].text in _RESETS:
+        return None
+    found: set = set()
+    for w in list(simple.words) + [t for _op, t in simple.redirects]:
+        text = w.text
+        for m in _IDENT_RE.finditer(text):
+            before = text[:m.start()]
+            if before.endswith(("$", "${", "${#", "${!")):
+                if before.endswith("${") and re.match(r":?=", text[m.end():]):
+                    found.add(m.group(0))
+            elif not before.endswith("-"):
+                found.add(m.group(0))
+    return found
+
+
+def _redefines(tokens: Sequence[tuple]) -> bool:
+    """`B1690`. Whether a command defines a function (`f() {`, `function
+    f`) — whose body runs wherever it is called, and may set anything — a
+    `trap` (whose command runs between any two), or a name for another
+    variable (`declare -n r=o`)."""
+    for j, tok in enumerate(tokens):
+        if tok[0] != "w":
+            continue
+        word = tok[1]
+        if (word.keyword("function", "trap")
+                or tokens[j + 1:j + 3] == [("op", "("), ("op", ")")]):
+            return True
+        if word.plain() and word.text in ("declare", "typeset", "local"):
+            k = j + 1
+            while k < len(tokens) and tokens[k][0] != "op":
+                t = tokens[k]
+                if (t[0] == "w" and t[1].text.startswith("-") and not t[1].text.startswith("--")
+                        and "n" in t[1].text):
+                    return True
+                k += 1
+    return False
+
+
+class _Tests:
+    """`B1682`, `B1690`. The tests in a command that decide whether what
+    follows them runs, followed as the command is read — so a write the
+    command makes only where nothing was replaces nothing:
+
+      * `B1682`: one at the head of its list over the next command —
+        `[ -e f ] || cwebp … -o f`, `[ ! -e f ] && echo x > f`;
+      * a loop's `[ -e f ] && continue` (or `break`, or `[ ! -e f ] ||
+        continue`) over the rest of its body — File Converter's arms — when
+        it is in the same shell as its loop (in `( … )` or a pipe a
+        `continue` ends nothing, and bash runs on), at the head of its list
+        or after an `||`, and inside a loop at all;
+      * `if [ ! -e f ]; then …` (`elif`, `! [ -e f ]`, `test ! -e f`) over
+        its branch, when the test is the whole condition.
+
+    A body ends at its `done`, `fi`, `}`, `else`/`elif`, a case arm's `;;` or
+    a subshell's `)`, and a test stops speaking for what follows at a `cd`,
+    `popd` or `source`, or a command that could set a variable its path is
+    spelled with (`_sets`), where its words stop naming the same file; and
+    a write in a shell of its own (`sh -c '…'`) is the same file only when
+    its words fill nothing in (`_Lexer.apart`). A command that defines a
+    function, a `trap` or a `declare -n` keeps no body-wide test
+    (`_redefines`).
+
+    And `for f in *`: a loop's name over words with no `/`, no leading `.`
+    and no expansion (and no `dotglob` anywhere) holds a name in the folder
+    — no `/`, no leading `.` — until something sets it (`lexer.bare`), which
+    is what makes `libreoffice --outdir converted "$f"` write exactly
+    `converted/${f%.*}.pdf` (`_Judge._named_after`)."""
+
+    def __init__(self, tokens: Sequence[tuple], text: str):
+        self.whole = not _redefines(tokens)
+        self.dotglob = "dotglob" in text or "GLOBIGNORE" in text
+        self.next: Optional[Tuple[str, _Word, str]] = None
+        self.held: List[Tuple[_Word, str, frozenset]] = []
+        self.loops: List[list] = []         # [depth, name, bare] per `do` open
+        self.header: Optional[Tuple[str, bool]] = None
+        self.last: Optional[tuple] = None   # the command before, as a test
+        self.branch: Optional[Tuple[_Word, str, frozenset]] = None
+
+    def _header(self, words: Sequence[_Word]) -> Tuple[str, bool]:
+        """`for name in words`: its name, and whether each value is bare."""
+        name = words[1].text if len(words) > 1 and words[1].plain() else ""
+        if not _NAME_RE.fullmatch(name):
+            return "", False
+        listed = list(words[3:]) if len(words) > 2 and words[2].keyword("in") else None
+        bare = (self.whole and not self.dotglob and words[0].keyword("for") and listed is not None
+                and all(w.text and not (w.expanded or w.braced) and "/" not in w.text
+                        and not w.text.startswith((".", "[")) for w in listed))
+        return name, bare
+
+    def before(self, simple: _Simple, lexer: _Lexer) -> None:
+        lead, words = _leading(simple)
+        if self.held and (simple.compound or simple.after == ")" or _BODY_ENDS & set(lead)):
+            self.held = []
+        for k in lead:
+            if k == "done" and self.loops:
+                self.loops.pop()
+            elif k == "do":
+                name, bare = self.header or ("", False)
+                self.loops.append([simple.depth, name, bare])
+                self.header = None
+        if self.branch is not None and lead[:1] == ["then"]:
+            self.held.append(self.branch)
+        self.branch = None
+        if words and words[0].keyword("for", "select"):
+            self.header = self._header(words)
+        bare, seen = set(), set()
+        for _depth, name, is_bare in reversed(self.loops):     # the innermost loop's name wins
+            if name and name not in seen:
+                seen.add(name)
+                if is_bare:
+                    bare.add(name)
+        lexer.bare = frozenset(bare)
+
+    def after(self, simple: _Simple, findings: List[Finding], start: int) -> None:
+        lead, words = _leading(simple)
+        sets = _sets(simple, words)
+        self.held = [] if sets is None else [g for g in self.held if not g[2] & sets]
+        for frame in self.loops:
+            if sets is None or frame[1] in sets:
+                frame[2] = False
+        if self.next is not None and simple.after == self.next[0]:
+            _unguard(findings, start, self.next[1], self.next[2])
+        for word, test, _names in self.held:
+            _unguard(findings, start, word, test)
+        if any(f.kind == CHDIR for f in findings[start:]):
+            self.held = []
+        self.next = _guard(simple)
+        if (self.whole and self.last is not None and not lead and _skips_the_rest(words)
+                and simple.ended_by in (";", "\n") and self.loops
+                and self.loops[-1][0] == simple.depth):
+            absent, word, test, before, before_after = self.last
+            ender = "||" if absent else "&&"
+            if (before.depth == simple.depth and simple.after == before.ended_by == ender
+                    and before_after in _LIST_HEADS + ("&&" if absent else "||",)):
+                self.held.append((word, test, _names_in(word)))
+        body = [k for k in lead if k != "!"]
+        test = None if simple.compound else _existence(lead, words)
+        self.last = None
+        if test is not None and set(body) <= _BODY_STARTS:
+            self.last = (*test, simple, "" if body else simple.after)
+        if (self.whole and test is not None and test[0] and body and body[-1] in ("if", "elif")
+                and simple.ended_by in (";", "\n")):
+            self.branch = (test[1], test[2], _names_in(test[1]))
+        if simple.ended_by in (")", ";;", ";&", ";;&"):
+            self.held = []
 
 
 _PY_DESTROYS = {
@@ -2677,13 +3328,13 @@ def python_findings(code: str, *, depth: int = 0) -> List[Finding]:
                 findings.append(Finding(CHDIR, "cwd", path=folder or "",
                                         known=bool(folder) and not folder.startswith("~")))
             if _literal(first) is not None:
-                read_shell(_literal(first), depth=depth + 1, findings=findings)
+                read_shell(_literal(first), depth=depth + 1, findings=findings, apart=True)
             elif isinstance(first, (ast.List, ast.Tuple)) and first.elts and _literal(first.elts[0]):
                 # The program is named; an argument filled in when it runs is a
                 # placeholder, which the reader sees as an expansion.
                 line = " ".join(shlex.quote(_literal(e)) if _literal(e) is not None else "$ARG"
                                 for e in first.elts)
-                read_shell(line, depth=depth + 1, findings=findings)
+                read_shell(line, depth=depth + 1, findings=findings, apart=True)
             else:
                 findings.append(Finding(UNREADABLE, f"{name} runs a command made when it runs"))
         elif isinstance(node.func, ast.Attribute):
