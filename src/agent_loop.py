@@ -132,6 +132,7 @@ from src.agent_tools import (
 )
 from src.active_plan import ActivePlan, bind_active_plan   # `B1415`
 from src.agent_tools.document_tools import bind_turn_document, new_turn_document  # `B1599`
+from src.run_files import RunFiles, bind_run_files   # `B1660`
 from src.agent_tools.computer_tools import (
     ACTIONS as _COMPUTER_ACTIONS,
     command_line as _computer_command_line,
@@ -298,7 +299,8 @@ def _runs_in(tool_name: Any, owner: Any) -> Optional[str]:
         return None
 
 
-def _effect_fields(tool_name: Any, content: Any, runs_in: Optional[str] = None) -> Dict[str, Any]:
+def _effect_fields(tool_name: Any, content: Any, runs_in: Optional[str] = None,
+                   files: Any = None) -> Dict[str, Any]:
     """Effect keys for one action's `tool_start`/`tool_output` pair (P7-06).
 
     Resolve from the *content* the block carries, not from the tool name alone:
@@ -311,9 +313,13 @@ def _effect_fields(tool_name: Any, content: Any, runs_in: Optional[str] = None) 
     `_action_from_content` path still calls `dict()` and `json.loads()` on model
     output, and a card that ranks nothing is survivable where a dead stream is
     not. An empty dict spreads into an event as no keys at all.
+
+    `files` (`B1660`) is the run's record of the files it made, so a
+    `write_file` over one that was there says so here as on its card.
     """
     try:
-        return describe_effects(capabilities_for_action(tool_name, content), runs_in=runs_in)
+        return describe_effects(capabilities_for_action(tool_name, content, files=files),
+                                runs_in=runs_in)
     except Exception:
         logger.warning(
             "[agent] effect resolution failed for tool=%r; card ships unranked",
@@ -6025,6 +6031,10 @@ class PausedTurn:
     #: turn's first run, more for a continuation that was itself stopped by a
     #: card — so the run that resumes it numbers its steps on from the turn's.
     step_offset: int = 0
+    #: `B1660`. The files the turn had made (`RunFiles.carried`), so the run
+    #: that resumes it reads a rewrite of its own draft as the turn did — the
+    #: card's seal is re-derived on the claim, and must match.
+    files: Optional[Dict[str, Any]] = None
 
 
 #: `B1620`. The policy word on a call left unrun because a call before it in
@@ -6081,6 +6091,7 @@ def _paused_turn(
     resumed_from=None,
     step_offset: int = 0,
     unrun: Optional[list] = None,
+    files: Any = None,
 ) -> Optional[PausedTurn]:
     """The record a card keeps of the turn it stopped (`B1069`).
 
@@ -6088,7 +6099,7 @@ def _paused_turn(
     `B1620`, the ones after it, whose refusals are `unrun` (records from
     `_unrun_records`, in order); the three result lists hold the calls before
     it. `resumed_from` is the `ExactToolApproval` this run itself resumed, if
-    any.
+    any. `files` is the run's record of the files it made (`B1660`).
     """
     # The stand-ins this turn already replaced, and the one it replaced on
     # resuming. Only a run that put a turn back replaced anything: a card that
@@ -6115,6 +6126,7 @@ def _paused_turn(
             }),
             replaces=replaces,
             step_offset=max(int(step_offset or 0), 0),
+            files=files.carried() if isinstance(files, RunFiles) else None,   # `B1660`
         )
     except Exception:
         # A result that cannot be copied (no tool returns one today) leaves the
@@ -7217,6 +7229,17 @@ async def stream_agent_loop(
             "[approval] hired run in session %s: what its hire allows runs after "
             "outside content without a card (D-2026-10-29-01)", session_id,
         )
+    # `B1660`. The files this run makes, so a `write_file` over one of them is
+    # a plain write and one over a file that was there before the run began is
+    # `destructive` (`src/run_files.py`). The gate holds it and each tool call
+    # notes into it (`bind_run_files`). A run resumed from a card is the same
+    # run: it starts with what the turn that asked had made, carried on the
+    # card's paused turn, so the seal re-derived on the claim reads as minted.
+    _resumed_turn = getattr(getattr(exact_approval, "pending", None), "continuation_turn", None)
+    _run_files = RunFiles(
+        workspace, owner,
+        carried=_resumed_turn.files if isinstance(_resumed_turn, PausedTurn) else None,
+    )
     run_security = ToolRunSecurityContext(
         external_untrusted_context_seen=(
             bool(external_untrusted_context_seen)
@@ -7242,6 +7265,7 @@ async def stream_agent_loop(
         hire_allow_after_outside=_hire_lift,
         # `P27-08`. A vault login set to ask asks, whatever the rung or Auto.
         vault_use_lookup=_vault_use_lookup(owner, session_id, getattr(tool_policy, "agent_id", None)),
+        files=_run_files,   # `B1660`
         allow_rule_lookup=(
             _resolve_allow_rule_lookup(owner, session_id)
             if rung_consults_allow_rules(_run_rung)
@@ -9233,12 +9257,15 @@ async def stream_agent_loop(
         approved = exact_approval.pending
         approved_block = ToolBlock(approved.tool_name, approved.content)
         approved_display = approved.content.strip()
+        # `B1660`: a write in the workstation is asked about before it is read.
+        await _run_files.look(approved.tool_name, approved.content)
         approval_matches = exact_approval.matches(
             owner=owner,
             session_id=session_id,
             tool_name=approved.tool_name,
             content=approved.content,
             workspace=workspace,
+            files=_run_files,
         )
         # Resolved once for the whole replay so the pair cannot disagree, and
         # from the sealed content because that is what the dispatcher will run.
@@ -9248,7 +9275,8 @@ async def stream_agent_loop(
         # than showing nothing.
         approved_effects = (
             _effect_fields(approved.tool_name, approved.content,
-                           _runs_in(approved.tool_name, owner))   # `B967`
+                           _runs_in(approved.tool_name, owner),   # `B967`
+                           files=_run_files)                      # `B1660`
             if approval_matches
             else {}
         )
@@ -9296,6 +9324,7 @@ async def stream_agent_loop(
             bind_tool_call_started_by(workload)  # `B1061`
             bind_active_plan(_plan_holder)       # `B1415`
             bind_turn_document(_doc_holder)      # `B1599`
+            bind_run_files(_run_files)           # `B1660`
             try:
                 return await execute_tool_block(
                     approved_block,
@@ -11150,7 +11179,11 @@ async def stream_agent_loop(
             # `B967`. Where it will run, asked once: the same answer words the
             # effect here and on the approval card below, if the gate asks.
             block_runs_in = _runs_in(block.tool_type, owner)
-            block_effects = _effect_fields(block.tool_type, block.content, block_runs_in)
+            # `B1660`. A write in the workstation: asked there whether its path
+            # holds a file, before anything below classifies the call.
+            await _run_files.look(block.tool_type, block.content)
+            block_effects = _effect_fields(block.tool_type, block.content, block_runs_in,
+                                           files=_run_files)
             if is_doc_tool:
                 cmd_display = block.content.split("\n")[0].strip()[:80]
             elif block.tool_type == "computer":
@@ -11385,6 +11418,7 @@ async def stream_agent_loop(
                         capabilities=capabilities_for_action(
                             block.tool_type,
                             block.content,
+                            files=run_security.files,   # `B1660`
                         ),
                         # `P7-07` / `P7-08`. The card is minted from the very
                         # decision that refused the action, so the effects it
@@ -11415,6 +11449,8 @@ async def stream_agent_loop(
                             # `B1199`: so a run resumed from this card numbers
                             # its steps on from this run's.
                             step_offset=_step_offset,
+                            # `B1660`: and reads its own files as this one did.
+                            files=_run_files,
                         ),
                         # `D-2026-10-02-01` §1. The caller's deadline for this
                         # card (a workflow step's), clamped by the store; None
@@ -11457,6 +11493,7 @@ async def stream_agent_loop(
                     bind_tool_call_started_by(workload)  # `B1061`
                     bind_active_plan(_plan_holder)       # `B1415`
                     bind_turn_document(_doc_holder)      # `B1599`
+                    bind_run_files(_run_files)           # `B1660`
                     try:
                         return await execute_tool_block(
                             block,
@@ -11908,7 +11945,8 @@ async def stream_agent_loop(
                     else:
                         _later_cmd = _later_full
                     _later_effects = _effect_fields(_later.tool_type, _later.content,
-                                                    _runs_in(_later.tool_type, owner))
+                                                    _runs_in(_later.tool_type, owner),
+                                                    files=_run_files)   # `B1660`
                     yield (
                         "data: "
                         + json.dumps({

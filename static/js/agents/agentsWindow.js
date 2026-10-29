@@ -64,7 +64,10 @@ export const EFFECT_WORDS = {
   external_side_effect: 'send mail or act outside Pantheon',
   ui_side_effect: "change what Pantheon's screen shows",
   admin_change: "change Pantheon's settings",
-  destructive: 'delete things',
+  // `B1660`: a `write_file` over a file that was there is one too (and a
+  // shell's `mv` over one, `B1622`), so the row names overwriting as the
+  // approval card does ("Can permanently delete or overwrite").
+  destructive: 'delete or overwrite things',
 };
 export const RULE_WORDS = { allow: 'without asking', ask: 'asks you first', never: 'never' };
 export const STATUS_WORDS = { on: 'On', paused: 'Paused', attention: 'Needs you', trial: 'Trial' };

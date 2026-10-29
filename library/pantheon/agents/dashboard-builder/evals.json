@@ -80,7 +80,10 @@
   },
   {
    "id": "its-own-earlier-page-is-replaced",
-   "about": "An earlier page with the generator line is there: it is the agent's own, so it is replaced with today's numbers.",
+   "about": "An earlier page with the generator line is there: it is the agent's own, so it is replaced with today's numbers — after the person's yes, because it was there before this run began (B1660).",
+   "answers": [
+    "approve_task"
+   ],
    "inputs": {
     "file": "shop/sales.csv",
     "questions": "How are sales trending month by month?\nWhich store sells most?\nWhat is our profit margin?"

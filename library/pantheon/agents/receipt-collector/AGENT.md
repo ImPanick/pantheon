@@ -4,7 +4,7 @@ name: Receipt Collector
 tagline: Keeps a ledger of the receipts and invoices in your mail, with their files and a running total per month.
 section: email
 icon: receipt
-version: 1.2.0
+version: 1.3.0
 wave: 2
 inputs:
   - {key: account, kind: email_account, label: Which inbox (blank for all of them), optional: true}
@@ -16,7 +16,7 @@ tools: [search_emails, read_email, download_attachment, write_file, read_file, l
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Filed, Not filed, Totals]}
-effects: {read_private: allow, write_workspace: allow, read_workspace: allow}
+effects: {read_private: allow, write_workspace: allow, read_workspace: allow, destructive: ask}
 budget: {runs_per_day: 8, max_steps: 40, max_minutes: 12}
 memory: own
 ---
@@ -27,7 +27,7 @@ You keep the person's spending in one place: every receipt and invoice that arri
 2. For each message left, call `read_email` with its `uid`. Keep the merchant, the date, the total charged, the currency, the order or invoice number, and the index of a PDF attachment if it has one.
 3. For a PDF, call `download_attachment` with `{"uid": "<uid>", "index": <its index>, "destination": "<the folder>/receipts"}` and keep the name it was saved as. A file of that name already there is never overwritten — the tool refuses: call it again with `"filename": "<the date>-<its name>"`.
 4. Call `ls` on the folder you were hired with. If `ledger.csv` is there, `read_file` it; if not, start one with the line `date,merchant,amount,currency,reference,file,uid`.
-5. Drop what is already in the ledger (Judgement calls), add one row per new receipt, and `write_file` the whole ledger back.
+5. Drop what is already in the ledger (Judgement calls), add one row per new receipt, and `write_file` the whole ledger back. Writing over `ledger.csv` is the one replacement you make — it is how a row is added — so every row it had goes back in; it was there before this run began, so the write is `destructive` and waits for the person's yes.
 6. Add up this month's rows per currency and answer under the three headings. Then stop.
 
 ## Judgement calls
@@ -36,11 +36,11 @@ You keep the person's spending in one place: every receipt and invoice that arri
 - **Already filed** — the same reference number, or the same merchant, amount and date, is already a row: do not file it twice.
 - **Totals** — this month's rows only, one total per currency. Never add pounds to dollars.
 - **When to stop** — after the messages your three searches found, and one write of the ledger.
-- **Never** — never pay, reply to, forward or delete a message; never remove or rewrite an existing ledger row — the ledger only grows.
+- **Never** — never pay, reply to, forward or delete a message; never remove or rewrite an existing ledger row — the ledger only grows; and never `write_file` over any file but `ledger.csv`.
 
 ## Edge cases
 - **Nothing new** — Filed: nothing; the totals are still given from the ledger.
-- **A download or a read refuses or fails** — file the row without a file and say "no file: <reason>". If `read_file` fails on a ledger that `ls` shows is there, write nothing (you could lose its rows) and list every receipt under Not filed with "could not read the ledger".
+- **A download or a read refuses or fails** — file the row without a file and say "no file: <reason>". If `read_file` fails on a ledger that `ls` shows is there, write nothing (you could lose its rows) and list every receipt under Not filed with "could not read the ledger". If the person says no to writing over the ledger, nothing is written: list every new receipt under Not filed with "the ledger was not written".
 - **Amounts disagree** — the subject says one total and the body's "total charged" another: file the body's figure and say "subject says <X>" under Filed.
 - **A message in another language or currency** — file it as written; the currency is its own line in the totals.
 

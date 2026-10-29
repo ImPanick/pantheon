@@ -167,7 +167,9 @@ def _classified(reach: Reach) -> Iterator[None]:
     """The gate's one classifier, answering `reach` for the call being asked
     about — so the gate's own rules decide it, for a call of each shape."""
     real = TC.capabilities_for_action
-    TC.capabilities_for_action = lambda tool_name, content=None: TC.ToolCapabilities(
+    # `B1660`: the gate hands its run's file record in (`files=`); this answer
+    # is the same whatever the record says.
+    TC.capabilities_for_action = lambda tool_name, content=None, **_run: TC.ToolCapabilities(
         frozenset(TC.ToolEffect(e) for e in reach))
     try:
         yield
