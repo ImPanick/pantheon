@@ -3365,3 +3365,41 @@ open row before the UI/UX redesign. Items 14–17 are visual and are done in the
 is accessibility and is done now.
 
 What reopens it: the owner changing any one of these.
+
+---
+
+## D-2026-10-29-01 — four calls on the rows that waited for the owner: hires that run what they were allowed, a push that follows the rung, every speech-to-text provider, and a trim that names what it cut
+
+*The owner, 2026-10-29, answering four questions put after the backlog that needed no ruling was
+done.* Each is ruled as it was put:
+
+1. **`B1605` — "Hire approval covers it."** A hired agent whose kit both reads the person's data
+   and reaches outside stopped at almost every step after its first outside read, so a scheduled
+   one could not finish. **Decided:** in a hired agent's run, an action whose every effect the
+   hire's own effects table sets to **allow** runs unasked on its schedule even after outside
+   content; **ask** still asks; **never** is still refused. This is the third amendment of the
+   post-external gate (`FORBIDDEN.md` Part 2, after `D-2026-10-09-01` and `D-2026-10-24-01`/`-02`)
+   and it is drawn the way Auto was: what is lifted is *whether a person is asked*, never what is
+   validated. Carried over unchanged, because they are not the hire's effects but the install's
+   floor: a self-escalation still asks every time (`D-2026-10-25-01`); a write to memory, skills or
+   scheduled tasks after outside content keeps the gate, as it did for sealed kits
+   (`LAUNDERING_TOOLS`, `D-2026-10-24-01`) — the injected text would otherwise outlive the run and
+   reach every later chat; and lifting it is held to the people Auto is held to (`can_auto_approve`),
+   so for anyone else a hire behaves as before. Each step run this way is recorded as such on the
+   run, and the hire form says in plain words, before the person hires, that an effect set to
+   *allow* will run after the agent has read the web. The cost, stated as it was put: a page the
+   agent reads can steer what it does with the person's data within what they allowed.
+2. **`B1585` — "Change the words."** A git push follows the chat's trust rung like every other
+   action; the + menu stops promising that a push asks first. `P25-00`'s walk closes on it.
+3. **`B1564` — "Allow for both local + browser. All options available."** Settings → AI Defaults
+   gains a speech-to-text card offering every provider: an endpoint the operator runs, local
+   Whisper (behind the model-download switch, `B1565`), and the browser's Web Speech API, which
+   in Chrome sends the audio to Google — offered with that sentence beside it, where it is chosen.
+   An exception to `Law 16` the owner chose with the consequence in front of them, as `B1338`'s
+   Auto was.
+4. **`B1572` — "Keep 24k, name the cut."** An unproven window keeps the 24,000-character
+   attachment allowance (`D-2026-08-26-06`); when the trim then drops memory or RAG context to fit,
+   it says which, where the person reads the reply.
+
+What reopens it: the owner changing any one of these — and for (1), any evidence that a page read
+by a hire has steered it into an action its person did not mean to allow.
