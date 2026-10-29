@@ -108,6 +108,8 @@ the next one is cut.
 
 ### Added
 
+- **Settings → AI Defaults → Speech-to-text:** off, local Whisper, the browser's own recognition
+  (in Chrome the audio goes to Google, and the card says so), or an endpoint (`B1564`).
 - **`read_chat`:** an agent reads one of its person's own chats in order, a page at a time
   (`B1621`).
 - **`needs.programs` in an agent file:** a hire is refused, naming what to install, when the
@@ -251,6 +253,14 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **A hired agent runs what its hire allows, even after reading the web, when its person holds
+  `can_auto_approve`** (admins do). Effects set to *allow* on the hire no longer stop for a yes
+  after the agent reads a page, a mail or a tool result; *ask* still asks, *never* is refused, and
+  a self-escalation or a write to memory, skills or scheduled tasks still asks. Each such step is
+  recorded on the run, and the hire form says so before you hire. To keep the old behaviour for a
+  hire, set its effects to *ask* (`B1605`, `D-2026-10-29-01`).
+- **A git push follows the chat's trust setting like any other action;** the + menu no longer
+  says a push always asks (`B1585`).
 - **Chroma's index now survives a recreate** (`B1626`). The compose files mounted the
   `chromadb-data` volume at `/chroma/chroma`, where Chroma 0.x kept its data; Chroma 1.x — the
   pinned 1.5.9, and every `latest` for a long while — keeps it at `/data`, so the volume stayed
@@ -481,6 +491,9 @@ the next one is cut.
 
 ### Fixed
 
+- **A reply trimmed to fit says what it left out** — your saved memory, retrieved documents,
+  search results, or the middle of your message (`B1572`); browser speech-to-text no longer drops
+  the last words of a short recording (`B1564`).
 - **In the workstation a hired agent's files land where its shell works** — the person's projects
   folder, not their home (`B1642`); with no projects folder mounted it says so (`B1643`); the
   Knowledge listing shows an upload under the name it was given (`B1644`).
