@@ -465,8 +465,13 @@ def _check_triggers(raw: list, inputs: Tuple[Dict[str, Any], ...]) -> Tuple[Dict
     return tuple(out)
 
 
+#: Why an agent needs a tool — said of an empty `tools`, and (`B1662`) of a
+#: table whose nevers take every tool away (`check_tools_kept`).
+ONLY_TALKS = "an agent with no tools can only talk, and a chat already does that"
+
+
 def _check_tools(raw: list) -> Tuple[str, ...]:
-    _need(bool(raw), "“tools” is empty — an agent with no tools can only talk, and a chat already does that.")
+    _need(bool(raw), f"“tools” is empty — {ONLY_TALKS}.")
     known = _known_tools()
     seen = []
     for name in raw:
@@ -547,7 +552,6 @@ def check_tools_kept(m: "Manifest") -> None:
             by.setdefault(sorted({e.value for e in least_reach(t)} & never)[0], []).append(t)
     if not by:
         return
-    talk = "an agent with no tools can only talk, and a chat already does that"
     if kept:
         eff, tools = sorted(by.items())[0]
         raise ManifestRefused(
@@ -558,12 +562,12 @@ def check_tools_kept(m: "Manifest") -> None:
         eff, tools = next(iter(by.items()))
         raise ManifestRefused(
             f"Effect “{eff}” is never, and every call of {_and(tools)} has it, so it leaves this "
-            f"agent no tools — {talk}. Make it ask, or choose a tool that works without it.")
+            f"agent no tools — {ONLY_TALKS}. Make it ask, or choose a tool that works without it.")
     which = ", ".join(f"{t} “{e}”" for t in m.tools for e, ts in by.items() if t in ts)
     raise ManifestRefused(
-        f"Effects {_and([f'“{e}”' for e in sorted(by)])} are never, and every call of each tool has "
-        f"one ({which}), so they leave this agent no tools — {talk}. Make one ask, or choose tools "
-        f"that work without them.")
+        f"Effects {_and([f'“{e}”' for e in sorted(by)])} are never, and every call of each tool "
+        f"has one ({which}), so they leave this agent no tools — {ONLY_TALKS}. Make one ask, or "
+        f"choose tools that work without them.")
 
 
 def _check_budget(raw: dict) -> Dict[str, int]:
