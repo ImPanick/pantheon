@@ -359,6 +359,34 @@ def get_tool_person() -> Optional[str]:
     return _tool_person.get()
 
 
+# ---------------------------------------------------------------------------
+# A hired agent's run (per-call, context-local)
+# ---------------------------------------------------------------------------
+# `B1646`. Set in execute_tool_block beside the workspace, from the turn's
+# `ToolPolicy.hired` (the task engine's, for a hire's run), and reset on the
+# way out. A hire's run works in one folder (`runtime.workspace_for`: its
+# project inside the person's projects folder, or the whole projects folder)
+# and its file tools read a relative path from there — but every runbook's
+# `cd "$PANTHEON_PROJECTS"/'<folder>'` and every `os.environ["PANTHEON_PROJECTS"]`
+# started from the whole projects folder. With a project, `write_file
+# site/index.html` wrote `<projects>/Shop/site/index.html` and the `cd` went
+# to `<projects>/site`, on either machine. So in a hire's run the variable
+# names the folder the run works in (`run_projects_folder`), and every runner
+# that sets it asks here: one binding, for the reason the workspace has one.
+_hired_call: contextvars.ContextVar = contextvars.ContextVar(
+    "agent_hired_call", default=False
+)
+
+
+def run_projects_folder(workspace: Optional[str]) -> Optional[str]:
+    """`B1646`. What `$PANTHEON_PROJECTS` names in this call in place of the
+    person's whole projects folder: a hire's run's own folder — `workspace`,
+    as the machine the call runs on names it. None for every other call (a
+    chat keeps the whole folder, where the skills say a new project goes) and
+    for a run with no folder."""
+    return (workspace or None) if _hired_call.get() else None
+
+
 #: `B1417`. Where a project the agent is asked to build belongs.
 #:
 #: **The picker opened on `/app`** — this application's own source tree, with
@@ -433,9 +461,14 @@ def projects_env(owner: Optional[str] = None) -> Dict[str, str]:
     named by `protocol.PROJECTS_ENV` (the one spelling) and found the way
     every reader on this side finds it. Named, not made: a shell started here
     does not create the folder (`projects_root` callers that work in it do),
-    so a tool call never scribbles into the data directory."""
+    so a tool call never scribbles into the data directory.
+
+    `B1646`: in a hire's run, the folder the run works in — its project, or
+    the whole projects folder with none (`run_projects_folder`) — so its
+    runbook's `cd` and its file tools' relative paths meet in one folder."""
     from workstation import protocol as _wp
-    return {_wp.PROJECTS_ENV: projects_root(owner, create=False)}
+    folder = run_projects_folder(get_active_workspace())
+    return {_wp.PROJECTS_ENV: folder or projects_root(owner, create=False)}
 
 
 def save_into_projects(owner: Optional[str], destination: str, name: str,
@@ -1208,6 +1241,8 @@ async def execute_tool_block(
     token = _active_workspace.set(None if station_workspace else (workspace or None))
     # `B1179`. Who this call acts for, for every loopback the tool makes.
     person_token = _tool_person.set(normalize_owner(owner))
+    # `B1646`. Whether it is a hire's run, for what `$PANTHEON_PROJECTS` names.
+    hired_token = _hired_call.set(bool(getattr(tool_policy, "hired", False)))
     _t0 = time.monotonic()
     _tool_name = getattr(block, "tool_type", None)
     _tool_outcome = "ok"
@@ -1269,6 +1304,7 @@ async def execute_tool_block(
     finally:
         _active_workspace.reset(token)
         _tool_person.reset(person_token)
+        _hired_call.reset(hired_token)
         # P14-02. Guarded and last: instrumentation never changes whether a tool
         # call succeeded, and never delays its result.
         try:

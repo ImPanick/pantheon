@@ -139,8 +139,15 @@ def test_a_project_hires_files_and_its_shell_are_in_its_project(station):
     assert not _write("page.html", "<p>shop</p>", workspace=workspace).get("error")
     r = _call("bash", "cat page.html && echo && pwd -P", "ann", session_id="hire-shop", workspace=workspace)[1]
     assert r["stdout"].splitlines() == ["<p>shop</p>", str(_mine(station) / "Shop")], r
-    r = _call("bash", "cd \"$PANTHEON_PROJECTS\"/'Shop' && cat page.html", "ann", session_id="hire-shop2",
-              workspace=workspace)[1]
+    # `B1646`: a hire's run (`ToolPolicy.hired`) is told its project as
+    # `$PANTHEON_PROJECTS`, so the runbook's `cd` needs no project added — this
+    # asserted `cd "$PANTHEON_PROJECTS"/'Shop'`, the project named twice over
+    # by a runbook that never names it. A chat keeps the whole folder.
+    from src.agent_tools import ToolBlock
+    from src.tool_policy import ToolPolicy
+    r = asyncio.run(te.execute_tool_block(
+        ToolBlock("bash", "cd \"$PANTHEON_PROJECTS\" && cat page.html"), session_id="hire-shop2", owner="ann",
+        workspace=workspace, tool_policy=ToolPolicy(hired=True), security_context=te.NO_TOOL_SECURITY_CONTEXT))[1]
     assert r["stdout"] == "<p>shop</p>", r
 
 

@@ -119,7 +119,12 @@ def workspace_for(owner: Optional[str], project: Optional[str]) -> Optional[str]
     folder: `write_file` of `My Site/index.html` wrote `~/My Site/index.html`,
     and Site Builder served an empty folder. Named here as this machine names
     it; the workstation's tools name the same folder as the workstation does
-    (`workstation_tools.station_folder`), and never bind it here (`B968`)."""
+    (`workstation_tools.station_folder`), and never bind it here (`B968`).
+
+    `B1646`. And its shell's `$PANTHEON_PROJECTS` names this folder too
+    (`tool_execution.run_projects_folder`), so with a project the runbook's
+    `cd "$PANTHEON_PROJECTS"/'<folder>'` goes into the project as its file
+    tools do — it went to the whole projects folder, beside the project."""
     from src.tool_execution import projects_root, vet_workspace
     root = projects_root(owner, create=True)
     if project:
@@ -201,9 +206,13 @@ def system_prompt(manifest, hire, *, owner: Optional[str]) -> str:
         # `B1640`: `$PANTHEON_PROJECTS` is set wherever a hire's shell runs —
         # here (`tool_execution.projects_env`) as in the workstation — so the
         # sentence no longer sends a run on this machine after a variable it
-        # did not have.
+        # did not have. `B1646`: in a hire's run it names the project itself
+        # (`tool_execution.run_projects_folder`), the folder a relative path
+        # the file tools take is read from; `$PANTHEON_PROJECTS/<project>`
+        # would now be a folder inside the project.
         lines += ["", f"You work in the project folder “{hire.project}” inside the person's "
-                      f"projects folder (in a shell: $PANTHEON_PROJECTS/{hire.project})."]
+                      f"projects folder: your file tools read a relative path from it, and in a "
+                      f"shell $PANTHEON_PROJECTS names it."]
     lines += ["", "# Runbook", "", manifest.runbook.strip()]
     return "\n".join(lines)
 

@@ -99,6 +99,19 @@ _STATION_FAILURES = frozenset({"off", "unconfigured", "not_permitted", "unavaila
 # Pantheon's environment, which is the point: the workstation holds no secret.
 _SHELL_ENV = {"TERM": "xterm-256color", "COLUMNS": "120", "LINES": "40"}
 
+
+def run_env(workspace: Optional[str]) -> Dict[str, str]:
+    """`B1646`. What a hire's run adds to a command's environment in the
+    workstation: `$PANTHEON_PROJECTS` naming the folder the run works in
+    (`workspace`, as the workstation names it — `tool_execution.
+    run_projects_folder`) over the daemon's own, the person's whole projects
+    folder (`agentd._exec_prepare`), so its runbook's `cd` goes where its file
+    tools write. Empty for every other call. A name, not a key: the daemon
+    still holds every path a command uses to the jail."""
+    from src.tool_execution import run_projects_folder
+    folder = run_projects_folder(workspace)
+    return {P.PROJECTS_ENV: folder} if folder else {}
+
 # A file is read in pieces of this size: one request covers a capped
 # `read_file` (at most 4 bytes a character, `MAX_READ_CHARS` + 1 characters).
 _READ_CHUNK = 1 << 18
@@ -188,6 +201,9 @@ class _Station:
         self._home: Optional[str] = None
         # `B968`: the folder the tools start in, when one was picked.
         self.workspace = workspace or None
+        # `B1646`: in a hire's run, `$PANTHEON_PROJECTS` naming the folder it
+        # works in (`run_env`); empty leaves the daemon's own.
+        self.run_env: Dict[str, str] = {}
         # `B962`: the chat this call belongs to, for its shell's folder, and
         # whether the daemon holds commands to the home (`sudo` off).
         self.chat = chat
@@ -436,7 +452,7 @@ async def _shell(st: _Station, tool: str, shell: str, command: str, timeout: flo
             try:
                 r = await st.client.exec(st.account, report.wrap(command) if report else command,
                                          shell=shell, cwd=cwd, timeout_s=timeout,
-                                         env=dict(_SHELL_ENV),
+                                         env={**_SHELL_ENV, **st.run_env},
                                          on_output=on_output if st.progress_cb else None)
                 break
             except WorkstationError as e:
@@ -1075,6 +1091,9 @@ async def run_in_workstation(tool: str, content: Any, *, owner: Optional[str],
         workspace = None
     st = _Station(client, account, asyncio.get_running_loop(), progress_cb,
                   workspace=workspace, chat=sp.chat_key("workstation", account, session_id))
+    # `B1646`: a hire's run's folder, as the workstation names it, is its
+    # `$PANTHEON_PROJECTS` — none when nothing is mounted (`B1643` says why).
+    st.run_env = run_env(workspace)
     st.jailed = (daemon or {}).get("sudo") is not True
     st.network = network_held(daemon)   # `B977`
     st.refused_before, st.refused_by = refusals_from(daemon)   # `B1021`
@@ -1108,6 +1127,17 @@ def projects_folder(daemon: Optional[Dict], account: str) -> Tuple[Optional[str]
         return None, False
     return (posixpath.join(root, P.project_folder_of(account)),
             (daemon or {}).get("projects_mounted") is True)
+
+
+def own_reach(home: str, daemon: Optional[Dict], account: str) -> Tuple[str, ...]:
+    """`B1642`/`B1647`. The folders of the person's own a tool Pantheon runs in
+    their workstation is pointed at: their home, and their own projects folder
+    when one is mounted (`B1417` — the daemon's jail admits it beside the home,
+    and a hire's run works there). Never another person's folder, never the
+    root every person's folder is in. `vet_workspace` and `git`'s place
+    (`git_tools._Place`) ask this one question."""
+    projects, mounted = projects_folder(daemon, account)
+    return (home,) + ((projects,) if projects is not None and mounted else ())
 
 
 def no_projects_sentence(folder: str) -> str:
@@ -1212,8 +1242,7 @@ async def _vetted(owner: Optional[str], raw: Optional[str]) -> Tuple[Optional[st
             raise
         return None, named
     home = await _home_path(client, account)
-    projects, mounted = projects_folder(daemon, account)
-    mine = within(path, home) or (projects is not None and mounted and within(path, projects))
+    mine = any(within(path, folder) for folder in own_reach(home, daemon, account))
     if not mine or _sensitive(path):
         return None, named
     return path, named
@@ -1290,4 +1319,5 @@ __all__ = ["WORKSTATION_TOOLS", "describe_workspace", "lifted_tools", "routes",
            "NETWORK_SILENT_NOTE", "silent_refusal_note", "refusals_from",  # `B1021`, added
            "workspace_named",  # `B986`
            "projects_folder", "station_folder", "no_projects_sentence",  # `B1642`, `B1643`
-           "workspace_in_workstation", "sealed_workspace_holds"]  # `B1642`
+           "workspace_in_workstation", "sealed_workspace_holds",  # `B1642`
+           "own_reach", "run_env"]  # `B1647`, `B1646`

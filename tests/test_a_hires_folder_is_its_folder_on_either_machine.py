@@ -106,16 +106,27 @@ def test_every_runbooks_cd_starts_from_the_projects_folder():
 @pytest.mark.parametrize("project", [None, "Shop"])
 def test_each_runbooks_cd_lands_in_the_hires_folder_here(host, project):
     """With the workspace the hire's run binds — its project, or the whole
-    projects folder — the `cd` reaches the folder inside the projects folder."""
-    if project:
-        (host / project).mkdir()
+    projects folder — the `cd` reaches the folder inside it.
+
+    `B1646`: as a hire's run makes the call (`ToolPolicy.hired`). With a
+    project this asserted the `cd` landed beside the project, in the whole
+    projects folder, while the run's file tools wrote inside the project; a
+    hire's `$PANTHEON_PROJECTS` now names the project
+    (`tests/test_a_project_hires_cd_and_its_files_meet_in_its_project.py`)."""
+    from src.agent_tools import ToolBlock
+    from src.tool_policy import ToolPolicy
+    base = host / project if project else host
+    for name in NAMES:
+        (base / name).mkdir(parents=True, exist_ok=True)
     workspace = workspace_for("boss", project)
-    assert workspace == os.path.realpath(host / project if project else host)
+    assert workspace == os.path.realpath(base)
     for name in NAMES:
         for agent, head in _heads():
-            r = _call("bash", _fill(head, name) + " && pwd -P", "boss", session_id=f"hire-{agent}",
-                      workspace=workspace)[1]
-            want = _lands(head, name, host)
+            r = asyncio.run(te.execute_tool_block(
+                ToolBlock("bash", _fill(head, name) + " && pwd -P"), session_id=f"hire-{agent}", owner="boss",
+                workspace=workspace, tool_policy=ToolPolicy(hired=True),
+                security_context=te.NO_TOOL_SECURITY_CONTEXT))[1]
+            want = _lands(head, name, base)
             assert r.get("exit_code") == 0 and r.get("stdout") == str(want.resolve()), (agent, head, r)
             assert "ran_in" not in r, r
 
