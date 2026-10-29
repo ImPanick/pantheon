@@ -498,6 +498,9 @@ the next one is cut.
 
 ### Fixed
 
+- **A hired agent with a project works in that project from its shell as well as its file
+  tools** (`B1646`), and in the workstation `git` and the login shell work in your projects
+  folder (`B1647`).
 - **A workstation replaced at an address Pantheon already knew is asked for its own homes** —
   members' git, shell and own connections were refused until a restart (`B1661`); the Workshop
   tells a drafting model what each tool's calls can do, and saving an agent file that names an
