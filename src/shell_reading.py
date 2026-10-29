@@ -91,7 +91,14 @@ where the command starts and what the run has already looked at:
   * `B1680`: a program told to write over a named output — `curl -o`/`-O`,
     `wget -O`, `sort -o`, `unzip -o`, `tar -x`/`-c`, `ffmpeg -y` — as the
     block above `_scan` reads each from its manual (not `sed -i`: an in-place
-    edit is a plain write, `D-2026-10-29-03` §1);
+    edit is a plain write, `D-2026-10-29-03` §1); and (`B1682`) `pandoc -o`,
+    ImageMagick's output, `openssl -out`, `cwebp -o`, `7z x -y`, `yt-dlp
+    --force-overwrites`, `rsync` and `wget -r`, as the block below it reads
+    them;
+  * `B1683`: a compressor that takes away the file it packs or unpacks
+    (`gzip notes.md`, `gunzip`, `bzip2`, `xz`, `zstd --rm`…), and `zip -m`,
+    `tar --remove-files`, `7z a -sdel` — a `writes` finding marked `removes`,
+    asked the same question: was the file there before the run began;
 
 and **where the command goes** — a `chdir` finding — for each `cd`, `pushd`,
 `env -C`, `sudo -D`, a Python `os.chdir` or a subprocess `cwd=`, so a relative
@@ -103,7 +110,11 @@ variable named (`var`) for the run, which knows what its shell is given, to
 fill in — and one inside a command run on another machine or in a container
 (`ssh host '…'`, `docker exec`) is marked `far`: the run cannot know whether
 either was there, so either is destructive — the cautious reading the ruling
-names. Python's own `open(path, "w")` is **not** read: whether a mode string
+names. `B1682`: a write the command makes only when nothing is at its path —
+`[ -e f ] || cwebp … -o f`, `[ ! -e f ] && echo x > f` — replaces nothing,
+and is not named (`_guard`).
+
+Python's own `open(path, "w")` is **not** read: whether a mode string
 writes, appends or reads is a property of the running program (a variable, a
 `Path.write_text`, a library call), and this reader reads the words of a call,
 not the program, so it stays what it was; its `subprocess` commands are read
@@ -159,7 +170,11 @@ class Finding:
     shell will (`src/run_files.py`), and `split` that it is unquoted, so a
     value with a space or a glob in it is not one path. `B1680`: a source
     with no name (`("", False)`) is what an archive holds, which the command
-    does not name."""
+    does not name.
+
+    `B1683`. `removes`: what `why` does to a file that was there is take it
+    away (a compressor's input, `zip -m`'s), not write over it — the same
+    question to the run, said with its own verb."""
     kind: str
     why: str
     path: str = ""
@@ -170,6 +185,7 @@ class Finding:
     parents: bool = False
     var: str = ""
     split: bool = False
+    removes: bool = False
 
 
 @dataclass
@@ -210,6 +226,9 @@ class _Simple:
     # `B1679`: it follows a group's `)` or is an `esac`, so its redirections
     # are the compound command's (`(…) > x`, `case … esac > x`).
     compound: bool = False
+    # `B1682`: the operator before it (`&&`, `||`, `;`, …; "" first), so a
+    # test it follows is known to decide whether it runs (`_guard`).
+    after: str = ""
 
 
 # ── Reading the words ───────────────────────────────────────────────────────
@@ -566,7 +585,7 @@ def _simple_commands(tokens: Sequence[tuple]) -> List[_Simple]:
                 closed = True
             cur.ended_by = tok[1]
             raw.append(cur)
-            cur = _Simple(compound=closed)
+            cur = _Simple(compound=closed, after=tok[1])
         elif tok[0] == "r":
             cur.redirects.append((tok[1], tok[2]))
         else:
@@ -973,8 +992,8 @@ _COPY_VALUES = {"cp": ("tS", {"--target-directory", "--suffix"}),
 #     `--output-file` (its log; `-a` appends) and `--save-cookies`; with
 #     `-N` (`--timestamping`), the last part of each address's path. Without
 #     them a second download is saved beside the first (`name.1`), and a
-#     recursive one (`-r`, `-m`, `-p`, `-x`) writes a tree of names the
-#     command does not hold — not read, and it stays as it was;
+#     recursive one (`-r`, `-m`, `-p`) writes a tree of names the command
+#     does not hold — read since `B1682`, below;
 #   * `sort`: `-o`/`--output` (`sort -o f f` too: it rewrites the file whole);
 #   * `unzip -o` (never asking) and `tar -x` (whose default is to replace),
 #     into `-d`/`-C` or the folder they run in: each member the command names
@@ -1067,10 +1086,207 @@ _FFMPEG_FLAGS = {
     "-noautoscale", "-debug_ts", "-report", "-bitexact", "-fix_sub_duration", "-psnr",
     "-vstats", "-qphist", "-copyinkf", "-sameq", "-same_quant", "-deinterlace", "-intra",
 }
-#: Each program above, and the reader that reads it.
+#: Each program above, and the reader that reads it — and (`B1682`, `B1683`)
+#: each below.
 _OUTPUT_READERS = {"curl": "_curl", "wget": "_wget", "wget2": "_wget", "sort": "_sort",
                    "unzip": "_unzip", "tar": "_tar", "gtar": "_tar", "bsdtar": "_tar",
-                   "ffmpeg": "_ffmpeg"}
+                   "ffmpeg": "_ffmpeg",
+                   "pandoc": "_pandoc", "convert": "_magick", "magick": "_magick", "gm": "_magick",
+                   "composite": "_magick", "montage": "_magick", "openssl": "_openssl",
+                   "cwebp": "_webp", "dwebp": "_webp", "gif2webp": "_webp", "img2webp": "_webp",
+                   "webpmux": "_webp", "7z": "_sevenzip", "7za": "_sevenzip", "7zr": "_sevenzip",
+                   "7zz": "_sevenzip", "yt-dlp": "_ytdlp", "zip": "_zip"}
+
+# ── `B1682` · more programs that write over an output they are told to ──────
+#
+# `B1680` read the first ones; these are the rest the row names, each from its
+# own manual, by the same rules (`_scan`, `_file_value`, `_under`):
+#
+#   * `pandoc`: `-o`/`--output` (`-` is the screen) and `--log`, written
+#     whole; `--extract-media=DIR`, whose files are named by the document (or
+#     by a hash of each), not the command — into a folder that was there,
+#     unknowable, as an archive's are;
+#   * ImageMagick — `convert`, `magick` (alone or `magick convert`),
+#     `composite`, `montage`, and GraphicsMagick's `gm convert`/`composite`/
+#     `montage`: the last word is the output, always (a `png:` in front names
+#     its format; `-`, `null:`, `info:` and the like are not files; a
+#     `%d` is a frame number, filled in when it runs), and each `-write`. Not
+#     `mogrify`, which edits in place (`D-2026-10-29-03` §1), nor `identify`,
+#     `compare`, `display` or a `-list`/`-version`;
+#   * `openssl`: `-out` and `-keyout`, in any subcommand (`-out=f`, `--out`
+#     too: its option reader takes both);
+#   * the WebP tools — `cwebp`, `dwebp`, `gif2webp`, `img2webp`, `webpmux`:
+#     `-o`;
+#   * 7-Zip (`7z`, `7za`, `7zr`, `7zz`): `x` and `e` told to answer yes
+#     (`-y`) or to overwrite (`-aoa`), into `-o<folder>` or the one it runs
+#     in, as `unzip -o` is read — not `-aos`, `-aou`, `-aot` or `-so`;
+#   * `yt-dlp --force-overwrites` (without it the download is never written
+#     over): each `-o` template under `-P`, one filled in from the video
+#     (`%(title)s`) or none at all unknowable;
+#   * `rsync` onto a path on this machine — the destination, each source's
+#     name in it, or with a trailing `/` what is in the source, which the
+#     command does not name — not with `--ignore-existing`, `--backup`,
+#     `--append`, `--dry-run` or `--list-only`; onto another machine, on the
+#     far side;
+#   * `wget -r` (`-m`, `-p`), which writes a tree of names the command does
+#     not hold into a folder named for the site (`-nH`: the folder itself) —
+#     not with `-nc`, nor `-nd` without `-N`, which keep each old copy.
+#
+# `B1683` · and the programs that take away the file they pack or unpack.
+# `gzip notes.md` leaves `notes.md.gz` and no `notes.md`: the person's file
+# is gone from where it was, as `mv`'s replaced name is (`B1622`). The
+# content is recoverable — `gunzip` gives it back — so this is the cautious
+# reading, built under `D-2026-10-29-02` §1's principle and the deletion rows
+# (`B1622`, `B1668`); the owner may rule that a reversible compression is not
+# a deletion, and then only the `removes` findings below go. So a compressor
+# packing or unpacking a file that was there before the run begins removes
+# it — `gzip`, `pigz`, `bzip2`, `pbzip2`, `xz`, `lzma`, `lzip`, `plzip` and
+# `compress` by default, `zstd` and `lz4` with `--rm`, `brotli` with `-j` —
+# unless told to keep it (`-k`, `--keep`) or to write to the screen (`-c`),
+# or only testing or listing (`-t`, `-l`); with `-r`, what is in a folder it
+# is handed. And its output, when told to write over one that is there
+# (`-f`): the packed name (`notes.md.gz`), or the unpacked one (`gunzip -f
+# notes.md.gz` writes `notes.md`), or `-o`. Archivers that remove what they
+# add by an option are the same: `zip -m`, `tar --remove-files`, `7z a -sdel`.
+
+#: `pandoc`'s options that take a value.
+_PANDOC_SHORT = "frtwodMVHBAcLFDT"
+_PANDOC_LONG = {
+    "--from", "--read", "--to", "--write", "--output", "--data-dir", "--metadata",
+    "--metadata-file", "--defaults", "--variable", "--variable-json", "--template",
+    "--include-in-header", "--include-before-body", "--include-after-body", "--css",
+    "--lua-filter", "--filter", "--print-default-template", "--print-default-data-file",
+    "--title-prefix", "--resource-path", "--request-header", "--extract-media", "--log",
+    "--reference-doc", "--bibliography", "--csl", "--citation-abbreviations", "--pdf-engine",
+    "--pdf-engine-opt", "--shift-heading-level-by", "--base-header-level", "--tab-stop",
+    "--track-changes", "--wrap", "--columns", "--toc-depth", "--highlight-style",
+    "--syntax-definition", "--eol", "--dpi", "--id-prefix", "--number-offset",
+    "--top-level-division", "--email-obfuscation", "--slide-level", "--epub-cover-image",
+    "--epub-metadata", "--epub-embed-font", "--epub-subdirectory", "--split-level",
+    "--epub-chapter-level", "--chunk-template", "--reference-location", "--markdown-headings",
+    "--ipynb-output", "--abbreviations", "--indented-code-classes", "--default-image-extension",
+}
+#: ImageMagick's tools that write a named output last, and those that do not.
+_MAGICK_WRITERS = {"convert", "composite", "montage"}
+_MAGICK_OTHERS = {"animate", "compare", "conjure", "display", "identify", "import",
+                  "magick-script", "mogrify", "stream"}
+_MAGICK_INFO = {"-version", "--version", "-help", "--help", "-usage", "-list",
+                "-script"}   # a script run by name: its words are not read
+#: `png:out.png`: a format named in front of the file.
+_MAGICK_FORMAT = re.compile(r"^[A-Za-z0-9]{2,}:")
+#: `yt-dlp`'s options that take a value, and the kinds a template or a path
+#: may be given for (`-o "thumbnail:%(title)s.%(ext)s"`, `-P temp:/tmp`).
+_YTDLP_SHORT = "aoPfSup2rRNIt"
+_YTDLP_LONG = {"--output", "--paths", "--batch-file", "--format", "--format-sort", "--username",
+               "--password", "--twofactor", "--limit-rate", "--retries",
+               "--concurrent-fragments", "--playlist-items", "--preset-alias"}
+_YTDLP_KINDS = re.compile(r"^(subtitle|thumbnail|description|annotation|infojson|link|"
+                          r"pl_thumbnail|pl_description|pl_infojson|chapter|pl_video|home|temp):")
+#: `rsync`'s options that take a value, and those that keep what is there.
+_RSYNC_SHORT = "efTBM@"
+_RSYNC_LONG = {
+    "--rsh", "--rsync-path", "--filter", "--exclude", "--include", "--exclude-from",
+    "--include-from", "--files-from", "--temp-dir", "--backup-dir", "--suffix", "--compare-dest",
+    "--copy-dest", "--link-dest", "--log-file", "--log-file-format", "--out-format",
+    "--partial-dir", "--chmod", "--chown", "--usermap", "--groupmap", "--timeout",
+    "--contimeout", "--port", "--sockopts", "--password-file", "--bwlimit", "--max-size",
+    "--min-size", "--max-delete", "--modify-window", "--block-size", "--compress-level",
+    "--compress-choice", "--checksum-choice", "--skip-compress", "--info", "--debug",
+    "--stop-after", "--stop-at", "--iconv", "--write-batch", "--only-write-batch",
+    "--read-batch", "--protocol", "--checksum-seed", "--address", "--remote-option", "--outbuf",
+    "--max-alloc", "--copy-as", "--zc", "--zl", "--cc",
+}
+_RSYNC_KEEPS = {"--ignore-existing", "-b", "--backup", "--backup-dir", "-n", "--dry-run",
+                "--list-only", "--append", "--append-verify", "--only-write-batch"}
+#: `zip`'s options that take a value; `-x` and `-i` take the words after them.
+_ZIP_VALUES = {"-b", "-n", "-t", "-tt", "-P", "-Z", "-s", "-O", "-lf", "-ds", "--temp-path",
+               "--suffixes", "--from-date", "--before-date", "--password",
+               "--compression-method", "--split-size", "--output-file", "--logfile-path"}
+
+
+@dataclass(frozen=True)
+class _Packer:
+    """`B1683`. A compressor, as its manual gives it."""
+    removes: bool                    # it takes away its input unless told to keep it
+    suffix: str                      # what packing adds to the name
+    unpacks: Tuple[Tuple[str, str], ...]  # (suffix, what takes its place) when unpacking
+    bare: str = "skip"               # unpacking a name with none of them: `try` adding one
+                                     # (its input then unknown), `out` (`name.out`), or skip it
+    shorts: str = ""                 # its short options that take a value
+    longs: frozenset = frozenset()   # and long ones
+    keep: frozenset = frozenset({"-k", "--keep"})
+    rm: frozenset = frozenset()      # what tells one that keeps its input to take it away
+    stdout: frozenset = frozenset({"-c", "--stdout", "--to-stdout"})
+    inert: frozenset = frozenset({"-t", "--test", "-l", "--list", "-h", "-H", "--help", "-V",
+                                  "--version", "-L", "--license"})
+    unpack: frozenset = frozenset({"-d", "--decompress", "--uncompress"})
+    pack: frozenset = frozenset()
+    force: frozenset = frozenset({"-f", "--force"})
+    recursive: frozenset = frozenset()
+    output: frozenset = frozenset()  # `-o FILE`: the one output
+    keeps_with_output: bool = False  # `lzip -o`: its input stays
+    suffix_opts: frozenset = frozenset()  # `-S .suf`
+    lists: frozenset = frozenset()   # its inputs read from a file (`--files`, `--filelist`)
+
+
+_GZ_UNPACKS = ((".gz", ""), ("-gz", ""), (".z", ""), ("-z", ""), ("_z", ""), (".Z", ""),
+               (".tgz", ".tar"), (".taz", ".tar"), (".zz", ""))
+_XZ_UNPACKS = ((".xz", ""), (".txz", ".tar"), (".lzma", ""), (".tlz", ".tar"), (".lz", ""))
+_PACKERS = {
+    "gzip": _Packer(True, ".gz", _GZ_UNPACKS, bare="try", shorts="AbCIJpS",
+                    longs=frozenset({"--suffix", "--blocksize", "--processes", "--comment",
+                                     "--alias", "--iterations", "--maxsplits"}),
+                    recursive=frozenset({"-r", "--recursive"}),
+                    suffix_opts=frozenset({"-S", "--suffix"})),
+    "bzip2": _Packer(True, ".bz2", ((".bz2", ""), (".bz", ""), (".tbz2", ".tar"), (".tbz", ".tar")),
+                     bare="out", pack=frozenset({"-z", "--compress"}),
+                     inert=frozenset({"-t", "--test", "-h", "--help", "-V", "--version", "-L",
+                                      "--license"})),
+    "xz": _Packer(True, ".xz", _XZ_UNPACKS, shorts="SFCTM",
+                  longs=frozenset({"--suffix", "--format", "--check", "--threads", "--memlimit",
+                                   "--memory", "--memlimit-compress", "--memlimit-decompress",
+                                   "--memlimit-mt", "--block-size", "--block-list",
+                                   "--flush-timeout", "--filters"}),
+                  pack=frozenset({"-z", "--compress"}), suffix_opts=frozenset({"-S", "--suffix"}),
+                  lists=frozenset({"--files", "--files0"})),
+    "zstd": _Packer(False, ".zst", ((".zst", ""), (".tzst", ".tar"), (".gz", ""), (".xz", ""),
+                                    (".lzma", ""), (".lz4", "")),
+                    shorts="oD", longs=frozenset({"--output-dir-flat", "--output-dir-mirror",
+                                                  "--filelist"}),
+                    rm=frozenset({"--rm"}), pack=frozenset({"-z", "--compress"}),
+                    inert=frozenset({"-t", "--test", "-l", "--list", "-h", "-H", "--help", "-V",
+                                     "--version", "-b", "--train"}),
+                    recursive=frozenset({"-r"}), output=frozenset({"-o"}),
+                    lists=frozenset({"--filelist"})),
+    "lz4": _Packer(False, ".lz4", ((".lz4", ""),), rm=frozenset({"--rm"}),
+                   pack=frozenset({"-z", "--compress"}),
+                   inert=frozenset({"-t", "--test", "--list", "-h", "-H", "--help", "-V",
+                                    "--version", "-b"})),
+    "brotli": _Packer(False, ".br", ((".br", ""),), shorts="oqwSD",
+                      longs=frozenset({"--output", "--quality", "--lgwin", "--suffix",
+                                       "--large_window", "--dictionary"}),
+                      rm=frozenset({"-j", "--rm"}), output=frozenset({"-o", "--output"}),
+                      inert=frozenset({"-t", "--test", "-h", "--help", "-V", "--version"}),
+                      suffix_opts=frozenset({"-S", "--suffix"})),
+    "lzip": _Packer(True, ".lz", ((".lz", ""), (".tlz", ".tar")), bare="out", shorts="bmosS",
+                    longs=frozenset({"--member-size", "--match-length", "--output",
+                                     "--dictionary-size", "--volume-size"}),
+                    output=frozenset({"-o", "--output"}), keeps_with_output=True),
+    "compress": _Packer(True, ".Z", ((".Z", ""),), bare="try", shorts="b",
+                        recursive=frozenset({"-r"}),
+                        inert=frozenset({"-V", "-h", "--help", "--version"})),
+}
+#: Each program's name, its kind, and whether its name unpacks.
+_PACKER_NAMES = {
+    "gzip": ("gzip", False), "gunzip": ("gzip", True), "pigz": ("gzip", False),
+    "unpigz": ("gzip", True), "bzip2": ("bzip2", False), "bunzip2": ("bzip2", True),
+    "pbzip2": ("bzip2", False), "xz": ("xz", False), "unxz": ("xz", True), "lzma": ("xz", False),
+    "unlzma": ("xz", True), "zstd": ("zstd", False), "zstdmt": ("zstd", False),
+    "unzstd": ("zstd", True), "lz4": ("lz4", False), "unlz4": ("lz4", True),
+    "brotli": ("brotli", False), "lzip": ("lzip", False), "plzip": ("lzip", False),
+    "compress": ("compress", False), "uncompress": ("compress", True),
+}
+_OUTPUT_READERS.update({n: "_packer" for n in _PACKER_NAMES})
 #: `ffmpeg`'s own information: it writes nothing.
 _FFMPEG_INFO = {"-version", "-h", "-help", "--help", "-?", "-L", "-buildconf", "-formats",
                 "-muxers", "-demuxers", "-devices", "-codecs", "-decoders", "-encoders",
@@ -1183,6 +1399,25 @@ def _address_name(word: _Word, default: str) -> _Word:
     return _Word(text=name if name and name not in (".", "..") else default)
 
 
+def _site_folder(word: _Word) -> _Word:
+    """`B1682`. The folder `wget -r` keeps an address's site in: its host as
+    wget writes it — lower case, with a port that is not the scheme's own —
+    or unknown when the address is filled in when it runs."""
+    from urllib.parse import urlsplit
+    text = word.text
+    if not word.plain():
+        return _unknown(text)
+    try:
+        parts = urlsplit(text if "://" in text else "http://" + text)
+        host, port = parts.hostname or "", parts.port
+    except ValueError:
+        return _unknown(text)
+    if not host or not _word_is_plain_text(host):
+        return _unknown(text)
+    own = {"http": 80, "https": 443, "ftp": 21}.get(parts.scheme.lower())
+    return _Word(text=host + (f":{port}" if port and port != own else ""))
+
+
 def _flags(words: Sequence[_Word]) -> List[str]:
     """The options as written, up to `--`."""
     out = []
@@ -1229,13 +1464,19 @@ class _Judge:
         self.findings.append(Finding(REACHES, why))
 
     def writes(self, why: str, word: _Word, sources: Sequence[_Word] = (), into: str = "",
-               parents: bool = False) -> None:
-        """`B1669`. `why` writes over `word`'s path, if one is there."""
+               parents: bool = False, removes: bool = False) -> None:
+        """`B1669`. `why` writes over `word`'s path, if one is there — or
+        (`B1683`, `removes`) takes away the file there."""
         known, var, split = _spelling(word)
         self.findings.append(Finding(
             WRITES, why, path=word.text, known=known, far=self.lexer.far,
             sources=tuple((w.text, _spelled(w)) for w in sources), into=into, parents=parents,
-            var=var, split=split))
+            var=var, split=split, removes=removes))
+
+    def removes(self, why: str, word: _Word, recursive: bool = False) -> None:
+        """`B1683`. `why` takes away the file at `word` — and, `recursive`,
+        what is in the folder there, which the command does not name."""
+        self.writes(why, word, sources=[_Word()] if recursive else (), removes=True)
 
     def chdir(self, word: Optional[_Word]) -> None:
         """`B1669`. What follows runs in another folder — `None`: one only
@@ -1397,6 +1638,7 @@ class _Judge:
         if name == "rsync":
             if any(f.startswith("--del") or f == "--remove-source-files" for f in _flags(args)):
                 self.destroys("rsync deletes on the far side")
+            self._rsync(name, args)         # `B1682`: and what it writes over
             return
         if name == "git":
             self._git(args)
@@ -1671,6 +1913,26 @@ class _Judge:
                            if o in ("-P", "--directory-prefix") and v is not None), None)
             for address in operands:
                 self.writes(f"{name} -N", _under(folder, _address_name(address, "index.html")))
+        recursive = [o for o, _v in opts if o in ("-r", "--recursive", "-m", "--mirror", "-p",
+                                                  "--page-requisites")]
+        if recursive and not never and not said & {"-O", "--output-document"}:
+            # `B1682`: a tree of names the command does not hold, in a folder
+            # named for each site (`-nH`, `-nd`: the folder itself). Without
+            # `-N` a `-nd` download keeps the old copy and saves `name.1`.
+            letters = "".join(v.text for o, v in opts if o == "-n" and v is not None)
+            no_dirs = "d" in letters or "--no-directories" in said
+            if no_dirs and not said & {"-N", "--timestamping", "-m", "--mirror"}:
+                return
+            flat = (no_dirs or "H" in letters
+                    or bool(said & {"--no-host-directories", "--protocol-directories"}))
+            prefix = next((v for o, v in reversed(opts)
+                           if o in ("-P", "--directory-prefix") and v is not None), None)
+            addresses = list(operands) + ([_unknown("-i")] if said & {"-i", "--input-file"}
+                                          else [])
+            for address in addresses:
+                where = (prefix or _Word(text=".")) if flat else _under(prefix, _site_folder(address))
+                self.writes(f"{name} {recursive[0]}", where, sources=[_Word()], into="folder",
+                            parents=True)
 
     def _sort(self, name: str, args: List[_Word]) -> None:
         opts, _operands = _scan(args, _SORT_SHORT, _SORT_LONG)
@@ -1709,6 +1971,20 @@ class _Judge:
         opts, operands = _scan(args, _TAR_SHORT, _TAR_LONG, old_style=True)
         said = {o for o, _v in opts}
         archive = next((v for o, v in reversed(opts) if o in ("-f", "--file")), None)
+        if "--remove-files" in said and said & {"-c", "--create", "-r", "--append", "-u",
+                                                "--update"}:
+            # `B1683`: each file it adds, taken away once it is in — from the
+            # folder `-C` names, or (`-T`, several `-C`s) from where it decides.
+            why = f"{name} --remove-files"
+            folders = [v for o, v in opts if o in ("-C", "--directory")]
+            if said & {"-T", "--files-from"} or len(folders) > 1 or None in folders:
+                self.writes(why, _Word(text="."), sources=[_Word()], into="folder", removes=True)
+            else:
+                for member in operands:
+                    path = _under(folders[0] if folders else None, member)
+                    if path.text.endswith("/."):    # `-C site .`: the folder itself
+                        path = replace(path, text=path.text[:-2])
+                    self.removes(why, path, recursive=True)
         if said & {"-c", "--create"}:
             # It writes the archive whole (`-r`, `-u` and `-A` add to it).
             target = _file_value(archive)
@@ -1751,6 +2027,282 @@ class _Judge:
                         and "://" not in t:
                     self.writes("ffmpeg -y", _unknown(t) if "%" in t else target)
             i += 1
+
+    # ── `B1682` · the rest of the programs that write over a named output ──
+
+    def _pandoc(self, name: str, args: List[_Word]) -> None:
+        opts, _operands = _scan(args, _PANDOC_SHORT, _PANDOC_LONG)
+        for option, value in opts:
+            target = _file_value(value)
+            if target is None:
+                continue
+            if option in ("-o", "--output", "--log"):
+                self.writes(f"pandoc {option}", target)
+            elif option == "--extract-media":
+                # Named by the document, or by a hash of each: not the command.
+                self.writes("pandoc --extract-media", target, sources=[_Word()], into="folder",
+                            parents=True)
+
+    def _magick(self, name: str, args: List[_Word]) -> None:
+        words = list(args)
+        tool = name
+        if (name in ("magick", "gm") and words and words[0].plain()
+                and words[0].text.lower() in _MAGICK_WRITERS | _MAGICK_OTHERS):
+            tool = words.pop(0).text.lower()
+        elif name == "gm":
+            return              # each of its tools is named
+        if tool not in _MAGICK_WRITERS and tool != "magick":
+            return              # it edits in place, or writes no file it is named
+        if len(words) < 2 or {w.text for w in words} & _MAGICK_INFO:
+            return
+        why = name if tool == name else f"{name} {tool}"
+        for j, w in enumerate(words[:-1]):
+            if w.text in ("-write", "+write"):
+                self._image_output(why, words[j + 1])
+        self._image_output(why, words[-1])
+
+    def _image_output(self, why: str, word: _Word) -> None:
+        """An ImageMagick output: a file, unless it is the screen, a pipe or
+        no file at all (`null:`, `info:`, `x:`)."""
+        text = word.text
+        if (text.startswith(("-", "+")) and text != "-") or text.lower().startswith(("fd:", "pipe:")):
+            return              # an option where the output goes: it names none
+        if word.plain() and _MAGICK_FORMAT.match(text):
+            text = text.split(":", 1)[1]
+            word = replace(word, text=text)
+        if _file_value(word) is None:
+            return
+        self.writes(why, _unknown(text) if "%" in text else word)
+
+    def _openssl(self, name: str, args: List[_Word]) -> None:
+        for j, w in enumerate(args):
+            if not w.text.startswith("-"):
+                continue
+            key, eq, value = w.text.lstrip("-").partition("=")
+            if key not in ("out", "keyout"):
+                continue
+            target = _file_value(replace(w, text=value) if eq
+                                 else (args[j + 1] if j + 1 < len(args) else None))
+            if target is not None:
+                self.writes(f"openssl -{key}", target)
+
+    def _webp(self, name: str, args: List[_Word]) -> None:
+        for j, w in enumerate(args[:-1]):
+            if w.text == "-o":
+                target = _file_value(args[j + 1])
+                if target is not None:
+                    self.writes(f"{name} -o", target)
+
+    def _sevenzip(self, name: str, args: List[_Word]) -> None:
+        switches: List[_Word] = []
+        operands: List[_Word] = []
+        ended = False
+        for w in args:
+            if not ended and w.text == "--":
+                ended = True
+            elif not ended and w.text.startswith("-") and w.text != "-":
+                switches.append(w)
+            else:
+                operands.append(w)
+        said = [w.text.lower() for w in switches]
+        if not operands:
+            return
+        command = operands[0].text.lower()
+        if command in ("a", "u") and "-sdel" in said:
+            # `B1683`: each file it adds, taken away once it is in.
+            for w in operands[2:]:
+                self.removes(f"{name} {command} -sdel", w, recursive=True)
+            return
+        if command not in ("x", "e") or "-so" in said:
+            return
+        modes = [s for s in said if s.startswith("-ao")]
+        if (modes[-1] if modes else ("-aoa" if "-y" in said else "")) != "-aoa":
+            return              # it asks, skips or renames: what is there stays
+        why = f"{name} {command}"
+        outs = [w for w in switches if w.text.startswith("-o")]
+        folder = replace(outs[-1], text=outs[-1].text[2:]) if outs else _Word(text=".")
+        if not folder.text or "*" in folder.text or any(s.startswith("-spf") for s in said):
+            self.writes(why, _unknown(folder.text or "-o"))   # where each lands, it decides
+            return
+        members = operands[2:]
+        if (any(s.startswith(("-i", "-ai")) or (s.startswith("-r") and s != "-r-") for s in said)
+                or any(not _spelled(m) or _GLOB_RE.search(m.text) for m in members)):
+            members = []        # which members, it decides
+        if command == "e":
+            members = [replace(m, text=posixpath.basename(m.text.rstrip("/"))) for m in members]
+        self.writes(why, folder, sources=members or [_Word()], into="folder", parents=True)
+
+    def _ytdlp(self, name: str, args: List[_Word]) -> None:
+        opts, _operands = _scan(args, _YTDLP_SHORT, _YTDLP_LONG)
+        over = False
+        for option, _value in opts:
+            if option == "--force-overwrites":
+                over = True
+            elif option in ("-w", "--no-overwrites", "--no-force-overwrites"):
+                over = False
+        if not over:
+            return              # the download itself is never written over
+        why = f"{name} --force-overwrites"
+        home: Optional[_Word] = None
+        outputs: List[_Word] = []
+        for option, value in opts:
+            if value is None:
+                continue
+            kind = _YTDLP_KINDS.match(value.text) if value.plain() else None
+            bare = replace(value, text=value.text[kind.end():]) if kind else value
+            if option in ("-P", "--paths") and (kind is None or kind.group(1) == "home"):
+                home = bare
+            elif option in ("-o", "--output"):
+                outputs.append(bare)
+        if not outputs:
+            # Its own template, `%(title)s [%(id)s].%(ext)s`: named by the video.
+            self.writes(why, home or _Word(text="."), sources=[_Word()], into="folder")
+            return
+        for out in outputs:
+            target = _file_value(out)
+            if target is not None:
+                self.writes(why, _under(home, _unknown(target.text) if "%" in target.text
+                                        else target))
+
+    def _rsync(self, name: str, args: List[_Word]) -> None:
+        opts, operands = _scan(args, _RSYNC_SHORT, _RSYNC_LONG)
+        said = {o for o, _v in opts}
+        if said & _RSYNC_KEEPS or len(operands) < 2:
+            return              # it keeps what is there, or only lists
+        *sources, dest = operands
+        names: List[_Word] = []
+        for src in sources:
+            remote = _REMOTE_PATH_RE.match(src.text) if src.plain() else None
+            path = replace(src, text=src.text[remote.end():]) if remote else src
+            if "--files-from" in said or path.text.endswith("/") or path.text in ("", ".", ".."):
+                names.append(_Word())       # what is in it: names the command does not hold
+            else:
+                names.append(path)
+        far = dest.plain() and bool(_REMOTE_PATH_RE.match(dest.text))
+        was, self.lexer.far = self.lexer.far, self.lexer.far or far
+        try:
+            self.writes(name, dest, sources=names,
+                        into="folder" if dest.text.endswith("/") else "",
+                        parents=bool(said & {"-R", "--relative"}))
+        finally:
+            self.lexer.far = was
+
+    # ── `B1683` · what packs or unpacks a file and takes it away ──────────
+
+    def _packer(self, name: str, args: List[_Word]) -> None:
+        kind, unpacks_by_name = _PACKER_NAMES[name]
+        spec = _PACKERS[kind]
+        opts, operands = _scan(args, spec.shorts, set(spec.longs))
+        said = [o for o, _v in opts]
+        flags = set(said)
+        if flags & spec.inert or flags & spec.stdout:
+            return              # it tests, lists, or writes to the screen
+        unpacking, removes, rm_word = unpacks_by_name, spec.removes, ""
+        for o in said:          # the last one said wins
+            if o in spec.unpack:
+                unpacking = True
+            elif o in spec.pack:
+                unpacking = False
+            elif o in spec.keep:
+                removes, rm_word = False, ""
+            elif o in spec.rm:
+                removes, rm_word = True, o
+        output = next((v for o, v in reversed(opts) if o in spec.output and v is not None), None)
+        inputs = [w for w in operands if w.text != "-"]
+        if kind == "lz4" and not flags & {"-m", "--multiple"} and len(inputs) == 2:
+            inputs, output = inputs[:1], inputs[1]      # `lz4 in out`
+        if output is not None:
+            if _file_value(output) is None:
+                return          # `-o -`: the screen
+            removes = removes and not spec.keeps_with_output
+        base = name + (" -d" if unpacking and not unpacks_by_name else "")
+        gone, over = base + (f" {rm_word}" if rm_word else ""), base + " -f"
+        force, recursive = bool(flags & spec.force), bool(flags & spec.recursive)
+        if flags & spec.lists:
+            # The names it is handed in a file, which the command does not hold.
+            if removes:
+                self.writes(gone, _Word(text="."), sources=[_Word()], into="folder", removes=True)
+            return
+        suffixes = [v.text for o, v in opts if o in spec.suffix_opts and v is not None]
+        fmt = next((v.text.lower() for o, v in reversed(opts)
+                    if o in ("-F", "--format") and v is not None and kind == "xz"), "")
+        suffix = (suffixes[-1] if suffixes else ".lzma" if name == "lzma" or fmt in ("lzma", "alone")
+                  else ".lz" if fmt == "lzip" else spec.suffix)
+        flat = next((v for o, v in reversed(opts) if o == "--output-dir-flat" and v is not None), None)
+        mirror = next((v for o, v in reversed(opts)
+                       if o == "--output-dir-mirror" and v is not None), None)
+        for w in inputs:
+            source: _Word = w
+            target: Optional[_Word] = None
+            if unpacking:
+                # The longest suffix it knows that the name ends with (`.tbz2`, not `.bz2`).
+                known = sorted([(s, "") for s in suffixes] + list(spec.unpacks),
+                               key=lambda sr: -len(sr[0]))
+                hit = next(((s, r) for s, r in known
+                            if s and w.text.endswith(s) and len(w.text) > len(s)), None)
+                if hit:
+                    target = replace(w, text=w.text[:-len(hit[0])] + hit[1])
+                elif spec.bare == "try":
+                    # `gunzip notes` unpacks `notes.gz`, or `notes.z`, or…
+                    source = _unknown(w.text + spec.suffix)
+                elif spec.bare == "out":
+                    target = replace(w, text=w.text + ".out")
+                else:
+                    continue    # it names no output, and leaves the file
+                if kind == "gzip" and target is not None and flags & {"-N", "--name"}:
+                    target = _unknown(w.text)   # the name kept inside the file
+            else:
+                target = replace(w, text=w.text + suffix)
+            if output is not None:
+                target = output
+            elif target is not None and flat is not None:
+                target = _under(flat, replace(target, text=posixpath.basename(target.text)))
+            elif target is not None and mirror is not None:
+                target = _under(mirror, target)
+            found = []
+            if removes:
+                found.append(lambda s=source: self.removes(gone, s, recursive=recursive))
+            if force and target is not None:
+                found.append(lambda t=target: self.writes(over, t))
+            # What a person meets first: the file packed away, or the one an
+            # unpacking writes over.
+            for say in (reversed(found) if unpacking else found):
+                say()
+
+    def _zip(self, name: str, args: List[_Word]) -> None:
+        """`B1683`. `zip -m`: each file it adds, taken away once it is in."""
+        operands: List[_Word] = []
+        move = recursive = handed = False
+        i = 0
+        while i < len(args):
+            t = args[i].text
+            i += 1
+            if t in ("-x", "-i", "--exclude", "--include"):
+                while i < len(args) and not args[i].text.startswith("-"):
+                    i += 1              # its patterns, up to the next option
+                continue
+            if t in _ZIP_VALUES or t == "-TT":
+                i += 1
+                continue
+            if t in ("-d", "--delete", "-U", "--copy-entries"):
+                return                  # it changes what the archive holds, not your files
+            if t.startswith("--"):
+                move = move or t == "--move"
+                recursive = recursive or t in ("--recurse-paths", "--recurse-patterns")
+                handed = handed or t == "--names-stdin"
+                continue
+            if t.startswith("-") and t != "-":
+                move = move or "m" in t[1:]
+                recursive = recursive or "r" in t[1:] or "R" in t[1:]
+                handed = handed or "@" in t[1:]
+                continue
+            operands.append(args[i - 1])
+        if not move or not operands:
+            return
+        if handed:
+            self.writes("zip -m", _Word(text="."), sources=[_Word()], into="folder", removes=True)
+        for w in operands[1:]:
+            self.removes("zip -m", w, recursive=recursive)
 
     def _copies(self, name: str, args: List[_Word]) -> None:
         """`B1669`. `cp` or `install`: what it writes over, read as GNU reads
@@ -1952,13 +2504,81 @@ def read_shell(command: str, *, depth: int = 0,
     try:
         lexer = _Lexer(depth, findings, far)
         judge = _Judge(lexer)
+        guard = None
         for simple in _simple_commands(lexer.tokens(text)):
+            start = len(findings)
             judge.simple(simple)
+            if guard is not None and simple.after == guard[0]:
+                _unguard(findings, start, guard)
+            guard = _guard(simple)
     except _Unreadable as e:
         findings.append(Finding(UNREADABLE, e.why))
     except RecursionError:
         findings.append(Finding(UNREADABLE, "it nests commands deeper than this reader follows"))
     return findings
+
+
+#: `B1682`. Where a test still decides whether the command after it runs: at
+#: the head of its list, or after the operator it ends with (`a || [ -e f ] ||
+#: …`). After the other one (`mkdir d && [ -e f ] || …`) the command runs when
+#: what came before fails, whatever is at `f`.
+_LIST_HEADS = ("", ";", "\n", "&", "(", ")", ";;", ";&", ";;&")
+#: `B1682`. Variables bash gives a new value each time it expands them (`$_`
+#: is the last word of the command before): a test of one is not a test of
+#: what the next command writes.
+_SHIFTING = frozenset({"RANDOM", "SRANDOM", "SECONDS", "LINENO", "BASHPID", "EPOCHREALTIME",
+                       "EPOCHSECONDS", "BASH_COMMAND", "HISTCMD", "_"})
+
+
+def _guard(simple: _Simple) -> Optional[Tuple[str, _Word, str]]:
+    """`B1682`. `[ -e f ] || cmd`, `test -f f || cmd`, `[[ -e f ]] || cmd` or
+    `[ ! -e f ] && cmd`: the command after it runs only when nothing is at
+    `f` (`-e`), or nothing that is a file (`-f`) — so what it writes at `f`
+    replaces nothing, and Image Optimiser's `[ -e optimised/a.webp ] || cwebp
+    … -o optimised/a.webp` skips what it made before instead of being refused
+    for it. `(the operator, f, the test)`, or `None`."""
+    if simple.compound:
+        return None
+    words = list(simple.words)
+    after = simple.after
+    while words and words[0].keyword("if", "then", "else", "elif", "do", "while", "until", "{"):
+        words.pop(0)
+        after = ""          # the head of the list the keyword begins
+    if len(words) < 3:
+        return None
+    if words[0].keyword("[") and words[-1].keyword("]"):
+        body = words[1:-1]
+    elif words[0].keyword("[[") and words[-1].keyword("]]"):
+        body = words[1:-1]
+    elif words[0].keyword("test"):
+        body = words[1:]
+    else:
+        return None
+    negated = len(body) == 3 and body[0].keyword("!")
+    body = body[1:] if negated else body
+    if len(body) != 2 or not body[0].keyword("-e", "-f"):
+        return None
+    known, var, split = _spelling(body[1])
+    ender = "&&" if negated else "||"
+    if (not known or split or var in _SHIFTING or simple.ended_by != ender
+            or after not in _LIST_HEADS + (ender,)):
+        return None
+    return ender, body[1], body[0].text
+
+
+def _unguard(findings: List[Finding], start: int, guard: Tuple[str, _Word, str]) -> None:
+    """`B1682`. Take back what the command a `_guard` decides writes at the
+    path it tested — not when it moves elsewhere first (`env -C`, `sh -c 'cd
+    …'`) or writes on another machine, and after `-f` only a write onto the
+    name, not a copy into a folder there."""
+    _ender, word, test = guard
+    added = findings[start:]
+    if any(f.kind == CHDIR for f in added):
+        return
+    _known, var, _split = _spelling(word)
+    findings[start:] = [f for f in added if not (
+        f.kind == WRITES and not f.far and f.known and not f.split and f.path == word.text
+        and f.var == var and (test == "-e" or not f.sources))]
 
 
 _PY_DESTROYS = {

@@ -202,6 +202,10 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # starts anything. -> {"account", "exists": bool, "home": str|None}
     # A daemon older than this answers `404 not_found`; a caller reads that
     # as "cannot tell", never as "does not exist".
+    # `B1684`, added: "projects_env" — the folder this daemon gives every
+    # command the account runs as `$PROJECTS_ENV` (the VM host: only while
+    # the machine runs, since the machine gives it). Missing from an older
+    # daemon, where a path spelled against it stays unknown to the gate.
     "account": ("GET", "/v1/users/{account}"),
     # `B984`, added: the machine's clock, so the VM backend's host can keep each
     # of its machines to its own time over the one channel it has to them (no

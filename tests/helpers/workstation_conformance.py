@@ -98,17 +98,23 @@ def every_route_needs_the_token(b: Backend) -> None:
 
 
 def looking_makes_nothing(b: Backend) -> None:
-    """`B959`: whether a home exists, asked without making it."""
+    """`B959`: whether a home exists, asked without making it. `B1684`: and
+    the `$PANTHEON_PROJECTS` its commands are given, said by whatever gives
+    them — every backend's daemon, and a VM host only while the machine runs
+    (it is the machine's) — and what a command there is given."""
     c = b.client()
     account = b.fresh()
     before = run(c.health())["accounts"]
     for _ in range(2):
         seen = run(c.account(account))
+        given = seen.pop("projects_env", None)
         assert seen == {"account": account, "exists": False, "home": None}
+        assert given is None or given.startswith("/"), given
     assert run(c.health())["accounts"] == before, "looking made an account"
     made = run(c.ensure(account))
     seen = run(c.account(account))
     assert seen["exists"] is True and seen["home"] == made["home"]
+    assert seen["projects_env"] == run(c.exec(account, 'printf %s "$PANTHEON_PROJECTS"'))["stdout"]
     assert run(c.health())["accounts"] == before + 1
 
 

@@ -875,8 +875,11 @@ async def shell_station(*, owner: Optional[str], workspace: Optional[str] = None
     `values` (`B1681`): the variables a path in the command may start with,
     as its shell there has them — `$HOME`, and in a hire's run (`hired`)
     `$PANTHEON_PROJECTS`, which Pantheon sets itself (`run_env`) to the
-    folder the run works in. Any other run's is the daemon's own choice, not
-    known here, and a path spelled against it stays unknown."""
+    folder the run works in. `B1684`: any other run's — a chat's — is the
+    daemon's own, which it reports (`account`'s `projects_env`, the rule
+    `agentd._exec_prepare` gives it by) rather than Pantheon guessing it from
+    `projects_folder`; from a daemon that does not report it, a path spelled
+    against it stays unknown."""
     from src.run_files import FILE, FOLDER, NOTHING
     from src.workstation_access import sync_config, workstation_for
     try:
@@ -905,10 +908,23 @@ async def shell_station(*, owner: Optional[str], workspace: Optional[str] = None
 
     from src.tool_execution import run_projects_folder
     values = {"HOME": home}
-    projects = run_projects_folder(folder, hired)
+    projects = run_projects_folder(folder, hired) or await _given_projects(client, account)
     if projects:
-        values[P.PROJECTS_ENV] = projects   # what `run_env` hands the command
+        values[P.PROJECTS_ENV] = projects   # what `run_env`, or the daemon, hands the command
     return list(dict.fromkeys(f for f in (held, start) if f)), home, kind_at, values
+
+
+async def _given_projects(client, account: str) -> Optional[str]:
+    """`B1684`. The folder the daemon gives this person's every command as
+    `$PANTHEON_PROJECTS` when Pantheon hands it none (`run_env`), as the
+    daemon reports it — or `None` from one that does not say (older than the
+    report; a VM machine that is not running) or cannot be asked."""
+    try:
+        seen = await client.account(account)
+    except WorkstationError:
+        return None
+    given = (seen or {}).get("projects_env")
+    return given if isinstance(given, str) and given.startswith("/") else None
 
 
 async def _edit_file(content: str, st: _Station) -> Dict:

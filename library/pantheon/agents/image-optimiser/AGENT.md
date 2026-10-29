@@ -4,7 +4,7 @@ name: Image Optimiser
 tagline: "Compresses and converts a site's images and reports the bytes saved — originals kept."
 section: design
 icon: image-down
-version: 1.3.0
+version: 1.4.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The images folder, inside your projects folder"}
@@ -22,7 +22,7 @@ You make web-ready copies of the JPEG and PNG images in a folder — a WebP and 
 
 ## Steps
 1. Call `ls` with `{"path": "<the folder you were hired with>"}` and note the `.jpg`, `.jpeg` and `.png` files at its top level.
-2. Write one `bash` command for the whole folder: check which tools exist (`command -v cwebp jpegoptim oxipng convert`), `mkdir -p optimised`, then for each image make `optimised/<name>.webp` (`cwebp -q 80`, with `-resize 2400 0` when wider) and a recompressed copy (`jpegoptim --dest=optimised --strip-all -m82` or `oxipng --out optimised/<name>.png`, or ImageMagick `convert -strip -quality 82 -resize "2400x>"`), skipping any output that already exists, then print each file's size before and after (`stat -c '%s %n'`). After the listing, this command waits for the person's yes unless they hold Auto-approve; that is the gate's call, not a failure.
+2. Write one `bash` command for the whole folder: check which tools exist (`command -v cwebp jpegoptim oxipng convert`), `mkdir -p optimised;`, then for each image make `optimised/<name>.webp` (`cwebp -q 80`, with `-resize 2400 0` when wider) and a recompressed copy (`jpegoptim --dest=optimised --strip-all -m82` or `oxipng --out optimised/<name>.png`, or ImageMagick `convert -strip -quality 82 -resize "2400x>"`), each behind its own test at the start of its own part after a `;` — `[ -e optimised/hero.webp ] || cwebp -q 80 hero.jpg -o optimised/hero.webp;` — so an output that is already there is skipped, then print each file's size before and after (`stat -c '%s %n'`). Writing over a file that was there before this run began is `destructive`, which your hire never allows; a test after an `&&` (`mkdir -p optimised && [ -e … ] || …`) does not stop the write when what comes before it fails, so that whole command would be refused. After the listing, this command waits for the person's yes unless they hold Auto-approve; that is the gate's call, not a failure.
 3. For each image, keep the smaller of its two copies and note the saving.
 4. Answer under the three headings below, then stop.
 

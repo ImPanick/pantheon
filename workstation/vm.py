@@ -1366,7 +1366,10 @@ class VmStation(Workstation):
     def account(self, account: str) -> Dict:
         """`B959`: from the machine itself when it is already running (the
         exact home it has), else from its disk — and never by starting it.
-        `B979`: and whether that machine is running or powered off."""
+        `B979`: and whether that machine is running or powered off.
+        `B1684`: the `$PANTHEON_PROJECTS` its commands are given is the
+        machine's own (`agentd._exec_prepare` runs there), so only a running
+        machine says it; this host's would be a guess."""
         m = self.system.machine_for(account)
         if m.running() and m.port is not None:
             try:
@@ -1376,6 +1379,7 @@ class VmStation(Workstation):
             except WorkstationError:
                 pass  # what the disk says is still true
         answer = super().account(account)
+        answer.pop("projects_env", None)
         if answer.get("exists"):
             answer["machine"] = "running" if m.running() else "stopped"
         return answer

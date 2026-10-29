@@ -624,7 +624,9 @@ class WorkstationClient:
         """`B959` (`P20-07`): `{"account", "exists", "home"}` — whether this
         person's home is there, without making it. A daemon older than the
         route answers `not_found` for the route itself; that comes back as
-        `exists: None` — "cannot tell" — never as "does not exist"."""
+        `exists: None` — "cannot tell" — never as "does not exist".
+        `B1684`: and `"projects_env"`, the folder its commands are given as
+        `$PANTHEON_PROJECTS`, from a daemon that reports it."""
         try:
             return await self._call("account", account)
         except WorkstationError as e:

@@ -2,9 +2,11 @@
 """What a run knows about the files it writes, and whether a `write_file`
 replaces one that was there before it began. `B1660`. And whether a shell
 command's `>`, `tee`, `cp` or `install` does (`B1669`, `command_replaces`), or
-a program told to write over its output (`B1680`), with a path spelled
-against a variable the run knows filled in as its shell will (`B1681`). An
-append replaces nothing (`B1672`, `D-2026-10-29-03` §2).
+a program told to write over its output (`B1680`, `B1682`), or a compressor
+takes away (`B1683`), with a path spelled against a variable the run knows
+filled in as its shell will (`B1681`) — in the workstation, the value its
+daemon reports it gives the command (`B1684`). An append replaces nothing
+(`B1672`, `D-2026-10-29-03` §2).
 
 A leaf: the loop makes a holder per turn and hands it to the gate
 (`ToolRunSecurityContext.files`) and to each tool call (`bind_run_files`);
@@ -353,7 +355,8 @@ def replaces(content: Any, files: Optional[RunFiles] = None) -> Optional[str]:
 # loop asks it before the call is classified (`look`, as `write_file`'s
 # `B1660` does), and a command it could not ask about is destructive; there a
 # hire's `$PANTHEON_PROJECTS` is the folder Pantheon hands its command, and a
-# chat's is the daemon's own, not known here. `shell_with_login` runs where
+# chat's is the daemon's own, as the daemon reports it (`B1684`,
+# `workstation_tools.shell_station`). `shell_with_login` runs where
 # its logins' command runs, in a folder of its own `cwd`: not looked at.
 #
 # **When.** "Before this run began" is what the run saw the first time it
@@ -461,6 +464,8 @@ def _reading(writes, starts, home: str, kind_of, where: str = "", paths=os.path,
     for f in writes:
         if f.kind != "writes":
             continue
+        # `B1683`: a compressor's input is taken away, not written over.
+        does, does_in = ("removes", "removes") if f.removes else ("replaces", "writes")
         if f.far:
             unknown = unknown or cannot(f.path, _ON_THE_FAR_SIDE)
             continue
@@ -481,7 +486,7 @@ def _reading(writes, starts, home: str, kind_of, where: str = "", paths=os.path,
                 # A redirect or `tee` replaces a file; a copy onto a name
                 # replaces a file, or (`-T`) merges into a folder.
                 if found == FILE or (found == FOLDER and into == "file"):
-                    return f"{f.why} replaces {f.path}{where}, which was there before this run began"
+                    return f"{f.why} {does} {f.path}{where}, which was there before this run began"
                 continue
             if found != FOLDER:
                 # `B1680`: into a folder that is not there (an archive makes
@@ -491,9 +496,9 @@ def _reading(writes, starts, home: str, kind_of, where: str = "", paths=os.path,
                 if not spelled:
                     # `B1680`: an archive's members, which the command does
                     # not name, into a folder that was there.
-                    shown = "the folder it runs in" if f.path == "." else f.path
+                    shown = "the folder it runs in" if f.path in (".", "./") else f.path
                     unknown = unknown or (cannot(f.path) if source else (
-                        f"it cannot be known whether what {f.why} writes in {shown}{where} was "
+                        f"it cannot be known whether what {f.why} {does_in} in {shown}{where} was "
                         f"there before this run began"))
                     continue
                 name = source.rstrip("/")
@@ -506,7 +511,7 @@ def _reading(writes, starts, home: str, kind_of, where: str = "", paths=os.path,
                 if found is None:
                     unknown = unknown or cannot(shown)
                 elif found != NOTHING:
-                    return f"{f.why} replaces {shown}{where}, which was there before this run began"
+                    return f"{f.why} {does} {shown}{where}, which was there before this run began"
     return unknown
 
 

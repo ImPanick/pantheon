@@ -37,7 +37,7 @@
       [
        "bash",
        {
-        "command": "cd \"site/img\" && command -v cwebp jpegoptim oxipng convert; mkdir -p optimised && [ -e optimised/hero.webp ] || cwebp -q 80 -resize 2400 0 hero.jpg -o optimised/hero.webp; [ -e optimised/hero.jpg ] || jpegoptim --dest=optimised --strip-all -m82 hero.jpg; [ -e optimised/team.webp ] || cwebp -q 80 team.png -o optimised/team.webp; [ -e optimised/team.png ] || oxipng --out optimised/team.png team.png; stat -c '%s %n' hero.jpg team.png optimised/*"
+        "command": "cd \"site/img\" && command -v cwebp jpegoptim oxipng convert; mkdir -p optimised; [ -e optimised/hero.webp ] || cwebp -q 80 -resize 2400 0 hero.jpg -o optimised/hero.webp; [ -e optimised/hero.jpg ] || jpegoptim --dest=optimised --strip-all -m82 hero.jpg; [ -e optimised/team.webp ] || cwebp -q 80 team.png -o optimised/team.webp; [ -e optimised/team.png ] || oxipng --out optimised/team.png team.png; stat -c '%s %n' hero.jpg team.png optimised/*"
        }
       ]
      ]
@@ -100,7 +100,7 @@
       [
        "bash",
        {
-        "command": "cd \"site/img\" && command -v cwebp jpegoptim oxipng convert; mkdir -p optimised && [ -e optimised/hero.webp ] || cwebp -q 80 -resize 2400 0 hero.jpg -o optimised/hero.webp; [ -e optimised/hero.jpg ] || jpegoptim --dest=optimised --strip-all -m82 hero.jpg; [ -e optimised/team.webp ] || cwebp -q 80 team.png -o optimised/team.webp; [ -e optimised/team.png ] || oxipng --out optimised/team.png team.png; stat -c '%s %n' hero.jpg team.png optimised/*"
+        "command": "cd \"site/img\" && command -v cwebp jpegoptim oxipng convert; mkdir -p optimised; [ -e optimised/hero.webp ] || cwebp -q 80 -resize 2400 0 hero.jpg -o optimised/hero.webp; [ -e optimised/hero.jpg ] || jpegoptim --dest=optimised --strip-all -m82 hero.jpg; [ -e optimised/team.webp ] || cwebp -q 80 team.png -o optimised/team.webp; [ -e optimised/team.png ] || oxipng --out optimised/team.png team.png; stat -c '%s %n' hero.jpg team.png optimised/*"
        }
       ]
      ]
@@ -221,7 +221,7 @@
   },
   {
    "id": "a-name-conflict-is-never-overwritten",
-   "about": "optimised/hero.webp is already there: the command skips it rather than overwriting, and the answer says so.",
+   "about": "optimised/hero.webp is already there: the command's own [ -e ] test skips it rather than overwriting, so the hire's never lets the command run (B1682), and the answer says so.",
    "inputs": {
     "folder": "site/img"
    },
@@ -236,7 +236,7 @@
     "shell": [
      {
       "match": "cwebp",
-      "output": "/usr/bin/cwebp\n845330 team.png\n201004 optimised/team.webp",
+      "output": "/usr/bin/cwebp\n2410112 hero.jpg\n845330 team.png\n3 optimised/hero.webp\n201004 optimised/team.webp",
       "exit_code": 0
      }
     ]
@@ -257,7 +257,7 @@
       [
        "bash",
        {
-        "command": "cd \"site/img\" && command -v cwebp; mkdir -p optimised && [ -e optimised/team.webp ] || cwebp -q 80 team.png -o optimised/team.webp; stat -c '%s %n' team.png optimised/team.webp"
+        "command": "cd \"site/img\" && command -v cwebp; mkdir -p optimised; [ -e optimised/hero.webp ] || cwebp -q 80 -resize 2400 0 hero.jpg -o optimised/hero.webp; [ -e optimised/team.webp ] || cwebp -q 80 team.png -o optimised/team.webp; stat -c '%s %n' hero.jpg team.png optimised/hero.webp optimised/team.webp"
        }
       ]
      ]
@@ -271,6 +271,9 @@
      "answer_contains": [
       "already there; not overwritten"
      ]
+    },
+    {
+     "called": "bash"
     }
    ]
   },
