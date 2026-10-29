@@ -10,7 +10,15 @@
 #
 # It is started by `docker/workstation.yml`; nothing here reaches Pantheon's
 # data, and Pantheon's image does not depend on this one.
-FROM ubuntu:24.04
+#
+# `B1677`. The base is a content address, not `ubuntu:24.04`: Canonical
+# rebuilds that tag in place, so a rebuild could change the userland with
+# nothing in the tree saying so. Ubuntu publishes no three-part tag; the dated
+# one names the build for a reader, and the digest (Docker Hub's record of the
+# multi-platform index, read 2026-10-29: the same index `24.04` and `noble`
+# pointed at that day) is what the builder pulls. `vm.Dockerfile` builds from the
+# same one; `.github/dependabot.yml`'s `/workstation` entry is what moves both.
+FROM ubuntu:noble-20261024.1@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
 
 ARG DEBIAN_FRONTEND=noninteractive
 # Optional, and empty by default, so a plain build uses Ubuntu's own sources

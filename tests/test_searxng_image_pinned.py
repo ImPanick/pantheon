@@ -228,22 +228,19 @@ def test_chromas_volume_is_mounted_where_the_pinned_server_writes():
 # is, and a digest passes because a content address does not move.
 #
 # Every Dockerfile in the tree is read, not just the app's, so a new one is held
-# to the rule the day it lands (`Law 13`). The workstation's two are the
-# exception, written down with why, keyed by the reference so moving either one
-# makes the entry stale and this test says so.
+# to the rule the day it lands (`Law 13`). An exception is written down with
+# why, keyed by the reference, so moving it makes the entry stale and this test
+# says so; the workstation's two were the last (`B1677`).
 
 import subprocess  # noqa: E402
 
-MOVING_BASE_ON_PURPOSE = {
-    # (file, reference): why it is not held to a release yet
-    ("workstation/Dockerfile", "ubuntu:24.04"): (
-        "Ubuntu publishes no three-part release tag (its dated `noble-YYYYMMDD` "
-        "tags do not fit `_RELEASE_TAG`), so this wants a digest, and the "
-        "workstation's own build tests are where that is driven; found while "
-        "doing B1667 and filed as its own row"),
-    ("workstation/vm.Dockerfile", "ubuntu:24.04"): (
-        "the VM image's build stage, on the workstation's base for the same "
-        "reason; filed with the row above"),
+MOVING_BASE_ON_PURPOSE: dict = {
+    # (file, reference): why it is not held to a release yet.
+    #
+    # Empty since `B1677`: the workstation's `Dockerfile` and `vm.Dockerfile`
+    # were the two entries here, both `ubuntu:24.04`, which Canonical rebuilds
+    # in place. Both now build from a dated tag and the digest of its index,
+    # and a digest passes the rule as it is.
 }
 
 
@@ -356,3 +353,144 @@ def test_the_apps_stages_share_one_pinned_base():
     assert len(refs) == 3 and len(set(refs)) == 1, refs
     name, tag, digest = _split_image(refs[0])
     assert name == "python" and (digest or _RELEASE_TAG.match(tag)), refs[0]
+
+
+# ── `B1677`: the workstation's base, and the cloud image its machines are made from ──
+#
+# Both workstation Dockerfiles read `FROM ubuntu:24.04`, which Canonical rebuilds
+# in place, and `vm.Dockerfile` fetched its machines' disk from
+# `…/releases/noble/release`, which is whichever build is newest. They now build
+# from a dated tag and its index digest, and from a dated cloud-image build whose
+# hash is in the tree; the rule above holds the first, and the build itself the
+# second — driven here, with the network and apt stood in for.
+
+import os  # noqa: E402
+import shutil  # noqa: E402
+
+import pytest  # noqa: E402
+
+_WORKSTATION = ("workstation/Dockerfile", "workstation/vm.Dockerfile")
+
+
+def test_the_workstation_images_share_one_base():
+    """`vm.Dockerfile` says it builds from `Dockerfile`'s base; a pin moved in
+    one and not the other is two userlands arriving by accident."""
+    refs = {rel: _from_refs((_ROOT / rel).read_text(encoding="utf-8")) for rel in _WORKSTATION}
+    assert all(len(r) == 1 for r in refs.values()), refs
+    assert len({r[0] for r in refs.values()}) == 1, refs
+    name, tag, digest = _split_image(refs[_WORKSTATION[0]][0])
+    assert name == "ubuntu" and re.fullmatch(r"sha256:[0-9a-f]{64}", digest), refs
+    assert re.fullmatch(r"noble-\d{8}(\.\d+)?", tag), (
+        f"the digest is what is pulled; the tag beside it is what a reader reads — name the "
+        f"dated build it is, not {tag!r}")
+
+
+def _instructions(text: str) -> list[str]:
+    """The Dockerfile's instructions, continuation lines joined — the same
+    reading `_from_refs` does."""
+    out, buf = [], ""
+    for line in text.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        if s.endswith("\\"):
+            buf += s[:-1].strip() + " "
+            continue
+        out.append((buf + s).strip())
+        buf = ""
+    return out
+
+
+def _vm_args_and_fetch() -> tuple[dict, str]:
+    """`vm.Dockerfile`'s `ARG` defaults, and the shell of the `RUN` that fetches
+    the cloud image (its `--mount` flag dropped)."""
+    args, run = {}, None
+    for ins in _instructions((_ROOT / "workstation/vm.Dockerfile").read_text(encoding="utf-8")):
+        word, _, rest = ins.partition(" ")
+        if word.upper() == "ARG":
+            name, _, default = rest.partition("=")
+            args[name.strip()] = default.strip()
+        elif word.upper() == "RUN" and "SHA256SUMS" in rest:
+            parts = rest.split(" ")
+            while parts and parts[0].startswith("--"):
+                parts.pop(0)
+            run = " ".join(parts)
+    assert run, "vm.Dockerfile no longer has the RUN that fetches the cloud image"
+    return args, run
+
+
+def test_the_cloud_image_is_a_dated_build_with_its_hash_in_the_tree():
+    args, _ = _vm_args_and_fetch()
+    assert re.fullmatch(r"https://cloud-images\.ubuntu\.com/releases/noble/release-\d{8}(\.\d+)?",
+                        args.get("CLOUD_IMAGE_URL", "")), (
+        f"CLOUD_IMAGE_URL is {args.get('CLOUD_IMAGE_URL')!r} — `…/release` is whichever build "
+        f"is newest; name a dated one (`B1677`)")
+    assert re.fullmatch(r"[0-9a-f]{64}", args.get("CLOUD_IMAGE_SHA256", "")), args
+
+
+_CLOUD_FILE = "ubuntu-24.04-server-cloudimg-amd64.img"
+
+
+def _fake_build(tmp_path: Path, listed_hash: str, image: bytes, **build_args):
+    """Run the fetch step as the builder would, with `apt-get` and `gpgv`
+    standing in as successes and `curl` answering from a directory: the
+    published `SHA256SUMS` lists `listed_hash` for the image, and the image is
+    `image`. Every absolute path the step writes is moved under `tmp_path`."""
+    if not shutil.which("sh") or not shutil.which("sha256sum"):
+        pytest.skip("sh or sha256sum is not on PATH")
+    args, run = _vm_args_and_fetch()
+    root = tmp_path / "root"
+    served = tmp_path / "served"
+    bin_ = tmp_path / "bin"
+    for d in (root, served, bin_):
+        d.mkdir()
+    (served / "SHA256SUMS").write_text(
+        f"{'0' * 64} *ubuntu-24.04-server-cloudimg-arm64.img\n{listed_hash} *{_CLOUD_FILE}\n")
+    (served / "SHA256SUMS.gpg").write_bytes(b"signature")
+    (served / _CLOUD_FILE).write_bytes(image)
+    asked = tmp_path / "asked"
+    (bin_ / "curl").write_text(
+        "#!/bin/sh\nout=; url=\nwhile [ $# -gt 0 ]; do case \"$1\" in -o) out=$2; shift 2;; -*) shift;;"
+        " *) url=$1; shift;; esac; done\n"
+        f"echo \"$url\" >> '{asked}'\ncp '{served}'/\"${{url##*/}}\" \"$out\"\n")
+    for name in ("apt-get", "gpgv"):
+        (bin_ / name).write_text("#!/bin/sh\nexit 0\n")
+    for f in bin_.iterdir():
+        f.chmod(0o755)
+    script = re.sub(r"(?<![\w.:/-])/(opt|etc|var|run|usr)/", lambda m: f"{root}/{m.group(1)}/", run)
+    for d in ("opt", "etc/apt/apt.conf.d", "var/lib/apt/lists", "usr/share/keyrings"):
+        (root / d).mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ, PATH=f"{bin_}:{os.environ.get('PATH', '')}", APT_MIRROR="",
+               **{k: v for k, v in args.items() if k.startswith("CLOUD_IMAGE_")})
+    env.update(build_args)
+    proc = subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True,
+                          timeout=60, cwd=tmp_path)
+    urls = asked.read_text().split() if asked.exists() else []
+    made = root / "opt/pantheon-workstation/vm/ubuntu-cloud.img"
+    return proc, urls, made
+
+
+def test_the_build_refuses_a_cloud_image_list_that_names_another_hash(tmp_path):
+    """The dated directory's `SHA256SUMS` is signed, and it still has to list
+    the hash the tree pins — so a URL moved without its hash, or a directory
+    that was re-rolled, stops the build before the image is downloaded, with
+    the sentence saying what to pass."""
+    other = "f" * 64
+    proc, urls, made = _fake_build(tmp_path, other, b"not the pinned image")
+    assert proc.returncode != 0, proc.stdout
+    assert not any(u.endswith(".img") for u in urls), ("the image was downloaded", urls)
+    assert not made.exists()
+    assert other in proc.stderr and "CLOUD_IMAGE_SHA256" in proc.stderr, proc.stderr
+
+
+def test_the_build_takes_the_image_its_pinned_hash_names(tmp_path):
+    """And a hash passed with the URL — the way a person moves to a newer
+    build — is the image that lands, checked against the signed list."""
+    import hashlib
+    image = b"a cloud image"
+    digest = hashlib.sha256(image).hexdigest()
+    proc, urls, made = _fake_build(tmp_path, digest, image, CLOUD_IMAGE_SHA256=digest)
+    assert proc.returncode == 0, proc.stderr
+    assert made.read_bytes() == image
+    args, _ = _vm_args_and_fetch()
+    assert urls[-1] == f"{args['CLOUD_IMAGE_URL']}/{_CLOUD_FILE}", urls

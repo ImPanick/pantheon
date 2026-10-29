@@ -68,3 +68,14 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+
+  # `B1677`. The workstation's two base images (`workstation/Dockerfile`,
+  # `workstation/vm.Dockerfile`), pinned to a dated tag and its digest so a
+  # rebuild cannot change them unseen — which also means nothing moves them but
+  # this. `vm.Dockerfile`'s cloud image (`CLOUD_IMAGE_URL`/`CLOUD_IMAGE_SHA256`)
+  # is not an image reference, and is moved by hand with its hash.
+  - package-ecosystem: docker
+    directory: "/workstation"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
