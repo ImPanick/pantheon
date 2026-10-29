@@ -3440,3 +3440,25 @@ Not ruled, and so left open as filed: `B625` (the bombadil spec).
 
 Recorded with §4 by the coordinator, the same kind of choice as `D-2026-09-07-01`: JSZip, inside
 docx 9.7.1, offers MIT or GPLv3, and is taken under MIT.
+
+---
+
+## D-2026-10-29-03 — four calls on the twenty-eighth wave's remainders: edits stay writes, an append is not a replacement, the PDF fallback draws every script, and the desktop bundles match the image
+
+*The owner, 2026-10-29, answering four questions put while the twenty-ninth wave's full run was
+going.* Each is ruled as it was put:
+
+1. **`B1671` — "No, edits stay writes."** An in-place edit of a file that was there before the run
+   (`edit_file`, a patch's *Update File*) is a plain write. Only replacing a whole file
+   (`D-2026-10-29-02` §1) and deleting one carry `destructive`.
+2. **`B1672` — "Append-only is not destructive."** A write that only adds to the end of a file that
+   was there — a shell `>>`, or an append mode — is a plain write, and Receipt Collector appends to
+   its ledger instead of rewriting it, so its unattended sweeps finish.
+3. **`B1674` — "Inter + a CJK font."** The PDF fallback embeds the UI's own typeface as TrueType
+   (Latin, Cyrillic, Greek) and a CJK font (Chinese, Japanese, Korean), roughly 5–10 MB more,
+   loaded only when a document needs it. Emoji are not in scope.
+4. **`B1666` — "Strip them too."** The desktop bundles (`Pantheon.spec`, `build-macos-app.sh`,
+   `build-windows-portable.ps1`) ship JavaScript through the same proven stripper as the image
+   (`D-2026-10-29-02` §6).
+
+What reopens it: the owner changing any one of these.
