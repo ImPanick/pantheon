@@ -7239,6 +7239,9 @@ async def stream_agent_loop(
     _run_files = RunFiles(
         workspace, owner,
         carried=_resumed_turn.files if isinstance(_resumed_turn, PausedTurn) else None,
+        # `B1669`: the chat, whose shell keeps its folder between calls, so a
+        # command's `>` is looked for where the command will start.
+        session_id=session_id,
     )
     run_security = ToolRunSecurityContext(
         external_untrusted_context_seen=(

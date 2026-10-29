@@ -1194,7 +1194,8 @@ def call_reaches(tool_name: Any) -> tuple[frozenset[ToolEffect], ...]:
     `shell_with_login`, registered `network_egress` already, those are the
     same set, and for `host_shell`, registered `destructive` already, a
     command that reaches the network is the one more (`B1655`) — and a
-    `write_file` over a file that was there before the run (`B1660`). Read in one
+    `write_file` over a file that was there before the run (`B1660`), and an
+    `apply_patch` that deletes a file (`B1668`). Read in one
     place so the three questions below cannot disagree about what a call of
     the tool can be (`Law 7`).
 
@@ -1218,8 +1219,9 @@ def call_reaches(tool_name: Any) -> tuple[frozenset[ToolEffect], ...]:
         reaches.append(base.effects | {ToolEffect.DESTRUCTIVE})
         reaches.append(base.effects | {ToolEffect.NETWORK_EGRESS})
         reaches.append(base.effects | {ToolEffect.DESTRUCTIVE, ToolEffect.NETWORK_EGRESS})
-    if tool_name in _WRITE_TOOLS:
-        # `B1660`: a write over a file that was there before the run began.
+    if tool_name in _WRITE_TOOLS or tool_name in _PATCH_TOOLS:
+        # `B1660`: a write over a file that was there before the run began;
+        # `B1668`, a patch that deletes a file.
         reaches.append(base.effects | {ToolEffect.DESTRUCTIVE})
     if bare in _ACTION_CAPABILITIES:
         reaches += [c.effects for c in _ACTION_CAPABILITIES[bare].values()]
@@ -1312,10 +1314,13 @@ def _command_text(tool_name: str, content: Any) -> str | None:
 
 
 @functools.lru_cache(maxsize=512)
-def _command_reading(tool_name: str, text: str) -> tuple[str | None, str | None]:
-    """`(why it destroys, why it reaches the network)`, from one reading."""
-    from src.shell_reading import python_findings, read_shell, readings
-    return readings(python_findings(text) if tool_name == "python" else read_shell(text))
+def _command_reading(tool_name: str, text: str) -> tuple:
+    """`(why it destroys, why it reaches the network, what it writes over)`,
+    from one reading — the third (`B1669`) is the reading's `writes` and
+    `chdir` findings, which only the run can answer (`src/run_files.py`)."""
+    from src.shell_reading import python_findings, read_shell, readings, writes_of
+    findings = python_findings(text) if tool_name == "python" else read_shell(text)
+    return (*readings(findings), writes_of(findings))
 
 
 def _command_readings(tool_name: Any, content: Any) -> tuple[str | None, str | None]:
@@ -1324,7 +1329,18 @@ def _command_readings(tool_name: Any, content: Any) -> tuple[str | None, str | N
     text = _command_text(tool_name, content)
     if not text or not text.strip():
         return None, None
-    return _command_reading(tool_name, text)
+    return _command_reading(tool_name, text)[:2]
+
+
+def command_writes(tool_name: Any, content: Any) -> tuple:
+    """`B1669`. What this command call writes over and where it moves, as the
+    reader names them (`shell_reading.writes_of`), or `()`."""
+    if tool_name not in _COMMAND_TOOLS:
+        return ()
+    text = _command_text(tool_name, content)
+    if not text or not text.strip():
+        return ()
+    return _command_reading(tool_name, text)[2]
 
 
 def command_destroys(tool_name: Any, content: Any) -> str | None:
@@ -1339,6 +1355,32 @@ def command_reaches(tool_name: Any, content: Any) -> str | None:
     reaches another machine, or why it cannot be read — or `None`, as
     `command_destroys` answers for `destructive`."""
     return _command_readings(tool_name, content)[1]
+
+
+# ── `B1669` · a shell writing over a file that was there ────────────────────
+#
+# `bash 'echo x > notes.md'` was `execute_code` alone while `write_file
+# notes.md` over the same file carried `destructive` (`B1660`): under the
+# owner's principle (`D-2026-10-29-02` §1), replacing a file that was there
+# before the run is destructive whatever tool does it. The reader names what a
+# command writes over (`command_writes`), and the run decides whether it was
+# there (`src/run_files.command_replaces`, which says where it looks and where
+# it stops). `host_shell` is registered `destructive` already and runs on
+# another machine, so it is not looked at.
+_REPLACE_READ_TOOLS = frozenset({"bash", "python", "shell_with_login"})
+
+
+def command_replaces(tool_name: Any, content: Any, files: Any = None) -> str | None:
+    """`B1669`. Why this command call carries `destructive` for a file it
+    writes over — the file, or why it cannot be known whether it was there —
+    or `None`. `files` is the run's record (`src/run_files.RunFiles`)."""
+    if tool_name not in _REPLACE_READ_TOOLS:
+        return None
+    writes = command_writes(tool_name, content)
+    if not writes:
+        return None
+    from src.run_files import command_replaces as replaces_in_run
+    return replaces_in_run(tool_name, writes, content, files)
 
 
 # ── `B1660` · writing over a file that was there is an overwrite ────────────
@@ -1363,6 +1405,76 @@ def write_replaces(tool_name: Any, content: Any, files: Any = None) -> str | Non
         return None
     from src.run_files import replaces
     return replaces(content, files)
+
+
+# ── `B1668` · a patch's deletion is a deletion ──────────────────────────────
+#
+# `apply_patch` is registered `write_workspace`, so a patch whose `*** Delete
+# File: notes.md` removes the file (`filesystem_tools._run_patch`,
+# `files.remove`) carried no `destructive`: a hire's `destructive:
+# ask`/`never` and Auto's one exception (`B1341`) never covered it. Now a patch
+# that deletes a file carries `destructive` — outright, as a shell's `rm` does
+# (`B1622`), whether or not the run made the file: deleting is not writing
+# over, and `D-2026-10-29-02` §1's "the run's own draft" is about rewriting
+# one. The patch is read as the tool reads it (`_patch_text`,
+# `_parse_agent_patch`); one the tool refuses deletes nothing. Its other
+# operations stay what they were: `*** Add File:` is refused when the path is
+# there, a move is refused, and `*** Update File:` edits as `edit_file` does.
+_PATCH_TOOLS = frozenset({"apply_patch"})
+
+
+def patch_deletes(tool_name: Any, content: Any) -> str | None:
+    """`B1668`. Why this `apply_patch` call carries `destructive` — the files
+    its patch deletes — or `None`. `None` for every other tool."""
+    if tool_name not in _PATCH_TOOLS:
+        return None
+    if isinstance(content, Mapping):
+        content = json.dumps(dict(content))
+    if not isinstance(content, str):
+        return None
+    from src.agent_tools.filesystem_tools import _parse_agent_patch, _patch_text
+    try:
+        operations = _parse_agent_patch(_patch_text(content))
+    except (ValueError, TypeError):
+        return None                 # the tool refuses it, and deletes nothing
+    gone = [op["path"] for op in operations if op.get("kind") == "delete"]
+    return f"apply_patch deletes {', '.join(dict.fromkeys(gone))}" if gone else None
+
+
+# ── `B1670` · one set of words for what a call destroys ─────────────────────
+#
+# A hire's card said what in the call was destructive — *(rm deletes files)*,
+# *(write_file replaces notes.md, which was there before this run began)* —
+# and the card the ladder makes (a chat that has read outside data, in Auto or
+# not, or a rung that asks) said only *It has read outside data this turn, so
+# this needs a yes from you*: the person was asked to approve a deletion
+# without being told it was one (`Law 15`). Both now take their words from
+# here, so the two cards cannot word one call two ways (`Law 7`).
+
+def call_destroys(tool_name: Any, content: Any, files: Any = None) -> str | None:
+    """Why this call carries `destructive` beyond its tool's registration, in
+    the words every card uses: a command's deletion, or that it cannot be read
+    (`B1622`); a file a command writes over (`B1669`); a `write_file` over a
+    file that was there (`B1660`); a patch's deletion (`B1668`). `None` when
+    nothing in the call adds it."""
+    return (command_destroys(tool_name, content) or command_replaces(tool_name, content, files)
+            or write_replaces(tool_name, content, files) or patch_deletes(tool_name, content))
+
+
+def call_reasons(tool_name: Any, content: Any, effects: Iterable[Any], files: Any = None) -> str:
+    """`B1670`. What in this call carries each of `effects`, as the words a
+    card adds after its sentence — `" (rm deletes files)"` — or `""` when
+    nothing in the call is what carries them (the tool's registration is).
+    `destructive` (`call_destroys`) and `network_egress` (`B1652`,
+    `command_reaches`) are the two a call's arguments add."""
+    named = {getattr(e, "value", e) for e in effects or ()}
+    said = []
+    if ToolEffect.DESTRUCTIVE.value in named:
+        said.append(call_destroys(tool_name, content, files))
+    if ToolEffect.NETWORK_EGRESS.value in named:
+        said.append(command_reaches(tool_name, content))
+    said = [w for w in said if w]
+    return f" ({'; '.join(dict.fromkeys(said))})" if said else ""
 
 
 def _is_destructive_call(tool_name: Any, content: Any, files: Any = None) -> bool:
@@ -1399,7 +1511,8 @@ def capabilities_for_action(tool_name: Any, content: Any, *, files: Any = None) 
 
     `files` (`B1660`) is the run's record of the files it made
     (`src/run_files.RunFiles`): whether a `write_file` replaces a file that
-    was there before the run began. Every surface that classifies one call of
+    was there before the run began — and `B1669`, whether a command's `>`,
+    `tee` or `cp` does, and where its shell starts. Every surface that classifies one call of
     a run — the gate, the card, its seal, the step's effect keys — hands in the
     same record, so they cannot disagree; without one, nothing is known to be
     the run's own."""
@@ -1428,6 +1541,10 @@ def capabilities_for_action(tool_name: Any, content: Any, *, files: Any = None) 
     # `B1655`, a host command's too; otherwise exactly the tool's registration.
     if tool_name in _COMMAND_TOOLS:
         destroys, reaches = _command_readings(tool_name, content)
+        if destroys is None:
+            # `B1669`: or when it writes over a file that was there before the
+            # run began — or whether one was cannot be known.
+            destroys = command_replaces(tool_name, content, files)
         added = ({ToolEffect.DESTRUCTIVE} if destroys is not None else set()) | (
             {ToolEffect.NETWORK_EGRESS} if reaches is not None else set())
         if not added:
@@ -1438,9 +1555,10 @@ def capabilities_for_action(tool_name: Any, content: Any, *, files: Any = None) 
             known=base.known,
         )
 
-    # `B1660`. A write over a file that was there before the run began.
-    if tool_name in _WRITE_TOOLS:
-        if write_replaces(tool_name, content, files) is None:
+    # `B1660`. A write over a file that was there before the run began;
+    # `B1668`, a patch that deletes a file.
+    if tool_name in _WRITE_TOOLS or tool_name in _PATCH_TOOLS:
+        if (write_replaces(tool_name, content, files) or patch_deletes(tool_name, content)) is None:
             return base
         return ToolCapabilities(
             frozenset(base.effects | {ToolEffect.DESTRUCTIVE}),
@@ -2650,13 +2768,10 @@ class ToolRunSecurityContext:
         never = effects & set(self.hire_never_effects)
         # `B1622`. A command's deletion is named, so the person reads what in
         # it is destructive rather than only that something is; `B1652`, and
-        # what in it reaches the network; `B1660`, and the file a write replaces.
-        why, reach = _command_readings(tool_name, content)
-        why = why or write_replaces(tool_name, content, self.files)
-
+        # what in it reaches the network; `B1660`, and the file a write
+        # replaces — in the words the ladder's card uses too (`B1670`).
         def because(named):
-            said = [w for e, w in (("destructive", why), ("network_egress", reach)) if w and e in named]
-            return f" ({'; '.join(dict.fromkeys(said))})" if said else ""
+            return call_reasons(tool_name, content, named, self.files)
         if never:
             return ToolGateDecision(
                 False,
@@ -2828,12 +2943,17 @@ class ToolRunSecurityContext:
             # The rung asked for this, and the sentence has to say so — the old
             # one blamed untrusted context, which on this path has not happened.
             why = "This conversation is set to confirm every effectful action. "
+        # `B1670`. And what in the call carries what tripped it — *(rm deletes
+        # files)* — in the words a hire's card uses, so the card made in a
+        # chat that has read outside data, Auto's among them, says what the
+        # person is approving (`tool_approvals.card_words` keeps it).
+        named = call_reasons(tool_name, content, blocked_effects, self.files) if capabilities.known else ""
         return ToolGateDecision(
             False,
             (
                 f"{why}"
                 f"Tool '{tool_name}' requires a separate user-authorized action "
-                f"because it can cause {effects}."
+                f"because it can cause {effects}{named}."
             ),
             tripped_effects=tripped,
             classification=classification,

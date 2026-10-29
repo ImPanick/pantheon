@@ -165,6 +165,13 @@ class _ChatFolders:
         self._held.move_to_end(key)
         return folder, None
 
+    def peek(self, key: Optional[Tuple], start: str) -> Optional[str]:
+        """`B1669`. The folder `recall` would answer, without moving or
+        forgetting anything: the gate reads where a command will start
+        (`src/run_files.py`) before it runs, and must not change it."""
+        held = self._held.get(key) if key is not None else None
+        return held[1] if held and held[0] == start else None
+
     def keep(self, key: Optional[Tuple], start: str, folder: Optional[str]) -> None:
         if key is None:
             return
