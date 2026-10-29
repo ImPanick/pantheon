@@ -253,6 +253,17 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **`write_file` can append** (`B1672`): an append adds to the end of a file and never counts as
+  replacing it, so Receipt Collector adds its new rows to its ledger and its unattended sweeps
+  finish without asking. Its version moved.
+- **More shell commands are read for the files they replace** (`B1679`–`B1681`): `curl -o`,
+  `wget -O`, `sort -o`, `unzip -o`, `tar -x` and `ffmpeg -y` over a file that was there ask where
+  deletions ask; a redirect after a loop is a write; and a hired agent's `>` onto a new file in its
+  projects folder is a plain write.
+- **The workstation images build from a pinned Ubuntu digest, and the VM's cloud image is checked
+  against its signed SHA256 list** (`B1677`). The Windows portable build now builds from
+  `Pantheon.spec` and ships JavaScript without comments (`B1666`); it needs Node.js.
+
 - **A shell command that writes over a file that was there, and a patch that deletes one, now
   count as deleting it** (`B1669`, `B1668`), as `write_file` does (`B1660`): `>`, `tee` and `cp`
   onto an existing file ask where deletions ask. Speed Logger's header line now appends, so its
@@ -518,6 +529,9 @@ the next one is cut.
   arming that a non-empty memory store did on its own.
 
 ### Fixed
+
+- **The PDF fallback draws Cyrillic, Greek, Chinese, Japanese and Korean** (`B1674`), in fonts
+  fetched only when a document needs them, and never cuts a picture at a page edge (`B1678`).
 
 - **The PDF fallback draws formulas with their exponents raised, and never cuts a line of text in
   half at a page edge** (`B1675`, `B1676`).

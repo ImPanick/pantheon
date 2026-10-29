@@ -443,12 +443,12 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="tests",
         area="Verification apparatus",
-        headline="Test files 792 -> 1976, and a suite of 20,309 passing with nothing red.",
+        headline="Test files 792 -> 1983, and a suite of 20,309 passing with nothing red.",
         stock="792 test files.",
-        pantheon=("1976 test files, and 20,309 tests passing, 0 failing, 113 skipped, "
+        pantheon=("1983 test files, and 20,309 tests passing, 0 failing, 113 skipped, "
                   "0 xfailed when the suite was last run whole — 2026-10-18, at `c66fe54`."),
         before="792 test files",
-        after="1976 test files · 20,309",
+        after="1983 test files · 20,309",
         provenance="diffed",
         repro=f"git ls-tree -r --name-only {FORK_POINT} | grep -c '^tests/test_.*\\.py$' && python3 -m pytest -q",
         evidence=("tests",),
@@ -861,7 +861,7 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="credits",
         area="Licence and provenance",
-        headline="Every shipped third-party file attributed, checked against the bytes on disk — 109 licence texts.",
+        headline="Every shipped third-party file attributed, checked against the bytes on disk — 110 licence texts.",
         stock=(
             "Bundled third-party code without its licence text; the desktop builds "
             "redistributed a dozen libraries with attribution stripped."
@@ -874,7 +874,7 @@ CLAIMS: Tuple[Claim, ...] = (
         # was 1,023 lines on 2026-10-02 — and neither is a number the repro
         # prints. The pair is now the defect and the checker's own count.
         before="12 bundled packages with no notice",
-        after="109 licence texts, every shipped file attributed",
+        after="110 licence texts, every shipped file attributed",
         provenance="counted",
         repro="python3 .pantheon/check-licences.py",
         evidence=("CREDITS.md", "licenses", ".pantheon/check-licences.py"),
