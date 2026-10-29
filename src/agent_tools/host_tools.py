@@ -23,7 +23,9 @@ ability to widen what may be asked, and that difference is the whole design.
      Settings. Narrows what Pantheon will even send. Not a boundary, and the UI
      says so.
   2. The trust gate, via the ordinary approval machinery — `host_shell` is
-     classified `EXECUTE_CODE` + `DESTRUCTIVE`, so the approval card names both.
+     classified `EXECUTE_CODE` + `DESTRUCTIVE`, so the approval card names both,
+     and `NETWORK_EGRESS` too when its command reaches another machine, read as
+     a `bash` command is (`B1655`, `command_of`).
   3. The agent's own list, on the host. The boundary.
 
 **ONE SWITCH, NOT TWO.** The chat's existing *enable shell* toggle sends
@@ -34,9 +36,21 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Mapping, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def command_of(content: Any) -> str:
+    """The command a call sends to the host, read the way `execute` reads it.
+
+    `B1655`. The approval gate reads this command for what it deletes and what
+    it reaches (`tool_capabilities._command_text`, `src/shell_reading.py`), so
+    a hire's `network_egress: never` refuses a host `curl` as it refuses one
+    in `bash`. One reading for both, so the gate never classifies a different
+    command from the one the host is sent (`Law 7`)."""
+    args = dict(content) if isinstance(content, Mapping) else _parse(content)
+    return str(args.get("command") or "").strip()
 
 
 def _parse(content: str) -> Dict[str, Any]:
@@ -73,7 +87,7 @@ class HostShellTool:
         from src import host_exec_policy, netagent_client
 
         args = _parse(content)
-        command = str(args.get("command") or "").strip()
+        command = command_of(args)
         if not command:
             return {"error": "host_shell needs a command", "exit_code": 1}
 

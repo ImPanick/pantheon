@@ -1192,8 +1192,10 @@ def call_reaches(tool_name: Any) -> tuple[frozenset[ToolEffect], ...]:
     own data, a deletion (`_ACTION_DESTRUCTIVE`), and a command that deletes
     or cannot be read (`B1622`) or reaches the network (`B1652`) — for
     `shell_with_login`, registered `network_egress` already, those are the
-    same set. Read in one place so the three questions
-    below cannot disagree about what a call of the tool can be (`Law 7`).
+    same set, and for `host_shell`, registered `destructive` already, a
+    command that reaches the network is the one more (`B1655`). Read in one
+    place so the three questions below cannot disagree about what a call of
+    the tool can be (`Law 7`).
 
     Two classifications are not listed, and neither is something a hire's
     table decides: a switch that widens the assistant's own reach is asked at
@@ -1278,7 +1280,16 @@ def reach_left(tool_name: Any, never: Iterable[Any]) -> frozenset[ToolEffect]:
 # module names the adversary and where it stops; this only ever *adds* the
 # effect, so every gate asks more for it and never less. The tool-level
 # registration is untouched: a card for `ls` says what it said.
-_COMMAND_TOOLS = frozenset({"bash", "shell_with_login", "python"})
+#
+# `B1655`. `host_shell` too: registered `destructive` already, its command was
+# never read for its reach, so a host `curl https://…` carried no
+# `network_egress` and a hire's `never` for it did nothing. Its host runs it
+# under `/bin/sh -c` (or `cmd.exe /c` on Windows, whose `powershell -Command …`
+# this reader calls unreadable, so it is never called local). A background
+# job is not a fifth: `manage_bg_jobs` starts nothing — its actions are
+# `list`, `output` and `kill` — and a job is started by a `bash` call whose
+# first line is `#!bg`, read here as every `bash` call is.
+_COMMAND_TOOLS = frozenset({"bash", "shell_with_login", "python", "host_shell"})
 
 
 def _command_text(tool_name: str, content: Any) -> str | None:
@@ -1288,6 +1299,9 @@ def _command_text(tool_name: str, content: Any) -> str | None:
         args, problem = parse_args(content)
         # A call the tool refuses runs nothing.
         return None if problem else str(args.get("command") or "")
+    if tool_name == "host_shell":
+        from src.agent_tools.host_tools import command_of
+        return command_of(content)
     if isinstance(content, Mapping):
         content = content.get("command") or content.get("cmd") or content.get("code") or ""
     return content if isinstance(content, str) else None
@@ -1373,8 +1387,8 @@ def capabilities_for_action(tool_name: Any, content: Any) -> ToolCapabilities:
         )
 
     # `B1622`. A shell's or Python's call: destructive when its command says
-    # so, or cannot be read; `B1652`, reaching the network the same way;
-    # otherwise exactly the tool's registration.
+    # so, or cannot be read; `B1652`, reaching the network the same way —
+    # `B1655`, a host command's too; otherwise exactly the tool's registration.
     if tool_name in _COMMAND_TOOLS:
         destroys, reaches = _command_readings(tool_name, content)
         added = ({ToolEffect.DESTRUCTIVE} if destroys is not None else set()) | (
